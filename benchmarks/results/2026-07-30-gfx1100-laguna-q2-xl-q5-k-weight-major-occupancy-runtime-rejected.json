@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_weight_major_occupancy_runtime_rejected",
+  "date": "2026-07-30",
+  "status": "rejected_exact_runtime_owner_standalone_leaf_retained",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "01cb2ce20",
+    "leaf_revision": "c28b23c1e",
+    "candidate_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json",
+    "candidate_artifact_sha256": "8ad29d0553b41009f3ed68227d611136cb4206cb74688efa1703d62b439ae412",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json",
+    "target_artifact_sha256": "64743603a9680256309d423989833caa4b30c3a719ca39275894c0df5aa4fa1c",
+    "source": "net-new in-tree exact geometry/traversal cross; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "candidate": {
+    "role": "BF16 K6144/N3072 Q5_K projection at rows512",
+    "control_geometry": "weight_major_coltile16_rowbatch5",
+    "candidate_geometry": "weight_major_coltile16_rowbatch4",
+    "production_invocations_m512": 12,
+    "preserved": "raw-Q5-to-F32 producer, row-group mapping, K ownership, scalar fmaf sequence, wave tree, serial wave sum, BF16 store, workspace, allocation, and fallback",
+    "control_resources": "local128/VGPR168/SGPR128/LDS1536/scratch0",
+    "candidate_resources": "local128/VGPR136/SGPR128/LDS1024/scratch0",
+    "persistent_weight_sidecar_bytes": 0,
+    "workspace_bytes": 150994944
+  },
+  "leaf_evidence": {
+    "rows17_rows33_byte_exact": true,
+    "actual_weight_output_byte_exact": true,
+    "final_source_event_ms": {
+      "control": 31.30571136474609,
+      "candidate": 29.32876739501953,
+      "reduction_percent": 6.314962617181839
+    },
+    "final_source_wall_ms": {
+      "control": 30.889727734029293,
+      "candidate": 29.897961392998695,
+      "reduction_percent": 3.2106671498370973
+    },
+    "decision": "retain the separately registered exact gfx1100 leaf"
+  },
+  "complete_state": {
+    "next_token_id": 2930,
+    "final_position": 511,
+    "kl_mean": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "exact_hidden_boundaries": 48,
+    "complete_logits_hidden_kv_spans_repeat_exact": true,
+    "workspace_unchanged": true,
+    "lifecycle_recovered": true,
+    "json_sha256": "8832e43f408f3f93f518e582e8e6c3e08f8dca86f1160d7f2b793b503762515f",
+    "harness_sha256": "c8222d26726f197c274dbc9f8b7a0ec488d45b597b7c301200770e6bbf5705e9"
+  },
+  "cached_integrated_trace": {
+    "dispatches_before": 1862,
+    "dispatches_after": 1862,
+    "candidate_calls": 12,
+    "retained_bf16_16x5_calls": 0,
+    "role_ms_before": 26.9534,
+    "role_ms_after": 25.390004000000005,
+    "role_reduction_percent": 5.800366558578862,
+    "q5_ms_before": 465.6597829999998,
+    "q5_ms_after": 462.994027,
+    "q5_reduction_percent": 0.5724685913019334,
+    "request_kernel_sum_ms_before": 2060.485413999999,
+    "request_kernel_sum_ms_after": 2056.6361009999955,
+    "request_kernel_sum_reduction_percent": 0.1868158334851211,
+    "trace_sha256": "979c8b18435dc1a24f9000fde5f869f9797794a40db4fb949fd7071527e8ecd0",
+    "summary_sha256": "fefb97e6db57294f9b5d8138ab589dd8935030c57c42229671fa0f46565fc5ae",
+    "analyzer_sha256": "cece18e9211b2084d9e0aefe0f1c36022a489fe2955b0388c4316c921ed4e6cf",
+    "child_sha256": "5c8f1f251064c8edc0c3c848b27767835d5271eced8c63f059eff7b97bf2ac4e",
+    "no_compiler_under_profile": true
+  },
+  "runtime_timing": {
+    "default_off_first_clean": {
+      "lengths": [512, 1024, 4096],
+      "control_tok_s": [238.78089659049422, 218.55410936964563, 158.1601490938827],
+      "candidate_tok_s": [238.33070515260394, 218.53993505586945, 158.1935097405774],
+      "gain_percent": [-0.1885374602066059, -0.006485494057772989, 0.021092953494195044],
+      "json_sha256": "5545bb8748533a18c1194d298ac842b874b16ce7227b484bdd5937568aee41a3",
+      "harness_sha256": "3163eca39cca37cbfeff18ea098bfa1ada921e2e70de9e7002e3ef9a0de91507"
+    },
+    "predeclared_512_adjudication": {
+      "repetitions": 7,
+      "control_median_tok_s": 241.98848909685697,
+      "candidate_median_tok_s": 242.41337307595683,
+      "gain_percent": 0.1755802437899412,
+      "paired_candidate_wins": 4,
+      "json_sha256": "fea1f487801d26d4b2aede15d248bbc4993e5133c6c44e87199676e7fdaee16b",
+      "harness_sha256": "c65061ef2a0d038d0e897ef84e39ad1b095b33aa309629d80f1b81ad61a789c3"
+    },
+    "source_default_publication_attempt": {
+      "lengths": [512, 1024, 4096],
+      "control_tok_s": [238.5993971627226, 218.70859661473705, 158.24818010389805],
+      "candidate_tok_s": [238.82094970351667, 218.6665855217703, 158.16234544193605],
+      "gain_percent": [0.09285544868455897, -0.019208706752738003, -0.054240536545602236],
+      "json_sha256": "607279d64c66dcb5fa85c30330bbda2f3963529ce6ee5e1a88351a66238e8cc0",
+      "harness_sha256": "f0c5a1b9e48489ba39ebded1db81d28325f888da5a32a8c8e309ce4ebac8a04d"
+    },
+    "final_predeclared_1k_4k_adjudication": {
+      "repetitions": 7,
+      "lengths": [1024, 4096],
+      "control_median_tok_s": [218.34098165176127, 157.9360450619256],
+      "candidate_median_tok_s": [218.27573962199963, 157.95779389218413],
+      "gain_percent": [-0.02988079895404061, 0.013770656502143375],
+      "paired_candidate_wins": [3, 3],
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "json_sha256": "bc0efab3dac108a597527c70b54a47e92549c9a05321e552be4081c195347686",
+      "harness_sha256": "7bd612235f43cb24d71b3b2e5d28475349cc34ce6e192dab4ad2b75d78bdbdc3"
+    },
+    "binding_blocker": "the final frozen 1K adjudication remains negative at -0.029881%, so the all-length non-regression rule rejects runtime ownership"
+  },
+  "restoration": {
+    "package_policy": "H5L weight_major_coltile16_rowbatch5 remains the BF16 K6144/N3072 default",
+    "temporary_package_change_removed": true,
+    "temporary_eager_owner_removed": true,
+    "standalone_kernel_leaf_retained": true,
+    "production_changed": false,
+    "source_matches_leaf_revision_c28b23c1e": true,
+    "source_sha256": {
+      "hipengine/runtime/laguna_gguf_runner.py": "6ef0f77222c1cb59370f64f2c4f1bdbe6c636bd0db2cf6f933b5f6aab170d7dc",
+      "tests/test_laguna_gguf_runner.py": "704ac467c2dfd9fd55cd25bc5ad19b66ea9931501c4cf353f1a6ccbfe4df4d0e",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "595694b9bdd656019dfaf8f91e335c40f83f156131477964763b4967872755b5",
+      "tests/test_laguna_h5p_q5_weight_major_occupancy.py": "7886235a98d1fd9e2aeb8d50ee364c719e5bde6ee68a4c0d84c79e1b9fdb1c81",
+      "tests/test_gguf_k_rowtile_gemv.py": "be85ee165a60ee539aeff3c055e1e6fe7a3a7eed166cf0eb8cc67a47dca9df99"
+    }
+  },
+  "production": {
+    "m512_tok_s": 238.56489443755876,
+    "m1024_tok_s": 218.1815612145882,
+    "m4096_tok_s": 158.13810004175082,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.909832989621587
+  },
+  "commands": {
+    "source_default_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt uv run python -u /tmp/laguna_wpfh5p_occupancy_package_default_clean_512_4k.py",
+    "final_adjudication": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt uv run python -u /tmp/laguna_wpfh5p_occupancy_package_1k_4k_adjudication.py"
+  },
+  "decision": {
+    "runtime_ownership_rejected": true,
+    "standalone_leaf_retained": true,
+    "production_changed": false,
+    "next_action": "Select a distinct exact target from the restored H5M/H5L production residual; do not retry this geometry without a distinct all-length premise."
+  }
+}

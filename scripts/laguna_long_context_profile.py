@@ -37,6 +37,8 @@ from scripts.laguna_target_ar_bench import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
+SHORT_FOCUS_LENGTHS = (512, 4096)
+WPF_SHORT_LENGTHS = (512, 1024)
 LAP0_LENGTHS = (128, 512, 1024, 4096)
 ATTACK_LENGTHS = (4096, 16384, 65536, 131072)
 ATTACK_DIRECTIONAL_LENGTHS = (4096, 16384, 65536)
@@ -49,6 +51,8 @@ STANDARD_DECODE_LENGTHS = (512,)
 DECODE_OUTPUT_TOKENS = (1, 128)
 PROFILE_LENGTH_SETS = (
     DEFAULT_LENGTHS,
+    SHORT_FOCUS_LENGTHS,
+    WPF_SHORT_LENGTHS,
     LAP0_LENGTHS,
     ATTACK_LENGTHS,
     ATTACK_DIRECTIONAL_LENGTHS,
@@ -95,6 +99,9 @@ COMPARISON_ARGUMENTS = (
     "compare_selected_natural_tile8_decode",
     "compare_q4_decode_t16_sidecar",
     "compare_q4_decode_t16_dual_interleaved",
+    "compare_raw_k_prefill_rowbatch",
+    "compare_grouped_exact_iq",
+    "compare_pair16_grouped_gate_up",
 )
 
 
@@ -136,6 +143,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--lengths", type=_parse_lengths, default=DEFAULT_LENGTHS)
     parser.add_argument("--chunk-size", type=_parse_chunk_size, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument(
+        "--package-matrix-rows",
+        action="store_true",
+        help="resolve matrix rows from backend package capability instead of --chunk-size",
+    )
+    parser.add_argument(
         "--attention-rows",
         type=_parse_chunk_size,
         help="global-attention query rows; SWA remains capped at 128",
@@ -159,6 +171,34 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--compare-long-attention-hipblaslt",
         action="store_true",
+    )
+    parser.add_argument(
+        "--compare-raw-k-prefill-rowbatch",
+        action="store_true",
+        help="compare scalar raw Q5/Q6 prefill with fixed rowbatch4/8/16/32",
+    )
+    parser.add_argument(
+        "--raw-k-prefill-rowbatch",
+        type=int,
+        choices=(0, 4, 8, 16, 32),
+        help="explicit raw Q5/Q6 row slab; comparison defaults candidate to 8",
+    )
+    parser.add_argument(
+        "--raw-k-prefill-rowbatch-control",
+        type=int,
+        choices=(0, 4, 8, 16, 32),
+        default=0,
+        help="control row slab for a rowbatch comparison; defaults to scalar 0",
+    )
+    parser.add_argument(
+        "--compare-grouped-exact-iq",
+        action="store_true",
+        help="compare retained route-major IQ with exact expert-major IQ down reuse",
+    )
+    parser.add_argument(
+        "--compare-pair16-grouped-gate-up",
+        action="store_true",
+        help="compare retained grouped-down with exact pair16 grouped IQ2 gate/up",
     )
     parser.add_argument(
         "--compare-block-attention-hipblaslt",
@@ -366,7 +406,10 @@ def _parse_args() -> argparse.Namespace:
         help="materialize ordinary two-buffer expert T16 as a rollback control",
     )
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--direct-gguf", action="store_true")
+    parser.add_argument("--safety-reserve-gib", type=float, default=8.0)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
+    parser.add_argument("--quant-label", default="Q4_K_M mixed GGUF v3")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     return parser.parse_args()
 
@@ -430,6 +473,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if args.chunk_size not in PROFILE_CHUNK_SIZES:
         raise ValueError(f"Laguna profiling chunk size must be one of {PROFILE_CHUNK_SIZES}")
+    matrix_label = "package" if args.package_matrix_rows else str(args.chunk_size)
     output_tokens = int(args.decode_output_tokens)
     required_context = max(lengths) + output_tokens - 1
     if args.context_length < required_context:
@@ -438,6 +482,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if args.repetitions <= 0:
         raise ValueError("LPF-5 repetitions must be positive")
+    if args.safety_reserve_gib < 0.0:
+        raise ValueError("--safety-reserve-gib must be non-negative")
     if args.warmup_rows <= 0 or args.warmup_rows > args.chunk_size:
         raise ValueError("LPF-5 warmup rows must fit one retained chunk")
     if (
@@ -451,6 +497,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_comparisons = _active_comparison_count(args)
     if active_comparisons > 1:
         raise ValueError("only one Laguna comparison may be active")
+    if args.compare_raw_k_prefill_rowbatch and args.raw_k_prefill_rowbatch == 0:
+        raise ValueError(
+            "--compare-raw-k-prefill-rowbatch requires candidate rowbatch4/8/16/32"
+        )
+    raw_k_candidate = (
+        8
+        if args.compare_raw_k_prefill_rowbatch
+        and args.raw_k_prefill_rowbatch is None
+        else args.raw_k_prefill_rowbatch
+    )
+    raw_k_control = int(args.raw_k_prefill_rowbatch_control)
+    if not args.compare_raw_k_prefill_rowbatch and raw_k_control != 0:
+        raise ValueError(
+            "--raw-k-prefill-rowbatch-control requires "
+            "--compare-raw-k-prefill-rowbatch"
+        )
+    if args.compare_raw_k_prefill_rowbatch and raw_k_candidate == raw_k_control:
+        raise ValueError("raw-K rowbatch control and candidate must differ")
     if (
         args.compare_block_attention_hipblaslt
         and args.block_attention_hipblaslt
@@ -491,24 +555,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolved_backend=args.backend,
         target_arch=args.backend.removeprefix("hip_"),
         model_path=args.model,
-        quant="gguf_q4_k_m",
+        quant=args.quant_label,
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         build_profile=(
-            f"laguna_prefill_long_context_matrix{args.chunk_size}"
+            f"laguna_prefill_long_context_matrix{matrix_label}"
             if output_tokens == 1
-            else f"laguna_p512_d{output_tokens}_matrix{args.chunk_size}"
+            else f"laguna_p512_d{output_tokens}_matrix{matrix_label}"
         ),
         timing_protocol=(
             (
                 "prefill_only_"
                 + "_".join(str(length) for length in lengths)
-                + f"_matrix{args.chunk_size}_attention128"
+                + f"_matrix{matrix_label}_attention128"
             )
             if output_tokens == 1
             else (
                 f"p{lengths[0]}_d{output_tokens}_eager_c1_"
-                f"matrix{args.chunk_size}_attention128"
+                f"matrix{matrix_label}_attention128"
             )
         ),
         warmups=1,
@@ -522,6 +586,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     gpu_free_before, gpu_total = runtime.mem_get_info()
     tracked_before = memory_stats()
     owner: LagunaGGUFResidentSession | None = None
+    active_matrix_rows = args.chunk_size
     active_moe_branch_concurrency = False
     active_q6_qmicro_permute = False
     active_q6_qmicro_planar = False
@@ -629,10 +694,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             runtime=runtime,
             compiler_version=_compiler_version(args.compiler_version_file),
             require_cached_build=args.require_cached_build,
+            safety_reserve_nbytes=int(args.safety_reserve_gib * 2**30),
             progress=_progress,
-            repacked_cache=args.repacked_cache,
+            repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
-            prefill_chunk_size=args.chunk_size,
+            prefill_chunk_size=(None if args.package_matrix_rows else args.chunk_size),
             prefill_global_attention_chunk_size=args.attention_rows,
             q6_qmicro_permute=args.q6_qmicro_permute,
             q6_qmicro_planar=args.q6_qmicro_planar,
@@ -696,7 +762,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_q4_expert_t16_dual_interleaved=(
                 False if args.ordinary_q4_expert_t16 else None
             ),
+            raw_k_prefill_rowbatch=(
+                raw_k_control
+                if args.compare_raw_k_prefill_rowbatch
+                else args.raw_k_prefill_rowbatch
+            ),
         )
+        active_matrix_rows = owner.prefill_chunk_size
+        active_raw_k_prefill_variant = owner.raw_k_prefill_variant
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
         active_q6_qmicro_planar = owner.q6_qmicro_planar
@@ -930,6 +1003,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_prefill_long_attention_hipblaslt(
                             mode == "candidate"
                         )
+                    if args.compare_raw_k_prefill_rowbatch:
+                        owner.set_raw_k_prefill_rowbatch(
+                            int(raw_k_candidate)
+                            if mode == "candidate"
+                            else raw_k_control
+                        )
+                    if args.compare_grouped_exact_iq:
+                        selected_mode = (
+                            "grouped_exact" if mode == "candidate" else "direct"
+                        )
+                        owner.set_selected_gate_up_mode(selected_mode)
+                        owner.set_selected_down_mode(selected_mode)
+                    if args.compare_pair16_grouped_gate_up:
+                        gate_up_mode = (
+                            "grouped_pair16"
+                            if mode == "candidate"
+                            else "grouped_exact"
+                        )
+                        owner.set_selected_gate_up_mode(gate_up_mode)
+                        owner.set_selected_down_mode("grouped_exact")
                     if args.compare_block_attention_hipblaslt:
                         owner.set_prefill_block_attention_hipblaslt(
                             mode == "candidate"
@@ -1043,7 +1136,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         decode_seconds = time.perf_counter() - decode_started
                     row = {
                         "length": length,
-                        "chunks": math.ceil(length / args.chunk_size),
+                        "chunks": math.ceil(length / active_matrix_rows),
                         "prefill_seconds": elapsed,
                         "prefill_tok_s": length / elapsed,
                         "next_token_id": generated[0],
@@ -1051,6 +1144,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "final_position": int(owner.position),
                         "repetition": repetition,
                         "output_tokens": output_tokens,
+                        "raw_k_prefill_rowbatch": owner.raw_k_prefill_rowbatch,
+                        "raw_k_prefill_variant": owner.raw_k_prefill_variant,
+                        "selected_gate_up_mode": owner.selected_gate_up_mode,
+                        "selected_down_mode": owner.selected_down_mode,
                     }
                     if output_tokens > 1:
                         row.update(
@@ -1169,7 +1266,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and recovered
     )
     prompt_payload = args.prompts.read_bytes()
-    manifest_path = args.repacked_cache / "manifest.json"
+    active_cache = None if args.direct_gguf else args.repacked_cache
+    manifest_path = None if active_cache is None else active_cache / "manifest.json"
     return {
         "schema": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1187,10 +1285,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": {
             "path": str(args.model.resolve()),
             "sha256": args.model_sha256,
-            "quant": "Q4_K_M mixed GGUF v3",
-            "repacked_cache": str(args.repacked_cache.resolve()),
+            "quant": args.quant_label,
+            "repacked_cache": None if active_cache is None else str(active_cache.resolve()),
             "repacked_cache_manifest_sha256": (
-                _sha256_bytes(manifest_path.read_bytes()) if manifest_path.is_file() else None
+                _sha256_bytes(manifest_path.read_bytes())
+                if manifest_path is not None and manifest_path.is_file()
+                else None
             ),
         },
         "platform": {
@@ -1202,19 +1302,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "protocol": {
             "lengths": list(lengths),
-            "chunk_size": args.chunk_size,
-            "matrix_rows": args.chunk_size,
+            "chunk_size": active_matrix_rows,
+            "matrix_rows": active_matrix_rows,
+            "package_matrix_rows_requested": bool(args.package_matrix_rows),
+            "matrix_rows_cli_fallback": args.chunk_size,
             "attention_rows": active_global_attention_rows,
             "swa_attention_rows": min(
-                args.chunk_size,
+                active_matrix_rows,
                 128,
                 active_attention_rows,
             ),
             "dense_contiguous_cache": active_dense_contiguous_cache,
             "chunks_per_length": {
-                str(length): math.ceil(length / args.chunk_size) for length in lengths
+                str(length): math.ceil(length / active_matrix_rows) for length in lengths
             },
             "context_length": args.context_length,
+            "direct_gguf": bool(args.direct_gguf),
+            "safety_reserve_gib": float(args.safety_reserve_gib),
             "output_tokens_including_first": output_tokens,
             "decode_forward_calls_per_run": output_tokens - 1,
             "repetitions": args.repetitions,
@@ -1475,6 +1579,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "compare_long_attention_hipblaslt": (
                 args.compare_long_attention_hipblaslt
+            ),
+            "compare_raw_k_prefill_rowbatch": (
+                args.compare_raw_k_prefill_rowbatch
+            ),
+            "raw_k_prefill_rowbatch_requested": args.raw_k_prefill_rowbatch,
+            "raw_k_prefill_variant_resolved": active_raw_k_prefill_variant,
+            "raw_k_prefill_rowbatch_control": raw_k_control,
+            "raw_k_prefill_rowbatch_candidate": raw_k_candidate,
+            "compare_grouped_exact_iq": args.compare_grouped_exact_iq,
+            "compare_pair16_grouped_gate_up": (
+                args.compare_pair16_grouped_gate_up
             ),
             "compare_block_attention_hipblaslt": (
                 args.compare_block_attention_hipblaslt

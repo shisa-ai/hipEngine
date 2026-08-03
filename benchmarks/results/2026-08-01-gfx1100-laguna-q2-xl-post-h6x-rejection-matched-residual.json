@@ -1,0 +1,228 @@
+{
+  "authority_files": {
+    "README.md": "bf6ec940f7af42e54d624b79ca75dfb55803ca2e2dc30d91813b2d920ed18401",
+    "WORKLOG.md": "2ba61492e6d36ed3ed3d3f8c959e7eef94a6fc16b1b1aefd15eb0205da723f07",
+    "benchmarks/CHANGELOG.md": "25f78847b882645f06ca8030210b174aee78f0a3e0d68fa687e1c7a3e3e139f2",
+    "benchmarks/README.md": "bd7f6eeb9e63a1a366a7b15121311c5eea09412e67532983aca9fd619682ca5d",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "c62e0da8242287bc23f457c1d856a6e520eacfba2484db6b6a09b93660aea670",
+    "docs/LAGUNA-prefill.md": "4ef0fe079c77ce418fbc69176a160b9fa4a554c5a1507d1bde42019843c8e373",
+    "docs/PLAN.md": "890390fb28d9548b3655928905692b5bcceecc9fe3440f26c8724b44667b5ab2",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "closed_h6x": {
+    "artifact_sha256": "9414d3c59d4241025c90253b84020175396d655caabb5eed937d517b9640f0df",
+    "candidate_surfaces_removed": true,
+    "do_not_tune_or_reopen": true,
+    "reason": "metadata VGPR 103 exceeds frozen maximum 101",
+    "timing_run": false,
+    "trace_run": false
+  },
+  "commands": {
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "production_evidence": "reuse clean committed post-H6W wall/trace because H6X cleanup leaves all production sources byte-identical",
+    "source_analysis": "python3 /tmp/analyze_laguna_post_h6x_h6y_target.py"
+  },
+  "created_at": "2026-08-01",
+  "current_production": {
+    "dispatches": 2192,
+    "fixed_natural_c4096_m512_tok_s": 416.8913398845912,
+    "h6t_calls": 45,
+    "h6t_ms": 264.6023229999999,
+    "kernel_sum_ms": 1214.475158,
+    "llamacpp_over_hipengine_ratio": 1.6570049168956904,
+    "matched_components": {
+      "campaign_start_kernel_sum_ms": 3001.69225,
+      "hipengine_h6w_kernel_sum_ms": 1214.475158,
+      "llamacpp_hip_kernel_sum_ms": 714.008408,
+      "rows": [
+        {
+          "campaign_start_ms": 1270.457977,
+          "family": "q5",
+          "gap_ms": 198.01721000000006,
+          "hipengine_h6w_ms": 256.33130000000006,
+          "llamacpp_hip_ms": 58.31409,
+          "rank": 1,
+          "ratio": 4.395700936085945
+        },
+        {
+          "campaign_start_ms": 557.09136,
+          "family": "iq_down",
+          "gap_ms": 119.42924299999987,
+          "hipengine_h6w_ms": 273.2891539999999,
+          "llamacpp_hip_ms": 153.859911,
+          "rank": 2,
+          "ratio": 1.7762206686834745
+        },
+        {
+          "campaign_start_ms": 488.304264,
+          "family": "attention",
+          "gap_ms": 105.68964599999998,
+          "hipengine_h6w_ms": 127.20209299999999,
+          "llamacpp_hip_ms": 21.512447,
+          "rank": 3,
+          "ratio": 5.912953231215397
+        },
+        {
+          "campaign_start_ms": 157.072613,
+          "family": "q6",
+          "gap_ms": 66.78816,
+          "hipengine_h6w_ms": 81.455758,
+          "llamacpp_hip_ms": 14.667598,
+          "rank": 4,
+          "ratio": 5.553449037804281
+        },
+        {
+          "campaign_start_ms": 68.622802,
+          "family": "remaining",
+          "gap_ms": 8.408280000000005,
+          "hipengine_h6w_ms": 76.25771900000001,
+          "llamacpp_hip_ms": 67.849439,
+          "rank": 5,
+          "ratio": 1.1239255640713552
+        },
+        {
+          "campaign_start_ms": 460.143234,
+          "family": "gate_up",
+          "gap_ms": 2.134211000000164,
+          "hipengine_h6w_ms": 399.93913400000014,
+          "llamacpp_hip_ms": 397.804923,
+          "rank": 6,
+          "ratio": 1.0053649687990416
+        }
+      ],
+      "total_kernel_gap_ms": 500.46674999999993
+    },
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "source": "H5Y Q5 + H6U Q6 + H6T IQ3 + H6L/H6C gate-up + H6N global + H6A early SWA + H6W late SWA"
+  },
+  "decision": {
+    "next_action": "Commit synchronized H6Y target packet, freeze RED separately, then implement the immutable one-shot leaf.",
+    "pass": true,
+    "production_unchanged": true,
+    "target_only": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "kv_dtype": "bf16",
+    "queues": 1
+  },
+  "implementation_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "96bc6c701542747c1dfdb95b4eaa580f1cb8e0d87abdb636a7f82bd47665d716",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "6c9dec990540e35d6bf9f65b7b489c0d1b1545ded1800f6cd5c4d2593751d0df"
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h6x_rejection_h6y_prefix_b32_target",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "operation_model": {
+    "candidate_prefix_global_wave_instructions": 412225536,
+    "candidate_prefix_static_loads_per_three_scopes": 3,
+    "candidate_total_static_global_loads": 20,
+    "iq3_segment_calls": 103056384,
+    "logical_prefix_bytes_unchanged": 52764868608,
+    "prefix_global_wave_instruction_reduction_percent": 50.0,
+    "removed_prefix_global_wave_instructions": 412225536,
+    "source_prefix_global_wave_instructions": 824451072,
+    "source_prefix_static_loads_per_three_scopes": 6,
+    "source_total_static_global_loads": 23,
+    "threads_per_workgroup": 128,
+    "waves_per_workgroup": 4
+  },
+  "performance_claim": "none; H6Y is absent and all operation counts are selection arithmetic",
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-grid-lds-rejected.json": "9414d3c59d4241025c90253b84020175396d655caabb5eed937d517b9640f0df",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6w-matched-residual.json": "315e6d6e744f8c727a98b1e48681b9e79424c78aebd19be47344d388c07f1837",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json": "8bd49a3457d98b76711ef320ca183256e3544d5f42a59282f909b9dd22041263"
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_post_h6x_h6y_target.py": "b8858baef93e6acb271db4d876ae5e0267d527f63789b452a5c9ae809d276556",
+    "/tmp/h6x-arch-h6t.isa": "ceef8d9a6b0285d528fdfdb8ab27de42cd3ae5ddaf77d18a59624a9a1bb754af",
+    "/tmp/laguna-post-h6x-h6y-prefix-b32-target-analysis.json": "415ca707e69d233a8ac98dc7fb3b3aff50ebb6c6dd37eb556f9405b9d568a046",
+    "/tmp/laguna-post-h6x-h6y-target-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h6x-h6y-target-analysis.stdout": "04f3ae389b467efe53ad11fd2535d4b5196f95dbee9e5f26502a0c1126b5b4d7"
+  },
+  "repo": {
+    "production_source_revision": "84ceec31a5b8a63977bb2fa04efefa2729972741",
+    "production_unchanged": true,
+    "revision": "5c010c2df"
+  },
+  "schema": 1,
+  "selected_target": {
+    "admission": {
+      "correctness": "exact packed-prefix decode for all FP16 bit classes and selector bytes; rows1/7/8/9/M512 plus reversed P64/P65 complete H6T/CPU bytes, poison overwrite, finite, lifecycle",
+      "physical": "exact 8 b128 + 12 b32 + zero d16 global loads (20 total), unchanged DS/barriers/LDS/FMA/DPP/stride, metadata/runtime VGPR <=101/104, private/spill/scratch0",
+      "red_first": true,
+      "reject_rule": "Any correctness, physical, resource, cached-trace, compiler, lifecycle, per-layer, or aggregate miss removes every H6Y implementation/test/key/export/gfx1151-exclusion surface without tuning or rerun.",
+      "runtime_and_source_promotion_separate": true,
+      "timing": "five warmups, 15 counter-rotated repetitions, five launches/sample; every actual layer 1..45 and aggregate win HIP-event and synchronized wall",
+      "trace": "named cache-only H6Y local128/grid32768x64 with positive duration and zero compiler processes"
+    },
+    "expected_static": {
+      "barriers_static": 2,
+      "dpp_total": 96,
+      "ds_opcodes": {
+        "ds_load_b128": 24,
+        "ds_store_2addr_b32": 12
+      },
+      "fma_operations": 216,
+      "global_load_b128": 8,
+      "global_load_b32": 12,
+      "global_load_d16_b16": 0,
+      "global_load_instructions": 20,
+      "group_segment_fixed_size_bytes": 384,
+      "metadata_vgpr_max": 101,
+      "permlanex16": 24,
+      "private_bytes": 0,
+      "runtime_lds_bytes": 512,
+      "runtime_vgpr_max": 104,
+      "scratch_bytes": 0,
+      "spills": 0
+    },
+    "materially_distinct_from_h6x": "Instruction coalescing in the existing global prefix stream; no table address-space, LDS, barrier, or lifetime change.",
+    "name": "WPF-H6Y exact IQ3 packed-prefix b32 load",
+    "operation": "Load block bytes 0..3 once as little-endian uint32, recover the exact FP16 scale bits and two selector bytes in registers, and leave aux/table/sign/magnitude/FMA/reduction/store order unchanged.",
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_packed_prefix_b32_rowbatch8_bf16_bf16_out"
+  },
+  "source_audit": {
+    "current": "one global d16 scale load plus one adjacent global d16 selector-pair load per scope",
+    "global_load_opcode_counts": {
+      "global_load_b128": 8,
+      "global_load_b32": 9,
+      "global_load_d16_b16": 6
+    },
+    "helper": "load_iq3_segment",
+    "helper_sha256": "3587f01bf37e87c15aec767bf6f666114f9ac6f27d771c7db5d7e1b7c6268ca1",
+    "prefix_layout": "little-endian [fp16 scale bits, selector0, selector1] in block bytes 0..3",
+    "static_isa": {
+      "barriers_static": 2,
+      "code_bytes": 7920,
+      "dpp_total": 96,
+      "ds_opcodes": {
+        "ds_load_b128": 24,
+        "ds_store_2addr_b32": 12
+      },
+      "fma_issue_slots": 183,
+      "fma_operations": 216,
+      "function_instruction_slots": 1384,
+      "global_load_instructions": 23,
+      "out_stride_0x300": 1,
+      "permlanex16": 24,
+      "preamble_ds_store_2addr_stride64_b32": 0,
+      "preamble_global_load_b32": 0,
+      "scratch_instructions": 0,
+      "v_add_f32_dpp": 96,
+      "v_mov_b32_dpp": 0,
+      "vopd_slots_all_classes": 106
+    }
+  },
+  "status": "accepted_target_only",
+  "target_absent": true
+}

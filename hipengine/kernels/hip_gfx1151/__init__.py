@@ -173,6 +173,9 @@ LAGUNA_PREFILL_MATRIX_ROWS = 2048
 # Qrow2/exact variants remain explicit rollback; unmeasured backends are unchanged.
 LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_m128_online_spans"
 LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
+# WPF-H5M source-qualified exact qrow4 ownership is W7900-only pending an
+# independent gfx1151 exactness/resource/performance gate.
+LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {}
 # Exact pre-append scheduling lets complete M128 global tiles and pre-wrap SWA
 # tiles consume one BF16 cache source. Wrapped SWA, residual rows, verifier
 # transactions, and other backends retain attend-then-append.
@@ -683,6 +686,24 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE = True
 # Same-commit production-protocol 128K A/B rejects predecessor two-wave
 # (382.041 vs 392.219 tok/s), so LCP-3 conservatively inherits its 64K ceiling.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
+# WPF-1/WPF-1T are W7900 raw-Q5/Q6 candidates. gfx1151 retains its
+# independently admitted Q4_K_M/T16 matrix schedules and must not inherit their
+# rowbatch or output-column selectors.
+GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
+GGUF_RAW_K_PREFILL_ROWBATCH = 0
+GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = False
+GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset()
+GGUF_RAW_K_PREFILL_VARIANT = "rowbatch"
+# WPF-H5I exact-F32 ordered raw-K ownership is W7900-only until an
+# independently measured gfx1151 package policy exists.
+GGUF_Q6_F32_ORDERED_PREFILL = False
+GGUF_Q6_F32_ORDERED_PREFILL_POLICY = {}
+GGUF_F32_ORDERED_PREFILL_QUANTS = frozenset()
+GGUF_F32_ORDERED_PREFILL_POLICIES = {}
+# WPF-H5J/H5Q's K1024 IQ row owners are W7900-only until an independent gfx1151
+# actual-layer and complete-runtime transfer gate exists.
+LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {}
+LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
@@ -775,6 +796,551 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "moe_linear",
             "gguf_iq4_xs",
             "selected_weighted_down_gemv_decode_bf16_bf16_out",
+        ),
+        # WPF-1 fixed-grid-Y raw Q5/Q6 row reuse is W7900-only pending an
+        # independent gfx1151 gate. Keep every output/slab key unaliased.
+        *(
+            ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
+            for quant in ("gguf_q5_k", "gguf_q6_k")
+            for row_batch in (4, 8, 16, 32)
+            for output_dtype in ("bf16", "f32")
+        ),
+        *(
+            (
+                "linear",
+                quant,
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
+            )
+            for quant in ("gguf_q5_k", "gguf_q6_k")
+            for col_tile, row_batch in ((2, 16), (4, 8))
+            for output_dtype in ("bf16", "f32")
+        ),
+        # WPF-H7C transfers the exact H6U reduction instruction form to two
+        # W7900 raw-Q6 leaves and remains absent without a gfx1151 screen.
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out",
+        ),
+        # WPF-H7I removes H7C's inner live-row predicate only for exactly-full
+        # W7900 natural-M512 role groups; gfx1151 remains unscreened.
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_full_group_compute_"
+            "coltile4_rowbatch8_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "dpp_wave_reduction_full_group_compute_"
+            "coltile2_rowbatch16_bf16_f32_out",
+        ),
+        # WPF-H5U and H6A local256 cached-only global leaves are W7900-only
+        # pending independent gfx1151 resource/performance gates.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "global_context_rows_cached_exact_spans",
+        ),
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "global_context_rows_dense_initial_cached_exact_spans",
+        ),
+        # WPF-H6N's retained fixed-arena leaf is W7900-only pending independent
+        # gfx1151 resource/performance evidence and any bounded runtime owner.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "global_context_rows_dense_initial_fixed512_cached_exact_spans",
+        ),
+        # WPF-H6Z exact late-start global qrow4 score/weight replay is W7900-
+        # only pending independent gfx1151 resource/performance evidence.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "global_context_rows_qrow4_dense_initial_global_score_weight_replay_exact_spans",
+        ),
+        # WPF-H5R and H6A exact cached-only two-pass SWA qrow4 leaves are
+        # W7900-only pending independent gfx1151 resource/performance gates.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_cached_exact_spans",
+        ),
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_dense_initial_cached_exact_spans",
+        ),
+        # WPF-H6W exact late-start global score replay is W7900-only pending
+        # independent gfx1151 resource/performance evidence.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans",
+        ),
+        # WPF-H7Y's lane-major SWA cache consumer and fused mirror writer are
+        # W7900-only pending an independent gfx1151 resource/performance gate.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_dense_initial_lane_major_global_score_replay_exact_spans",
+        ),
+        (
+            "laguna_kv_write",
+            "bf16",
+            "swa_f32_rows_natural_lane_major_spans",
+        ),
+        # WPF-H5M exact source-qualified qrow4 is W7900-only pending an
+        # independent gfx1151 resource/performance gate.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_sourcequal_exact_spans",
+        ),
+        # WPF-H5N's identity/no-wrap exact specialization is likewise scoped to
+        # gfx1100 until it has independent gfx1151 evidence.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "swa_context_rows_qrow4_dense_first_fill_exact_spans",
+        ),
+        # WPF-H2 copies llama.cpp's gfx1100 F16-WMMA FlashAttention geometry
+        # and remains excluded until gfx1151 receives an independent gate.
+        (
+            "laguna_attention_prefill",
+            "bf16",
+            "source_f16_wmma_q8_gqa8_spans",
+        ),
+        # WPF-H1 copies the gfx1100/RDNA3 source geometry and remains excluded
+        # until gfx1151 receives an independent resource/correctness gate.
+        ("activation_quant", "q8_1_ds4", "bf16_kmajor"),
+        (
+            "linear",
+            "gguf_q5_k",
+            "mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q5_k",
+            "mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
+        ),
+        # WPF-H6L's exact K3072/N1024/E256 pair16 rowbatch16 leaf is
+        # W7900-only pending independent gfx1151 resource/performance gates.
+        (
+            "moe_linear",
+            "gguf_iq2_xs",
+            "selected_dual_silu_grouped_prefill_compact_"
+            "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out",
+        ),
+        # WPF-H6C's K3072/N1024/E256 expert-major fused-SiLU leaf is
+        # W7900-only pending independent gfx1151 resource/performance gates.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_dual_silu_grouped_prefill_compact_"
+            "k3072_n1024_e256_rowbatch4_bf16_bf16_out",
+        ),
+        # WPF-H5J's K1024 resident-segment IQ3 and one-wave IQ4 schedules are
+        # W7900-only pending independent gfx1151 resource/performance gates.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out",
+        ),
+        (
+            "moe_linear",
+            "gguf_iq4_xs",
+            "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out",
+        ),
+        # H5Q's active-expert persistent traversal is likewise gfx1100-only
+        # until gfx1151 receives independent resource/performance evidence.
+        *(
+            (
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_grouped_prefill_compact_k1024_active_expert_p"
+                f"{partition}_resident_rowbatch8_bf16_bf16_out",
+            )
+            for partition in (64,)
+        ),
+        # H5Z's activation-resident output sweep keeps H5Q expert P64 but is
+        # gfx1100-only until independently screened on gfx1151.
+        *(
+            (
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+                "activation_resident_out_p"
+                f"{output_partition}_rowbatch8_bf16_bf16_out",
+            )
+            for output_partition in (256,)
+        ),
+        # H6D interleaves independent H5Z row accumulators specifically for
+        # gfx1100 VOPD and remains absent without a gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_rowbatch8_"
+            "bf16_bf16_out",
+        ),
+        # H6F pairs two independent H6D output reductions to amortize gfx1100
+        # barriers and remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_paired_output_"
+            "rowbatch8_bf16_bf16_out",
+        ),
+        # H6I groups three independent H6F output reductions and remains
+        # gfx1100-only until an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_triple_output_"
+            "rowbatch8_bf16_bf16_out",
+        ),
+        # H6P changes H6I accumulator liveness with gfx1100 wave publication
+        # and remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_"
+            "staged_wave_publication_triple_output_rowbatch8_bf16_bf16_out",
+        ),
+        # H6Q changes only H6P's gfx1100 shuffle-loop code footprint and
+        # remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_"
+            "staged_wave_publication_compact_shuffle_loop_triple_output_"
+            "rowbatch8_bf16_bf16_out",
+        ),
+        # H6R changes only H6Q's gfx1100 wave peer-exchange instructions and
+        # remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_"
+            "staged_wave_publication_dpp_peer_exchange_triple_output_"
+            "rowbatch8_bf16_bf16_out",
+        ),
+        # H6T changes only H6R's final gfx1100 DPP move/add instruction form
+        # and remains absent without an independent gfx1151 screen.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_active_expert_p64_"
+            "activation_resident_out_p256_row_interleaved_vopd_staged_wave_"
+            "publication_dpp_peer_exchange_fused_add_triple_output_"
+            "rowbatch8_bf16_bf16_out",
+        ),
+        # WPF-H3 reuses the DS4 producer but has independently qualified raw-IQ
+        # consumers. Both remain gfx1100-only pending a gfx1151 gate.
+        *(
+            (
+                "moe_linear",
+                quant,
+                "selected_mmq_i128_j128_k256_q8_1_ds4_prefill_compact_bf16_bf16_out",
+            )
+            for quant in ("gguf_iq3_xxs", "gguf_iq4_xs")
+        ),
+        # H7E's residual-D4x2 IQ3 consumer remains gfx1100-only until an
+        # independently qualified gfx1151 residual-plane gate exists.
+        (
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_mmq_i128_j128_k256_q8_1_ds4x2_"
+            "prefill_compact_bf16_bf16_out",
+        ),
+        # WPF-H4 copies llama.cpp's gfx1100 Q6-to-F16/rocBLAS ownership and
+        # remains excluded until gfx1151 receives an independent gate.
+        ("dequant", "gguf_q6_k", "raw_f16_source_local64"),
+        (
+            "dequant_cast",
+            "gguf_q6_k",
+            "raw_f16_bf16_input_source_local64",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "f16_rocblas_source_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q6_k",
+            "f16_rocblas_source_bf16_f32_out",
+        ),
+        # WPF-H5A/H5I transient exact-F32 Q5/Q6 producers are gfx1100-only
+        # until gfx1151 receives independent resource, timing, and quality gates.
+        ("dequant", "gguf_q5_k", "raw_f32_exact_local64"),
+        ("dequant", "gguf_q6_k", "raw_f32_exact_local64"),
+        (
+            "dequant_cast",
+            "gguf_q5_k",
+            "raw_f32_bf16_input_exact_local64",
+        ),
+        (
+            "linear",
+            "gguf_q5_k",
+            "f32_rocblas_exact_values_bf16_bf16_out",
+        ),
+        (
+            "linear",
+            "gguf_q5_k",
+            "f32_rocblas_exact_values_bf16_f32_out",
+        ),
+        # WPF-H5C/H5I production-ordered and H5L weight-major F32 consumers
+        # plus raw-Q5/Q6 composites stay gfx1100-only pending a gfx1151 gate.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_"),
+                ("gguf_q5_k", "f32_ordered_"),
+                ("gguf_q6_k", "f32_ordered_"),
+            )
+            for col_tile, row_batch in (
+                (4, 8),
+                (8, 4),
+                (4, 16),
+                (8, 8),
+                (16, 4),
+                (12, 4),
+                (8, 10),
+                (16, 5),
+                (8, 12),
+                (12, 8),
+            )
+            if quant != "gguf_q6_k"
+            or (col_tile, row_batch) in {(8, 4), (16, 4), (16, 5)}
+            for output_dtype in ("bf16", "f32")
+        ),
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (8, 4, "bf16"),
+                (8, 12, "bf16"),
+                (16, 5, "bf16"),
+                (12, 8, "bf16"),
+                (16, 4, "bf16"),
+                (16, 5, "f32"),
+                (8, 10, "f32"),
+            )
+        ),
+        *(
+            (
+                "linear",
+                "gguf_q6_k",
+                f"f32_ordered_weight_major_coltile{col_tile}_"
+                f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+            )
+            for col_tile, row_batch, output_dtype in (
+                (16, 5, "bf16"),
+                (16, 4, "bf16"),
+                (16, 5, "f32"),
+            )
+        ),
+        # H5X exact tile-K-col Q5 producers/consumers are W7900-only until an
+        # independent gfx1151 layout/resource/performance gate qualifies them.
+        *(
+            (
+                layer,
+                quant,
+                f"{prefix}coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for layer, quant, prefix in (
+                ("dequant", "gguf_q5_k", "raw_f32_exact_tile_k_col_"),
+                (
+                    "linear",
+                    "f32_weight",
+                    "ordered_weight_major_tile_k_col_",
+                ),
+                (
+                    "linear",
+                    "gguf_q5_k",
+                    "f32_ordered_weight_major_tile_k_col_",
+                ),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (8, 4, "bf16"),
+                (16, 5, "bf16"),
+                (16, 5, "f32"),
+                (8, 10, "f32"),
+            )
+        ),
+        # H5Y exact activation-tile-K-row packs/consumers are likewise
+        # W7900-only pending an independent gfx1151 transfer gate.
+        *(
+            (
+                "activation_pack",
+                "bf16",
+                f"tile_k_row_coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for col_tile, row_batch, output_dtype, _weight_layout in (
+                (8, 4, "bf16", "tile_k_col"),
+                (8, 12, "bf16", "row_major"),
+                (16, 5, "bf16", "tile_k_col"),
+                (12, 8, "bf16", "row_major"),
+                (16, 5, "f32", "tile_k_col"),
+                (8, 10, "f32", "tile_k_col"),
+            )
+        ),
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}{weight_layout}_activation_tile_k_row_"
+                f"coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype, weight_layout in (
+                (8, 4, "bf16", "tile_k_col"),
+                (8, 12, "bf16", "row_major"),
+                (16, 5, "bf16", "tile_k_col"),
+                (12, 8, "bf16", "row_major"),
+                (16, 5, "f32", "tile_k_col"),
+                (8, 10, "f32", "tile_k_col"),
+            )
+        ),
+        # H7G exact padded-row Q5 consumers are gfx1100-only pending an
+        # independent gfx1151 physical/performance transfer gate.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}{weight_layout}_activation_tile_k_row_"
+                f"padded_compute_coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype, weight_layout in (
+                (8, 12, "bf16", "row_major"),
+                (16, 5, "bf16", "tile_k_col"),
+                (16, 5, "f32", "tile_k_col"),
+                (8, 10, "f32", "tile_k_col"),
+            )
+        ),
+        # H8A's resident-plane composites remain gfx1100-only; gfx1151 has no
+        # package capability or independently qualified owner/cache policy.
+        *(
+            (
+                "linear",
+                "gguf_q5_k",
+                "f32_resident_ordered_weight_major_tile_k_col_"
+                "activation_tile_k_row_padded_compute_coltile16_rowbatch5_"
+                f"bf16_{output_dtype}_out",
+            )
+            for output_dtype in ("bf16", "f32")
+        ),
+        # H7H exact full-group Q5 consumers are separately scoped to gfx1100.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}{weight_layout}_activation_tile_k_row_"
+                f"full_group_compute_coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_weight_major_"),
+                ("gguf_q5_k", "f32_ordered_weight_major_"),
+            )
+            for col_tile, row_batch, output_dtype, weight_layout in (
+                (8, 4, "bf16", "tile_k_col"),
+                (12, 8, "bf16", "row_major"),
+            )
+        ),
+        # H6E exact Q6 activation-row consumers are separately scoped to
+        # gfx1100 pending their standalone physical/performance gate.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}weight_major_row_major_activation_tile_k_row_"
+                f"coltile{col_tile}_rowbatch{row_batch}_"
+                f"bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_"),
+                ("gguf_q6_k", "f32_ordered_"),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (16, 5, "bf16"),
+                (16, 4, "bf16"),
+                (16, 5, "f32"),
+            )
+        ),
+        # H6U exact DPP-reduction candidates remain gfx1100-only unless their
+        # standalone W7900 screen and a later gfx1151 transfer both pass.
+        *(
+            (
+                "linear",
+                quant,
+                f"{prefix}weight_major_row_major_activation_tile_k_row_"
+                f"dpp_wave_reduction_coltile{col_tile}_"
+                f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+            )
+            for quant, prefix in (
+                ("f32_weight", "ordered_"),
+                ("gguf_q6_k", "f32_ordered_"),
+            )
+            for col_tile, row_batch, output_dtype in (
+                (16, 5, "bf16"),
+                (16, 4, "bf16"),
+                (16, 5, "f32"),
+            )
+        ),
+        # Rejected WPF-1B producer/MMQ primitives remain gfx1100-only
+        # diagnostic evidence, with no runtime policy owner on either backend.
+        ("activation_quant", "q8_1_d4s4_f32", "bf16"),
+        ("activation_quant", "q8_1_d8s8_f32", "bf16"),
+        ("activation_quant", "q8_1_d8r8s8_f32", "bf16"),
+        *(
+            (
+                "linear",
+                quant,
+                f"mmq32_q8_1_{producer}_f32_bf16_{output_dtype}_out",
+            )
+            for quant in ("gguf_q5_k", "gguf_q6_k")
+            for producer in ("d4s4", "d8s8", "d8r8s8")
+            for output_dtype in ("bf16", "f32")
         ),
         # Q4 local32 LM-head ownership is W7900-only pending an independent gate.
         (
@@ -1012,6 +1578,15 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+    "GGUF_F32_ORDERED_PREFILL_POLICIES",
+    "GGUF_F32_ORDERED_PREFILL_QUANTS",
+    "GGUF_Q6_F32_ORDERED_PREFILL",
+    "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
+    "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
+    "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+    "GGUF_RAW_K_PREFILL_ROWBATCH",
+    "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+    "GGUF_RAW_K_PREFILL_VARIANT",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",
@@ -1065,6 +1640,8 @@ __all__ = [
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER",
     "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4",
     "LAGUNA_HEAD_KV_FUSION",
+    "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+    "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
     "LAGUNA_MOE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY",
     "LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY",
@@ -1138,6 +1715,7 @@ __all__ = [
     "LAGUNA_SWA_SPLIT_FIXED512_REDUCE",
     "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE",
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
+    "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
     "LAGUNA_SWA_PREFILL_VARIANT",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",

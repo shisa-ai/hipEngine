@@ -1,0 +1,334 @@
+{
+  "authority_files": {
+    "README.md": "bf6ec940f7af42e54d624b79ca75dfb55803ca2e2dc30d91813b2d920ed18401",
+    "WORKLOG.md": "024cebd6854be4a55f1537796177eae5a060fedb7609b816ab8ecd5039589a58",
+    "benchmarks/CHANGELOG.md": "537e2566d67e54e45cef5d5c25d39e11a3f8d46e62d519ba357d2a76c246ce14",
+    "benchmarks/README.md": "48e30669b06d655f1b6a89c383050f2fc21e0a903929fe485f0e8f73e4d6bfed",
+    "docs/KERNELS.md": "9e6eb3bf652d2623fee5a2fc193d2c457b86ddbb90e99c194ad2fe79b293dae9",
+    "docs/LAGUNA-prefill.md": "79643808ceb3410b140a096072db60dcb938b688bd75d0f6eeece5ef79aad5b0",
+    "docs/PLAN.md": "926663d8955331d6e60a1c9ced6f75847e8bff82e2a74b9f8e886e490aa7ed38",
+    "docs/REFACTOR.md": "d9b0000434dbd4470e8241d3b23d1e8f0268cf8453d6d8cbd7fbaea83bc34fe5"
+  },
+  "commands": {
+    "complete_state": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh6z_source_m512_full_state.py",
+    "fixed_c4096_m512": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh6z_source_matched_c4096_m512.py",
+    "guards": "126/126 split source and Laguna runner guards",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "production_trace": "GPU_MAX_HW_QUEUES=1 cache-only rocprofv3 --kernel-trace over four counter-rotated /tmp/laguna_wpfh6z_source_trace_integrated_paired.py requests",
+    "selector_unset_512_1k_4k": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh6z_source_clean_512_4k.py"
+  },
+  "correctness": {
+    "candidate_repeat_exact": true,
+    "complete_logits_hidden_kv_live_spans_exact": true,
+    "hidden_boundaries_exact": 48,
+    "hidden_boundaries_total": 48,
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "next_token_id": 2930,
+    "owner_lifecycle_recovered": true,
+    "quality_gate": true,
+    "score_scratch_reuses_q5_plane": true,
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top1_agreement": 1.0,
+    "tracked_allocations_recovered": true,
+    "workspace_unchanged": true
+  },
+  "date": "2026-08-01",
+  "decision": {
+    "h6a_complete_rollback_retained": true,
+    "h6w_h6n_rollback_retained": true,
+    "next_action": "Commit source promotion, cleanly reprofile committed production, and rerank the matched residual.",
+    "production_changed": true,
+    "reason": "exact fixed sub-window wins 5/5, selected-source trace is positive, binding 4K median is positive, and short-context routes are unchanged",
+    "source_promoted": true
+  },
+  "guards": {
+    "failed": 0,
+    "runner_bundle": 38,
+    "runner_stdout_sha256": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
+    "source_bundle": 88,
+    "source_stdout_sha256": "31d4f6ed061187bd4bcaecd24059371e79ed220f567109eaef744423f52fcf35",
+    "total": 126
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6z_global_score_weight_replay_production",
+  "lineage": {
+    "kernel_lineage_report_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "source": "Net-new in-tree caller-global replay sibling; no external device body copied."
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural matrix512/attention128; exact C4096 late-global starts256/384"
+  },
+  "performance": {
+    "binding_4096_paired_wins": 2,
+    "fixed_natural_c4096_m512": {
+      "all_finite": true,
+      "all_score_scratch_reuses_q5_plane": true,
+      "all_sessions_recovered": true,
+      "all_total_scratch_bytes": [
+        600141856
+      ],
+      "all_workspace_bytes": [
+        161120256
+      ],
+      "candidate_median_seconds": 1.2167736508417875,
+      "candidate_median_tok_s": 420.78491726525186,
+      "candidate_over_llamacpp": 0.609134915285885,
+      "candidate_score_scratch_nbytes": [
+        18874368
+      ],
+      "control_median_seconds": 1.2272875749040395,
+      "control_median_tok_s": 417.1801381106892,
+      "control_score_scratch_nbytes": [
+        18874368
+      ],
+      "exact_all_repetitions": true,
+      "gain_percent": 0.8640821614585681,
+      "llamacpp_hip_tok_s": 690.791,
+      "llamacpp_over_candidate": 1.6416724356223618,
+      "paired_candidate_wins": 5,
+      "speedup": 1.0086408216145857
+    },
+    "llamacpp_over_production": 1.6416724356223618,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "route_exercised": {
+      "1024": false,
+      "4096": true,
+      "512": false
+    },
+    "selector_unset_512_1k_4k": {
+      "1024": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 3.2868672348558903,
+        "candidate_median_tok_s": 311.54285428413306,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 3.286048155045137,
+        "control_median_tok_s": 311.6205094036227,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": -0.024919771692255566,
+        "paired_candidate_wins": 2,
+        "speedup": 0.9997508022830774
+      },
+      "4096": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 21.038165668956935,
+        "candidate_median_tok_s": 194.69378007816962,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 21.06147577590309,
+        "control_median_tok_s": 194.47829979161887,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.11079914148861558,
+        "paired_candidate_wins": 2,
+        "speedup": 1.0011079914148862
+      },
+      "512": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 1.310027820058167,
+        "candidate_median_tok_s": 390.8313946930276,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 1.3119962059427053,
+        "control_median_tok_s": 390.2450309542732,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.15025527354457502,
+        "paired_candidate_wins": 1,
+        "speedup": 1.0015025527354458
+      }
+    },
+    "unchanged_path_noise_controls": [
+      512,
+      1024
+    ]
+  },
+  "prior_evidence": {
+    "candidate_runtime_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-candidate.json",
+    "candidate_runtime_artifact_sha256": "ad401fd72c2e9d298010fab1d3c8d7840f2de5aa29695804e7f0ed47d8c2e580",
+    "standalone_weighted_event_speedup": 1.9456054890609387,
+    "standalone_weighted_wall_speedup": 1.9427421798344056
+  },
+  "production_trace": {
+    "attention_reduction_percent": 7.355448351580895,
+    "compiler_monitor_samples": 1259,
+    "control_attention_ms": 125.25375149999995,
+    "control_kernel_sum_ms": 1214.563279999998,
+    "control_selected_late_global_ms": 23.8943055,
+    "control_span_ms": 1241.8141165000002,
+    "dispatches_per_request": 2192,
+    "family_dispatches_each_request": {
+      "attention": 192,
+      "gate_up": 47,
+      "iq_down": 47,
+      "q5": 658,
+      "q6": 431,
+      "remaining": 817
+    },
+    "h6z_runtime": {
+      "grid_x": 1536,
+      "grid_y": 32,
+      "lds_bytes": 0,
+      "local_x": 32,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 48
+    },
+    "kernel_sum_reduction_percent": 0.7854498120509534,
+    "mode_order": [
+      "control",
+      "candidate",
+      "candidate",
+      "control"
+    ],
+    "new_compiler_processes": 0,
+    "production_attention_ms": 116.04077649999998,
+    "production_kernel_sum_ms": 1205.023494999998,
+    "production_selected_late_global_ms": 12.2309345,
+    "production_span_ms": 1227.0559600000001,
+    "production_topology": {
+      "h6a_swa": 72,
+      "h6n_global": 24,
+      "h6w_swa": 72,
+      "h6z_global": 24
+    },
+    "requests": 4,
+    "rollback_topology": {
+      "h6a_swa": 72,
+      "h6n_global": 48,
+      "h6w_swa": 72
+    },
+    "selected_late_global_reduction_percent": 48.81234568629752,
+    "span_reduction_percent": 1.188435233897589
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_wpfh6z_source_integrated_trace.py": "a529aeb829483b940f7cdfb37f82fd243ac77b37ba088f079a2e340c703d1902",
+    "/tmp/build_laguna_h6z_production.py": "0abf679f00a70370e2b81c1764782eae5f5607178331d2df786c76f3f7af5d33",
+    "/tmp/laguna-h6z-source-broad-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-source-broad-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-source-broad-guards.stdout": "31d4f6ed061187bd4bcaecd24059371e79ed220f567109eaef744423f52fcf35",
+    "/tmp/laguna-h6z-source-compiler-monitor.json": "39b30b7a515ea3312214d1c2195d3939a20064aecba7043c8c2ef75d26cb0d26",
+    "/tmp/laguna-h6z-source-compiler-monitor.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-source-compiler-monitor.stdout": "39b30b7a515ea3312214d1c2195d3939a20064aecba7043c8c2ef75d26cb0d26",
+    "/tmp/laguna-h6z-source-hip-health.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-source-hip-health.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-source-hip-health.stdout": "dc678f658891c7b2088c472077629621a36553b68ea407c2deb6672bca19ed02",
+    "/tmp/laguna-h6z-source-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-source-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-source-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h6z-source-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-source-rocprof.stderr": "c9acd4014c5b3151f909ac03c8fbb0c699c901ef0c3f4469ff200dc024a70082",
+    "/tmp/laguna-h6z-source-rocprof.stdout": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+    "/tmp/laguna-h6z-source-rocprof/h6z_source_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h6z-source-rocprof/h6z_source_kernel_trace.csv": "e8e14110a5501131c40bd36a1394e9e9a562d14735d5bae224c103463470b0d3",
+    "/tmp/laguna-h6z-source-runner-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h6z-source-runner-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6z-source-runner-guards.stdout": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
+    "/tmp/laguna-wpfh6z-source-clean-512-4k.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-source-clean-512-4k.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6z-source-clean-512-4k.stdout": "1ab9d564e7e1042adbaa1de1d8c084bc398fef5d071bb680e67d1797e79883a3",
+    "/tmp/laguna-wpfh6z-source-default-off-clean-512-4k.json": "0bb6c03af30beec8c28995ff2c0ae81806cfb488bcbe7db2b4979668e5fd85d4",
+    "/tmp/laguna-wpfh6z-source-integrated-trace-summary.json": "b2a2f4a207d355f36506a0c62722ea8e81b79d4e21516558ec1f31777288d524",
+    "/tmp/laguna-wpfh6z-source-m512-full-state.json": "6520b5e5144df22196fcca02d2239de06c9fa1455231e002a7e23b7adc5fd76a",
+    "/tmp/laguna-wpfh6z-source-m512-full-state.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-source-m512-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6z-source-m512-full-state.stdout": "0ab13ee356fde20c949e1566b4932897999e933d8043ee9114f8ab38ea29ed96",
+    "/tmp/laguna-wpfh6z-source-matched-c4096-m512.json": "6bd815b0390ee29ae850fc3de187b9272504046a7ea82fa34fe643716acd6de8",
+    "/tmp/laguna-wpfh6z-source-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-source-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6z-source-matched-c4096-m512.stdout": "062375344ed581c0fc35bd926c10ba564a90b6ffc5f10072be286f34b256f287",
+    "/tmp/laguna-wpfh6z-source-trace-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-wpfh6z-source-trace-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-wpfh6z-source-trace-analysis.stdout": "b2a2f4a207d355f36506a0c62722ea8e81b79d4e21516558ec1f31777288d524",
+    "/tmp/laguna_wpfh6z_source_clean_512_4k.py": "e7079720fefc8d65a76ce5aaf91b327e5a91c5117e5e27c3684b87939c238650",
+    "/tmp/laguna_wpfh6z_source_m512_full_state.py": "d1b252b8569bd08d08bfec12191e868e147801ddd450703ea588733dc0bdcf39",
+    "/tmp/laguna_wpfh6z_source_matched_c4096_m512.py": "37048462fb4669cd85ce17657b9835c5664fca9a1c07e26a0d47df3ed5d02670",
+    "/tmp/laguna_wpfh6z_source_trace_integrated_paired.py": "06ac3b8151595b39b64968e64475ed62eeca7d6a1864b8ef7a37180a75c0c8f9",
+    "/tmp/monitor_laguna_h6z_source_compilers.py": "caff0e3a2750c134f8cfa933544fccdc93c21651aa236caeef8bd87d5688c6f0",
+    "/tmp/validate_laguna_h6z_production.py": "e0e8fb7fd81ea50cd5ecbf1e59ac1a37186401b3897de7555dbc3d706198745b"
+  },
+  "schema": 1,
+  "source": {
+    "bound_owner_bytes": 18874368,
+    "changed_roles": [
+      "global_m128_c4096_first_fill_exact"
+    ],
+    "complete_rollback_policy_name": "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS",
+    "gfx1151_excluded": true,
+    "h6n_rollback_policy": {
+      "global_m128_c4096_first_fill_exact": "global_context_rows_dense_initial_fixed512_cached_exact_spans",
+      "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+    },
+    "h6n_rollback_policy_name": "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS",
+    "h6z_used_extent_bytes": 12582912,
+    "id": "WPF-H6Z",
+    "new_allocation_bytes": 0,
+    "new_dispatches_per_request": 0,
+    "new_workspace_bytes": 0,
+    "selected_policy": {
+      "global_m128_c4096_first_fill_exact": "global_context_rows_qrow4_dense_initial_global_score_weight_replay_exact_spans",
+      "swa_qrow4_m128_c512_no_wrap_exact": "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+    },
+    "selected_policy_name": "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
+    "source_patch_sha256": "7fc28e21c955d664f4776b958f2d1abc8442c7d045b974a32c5f63c8eb99935f",
+    "source_red_revision": "86bf162815fc8e75350fba2e4943db67f2a51273",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d56d42bbc0612b5c97b8d509888f5f6e0eb7217cf5ded5091878a92d8de22d58",
+      "tests/test_laguna_h6n_global_score_arena.py": "1db0428335f151d891549bfd988ae19fd31ff9e81bbf3a2d45fde07210f20191",
+      "tests/test_laguna_h6n_runtime_policy.py": "b79087172cf0f87407e2aad1883d553ffe78cb00f4cf2908b8a63afa1faed970",
+      "tests/test_laguna_h6n_source_default.py": "f5d144ce6c073acd2f93d7dd9ed20978fed7f6cfea0f50161e5338dcb98f05d9",
+      "tests/test_laguna_h6w_runtime_policy.py": "474cc6b4cdf62ce21a2fd235aaddc0ea364112b6aed7f163392c763aa7f0ba15",
+      "tests/test_laguna_h6w_source_default.py": "8c7b03fc0028c69d7a50af2ed9afe48c667bc2576fbdf8a5bd5a1c13f21330d4",
+      "tests/test_laguna_h6z_global_score_weight_replay.py": "3e95f7e4d14fc43a0d91bfba1340138594c35d4236e07c9695cec0e47d226d7a",
+      "tests/test_laguna_h6z_runtime_policy.py": "0affbafb52f0bb547186bdc5275a46fe2c1af26f51d690b06ab43513420f9825",
+      "tests/test_laguna_h6z_source_default.py": "3d29cdfa54a67cb8f8dcbf7281c9f31b4cf92c46a317b16011dd3dbb94d66f42"
+    },
+    "swa_source_unchanged": true
+  },
+  "status": "retained_source_production"
+}

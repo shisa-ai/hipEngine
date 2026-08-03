@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from inspect import signature
 from types import SimpleNamespace
 
 import pytest
@@ -18,26 +19,9 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaHiddenCaptureTargets,
     LagunaPrefillChunkPolicy,
     LagunaPrefillScratchPlan,
+    LagunaQ5F32OrderedScratch,
     LagunaRowsScratch,
     _validate_laguna_context_length,
-    capture_laguna_hidden_rows,
-    capture_laguna_hidden_tap,
-    capture_laguna_routing_rows,
-    resolve_laguna_eager_kernel_plan,
-    resolve_laguna_moe_branch_concurrency,
-    resolve_laguna_moe_decode_branch_concurrency,
-)
-from tests._laguna_synthetic import make_laguna_info
-
-from inspect import signature
-from hipengine.kernels.backends import backend_package_capability
-from hipengine.kernels.registry import KernelKey
-from hipengine.runtime.laguna_gguf_runner import (
-    LAGUNA_DFLASH_CAPTURE_DEPTHS,
-    LagunaEagerLibraries,
-    LagunaEagerScratch,
-    LagunaHiddenCaptureTargets,
-    LagunaRowsScratch,
     capture_laguna_hidden_rows,
     capture_laguna_hidden_tap,
     capture_laguna_routing_rows,
@@ -48,10 +32,15 @@ from hipengine.runtime.laguna_gguf_runner import (
     resolve_laguna_mixed_attention_projections,
     resolve_laguna_mixed_local32_fixed_meta_attention,
     resolve_laguna_mixed_q6_fixed_meta_attention,
+    resolve_laguna_moe_branch_concurrency,
+    resolve_laguna_moe_decode_branch_concurrency,
     resolve_laguna_q4_lm_head_local32_fixed_meta,
     resolve_laguna_q5_shared_fixed_meta,
     resolve_laguna_q5_wave32x2_variants,
 )
+from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.registry import KernelKey, is_registered
+from tests._laguna_synthetic import make_laguna_info
 
 
 class _FakeRuntime:
@@ -154,9 +143,13 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     exact = object()
     prefill = object()
     q4_prefill = object()
+    q5_f32_ordered = object()
+    iq_grouped_prefill = object()
     values["f16_projection"] = exact
     values["f16_projection_prefill"] = prefill
     values["q4_prefill_linear"] = q4_prefill
+    values["q5_f32_ordered"] = q5_f32_ordered
+    values["iq_grouped_prefill"] = iq_grouped_prefill
     libraries = LagunaEagerLibraries(**values)
 
     assert libraries.f16_linear["fp16_weight"] is exact
@@ -168,6 +161,100 @@ def test_laguna_eager_libraries_route_compensated_wmma_to_prefill_build() -> Non
     )
     assert libraries.moe["launch_batch"] is libraries.launch_batch
     assert libraries.moe["moe_tail"] is libraries.routed_sum
+    assert (
+        libraries.linear[
+            "gguf_q5_k:f32_ordered_coltile8_rowbatch4_bf16_f32_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q5_k:f32_ordered_weight_major_"
+            "coltile8_rowbatch4_bf16_bf16_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q5_k:f32_ordered_coltile4_rowbatch16_bf16_bf16_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q5_k:f32_ordered_coltile12_rowbatch4_bf16_f32_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q5_k:f32_ordered_coltile8_rowbatch8_bf16_bf16_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q6_k:f32_ordered_coltile8_rowbatch4_bf16_f32_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q6_k:f32_ordered_coltile16_rowbatch4_bf16_bf16_out"
+        ]
+        is q5_f32_ordered
+    )
+    assert (
+        libraries.linear[
+            "gguf_q6_k:f32_ordered_coltile16_rowbatch5_bf16_f32_out"
+        ]
+        is q5_f32_ordered
+    )
+    for output_dtype, col_tile, row_batch in (
+        ("bf16", 16, 5),
+        ("bf16", 16, 4),
+        ("f32", 16, 5),
+    ):
+        assert (
+            libraries.linear[
+                "gguf_q6_k:f32_ordered_weight_major_"
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                f"{output_dtype}_out"
+            ]
+            is q5_f32_ordered
+        )
+    for output_dtype, col_tile, row_batch in (
+        ("bf16", 8, 4),
+        ("bf16", 16, 5),
+        ("f32", 16, 5),
+        ("f32", 8, 10),
+    ):
+        assert (
+            libraries.linear[
+                "gguf_q5_k:f32_ordered_weight_major_tile_k_col_"
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                f"{output_dtype}_out"
+            ]
+            is q5_f32_ordered
+        )
+    for output_dtype, col_tile, row_batch, weight_layout in (
+        ("bf16", 8, 4, "tile_k_col"),
+        ("bf16", 8, 12, "row_major"),
+        ("bf16", 16, 5, "tile_k_col"),
+        ("bf16", 12, 8, "row_major"),
+        ("f32", 16, 5, "tile_k_col"),
+        ("f32", 8, 10, "tile_k_col"),
+    ):
+        assert (
+            libraries.linear[
+                "gguf_q5_k:f32_ordered_weight_major_"
+                f"{weight_layout}_activation_tile_k_row_"
+                f"coltile{col_tile}_rowbatch{row_batch}_bf16_"
+                f"{output_dtype}_out"
+            ]
+            is q5_f32_ordered
+    )
+    assert libraries.moe["grouped_iq_prefill"] is iq_grouped_prefill
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:
@@ -245,6 +332,41 @@ def test_laguna_rows_scratch_is_bounded_and_frees() -> None:
         LagunaRowsScratch.allocate(_config(), max_rows=0, runtime=runtime)
 
 
+def test_laguna_q5_f32_ordered_scratch_is_one_bounded_buffer_and_frees() -> None:
+    runtime = _FakeRuntime()
+    scratch = LagunaQ5F32OrderedScratch.allocate(max_rows=512, runtime=runtime)
+
+    assert scratch.buffer.nbytes == 150_994_944
+    assert scratch.weight_f32_ptr == scratch.buffer.ptr
+    assert scratch.weight_f32_nbytes == 150_994_944
+    assert scratch.activation_bf16_ptr == 0
+    assert scratch.activation_bf16_nbytes == 0
+    assert scratch.nbytes == 150_994_944
+
+    scratch.free(runtime=runtime)
+    scratch.free(runtime=runtime)
+    assert runtime.allocations == {}
+    assert len(runtime.freed) == 1
+
+    candidate = LagunaQ5F32OrderedScratch.allocate(
+        max_rows=512,
+        use_activation_tile_k_row=True,
+        runtime=runtime,
+    )
+    assert candidate.buffer.nbytes == 161_120_256
+    assert candidate.weight_f32_ptr == candidate.buffer.ptr
+    assert candidate.weight_f32_nbytes == 150_994_944
+    assert candidate.activation_bf16_ptr == candidate.buffer.ptr + 150_994_944
+    assert candidate.activation_bf16_nbytes == 10_125_312
+    assert candidate.nbytes == 161_120_256
+    candidate.free(runtime=runtime)
+    assert runtime.allocations == {}
+    assert len(runtime.freed) == 2
+
+    with pytest.raises(ValueError, match="max_rows"):
+        LagunaQ5F32OrderedScratch.allocate(max_rows=0, runtime=runtime)
+
+
 def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
     policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
@@ -292,10 +414,30 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     plan = LagunaPrefillScratchPlan.build(config, moe_plan, policy=policy)
 
     assert plan.rows_nbytes == 334_651_392
-    assert plan.moe_nbytes == 104_370_208
-    assert plan.total_nbytes == 439_021_600
+    assert plan.moe_nbytes == 104_370_976
+    assert plan.total_nbytes == 439_022_368
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
+    assert plan.q5_f32_ordered_nbytes == 0
+
+    q5_plan = LagunaPrefillScratchPlan.build(
+        config,
+        moe_plan,
+        policy=policy,
+        use_q5_f32_ordered=True,
+    )
+    assert q5_plan.q5_f32_ordered_nbytes == 150_994_944
+    assert q5_plan.total_nbytes == 590_017_312
+
+    h5y_plan = LagunaPrefillScratchPlan.build(
+        config,
+        moe_plan,
+        policy=policy,
+        use_q5_f32_ordered=True,
+        use_q5_activation_tile_k_row=True,
+    )
+    assert h5y_plan.q5_f32_ordered_nbytes == 161_120_256
+    assert h5y_plan.total_nbytes == 600_142_624
 
     wide_policy = LagunaPrefillChunkPolicy.resolve(
         context_length=4_096,
@@ -308,8 +450,8 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
         policy=wide_policy,
     )
     assert wide_plan.rows_nbytes == 1_338_605_568
-    assert wide_plan.moe_nbytes == 417_456_160
-    assert wide_plan.total_nbytes == 1_756_061_728
+    assert wide_plan.moe_nbytes == 417_456_928
+    assert wide_plan.total_nbytes == 1_756_062_496
     assert wide_plan.matrix_rows == 2_048
     assert wide_plan.attention_rows == 128
 
@@ -1623,6 +1765,214 @@ def test_laguna_iq2_grid64_default_is_gfx1100_only_and_rollbackable() -> None:
     assert resolve_laguna_iq2_grid64("hip_gfx1100", True)
     assert not resolve_laguna_iq2_grid64("hip_gfx1100", False)
     assert not resolve_laguna_iq2_grid64("hip_gfx1151")
+
+
+def test_laguna_raw_k_f32_ordered_prefill_is_default_on_gfx1100() -> None:
+    q5_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_POLICY", None
+    )
+    h5y_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY", None
+    )
+    h7g_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY", None
+    )
+    h7h_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL_H7H_POLICY", None
+    )
+    q6_policy = backend_package_capability(
+        "hip_gfx1100", "GGUF_Q6_F32_ORDERED_PREFILL_POLICY", None
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_Q5_F32_ORDERED_PREFILL", None
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_Q6_F32_ORDERED_PREFILL", None
+    ) is True
+    assert h5y_policy == {
+        ("bf16", 3072, 1024): (
+            "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch4"
+        ),
+        ("bf16", 3072, 12288): (
+            "weight_major_row_major_activation_tile_k_row_coltile8_rowbatch12"
+        ),
+        ("bf16", 6144, 3072): (
+            "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5"
+        ),
+        ("bf16", 9216, 3072): (
+            "weight_major_row_major_activation_tile_k_row_coltile12_rowbatch8"
+        ),
+        ("f32", 3072, 48): "coltile12_rowbatch4",
+        ("f32", 3072, 72): "coltile8_rowbatch4",
+        ("f32", 3072, 6144): (
+            "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5"
+        ),
+        ("f32", 3072, 9216): (
+            "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch10"
+        ),
+    }
+    assert h7g_policy == {
+        **h5y_policy,
+        ("bf16", 3072, 12288): (
+            "weight_major_row_major_activation_tile_k_row_"
+            "padded_compute_coltile8_rowbatch12"
+        ),
+        ("bf16", 6144, 3072): (
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "padded_compute_coltile16_rowbatch5"
+        ),
+        ("f32", 3072, 6144): (
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "padded_compute_coltile16_rowbatch5"
+        ),
+        ("f32", 3072, 9216): (
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "padded_compute_coltile8_rowbatch10"
+        ),
+    }
+    assert h7h_policy == {
+        **h7g_policy,
+        ("bf16", 3072, 1024): (
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "full_group_compute_coltile8_rowbatch4"
+        ),
+        ("bf16", 9216, 3072): (
+            "weight_major_row_major_activation_tile_k_row_"
+            "full_group_compute_coltile12_rowbatch8"
+        ),
+    }
+    assert q5_policy == h7h_policy
+    assert q6_policy == {
+        ("bf16", 3072, 1024): (
+            "weight_major_row_major_activation_tile_k_row_"
+            "dpp_wave_reduction_coltile16_rowbatch5"
+        ),
+        ("bf16", 1024, 3072): (
+            "weight_major_row_major_activation_tile_k_row_"
+            "dpp_wave_reduction_coltile16_rowbatch4"
+        ),
+        ("f32", 3072, 72): "coltile8_rowbatch4",
+        ("f32", 3072, 1024): (
+            "weight_major_row_major_activation_tile_k_row_"
+            "dpp_wave_reduction_coltile16_rowbatch5"
+        ),
+    }
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_F32_ORDERED_PREFILL_QUANTS", None
+    ) == frozenset(("gguf_q5_k", "gguf_q6_k"))
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_F32_ORDERED_PREFILL_POLICIES", None
+    ) == {"gguf_q5_k": q5_policy, "gguf_q6_k": q6_policy}
+    assert runner_module._resolve_laguna_f32_ordered_prefill_quants(
+        "hip_gfx1100"
+    ) == frozenset(("gguf_q5_k", "gguf_q6_k"))
+    assert runner_module._resolve_laguna_q5_activation_tile_k_row(
+        "hip_gfx1100"
+    )
+    assert not runner_module._resolve_laguna_f32_ordered_prefill_quants(
+        "hip_gfx1151"
+    )
+    assert not runner_module._resolve_laguna_q5_activation_tile_k_row(
+        "hip_gfx1151"
+    )
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_F32_ORDERED_PREFILL_QUANTS", None
+    ) == frozenset()
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_F32_ORDERED_PREFILL_POLICIES", None
+    ) == {}
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_Q6_F32_ORDERED_PREFILL", None
+    ) is False
+    assert "resolve_laguna_f32_ordered_prefill_quants" not in runner_module.__all__
+    assert "use_q5_f32_ordered_prefill" not in signature(
+        runner_module.LagunaGGUFResidentSession
+    ).parameters
+
+
+def test_laguna_raw_k_f32_ordered_prefill_rejects_malformed_package_policy(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100 as package
+
+    monkeypatch.setattr(
+        package,
+        "GGUF_F32_ORDERED_PREFILL_QUANTS",
+        frozenset(("gguf_q6_k",)),
+    )
+    monkeypatch.setattr(package, "GGUF_F32_ORDERED_PREFILL_POLICIES", {})
+    with pytest.raises(ValueError, match="no non-empty policy"):
+        runner_module._resolve_laguna_f32_ordered_prefill_quants("hip_gfx1100")
+
+    monkeypatch.setattr(package, "GGUF_F32_ORDERED_PREFILL_QUANTS", 17)
+    with pytest.raises(ValueError, match="must be a collection"):
+        runner_module._resolve_laguna_f32_ordered_prefill_quants("hip_gfx1100")
+
+
+def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
+    from hipengine.runtime.laguna_gguf_runner import (
+        LagunaGGUFResidentSession,
+        resolve_laguna_raw_k_prefill_rowbatch,
+        resolve_laguna_raw_k_prefill_variant,
+    )
+
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 32
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151") == 0
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 4) == 4
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 8) == 8
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 16) == 16
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 32) == 32
+    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 0) == 0
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151", 32)
+    with pytest.raises(ValueError, match="row batch"):
+        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 64)
+
+    assert resolve_laguna_raw_k_prefill_variant("hip_gfx1100") == "coltile"
+    assert resolve_laguna_raw_k_prefill_variant("hip_gfx1100", "rowbatch") == (
+        "rowbatch"
+    )
+    assert resolve_laguna_raw_k_prefill_variant("hip_gfx1151") == "rowbatch"
+    with pytest.raises(ValueError, match="not supported"):
+        resolve_laguna_raw_k_prefill_variant("hip_gfx1151", "coltile")
+    with pytest.raises(ValueError, match="variant"):
+        resolve_laguna_raw_k_prefill_variant("hip_gfx1100", "unknown")
+
+    session = object.__new__(LagunaGGUFResidentSession)
+    session.backend = "hip_gfx1100"
+    session.raw_k_prefill_rowbatch = 0
+    session.raw_k_prefill_variant = "coltile"
+    session.set_raw_k_prefill_rowbatch(32)
+    assert session.raw_k_prefill_rowbatch == 32
+    assert session.raw_k_prefill_variant == "rowbatch"
+    session.set_raw_k_prefill_rowbatch(0)
+    assert session.raw_k_prefill_rowbatch == 0
+    assert not hasattr(LagunaGGUFResidentSession, "set_raw_k_prefill_variant")
+    assert "raw_k_prefill_variant" not in signature(
+        LagunaGGUFResidentSession.__init__
+    ).parameters
+
+
+def test_rejected_laguna_raw_k_prefill_mmq_runtime_surface_is_removed() -> None:
+    assert "raw_k_prefill_mmq" not in signature(
+        runner_module.LagunaGGUFResidentSession.__init__
+    ).parameters
+    assert not hasattr(runner_module, "resolve_laguna_raw_k_prefill_mmq")
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_RAW_K_PREFILL_MMQ_SUPPORTED", None
+    ) is None
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_RAW_K_PREFILL_MMQ_SUPPORTED", None
+    ) is None
+    for quant in ("gguf_q5_k", "gguf_q6_k"):
+        assert not is_registered(
+            KernelKey(
+                "hip_gfx1100",
+                "linear_prefill_policy",
+                quant,
+                "raw_k_q8_1_mmq32",
+            )
+        )
 
 
 def test_laguna_p4_head_kv_is_gfx11_default_and_rollbackable() -> None:

@@ -1,0 +1,556 @@
+{
+  "baseline": {
+    "exact_llamacpp_hip_tok_s": 696.342,
+    "matched_c4096_direct_m512_tok_s": 332.99205721703817,
+    "matched_gap": 2.0911669960528125,
+    "production": "H6D/H6C/H6A/H5Y/H5W",
+    "production_changed": false
+  },
+  "candidate": {
+    "additional_allocations": 0,
+    "additional_session_workspace_bytes": 0,
+    "candidate_session_workspace_bytes_if_owned": 161120256,
+    "default_off_package_capability_added": true,
+    "gfx1151_fail_closed": true,
+    "id": "WPF-H6E",
+    "maximum_candidate_role_plane_bytes": 5062656,
+    "name": "exact Q6 activation-tile-K-row transfer",
+    "new_math_algorithm": false,
+    "new_pack_body": false,
+    "operation": "Reuse H5Y's exact BF16 [row_group][k][row_slot] pack, keep Q6's exact row-major F32 weight producer and per-row fmaf order, and replace four/five scalar BF16 activation loads with one b64 or b64+u16 record.",
+    "package_policy_changed": false,
+    "persistent_sidecar_bytes": 0,
+    "production_package_policy_changed": false,
+    "roles": [
+      "bf16_k3072_n1024",
+      "bf16_k1024_n3072",
+      "f32_k3072_n1024"
+    ],
+    "runtime_owner_added": true,
+    "runtime_owner_default_off": true,
+    "source_default": false,
+    "variants": [
+      "f32_ordered_weight_major_row_major_activation_tile_k_row_coltile16_rowbatch5_bf16_bf16_out",
+      "f32_ordered_weight_major_row_major_activation_tile_k_row_coltile16_rowbatch4_bf16_bf16_out",
+      "f32_ordered_weight_major_row_major_activation_tile_k_row_coltile16_rowbatch5_bf16_f32_out"
+    ]
+  },
+  "commands": {
+    "actual_role_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6e_q6_activation_tile_k_row_actual_role_screen.py",
+    "broader_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6e_q6_activation_tile_k_row.py tests/test_laguna_h5w_q6_weight_major_composites.py tests/test_laguna_h5y_q5_activation_tile_k_row.py tests/test_gguf_q5_k_f32_rocblas_prefill.py tests/test_kernel_registry.py",
+    "focused_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6e_q6_activation_tile_k_row.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "prebuild": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -c '<build gguf_q5_k_f32_rocblas_prefill with pinned compiler version>'",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6e-resource-rocprof --output-file h6e -- uv run python -u /tmp/laguna_wpfh6e_q6_activation_tile_k_row_resource_smoke.py",
+    "runtime_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6e_q6_activation_tile_k_row_default_off_clean_512_4k.py",
+    "runtime_complete_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6e_q6_activation_tile_k_row_runtime_m512_full_state.py",
+    "runtime_focused": "PYTHONPATH=. uv run pytest -q tests/test_laguna_h6e_runtime_policy.py",
+    "runtime_guards": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q <H6E/H5W/H5Y/dispatch/runner/gfx1151/registry guard bundle>",
+    "runtime_integrated_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6e-runtime-integrated-paired-rocprof --output-file h6e-paired -- uv run python -u /tmp/laguna_wpfh6e_q6_activation_tile_k_row_runtime_trace_integrated_paired.py"
+  },
+  "correctness": {
+    "broader_guard_green": "35/35",
+    "complete_activation_plane_byte_identity": true,
+    "complete_cross_product_cases": 9,
+    "complete_h5w_output_byte_identity": true,
+    "complete_runtime_hidden_boundaries_exact": "48/48",
+    "complete_runtime_kv_and_live_spans_exact": true,
+    "complete_runtime_m512_state_exact": true,
+    "focused_green": "11/11",
+    "gfx1151_absent": true,
+    "ordered_workspace_bytes_unchanged": 161120256,
+    "poison_overwrite_checked": true,
+    "q5_q6_package_maps_unchanged": true,
+    "red_commit": "e248d7447",
+    "red_failure_scope": "one absent role manifest, one absent strict-preflight surface, and nine absent composites after retained H5W/plane/CPU gates",
+    "red_failures": 11,
+    "roles": 3,
+    "rows": [
+      17,
+      33,
+      512
+    ],
+    "runtime_candidate_repeat_exact": true,
+    "runtime_focused_green": "3/3",
+    "runtime_red": "1 failed / 2 passed solely absent default-off package capability",
+    "runtime_red_revision": "70ea346a5",
+    "runtime_retained_guards": "133/133",
+    "sampled_independent_q6_cpu_gate": true,
+    "strict_role_preflight_before_hip_load": true,
+    "tracked_allocations_recovered": true
+  },
+  "correctness_claim": true,
+  "date": "2026-07-31",
+  "decision": {
+    "all_three_roles_admitted": true,
+    "leaf_admitted": true,
+    "next_action": "Freeze a separate H6E source-default contract, then require fixed C4096/direct-M512 five-pair and selector-unset one-queue 512/1K/4K exact wins before replacing H5W policy values.",
+    "production_default_changed": false,
+    "runtime_owner_added": true,
+    "runtime_owner_default_off": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_q6_activation_tile_k_row_candidate",
+  "lineage": {
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "cf1c48f8f1d6c4d45785946ae394499f7e9a3e81dca9264803b9ec03aa93a227",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "edc73b008c0c63f01fce641e33e93e2a0d24288caadc60c0d9b41a6579966d98",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "c51c3754b855288786a5e2855cabe5defa5ef8480cfe068109f25bc53f4b5d25",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "98e88d364589e425bc5b6ff2f37709150068bb34694f51ea25943a5cc4ec9a4c",
+      "tests/test_laguna_h6e_q6_activation_tile_k_row.py": "4397c8fef2e34cca05933b8577282e51431348bed31abc02368e301eb976ccd1",
+      "tests/test_laguna_h6e_runtime_policy.py": "a2c3e5bcef5c3cef1a53fdb9e5b51de718ce8a3592c883db30f4b4765342628e"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "red_revision": "e248d7447",
+    "runtime_red_revision": "70ea346a5",
+    "source": "Net-new in-tree H5Y arithmetic transfer to Q6; no external kernel body copied.",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6d-matched-residual.json",
+    "target_artifact_sha256": "3b8e1701341aa0acc6f3d53caefe765616df6440dbf531bc47e223e52eebd903",
+    "target_revision": "a4843edf9adc53df0495bcb0c083fd32049a08ac"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance": {
+    "aggregate": {
+      "event_reduction_ms": 7.884288263320933,
+      "event_reduction_percent": 11.951537210448127,
+      "event_speedup": 1.1357381700009228,
+      "h5w_event_weighted_ms": 65.96882162094117,
+      "h5w_wall_weighted_ms": 66.18678513914347,
+      "h6e_event_weighted_ms": 58.08453335762024,
+      "h6e_wall_weighted_ms": 58.21666056290269,
+      "wall_reduction_ms": 7.970124576240778,
+      "wall_reduction_percent": 12.041866906642024,
+      "wall_speedup": 1.136904530407221
+    },
+    "all_outputs_byte_exact": true,
+    "all_roles_both_clock_positive": true,
+    "both_clock_positive_roles": 3,
+    "production_invocations": 142,
+    "protocol": {
+      "actual_weights": true,
+      "candidate": "H6E exact BF16 activation pack plus same exact Q6 producer and activation-row consumer",
+      "control": "H5W exact Q6 producer plus row-major F32-weight consumer",
+      "counter_rotated_repetitions": 15,
+      "deterministic_bf16_input": true,
+      "event_and_synchronized_wall": true,
+      "gpu_max_hw_queues": 1,
+      "inclusive_candidate": "one retained H5Y BF16 activation pack plus the same exact raw-Q6-to-F32 producer and one H6E consumer",
+      "inclusive_control": "one exact raw-Q6-to-F32 producer plus one H5W consumer",
+      "launches_per_sample": 5,
+      "mode_starts_per_role": {
+        "h5w": 8,
+        "h6e": 7
+      },
+      "production_invocations": 142,
+      "rows": 512,
+      "selection_rule": "retain a role only when H6E improves both event and synchronized-wall medians; require positive selected weighted aggregate",
+      "unique_configurations": 3,
+      "warmups": 5
+    },
+    "roles": [
+      {
+        "activation_plane_bytes": 5062656,
+        "both_clock_positive": true,
+        "candidate_event_median_ms": 0.3331779956817627,
+        "candidate_wall_median_ms": 0.33810660243034363,
+        "col_tile": 16,
+        "complete_output_byte_exact": true,
+        "control_event_median_ms": 0.41629858016967775,
+        "control_wall_median_ms": 0.4138717893511057,
+        "event_reduction_percent": 19.966578904505557,
+        "event_speedup": 1.2494780134499286,
+        "in_features": 3072,
+        "isa": {
+          "activation_global_load_b64": 1,
+          "activation_tail_global_load_d16": 1,
+          "control_scalar_activation_loads": 5,
+          "row_major_weight_global_load_b32": 16,
+          "scratch_instructions": 0
+        },
+        "mismatch_count": 0,
+        "out_features": 1024,
+        "output_dtype": "bf16",
+        "production_invocations": 2,
+        "role": "bf16_k3072_n1024",
+        "row_batch": 5,
+        "tensor": "blk.47.ffn_gate_shexp.weight",
+        "trace": {
+          "candidate_duration_us": 301.241,
+          "candidate_resources": {
+            "lds_bytes": 1536,
+            "local_size": 128,
+            "physical_blocks": 6592,
+            "scratch_bytes": 0,
+            "sgpr": 128,
+            "vgpr": 168
+          },
+          "control_duration_us": 334.721,
+          "pack_duration_us": 18.04,
+          "producer_duration_us": 20.76,
+          "resources_match_h5w": true
+        },
+        "wall_reduction_percent": 18.306439064027895,
+        "wall_speedup": 1.2240866826502483
+      },
+      {
+        "activation_plane_bytes": 2097152,
+        "both_clock_positive": true,
+        "candidate_event_median_ms": 0.57980318069458,
+        "candidate_wall_median_ms": 0.5810421891510487,
+        "col_tile": 16,
+        "complete_output_byte_exact": true,
+        "control_event_median_ms": 0.5897799968719483,
+        "control_wall_median_ms": 0.5924843717366457,
+        "event_reduction_percent": 1.6916165740246993,
+        "event_speedup": 1.0172072463718058,
+        "in_features": 1024,
+        "isa": {
+          "activation_global_load_b64": 1,
+          "activation_tail_global_load_d16": 0,
+          "control_scalar_activation_loads": 4,
+          "row_major_weight_global_load_b32": 16,
+          "scratch_instructions": 0
+        },
+        "mismatch_count": 0,
+        "out_features": 3072,
+        "output_dtype": "bf16",
+        "production_invocations": 46,
+        "role": "bf16_k1024_n3072",
+        "row_batch": 4,
+        "tensor": "blk.1.ffn_down_shexp.weight",
+        "trace": {
+          "candidate_duration_us": 453.122,
+          "candidate_resources": {
+            "lds_bytes": 1024,
+            "local_size": 128,
+            "physical_blocks": 24576,
+            "scratch_bytes": 0,
+            "sgpr": 128,
+            "vgpr": 136
+          },
+          "control_duration_us": 498.682,
+          "pack_duration_us": 7.96,
+          "producer_duration_us": 20.28,
+          "resources_match_h5w": true
+        },
+        "wall_reduction_percent": 1.9312209961013103,
+        "wall_speedup": 1.0196925159639698
+      },
+      {
+        "activation_plane_bytes": 5062656,
+        "both_clock_positive": true,
+        "candidate_event_median_ms": 0.3270982027053833,
+        "candidate_wall_median_ms": 0.3277926240116358,
+        "col_tile": 16,
+        "complete_output_byte_exact": true,
+        "control_event_median_ms": 0.40432281494140626,
+        "control_wall_median_ms": 0.4053697921335697,
+        "event_reduction_percent": 19.099741439823077,
+        "event_speedup": 1.236089992538354,
+        "in_features": 3072,
+        "isa": {
+          "activation_global_load_b64": 1,
+          "activation_tail_global_load_d16": 1,
+          "control_scalar_activation_loads": 5,
+          "row_major_weight_global_load_b32": 16,
+          "scratch_instructions": 0
+        },
+        "mismatch_count": 0,
+        "out_features": 1024,
+        "output_dtype": "f32",
+        "production_invocations": 94,
+        "role": "f32_k3072_n1024",
+        "row_batch": 5,
+        "tensor": "blk.0.attn_k.weight",
+        "trace": {
+          "candidate_duration_us": 295.082,
+          "candidate_resources": {
+            "lds_bytes": 1536,
+            "local_size": 128,
+            "physical_blocks": 6592,
+            "scratch_bytes": 0,
+            "sgpr": 128,
+            "vgpr": 168
+          },
+          "control_duration_us": 332.683,
+          "pack_duration_us": 17.32,
+          "producer_duration_us": 20.36,
+          "resources_match_h5w": true
+        },
+        "wall_reduction_percent": 19.137382613939863,
+        "wall_speedup": 1.23666538670858
+      }
+    ],
+    "selected_aggregate_both_clock_positive": true,
+    "tracked_returned_to_baseline": true
+  },
+  "performance_claim": true,
+  "physical_evidence": {
+    "all_candidate_resources_match_h5w": true,
+    "all_candidate_scratch0": true,
+    "build_cache_key": "gguf_q5_k_f32_rocblas_prefill-cf12014ce55527a5",
+    "candidate_code_object_metadata": {
+      "_ZN12_GLOBAL__N_180gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_kernelIfLi5EEEvPKtPKfPT_iii": {
+        "group_segment_fixed_size": 1280,
+        "private_segment_fixed_size": 0,
+        "sgpr_count": 52,
+        "sgpr_spill_count": 0,
+        "uses_dynamic_stack": false,
+        "vgpr_count": 162,
+        "vgpr_spill_count": 0,
+        "wavefront_size": 32
+      },
+      "_ZN12_GLOBAL__N_180gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_kernelItLi4EEEvPKtPKfPT_iii": {
+        "group_segment_fixed_size": 1024,
+        "private_segment_fixed_size": 0,
+        "sgpr_count": 51,
+        "sgpr_spill_count": 0,
+        "uses_dynamic_stack": false,
+        "vgpr_count": 130,
+        "vgpr_spill_count": 0,
+        "wavefront_size": 32
+      },
+      "_ZN12_GLOBAL__N_180gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_kernelItLi5EEEvPKtPKfPT_iii": {
+        "group_segment_fixed_size": 1280,
+        "private_segment_fixed_size": 0,
+        "sgpr_count": 52,
+        "sgpr_spill_count": 0,
+        "uses_dynamic_stack": false,
+        "vgpr_count": 162,
+        "vgpr_spill_count": 0,
+        "wavefront_size": 32
+      }
+    },
+    "candidate_symbols": 3,
+    "compiler_spawned_under_profiler": false,
+    "dispatches": 15,
+    "pack_resources": "local256/VGPR16/SGPR128/LDS0/scratch0",
+    "physical_b64_and_b64_plus_u16_activation_loads": true,
+    "producer_resources": "local64/VGPR16/SGPR128/LDS0/scratch0",
+    "rowbatch4_resources": "local128/VGPR136/SGPR128/LDS1024/scratch0/grid24576",
+    "rowbatch5_resources": "local128/VGPR168/SGPR128/LDS1536/scratch0/grid6592"
+  },
+  "production": {
+    "exact_llamacpp_hip_tok_s": 696.342,
+    "matched_c4096_direct_m512_tok_s": 332.99205721703817,
+    "q5_owner": "WPF-H5Y exact Q5 activation-tile-K-row",
+    "q6_owner": "WPF-H5W exact Q6 weight-major composites",
+    "runtime_qualification_pending": false,
+    "source_default_adjudication_pending": true,
+    "unchanged": true
+  },
+  "raw_evidence_sha256": {
+    "actual_role_harness": "03d5895b5da7921e5b6a606fb9c83b1165e4b4e8c3a4f464299aaeaa94e2780a",
+    "actual_role_json": "08ab94e35a2a174eaa26cc80412c9356d369047b9ea7c690219f26025899ea6b",
+    "actual_role_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "actual_role_stdout": "956321a734d0051e2fa748c8583b97ca6bddacb9eaaa01355353a5213a6d954d",
+    "artifact_builder": "eb82895a5c97297626f8ee096da831d4311ca6b8990579478eed2a53e1bad0a6",
+    "broader_guard_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "broader_guard_stdout": "23814bd54c3f40e10907bbb3fbbf634b818152cf7afb3d0013ebceb07460326b",
+    "code_object_notes": "4cd78e64c8226278f06c76a7cc090ee65806f05ab48672726c37182180a00960",
+    "compiler_version": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "device_code_object": "090816ad6406a4daa98ba6803d3f8904d1d48791e3efcc38dbda9ea7a7cbb0f3",
+    "device_isa": "003117054868c9f751f4ffaff9f0686c4826f12f278b5bc091a9c35e3fb355c7",
+    "device_shared_object": "25c3073dadf948b10b6a975166cb4b82083e535b4646b4adce2467244af7313e",
+    "focused_green_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "focused_green_stdout": "08faea39fd19189f6544839f505d91d76ecb1367e219f5db362cdf22916ef869",
+    "publication_validator": "86321f279eb59cdfbf37f2a5206343c3be79118b77e00a6ea1fb9a20e41db965",
+    "resource_agent": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "resource_analyzer": "dc62890f289f593a6a07195663f4b2d18569d304753f90442ec5ac6efd5b1f7d",
+    "resource_harness": "e8e3d21ea25e1f4f2ee6ebd5f1e64e96e988b7037f2b2c178d56115295f0f8da",
+    "resource_stderr": "de5196456d31084d9dfdecbc154317c7ac6e2f6ea4033b538cc037eac6f44769",
+    "resource_stdout": "c3ae88cbf7a4eadf31fe3c63cd414049dbe6f39935695cbc13081b0df7c1728b",
+    "resource_summary": "5718d14cc088d04461b1bee37393654aa3c4f7765811972d7d3d38f8d259cec6",
+    "resource_trace": "59bab7cbcf0101fdd834c5d63d8972d1668fa0a85244c36664e217b809959b0e",
+    "runtime_artifact_builder": "09b3777c77eabf0d0c88635b9d2a9a38e7f6c5b5f496ede2728ae67faee44aaa",
+    "runtime_clean_harness": "eb84ed0855927d4a002bedb7a10ce6ca721a92cea3524d85f658a95c354ad22d",
+    "runtime_clean_json": "382e9596ff682ab8c162b1125217ec3da25a7e2819d68cd1dc82b4339af22318",
+    "runtime_clean_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "runtime_clean_stdout": "c9099bc1e00bf0ccb16d9df8296ee77a887d51a61e722f168e4a30a3b57b4726",
+    "runtime_complete_state_harness": "c76d4136f51b39226fd325a8738210d987ce2e3d20e8d7b161bf73ff6b69b4d1",
+    "runtime_complete_state_json": "157d84f7976d8d5815b6e7242b0cac00aca412e4a590eb68c5e8499d0f70439c",
+    "runtime_complete_state_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "runtime_complete_state_stdout": "328ebbcf414f83b4c2f91c6d3cb743f96a0d6f6996860f496449aea77eb3f556",
+    "runtime_guards_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runtime_guards_stdout": "457eab217183b11d58af123f2c744d92857c5ed075c893800113f52f81d036bd",
+    "runtime_publication_validator": "90583970e6951c30ba83f28a7a334d1851d383cbb8b78389227866c9940d4203",
+    "runtime_trace_agent": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "runtime_trace_analyzer": "f4f5eca88af397190780d9aa2fcc7d4307635efe1e73c92d42b21e5865d041b8",
+    "runtime_trace_csv": "1629b0253543fc08ca9bb0e3a8527249020286fa8a0da05912d2fa3c64214cd9",
+    "runtime_trace_harness": "460a16a388a931399a66310620c2eb658da41ce8f38d5e8511568452dbe3e840",
+    "runtime_trace_stderr": "c0ac4cdac41143983eeb3ca688496e2d5c69bfa87090e5bde317586b09822dd6",
+    "runtime_trace_stdout": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+    "runtime_trace_summary": "839a84ddfd62944075806b354671a7cff75f9210275659dbd5837a7a20554058"
+  },
+  "runtime_qualification": {
+    "cached_integrated_paired_trace": {
+      "candidate_added_pack_dispatches": 142,
+      "candidate_dispatches_per_request": 2192,
+      "candidate_family_dispatches": {
+        "attention": 192,
+        "gate_up": 47,
+        "iq_down": 47,
+        "q5": 658,
+        "q6": 431,
+        "remaining": 817
+      },
+      "candidate_kernel_span_median_ms": 1563.6963150000001,
+      "candidate_kernel_sum_median_ms": 1541.911568999999,
+      "candidate_q6_median_ms": 83.99972700000004,
+      "candidate_q6_topology": {
+        "h5i_ordered": 1,
+        "h6e_bf16_k1024_n3072": 46,
+        "h6e_bf16_k3072_n1024": 2,
+        "h6e_f32_k3072_n1024": 94,
+        "h6e_pack": 142,
+        "producer": 143,
+        "raw_fallback": 3
+      },
+      "control_dispatches_per_request": 2050,
+      "control_family_dispatches": {
+        "attention": 192,
+        "gate_up": 47,
+        "iq_down": 47,
+        "q5": 658,
+        "q6": 289,
+        "remaining": 817
+      },
+      "control_kernel_span_median_ms": 1572.4982060000002,
+      "control_kernel_sum_median_ms": 1545.8370210000003,
+      "control_q6_median_ms": 92.86745799999993,
+      "control_q6_topology": {
+        "h5i_ordered": 1,
+        "h5w_bf16_k1024_n3072": 46,
+        "h5w_bf16_k3072_n1024": 2,
+        "h5w_f32_k3072_n1024": 94,
+        "producer": 143,
+        "raw_fallback": 3
+      },
+      "kernel_span_delta_ms": -8.801891000000069,
+      "kernel_span_reduction_percent": 0.5597393349267898,
+      "kernel_sum_delta_ms": -3.9254520000013144,
+      "kernel_sum_reduction_percent": 0.25393698990737734,
+      "mode_order": [
+        "control",
+        "candidate",
+        "candidate",
+        "control"
+      ],
+      "no_compiler_under_profile": true,
+      "pack_resources": "local256/VGPR16/scratch0",
+      "producer_resources": "local64/VGPR16/scratch0",
+      "q6_delta_ms": -8.867730999999893,
+      "q6_reduction_percent": 9.54880341400095,
+      "requests": 4,
+      "rowbatch4_resources": "local128/VGPR136/SGPR128/LDS1024/scratch0/grid24576",
+      "rowbatch5_resources": "local128/VGPR168/SGPR128/LDS1536/scratch0/grid6592"
+    },
+    "capability": {
+      "call_weights": {
+        "bf16_k1024_n3072": 46,
+        "bf16_k3072_n1024": 2,
+        "f32_k3072_n1024": 94
+      },
+      "candidate_roles": {
+        "bf16_k1024_n3072": "weight_major_row_major_activation_tile_k_row_coltile16_rowbatch4",
+        "bf16_k3072_n1024": "weight_major_row_major_activation_tile_k_row_coltile16_rowbatch5",
+        "f32_k3072_n1024": "weight_major_row_major_activation_tile_k_row_coltile16_rowbatch5"
+      },
+      "gfx1151_fail_closed": true,
+      "name": "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY",
+      "new_allocation_bytes": 0,
+      "new_dispatches_per_m512_request": 142,
+      "new_sidecar_bytes": 0,
+      "new_workspace_bytes": 0,
+      "ordered_library_reused": true,
+      "production_invocations": 142,
+      "q5_ordered_workspace_bytes": 161120256,
+      "raw_weight_allocation": "raw",
+      "retained_f32_k3072_n72": "coltile8_rowbatch4",
+      "row_registration_shape_backend_fallback_exact": true,
+      "runtime_abi": "raw_k_f32_ordered_activation_tile_k_row",
+      "source_owner": "WPF-H5W exact Q6 weight-major composites",
+      "source_policy": "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
+      "total_scratch_bytes": 600141856
+    },
+    "complete_natural_m512_state": {
+      "candidate_repeat_exact": true,
+      "category": "mixed_ja_en",
+      "complete_kv_and_live_spans_exact": true,
+      "complete_logits_exact": true,
+      "final_hidden_exact": true,
+      "hidden_boundaries_exact": 48,
+      "hidden_boundaries_total": 48,
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "next_token_id": 2930,
+      "owner_lifecycle_recovered": true,
+      "post_layer_hidden_exact": true,
+      "prompt_id": "mixed_ja_en_review",
+      "prompt_tokens": 512,
+      "quality_gate": true,
+      "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+      "top1_agreement": 1.0,
+      "tracked_allocations_recovered": true,
+      "workspace_unchanged": true
+    },
+    "default_off_clean_512_1k_4k": {
+      "all_finite": true,
+      "all_outputs_exact": true,
+      "all_sessions_recovered": true,
+      "all_total_scratch_bytes": [
+        600141856
+      ],
+      "all_workspace_bytes": [
+        161120256
+      ],
+      "initial_lifecycle_recovered": true,
+      "protocol": "same resident weights; model load excluded; fresh request session/sample; one warmup/mode/length; three counter-rotated measured repetitions; matrix512; attention128; one queue",
+      "rows": {
+        "1024": {
+          "candidate_median_tok_s": 266.7779308473534,
+          "control_median_tok_s": 265.9443459617702,
+          "gain_percent": 0.31344335694318826,
+          "paired_candidate_wins": 3,
+          "paired_total": 3
+        },
+        "4096": {
+          "candidate_median_tok_s": 176.52943404846732,
+          "control_median_tok_s": 176.17314053541185,
+          "gain_percent": 0.2022405413065087,
+          "paired_candidate_wins": 3,
+          "paired_total": 3
+        },
+        "512": {
+          "candidate_median_tok_s": 320.08115556473183,
+          "control_median_tok_s": 318.2238605908049,
+          "gain_percent": 0.5836441586996921,
+          "paired_candidate_wins": 3,
+          "paired_total": 3
+        }
+      },
+      "token_stream_sha256": "e56601a354b2fab008fb79107219971aba7a4d3829593ab2925e4969588a42b1"
+    },
+    "retained_guards": {
+      "failed": 0,
+      "passed": 133,
+      "scope": "H6E runtime/leaf, H5W/H5Y ordered-Q5/Q6, generic dispatch, Laguna runner, gfx1151, and registry"
+    },
+    "runtime_red_revision": "70ea346a5",
+    "status": "qualified_default_off"
+  },
+  "schema": 1,
+  "scope": "Standalone exact WPF-H6E Q6 activation-row leaves plus bounded default-off runtime ownership over all three H5W production roles on one Radeon Pro W7900 queue; H5W remains source default",
+  "status": "retained_exact_default_off_runtime_owner"
+}

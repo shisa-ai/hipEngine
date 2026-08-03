@@ -1,0 +1,332 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_llamacpp_prefill_matched_attribution",
+  "status": "accepted_external_comparator_and_campaign_input",
+  "performance_claim": false,
+  "created_at": "2026-07-29T13:20:00+09:00",
+  "scope": "Direct M512 first-token prefill comparison and kernel/source attribution for hipEngine, same-revision llama.cpp HIP, and same-revision llama.cpp Vulkan on one Radeon Pro W7900",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "vram_bytes": 48301604864,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu_max_hw_queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "hip_rocm_release": "7.2.4",
+    "vulkan_driver": "RADV NAVI31"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "tensor_bytes": 39680849600,
+    "logical_parameters": 117561977600
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "context_length": 4096,
+    "batch_size": 2048,
+    "ubatch_size": 512,
+    "flash_attention": true,
+    "output": "one last-row first-token projection",
+    "repetitions": 5,
+    "token_source": {
+      "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+      "prompt_id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "token_stream_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786",
+      "fixture_json_sha256": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+      "fixture_include_sha256": "43514b29e4c9aa3b4a967ca51419a5c923753cc37166201136dda27b16d10710"
+    },
+    "matched_axes": [
+      "same model file and 512 token IDs",
+      "same 4096-token context admission",
+      "same direct 512-row prompt batch and 512-row microbatch",
+      "same one-device and one-HIP-queue policy",
+      "FlashAttention enabled",
+      "BF16 K/V for the primary hipEngine versus llama.cpp HIP comparison",
+      "backend-owned synchronized prompt timing through one last-row projection"
+    ],
+    "unavoidable_differences": [
+      "Cross-engine reduction, activation-storage, and quant arithmetic are not bit-identical; llama.cpp HIP uses F32 graph activations and Q8_1 MMQ while hipEngine production preserves BF16 boundaries and exact F32 accumulation.",
+      "The primary Vulkan row uses native F16 K/V because RADV reports no BF16 support; a BF16-requested secondary row is included.",
+      "Top-1 equality on this stream is a protocol check, not a cross-engine logits or full quality proof.",
+      "llama.cpp server-native prompt timing splits the graph differently, so direct llama-bench M512 is primary and server-native timing is secondary.",
+      "Warmups are excluded but not shape-identical: hipEngine runs one M128 warmup and llama-bench runs its default M512 warmup. All five measured samples are reported and stable; the llama.cpp profiler child uses one explicitly no-warmup pass, while the hipEngine trace summary segments away its M128 warmup and reports the one M512 pass."
+    ],
+    "measurement_commands": {
+      "hipengine": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-prefill-refresh-hipengine-matched-m512.json",
+      "llamacpp_hip": "LLAMA_BENCH_MATCHED_LAGUNA_M512=1 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 /tmp/llama-c0bc8591-hip-build/bin/llama-bench -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 512 -n 0 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json",
+      "llamacpp_vulkan_f16": "LLAMA_BENCH_MATCHED_LAGUNA_M512=1 GGML_VK_VISIBLE_DEVICES=0 /tmp/llama-c0bc8591-vulkan-matched-build/bin/llama-bench -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 512 -n 0 -fa 1 -ctk f16 -ctv f16 -r 5 -o json",
+      "llamacpp_vulkan_bf16_requested": "LLAMA_BENCH_MATCHED_LAGUNA_M512=1 GGML_VK_VISIBLE_DEVICES=0 /tmp/llama-c0bc8591-vulkan-matched-build/bin/llama-bench -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 512 -n 0 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json"
+    },
+    "profile_commands": {
+      "hipengine": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file /tmp/laguna-prefill-refresh-hipengine-rocprof/trace -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-prefill-refresh-hipengine-rocprof/child.json",
+      "llamacpp_hip": "LLAMA_BENCH_MATCHED_LAGUNA_M512=1 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/laguna-prefill-refresh-llamacpp-hip-matched-context4096-rocprof/trace -- /tmp/llama-c0bc8591-hip-build/bin/llama-bench -fa 1 -ctk bf16 -ctv bf16 -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 512 -n 0 -r 1 --no-warmup -o json"
+    }
+  },
+  "source_and_build": {
+    "llamacpp_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "measurement_patch": {
+      "path": "benchmarks/llama.cpp/0004-laguna-matched-prefill-token-fixture.patch",
+      "sha256": "544cea4a0509a90e4ca89a563aaade8388353025c10b7f9299e23d29583cf354",
+      "changes_backend_or_kernel_code": false,
+      "effect": "sets n_ctx=4096 under an environment gate, injects the fixed token IDs, and prints last-row top-1 after the timed decode"
+    },
+    "hip_build": {
+      "cmake": "Release; GGML_HIP=ON; GGML_VULKAN=OFF; GGML_NATIVE=ON",
+      "cmake_cache_sha256": "ccbf22006cf01adcdf20b1ddcbe457ce040f1f31fe5e48b20140276a2d264951",
+      "llama_bench_sha256": "882d3dd758d4c3076c68e61d9417205d7b5b1ede1506597b862ac0f8c1134e87",
+      "libggml_hip_sha256": "a3d9e7b85642ce753c1892a091b494a1f6194a9654df49f3938a3a0247f9faad"
+    },
+    "vulkan_build": {
+      "cmake": "Release; GGML_HIP=OFF; GGML_VULKAN=ON; GGML_NATIVE=ON",
+      "cmake_cache_sha256": "8f90e61dc1883e19baa5f4f60bf0ea648da221883b3b4a1b681a0e9ebdad8503",
+      "llama_bench_sha256": "47637db8f509a10503ed5342a5120dc87fbe37b0246e898bb535e574a90a4d34",
+      "libggml_vulkan_sha256": "5d8031cc364c266f3b5725af979741526a1b90ce4730f1d82ae6b3aeab1765c7"
+    },
+    "audited_llamacpp_sources": [
+      {
+        "path": "ggml/src/ggml-cuda/ggml-cuda.cu",
+        "sha256": "33e6fe768f876ac31b94cbf1af700f744915f1a8906ccfbe94ef1d35dedfd049"
+      },
+      {
+        "path": "ggml/src/ggml-cuda/mmq.cu",
+        "sha256": "4e471565061222bdc50bf9ce4585982e81a760d13128e68b3987b577e360b7a8"
+      },
+      {
+        "path": "ggml/src/ggml-cuda/mmq.cuh",
+        "sha256": "d260abb47e20625215a24565c5849eaa840c3054564c0f0ba34b24a2073c1407"
+      },
+      {
+        "path": "ggml/src/ggml-cuda/mmq-config-rdna4.cuh",
+        "sha256": "7273c222e5c09f3632de5ac327d1e419d16ca8b8bb8294bcbb3c48ad1be705f3"
+      },
+      {
+        "path": "ggml/src/ggml-cuda/mmid.cu",
+        "sha256": "125ead34206d065cb66da9c9180e7d3ff7cde72431fcc44b74222c252da5792a"
+      },
+      {
+        "path": "ggml/src/ggml-cuda/quantize.cu",
+        "sha256": "de1a9a73fc473eed67157ddbd76dfd7dd4fc5043142f66a0936f976ebdfd4ef5"
+      },
+      {
+        "path": "ggml/src/ggml-cuda/fattn-mma-f16.cuh",
+        "sha256": "08977d8e6e26ce2c8554c85c97e1fa07c1c4e3bdbe454eaf9b9b53c677fa4038"
+      },
+      {
+        "path": "ggml/src/ggml-cuda/fattn-common.cuh",
+        "sha256": "47537d7980d81f7dc9daa18698f5fdbb990ef6b916fa75fed4bc0bbfd1aa08cb"
+      }
+    ],
+    "source_verification": "Every audited file is byte-identical to git show c0bc8591e:<path>; the measurement patch applies to that revision and touches tools/llama-bench only."
+  },
+  "matched_results": {
+    "hipengine_bf16": {
+      "revision": "3599cafa87ebd17d24e07c740babaed03cabc576",
+      "median_seconds": 3.0255007199011743,
+      "median_tok_s": 169.2281864724607,
+      "samples_tok_s": [
+        170.18081060770652,
+        169.81220887985418,
+        169.0661130920148,
+        169.2281864724607,
+        168.87835093703248
+      ],
+      "next_tokens": [2930, 2930, 2930, 2930, 2930],
+      "raw_sha256": "d58eb3da9e9ded454aa48e22843fa031a01913221b6d2ad3ed55f984b6719892"
+    },
+    "llamacpp_hip_bf16": {
+      "median_seconds": 0.737556105,
+      "median_tok_s": 694.184,
+      "mean_tok_s": 693.989558,
+      "stddev_tok_s": 1.895489,
+      "samples_tok_s": [695.611, 695.493, 694.184, 693.732, 690.927],
+      "next_tokens": [2930, 2930, 2930, 2930, 2930],
+      "raw_sha256": "5746693c217ee18dabb35b914f10681c38209defa1e75eff76ef534551ca85b7"
+    },
+    "llamacpp_vulkan_f16": {
+      "median_seconds": 9.098373689,
+      "median_tok_s": 56.2738,
+      "mean_tok_s": 56.284478,
+      "stddev_tok_s": 0.154073,
+      "samples_tok_s": [56.0434, 56.4482, 56.2738, 56.3834, 56.2737],
+      "next_tokens": [2930, 2930, 2930, 2930, 2930],
+      "raw_sha256": "2818b5febf792aeb55f2bf657e31c03ae95d17764a09bff0bc903f7898b67efa"
+    },
+    "llamacpp_vulkan_bf16_requested": {
+      "median_tok_s": 54.1795,
+      "mean_tok_s": 54.211586,
+      "stddev_tok_s": 0.104097,
+      "samples_tok_s": [54.1917, 54.1662, 54.3928, 54.1277, 54.1795],
+      "next_tokens": [2930, 2930, 2930, 2930, 2930],
+      "raw_sha256": "5a0a3145695290d2a154cc9272f45a6a175d094766b8ce941e402e8327095dc9"
+    },
+    "ratios": {
+      "llamacpp_hip_over_hipengine": 4.102058968249759,
+      "llamacpp_hip_percent_above_hipengine": 310.2058968249759,
+      "hipengine_over_llamacpp_vulkan_f16": 3.007230947101633,
+      "hipengine_percent_above_llamacpp_vulkan_f16": 200.7230947101633
+    },
+    "secondary_native_server": {
+      "llamacpp_hip_bf16_median_prompt_tok_s": 649.3210029980369,
+      "llamacpp_hip_bf16_median_http_ttft_tok_s": 648.3783046134179,
+      "llamacpp_vulkan_f16_median_prompt_tok_s": 52.06179450294561,
+      "all_first_tokens": 2930,
+      "interpretation": "The server route is a conservative natural serving boundary; its graph splits prompt work differently and is not the primary direct-M512 comparator."
+    },
+    "synthetic_llama_bench_context": {
+      "llamacpp_hip_f16_mean_tok_s": 714.520752,
+      "llamacpp_vulkan_f16_mean_tok_s": 56.828792,
+      "interpretation": "Replacing random pp512 IDs with the natural fixed stream changes HIP by only a few percent and does not explain the 4.10x matched gap."
+    }
+  },
+  "kernel_traces": {
+    "hipengine": {
+      "kernel_sum_ms": 3009.836805,
+      "kernel_span_ms": 3025.04819,
+      "dispatches": 1477,
+      "families_ms": {
+        "dense_shared_q5_q6": 1437.653985,
+        "selected_iq2_gate_up": 461.876341,
+        "selected_iq3_iq4_down": 557.841972,
+        "global_attention": 114.812479,
+        "swa_attention": 376.106667,
+        "other": 61.545361
+      },
+      "child_sha256": "33c7e4142a83e6dcc8989f023ae81de6764e9bc1fb23dc5b1f939ca54aabc776",
+      "trace_sha256": "6c047b6609afe0356178fd42f5b2297216dc4b5a5cf4ec149af837426a0f07b0",
+      "summary_sha256": "8a065cf61e6d008179d85388a730cd984525fd7386b41b98b6344e199cb7d2fe"
+    },
+    "llamacpp_hip": {
+      "kernel_sum_ms": 724.298567,
+      "dispatches": 2824,
+      "families_ms": {
+        "iq2_xs_mmq": 404.902905,
+        "iq3_xxs_mmq": 152.379859,
+        "iq4_xs_mmq": 3.11539,
+        "q5_k_mmq": 58.95103,
+        "flash_attention_main_and_fixup": 21.725298,
+        "moe_id_helper": 21.715658,
+        "rocblas_gemm": 17.087935,
+        "q8_1_quantization_all_roles": 5.7975,
+        "q6_k_dequantization": 1.98305
+      },
+      "trace_sha256": "ec58e8e38d50a674dcc8bc66a361d5a5ee2303e48ec1092c6ccb3c6853bdeaab",
+      "summary_sha256": "4d5cfe36cdc2a78fd282636ec99e229d985c520860c211fbec2217025f7bfde0"
+    },
+    "comparison": {
+      "kernel_sum_ratio": 4.155519480683992,
+      "kernel_sum_gap_ms": 2285.538238,
+      "hipengine_span_minus_sum_ms": 15.211385,
+      "hipengine_span_minus_sum_share": 0.005028477629178018,
+      "finding": "llama.cpp launches 1.91x as many kernels yet executes 4.16x less summed kernel time; launch count and Python submission are not the primary gap."
+    }
+  },
+  "gap_attribution": [
+    {
+      "rank": 1,
+      "family": "dense/shared Q5_K and Q6_K projections",
+      "hipengine_ms": 1437.653985,
+      "llamacpp_conservative_upper_ms": 84.322001,
+      "gap_ms": 1353.331984,
+      "share_of_total_kernel_gap": 0.592132673932037,
+      "method": "Charge llama.cpp Q5 MMQ, all rocBLAS GEMM, all Q8_1 quantization, Q6 dequantization, and the residual Q4/Q6/Q8 matrix-vector kernels to this family; this intentionally overstates the llama.cpp side.",
+      "why_llamacpp_is_faster": "Q5_K uses a 256-thread 128-output x 128-row K256 Q8_1/WMMA MMQ tile; Q6_K at M512 dequantizes to F16 and uses rocBLAS. hipEngine's exact coltile is only four outputs x eight rows and still performs decoded-weight FP32 FMA for every output.",
+      "portable_lesson": "Adopt tiled activation/weight reuse, format-specific activation sum metadata, and tensorized arithmetic as explicit registered candidates; do not copy Q8_1 semantics into production without the complete quality lane."
+    },
+    {
+      "rank": 2,
+      "family": "global plus sliding-window attention",
+      "hipengine_ms": 490.919146,
+      "llamacpp_ms": 21.725298,
+      "gap_ms": 469.193848,
+      "share_of_total_kernel_gap": 0.2052881136861912,
+      "why_llamacpp_is_faster": "llama.cpp processes 128 query rows and eight GQA heads per F16 WMMA FlashAttention tile, uses stream-K work partitioning, and emits 48 main plus 48 fixup dispatches. hipEngine emits 48 global plus 144 SWA exact kernels over four M128 slices and retains scalar/two-pass reference association.",
+      "portable_lesson": "Transfer full-M512 query tiling, head grouping, and stream-K/fixup ownership behind KVLiveSpans; begin exact-first and require the complete quality lane for any reassociated or F16/WMMA route."
+    },
+    {
+      "rank": 3,
+      "family": "selected IQ3_XXS/IQ4_XS down projection",
+      "hipengine_ms": 557.841972,
+      "llamacpp_ms": 155.60069,
+      "gap_ms": 402.241282,
+      "share_of_total_kernel_gap": 0.17599148719978132,
+      "why_llamacpp_is_faster": "llama.cpp compacts expert rows on device, Q8_1-packs each compact activation row, and applies the same 128x128/K256 MMQ framework to IQ3_XXS/IQ4_XS. hipEngine already reuses exact decoded weights across rowbatch8 but still expands the codebook and executes BF16-to-F32 FMAs.",
+      "portable_lesson": "Keep hipEngine's existing compact metadata, add an isolated source-faithful IQ3/IQ4 tensorized comparator, and quality-gate it independently before any stack composition."
+    },
+    {
+      "rank": 4,
+      "family": "selected IQ2_XS gate/up",
+      "hipengine_ms": 461.876341,
+      "llamacpp_ms": 404.902905,
+      "gap_ms": 56.973436,
+      "share_of_total_kernel_gap": 0.024928680541225427,
+      "why_llamacpp_is_faster": "Both engines already compact and reuse routed rows. llama.cpp Q8_1/MMQ is only 1.14x faster than hipEngine's exact pair16 grouped body, so changed arithmetic has little remaining reward here.",
+      "portable_lesson": "Defer IQ2. The prior P6 quality and sparse-repair failures remain authoritative."
+    }
+  ],
+  "source_findings": [
+    "MMVQ_MAX_BATCH_SIZE is 8; M512 enters MMQ. RDNA3 high-expert MUL_MAT_ID selects MMQ unconditionally for this 256-expert model.",
+    "The RDNA WMMA config offers 256-thread, I=128, J up to 128, K=256 tiles for Q5_K, Q6_K, IQ2_XS, IQ3_XXS, and IQ4_XS; the trace selects J=128 and reports VGPR232-248 with zero scratch for the dominant MMQs.",
+    "quantize_mmq_q8_1 uses one scale per 32 values for these formats, packs four int8 values per store, and records format-specific partial sums where affine min terms need them.",
+    "For broadcast gate/up inputs, mm_ids_helper builds the inverse compact mapping and quantize_scatter_mmq_q8_1 quantizes one physical token row before writing its top-k compact slots. hipEngine already owns equivalent compact metadata, so the helper itself should not be ported.",
+    "At M512 dense Q5_K selects custom MMQ, while dense Q6_K exceeds gfx1100's <=128 MMQ cutoff and falls through to dequantization plus rocBLAS; a blanket claim that all llama.cpp dense projections use MMQ is incorrect.",
+    "The traced FlashAttention body is flash_attn_ext_f16<128,128,8,8> plus one general stream-K fixup per layer. Dynamic shared tiling and F16 WMMA, not merely two fewer launches per layer, explain the 22.6x attention-family delta."
+  ],
+  "campaign_revision": {
+    "external_targets_tok_s": {
+      "native_server_floor": 649.3210029980369,
+      "direct_m512_parity": 694.184,
+      "stretch": 800.0
+    },
+    "current_to_target_ratios": {
+      "native_server_required_speedup": 3.8369553945654555,
+      "direct_m512_required_speedup": 4.102058968249759,
+      "stretch_required_speedup": 4.727344874845585
+    },
+    "ranked_next_lanes": [
+      {
+        "id": "WPF-H1",
+        "name": "dense Q5/Q6 tensorized tile",
+        "order": 1,
+        "exact_first": "Screen larger distributed output-row tiles that preserve each output's K ownership and reduction tree, with source bytes and activations staged once per K tile.",
+        "changed_arithmetic_fallback": "Only after the exact tile ceiling is measured, compare the existing rejected D4/D8/D8R8 surfaces with a source-faithful F32-to-Q8_1 128x128/K256 MMQ leaf. A new result must be materially different from those rejected variants and pass the full 18-prompt/576-step gate.",
+        "attribution_ceiling_tok_s": 306.2720802504441
+      },
+      {
+        "id": "WPF-H2",
+        "name": "full-M512 tiled FlashAttention",
+        "order": 2,
+        "exact_first": "Extend adjacent-query K/V reuse beyond qrow4 while preserving KVLiveSpans and exact per-row reduction order; remove the four-M128 attention slicing where safe.",
+        "changed_arithmetic_fallback": "Isolate a compensated F16/WMMA 128-query, multi-head, stream-K route with an unfused exact fallback and the complete quality lane; the rejected online qrow4 route cannot be treated as reusable quality evidence.",
+        "cumulative_attribution_ceiling_tok_s": 425.76900463996746
+      },
+      {
+        "id": "WPF-H3",
+        "name": "IQ3/IQ4 selected-down tensorized tile",
+        "order": 3,
+        "exact_first": "Reprice larger exact expert-major row/output tiles and one-time codebook expansion without changing the existing compact metadata ABI.",
+        "changed_arithmetic_fallback": "Add a standalone source-faithful Q8_1 IQ3/IQ4 MMQ comparator and run quality independently before composing with any dense or attention approximation.",
+        "cumulative_attribution_ceiling_tok_s": 639.7575329729698
+      },
+      {
+        "id": "WPF-H4",
+        "name": "IQ2 residual and launch tail",
+        "order": 4,
+        "action": "Defer until H1-H3 are measured; do not reopen P6 or WPF-4 while IQ2 is only a 56.97-ms gap and span-minus-sum is 15.21 ms."
+      }
+    ],
+    "long_context_policy": "Keep 16K+ closed. First reach matched direct M512 >=694.184 tok/s, then collect a matched llama.cpp HIP M4K comparator before reopening long-context work; retain 800/700 tok/s at M512/M4K as stretch targets rather than the only evidence of attainable hardware performance.",
+    "no_gaming": "Every changed-arithmetic lane uses the complete train+heldout prompt/category gate and category heldouts; the fixed M512 stream is attribution only and cannot promote a candidate."
+  },
+  "raw_sources": {
+    "hipengine_wall": "/tmp/laguna-prefill-refresh-hipengine-matched-m512.json",
+    "llamacpp_hip_wall": "/tmp/laguna-prefill-refresh-llamacpp-hip-matched-direct-m512.json",
+    "llamacpp_vulkan_f16_wall": "/tmp/laguna-prefill-refresh-c0bc8591-vulkan-matched-direct-m512-f16.json",
+    "llamacpp_vulkan_bf16_wall": "/tmp/laguna-prefill-refresh-c0bc8591-vulkan-matched-direct-m512-bf16.json",
+    "hipengine_trace_summary": "/tmp/laguna-prefill-refresh-hipengine-rocprof/summary.json",
+    "llamacpp_hip_trace_summary": "/tmp/laguna-prefill-refresh-llamacpp-hip-matched-context4096-rocprof/summary-v2.json",
+    "raw_traces_committed": false
+  }
+}

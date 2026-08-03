@@ -1,0 +1,242 @@
+{
+  "admission": {
+    "all_45_layers_inseparable": true,
+    "correctness": "all 4096 signed-BF16 records exact and unique; complete BF16 equality to H6T and sampled CPU at rows1/7/8/9/M512, P64/P65, empty/uneven/reordered routing; poison, finite, repeat, lifecycle; then all 45 actual layers",
+    "fallback": "registered H6T grouped_raw_iq_active_experts primitive and complete H6R/H6Q/H6P/H6I/H6F/H6D/H5Z chain",
+    "first_object": "one separately named H6T-derived local128/grid32768x64 body; exact 8 b128 + 3 b32 + 6 b64 + 6 d16_b16 static loads, zero sign cmp/cndmask sites, 216 dot FMAs, 24 permlanex16, 96 DPP adds, 24 LDS b128 loads, 12 LDS stores, two barriers; code<=8500 B, slots<=1500, metadata/runtime VGPR<=101/104, LDS384/512, private/spill/scratch0",
+    "forbidden_salvage": "no table-value dtype/width/index/layout/cache-placement/layer/expert/routing/prompt/token/length/load-source/body-rewrite/resource-spill/recompile/favorable-rerun subset",
+    "named_trace": "exactly 45 candidate launches at retained grid/local128 with runtime VGPR<=104/LDS512/scratch0, positive durations, one queue/stream, zero compiler",
+    "no_sweep": "one uint64 record carrying four signed BF16 magnitudes, indexed by one fixed 4-bit-sign-plus-8-bit-grid formula; do not compile signed-int8/F16/F32/split-table/LDS alternatives",
+    "post_leaf_if_admitted": "bounded complete-class owner, complete M512 state/topology, fixed C4096/M512, clean 512/1K/4K, then separate source RED and promotion gate",
+    "preflight_before_hip_load": true,
+    "red_first": true,
+    "sole_build": true,
+    "timing": "one immutable all-45 actual-routing screen: five warmups, 15 counter-rotated repetitions, five launches/sample; every layer and aggregate must win HIP-event and synchronized-wall medians"
+  },
+  "authority_links": {
+    "README.md": "2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json"
+  },
+  "codebook_audit": {
+    "all_4096_records_exact": true,
+    "candidate_records": 4096,
+    "candidate_signed_bf16_sha256": "fd6a32535d84dfe0de0648f0c0b03a5fe0da375a3a4c30ccb3f7a5a9e96eb90f",
+    "candidate_storage_bytes": 32768,
+    "candidate_unique_records": 4096,
+    "control_entries": 256,
+    "control_raw_sha256": "46e35f5a997efdee6c99ce57854c8a0d4f0ff8ca57e5e8a60c0793ea580acf5d",
+    "control_storage_bytes": 1024,
+    "index_formula": "(sign_nibble << 8) | grid_index",
+    "record_layout": "four little-endian BF16 signed magnitudes in one uint64",
+    "sign_patterns": 16,
+    "value_alphabet": [
+      -62,
+      -52,
+      -44,
+      -36,
+      -28,
+      -20,
+      -12,
+      -4,
+      4,
+      12,
+      20,
+      28,
+      36,
+      44,
+      52,
+      62
+    ]
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "Commit this target-only packet, then freeze RED before any executable source change.",
+    "performance_measured": false,
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vgpr_file_per_simd": 1536,
+    "wavefront_size": 32,
+    "waves_per_simd_max": 16
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h8l_iq3_signed_bf16_codebook_target",
+  "lineage": {
+    "base_revision": "ca33f0f0592c35b3abf661d06cb48baaa884dc93",
+    "candidate_present": false,
+    "h6t_isa_sha256": "ea9b114c2de376479e57025f93445f6fb39d6a13e4443231049f272de2694f77",
+    "kernel_lineage_audit": "same four pre-existing documented external Qwen/PARO drifts; Laguna/llama.cpp references unchanged",
+    "package_policy_changed": false,
+    "prior_h6b_rejection_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-signed-magnitude-segment-plane-rejected.json",
+    "prior_h6b_rejection_artifact_sha256": "fa9b30efda5a18d0ea7ba30f3a3bbf468ec8ec6b5adcb7f493c3cb91fc572db1",
+    "prior_h8l_rejection_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json",
+    "prior_h8l_rejection_artifact_sha256": "2fd06ae09796ea8222a9c0e65eec614ae76057a61f0f37fe553b17e806003d79",
+    "prior_h8l_target_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json",
+    "prior_h8l_target_artifact_sha256": "4573d12cace03da5b3d70370018924ebde548aea52dbda3bcbe3b9d85efe340d",
+    "production_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "production_artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "red_present": false,
+    "runtime_owner_present": false,
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "b78198db6edee39099378d0adce3629dce020edddc67378b93716be90db6c87a",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
+    }
+  },
+  "matched_status": {
+    "application_dispatches": 2155,
+    "campaign_start_kernel_sum_ms": 3001.692,
+    "campaign_start_tok_s": 169.516,
+    "components": {
+      "attention": {
+        "current_ms": 115.349089,
+        "gap_ms": 93.83664200000001,
+        "llamacpp_ms": 21.512447
+      },
+      "gate_up": {
+        "current_ms": 401.4025780000001,
+        "gap_ms": 3.5976550000001453,
+        "llamacpp_ms": 397.804923
+      },
+      "iq_down": {
+        "current_ms": 273.163353,
+        "gap_ms": 119.30344199999996,
+        "llamacpp_ms": 153.859911
+      },
+      "q5": {
+        "current_ms": 230.42948,
+        "gap_ms": 172.11539000000002,
+        "llamacpp_ms": 58.31409
+      },
+      "q6": {
+        "current_ms": 73.31982099999999,
+        "gap_ms": 58.65222299999999,
+        "llamacpp_ms": 14.667598
+      },
+      "remaining": {
+        "current_ms": 52.755422999999986,
+        "gap_ms": -15.094016000000018,
+        "llamacpp_ms": 67.849439
+      }
+    },
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_kernel_sum_ms": 714.008408,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "llamacpp_wall_tok_s": 690.791,
+    "wall_tok_s": 440.8926238498552
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128, one queue"
+  },
+  "operation_contract": {
+    "candidate_name_suffix": "signed_bf16_codebook",
+    "gfx1151_fail_closed": true,
+    "id": "WPF-H8M",
+    "index_formula": "(sign_nibble << 8) | grid_index",
+    "name": "exact IQ3 sign-folded BF16 codebook",
+    "no_allocation_workspace_dispatch_or_policy_change": true,
+    "operation": "replace each unsigned four-byte IQ3 magnitude lookup plus four dynamic sign selections with one uint64 lookup containing the same four signed magnitudes as exact BF16 bits; expand those bits to F32 before unchanged scale/FMAs/reductions/stores",
+    "preserved": [
+      "all raw IQ3 bytes, sign decode, active-expert metadata, P64/P256 traversal, local128/four-wave/rowbatch8/triple-output ownership",
+      "every scale/selector and exact signed magnitude value, 216 ordered dot FMAs, 24 permlanex16, 96 DPP adds, serial wave sums, and BF16 output bits",
+      "two barriers, LDS publication/store order, output layout, raw ABI, lifecycle, and registered H6T fallback"
+    ],
+    "raw_pointer_abi": true,
+    "record_layout": "four little-endian signed BF16 values in one uint64",
+    "unfused_fallback": "registered H6T source owner; H6R/H6Q/H6P/H6I/H6F/H6D/H5Z remain rollback"
+  },
+  "operation_model": {
+    "actual_iq3_layers": 45,
+    "candidate_bf16_expansions": 24,
+    "candidate_logical_byte_increase_percent": 100.0,
+    "candidate_minus_control_logical_bytes": 105529737216,
+    "candidate_static_load_shape": "8 b128 + 3 b32 + 6 b64 + 6 d16_b16",
+    "candidate_static_sign_sites": {
+      "compare": 0,
+      "select": 0
+    },
+    "candidate_static_table_loads": "six b64 across the triple-output body",
+    "candidate_table_logical_bytes": 211059474432,
+    "candidate_table_storage_bytes": 32768,
+    "candidate_table_storage_multiplier": 32.0,
+    "control_static_load_shape": "8 b128 + 9 b32 + 6 d16_b16",
+    "control_static_sign_sites": {
+      "compare": 24,
+      "select": 24
+    },
+    "control_static_table_loads": "six b32 across the triple-output body",
+    "control_table_logical_bytes": 105529737216,
+    "control_table_storage_bytes": 1024,
+    "natural_segment_decodes": 103056384,
+    "not_cache_traffic_or_speed_result": true,
+    "preserved": "216 ordered dot FMAs, 24 permlanex16, 96 DPP adds, two barriers, LDS/publication/store order, raw ABI, P64/P256, rowbatch8, and all output bits",
+    "table_wave_loads_unchanged": 824451072
+  },
+  "performance_claim": false,
+  "prior_exact_iq3_boundaries": {
+    "closed": [
+      "H6B active-weight signed-magnitude producer/plane",
+      "H6X workgroup-resident uint32 table in LDS",
+      "H6Y packed raw-weight prefix loads",
+      "H7B lane-parallel final publication",
+      "H7L branched full-batch/live-tail split",
+      "H7M two-wave K partitions",
+      "H7W output P128 crossover",
+      "H8J launch-bounds-only occupancy",
+      "H8K uniform rowbatch4 ownership",
+      "H8L 12-bit unsigned codebook compression and reconstruction"
+    ],
+    "distinct_premise": "H8M does not shrink/reconstruct H8L entries or materialize H6B per-weight records. It uses one read-only sign-folded BF16 table to trade a fixed twofold logical table-byte model for removal of all 24 compare plus 24 select sign sites from the triple-output body."
+  },
+  "production": {
+    "h6t": {
+      "calls": 45,
+      "code_bytes": 7920,
+      "excess_over_complete_llamacpp_iq_down_ms": 110.51705299999998,
+      "grid": [
+        32768,
+        64
+      ],
+      "instruction_slots": 1384,
+      "local_size": 128,
+      "median_ms": 264.376964,
+      "metadata_lds_bytes": 384,
+      "metadata_vgpr": 101,
+      "runtime_lds_bytes": 512,
+      "runtime_vgpr": 104,
+      "scratch_bytes": 0,
+      "share_of_current_iq_down_percent": 96.78346714392542,
+      "static_sign_compare_sites": 24,
+      "static_sign_select_sites": 24
+    },
+    "source": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction"
+  },
+  "raw_evidence_sha256": {
+    "/tmp/audit_laguna_h8m_iq3_signed_bf16_codebook.py": "b4bd17153a6f445a079cdf48d09af69ed9e9f330a2c7841a66fd4aa8c5794de7",
+    "/tmp/build_laguna_h8m_iq3_signed_bf16_codebook_target.py": "5f05f0808f1b9216e02aa409c251c37eeffd16da9fd239d2331cd4336d1a3c00",
+    "/tmp/h8j-current-h6t.isa": "ea9b114c2de376479e57025f93445f6fb39d6a13e4443231049f272de2694f77",
+    "/tmp/laguna-h8b-post-commit-trace-summary.json": "443f8fc9992150acd6a6c4f066401628aba1d2d0b0b7d4d65b2f25f3f507106c",
+    "/tmp/laguna-h8m-iq3-signed-bf16-codebook-audit.json": "6d4d28b51dd6875887843b70ce9b11491b080724eb8514dbe3dd4cffcba7b9e4",
+    "/tmp/laguna-h8m-iq3-signed-bf16-codebook-audit.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8m-iq3-signed-bf16-codebook-audit.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8m-iq3-signed-bf16-codebook-audit.stdout": "6d4d28b51dd6875887843b70ce9b11491b080724eb8514dbe3dd4cffcba7b9e4"
+  },
+  "schema": 1,
+  "status": "target_selected_no_candidate_no_speed_result"
+}

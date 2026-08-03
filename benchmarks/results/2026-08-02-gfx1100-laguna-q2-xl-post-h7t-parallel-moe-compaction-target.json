@@ -1,0 +1,140 @@
+{
+  "admission": {
+    "correctness": "for natural M512/top10/E256 inputs from every 47-layer request, exact expert_start[257], active_experts/count, sorted_lanes, compact_to_source, sorted_weights, downstream tile map, packed hidden, complete MoE BF16 output, all 48 hidden boundaries, logits, KV/KVLiveSpans, token, repeat, and lifecycle",
+    "implementation_boundary": "no new HIP/Python/registry body is needed; only a separately qualified gfx1100 package capability may select the existing registered parallel wrapper after admission",
+    "no_salvage": "no layer/expert/routing-pattern/length subset, source rewrite, geometry/local-size retune, recompile, favorable rerun, or reuse of gfx1151 timing as gfx1100 admission",
+    "physical": "the cached gfx1100 object must expose all three named local256/wave32 stages with private/spill/scratch0 and plausible positive duration; no source rewrite or recompile after a binding miss",
+    "red_first": true,
+    "runtime": "only after standalone admission, compare explicit serial rollback with bounded default-off parallel mode on complete exact M512 state and same-resident fixed C4096/M512",
+    "source": "promote gfx1100 package capability only if clean fixed C4096/M512 and 512/1K/4K medians are all positive, all fixed pairs win, state remains exact, and named trace proves source ownership",
+    "tails": "retain exact stable ascending lane order for empty, one-active, uneven, all-active, repeated-expert, and total-lane tail fixtures; explicit serial remains rollback",
+    "timing": "one immutable actual-routing 5/15/5 screen over all 47 layers; each layer and the 47-layer aggregate must improve both summed HIP-event time and synchronized first-stage-to-last-stage wall time",
+    "trace": "one cache-only natural request must contain exactly 47 count + 47 prefix + 47 scatter stages, zero serial compact stages, unchanged 47 packed-hidden gathers, one queue/stream, positive durations, 2,286 total request dispatches, and zero compiler"
+  },
+  "authority_sha256": {
+    "README.md": "c33a7ed8aac34f9aa452847fd8d7fa2596118ad8325d25d95f919412f0815ef0",
+    "WORKLOG.md": "8788c16a198a0be6a0861265f4ad1f4e6a762997ee3d087e4a2aa8dfb9157c0a",
+    "benchmarks/CHANGELOG.md": "340d8e9d0be89fb27e0f5c0aa2541d5be3ab5a4ee2d2cb25e08289b9a4945cba",
+    "benchmarks/README.md": "9dede264095d1901c69992f53202ebab0e0d3fd5e0581c43ab38f67ddeffb1d1",
+    "docs/KERNELS.md": "f3717d511ac7b8922617b9d1be1679a207e990c80cd21d975b3d9cc0602e969f",
+    "docs/LAGUNA-prefill.md": "4dc6db4bf57adfaae965714b604e4b43193da5bb525d1f7f70e00009df553bbf",
+    "docs/PLAN.md": "0cafdc098fbc9a74cdf98ef4721df30a0697a812ff6ee5d4a0ee235133b7218b"
+  },
+  "created_at": "2026-08-02T19:30:00+09:00",
+  "date": "2026-08-02",
+  "decision": {
+    "gfx1100_candidate_executed": false,
+    "gfx1100_speed_result_exists": false,
+    "new_candidate_code_required": false,
+    "next_action": "commit this target-only boundary, then freeze one H7U RED before any gfx1100 capability/default change or candidate execution",
+    "performance_claim": "target_selection_only",
+    "production_changed": false,
+    "target_selected": true
+  },
+  "evidence_sha256": {
+    "/tmp/build_laguna_h7u_target.py": "43ca7204d71304c5aded611c99c2415fe032a28551391711516fa518e6e9ec64",
+    "/tmp/laguna-post-h7i-clean-matched-c4096-m512-trace-summary.json": "2fd0ed027face00bfbe43ebe84262a97fd833e5fd9813c436967f5c6285a3748",
+    "/tmp/validate_laguna_h7u_target.py": "b487a8c99bfea3555928bb57d86b367b3264f117f7242e815a50ad626c0db6e8",
+    "benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-production.json": "ba9617f2dcc2cd2d94e5d9c23d882c4a1c170e364817621fc42bc76e6db3a846",
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json": "afff2e5909b2fde7eddd6a0447cdba22ccbad8b739cc593e56620c8b396d708e"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h7t_parallel_moe_compaction_target",
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "four previously catalogued external-reference drifts; no new drift"
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural C4096/direct-M512, matrix512/attention128, exact selector-unset H7H/H7I production"
+  },
+  "prior_gfx1151_transfer_evidence": {
+    "artifact": "benchmarks/results/2026-07-26-gfx1151-laguna-parallel-compact-production.json",
+    "clean_wall_gain_percent": 1.3414572831777383,
+    "complete_moe_bf16_output_exact": true,
+    "leaf_relative_change_percent": -83.0975603300068,
+    "metadata_arrays_exact": true,
+    "paired_samples": 7,
+    "paired_wins": 7,
+    "parallel_trace_ms": 2.564,
+    "revision": "f91eccb5d16d8269199d4b1060df183c91dafad8",
+    "scope": "transfer rationale only; not a gfx1100 speed or correctness claim"
+  },
+  "production": {
+    "kernel_span_ms": 1193.552259,
+    "kernel_sum_ms": 1172.2412389999988,
+    "llamacpp_over_production": 1.6016107591271218,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_remaining_ms": 67.849439,
+    "remaining_gap_ms": 8.567487000000071,
+    "remaining_ms": 76.41692600000007,
+    "request_dispatches": 2192,
+    "revision": "5729834ce01c8aa1aa8b6e47e0fbc9fdc02ad9e1",
+    "serial_compaction_calls": 47,
+    "serial_compaction_kernel": "(anonymous namespace)::qwen35_moe_group_compact_active_kernel(long const*, float const*, long*, long*, long*, long*, long*, long*, float*, long, long, long)",
+    "serial_compaction_ms": 25.186825000000006,
+    "tok_s": 431.31016450993457,
+    "total_kernel_gap_ms": 458.2328309999988,
+    "unchanged_gather_calls": 47,
+    "unchanged_gather_kernel": "(anonymous namespace)::qwen35_moe_gather_packed_hidden_kernel(unsigned short const*, long const*, unsigned short*, long, long, long, long)",
+    "unchanged_gather_ms": 7.717388
+  },
+  "schema": 1,
+  "selection": {
+    "closed_lanes_not_reopened": [
+      "changed-association attention",
+      "Q5 geometry/representation/reconstruction",
+      "IQ-down residual repair/ownership",
+      "raw-Q6 direct ordered-consumer/decode geometry"
+    ],
+    "materially_distinct_operation": "replace one-workgroup O(num_experts*total_lanes) serial active-route compaction with existing stable parallel count, fixed-256 Blelloch prefix, and ballot-stable scatter",
+    "reason": "the exact registered sibling attacks scheduler metadata work, changes no model arithmetic or tensor values, needs no new allocation/workspace, and has prior cross-device production evidence while gfx1100 still explicitly defaults to serial",
+    "serial_share_of_remaining_percent": 32.95974637870147,
+    "serial_share_of_total_gap_percent": 5.4965125360037925,
+    "zero_cost_ceiling_only_ms": 25.186825000000006
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "9cf784e41d9f77983373f60c543342cfb7659a736ce84cdc762bb2bc93ab6abf",
+    "hipengine/kernels/hip_gfx1100/moe/group_scatter.hip": "f2b3d2f3a18e38ee1d20508b7fd9e0def8ec72d31c0bcc85b24d11646e977bad",
+    "hipengine/kernels/hip_gfx1100/moe/group_scatter.py": "85324ef38ebed685ec196385ea912effddaeb8a6532d40b3dade1db064c5bc93",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe",
+    "hipengine/runtime/laguna_moe.py": "295890f46bf198cbc7e8c99de80dd1d17b6c62a18f8fe244e3e172d5c9c59eb6",
+    "tests/test_laguna_moe_gpu.py": "70b3e39bdd07baf5e2996e870f984e1b5ebadb4f98f09a3ee0fbf39d3af831ff",
+    "tests/test_qwen35_moe_group_scatter_plan.py": "ab8645629b3c2a957ddbcdf8299690142e20be83b4d6903fe23ce4b3169b7751"
+  },
+  "status": "accepted_target_only_no_gfx1100_candidate_run",
+  "target": {
+    "candidate": "existing qwen35_moe_group_count_active_parallel_kernel -> qwen35_moe_group_prefix_active_parallel_kernel -> qwen35_moe_group_scatter_active_parallel_kernel per layer",
+    "candidate_dispatches": 141,
+    "control": "one qwen35_moe_group_compact_active_kernel launch per each of 47 MoE layers",
+    "control_dispatches": 47,
+    "existing_registered_leaf": true,
+    "expected_candidate_request_dispatches": 2286,
+    "gate_up_down_arithmetic_unchanged": true,
+    "gather_unchanged": true,
+    "gfx1100_source_owner_before_red": "serial",
+    "gfx1151_source_owner": "parallel",
+    "id": "WPF-H7U",
+    "mmq_tile_map_unchanged": true,
+    "name": "exact stable parallel MoE active compaction gfx1100 transfer",
+    "new_device_allocation_bytes": 0,
+    "new_workspace_bytes": 0,
+    "parallel_kernels": [
+      "qwen35_moe_group_count_active_parallel_kernel",
+      "qwen35_moe_group_prefix_active_parallel_kernel",
+      "qwen35_moe_group_scatter_active_parallel_kernel"
+    ],
+    "request_dispatch_delta": 94,
+    "router_outputs_unchanged": true
+  }
+}

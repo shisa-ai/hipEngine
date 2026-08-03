@@ -130,6 +130,500 @@ should be removed or collapsed.
   **-1.46%**. The profile comparison flag and session setter are removed in
   the census unit; retain only the architecture capability, current owner,
   and registered mixed32/exp32 rollback.
+## Laguna H7U parallel MoE compactor
+
+- Cleanup completed 2026-08-02. Exact bounded fixed, source-default
+  512/1K/4K, five-request wall, and selected-region topology gates promoted
+  `LAGUNA_MOE_GROUP_COMPACT_MODE="parallel"` on gfx1100. The temporary
+  `LAGUNA_MOE_GROUP_COMPACT_H7U_MODE` capability was deleted atomically; there
+  is one live package owner and no duplicate runtime selector or allocation.
+- Keep the explicit registered serial scheduler and
+  `set_group_compact_mode("serial")` only as the required exact rollback and
+  correctness oracle. Remove no fallback while it remains useful for backend
+  qualification or regression bisection; any future collapse must preserve an
+  unfused/numerically equivalent path under the project fallback policy.
+
+## Laguna H7E bounded default-off IQ3 residual-D4 owner
+
+- Cleanup completed 2026-08-02. The temporary exact-M512 owner passed narrow
+  state/trace gates but failed the binding 18-prompt/576-step lane at max KL
+  **5.630805** and general-Japanese top-1 **89.844%**. Promotion timing was
+  skipped.
+- Removed the residual-route resolver/plan fields, tile128 export, optional
+  eager-library fields, qualified/live maps, and runtime test. H6T/IQ4 remain
+  source and required fallbacks. Retain only the separately registered H7E leaf
+  and rejection evidence; reopen only with a materially different repair or
+  representation and a fresh RED/complete-quality contract.
+
+## Laguna H7Y bounded default-off lane-major SWA cache owner
+
+- Added 2026-08-03 for writer-inclusive qualification of the admitted H7Y
+  standalone leaf. The temporary
+  `LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS` map owns exact
+  **72 MiB / 72 allocations** of SWA K/V mirrors and selects one fused
+  natural+lane-major rows writer without adding dispatches.
+- Bounded qualification is complete: full state, exact **2,286-dispatch**
+  topology, writer-inclusive fixed C4096/M512, and clean 512/1K/4K medians pass.
+  Source promotion is separately rejected: exact selector-unset fixed M512
+  regresses **436.403→436.275 tok/s (-0.0294%)**. H6Z/H6W remains active and the
+  72-MiB owner stays default-off as an explicit diagnostic/rollback candidate.
+  Remove this candidate capability, mirror allocation route, fused writer, and
+  focused runtime test when no further materially different source mechanism
+  needs the layout; never allocate mirrors on the active H6Z/H6W path.
+
+## Laguna H8A resident global-Q5 F32 cache production cleanup
+
+- Added 2026-08-03 for exact owner-inclusive qualification. The gfx1100 source
+  `LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE` capability owns one immutable
+  **24-allocation / 1,811,939,328-byte** map for all 12 global `attn_q` and
+  `attn_output` raw-Q5 tensors. Explicit child sharing reuses the same owner;
+  every disabled, unsupported, unshared, allocation-failed, or non-target route
+  keeps the registered transient producer + H7G fallback.
+- Bounded and source qualification pass: all 24 complete planes, natural-M512
+  state, exact **24 setup / 0 request producer / 2,262-dispatch** topology,
+  fixed C4096/M512, and clean 512/1K/4K medians are positive and exact. Clean
+  committed production reaches **440.353 tok/s** with a **1,151.215-ms**
+  representative kernel sum, one queue, and zero compiler activity.
+- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`
+  capability and explicit positive selector are removed. Source ownership is
+  the sole positive route; `use_q5_f32_resident_global_cache=False` remains the
+  explicit transient-H7G rollback. Remove that false opt-out after one later Q5
+  family checkpoint if no rollback is needed.
+
+## Laguna H8B scoped activation-pack reuse production cleanup
+
+- Added 2026-08-03 for complete all-class qualification. The gfx1100 source
+  `LAGUNA_ACTIVATION_PACK_REUSE` capability owns one generic one-entry
+  context-local cache valid only inside attention Q/K/V, dense gate/up, or
+  shared-expert gate/up scopes. It publishes the exact
+  pointer/geometry/stream key only after a successful pack.
+- Bounded qualification passes: complete state and exact **330→223 pack /
+  2,262→2,155 dispatch** topology are preserved, fixed C4096/M512 improves
+  **+0.116%**, and clean 512/1K/4K improves **+0.148%/+0.175%/+0.152%**.
+  Source promotion and clean committed production pass at **440.893 tok/s /
+  2,155 dispatches**.
+- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`
+  capability and explicit positive selector are removed. Source ownership is
+  the sole positive route; `use_activation_pack_reuse=False` remains the
+  explicit complete-pack H8A rollback. Remove that false opt-out after one
+  later Q5/IQ-down checkpoint if no rollback is needed.
+
+## Laguna H6Z bounded default-off global-attention capability
+
+- Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact
+  complete-state, fixed, trace, and binding-4K gates. Selected gfx1100 source now
+  uses H6Z only for global starts256/384 at exact M128/C4096/H48/KV8/D128 and
+  reuses H6W's existing caller plane without allocation or workspace growth.
+  The named H6W map is the H6N-global rollback; H6A and unbound routes remain
+  complete fallbacks.
+- The first clean committed production reprofile is now complete at **423.233
+  tok/s / 1,195.702 ms / 2,192 dispatches** with exact selected topology and
+  H6W rollback evidence. Collapse any candidate-only resolver/test path that
+  independently restates selected H6Z ownership in a separate atomic cleanup
+  before the next source promotion. H7A's registry-leaf screen is now rejected
+  and fully removed, so it no longer blocks this cleanup. Keep the named H6W
+  rollback and required unfused H6N/H6A kernels; never retain two independently evolving H6Z dispatch routes.
+
+## Laguna default-off F32 hipBLASLt attention selector
+
+- WPF-H5B's temporary gfx1100 policy/map/owner seam is removed. The complete
+  18-prompt/576-step gate deterministically extends every natural prompt within
+  its train/heldout split to M512 and observes all **10,512** expected changed-
+  association launches, but reaches maximum KL **0.444675 > 0.05** despite
+  **564/576 (97.917%)** top-1, deterministic repeats, lifecycle recovery, and
+  diagnostic prefill **165.555 -> 190.103 tok/s (1.148x)** with every category
+  positive. Natural M512 passed at KL **0.000429**, but cannot waive the complete
+  gate.
+- Remove the gfx1100 top-level/component capabilities, architecture-local
+  hipBLASLt algorithm map, generic map normalization/selection seam, resident
+  propagation, and focused runtime tests. Retain the existing backend-neutral
+  leaf implementation and standalone W7900 evidence because gfx1151 owns its
+  independently quality-admitted route. Exact gfx1100 qrow4/M128 attention
+  remains production. Reopen only with materially different arithmetic and a
+  fresh complete quality gate.
+
+## Laguna default-off Q5 exact-value F32/rocBLAS selector
+
+- WPF-H5A's temporary selector and owner are removed. The complete changed-
+  association 18-prompt/576-step lane rejects exact-value Q5 SGEMM at maximum
+  KL **1.143627 > 0.05** despite **564/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **152.359 -> 202.707 tok/s
+  (1.330x)**. The earlier M512 state gate passed at KL **0.000374211**, but it
+  cannot waive the category-heldout ceiling.
+- Remove the constructor seam, context-local ABI, conditional eager library,
+  rocBLAS handle, **195,035,136-byte** workspace owner, backend capabilities,
+  and focused runtime tests. Retain only the separately registered exact-value
+  raw-Q5/F32 producer/composite primitives, their required unfused numerical
+  chain, and leaf evidence. Exact role-qualified coltile remains production.
+  Reopen only with materially different arithmetic and a fresh complete gate.
+
+## Laguna exact-ordered F32 Q5/Q6 production selector
+
+- Added 2026-07-30 for WPF-H5D and advanced through H5I. The gfx1100 package
+  owns all eight exact-M512 Q5 roles plus four exact-Q6 roles through one
+  **150,994,944-byte** projection-local F32 weight plane; row/key/backend/shape/
+  capacity misses retain raw coltile. H5I adds no allocation or sidecar. Complete
+  package-default M512 state is byte-exact at KL 0, and clean selector-unset
+  512/1K/4K publishes **191.713/178.080/134.411 tok/s**, improving H5G
+  **+1.762%/+1.736%/+1.256%**. This is retained production, not a rejected
+  experiment.
+- Cleanup completed immediately after the H5E checkpoint: remove the public
+  `LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=...)` boolean, rename the
+  resolver as a private package-only helper, and remove it from `__all__`.
+  Retain the quant-keyed package role maps, context-local bounded owner,
+  registered unfused producer/consumer chains, and raw-coltile miss fallbacks
+  required by policy. Remove the legacy Q5-named internal session/scratch fields
+  after one clean checkpoint confirms no downstream benchmark harness imports
+  them; this is naming cleanup only and must not create a second owner.
+  Benchmark harnesses use scoped package-policy mutation for exact A/B control;
+  production has no per-session selector surface.
+- WPF-H5W's eager-alias cleanup trigger is closed. Complete state is KL0,
+  cached integration records **142 H5W + one H5I + three raw** consumers at
+  unchanged topology, default-off 512/1K/4K is
+  **+1.830%/+1.492%/+1.061%**, and selector-unset publication confirms
+  **+1.785%/+1.532%/+1.100%** with 3/3 wins each. Retain exactly the three Q6
+  eager aliases and promoted role entries; they add no selector or allocation.
+  Keep H5I F32-N72 plus raw exact fallbacks. Do not add a public/session
+  selector or duplicate owner.
+- WPF-H5X's eager-alias cleanup trigger is closed. Complete state is KL0, four
+  counter-rotated cached requests record **151 H5X + 37 H5L + 47 H5G**
+  consumers at unchanged topology, default-off 512/1K/4K is
+  **+0.439%/+0.468%/+0.518%**, and selector-unset publication confirms
+  **+0.531%/+0.310%/+0.327%**, 3/3 wins each. Retain exactly the four eager
+  aliases and H5X/H5L rollback primitives beneath H5Y. N48/N72 remain H5G and
+  all Q6 routes remain unchanged. Do not add a public/session selector or
+  duplicate owner.
+- WPF-H5Y's eager/workspace cleanup trigger is closed. Complete state is KL0;
+  cached integration records **188 packs + 235 weight producers + 188 H5Y +
+  47 H5G**, default-off 512/1K/4K is **+10.939%/+9.051%/+5.920%**, and
+  selector-unset publication confirms **+10.862%/+8.969%/+5.829%**, 3/3 wins
+  each. Retain exactly six eager aliases and one combined **161,120,256-byte**
+  ordered scratch allocation containing the F32 weight and BF16 activation
+  planes. Keep H5X/H5L/H5G registered fallbacks and all Q6 routes unchanged;
+  do not add a public/session selector, persistent sidecar, or duplicate owner.
+- WPF-H6E's source-adjudication trigger is closed: selector-unset 512/1K/4K is
+  **+0.515%/+0.425%/+0.259%**, 3/3 exact wins each, and fixed C4096/M512 is
+  **+0.266% with 5/5 wins**. `GGUF_Q6_F32_ORDERED_PREFILL_POLICY` now copies
+  the three qualified H6E values; `GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY` is
+  only a temporary duplicate release-checkpoint seam. Remove that duplicate
+  capability and collapse tests to the source map after one release checkpoint.
+  Keep H5W and H5I registered exact rollbacks and preserve the one combined
+  **161,120,256-byte** workspace / **600,141,856-byte** scratch owner. Do not
+  add a public/session selector, allocation, workspace, sidecar, or second ABI.
+
+## Laguna default-off Q6 F16/rocBLAS selector
+
+- WPF-H4's temporary selector and owner are removed. The complete changed-
+  arithmetic 18-prompt/576-step lane rejects source Q6 at maximum KL
+  **0.338657 > 0.05** despite **567/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **151.784 -> 158.205 tok/s
+  (1.042x)**. The earlier M512 state gate passed at KL **0.000721933**, but it
+  cannot waive the category-heldout ceiling.
+- Remove the constructor seam, context-local ABI, conditional eager library,
+  rocBLAS handle, **97,517,568-byte** workspace owner, backend capabilities, and
+  focused runtime tests. Retain only the separately registered raw-Q6/F16
+  producer/composite primitives, their required unfused numerical chain, and
+  leaf evidence. Exact role-qualified coltile remains production. Reopen only
+  with materially different arithmetic and a fresh complete quality gate.
+
+## Laguna raw-Q5/Q6 prefill rowbatch selector
+
+- Added 2026-07-28 as the default-off WPF-1 runtime admission seam, promoted
+  rowbatch8 after its exact gates, then promoted rowbatch32 after WPF-1W clean
+  paired 512/1K gains of **7.783%/7.249%** and selector-unset publication at
+  **85.481/79.555 tok/s**. `LagunaGGUFResidentSession(...,
+  raw_k_prefill_rowbatch=0|4|8|16|32)` scopes fixed-grid-Y Q5/Q6 row reuse to one
+  bulk-prefill execution owner; zero is scalar rollback. gfx1151 excludes all
+  sixteen rowbatch plus eight output-column W7900 keys and remains zero.
+- WPF-C1 confirms RB32 remains the full-model winner at retained M256 and traces
+  its Y8 grid. WPF-2 then selects M512 without changing the RB32 owner; clean
+  publication reaches **99.230/91.559 tok/s**. Keep RB8 as the preceding
+  production control and zero as scalar rollback. The publication trigger is
+  now satisfied: remove rowbatch4/16 and their explicit CLI/registry surface in
+  a separate cleanup unit because no retained end-to-end policy selects either.
+  Preserve scalar registered fallback for unsupported shapes/backends.
+- WPF-1T first promoted exact `(4,8)` through the gfx1100 package for full
+  RB32 slabs with output width divisible by four. The no-override M512 state
+  gate is KL0 across all 48 boundaries/KV spans, clean 512/1K publishes
+  **169.253/159.229 tok/s**, and restored 4K passes at **123.084 tok/s**.
+  The bounded `(2,16)` decision is now complete: exactly four
+  `(quant, output, K, N)` keys save **36.773 ms (2.011%)** from the 381-call
+  Q5/Q6 family. The frozen seven-pair gate passes **+0.545%/+0.459%** at
+  512/1K; a package-path repeat remains exact and positive at
+  **+0.382%/+0.242%** but misses the repeated 1K `>0.3%` magnitude threshold.
+  Keep `(2,16)` only for those four measured keys and `(4,8)` everywhere else;
+  pooled 14-pair diagnostics are **+0.441%/+0.366%** with **14/14** and
+  **12/14** wins. The benchmark-only Laguna variant constructor/setter surface
+  is removed; explicit rowbatch selection still restores RB32. The internal
+  context-local `coltile` owner remains necessary to scope production dispatch.
+
+## Laguna prefill matrix-capacity selector
+
+- Added 2026-07-29. WPF-C1 first exported `LAGUNA_PREFILL_MATRIX_ROWS=256`;
+  WPF-2 now selects 512 after exact expert-major IQ down reuse makes the larger
+  grouping materially faster. Explicit `LagunaGGUFResidentSession(...,
+  prefill_chunk_size=...)` remains the rollback/comparison route. Both global
+  and SWA attention stay independently capped at 128.
+- Direct M256 improves exact M128 **0.973%/1.086%** at 512/1K and uses
+  **219,514,912 bytes** planned row/MoE scratch. With grouped exact IQ down,
+  M512 improves direct by **14.118%/13.354%** and beats the separately measured
+  grouped M256 row by **1.703%/1.691%**. Clean package publication and the
+  post-publication trace now pass, so collapse benchmark-only three-way
+  comparison plumbing in a separate cleanup unit while preserving M128/M256
+  exact rollback through explicit `prefill_chunk_size` overrides.
+
+## Laguna exact grouped-IQ prefill selector
+
+- Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving
+  route-major pair16/local64 gate/up before registered expert-major IQ3/IQ4
+  down and exact weighted restore. WPF-2b now exports
+  `LAGUNA_SELECTED_GATE_UP_MODE="grouped_pair16"` with
+  `LAGUNA_SELECTED_DOWN_MODE="grouped_exact"`. Explicit `grouped_exact` and
+  paired `direct` remain rollbacks; unsupported keys fail closed to the exact
+  route-major/grouped chain. gfx1151 keeps its independently measured MMQ
+  modes.
+- WPF-2b promotes the distinct local64/pair16 rowbatch8 primitive after exact
+  all-46-layer, complete-state KL0, clean 512/1K, and cached-trace gates. Clean
+  publication improves **99.230/91.559 -> 118.705/107.804 tok/s** and tracing
+  cuts gate/up **62.549%/62.850%** at unchanged dispatch count. Bulk gfx1100
+  now defaults gate/up to `grouped_pair16` plus `grouped_exact` down; c=1,
+  unsupported keys, explicit `grouped_exact`, and paired `direct` remain exact
+  fallbacks.
+- WPF-H6L's pair16 same-ABI capability cleanup trigger is closed. Complete
+  M512 is KL0/byte-exact; four cached requests substitute exact **46 rowbatch8
+  -> 46 H6L** at unchanged **2,192** dispatches and cut IQ2/request/span
+  **18.064%/5.153%/5.532%**. Selector-unset 512/1K/4K confirms
+  **+5.666%/+4.468%/+3.246%**, 3/3 exact wins each, while fixed natural
+  C4096/M512 wins **5/5** at **360.451 -> 381.893 tok/s (+5.949%)**. Keep H6L
+  source plus rowbatch8 same-ABI rollback through one release checkpoint; then
+  collapse the capability indirection to the source map if no downstream
+  bisection uses it. Add no adapter, allocation, workspace, sidecar, or public
+  selector. See the
+  [H6L production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-production.json).
+- The cleanup trigger is closed. Cleanup removed the unowned Laguna rowbatch8
+  and fused-SiLU local256/group8 gate/up variants, IQ3 down rowbatch4, and
+  losing pair16 rowbatch4 wrappers, keys, HIP instantiations, and focused tests.
+  It preserves pair16 rowbatch8, grouped IQ3 single/down rowbatch8, IQ4 auto,
+  shared compaction metadata, c=1 route-major arithmetic, and direct exact
+  fallback. The initially broader deletion premise was unsafe: IQ2/IQ3
+  base/rowbatch4/adaptive/auto and IQ4 dual independently own Qwen3.5 GGUF's
+  exact default-on grouped-prefill route and remain covered. P6 and WPF-1R
+  remain closed.
+- WPF-H5J's package-only `LAGUNA_GROUPED_IQ_DOWN_VARIANTS` cleanup trigger is
+  closed. Complete M512 state is KL0/byte-exact, integrated tracing selects all
+  **45+2** expected calls, and clean selector-unset 512/1K/4K publishes
+  **196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052%)** over H5I. Keep
+  the two-entry gfx1100 map and its bounded resolver: it replaces each
+  registered IQ3/IQ4 key independently only for exact K1024/N3072, while map,
+  shape, registration, and backend misses retain rowbatch8/IQ4-auto. gfx1151
+  remains empty/fail-closed. There is no public/session selector, new
+  allocation, workspace, or sidecar to remove.
+- WPF-H5Q's `LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS` cleanup trigger is closed.
+  Complete M512 state is KL0, tracing selects all **45** P64 IQ3 calls, and
+  default-off 512/1K/4K is **+0.702%/+0.278%/+0.370%**. Selector-unset
+  publication confirms **+0.663%/+0.355%/+0.267%**, 3/3 paired wins at every
+  length. Keep H5Q's gfx1100 variant-to-`grouped_raw_iq_active_experts` entry
+  and ABI-table adapter: they pass the existing device active-expert list/count
+  with no allocation, producer, sidecar, or public selector. Map, ABI, shape,
+  registration, and backend misses retain the generic exact route; gfx1151
+  stays empty/fail-closed.
+- WPF-H5Z's second variant-to-active-expert ABI entry cleanup trigger is closed.
+  Complete M512 state is KL0/byte-exact; four paired traces select exact **45
+  H5Q or 45 H5Z** calls at unchanged **2,050** dispatches and cut IQ3/request/
+  span **2.342%/1.312%/1.539%**. Default-off 512/1K/4K is
+  **+1.801%/+1.334%/+0.900%** and selector-unset confirms
+  **+1.819%/+1.452%/+0.872%**, 3/3 wins each. Keep both ABI entries and H5Q as
+  registered rollback beneath H5Z production. Do not add another adapter,
+  allocation, workspace, sidecar, or public selector.
+- WPF-H6D's third active-expert ABI capability cleanup trigger is closed.
+  Complete M512 is KL0/byte-exact; four paired traces substitute exact **45 H5Z
+  -> 45 H6D** calls at unchanged **2,050** dispatches and cut IQ3/request/span
+  **2.564%/0.251%/0.861%**. Selector-unset 512/1K/4K confirms
+  **+1.207%/+0.657%/+0.492%**, 3/3 wins each, while fixed C4096/M512 wins **5/5**
+  at **329.327 -> 332.308 tok/s (+0.905%)**. Keep H5Z and H5Q as registered
+  rollback beneath H6D production and keep all three ABI entries through one
+  release checkpoint. Do not add another adapter, allocation, workspace,
+  sidecar, or public selector. See the
+  [H6D production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json).
+- WPF-H6F's fourth active-expert ABI capability cleanup trigger is closed and
+  superseded by H6I source production. Its original complete-state, trace, and
+  selector-unset gates remain valid rollback evidence. Keep H6F as the immediate
+  registered rollback beneath H6I through one release checkpoint; do not remove
+  H6D/H5Z/H5Q entries before that checkpoint because they remain the deeper
+  exact bisection chain. Add no adapter, allocation, workspace, sidecar, or
+  public selector. See the
+  [H6F production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json).
+- WPF-H6I's fifth active-expert ABI capability cleanup trigger is closed.
+  Complete M512 is KL0/byte-exact; four cached requests substitute exact **45
+  H6F -> 45 H6I** at unchanged **2,192** dispatches and cut IQ3/request/span
+  **9.559%/1.906%/2.200%**. Selector-unset 512/1K/4K confirms
+  **+2.304%/+1.650%/+0.719%**, 3/3 exact wins each, while fixed C4096/M512 wins
+  **5/5** at **352.966 -> 360.154 tok/s (+2.036%)**. Keep H6F as immediate
+  rollback through one release checkpoint, then collapse superseded H5Q/H5Z/
+  H6D capabilities only if no downstream bisection uses them. Retain the
+  registered H6I source plus H6F rollback; add no adapter, allocation,
+  workspace, sidecar, or public selector. See the
+  [H6I production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-production.json).
+- WPF-H6P adds a sixth same-ABI active-expert capability as a bounded default-
+  off owner. Complete M512 and exact four-request **45 H6I -> 45 H6P** topology
+  pass; 512/1K/4K gains **+0.764%/+0.416%/+0.242%** and fixed C4096/M512 gains
+  **+0.141%**. Remove the H6P ABI entry if the separate source-default gate
+  fails. If H6P promotes, retain H6I as immediate rollback through one release
+  checkpoint, then collapse older H5Q/H5Z/H6D/H6F entries only when no active
+  bisection uses them. Add no adapter, allocation, workspace, sidecar, env flag,
+  or public selector. See the
+  [H6P candidate/runtime artifact](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json).
+- WPF-H6C's grouped gate/up role-map cleanup trigger is closed. Complete M512
+  state is KL0/byte-exact, paired tracing records exact **46 IQ2 + one H6C** at
+  unchanged **2,050** dispatches, default-off 512/1K/4K is
+  **+1.148%/+0.796%/+0.560%**, and selector-unset publication confirms
+  **+1.326%/+0.897%/+0.490%**, 3/3 wins each. Fixed natural-M512/C4096 also wins
+  **5/5** at **325.211 -> 328.863 tok/s (+1.123%)**. Keep the one-entry
+  `LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS` map and qualified
+  `grouped_raw_iq_dual_silu` ABI through one release checkpoint; then consider
+  folding the stable role into the grouped gate/up plan while preserving the
+  empty-map route-major rollback, bounded fail-closed checks, and no
+  allocation/workspace/sidecar/public selector. See the
+  [H6C production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-production.json).
+
+## Laguna exact qrow4 SWA prefill selector
+
+- Added 2026-07-29. WPF-3 registers the direct exact qrow4 body plus
+  `swa_context_rows_qrow4_m128_c256_exact_spans`, which keeps wave32 below its
+  measured rows/context crossover. The gfx1100 package now exports the
+  qualified policy after no-override deep-state KL0 and paired 512/1K gains of
+  **11.230%/16.774%**. Explicit local128, wave32, qrow2, qrow4, and online
+  variants remain available for rollback and the separate arithmetic screen.
+- Clean publication is complete at **131.919/125.960 tok/s** with cached SWA
+  reductions of **55.411%/59.449%**. No benchmark-only comparison plumbing is
+  committed. The separate complete online-qrow4 decision improves suite prefill
+  **0.995%** but is rejected at maximum KL **0.394600** despite **564/576**
+  top-1, deterministic repeats, and passing Poolside/lifecycle checks. Preserve
+  local128, qualified wave32, and exact qrow4-C256 as gfx1100 fallback/default;
+  do not remove online qrow2/qrow4 registrations because gfx1151 independently
+  owns them. Do not reopen changed-association gfx1100 SWA without a materially
+  different arithmetic premise and a new complete quality gate.
+- WPF-H5M's package-only `LAGUNA_SWA_PREFILL_ROLE_VARIANTS` cleanup trigger is
+  closed. Complete M512 state is KL0/byte-exact, integrated tracing selects all
+  **72** expected calls, and clean package-default 512/1K/4K publishes
+  **238.565/218.182/158.138 tok/s (+0.256%/+0.135%/+0.490% over H5L)**. Keep the
+  one-entry gfx1100 map and bounded resolver: it replaces only the retained
+  package-default auto route at M128, window 512, 72 SWA heads, and start >=256;
+  explicit rollback plus shape, registration, and backend misses retain WPF-3.
+  gfx1151 remains empty/fail-closed. There is no public/session selector, new
+  allocation, workspace, or sidecar to remove. After one release checkpoint,
+  consider folding the stable role into the existing auto wrapper and deleting
+  only the map/cache-field indirection while preserving exact fallbacks.
+- WPF-H5N's temporary default-off role-policy extension is removed. Complete
+  M512 state and integrated tracing are exact/positive, but the clean gate is
+  negative at 4K and a seven-repeat adjudication confirms **7/7** H5N samples
+  below H5M (**158.152 -> 157.832 tok/s, -0.202%**). Retain the separately
+  registered standalone H5N leaf and its M512 evidence; do not re-add it to the
+  role-candidate policy or package map without a distinct long-context premise
+  and a fresh 512/1K/4K gate. The older H5M map/cache-field cleanup remains
+  independently eligible after its release checkpoint.
+- WPF-H5R's `LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS` cleanup trigger is closed.
+  Complete M512 state is KL0, corrected one-queue tracing records all **144**
+  write->H5R pairs, and selector-unset 512/1K/4K is
+  **+11.340%/+4.848%/+0.746%** with 3/3 wins each. Keep the one gfx1100 role
+  entry, preappend capability, and generic fail-closed cache gate through one
+  release checkpoint, then consider folding the stable role into package auto
+  policy while preserving H5M/wave32/global/partial/wrapped/verifier/explicit/
+  registration/backend misses. No allocation, workspace, sidecar, or public
+  selector was added. The earlier uncapped speed packet is superseded.
+- WPF-H5U's temporary runtime-policy seam is removed. Complete M512 state is
+  KL0/byte-exact, integrated tracing records **48 H5U + 144 H5R** physical
+  preappend pairs at unchanged topology, and active C4096 routes improve.
+  Source-default publication nevertheless misses the binding role-ineligible
+  1K non-regression gate: the balanced eight-pair adjudication is
+  **230.181231 -> 230.175317 tok/s (-0.00257%, 2/8 wins)**. Remove the global
+  package map, role candidate/resolver branch, allocator argument, runner
+  bookkeeping, and runtime-policy test; retain only the separately admitted
+  leaf. Reopen ownership only with a materially different package-scoping
+  premise and a fresh complete 512/1K/4K gate. No allocation, workspace,
+  sidecar, or public selector remains
+  ([runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json)).
+- WPF-H6A's dense-initial role-map cleanup trigger is closed. Complete M512
+  state is KL0/byte-exact, paired tracing records exact **48 H6A global + 144
+  H6A SWA** calls at unchanged **2,050** dispatches, default-off 512/1K/4K is
+  **+1.713%/+0.677%/+0.326%**, and selector-unset publication confirms
+  **+1.831%/+0.550%/+0.359%**, 3/3 wins each. Keep the two-entry map, dense role
+  parser, independent allocator/runner selector bookkeeping, H5R/H5U registered
+  rollbacks, and fail-closed policy through one release checkpoint; then
+  consider folding only the stable owner into package auto policy. No
+  allocation, workspace, sidecar, or public selector was added.
+
+## Laguna source-IQ selected-down MMQ selector
+
+- WPF-H3's temporary default-off runtime seam is removed. The complete
+  18-prompt/576-step lane rejects source IQ3/IQ4 selected down at maximum KL
+  **0.373028 > 0.05** despite **567/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **1.192x** faster. A structural
+  IQ3-source/IQ4-exact followup is also rejected at maximum KL **0.372917**;
+  the source IQ3 arithmetic, not the two IQ4 layers, owns the failure.
+- No constructor switch, package capability, tile128 metadata owner, scratch
+  reuse route, or grouped source dispatch remains. Keep the separately
+  registered strict DS4 producer and IQ3/IQ4 consumers as leaf evidence; exact
+  grouped down remains production. All 45 IQ3 roles share K1024/N3072, so do
+  not add prompt- or layer-conditioned selection. Reopen only with materially
+  different arithmetic and a fresh complete quality gate.
+
+## Laguna source FlashAttention selector
+
+- WPF-H2's temporary default-off runtime seam is removed. The complete
+  18-prompt/576-step lane rejects all-layer source-F16 attention at maximum KL
+  **1.804860 > 0.05** despite **564/576** top-1, deterministic repeats,
+  lifecycle recovery, and diagnostic prefill **1.027x** faster. F32 PV,
+  full-attention-only, and SWA-only heldout screens also fail at maximum KL
+  **1.687078/0.589071/0.859783**.
+- No constructor switch, package capability, eager library owner, or KV/runtime
+  dispatch branch remains. Keep only the separately registered standalone
+  primitive and its leaf-parity evidence; the exact qrow4/M128 production chain
+  remains the required runtime path. Reopen only with materially different QK
+  arithmetic and a fresh complete quality gate, not another layer subset.
+
+## Laguna P6 IQ2 MMQ32 diagnostic
+
+- The pre-existing explicit four-axis primitive expands raw IQ2 to signed-byte
+  fragments and consumes a caller-owned D4-Q8_1 pack. Actual M512 repricing
+  improves the 46-layer gate/up leaf sum **1297.436 -> 388.901 ms (3.336x)**
+  and a temporary session reaches **122.135/110.761 tok/s** at 512/1K.
+- Runtime admission is closed: complete quality reaches max KL **0.683239** at
+  **565/576** top-1, while P6-specific repair density reaches **85.946%**
+  uncertain coordinates and **99.496%** touched active output rows. No runtime
+  owner, selector, or repair queue was added. Keep the primitive only as an
+  explicit arithmetic ceiling/negative control; do not add another P2/P6
+  changed-arithmetic sibling. This result does not close WPF-1R's separate raw
+  Q5/Q6 density screen.
+
+## Laguna raw-Q5/Q6 prefill MMQ selector
+
+- Added 2026-07-28 as the default-off WPF-1B admission seam. The temporary
+  `LagunaGGUFResidentSession(..., raw_k_prefill_mmq=True|False)` lazily owned one
+  bounded producer-row Q8_1 workspace and library on gfx1100. Quant-specific
+  crossover policy keys selected only N>=1024; N48/N72 and all misses retained
+  the exact rowbatch owner.
+- D4, D8, and D8R8 runtime candidates are performance-positive but rejected by
+  the complete quality lane at maximum KL **0.624304/0.400292/0.964321**. Do
+  not promote any direct policy and do not add D16 or another blind precision
+  sibling. The temporary owner ultimately selected D8R8 only as diagnostic
+  infrastructure for measuring mismatch/risk density.
+- WPF-1R now closes bounded repair on the raw-Q5/Q6 roles themselves. One
+  natural M512 pass captures all **381/381** projection tensors; 333 are
+  D8R8-eligible and 48 narrow gates remain exact. Measured BF16 mismatches touch
+  **72.266-100%** of output-weight rows in every eligible tensor and imply
+  **0.160-1.686x** exact-RB32 family reads. All 333 fail the 20% touched-row
+  stop; 331 already fail the 25% read stop. The conservative midpoint envelope
+  reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads, so all 333
+  fail all three prospective gates. No repair queue/kernel/overflow route or
+  promotion lane was added.
+- **Closed 2026-07-29:** remove the public `raw_k_prefill_mmq` constructor
+  selector/setter, backend capabilities, lazy workspace/library owner,
+  quant-policy keys, context/ABI dispatch, benchmark flags/telemetry, and
+  owner-focused tests. Exact rowbatch32 and smaller-slab fallbacks remain.
+  Direct D4/D8/D8R8 wrappers and primitive keys remain only as published
+  ceiling/rejection evidence; no production owner can select them. Evidence:
+  `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json`.
 
 ## Laguna long-context F32 hipBLASLt rollback routes
 
@@ -322,6 +816,19 @@ should be removed or collapsed.
   keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
   one-release rollback window, then collapse both selectors.
 
+## gfx1100 Laguna H5B packed-attention qualification selector
+
+- Added 2026-07-30 as the explicit default-false gfx1100
+  `LAGUNA_PREFILL_ATTENTION_HIPBLASLT` package capability. The package also
+  owns its measured QK **2/1/3** and PV **2** heuristic map plus packed-query,
+  direct-producer, wave-softmax, and packed-output component policy. gfx1151
+  retains its independent built-in map and production defaults.
+- Remove the gfx1100 capability/components/map and owner-propagation tests if
+  the complete multi-prompt changed-association gate fails. If quality and
+  clean 512/1K timing pass, promote the top-level capability and retain one
+  explicit whole-route rollback only through the next production checkpoint;
+  unsafe `KVLiveSpans` shapes always keep their exact fallback independently.
+
 ## Laguna packed-query F32 hipBLASLt attention selector
 
 - Added 2026-07-27 for the quality-gated two-call dense-initial attention
@@ -438,7 +945,7 @@ shorter-horizon audit establishes a lower break-even.
 | Laguna SWA exact-qrow2 prefill rollback | Explicit `swa_context_rows_qrow2_exact_spans`, context-qualified `swa_context_rows_qrow2_m128_c128_exact_spans`, and retained wave32 variants coexist beneath the promoted online-qrow2 default. | The exact context-qualified route applies qrow2 only to complete M128 attention slices at absolute start>=128. Its final exact three-repeat gate improves 512/1K/4K prefill 0.893%/1.212%/1.040%; its complete category gate is exact and non-regressive at 0.999652x prefill and 0.999917/0.999999x h16/h32 E2E. It now serves as the primary exact rollback; empty-context, short, partial, and verifier rows delegate to wave32. gfx1100 and unmeasured backends are unchanged. | After one release window and a defaults-only gfx1151 512/1K/4K refresh, remove redundant positive direct-qrow2 selection if no bisection needs it; keep wave32 as the unsupported/short-row fallback and context-qualified exact qrow2 as the primary numerical rollback. Never broaden exact qrow2 below M128 or before start 128 without independent crossover and full gates. |
 | Laguna global qrow2 online-prefill rollback | Explicit `global_context_rows_spans` remains beside gfx1151's promoted `global_context_rows_qrow2_online_spans` default. | The online route streams one BF16 K/V row across two adjacent queries without whole-context score LDS. It improves repeated 512/1K/4K **2.472%/5.444%/21.854%**; the complete category gate improves weighted prefill **0.315%** and h16/h32 E2E **0.184%/0.125%** with max KL `0.030836`, top-1 317/320, every category positive, and Poolside/repeats/lifecycle passing. gfx1100/unmeasured backends stay exact. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json`. | After one release window and a defaults-only 512/1K/4K plus category refresh, remove redundant positive explicit-online selection if no bisection needs it; keep `global_context_rows_spans` as the required exact fallback and explicit rollback. Never enable on another backend without independent quality/performance evidence. |
 | Laguna SWA qrow2 online-prefill rollback | Explicit context-qualified exact qrow2 and wave32 routes coexist beneath gfx1151's promoted `swa_context_rows_qrow2_online_spans` default. | One wave replaces exact qrow2's two ring scans with online max/denominator/output state. M128/full-window and start508 wrap improve **3.093x/2.904x**; repeated 512/1K/4K improves **6.828%/9.364%/10.766%**. The complete category gate improves weighted prefill **1.086%** and h16/h32 E2E **0.616%/0.420%** with max KL `0.042924`, top-1 316/320, every category positive, and Poolside/repeats/lifecycle passing. gfx1100/unmeasured backends retain prior defaults. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json`. | After one release window and a defaults-only 512/1K/4K plus category refresh, remove redundant positive explicit-online selection if no bisection needs it; keep exact context-qualified qrow2 and wave32 as rollback/fallback. Never enable on another backend without independent quality/performance evidence. |
-| Laguna prompt prefill fallback | `LagunaGGUFResidentSession.prefill(..., use_bulk=False)` keeps the original token-serial prompt path beside default chunked rows. | Multi-length state/target-AR gates are complete. LPF-4 established exact bounded 128-row bulk chunks; AR-O3 now defaults gfx1151 to matrix512/attention128 after clean repeated 512/1K/4K gains of 6.266%/5.862%/4.943% with complete logits/hidden/KV/span/cursor/repeat/lifecycle equality. Unmeasured backends retain matrix128. Token-serial remains only as the independent state oracle and rollback through the post-prefill DFlash refresh; `forward_token()` decode is unchanged. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-matrix-chunk-retained.json`. | Move token-serial prefill to a correctness-only helper (or remove the public selector) after bulk passes the full prompt-length/context matrix, retained target-AR performance is non-regressive, and verifier accept/rollback gates no longer need prefill bisection. |
+| Laguna prompt prefill fallback | `LagunaGGUFResidentSession.prefill(..., use_bulk=False)` keeps the original token-serial prompt path beside default chunked rows. | Multi-length state/target-AR gates are complete. LPF-4 established exact bounded 128-row bulk chunks; AR-O3 defaults gfx1151 to its independently retained capacity. WPF-2 now defaults gfx1100 to matrix512/attention128/grouped-exact after all 48 boundaries/KV/spans/routing/lifecycle pass and clean publication reaches **99.230/91.559 tok/s**. Explicit overrides retain M128/M256 and paired direct routing. Token-serial remains only as the independent state oracle and rollback through the post-prefill DFlash refresh; `forward_token()` decode is unchanged. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-matrix-chunk-retained.json` and `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json`. | Move token-serial prefill to a correctness-only helper (or remove the public selector) after bulk passes the full prompt-length/context matrix, retained target-AR performance is non-regressive, and verifier accept/rollback gates no longer need prefill bisection. |
 | Laguna source-F16 tiled prefill selector | `HIPENGINE_LAGUNA_F16_PREFILL=auto|gemv|tiled` exposes explicit selection around the separately registered LPF-1 row/column tile. | Promoted gfx1151 default from two rows. Clean same-session rows 2..128 are exact and all faster (2.0538x weighted); the two-repeat category gate moves prefill 23.333->48.560 tok/s, TTFT 3.481->1.692 s, and h32 E2E 5.719->8.717 with neutral decode and all correctness/lifecycle gates. The reassociated WMMA control remains removed after changing three trajectories. `gemv` is the release rollback; rows=1/unsupported backends always retain registry-driven GEMV. | After one release window and a defaults-only gfx1151 refresh, remove the positive `tiled`/`auto` experiment semantics and keep at most one clear `gemv` rollback until release confidence permits removing the env selector entirely. Never remove the registered rows=1/unsupported-backend GEMV fallback. |
 | Laguna SWA token4-exact decode rollback | `LagunaGGUFResidentSession(..., swa_decode_variant=...)` and `allocate_laguna_kv_cache(..., swa_decode_variant=...)` retain baseline `swa_context_spans` beside gfx1100's backend-qualified `swa_context_token4_exact_spans` default. | Promoted on gfx1100. The exact 4-wave/4-slot schedule passes all focused wrap/eviction/KV/runner gates; clean SWA improves 49.60% short and 52.80-53.03% at 512/1K/near-4K. The full category gate moves h32 decode 38.840->43.081 tok/s and E2E 11.448->11.760 with prefill within -0.223%; gfx1151 and unmeasured backends remain baseline. D10 token8 was exact and improved clean profiles, but failed the aggregate/every-category h16 gate and was removed with no rollback debt. | After one release window and a defaults-only gfx1100 refresh, remove public positive token4 selection and keep at most explicit baseline rollback. Never remove the registered baseline or change unmeasured backend defaults without independent evidence. |
 | Laguna SWA wave32-exact prefill rollback | `LagunaGGUFResidentSession(..., swa_prefill_variant=...)` and `allocate_laguna_kv_cache(..., swa_prefill_variant=...)` retain explicit baseline selection beside the gfx1151 backend-qualified LPF-5 default. | Promoted on gfx1151. It reconstructs the original stride-64/32/16..1 FP32 tree, passes the 508..515 fixture byte-exactly, improves the leaf 20.434->9.229 ms (2.214x), and moves exact full-model 512/1K/4K prefill +8.31%/+12.85%/+14.06%. Unmeasured backends default to baseline. | After one release window plus the post-prefill DFlash refresh, remove public positive candidate selection and keep at most one explicit baseline rollback if needed. Never remove the registered baseline from unmeasured backends without independent evidence. |
@@ -2601,3 +3108,16 @@ should be boring.
   owner, their gfx1151 capabilities, compact evidence, and same-state quality
   harness. The exact normalized/deferred GQA6 siblings and generic
   complete-`KVLiveSpans` split route remain required rollback/fallback paths.
+## WPF-H1 source-Q5 MMQ candidate cleanup — complete
+
+- The temporary gfx1100 `use_q5_source_mmq` constructor switch, context-local
+  activation scopes, bounded DS4 runtime workspace, package capability, and
+  dispatch policy were added only for complete qualification. A natural M512
+  deep-state screen passed at KL **0.0002241** with deterministic repeat and
+  lifecycle recovery.
+- The binding 18-prompt/576-step lane rejects promotion at maximum KL
+  **4.162014** despite **561/576** top-1 and **1.348x** aggregate prefill. The
+  removal trigger is satisfied in the same decision unit: all temporary runtime
+  ownership and focused integration tests are removed. Keep only the separately
+  registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
+  production remains exact and H2 must not stack H1 arithmetic.

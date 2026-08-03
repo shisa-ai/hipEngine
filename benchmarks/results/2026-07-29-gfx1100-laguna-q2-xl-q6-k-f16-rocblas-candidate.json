@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q6_k_f16_rocblas_candidate",
+  "date": "2026-07-29",
+  "status": "standalone_leaf_admitted_runtime_rejected_complete_quality_gate",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "source": "llama.cpp HIP c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "source_files_sha256": {
+      "ggml/src/ggml-cuda/ggml-cuda.cu": "33e6fe768f876ac31b94cbf1af700f744915f1a8906ccfbe94ef1d35dedfd049",
+      "ggml/src/ggml-cuda/convert.cu": "ddc8640263fe8f141493ead35681cb58151dc6fb94bdf8eadf46bf20546d79f9",
+      "ggml/src/ggml-cuda/dequantize.cuh": "2cdf4dcd4600a64e3c593002b072225166a25223569e2528109ca64a583fd8b2",
+      "ggml/src/ggml-cuda/convert.cuh": "fc32372473421c99494d7eea21ab510a8cea61d637f572afe34ed9db32b0d6ce",
+      "ggml/src/ggml-common.h": "af255601767325f087313fa84b9435cb77aeec37df6b61b98d9ecc65f29fb4a0"
+    },
+    "base_revision": "654475d2b",
+    "implementation_sha256": {
+      "hipengine/core/rocblas.py": "eb2533649f892ad4ef0b18dbb3cadce67cbb8c803d06fc8593eeebbed0f3efb2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.hip": "2d1cbd2e99a082e1a347308b338536b4a097a7512f53272374b02bf16b71c90f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py": "4345f8a01a9bb0b56934d0738d858100010d192147b42db5a46bc765930ad313",
+      "tests/test_gguf_q6_k_f16_rocblas_prefill.py": "8fc2ea1b4d8cfb2c8ae771d6055605a4d35f8e849a8eec5defc022c7e47cff6e"
+    }
+  },
+  "protocol": {
+    "rows": 512,
+    "unique_configurations": 6,
+    "production_invocations": 144,
+    "control": "retained exact Q6_K coltile role policy",
+    "candidate": "one fused raw-Q6-to-F16 plus BF16-input-to-F16 producer launch, FP16-input/weight/output rocblas_gemm_ex with FP16 compute, then one result cast",
+    "warmups_per_arm": 5,
+    "counterbalanced_repetitions": 15,
+    "launches_per_sample": 3,
+    "timing": "HIP event median summed across the actual six-shape/144-call production inventory",
+    "workspace_session_bound_bytes": 97517568,
+    "persistent_weight_sidecar_bytes": 0,
+    "four_k_or_longer_run_performed": false,
+    "claim_scope": "actual-M512 Q6_K primitive family only; not end-to-end throughput or a production-default claim"
+  },
+  "aggregate_ms": {
+    "exact_coltile_weighted": 174.35132767260077,
+    "source_f16_rocblas_weighted": 14.349163683752217,
+    "speedup": 12.15062644173622,
+    "reduction_percent": 91.76997165705714,
+    "all_configurations_faster": true,
+    "matched_llamacpp_source_stack": 14.919865,
+    "ratio_to_matched_llamacpp": 0.9617488954325134,
+    "reduction_vs_matched_llamacpp_percent": 3.825110456748658,
+    "interpretation": "The candidate is 0.571 ms (3.825%) below the same 144-stack llama.cpp profiler recount. The HIP-event screen and external profiler trace are matched by shape and invocation inventory but are not a paired-process wall comparison."
+  },
+  "roles": [
+    {"output_dtype": "bf16", "shape_n_k": [3072, 1024], "calls": 46, "exact_ms": 1.1182343165079753, "candidate_ms": 0.08465400338172913, "speedup": 13.209467619216268, "mean_kl": 1.7295013762149893e-7, "top1_agreement": 0.990234375, "workspace_bytes": 10485760},
+    {"output_dtype": "bf16", "shape_n_k": [3072, 9216], "calls": 1, "exact_ms": 8.342074712117514, "candidate_ms": 0.5274003346761068, "speedup": 15.817348157810034, "mean_kl": 3.4405995843677005e-5, "top1_agreement": 0.982421875, "workspace_bytes": 69206016},
+    {"output_dtype": "bf16", "shape_n_k": [3072, 12288], "calls": 1, "exact_ms": 11.464312235514322, "candidate_ms": 0.7377119859059652, "speedup": 15.540363250890243, "mean_kl": 1.5479054121412937e-5, "top1_agreement": 0.978515625, "workspace_bytes": 91226112},
+    {"output_dtype": "f32", "shape_n_k": [72, 3072], "calls": 1, "exact_ms": 0.07098700106143951, "candidate_ms": 0.03804033249616623, "speedup": 1.8660983330940577, "mean_kl": 2.2279365846644416e-5, "top1_agreement": 0.986328125, "workspace_bytes": 3661824},
+    {"output_dtype": "f32", "shape_n_k": [1024, 3072], "calls": 94, "exact_ms": 0.9973809719085693, "candidate_ms": 0.08729400237401326, "speedup": 11.425538350679197, "mean_kl": 1.6276017953628623e-6, "top1_agreement": 0.982421875, "workspace_bytes": 10485760},
+    {"output_dtype": "f32", "shape_n_k": [9216, 3072], "calls": 1, "exact_ms": 9.281363805135092, "candidate_ms": 0.946290651957194, "speedup": 9.808153325765856, "mean_kl": 1.6965812225601258e-6, "top1_agreement": 0.98828125, "workspace_bytes": 69206016}
+  ],
+  "correctness": {
+    "all_finite": true,
+    "all_role_quality_gates_passed": true,
+    "raw_q6_to_f16_nonzero_bytes_exact": true,
+    "signed_zero_normalized": true,
+    "fused_and_unfused_producers_byte_exact": true,
+    "max_mean_kl": 3.4405995843677005e-5,
+    "max_row_kl": 0.00027649359313887097,
+    "min_top1_agreement": 0.978515625,
+    "max_abs": 0.125,
+    "complete_18_prompt_576_step_gate": {
+      "pass": false,
+      "max_kl_divergence": 0.3386567970951901,
+      "kl_threshold": 0.05,
+      "top1_matches": 567,
+      "steps": 576,
+      "diagnostic_prefill_speedup": 1.0423003161147522,
+      "rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f16-rocblas-rejected.json"
+    }
+  },
+  "resources": {
+    "fused_producer": {
+      "kernel": "gguf_q6_k_dequantize_bf16_to_f16_source_fused_kernel",
+      "local": [64, 1, 1],
+      "vgpr": 16,
+      "sgpr_reported": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "traced_duration_us_min_max": [7.68, 710.483]
+    },
+    "rocblas": {
+      "workgroup_size": 128,
+      "vgpr_values": [64, 128, 256],
+      "lds_bytes_values": [4608, 9216, 25600],
+      "scratch_bytes": 0,
+      "traced_duration_us_min_max": [16.96, 869.605]
+    },
+    "output_casts": {
+      "local": [256, 1, 1],
+      "vgpr": 8,
+      "sgpr_reported": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "iteration_history": {
+    "hgemm_weighted_ms": 15.118621423840525,
+    "rejected_vec4_cast_weighted_ms": 15.872790331641832,
+    "gemm_ex_unfused_weighted_ms": 14.950342883666357,
+    "gemm_ex_fused_producer_weighted_ms": 14.349163683752217,
+    "fused_improvement_vs_unfused_gemm_ex_percent": 4.0211733241981,
+    "rejected_vec4_reason": "Four-element cast loops reduced workgroup count but exposed serial per-thread work and regressed the weighted stack 4.988%; all vec4 candidate code was removed."
+  },
+  "runtime_integration": {
+    "base_revision": "941158ba3",
+    "selector": "LagunaGGUFResidentSession(use_q6_f16_rocblas=True)",
+    "default": false,
+    "backend": "hip_gfx1100",
+    "qualified_rows": 512,
+    "qualified_shapes": 6,
+    "workspace_allocations": 1,
+    "workspace_bytes": 97517568,
+    "fallback": "retained exact raw-Q6 coltile policy on disabled/session/key/backend/row/shape/capacity miss",
+    "natural_m512_state": {
+      "finite": true,
+      "mean_kl": 0.0007219330673774047,
+      "top1_agreement": 1.0,
+      "next_token": 2930,
+      "candidate_repeat_exact": true,
+      "all_48_hidden_boundaries_repeat_exact": true,
+      "complete_kv_and_kvlivespans_repeat_exact": true,
+      "tracked_returned_to_baseline": true
+    },
+    "integrated_trace": {
+      "total_dispatches": 2311,
+      "candidate_producers": 144,
+      "candidate_rocblas": 144,
+      "candidate_bf16_output_casts": 48,
+      "candidate_f32_output_casts": 96,
+      "candidate_kernel_sum_ms": 13.20585,
+      "producer_resources": "local64/VGPR16/SGPR128/LDS0/scratch0"
+    },
+    "implementation_sha256": {
+      "hipengine/runtime/gguf_linear.py": "8bd1e602b1e01eeecc3de0e18ecc99fe827a480df71b2f092870c4f85a15c5cb",
+      "hipengine/runtime/laguna_gguf_runner.py": "721628a1d58ba9a3a262215e6feba9095d2bd4339c2f521384a196ef6582e4f9",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "043ec22f103daf6426d4fd792005e8a76136069a2a09b446e222c60b895b329a",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "759c35e48cc80074a99637283b3407980c65ff9b97c82591afc9c5d3730ebc20"
+    },
+    "source_artifacts": {
+      "full_state_json_sha256": "be85f8ae0c82deae3b3497733eafcb22329b8cdfb493f361cbad4156e8ba7aa2",
+      "full_state_harness_sha256": "2a7f2145ea85de375c3d2e70e2d1823c7098b129d57347838a325ffed36b8c89",
+      "integrated_trace_sha256": "750e0d238e41b6e0ca3b21de3ad853290643225155830ed90e21d59bfc738b46",
+      "integrated_trace_harness_sha256": "07b119788d45ad43a70f92602ef27b86385d0061d51aade18d0cedc749637179"
+    },
+    "removed_after_quality_rejection": true,
+    "removal_scope": "constructor switch, context-local ABI, conditional eager library and rocBLAS handle, bounded workspace owner, package capabilities, and focused integration tests"
+  },
+  "lifecycle": {
+    "peak_tracked_bytes": 141066240,
+    "peak_allocations": 7,
+    "total_allocated_bytes": 430646464,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "validation": {
+    "focused_gpu_and_host_tests": "43 passed: 35 rocBLAS/Q6 GPU/registry/gfx1151 tests plus 8 build tests",
+    "ruff": "passed",
+    "py_compile": "passed",
+    "gfx1151_alias_exclusion": "passed",
+    "runtime_integration_tests": "223 passed across runner/dispatch/backend/registry/GPU/profile/build bundles",
+    "cached_profile_dispatches": 108,
+    "cached_profile_expected_chain_only": true
+  },
+  "source_artifacts": {
+    "final_raw_json_sha256": "0a186499dcc4bba58a14910e825019437e7bc6e033621f5a9fbe465a361264d8",
+    "final_harness_sha256": "c11932333d64fb60c6d8c0704015cb25382f76ab5ba402f334b534a9333afbfe",
+    "final_stdout_sha256": "5802cd51ca592f979360d51ecad8e4ada8859dcd958722faa47880bbd4d3a056",
+    "final_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "unfused_gemm_ex_raw_json_sha256": "52038501f5a5c74996a90977d0fb2200dbb3bb0d6babf0005366a5677edc75ec",
+    "unfused_gemm_ex_harness_sha256": "e989e1e454e83b854dc104d62e3b56b2a6ee3086837a6c737bbebf5eb5d01f2c",
+    "hgemm_stdout_sha256": "f2f042b0ed4c0fd91615b9eb562befb708ca0aa1aee1181fff8a2edd80e4bc06",
+    "rejected_vec4_stdout_sha256": "0ff73192f33cfe2b4642dd566abecf21664f20eef618aab30c1ac8b3db61aa00",
+    "rocprof_trace_sha256": "b59dfe2d62bc76930b550aaa41fa134eaf53637f4a1f73a06d58f1fa2e9811c0",
+    "rocprof_harness_sha256": "d4e244b4b67fde2de1f46f4b30d93f47c4b7a9daa62f7efe5c0759a89899c8aa"
+  },
+  "promotion_blockers": [
+    "complete 18-prompt/576-step train+heldout and category-heldout quality reaches maximum KL 0.338657 above the mandatory 0.05 ceiling",
+    "runtime ownership was removed and clean 512/1K promotion timing was not run after the quality failure"
+  ]
+}

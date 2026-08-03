@@ -85,12 +85,6 @@ def _canonical_command(args: argparse.Namespace) -> str:
         str(args.quant),
         "--max-new-tokens",
         str(args.max_new_tokens),
-        "--prompt-length",
-        str(args.prompt_length),
-        "--warmup",
-        str(args.warmup),
-        "--repeats",
-        str(args.repeats),
     ]
     if args.model:
         argv.extend(["--model", str(args.model)])

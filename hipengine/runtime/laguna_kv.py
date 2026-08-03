@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ctypes
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Protocol
 
@@ -16,7 +16,7 @@ from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
@@ -67,11 +67,70 @@ _SWA_PREFILL_VARIANTS = frozenset(
         "swa_context_rows_qrow2_exact_spans",
         "swa_context_rows_qrow2_m128_c128_exact_spans",
         "swa_context_rows_qrow2_online_spans",
+        "swa_context_rows_qrow4_exact_spans",
+        "swa_context_rows_qrow4_m128_c256_exact_spans",
         "swa_context_rows_qrow4_online_spans",
         "swa_context_rows_qrow4_sourcequal_online_spans",
         "swa_context_rows_qrow4_m128_online_spans",
     }
 )
+_SWA_QROW4_ROLE = "qrow4_m128_c256_exact"
+_SWA_QROW4_ROLE_BASE_VARIANT = "swa_context_rows_qrow4_m128_c256_exact_spans"
+_SWA_PREFILL_ROLE_CANDIDATES = {
+    _SWA_QROW4_ROLE: frozenset(
+        {"swa_context_rows_qrow4_sourcequal_exact_spans"}
+    ),
+}
+_PREFILL_DENSE_INITIAL_GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
+_PREFILL_PREAPPEND_SWA_QROW4_ROLE = "swa_qrow4_m128_c512_no_wrap_exact"
+_PREFILL_PREAPPEND_ROLE_CANDIDATES = {
+    _PREFILL_PREAPPEND_SWA_QROW4_ROLE: frozenset(
+        {"swa_context_rows_qrow4_cached_exact_spans"}
+    ),
+}
+_DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_dense_initial_cached_exact_spans"
+)
+_DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_dense_initial_fixed512_cached_exact_spans"
+)
+_DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_cached_exact_spans"
+)
+_DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+)
+_DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT = (
+    "swa_context_rows_qrow4_dense_initial_lane_major_"
+    "global_score_replay_exact_spans"
+)
+_SWA_ROWS_NATURAL_LANE_MAJOR_WRITE_VARIANT = (
+    "swa_f32_rows_natural_lane_major_spans"
+)
+_SWA_LANE_MAJOR_MIRROR_NBYTES = 1_048_576
+_DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT = (
+    "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
+    "exact_spans"
+)
+_PREFILL_GLOBAL_SCORE_REPLAY_STARTS = frozenset({256, 384})
+_PREFILL_GLOBAL_SCORE_WEIGHT_REPLAY_SCRATCH_BYTES = 12_582_912
+_PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES = 18_874_368
+_PREFILL_DENSE_INITIAL_ROLE_CANDIDATES = {
+    _PREFILL_DENSE_INITIAL_GLOBAL_ROLE: frozenset(
+        {
+            _DENSE_INITIAL_CACHED_GLOBAL_PREFILL_VARIANT,
+            _DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT,
+            _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT,
+        }
+    ),
+    _PREFILL_PREAPPEND_SWA_QROW4_ROLE: frozenset(
+        {
+            _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT,
+            _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+            _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+        }
+    ),
+}
 
 
 class _LagunaKVConfig(Protocol):
@@ -95,6 +154,8 @@ class LagunaKVLayerState:
     physical_capacity: int
     key_cache: DeviceBuffer
     value_cache: DeviceBuffer
+    lane_major_key_cache: DeviceBuffer | None
+    lane_major_value_cache: DeviceBuffer | None
     append_spans: KVLiveSpans
     spans: KVLiveSpans
     write_variant: str
@@ -121,6 +182,9 @@ class LagunaKVCache:
         prefill_cached_meta: bool,
         prefill_global_qrow6: bool,
         prefill_dense_initial: bool,
+        swa_prefill_role_variants: Mapping[str, str],
+        prefill_preappend_role_scoped: bool,
+        prefill_preappend_role_variants: Mapping[str, str],
         row_position: DeviceBuffer,
         split_score_scratch: DeviceBuffer | None,
         split_physical_scratch: DeviceBuffer | None,
@@ -176,6 +240,11 @@ class LagunaKVCache:
         self.prefill_cached_meta = bool(prefill_cached_meta)
         self.prefill_global_qrow6 = bool(prefill_global_qrow6)
         self.prefill_dense_initial = bool(prefill_dense_initial)
+        self.swa_prefill_role_variants = dict(swa_prefill_role_variants)
+        self.prefill_preappend_role_scoped = bool(prefill_preappend_role_scoped)
+        self.prefill_preappend_role_variants = dict(
+            prefill_preappend_role_variants
+        )
         self._row_position = row_position
         self._split_score_scratch = split_score_scratch
         self._split_physical_scratch = split_physical_scratch
@@ -574,6 +643,9 @@ class LagunaKVCache:
         self.position = -1
         self._pending_positions: tuple[int, ...] = ()
         self._dense_initial_metadata_valid = True
+        self._prefill_score_scratch_ptr = 0
+        self._prefill_score_scratch_nbytes = 0
+        self._prefill_score_scratch_available_nbytes = 0
         self._closed = False
 
     @property
@@ -589,6 +661,29 @@ class LagunaKVCache:
         return len(self._buffers)
 
     @property
+    def lane_major_mirror_nbytes(self) -> int:
+        return sum(
+            buffer.nbytes
+            for state in self.layers
+            for buffer in (
+                state.lane_major_key_cache,
+                state.lane_major_value_cache,
+            )
+            if buffer is not None
+        )
+
+    @property
+    def lane_major_mirror_allocation_count(self) -> int:
+        return sum(
+            buffer is not None
+            for state in self.layers
+            for buffer in (
+                state.lane_major_key_cache,
+                state.lane_major_value_cache,
+            )
+        )
+
+    @property
     def closed(self) -> bool:
         return self._closed
 
@@ -601,6 +696,59 @@ class LagunaKVCache:
         """Expose the stable scalar publication target to fused producers."""
 
         return self._row_position.ptr
+    def prefill_score_scratch_required(self) -> bool:
+        return (
+            self.prefill_preappend_role_variants.get(
+                _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+            )
+            == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+            or self.prefill_preappend_role_variants.get(
+                _PREFILL_DENSE_INITIAL_GLOBAL_ROLE
+            )
+            == _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+        )
+
+    @property
+    def prefill_score_scratch_bound(self) -> bool:
+        return (
+            self._prefill_score_scratch_ptr > 0
+            and self._prefill_score_scratch_nbytes
+            == _PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES
+        )
+
+    @property
+    def prefill_score_scratch_ptr(self) -> int:
+        return self._prefill_score_scratch_ptr
+
+    @property
+    def prefill_score_scratch_nbytes(self) -> int:
+        return self._prefill_score_scratch_nbytes
+
+    def bind_prefill_score_scratch(self, ptr: int, available_nbytes: int) -> None:
+        """Borrow one aligned same-stream prefix without taking ownership."""
+
+        self._check_open()
+        parsed_ptr = int(ptr)
+        parsed_available = int(available_nbytes)
+        if parsed_ptr <= 0:
+            raise ValueError("Laguna prefill score scratch pointer must be non-zero")
+        if parsed_ptr % 16:
+            raise ValueError("Laguna prefill score scratch must be 16-byte aligned")
+        if parsed_available < _PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES:
+            raise ValueError(
+                "Laguna prefill score scratch must provide at least "
+                f"{_PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES} bytes"
+            )
+        if (
+            self._prefill_score_scratch_ptr
+            and self._prefill_score_scratch_ptr != parsed_ptr
+        ):
+            raise ValueError("Laguna prefill score scratch is already bound")
+        self._prefill_score_scratch_ptr = parsed_ptr
+        self._prefill_score_scratch_nbytes = (
+            _PREFILL_GLOBAL_SCORE_REPLAY_SCRATCH_BYTES
+        )
+        self._prefill_score_scratch_available_nbytes = parsed_available
 
     def layer(self, layer_id: int) -> LagunaKVLayerState:
         self._check_open()
@@ -773,19 +921,42 @@ class LagunaKVCache:
             row_positions_ptr=row_positions_ptr,
         )
         fn = self._resolve("laguna_kv_write", state.write_rows_variant)
-        fn(
-            key_ptr,
-            value_ptr,
-            state.key_cache.ptr,
-            state.value_cache.ptr,
-            spans,
-            int(rows),
-            _LAGUNA_KV_HEADS,
-            _LAGUNA_HEAD_DIM,
-            stream=stream,
-            library=library,
-            runtime=self.runtime,
-        )
+        if state.write_rows_variant == _SWA_ROWS_NATURAL_LANE_MAJOR_WRITE_VARIANT:
+            if (
+                state.lane_major_key_cache is None
+                or state.lane_major_value_cache is None
+            ):
+                raise RuntimeError("Laguna lane-major SWA mirrors are unavailable")
+            fn(
+                key_ptr,
+                value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                state.lane_major_key_cache.ptr,
+                state.lane_major_value_cache.ptr,
+                spans,
+                int(rows),
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                lane_major_cache_nbytes=state.lane_major_key_cache.nbytes,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        else:
+            fn(
+                key_ptr,
+                value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                spans,
+                int(rows),
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
 
     def attend(
         self,
@@ -1599,7 +1770,26 @@ class LagunaKVCache:
             rows=rows,
             row_positions_ptr=row_positions_ptr,
         )
-        fn = self._resolve("laguna_attention_prefill", state.attention_prefill_variant)
+        variant = state.attention_prefill_variant
+        start_position = (
+            int(self._pending_positions[int(row_offset)])
+            if state.attention_type == SLIDING_ATTENTION
+            else None
+        )
+        role_variant = self.swa_prefill_role_variants.get(_SWA_QROW4_ROLE)
+        if (
+            role_variant is not None
+            and variant == _SWA_QROW4_ROLE_BASE_VARIANT
+            and state.attention_type == SLIDING_ATTENTION
+            and int(rows) == 128
+            and start_position is not None
+            and start_position >= 256
+            and state.capacity == 512
+            and self.sliding_window == 512
+            and state.q_heads == 72
+        ):
+            variant = role_variant
+        fn = self._resolve("laguna_attention_prefill", variant)
         common = (
             query_ptr,
             current_key_ptr,
@@ -1630,7 +1820,7 @@ class LagunaKVCache:
                 _LAGUNA_HEAD_DIM,
                 scale,
                 sliding_window=self.sliding_window,
-                start_position=int(self._pending_positions[int(row_offset)]),
+                start_position=start_position,
                 stream=stream,
                 library=library,
                 runtime=self.runtime,
@@ -1663,6 +1853,60 @@ class LagunaKVCache:
             return False
         start_position = self._pending_positions[offset]
         return start_position + count <= state.capacity
+
+    def can_preappend_attention_prefill(
+        self,
+        layer_id: int,
+        rows: int,
+        *,
+        row_offset: int = 0,
+    ) -> bool:
+        """Return whether runtime policy admits append-before-attention."""
+
+        if not self.can_preappend_prefill(
+            layer_id,
+            rows,
+            row_offset=row_offset,
+        ):
+            return False
+        if not self.prefill_preappend_role_scoped:
+            return True
+        state = self.layer(layer_id)
+        start_position = self._pending_positions[int(row_offset)]
+        if state.attention_type == FULL_ATTENTION:
+            variant = self.prefill_preappend_role_variants.get(
+                _PREFILL_DENSE_INITIAL_GLOBAL_ROLE
+            )
+            return (
+                variant is not None
+                and self._dense_initial_metadata_valid
+                and int(rows) == 128
+                and start_position in {0, 128, 256, 384}
+                and state.capacity == 4_096
+                and self.context_length == 4_096
+                and state.q_heads == 48
+            )
+        variant = self.prefill_preappend_role_variants.get(
+            _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+        )
+        return (
+            variant is not None
+            and (
+                variant
+                not in {
+                    _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT,
+                    _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+                    _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+                }
+                or self._dense_initial_metadata_valid
+            )
+            and state.attention_type == SLIDING_ATTENTION
+            and int(rows) == 128
+            and start_position in {0, 128, 256, 384}
+            and state.capacity == 512
+            and self.sliding_window == 512
+            and state.q_heads == 72
+        )
 
     def can_dense_initial_prefill(
         self,
@@ -1795,6 +2039,22 @@ class LagunaKVCache:
             row_offset=row_offset,
         ):
             raise ValueError("cached Laguna prefill requires one safe M128 tile")
+        role_variant = None
+        if self.prefill_preappend_role_scoped:
+            if not self.can_preappend_attention_prefill(
+                layer_id,
+                rows,
+                row_offset=row_offset,
+            ):
+                raise ValueError(
+                    "cached Laguna prefill is outside package role policy"
+                )
+            role = (
+                _PREFILL_DENSE_INITIAL_GLOBAL_ROLE
+                if state.attention_type == FULL_ATTENTION
+                else _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+            )
+            role_variant = self.prefill_preappend_role_variants.get(role)
         spans = self._bulk_slice_spans(
             state.spans,
             row_offset=row_offset,
@@ -1802,6 +2062,40 @@ class LagunaKVCache:
             row_positions_ptr=row_positions_ptr,
         )
         start_position = int(self._pending_positions[int(row_offset)])
+        if role_variant in {
+            _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+            _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT,
+        }:
+            late_score_replay = (
+                start_position in _PREFILL_GLOBAL_SCORE_REPLAY_STARTS
+                and self.prefill_score_scratch_bound
+            )
+            if (
+                role_variant
+                == _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+            ):
+                late_score_replay = (
+                    late_score_replay
+                    and state.lane_major_key_cache is not None
+                    and state.lane_major_value_cache is not None
+                )
+            role_variant = (
+                role_variant
+                if late_score_replay
+                else _DENSE_INITIAL_CACHED_SWA_PREFILL_VARIANT
+            )
+        elif (
+            role_variant
+            == _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+        ):
+            role_variant = (
+                _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+                if (
+                    start_position in _PREFILL_GLOBAL_SCORE_REPLAY_STARTS
+                    and self.prefill_score_scratch_bound
+                )
+                else _DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT
+            )
         dense_initial = (
             self.prefill_dense_initial
             and self.can_dense_initial_prefill(
@@ -1810,7 +2104,9 @@ class LagunaKVCache:
                 row_offset=row_offset,
             )
         )
-        if state.attention_type == FULL_ATTENTION:
+        if role_variant is not None:
+            variant = role_variant
+        elif state.attention_type == FULL_ATTENTION:
             if dense_initial:
                 variant = (
                     _DENSE_INITIAL_GLOBAL_QROW6_PREFILL_VARIANT
@@ -1844,8 +2140,40 @@ class LagunaKVCache:
             spans,
             int(rows),
         )
-        if state.attention_type == FULL_ATTENTION:
-            extra = {"start_position": start_position} if dense_initial else {}
+        if (
+            state.attention_type == FULL_ATTENTION
+            and variant
+            == _DENSE_INITIAL_GLOBAL_SCORE_WEIGHT_REPLAY_GLOBAL_PREFILL_VARIANT
+        ):
+            fn(
+                query_ptr,
+                current_key_ptr,
+                current_value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                out_ptr,
+                self._prefill_score_scratch_ptr,
+                spans,
+                int(rows),
+                self.context_length,
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                score_scratch_nbytes=(
+                    _PREFILL_GLOBAL_SCORE_WEIGHT_REPLAY_SCRATCH_BYTES
+                ),
+                start_position=start_position,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif state.attention_type == FULL_ATTENTION:
+            extra = (
+                {"start_position": start_position}
+                if dense_initial or role_variant is not None
+                else {}
+            )
             fn(
                 *common,
                 self.context_length,
@@ -1854,6 +2182,62 @@ class LagunaKVCache:
                 _LAGUNA_HEAD_DIM,
                 scale,
                 **extra,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif (
+            variant
+            == _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        ):
+            if (
+                state.lane_major_key_cache is None
+                or state.lane_major_value_cache is None
+            ):
+                raise RuntimeError("Laguna lane-major SWA mirrors are unavailable")
+            fn(
+                query_ptr,
+                current_key_ptr,
+                current_value_ptr,
+                state.lane_major_key_cache.ptr,
+                state.lane_major_value_cache.ptr,
+                out_ptr,
+                self._prefill_score_scratch_ptr,
+                spans,
+                int(rows),
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                score_scratch_nbytes=self._prefill_score_scratch_nbytes,
+                lane_major_cache_nbytes=state.lane_major_key_cache.nbytes,
+                sliding_window=self.sliding_window,
+                start_position=start_position,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        elif (
+            variant
+            == _DENSE_INITIAL_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        ):
+            fn(
+                query_ptr,
+                current_key_ptr,
+                current_value_ptr,
+                state.key_cache.ptr,
+                state.value_cache.ptr,
+                out_ptr,
+                self._prefill_score_scratch_ptr,
+                spans,
+                int(rows),
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                score_scratch_nbytes=self._prefill_score_scratch_nbytes,
+                sliding_window=self.sliding_window,
+                start_position=start_position,
                 stream=stream,
                 library=library,
                 runtime=self.runtime,
@@ -2057,6 +2441,152 @@ def resolve_laguna_swa_prefill_variant(
     return parsed
 
 
+def _resolve_laguna_swa_prefill_role_variants(backend: str) -> dict[str, str]:
+    """Resolve registered package-only substitutions for bounded SWA roles."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
+        {},
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna SWA prefill role variants must be a mapping")
+    parsed: dict[str, str] = {}
+    for role, variant in raw_variants.items():
+        if role not in _SWA_PREFILL_ROLE_CANDIDATES:
+            raise ValueError(f"unsupported Laguna SWA prefill role {role!r}")
+        if not isinstance(variant, str) or not variant:
+            raise ValueError("Laguna SWA prefill roles require non-empty variants")
+        if variant not in _SWA_PREFILL_ROLE_CANDIDATES[role]:
+            raise ValueError(
+                f"unsupported variant {variant!r} for Laguna SWA prefill role {role!r}"
+            )
+        parsed[role] = variant
+    if not parsed:
+        return {}
+
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
+
+    register_laguna_kv_attention_kernels()
+    load_backend_kernel_package(backend)
+    return {
+        role: variant
+        for role, variant in parsed.items()
+        if is_registered(
+            KernelKey(
+                backend,
+                "laguna_attention_prefill",
+                "bf16",
+                variant,
+            )
+        )
+    }
+
+
+def _parse_laguna_prefill_preappend_role_variants(
+    raw_variants: object,
+    *,
+    candidates: Mapping[str, frozenset[str]],
+    scope_name: str,
+) -> dict[str, str]:
+    """Validate one package-owned preappend role map before allocation."""
+
+    scope = f"{scope_name} " if scope_name else ""
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError(
+            f"Laguna {scope}preappend role variants must be a mapping"
+        )
+    parsed: dict[str, str] = {}
+    for role, variant in raw_variants.items():
+        if role not in candidates:
+            raise ValueError(
+                f"unsupported Laguna {scope}preappend role {role!r}"
+            )
+        if not isinstance(variant, str) or not variant:
+            raise ValueError(
+                f"Laguna {scope}preappend roles require non-empty variants"
+            )
+        if variant not in candidates[role]:
+            raise ValueError(
+                f"unsupported variant {variant!r} for Laguna {scope}"
+                f"preappend role {role!r}"
+            )
+        parsed[role] = variant
+    return parsed
+
+
+def _resolve_laguna_prefill_preappend_role_variants(
+    backend: str,
+    *,
+    global_package_default: bool,
+    swa_package_default: bool,
+) -> tuple[bool, dict[str, str]]:
+    """Resolve independent package-only append-before-attention substitutions."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS",
+        None,
+    )
+    raw_dense_variants = backend_package_capability(
+        backend,
+        "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
+        None,
+    )
+    if raw_variants is None and raw_dense_variants is None:
+        return False, {}
+    parsed_base = (
+        {}
+        if raw_variants is None
+        else _parse_laguna_prefill_preappend_role_variants(
+            raw_variants,
+            candidates=_PREFILL_PREAPPEND_ROLE_CANDIDATES,
+            scope_name="",
+        )
+    )
+    parsed_dense = (
+        {}
+        if raw_dense_variants is None
+        else _parse_laguna_prefill_preappend_role_variants(
+            raw_dense_variants,
+            candidates=_PREFILL_DENSE_INITIAL_ROLE_CANDIDATES,
+            scope_name="dense-initial",
+        )
+    )
+    parsed = dict(parsed_base) if swa_package_default else {}
+    if global_package_default:
+        global_variant = parsed_dense.get(_PREFILL_DENSE_INITIAL_GLOBAL_ROLE)
+        if global_variant is not None:
+            parsed[_PREFILL_DENSE_INITIAL_GLOBAL_ROLE] = global_variant
+    if swa_package_default:
+        swa_variant = parsed_dense.get(_PREFILL_PREAPPEND_SWA_QROW4_ROLE)
+        if swa_variant is not None:
+            parsed[_PREFILL_PREAPPEND_SWA_QROW4_ROLE] = swa_variant
+    if not parsed:
+        return True, {}
+
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        register_laguna_kv_attention_kernels,
+    )
+
+    register_laguna_kv_attention_kernels()
+    load_backend_kernel_package(backend)
+    return True, {
+        role: variant
+        for role, variant in parsed.items()
+        if is_registered(
+            KernelKey(
+                backend,
+                "laguna_attention_prefill",
+                "bf16",
+                variant,
+            )
+        )
+    }
+
+
 def resolve_laguna_split_thresholds(
     backend: str,
     *,
@@ -2144,6 +2674,8 @@ def allocate_laguna_kv_cache(
     prefill_cached_meta: bool = False,
     prefill_global_qrow6: bool = False,
     prefill_dense_initial: bool = False,
+    prefill_global_preappend_package_default: bool | None = None,
+    prefill_preappend_package_default: bool | None = None,
     global_split_min_live: int | None = None,
     swa_split_min_live: int | None = None,
     swa_split_tile16_min_live: int | None = None,
@@ -2168,6 +2700,28 @@ def allocate_laguna_kv_cache(
     parsed_swa_prefill_variant = resolve_laguna_swa_prefill_variant(
         backend,
         swa_prefill_variant,
+    )
+    package_swa_prefill_variant = resolve_laguna_swa_prefill_variant(backend)
+    parsed_swa_prefill_role_variants = (
+        _resolve_laguna_swa_prefill_role_variants(backend)
+        if parsed_swa_prefill_variant == package_swa_prefill_variant
+        else {}
+    )
+    (
+        prefill_preappend_role_scoped,
+        parsed_prefill_preappend_role_variants,
+    ) = _resolve_laguna_prefill_preappend_role_variants(
+        backend,
+        global_package_default=(
+            global_prefill_variant is None
+            if prefill_global_preappend_package_default is None
+            else bool(prefill_global_preappend_package_default)
+        ),
+        swa_package_default=(
+            swa_prefill_variant is None
+            if prefill_preappend_package_default is None
+            else bool(prefill_preappend_package_default)
+        ),
     )
     runtime = runtime or get_hip_runtime()
     device = device or Device("hip", 0)
@@ -2718,9 +3272,17 @@ def allocate_laguna_kv_cache(
 
         states: list[LagunaKVLayerState] = []
         element_bytes = DType.BF16.itemsize
+        use_lane_major_mirrors = (
+            parsed_prefill_preappend_role_variants.get(
+                _PREFILL_PREAPPEND_SWA_QROW4_ROLE
+            )
+            == _DENSE_INITIAL_LANE_MAJOR_GLOBAL_SCORE_REPLAY_SWA_PREFILL_VARIANT
+        )
         for layer_id, (attention_type, q_heads) in enumerate(
             zip(layer_types, head_counts, strict=True)
         ):
+            lane_major_key_cache = None
+            lane_major_value_cache = None
             if attention_type == FULL_ATTENTION:
                 capacity = context
                 physical_capacity = global_physical_capacity
@@ -2763,6 +3325,13 @@ def allocate_laguna_kv_cache(
                 payload_elements = capacity * _LAGUNA_KV_HEADS * _LAGUNA_HEAD_DIM
                 key_cache = allocate_raw(payload_elements * element_bytes)
                 value_cache = allocate_raw(payload_elements * element_bytes)
+                if use_lane_major_mirrors:
+                    lane_major_key_cache = allocate_raw(
+                        _SWA_LANE_MAJOR_MIRROR_NBYTES
+                    )
+                    lane_major_value_cache = allocate_raw(
+                        _SWA_LANE_MAJOR_MIRROR_NBYTES
+                    )
                 live_counts = metadata(
                     (ctypes.c_int64 * 1)(0),
                     (1,),
@@ -2789,7 +3358,11 @@ def allocate_laguna_kv_cache(
                 )
                 append_spans = decode_spans
                 write_variant = "swa_f32_spans"
-                write_rows_variant = "swa_f32_rows_spans"
+                write_rows_variant = (
+                    _SWA_ROWS_NATURAL_LANE_MAJOR_WRITE_VARIANT
+                    if use_lane_major_mirrors
+                    else "swa_f32_rows_spans"
+                )
                 attention_variant = parsed_swa_decode_variant
                 attention_prefill_variant = parsed_swa_prefill_variant
             states.append(
@@ -2801,6 +3374,8 @@ def allocate_laguna_kv_cache(
                     physical_capacity=physical_capacity,
                     key_cache=key_cache,
                     value_cache=value_cache,
+                    lane_major_key_cache=lane_major_key_cache,
+                    lane_major_value_cache=lane_major_value_cache,
                     append_spans=append_spans,
                     spans=decode_spans,
                     write_variant=write_variant,
@@ -2819,6 +3394,11 @@ def allocate_laguna_kv_cache(
             prefill_cached_meta=prefill_cached_meta,
             prefill_global_qrow6=prefill_global_qrow6,
             prefill_dense_initial=prefill_dense_initial,
+            swa_prefill_role_variants=parsed_swa_prefill_role_variants,
+            prefill_preappend_role_scoped=prefill_preappend_role_scoped,
+            prefill_preappend_role_variants=(
+                parsed_prefill_preappend_role_variants
+            ),
             row_position=_buffer_for_tensor(row_position, buffers),
             split_score_scratch=split_score_scratch,
             split_physical_scratch=split_physical_scratch,

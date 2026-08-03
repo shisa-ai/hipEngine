@@ -1,0 +1,1030 @@
+{
+  "authority_files": [
+    "README.md",
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/PLAN.md",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "WORKLOG.md"
+  ],
+  "baseline": {
+    "iq_down_family_ms": 342.20882100000006,
+    "iq_down_gap_ms": 187.77484700000005,
+    "llamacpp_over_current": 1.9344814001349913,
+    "matched_c4096_direct_m512_tok_s": 359.9631404837535,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "post_h6i_publication_revision": "cd6bd5b2c",
+    "production": "H6I/H6E/H6C/H6A/H5Y",
+    "production_revision": "eecf0c690495c854584c345cd5fae78ee65b600f",
+    "representative_kernel_sum_ms": 1409.540287,
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-quadruple-output-reduction-target.json",
+    "target_artifact_sha256": "1b9b2a3425f7af38c0e46ba433103a1dd0d570ad61966e8b8db643741457db06"
+  },
+  "candidate": {
+    "candidate_patch_sha256": "f5fd9e7eb700441636b804427392ab869dd2eea59fb5cfceb1655c7b352f06ee",
+    "id": "WPF-H6K",
+    "name": "exact IQ3 quadruple-output reduction amortization",
+    "red_commit": "0b30e0305",
+    "red_test_sha256": "a8eb748b97a93a914e4dc5256622ff0d9fcff4890c3810e4906e4cdca7ad78e1",
+    "target_commit": "3b7c39fb9",
+    "temporary_build_cache_key": "gguf_iq_selected_prefill-013b808f5f664017",
+    "temporary_source_sha256": {
+      "gfx1151_exclusion": "57df4bd7bd2a4961f61ffee38c03f9f998833661f90aa923d2174a7b237fbec7",
+      "green_test": "a8eb748b97a93a914e4dc5256622ff0d9fcff4890c3810e4906e4cdca7ad78e1",
+      "hip": "39fdc3d32d82dd15726c594d41d1237111f961ba628c872b4eeb73ea4cd2a103",
+      "python": "70c81e902d1b5aad19111182435cce39dc4fbeb1530f8abea343e68b2484fbff"
+    }
+  },
+  "commands": {
+    "all_layer_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6k_iq3_quadruple_output_final_screen.py",
+    "isa": "llvm-objcopy .hip_fatbin; clang-offload-bundler -unbundle hipv4-amdgcn-amd-amdhsa--gfx1100; llvm-readobj --notes; llvm-objdump -d --mcpu=gfx1100",
+    "red_and_green": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6k_iq3_quadruple_output_reduction.py",
+    "rocprof": "rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-h6k-leaf-rocprof -- .venv/bin/python /tmp/laguna_h6k_leaf_rocprof.py"
+  },
+  "correctness": {
+    "complete_actual_layer_outputs": "45/45 H6K outputs byte-exact to H6I",
+    "focused_green": "9/9 before rejection cleanup",
+    "focused_green_stdout_sha256": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "independent_cpu_oracle": "H6I controls match sampled independent CPU IQ3 values before every candidate comparison",
+    "post_cleanup_retained_guards": "111/111",
+    "post_cleanup_retained_guards_stdout_sha256": "e9e93bf6ce99e361311c2f70ba62d9ecf3e7ce0c72664f23da96aebf4f90392e",
+    "production_policy_unchanged": true,
+    "red_matrix": "rows1/7/8/9/M512; P64/P65 and reversed traversal; all 24 first/middle/last quadruplet edge columns",
+    "strict_shape_preflight": true,
+    "total_mismatches": 0,
+    "tracked_allocations_recovered": true
+  },
+  "correctness_claim": true,
+  "date": "2026-07-31",
+  "decision": {
+    "admitted": false,
+    "candidate_surfaces_removed": true,
+    "next_action": "Keep H6I. Do not retry wider IQ3 output grouping without an occupancy-preserving mechanism; rerank the unchanged post-H6I residual for a materially different exact operation.",
+    "production_after": "H6I/H6E/H6C/H6A/H5Y",
+    "production_changed": false,
+    "reason": "H6K realizes the intended 4-to-3 epoch and 8-to-6 barrier schedule and stays exact/private0/spill0/scratch0, but runtime VGPR rises 168 to 200. All 45 layers regress: aggregate event is +3.175% and synchronized wall is +1.660%.",
+    "runtime_gate_disposition": "not run because the binding all-45-layer leaf gate failed both aggregate clocks and every per-layer both-clock requirement",
+    "runtime_gate_run": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h6k_exact_iq3_quadruple_output_reduction_rejected",
+  "lineage": {
+    "candidate_source_disposition": "removed",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "post_cleanup_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "35f91534188f9e254e063ed68f0a3f41543ebcd5e79d029b3c3cf5596fb0cad0",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "743d62d05ba81e73889d67f7451369e89dc5f20fcef5f61cf714a91698acdd6d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "56d70376ac980228bbc22fe8dfe4b92b5bd4f731091315b36bdcc615940a91e8"
+    },
+    "red_test_disposition": "removed after rejection; retained in commit 0b30e0305"
+  },
+  "model": {
+    "context_length": 4096,
+    "logical_parameters": 117561977600,
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance": {
+    "aggregate": {
+      "all_layers_both_clock_positive": false,
+      "both_clock_positive_layers": 0,
+      "candidate_event_sum_ms": 339.5086372375488,
+      "candidate_wall_sum_ms": 337.53752931952477,
+      "event_percent_change": 3.175114828083947,
+      "event_speedup": 0.9692259627394212,
+      "h6i_event_sum_ms": 329.0605857849121,
+      "h6i_wall_sum_ms": 332.02700847759843,
+      "layers": 45,
+      "wall_percent_change": 1.6596604195523224,
+      "wall_speedup": 0.9836743462185211
+    },
+    "all_byte_exact": true,
+    "maximum_event_speedup": 0.9827390712543745,
+    "maximum_wall_speedup": 0.993848286893336,
+    "minimum_event_speedup": 0.9618869102145613,
+    "minimum_wall_speedup": 0.9778161301457631,
+    "protocol": {
+      "actual_routing_distributions": true,
+      "actual_weights": true,
+      "candidate": "H6K exact quadruple-output reduction P64/P256 rowbatch8",
+      "compact_rows": 5120,
+      "control": "H6I exact triple-output reduction P64/P256 rowbatch8",
+      "counter_rotated": true,
+      "deterministic_bf16_compact_input": true,
+      "event_and_synchronized_wall": true,
+      "expert_partition": 64,
+      "four_k_or_longer_run_performed": false,
+      "iq3_layers": 45,
+      "launches_per_sample": 5,
+      "output_partition": 256,
+      "repetitions": 15,
+      "rows": 512,
+      "unique_layers": 45,
+      "warmups": 5
+    },
+    "rows": [
+      {
+        "active_experts": 228,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.185559844970703,
+          "h6k": 7.429633331298828
+        },
+        "event_speedup": 0.9671486498129165,
+        "layer_id": 1,
+        "mismatches": 0,
+        "tensor": "blk.1.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.249800022691488,
+          "h6k": 7.3624554090201855
+        },
+        "wall_speedup": 0.9846986663999789
+      },
+      {
+        "active_experts": 217,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.077811431884766,
+          "h6k": 7.288629150390625
+        },
+        "event_speedup": 0.9710758066906778,
+        "layer_id": 2,
+        "mismatches": 0,
+        "tensor": "blk.2.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.132274191826582,
+          "h6k": 7.277702214196324
+        },
+        "wall_speedup": 0.9800173161679985
+      },
+      {
+        "active_experts": 227,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.116204833984375,
+          "h6k": 7.3359375
+        },
+        "event_speedup": 0.9700470913205538,
+        "layer_id": 3,
+        "mismatches": 0,
+        "tensor": "blk.3.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.162114791572094,
+          "h6k": 7.324602827429771
+        },
+        "wall_speedup": 0.9778161301457631
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.209713745117187,
+          "h6k": 7.413595581054688
+        },
+        "event_speedup": 0.9724989266397918,
+        "layer_id": 4,
+        "mismatches": 0,
+        "tensor": "blk.4.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.2383038233965635,
+          "h6k": 7.399468030780554
+        },
+        "wall_speedup": 0.9782194873045502
+      },
+      {
+        "active_experts": 232,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.292667388916016,
+          "h6k": 7.506524658203125
+        },
+        "event_speedup": 0.9715104820106857,
+        "layer_id": 5,
+        "mismatches": 0,
+        "tensor": "blk.5.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.325652986764908,
+          "h6k": 7.46986479498446
+        },
+        "wall_speedup": 0.9806941876221935
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.310604858398437,
+          "h6k": 7.500477600097656
+        },
+        "event_speedup": 0.9746852464839377,
+        "layer_id": 6,
+        "mismatches": 0,
+        "tensor": "blk.6.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.347669219598174,
+          "h6k": 7.481707027181983
+        },
+        "wall_speedup": 0.9820845955212049
+      },
+      {
+        "active_experts": 234,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.230924224853515,
+          "h6k": 7.435637664794922
+        },
+        "event_speedup": 0.9724686100681518,
+        "layer_id": 7,
+        "mismatches": 0,
+        "tensor": "blk.7.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.264638179913163,
+          "h6k": 7.403982197865844
+        },
+        "wall_speedup": 0.9811798550794941
+      },
+      {
+        "active_experts": 239,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.369638061523437,
+          "h6k": 7.4990791320800785
+        },
+        "event_speedup": 0.9827390712543745,
+        "layer_id": 8,
+        "mismatches": 0,
+        "tensor": "blk.8.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.399431988596916,
+          "h6k": 7.4720249976962805
+        },
+        "wall_speedup": 0.9902846940258169
+      },
+      {
+        "active_experts": 230,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.24068603515625,
+          "h6k": 7.452735900878906
+        },
+        "event_speedup": 0.9715473795740368,
+        "layer_id": 9,
+        "mismatches": 0,
+        "tensor": "blk.9.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.271560421213508,
+          "h6k": 7.416076213121414
+        },
+        "wall_speedup": 0.9805131733069016
+      },
+      {
+        "active_experts": 232,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.2486717224121096,
+          "h6k": 7.493708801269531
+        },
+        "event_speedup": 0.9673009606650436,
+        "layer_id": 10,
+        "mismatches": 0,
+        "tensor": "blk.10.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.303752796724439,
+          "h6k": 7.434452418237925
+        },
+        "wall_speedup": 0.9824197379765511
+      },
+      {
+        "active_experts": 217,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.302456665039062,
+          "h6k": 7.518178558349609
+        },
+        "event_speedup": 0.9713066281099472,
+        "layer_id": 11,
+        "mismatches": 0,
+        "tensor": "blk.11.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.336158957332373,
+          "h6k": 7.472035009413958
+        },
+        "wall_speedup": 0.9818153887247054
+      },
+      {
+        "active_experts": 215,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.214168548583984,
+          "h6k": 7.462963104248047
+        },
+        "event_speedup": 0.9666627648845746,
+        "layer_id": 12,
+        "mismatches": 0,
+        "tensor": "blk.12.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.26843043230474,
+          "h6k": 7.397767994552851
+        },
+        "wall_speedup": 0.9825166776866556
+      },
+      {
+        "active_experts": 226,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.305751800537109,
+          "h6k": 7.579956817626953
+        },
+        "event_speedup": 0.9638249895497837,
+        "layer_id": 13,
+        "mismatches": 0,
+        "tensor": "blk.13.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.362567400559783,
+          "h6k": 7.495341170579195
+        },
+        "wall_speedup": 0.9822858270227142
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.2805633544921875,
+          "h6k": 7.56904296875
+        },
+        "event_speedup": 0.9618869102145613,
+        "layer_id": 14,
+        "mismatches": 0,
+        "tensor": "blk.14.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.349729398265481,
+          "h6k": 7.477997010573745
+        },
+        "wall_speedup": 0.9828473303577288
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.322594451904297,
+          "h6k": 7.599526977539062
+        },
+        "event_speedup": 0.9635592417194835,
+        "layer_id": 15,
+        "mismatches": 0,
+        "tensor": "blk.15.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.416422199457884,
+          "h6k": 7.516789622604847
+        },
+        "wall_speedup": 0.9866475678865438
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.328509521484375,
+          "h6k": 7.579303741455078
+        },
+        "event_speedup": 0.9669106518849506,
+        "layer_id": 16,
+        "mismatches": 0,
+        "tensor": "blk.16.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.411506166681647,
+          "h6k": 7.517881598323584
+        },
+        "wall_speedup": 0.9858503449075792
+      },
+      {
+        "active_experts": 211,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.280430603027344,
+          "h6k": 7.536224365234375
+        },
+        "event_speedup": 0.9660581015359571,
+        "layer_id": 17,
+        "mismatches": 0,
+        "tensor": "blk.17.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.330695167183876,
+          "h6k": 7.474981201812625
+        },
+        "wall_speedup": 0.9806974719088577
+      },
+      {
+        "active_experts": 212,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.353887939453125,
+          "h6k": 7.602881622314453
+        },
+        "event_speedup": 0.9672500907905062,
+        "layer_id": 18,
+        "mismatches": 0,
+        "tensor": "blk.18.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.4275563936680555,
+          "h6k": 7.527407770976424
+        },
+        "wall_speedup": 0.9867349583885481
+      },
+      {
+        "active_experts": 197,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.194934844970703,
+          "h6k": 7.446209716796875
+        },
+        "event_speedup": 0.9662546609103212,
+        "layer_id": 19,
+        "mismatches": 0,
+        "tensor": "blk.19.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.267436385154724,
+          "h6k": 7.377861766144633
+        },
+        "wall_speedup": 0.9850328747691334
+      },
+      {
+        "active_experts": 214,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.343604278564453,
+          "h6k": 7.5863800048828125
+        },
+        "event_speedup": 0.9679984754043296,
+        "layer_id": 20,
+        "mismatches": 0,
+        "tensor": "blk.20.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.416420197114348,
+          "h6k": 7.525035832077265
+        },
+        "wall_speedup": 0.9855660973068173
+      },
+      {
+        "active_experts": 210,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.26153793334961,
+          "h6k": 7.510523986816406
+        },
+        "event_speedup": 0.9668483778357071,
+        "layer_id": 21,
+        "mismatches": 0,
+        "tensor": "blk.21.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.330369204282761,
+          "h6k": 7.459546811878681
+        },
+        "wall_speedup": 0.9826829148132409
+      },
+      {
+        "active_experts": 203,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.239633178710937,
+          "h6k": 7.496795654296875
+        },
+        "event_speedup": 0.9656970141051474,
+        "layer_id": 22,
+        "mismatches": 0,
+        "tensor": "blk.22.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.32354698702693,
+          "h6k": 7.433196390047669
+        },
+        "wall_speedup": 0.9852486874734604
+      },
+      {
+        "active_experts": 202,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.302300262451172,
+          "h6k": 7.542533874511719
+        },
+        "event_speedup": 0.9681494818508721,
+        "layer_id": 23,
+        "mismatches": 0,
+        "tensor": "blk.23.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.379687810316682,
+          "h6k": 7.483259169384837
+        },
+        "wall_speedup": 0.9861595921344163
+      },
+      {
+        "active_experts": 199,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.205059051513672,
+          "h6k": 7.435109710693359
+        },
+        "event_speedup": 0.9690588749687415,
+        "layer_id": 24,
+        "mismatches": 0,
+        "tensor": "blk.24.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.300110813230276,
+          "h6k": 7.373713841661811
+        },
+        "wall_speedup": 0.9900181875765677
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.249285125732422,
+          "h6k": 7.463719177246094
+        },
+        "event_speedup": 0.9712698124860598,
+        "layer_id": 25,
+        "mismatches": 0,
+        "tensor": "blk.25.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.321421010419726,
+          "h6k": 7.4370806105434895
+        },
+        "wall_speedup": 0.9844482524554334
+      },
+      {
+        "active_experts": 213,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.383897399902343,
+          "h6k": 7.609457397460938
+        },
+        "event_speedup": 0.9703579393671542,
+        "layer_id": 26,
+        "mismatches": 0,
+        "tensor": "blk.26.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.464161003008485,
+          "h6k": 7.558606192469597
+        },
+        "wall_speedup": 0.987504946407288
+      },
+      {
+        "active_experts": 212,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.3453514099121096,
+          "h6k": 7.560769653320312
+        },
+        "event_speedup": 0.9715084239719429,
+        "layer_id": 27,
+        "mismatches": 0,
+        "tensor": "blk.27.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.416658382862806,
+          "h6k": 7.500429591163993
+        },
+        "wall_speedup": 0.9888311452986807
+      },
+      {
+        "active_experts": 219,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.405849456787109,
+          "h6k": 7.654170989990234
+        },
+        "event_speedup": 0.9675573574815786,
+        "layer_id": 28,
+        "mismatches": 0,
+        "tensor": "blk.28.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.489235186949372,
+          "h6k": 7.597192795947194
+        },
+        "wall_speedup": 0.9857898026419163
+      },
+      {
+        "active_experts": 201,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.20823974609375,
+          "h6k": 7.424785614013672
+        },
+        "event_speedup": 0.9708347312397534,
+        "layer_id": 29,
+        "mismatches": 0,
+        "tensor": "blk.29.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.277658395469189,
+          "h6k": 7.409920170903206
+        },
+        "wall_speedup": 0.9821507152056275
+      },
+      {
+        "active_experts": 204,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.290272521972656,
+          "h6k": 7.546875762939453
+        },
+        "event_speedup": 0.9659987458350776,
+        "layer_id": 30,
+        "mismatches": 0,
+        "tensor": "blk.30.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.379183964803815,
+          "h6k": 7.4916554149240255
+        },
+        "wall_speedup": 0.9849871031312842
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.289577484130859,
+          "h6k": 7.519860076904297
+        },
+        "event_speedup": 0.9693767449901491,
+        "layer_id": 31,
+        "mismatches": 0,
+        "tensor": "blk.31.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.363311806693673,
+          "h6k": 7.49274343252182
+        },
+        "wall_speedup": 0.9827257363082317
+      },
+      {
+        "active_experts": 208,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.301802062988282,
+          "h6k": 7.5326286315917965
+        },
+        "event_speedup": 0.9693564385166382,
+        "layer_id": 32,
+        "mismatches": 0,
+        "tensor": "blk.32.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.387477764859796,
+          "h6k": 7.48898540623486
+        },
+        "wall_speedup": 0.9864457418637035
+      },
+      {
+        "active_experts": 200,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.201420593261719,
+          "h6k": 7.449668884277344
+        },
+        "event_speedup": 0.9666766006822722,
+        "layer_id": 33,
+        "mismatches": 0,
+        "tensor": "blk.33.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.283116597682238,
+          "h6k": 7.383868005126715
+        },
+        "wall_speedup": 0.9863551992838274
+      },
+      {
+        "active_experts": 213,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.314364624023438,
+          "h6k": 7.57425537109375
+        },
+        "event_speedup": 0.9656876175495541,
+        "layer_id": 34,
+        "mismatches": 0,
+        "tensor": "blk.34.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.407246436923742,
+          "h6k": 7.525984011590481
+        },
+        "wall_speedup": 0.984222983402054
+      },
+      {
+        "active_experts": 221,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.432766723632812,
+          "h6k": 7.672724914550781
+        },
+        "event_speedup": 0.9687258185859231,
+        "layer_id": 35,
+        "mismatches": 0,
+        "tensor": "blk.35.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.518855622038245,
+          "h6k": 7.618915196508169
+        },
+        "wall_speedup": 0.9868669525924396
+      },
+      {
+        "active_experts": 220,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.476695251464844,
+          "h6k": 7.745594024658203
+        },
+        "event_speedup": 0.9652836474081502,
+        "layer_id": 36,
+        "mismatches": 0,
+        "tensor": "blk.36.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.534591993317008,
+          "h6k": 7.686862023547292
+        },
+        "wall_speedup": 0.9801908724569489
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.345262145996093,
+          "h6k": 7.576961517333984
+        },
+        "event_speedup": 0.9694205426795652,
+        "layer_id": 37,
+        "mismatches": 0,
+        "tensor": "blk.37.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.415206404402852,
+          "h6k": 7.549588195979595
+        },
+        "wall_speedup": 0.9822001163390202
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.44034423828125,
+          "h6k": 7.670355224609375
+        },
+        "event_speedup": 0.9700129942365429,
+        "layer_id": 38,
+        "mismatches": 0,
+        "tensor": "blk.38.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.5002215802669525,
+          "h6k": 7.643761392682791
+        },
+        "wall_speedup": 0.9812213117283795
+      },
+      {
+        "active_experts": 229,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.42138442993164,
+          "h6k": 7.649931335449219
+        },
+        "event_speedup": 0.9701243193571544,
+        "layer_id": 39,
+        "mismatches": 0,
+        "tensor": "blk.39.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.492059422656894,
+          "h6k": 7.641219440847635
+        },
+        "wall_speedup": 0.9804795531203596
+      },
+      {
+        "active_experts": 226,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.62811508178711,
+          "h6k": 7.8577415466308596
+        },
+        "event_speedup": 0.9707770402626431,
+        "layer_id": 40,
+        "mismatches": 0,
+        "tensor": "blk.40.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.679219823330641,
+          "h6k": 7.825125986710191
+        },
+        "wall_speedup": 0.9813541451438162
+      },
+      {
+        "active_experts": 228,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.363033294677734,
+          "h6k": 7.5899711608886715
+        },
+        "event_speedup": 0.9701002992764513,
+        "layer_id": 41,
+        "mismatches": 0,
+        "tensor": "blk.41.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.4279965832829475,
+          "h6k": 7.580758584663272
+        },
+        "wall_speedup": 0.979848718347346
+      },
+      {
+        "active_experts": 222,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.451419067382813,
+          "h6k": 7.6035888671875
+        },
+        "event_speedup": 0.9799871083954368,
+        "layer_id": 42,
+        "mismatches": 0,
+        "tensor": "blk.42.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.525415811687708,
+          "h6k": 7.571996562182903
+        },
+        "wall_speedup": 0.993848286893336
+      },
+      {
+        "active_experts": 224,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.413170623779297,
+          "h6k": 7.667005920410157
+        },
+        "event_speedup": 0.9668925132879927,
+        "layer_id": 43,
+        "mismatches": 0,
+        "tensor": "blk.43.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.500691385939717,
+          "h6k": 7.653731573373079
+        },
+        "wall_speedup": 0.9800045002929315
+      },
+      {
+        "active_experts": 225,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.437480163574219,
+          "h6k": 7.6609344482421875
+        },
+        "event_speedup": 0.9708319805922317,
+        "layer_id": 44,
+        "mismatches": 0,
+        "tensor": "blk.44.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.522295787930489,
+          "h6k": 7.660809811204672
+        },
+        "wall_speedup": 0.9819191408365741
+      },
+      {
+        "active_experts": 231,
+        "byte_exact": true,
+        "event_ms": {
+          "h6i": 7.442939758300781,
+          "h6k": 7.656046295166016
+        },
+        "event_speedup": 0.9721649362282737,
+        "layer_id": 45,
+        "mismatches": 0,
+        "tensor": "blk.45.ffn_down_exps.weight",
+        "wall_ms": {
+          "h6i": 7.505147578194737,
+          "h6k": 7.64314359985292
+        },
+        "wall_speedup": 0.9819451224675619
+      }
+    ]
+  },
+  "performance_claim": true,
+  "physical": {
+    "barrier_model": {
+      "dynamic_barrier_reduction_percent": 25.0,
+      "h6i_dynamic_barriers_per_rowbatch": 8,
+      "h6i_output_loop_iterations": 4,
+      "h6k_dynamic_barriers_per_rowbatch": 6,
+      "h6k_output_loop_iterations": 3
+    },
+    "isa": {
+      "h6i": {
+        "barriers_per_loop_body": 2,
+        "code_bytes": 6264,
+        "ds_instructions": 60,
+        "fma_fma_vopd_pairs": 44,
+        "fma_issue_slots": 172,
+        "fma_operations": 216,
+        "function_instruction_slots": 1094,
+        "global_load_instructions": 23,
+        "out_stride_0x100": 0,
+        "out_stride_0x200": 0,
+        "out_stride_0x300": 1,
+        "out_stride_0x400": 0,
+        "scratch_instructions": 0,
+        "vopd_slots_all_classes": 101
+      },
+      "h6k": {
+        "barriers_per_loop_body": 2,
+        "code_bytes": 7616,
+        "ds_instructions": 80,
+        "fma_fma_vopd_pairs": 55,
+        "fma_issue_slots": 233,
+        "fma_operations": 288,
+        "function_instruction_slots": 1297,
+        "global_load_instructions": 28,
+        "out_stride_0x100": 0,
+        "out_stride_0x200": 0,
+        "out_stride_0x300": 0,
+        "out_stride_0x400": 1,
+        "scratch_instructions": 0,
+        "vopd_slots_all_classes": 132
+      }
+    },
+    "metadata": {
+      "h6i": {
+        "group_segment_fixed_size": 384,
+        "max_flat_workgroup_size": 128,
+        "private_segment_fixed_size": 0,
+        "sgpr_count": 56,
+        "sgpr_spill_count": 0,
+        "vgpr_count": 164,
+        "vgpr_spill_count": 0,
+        "wavefront_size": 32
+      },
+      "h6k": {
+        "group_segment_fixed_size": 512,
+        "max_flat_workgroup_size": 128,
+        "private_segment_fixed_size": 0,
+        "sgpr_count": 56,
+        "sgpr_spill_count": 0,
+        "vgpr_count": 193,
+        "vgpr_spill_count": 0,
+        "wavefront_size": 32
+      }
+    },
+    "no_compiler_under_profile": true,
+    "raw_evidence_sha256": {
+      "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-013b808f5f664017/gguf_iq_selected_prefill.so": "9e60a52082462196c843c0a280ef36f168c6a0a0fec0a8857d8244b1fcb7a6ae",
+      "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-013b808f5f664017/gguf_iq_selected_prefill.so.0.hipv4-amdgcn-amd-amdhsa--gfx1100": "c249b23b6b5d2437cbdac332bd242543b5f9981d0f06a82ff3e5fe92618dfe81",
+      "/tmp/h6k-full.isa": "fe4bd8c0f49c2ab500049abc2cabdf479fcbb5eca2df4db5fbc0edffdbc84f0c",
+      "/tmp/h6k-h6i-control.isa": "3241992ef85ffd8a303a044b9ab6fed77d2380046a50cb56b9f20deeeb8906ce",
+      "/tmp/h6k-h6k-candidate.isa": "341215449ff645e2b9ef687bd4a16d36d3477b60bf437711769750ac728fa38f",
+      "/tmp/h6k-readobj-notes.txt": "03005cad4d841a823a0e9e765416e606659c7d27277db8fb0b2b145b5b66518b",
+      "/tmp/laguna-h6k-leaf-rocprof.stderr": "c3a0482fc9342beaa8143c4b69e5b1b35f65d3e2f2752bad11451ce16d33108e",
+      "/tmp/laguna-h6k-leaf-rocprof.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+      "/tmp/laguna-h6k-leaf-rocprof/h6k-leaf_kernel_trace.csv": "66ec2327756c6dd3b35849da32956f17ebacd3aabec20098becf7efa62bb1919"
+    },
+    "schema": 1,
+    "trace": {
+      "h6i": {
+        "End_Timestamp": 1655176657305205,
+        "Grid_Size_X": 32768,
+        "Grid_Size_Y": 64,
+        "LDS_Block_Size": 512,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "Start_Timestamp": 1655176656654481,
+        "VGPR_Count": 168,
+        "Workgroup_Size_X": 128,
+        "duration_ns": 650724,
+        "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+      },
+      "h6k": {
+        "End_Timestamp": 1655176667411670,
+        "Grid_Size_X": 32768,
+        "Grid_Size_Y": 64,
+        "LDS_Block_Size": 512,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "Start_Timestamp": 1655176666782669,
+        "VGPR_Count": 200,
+        "Workgroup_Size_X": 128,
+        "duration_ns": 629001,
+        "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_quadruple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+      }
+    }
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h6k_physical.py": "4c01860b52abe0c01e6154cc10a709407be7d554ef61a4b1c8d93f40d12d04f0",
+    "/tmp/h6k-full.isa": "fe4bd8c0f49c2ab500049abc2cabdf479fcbb5eca2df4db5fbc0edffdbc84f0c",
+    "/tmp/h6k-h6i-control.isa": "3241992ef85ffd8a303a044b9ab6fed77d2380046a50cb56b9f20deeeb8906ce",
+    "/tmp/h6k-h6k-candidate.isa": "341215449ff645e2b9ef687bd4a16d36d3477b60bf437711769750ac728fa38f",
+    "/tmp/h6k-readobj-notes.txt": "03005cad4d841a823a0e9e765416e606659c7d27277db8fb0b2b145b5b66518b",
+    "/tmp/laguna-h6k-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6k-green.stdout": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "/tmp/laguna-h6k-leaf-rocprof.stderr": "c3a0482fc9342beaa8143c4b69e5b1b35f65d3e2f2752bad11451ce16d33108e",
+    "/tmp/laguna-h6k-leaf-rocprof.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "/tmp/laguna-h6k-leaf-rocprof/h6k-leaf_kernel_trace.csv": "66ec2327756c6dd3b35849da32956f17ebacd3aabec20098becf7efa62bb1919",
+    "/tmp/laguna-h6k-physical-summary.json": "2ec9b2d9a271cf4b759f82783d4c3c0b8768bad329723254691480759c964bd2",
+    "/tmp/laguna-h6k-rejection-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6k-rejection-guards.stdout": "e9e93bf6ce99e361311c2f70ba62d9ecf3e7ce0c72664f23da96aebf4f90392e",
+    "/tmp/laguna-h6k-screen.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h6k-screen.stdout": "f667d291e945641bdaecfea08b796546ed8918775549ba408500e7cb58bbecb4",
+    "/tmp/laguna-wpfh6k-iq3-quadruple-output-final-m512.json": "2560371d2f7b93e7e9e0d76c5fab2ac84a994494633288cc906ce668980bb6f8",
+    "/tmp/laguna_wpfh6k_iq3_quadruple_output_final_screen.py": "1a827f0882733e1dde8528e2ca617fb99e8fdaf12276ee61a6c08c9ff1cbef41"
+  },
+  "schema": 1,
+  "status": "rejected_exact_leaf_all_candidate_surfaces_removed"
+}

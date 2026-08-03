@@ -3,7 +3,7 @@ from __future__ import annotations
 import ctypes
 from dataclasses import replace
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,7 +17,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
-from hipengine.kernels.registry import KernelKey
+from hipengine.kernels.registry import KernelKey, is_registered
 from hipengine.loading.laguna_gguf import (
     SLIDING_ATTENTION,
     SPARSE_MOE,
@@ -37,6 +37,7 @@ from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_dense_q4_prefill_mode,
     resolve_laguna_group_compact_mode,
+    resolve_laguna_iq3_c1_down_schedule,
     resolve_laguna_moe_plan,
     resolve_laguna_router_logits_mode,
     resolve_laguna_selected_down_mode,
@@ -47,16 +48,6 @@ from hipengine.runtime.laguna_moe import (
 )
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q6_k_weight
 from tests._laguna_synthetic import make_laguna_info, tensor_info
-
-from hipengine.runtime.laguna_moe import (
-    allocate_laguna_moe_scratch,
-    resolve_laguna_iq3_c1_down_schedule,
-    resolve_laguna_moe_plan,
-    resolve_laguna_selected_down_mode,
-    run_laguna_moe_c1,
-    run_laguna_moe_rows,
-    validate_laguna_moe_layer,
-)
 
 
 def _hip_available() -> bool:
@@ -521,7 +512,9 @@ def test_laguna_mmq_selected_silu_pack_fusion_is_shape_qualified() -> None:
 
 
 def test_laguna_group_compact_mode_is_backend_qualified() -> None:
-    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"
+    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "parallel"
+    assert resolve_laguna_group_compact_mode("hip_gfx1100", "serial") == "serial"
+    assert resolve_laguna_group_compact_mode("hip_gfx1100", "parallel") == "parallel"
     assert resolve_laguna_group_compact_mode("hip_gfx1151") == "parallel"
     assert resolve_laguna_group_compact_mode("hip_gfx1151", "serial") == "serial"
     assert (
@@ -532,13 +525,215 @@ def test_laguna_group_compact_mode_is_backend_qualified() -> None:
         resolve_laguna_group_compact_mode("hip_gfx1151", "atomic")
 
 
+def test_laguna_grouped_exact_quant_miss_fails_closed_to_direct() -> None:
+    plan = SimpleNamespace(grouped_exact_down_routes={})
+    scratch = SimpleNamespace(plan=plan)
+    layer = SimpleNamespace(
+        weight=lambda _slot: SimpleNamespace(
+            spec=SimpleNamespace(quant_key="gguf_q6_k_t16_v1")
+        )
+    )
+
+    assert not laguna_moe_module._launch_selected_gate_up_grouped_exact(
+        0,
+        layer,
+        scratch,
+        tokens=3,
+        lanes=30,
+        group_compact_mode="serial",
+        stream=0,
+        runtime=None,
+        libraries=None,
+    )
+
+
+def test_laguna_grouped_pair16_gate_up_uses_source_gather_and_registered_route() -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        return lambda *args, **kwargs: calls.append((name, args, kwargs))
+
+    route = SimpleNamespace(
+        function=record("pair16"),
+        allocation_name="raw",
+        library_key="grouped_iq_prefill",
+    )
+    plan = SimpleNamespace(
+        grouped_exact_down_routes={"gguf_iq3_xxs": object()},
+        grouped_pair16_gate_up_routes={"gguf_iq2_xs": route},
+        grouped_special_gate_up_routes={},
+        grouped_compact_source_rows=record("compact"),
+        grouped_compact_source_rows_parallel=record("compact_parallel"),
+        grouped_gather=record("gather"),
+        expert_count=256,
+        top_k=10,
+        hidden_size=3072,
+        expert_ffn_size=1024,
+    )
+    def buffer(ptr: int) -> SimpleNamespace:
+        return SimpleNamespace(ptr=ptr)
+
+    scratch = SimpleNamespace(
+        plan=plan,
+        selected_experts=buffer(1),
+        scaled_routing_weights=buffer(2),
+        grouped_expert_start=buffer(3),
+        grouped_active_experts=buffer(4),
+        grouped_active_count=buffer(5),
+        grouped_sorted_lanes=buffer(6),
+        grouped_lane_to_row=buffer(7),
+        grouped_sorted_weights=buffer(8),
+        expert_down=buffer(9),
+        expert_gate=buffer(10),
+    )
+
+    def weight(slot: str):
+        quant = "gguf_iq3_xxs" if slot == "ffn_down_exps" else "gguf_iq2_xs"
+        ptr = 11 if slot == "ffn_gate_exps" else 12
+        return SimpleNamespace(
+            spec=SimpleNamespace(quant_key=quant),
+            allocation=lambda _name: SimpleNamespace(tensor=buffer(ptr)),
+        )
+
+    assert laguna_moe_module._launch_selected_gate_up_grouped_exact(
+        13,
+        SimpleNamespace(weight=weight),
+        scratch,
+        tokens=512,
+        lanes=5120,
+        group_compact_mode="serial",
+        pair16=True,
+        stream=14,
+        runtime=SimpleNamespace(),
+        libraries=None,
+    )
+    assert [name for name, _, _ in calls] == ["compact", "gather", "pair16"]
+    _, gather_args, _ = calls[1]
+    assert gather_args[:3] == (13, 6, 9)
+    _, pair16_args, pair16_kwargs = calls[2]
+    assert pair16_args[:5] == (9, 3, 11, 12, 10)
+    assert pair16_kwargs["compact_rows"] == 5120
+    assert pair16_kwargs["in_features"] == 3072
+    assert pair16_kwargs["out_features"] == 1024
+
+
+def test_laguna_grouped_pair16_preserves_route_major_c1_gate_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        return lambda *args, **kwargs: calls.append((name, args, kwargs))
+
+    plan = SimpleNamespace(
+        grouped_exact_down_routes={"gguf_iq3_xxs": object()},
+        grouped_pair16_gate_up_routes={"gguf_iq2_xs": object()},
+        grouped_special_gate_up_routes={},
+        grouped_compact_source_rows=record("compact"),
+        grouped_compact_source_rows_parallel=record("compact_parallel"),
+        grouped_gather=record("gather"),
+        expert_count=256,
+        top_k=10,
+        expert_ffn_size=1024,
+    )
+
+    def buffer(ptr: int) -> SimpleNamespace:
+        return SimpleNamespace(ptr=ptr)
+
+    scratch = SimpleNamespace(
+        plan=plan,
+        selected_experts=buffer(1),
+        scaled_routing_weights=buffer(2),
+        grouped_expert_start=buffer(3),
+        grouped_active_experts=buffer(4),
+        grouped_active_count=buffer(5),
+        grouped_sorted_lanes=buffer(6),
+        grouped_lane_to_row=buffer(7),
+        grouped_sorted_weights=buffer(8),
+        expert_intermediate=buffer(9),
+        expert_gate=buffer(10),
+    )
+    quant = {"ffn_down_exps": "gguf_iq3_xxs", "ffn_gate_exps": "gguf_iq2_xs"}
+    layer = SimpleNamespace(
+        weight=lambda slot: SimpleNamespace(spec=SimpleNamespace(quant_key=quant[slot]))
+    )
+    monkeypatch.setattr(
+        laguna_moe_module,
+        "_launch_selected_gate_up",
+        record("route_major"),
+    )
+
+    assert laguna_moe_module._launch_selected_gate_up_grouped_exact(
+        11,
+        layer,
+        scratch,
+        tokens=1,
+        lanes=10,
+        group_compact_mode="serial",
+        pair16=True,
+        stream=12,
+        runtime=SimpleNamespace(),
+        libraries=None,
+    )
+    assert [name for name, _, _ in calls] == ["compact", "route_major", "gather"]
+
+
+def test_obsolete_laguna_grouped_prefill_keys_are_removed() -> None:
+    obsolete = {
+        "gguf_iq2_xs": (
+            "selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch4_bf16_bf16_out",
+        ),
+        "gguf_iq3_xxs": (
+            "selected_dual_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+        ),
+    }
+    for quant, variants in obsolete.items():
+        for variant in variants:
+            assert not is_registered(
+                KernelKey("hip_gfx1100", "moe_linear", quant, variant)
+            )
+
+    retained = {
+        "gguf_iq2_xs": (
+            "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_dual_silu_grouped_prefill_compact_pair16_rowbatch8_bf16_bf16_out",
+        ),
+        "gguf_iq3_xxs": (
+            "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        ),
+        "gguf_iq4_xs": (
+            "selected_dual_grouped_prefill_compact_bf16_bf16_out",
+            "selected_grouped_prefill_compact_auto_bf16_bf16_out",
+        ),
+    }
+    for quant, variants in retained.items():
+        for variant in variants:
+            assert is_registered(
+                KernelKey("hip_gfx1100", "moe_linear", quant, variant)
+            )
+
+
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
-    assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
+    assert resolve_laguna_selected_down_mode("hip_gfx1100") == "grouped_exact"
+    assert resolve_laguna_selected_down_mode("hip_gfx1100", "direct") == "direct"
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151")
         == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     )
     assert resolve_laguna_selected_down_mode("hip_gfx1151", "direct") == "direct"
+    assert (
+        resolve_laguna_selected_down_mode("hip_gfx1100", "grouped_exact")
+        == "grouped_exact"
+    )
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151", "adaptive_grouped_smallm")
         == "adaptive_grouped_smallm"
@@ -583,7 +778,11 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
 
 
 def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
-    assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "direct"
+    assert resolve_laguna_selected_gate_up_mode("hip_gfx1100") == "grouped_pair16"
+    assert (
+        resolve_laguna_selected_gate_up_mode("hip_gfx1100", "direct")
+        == "direct"
+    )
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151")
         == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
@@ -591,6 +790,14 @@ def test_laguna_selected_gate_up_default_is_backend_qualified() -> None:
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "direct")
         == "direct"
+    )
+    assert (
+        resolve_laguna_selected_gate_up_mode("hip_gfx1100", "grouped_exact")
+        == "grouped_exact"
+    )
+    assert (
+        resolve_laguna_selected_gate_up_mode("hip_gfx1100", "grouped_pair16")
+        == "grouped_pair16"
     )
     assert (
         resolve_laguna_selected_gate_up_mode("hip_gfx1151", "mmq32_d4x3")
@@ -714,6 +921,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     mmq_scratch = None
     mmq_parallel_scratch = None
     down_rowvec_scratch = None
+    down_rows32_scratch = None
+    down_rows32_weight = None
     concurrent_scratch = None
     paired_gate_weight = None
     paired_up_weight = None
@@ -1027,6 +1236,58 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(down_wavecols_direct_actual),
             _f32_to_bf16_u16(down_wavecols_actual),
         )
+        down_rows64_reference_actual = down_wavecols_direct_actual
+        if down_qtype == GGMLQuantizationType.Q6_K:
+            # The current gfx1151 Q6 resident contains planar qmicro records.
+            # Row32 predates that layout and decodes interleaved qmicro bytes,
+            # so compare equivalent D4 arithmetic using a separately packed
+            # interleaved resident rather than misreading the production bytes.
+            assert plan.q6_qmicro_planar
+            down_source = tensor_info(
+                "synthetic.ffn_down_exps",
+                (e, h, f),
+                GGMLQuantizationType.Q6_K,
+            )
+            down_rows32_weight = _materialize_spec(
+                _spec_for_tensor("layers.1.ffn_down_exps", down_source),
+                _ArrayReader(down_source.name, down_experts),
+                device=None,
+                runtime=_runtime(),
+                backend="hip_gfx1151",
+                q6_qmicro=True,
+                q6_qmicro_planar=False,
+            )
+            down_rows32_plan = resolve_laguna_moe_plan(
+                config,
+                backend="hip_gfx1151",
+                q6_qmicro=True,
+                q6_qmicro_planar=False,
+            )
+            assert not down_rows32_plan.q6_qmicro_planar
+            down_rows32_layer = LagunaGGUFResidentLayerWeights(
+                layer_id=1,
+                attention_type=SLIDING_ATTENTION,
+                mlp_type=SPARSE_MOE,
+                weights=MappingProxyType(
+                    {**resident, "ffn_down_exps": down_rows32_weight}
+                ),
+            )
+            down_rows32_scratch = allocate_laguna_moe_scratch(
+                down_rows32_plan,
+                max_rows=3,
+            )
+            down_rows32_output = run_laguna_moe_rows(
+                bulk_hidden_buffer.ptr,
+                down_rows32_layer,
+                down_rows32_scratch,
+                rows=3,
+                selected_gate_up_mode="mmq128x32_d8_f32_rowvec",
+                selected_down_mode="mmq64x32_d4_f32_wavecols_direct_q4",
+            )
+            down_rows64_reference_actual = _read_bf16(
+                down_rows32_output,
+                (3, h),
+            )
         down_q6_rows64_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
             layer,
@@ -1101,7 +1362,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         )
         np.testing.assert_array_equal(
             _f32_to_bf16_u16(down_q6_rows64_actual),
-            _f32_to_bf16_u16(down_wavecols_direct_actual),
+            _f32_to_bf16_u16(down_rows64_reference_actual),
         )
         fused_silu_pack_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
@@ -1319,6 +1580,10 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             router_tile8_scratch.free()
         if mmq_parallel_scratch is not None:
             mmq_parallel_scratch.free()
+        if down_rows32_scratch is not None:
+            down_rows32_scratch.free()
+        if down_rows32_weight is not None:
+            down_rows32_weight.free()
         if down_rowvec_scratch is not None:
             down_rowvec_scratch.free()
         if mmq_scratch is not None:
@@ -1380,6 +1645,7 @@ def test_laguna_q2_xl_actual_sparse_layer_matches_quant_oracle(
     resident = None
     scratch = None
     bulk_scratch = None
+    grouped_exact_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -1545,7 +1811,65 @@ def test_laguna_q2_xl_actual_sparse_layer_matches_quant_oracle(
             _f32_to_bf16_u16(bulk_actual),
             _f32_to_bf16_u16(serial_actual),
         )
+        grouped_exact_scratch = allocate_laguna_moe_scratch(
+            plan, max_rows=3, runtime=runtime
+        )
+        grouped_exact_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            grouped_exact_scratch,
+            rows=3,
+            selected_gate_up_mode="grouped_exact",
+            selected_down_mode="grouped_exact",
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        grouped_exact_actual = _read_bf16(grouped_exact_output, (3, h))
+        lanes = 3 * k
+        sorted_lanes = _read_array(
+            grouped_exact_scratch.grouped_sorted_lanes,
+            np.int64,
+            (lanes,),
+        )
+        lane_to_row = _read_array(
+            grouped_exact_scratch.grouped_lane_to_row,
+            np.int64,
+            (lanes,),
+        )
+        # The grouped weighted-sum stage reuses grouped_lane_to_row for the
+        # inverse stable-compaction map: source lane -> expert-major row.
+        np.testing.assert_array_equal(
+            sorted_lanes[lane_to_row],
+            np.arange(lanes, dtype=np.int64),
+        )
+        # Grouped gate/up always leaves its expert-major post-SiLU rows in
+        # expert_gate: ordinary routes gather route-major expert_intermediate
+        # there, while H6C writes the same sorted rows there directly.
+        grouped_intermediate = _read_bf16(
+            grouped_exact_scratch.expert_gate,
+            (lanes, plan.expert_ffn_size),
+        )
+        direct_intermediate = _read_bf16(
+            bulk_scratch.expert_intermediate,
+            (lanes, plan.expert_ffn_size),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(grouped_intermediate[lane_to_row]),
+            _f32_to_bf16_u16(direct_intermediate),
+        )
+        grouped_down = _read_bf16(grouped_exact_scratch.expert_down, (lanes, h))
+        direct_down = _read_bf16(bulk_scratch.expert_down, (lanes, h))
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(grouped_down[lane_to_row]),
+            _f32_to_bf16_u16(direct_down),
+        )
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(grouped_exact_actual),
+            _f32_to_bf16_u16(bulk_actual),
+        )
     finally:
+        if grouped_exact_scratch is not None:
+            grouped_exact_scratch.free(runtime=runtime)
         if bulk_scratch is not None:
             bulk_scratch.free(runtime=runtime)
         if scratch is not None:
@@ -1602,6 +1926,133 @@ def test_laguna_persistent_wave_top10_router_is_not_runtime_selectable() -> None
         allocate_laguna_moe_scratch(plan, allocate_router_counter=True)
 
 
+def test_h5j_grouped_iq_down_package_policy_is_bounded_and_fail_closed(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100, hip_gfx1151
+
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    retained_variants = {
+        "gguf_iq3_xxs": (
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+        ),
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out",
+    }
+    candidate_variants = {
+        "gguf_iq3_xxs": (
+            "selected_grouped_prefill_compact_k1024_resident_"
+            "rowbatch8_bf16_bf16_out"
+        ),
+        "gguf_iq4_xs": (
+            "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+        ),
+    }
+
+    # H5Q now owns the package IQ3 entry; this historical H5J contract keeps
+    # testing its explicit map and every retained fallback independently.
+    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {},
+    )
+    retained = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert {
+        quant: key.variant for quant, key in retained.grouped_exact_down_keys.items()
+    } == retained_variants
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        candidate_variants,
+    )
+    candidate = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert {
+        quant: key.variant for quant, key in candidate.grouped_exact_down_keys.items()
+    } == candidate_variants
+    assert all(
+        route.abi == "grouped_raw_iq"
+        and route.allocation_name == "raw"
+        and route.library_key == "grouped_iq_prefill"
+        for route in candidate.grouped_exact_down_routes.values()
+    )
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {"gguf_iq3_xxs": candidate_variants["gguf_iq3_xxs"]},
+    )
+    one_sided = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+    assert one_sided.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (
+        candidate_variants["gguf_iq3_xxs"]
+    )
+    assert one_sided.grouped_exact_down_keys["gguf_iq4_xs"].variant == (
+        retained_variants["gguf_iq4_xs"]
+    )
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        candidate_variants,
+    )
+    wrong_shape = replace(config, expert_feed_forward_length=2048)
+    shape_fallback = resolve_laguna_moe_plan(
+        wrong_shape,
+        backend="hip_gfx1100",
+    )
+    assert {
+        quant: key.variant
+        for quant, key in shape_fallback.grouped_exact_down_keys.items()
+    } == retained_variants
+
+    candidate_names = frozenset(candidate_variants.values())
+    monkeypatch.setattr(
+        laguna_moe_module,
+        "is_registered",
+        lambda key: key.variant not in candidate_names,
+    )
+    registration_fallback = resolve_laguna_moe_plan(
+        config,
+        backend="hip_gfx1100",
+    )
+    assert {
+        quant: key.variant
+        for quant, key in registration_fallback.grouped_exact_down_keys.items()
+    } == retained_variants
+
+    gfx1151 = resolve_laguna_moe_plan(config, backend="hip_gfx1151")
+    assert {
+        quant: key.variant for quant, key in gfx1151.grouped_exact_down_keys.items()
+    } == retained_variants
+
+
+def test_h5j_grouped_iq_down_package_policy_rejects_malformed_metadata(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels import hip_gfx1100
+
+    config = laguna_gguf_config_from_metadata(make_laguna_info())
+    monkeypatch.setattr(hip_gfx1100, "LAGUNA_GROUPED_IQ_DOWN_VARIANTS", 17)
+    with pytest.raises(ValueError, match="must be a mapping"):
+        resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {"gguf_unknown": "candidate"},
+    )
+    with pytest.raises(ValueError, match="unsupported quant"):
+        resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+
+    monkeypatch.setattr(
+        hip_gfx1100,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {"gguf_iq3_xxs": ""},
+    )
+    with pytest.raises(ValueError, match="non-empty variants"):
+        resolve_laguna_moe_plan(config, backend="hip_gfx1100")
+
+
 def test_laguna_iq3_selected_output_tile_plan_is_explicit_gfx1100() -> None:
     config = laguna_gguf_config_from_metadata(make_laguna_info())
     baseline = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
@@ -1643,6 +2094,13 @@ def test_laguna_iq2_grid64_route_is_c1_only_and_default_off() -> None:
     )
     assert retained.selected_gate_up_routes["gguf_iq2_xs"].library_key == (
         "selected_gate_up_iq"
+    )
+    assert retained.grouped_pair16_gate_up_keys["gguf_iq2_xs"].variant == (
+        "selected_dual_silu_grouped_prefill_compact_"
+        "k3072_n1024_e256_pair16_rowbatch16_bf16_bf16_out"
+    )
+    assert retained.grouped_pair16_gate_up_routes["gguf_iq2_xs"].library_key == (
+        "grouped_iq_prefill"
     )
     assert not retained.c1_selected_gate_up_keys
     assert candidate.selected_gate_up_keys["gguf_iq2_xs"].variant == (

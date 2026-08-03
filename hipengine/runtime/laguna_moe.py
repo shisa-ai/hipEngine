@@ -10,6 +10,7 @@ from typing import Callable
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
+from hipengine.kernels.activation_pack import activation_pack_reuse_scope
 from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
@@ -114,6 +115,37 @@ _SELECTED_DOWN_MMQ64X32_D4X3_F32_VARIANT = (
     "prefill_compact32_bf16_bf16_out"
 )
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+_GROUPED_IQ_DOWN_BASELINE_VARIANTS = MappingProxyType(
+    {
+        "gguf_iq3_xxs": (
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
+        ),
+        "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out",
+    }
+)
+_GROUPED_IQ_DOWN_ROLE = (1024, 3072, 256)
+_GROUPED_IQ_DOWN_BASELINE_ABI = "grouped_raw_iq"
+_GROUPED_IQ_DOWN_SUPPORTED_ABIS = frozenset(
+    {_GROUPED_IQ_DOWN_BASELINE_ABI, "grouped_raw_iq_active_experts"}
+)
+_GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS = MappingProxyType(
+    {
+        "gguf_iq2_xs": (
+            "selected_dual_silu_grouped_prefill_compact_"
+            "pair16_rowbatch8_bf16_bf16_out"
+        )
+    }
+)
+_GROUPED_PAIR16_GATE_UP_ROLE = (3072, 1024, 256)
+_GROUPED_PAIR16_GATE_UP_BASELINE_ABI = "grouped_raw_iq_dual_silu"
+_GROUPED_PAIR16_GATE_UP_SUPPORTED_ABIS = frozenset(
+    {_GROUPED_PAIR16_GATE_UP_BASELINE_ABI}
+)
+_GROUPED_GATE_UP_ROLE_SPECS = MappingProxyType(
+    {"layer47_iq3_k3072_n1024_e256": (47, "gguf_iq3_xxs")}
+)
+_GROUPED_GATE_UP_ROLE_SHAPE = (48, 3072, 1024, 256)
+_GROUPED_GATE_UP_SUPPORTED_ABIS = frozenset({"grouped_raw_iq_dual_silu"})
 _IQ3_WAVE10_FUSED_VARIANT = (
     "selected_weighted_down_gemv_decode_k1024_wave10_bf16_bf16_out"
 )
@@ -143,6 +175,7 @@ _ADD_VARIANT = "add"
 _SELECTED_DOWN_MODES = frozenset(
     {
         "direct",
+        "grouped_exact",
         "grouped_smallm",
         "adaptive_grouped_smallm",
         "grouped_smallm_fused",
@@ -162,6 +195,8 @@ _GROUPED_SMALLM_MIN_ROWS = 32
 _SELECTED_GATE_UP_MODES = frozenset(
     {
         "direct",
+        "grouped_exact",
+        "grouped_pair16",
         "mmq32_d4x3",
         "mmq64x32_d4_f32",
         "mmq128x32_d8_f32",
@@ -382,6 +417,206 @@ def resolve_laguna_group_compact_mode(
     return parsed
 
 
+def _resolve_laguna_grouped_iq_down_variants(
+    config: LagunaGGUFConfig,
+    *,
+    backend: str,
+) -> Mapping[str, tuple[str, str]]:
+    """Apply registered package variants only to the exact Laguna IQ-down role."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",
+        {},
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna grouped-IQ down variants must be a mapping")
+    parsed: dict[str, str] = {}
+    for raw_quant, raw_variant in raw_variants.items():
+        quant = str(raw_quant)
+        if quant not in _GROUPED_IQ_DOWN_BASELINE_VARIANTS:
+            raise ValueError(
+                f"Laguna grouped-IQ down policy has unsupported quant {quant!r}"
+            )
+        variant = str(raw_variant).strip()
+        if not variant:
+            raise ValueError("Laguna grouped-IQ down policy requires non-empty variants")
+        parsed[quant] = variant
+
+    raw_variant_abis = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS",
+        {},
+    )
+    if not isinstance(raw_variant_abis, Mapping):
+        raise ValueError("Laguna grouped-IQ down variant ABIs must be a mapping")
+    variant_abis: dict[str, str] = {}
+    for raw_variant, raw_abi in raw_variant_abis.items():
+        variant = str(raw_variant).strip()
+        abi = str(raw_abi).strip()
+        if not variant or abi not in _GROUPED_IQ_DOWN_SUPPORTED_ABIS:
+            raise ValueError("Laguna grouped-IQ down policy has unsupported variant ABI")
+        variant_abis[variant] = abi
+
+    selected = {
+        quant: (variant, _GROUPED_IQ_DOWN_BASELINE_ABI)
+        for quant, variant in _GROUPED_IQ_DOWN_BASELINE_VARIANTS.items()
+    }
+    role = (
+        config.expert_feed_forward_length,
+        config.hidden_size,
+        config.expert_count,
+    )
+    if role != _GROUPED_IQ_DOWN_ROLE:
+        return MappingProxyType(selected)
+    for quant, variant in parsed.items():
+        key = KernelKey(backend, "moe_linear", quant, variant)
+        if is_registered(key):
+            selected[quant] = (
+                variant,
+                variant_abis.get(variant, _GROUPED_IQ_DOWN_BASELINE_ABI),
+            )
+    return MappingProxyType(selected)
+
+
+def _resolve_laguna_grouped_pair16_gate_up_variants(
+    config: LagunaGGUFConfig,
+    *,
+    backend: str,
+) -> Mapping[str, tuple[str, str]]:
+    """Resolve quant-wide pair16 gate/up variants with exact-shape fallback."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS",
+        _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS,
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna grouped pair16 gate/up variants must be a mapping")
+    parsed: dict[str, str] = {}
+    for raw_quant, raw_variant in raw_variants.items():
+        quant = str(raw_quant)
+        if quant not in _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS:
+            raise ValueError(
+                f"Laguna grouped pair16 gate/up policy has unsupported quant {quant!r}"
+            )
+        variant = str(raw_variant).strip()
+        if not variant:
+            raise ValueError(
+                "Laguna grouped pair16 gate/up policy requires non-empty variants"
+            )
+        parsed[quant] = variant
+
+    raw_variant_abis = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANT_ABIS",
+        {},
+    )
+    if not isinstance(raw_variant_abis, Mapping):
+        raise ValueError("Laguna grouped pair16 gate/up variant ABIs must be a mapping")
+    variant_abis: dict[str, str] = {}
+    for raw_variant, raw_abi in raw_variant_abis.items():
+        variant = str(raw_variant).strip()
+        abi = str(raw_abi).strip()
+        if not variant or abi not in _GROUPED_PAIR16_GATE_UP_SUPPORTED_ABIS:
+            raise ValueError(
+                "Laguna grouped pair16 gate/up policy has unsupported variant ABI"
+            )
+        variant_abis[variant] = abi
+
+    selected = {
+        quant: (variant, _GROUPED_PAIR16_GATE_UP_BASELINE_ABI)
+        for quant, variant in _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS.items()
+    }
+    role = (
+        config.hidden_size,
+        config.expert_feed_forward_length,
+        config.expert_count,
+    )
+    if role != _GROUPED_PAIR16_GATE_UP_ROLE:
+        return MappingProxyType(selected)
+    for quant, variant in parsed.items():
+        baseline = _GROUPED_PAIR16_GATE_UP_BASELINE_VARIANTS[quant]
+        abi = (
+            _GROUPED_PAIR16_GATE_UP_BASELINE_ABI
+            if variant == baseline
+            else variant_abis.get(variant)
+        )
+        if abi is None:
+            continue
+        key = KernelKey(backend, "moe_linear", quant, variant)
+        if is_registered(key):
+            selected[quant] = (variant, abi)
+    return MappingProxyType(selected)
+
+
+def _resolve_laguna_grouped_gate_up_variants(
+    config: LagunaGGUFConfig,
+    *,
+    backend: str,
+) -> Mapping[tuple[int, str], tuple[str, str]]:
+    """Resolve exact role-scoped grouped gate/up candidates fail-closed."""
+
+    raw_variants = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",
+        {},
+    )
+    if not isinstance(raw_variants, Mapping):
+        raise ValueError("Laguna grouped gate/up role variants must be a mapping")
+    parsed: dict[tuple[int, str], str] = {}
+    for raw_role, raw_variant in raw_variants.items():
+        role = str(raw_role)
+        try:
+            route_key = _GROUPED_GATE_UP_ROLE_SPECS[role]
+        except KeyError as exc:
+            raise ValueError(
+                f"Laguna grouped gate/up policy has unsupported role {role!r}"
+            ) from exc
+        variant = str(raw_variant).strip()
+        if not variant:
+            raise ValueError(
+                "Laguna grouped gate/up policy requires non-empty variants"
+            )
+        parsed[route_key] = variant
+
+    raw_variant_abis = backend_package_capability(
+        backend,
+        "LAGUNA_GROUPED_GATE_UP_VARIANT_ABIS",
+        {},
+    )
+    if not isinstance(raw_variant_abis, Mapping):
+        raise ValueError("Laguna grouped gate/up variant ABIs must be a mapping")
+    variant_abis: dict[str, str] = {}
+    for raw_variant, raw_abi in raw_variant_abis.items():
+        variant = str(raw_variant).strip()
+        abi = str(raw_abi).strip()
+        if not variant or abi not in _GROUPED_GATE_UP_SUPPORTED_ABIS:
+            raise ValueError(
+                "Laguna grouped gate/up policy has unsupported variant ABI"
+            )
+        variant_abis[variant] = abi
+
+    shape = (
+        config.block_count,
+        config.hidden_size,
+        config.expert_feed_forward_length,
+        config.expert_count,
+    )
+    if shape != _GROUPED_GATE_UP_ROLE_SHAPE:
+        return MappingProxyType({})
+
+    selected: dict[tuple[int, str], tuple[str, str]] = {}
+    for route_key, variant in parsed.items():
+        abi = variant_abis.get(variant)
+        if abi is None:
+            continue
+        key = KernelKey(backend, "moe_linear", route_key[1], variant)
+        if is_registered(key):
+            selected[route_key] = (variant, abi)
+    return MappingProxyType(selected)
+
+
 @dataclass(frozen=True)
 class LagunaMoESelectedRoute:
     """One registry-resolved selected-expert ABI and resident allocation."""
@@ -446,6 +681,14 @@ class LagunaMoEKernelPlan:
     ]
     interleaved_natural_selected_gate_up_route: LagunaMoESelectedRoute
     interleaved_natural_selected_gate_up_halfdot_route: LagunaMoESelectedRoute
+    grouped_pair16_gate_up_keys: Mapping[str, KernelKey]
+    grouped_pair16_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
+    grouped_special_gate_up_keys: Mapping[tuple[int, str], KernelKey]
+    grouped_special_gate_up_routes: Mapping[
+        tuple[int, str], LagunaMoESelectedRoute
+    ]
+    grouped_exact_down_keys: Mapping[str, KernelKey]
+    grouped_exact_down_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -550,6 +793,9 @@ class LagunaMoEKernelPlan:
             ),
             self.interleaved_natural_selected_gate_up_route.key,
             self.interleaved_natural_selected_gate_up_halfdot_route.key,
+            *tuple(self.grouped_pair16_gate_up_keys.values()),
+            *tuple(self.grouped_special_gate_up_keys.values()),
+            *tuple(self.grouped_exact_down_keys.values()),
             self.selected_silu_key,
             self.selected_dual_silu_key,
             *tuple(self.selected_down_keys.values()),
@@ -1189,6 +1435,82 @@ def resolve_laguna_moe_plan(
             library_key="selected_gate_up",
         )
     )
+    grouped_pair16_gate_up_policies = (
+        _resolve_laguna_grouped_pair16_gate_up_variants(config, backend=backend)
+    )
+    grouped_pair16_gate_up_specs = {
+        quant: KernelKey(backend, "moe_linear", quant, variant)
+        for quant, (variant, _abi) in grouped_pair16_gate_up_policies.items()
+    }
+    grouped_pair16_gate_up_keys = MappingProxyType(
+        {
+            quant: key
+            for quant, key in grouped_pair16_gate_up_specs.items()
+            if is_registered(key)
+        }
+    )
+    grouped_pair16_gate_up_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi=grouped_pair16_gate_up_policies[quant][1],
+                allocation_name="raw",
+                library_key="grouped_iq_prefill",
+            )
+            for quant, key in grouped_pair16_gate_up_keys.items()
+        }
+    )
+    grouped_special_gate_up_policies = (
+        _resolve_laguna_grouped_gate_up_variants(config, backend=backend)
+    )
+    grouped_special_gate_up_keys = MappingProxyType(
+        {
+            route_key: KernelKey(backend, "moe_linear", route_key[1], variant)
+            for route_key, (variant, _abi) in (
+                grouped_special_gate_up_policies.items()
+            )
+        }
+    )
+    grouped_special_gate_up_routes = MappingProxyType(
+        {
+            route_key: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi=grouped_special_gate_up_policies[route_key][1],
+                allocation_name="raw",
+                library_key="grouped_iq_prefill",
+            )
+            for route_key, key in grouped_special_gate_up_keys.items()
+        }
+    )
+    grouped_exact_down_policies = _resolve_laguna_grouped_iq_down_variants(
+        config,
+        backend=backend,
+    )
+    grouped_exact_down_specs = {
+        quant: KernelKey(backend, "moe_linear", quant, variant)
+        for quant, (variant, _abi) in grouped_exact_down_policies.items()
+    }
+    grouped_exact_down_keys = MappingProxyType(
+        {
+            quant: key
+            for quant, key in grouped_exact_down_specs.items()
+            if is_registered(key)
+        }
+    )
+    grouped_exact_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi=grouped_exact_down_policies[quant][1],
+                allocation_name="raw",
+                library_key="grouped_iq_prefill",
+            )
+            for quant, key in grouped_exact_down_keys.items()
+        }
+    )
     grouped_smallm_down_keys = MappingProxyType(
         {
             quant: KernelKey(
@@ -1430,6 +1752,12 @@ def resolve_laguna_moe_plan(
         interleaved_natural_selected_gate_up_halfdot_route=(
             interleaved_natural_selected_gate_up_halfdot_route
         ),
+        grouped_pair16_gate_up_keys=grouped_pair16_gate_up_keys,
+        grouped_pair16_gate_up_routes=grouped_pair16_gate_up_routes,
+        grouped_special_gate_up_keys=grouped_special_gate_up_keys,
+        grouped_special_gate_up_routes=grouped_special_gate_up_routes,
+        grouped_exact_down_keys=grouped_exact_down_keys,
+        grouped_exact_down_routes=grouped_exact_down_routes,
         selected_silu_key=keys["selected_silu"],
         selected_dual_silu_key=keys["selected_dual_silu"],
         selected_down_key=keys["selected_down"],
@@ -2003,6 +2331,244 @@ def _launch_selected_gate_up(
         stream=stream,
         runtime=runtime,
         libraries=libraries,
+    )
+
+
+def _launch_selected_gate_up_grouped_exact(
+    hidden_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    lanes: int,
+    group_compact_mode: str,
+    pair16: bool = False,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> bool:
+    """Compact routes once, then run exact grouped or route-major gate/up."""
+
+    plan = scratch.plan
+    down = layer.weight("ffn_down_exps")
+    if down.spec.quant_key not in plan.grouped_exact_down_routes:
+        return False
+
+    active_runtime = runtime or get_hip_runtime()
+    grouped_compact = (
+        plan.grouped_compact_source_rows_parallel
+        if group_compact_mode == "parallel"
+        else plan.grouped_compact_source_rows
+    )
+    grouped_compact(
+        scratch.selected_experts.ptr,
+        scratch.scaled_routing_weights.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.grouped_lane_to_row.ptr,
+        scratch.grouped_sorted_weights.ptr,
+        lanes,
+        plan.expert_count,
+        plan.top_k,
+        **_stage_kwargs(
+            "grouped_metadata", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    # Preserve the independently registered c=1 gate/up route for decode.
+    gate = layer.weight("ffn_gate_exps")
+    route = None
+    if tokens > 1:
+        up = layer.weight("ffn_up_exps")
+        if up.spec.quant_key == gate.spec.quant_key:
+            if plan.grouped_special_gate_up_routes:
+                route = plan.grouped_special_gate_up_routes.get(
+                    (layer.layer_id, gate.spec.quant_key)
+                )
+            if route is None and pair16:
+                route = plan.grouped_pair16_gate_up_routes.get(
+                    gate.spec.quant_key
+                )
+    if route is not None:
+        plan.grouped_gather(
+            hidden_ptr,
+            scratch.grouped_sorted_lanes.ptr,
+            scratch.expert_down.ptr,
+            lanes * plan.hidden_size,
+            tokens,
+            plan.top_k,
+            plan.hidden_size,
+            **_stage_kwargs(
+                "grouped_gather",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
+        route.function(
+            scratch.expert_down.ptr,
+            scratch.grouped_expert_start.ptr,
+            gate.allocation(route.allocation_name).tensor.ptr,
+            up.allocation(route.allocation_name).tensor.ptr,
+            scratch.expert_gate.ptr,
+            compact_rows=lanes,
+            in_features=plan.hidden_size,
+            out_features=plan.expert_ffn_size,
+            num_experts=plan.expert_count,
+            **_stage_kwargs(
+                route.library_key,
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
+        return True
+
+    # Unsupported pair16 keys fail closed to the retained route-major exact
+    # gate/up plus sorted post-SiLU gather before exact grouped down.
+    _launch_selected_gate_up(
+        hidden_ptr,
+        layer,
+        scratch,
+        x_rows=tokens,
+        lanes=lanes,
+        stream=stream,
+        runtime=active_runtime,
+        libraries=libraries,
+    )
+    plan.grouped_gather(
+        scratch.expert_intermediate.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.expert_gate.ptr,
+        lanes * plan.expert_ffn_size,
+        lanes,
+        1,
+        plan.expert_ffn_size,
+        **_stage_kwargs(
+            "grouped_gather", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    return True
+
+
+def _launch_grouped_down_raw_iq(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_gate.ptr,
+        scratch.grouped_expert_start.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        compact_rows=lanes,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        num_experts=plan.expert_count,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+
+
+def _launch_grouped_down_raw_iq_active_experts(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_gate.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        compact_rows=lanes,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        num_experts=plan.expert_count,
+        **_stage_kwargs(
+            route.library_key,
+            libraries,
+            stream=stream,
+            runtime=runtime,
+        ),
+    )
+
+
+_GROUPED_EXACT_DOWN_ABIS = MappingProxyType(
+    {
+        _GROUPED_IQ_DOWN_BASELINE_ABI: _launch_grouped_down_raw_iq,
+        "grouped_raw_iq_active_experts": (
+            _launch_grouped_down_raw_iq_active_experts
+        ),
+    }
+)
+
+
+def _launch_selected_down_grouped_exact(
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    """Run exact expert-major raw-IQ down and restore token-major outputs."""
+
+    plan = scratch.plan
+    weight = layer.weight("ffn_down_exps")
+    try:
+        route = plan.grouped_exact_down_routes[weight.spec.quant_key]
+        launch = _GROUPED_EXACT_DOWN_ABIS[route.abi]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna exact grouped-down route for {weight.spec.quant_key!r}"
+        ) from exc
+    active_runtime = runtime or get_hip_runtime()
+    launch(
+        route,
+        plan,
+        weight.allocation(route.allocation_name).tensor.ptr,
+        scratch,
+        lanes=lanes,
+        stream=stream,
+        runtime=active_runtime,
+        libraries=libraries,
+    )
+    plan.grouped_weighted_sum(
+        scratch.expert_down.ptr,
+        scratch.grouped_sorted_weights.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.grouped_lane_to_row.ptr,
+        scratch.routed_output.ptr,
+        tokens,
+        plan.top_k,
+        plan.hidden_size,
+        **_stage_kwargs(
+            "grouped_weighted_sum",
+            libraries,
+            stream=stream,
+            runtime=active_runtime,
+        ),
     )
 
 
@@ -3291,6 +3857,7 @@ def _launch_laguna_shared_rows(
     *,
     tokens: int,
     use_q4_pack8_wmma: bool,
+    use_activation_pack_reuse: bool,
     stream: int,
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
@@ -3303,36 +3870,37 @@ def _launch_laguna_shared_rows(
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
     shared_down = layer.weight("ffn_down_shexp")
-    launch_gguf_linear(
-        shared_gate,
-        hidden_bf16_ptr,
-        scratch.shared_gate.ptr,
-        tokens,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
-    launch_gguf_linear(
-        shared_up,
-        hidden_bf16_ptr,
-        scratch.shared_up.ptr,
-        tokens,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=tokens == 1,
-        use_q4_pack8_wmma=use_q4_pack8_wmma,
-    )
+    with activation_pack_reuse_scope(enabled=use_activation_pack_reuse):
+        launch_gguf_linear(
+            shared_gate,
+            hidden_bf16_ptr,
+            scratch.shared_gate.ptr,
+            tokens,
+            h,
+            sf,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=tokens == 1,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+        )
+        launch_gguf_linear(
+            shared_up,
+            hidden_bf16_ptr,
+            scratch.shared_up.ptr,
+            tokens,
+            h,
+            sf,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=tokens == 1,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+        )
     plan.shared_silu(
         scratch.shared_gate.ptr,
         scratch.shared_up.ptr,
@@ -3380,6 +3948,7 @@ def run_laguna_moe_rows(
     q6_precomputed_activation_sums: bool = False,
     q4_precomputed_activation_sums: bool = False,
     shared_after_router: bool = False,
+    use_activation_pack_reuse: bool = False,
     shared_stream: int = 0,
     shared_input_ready_event: int = 0,
     shared_output_ready_event: int = 0,
@@ -3405,6 +3974,12 @@ def run_laguna_moe_rows(
         raise ValueError(
             "unsupported Laguna router-logits mode; expected one of "
             f"{tuple(sorted(_ROUTER_LOGITS_MODES))}"
+        )
+    grouped_gate_up = selected_gate_up_mode in {"grouped_exact", "grouped_pair16"}
+    grouped_exact = grouped_gate_up and selected_down_mode == "grouped_exact"
+    if grouped_gate_up != (selected_down_mode == "grouped_exact"):
+        raise ValueError(
+            "Laguna grouped gate/up and grouped-exact down modes must be selected together"
         )
     if dense_q4_prefill_mode not in _DENSE_Q4_PREFILL_MODES:
         raise ValueError("unsupported Laguna dense/shared Q4 prefill mode")
@@ -3454,6 +4029,7 @@ def run_laguna_moe_rows(
             scratch,
             tokens=tokens,
             use_q4_pack8_wmma=use_q4_pack8_wmma,
+            use_activation_pack_reuse=use_activation_pack_reuse,
             stream=shared_stream,
             runtime=active_runtime,
             libraries=libraries,
@@ -3543,7 +4119,24 @@ def run_laguna_moe_rows(
         "mmq64x32_d4x2_f32": (2, False, False, False, False, False),
         "mmq64x32_d4x3_f32": (3, False, False, False, False, False),
     }.get(selected_gate_up_mode)
-    if selected_gate_up_mode == "mmq32_d4x3" or gate_up_f32_config is not None:
+    if grouped_exact:
+        compact_gate_up = _launch_selected_gate_up_grouped_exact(
+            hidden_bf16_ptr,
+            layer,
+            scratch,
+            tokens=tokens,
+            lanes=lanes,
+            group_compact_mode=group_compact_mode,
+            pair16=selected_gate_up_mode == "grouped_pair16",
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+        # Backend package defaults are model-neutral. A quant/key miss must
+        # preserve the registered exact route-major chain, not make another
+        # Laguna quant layout unusable or select approximate arithmetic.
+        grouped_exact = compact_gate_up
+    elif selected_gate_up_mode == "mmq32_d4x3" or gate_up_f32_config is not None:
         (
             gate_up_f32_passes,
             gate_up_split16,
@@ -3685,11 +4278,23 @@ def run_laguna_moe_rows(
         tokens=tokens,
         use_mmq_down=use_mmq_down,
     )
-    use_grouped_smallm = compact_gate_up or selected_down_mode == "grouped_smallm" or (
+    use_grouped_smallm = (
+        compact_gate_up and not grouped_exact
+    ) or selected_down_mode == "grouped_smallm" or (
         selected_down_mode == "adaptive_grouped_smallm"
         and tokens >= _GROUPED_SMALLM_MIN_ROWS
     ) or use_grouped_fused_combine
-    if use_mmq_down:
+    if grouped_exact:
+        _launch_selected_down_grouped_exact(
+            layer,
+            scratch,
+            tokens=tokens,
+            lanes=lanes,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+    elif use_mmq_down:
         if not use_grouped_fused_combine:
             plan.grouped_weighted_sum(
                 scratch.expert_down.ptr,
@@ -3754,6 +4359,7 @@ def run_laguna_moe_rows(
             scratch,
             tokens=tokens,
             use_q4_pack8_wmma=use_q4_pack8_wmma,
+            use_activation_pack_reuse=use_activation_pack_reuse,
             stream=stream,
             runtime=runtime,
             libraries=libraries,

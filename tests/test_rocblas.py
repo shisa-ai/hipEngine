@@ -22,10 +22,38 @@ class _Library:
     def __init__(self) -> None:
         self.rocblas_set_stream = _Call()
         self.rocblas_gemm_ex = _Call()
+        self.rocblas_sgemm = _Call()
 
 
 def _value(arg) -> int:
     return int(arg.value) if hasattr(arg, "value") else int(arg)
+
+
+def test_rocblas_fp16_compute_f16_uses_f16_output_and_compute_descriptors() -> None:
+    library = _Library()
+    blas = Rocblas(library=library, handle=17)
+
+    blas.gemm_ex_rowmajor_nt_fp16_compute_f16(
+        101,
+        202,
+        303,
+        rows=512,
+        in_features=3072,
+        out_features=1024,
+        stream=404,
+    )
+
+    assert library.rocblas_set_stream.args is not None
+    assert tuple(_value(arg) for arg in library.rocblas_set_stream.args) == (17, 404)
+    args = library.rocblas_gemm_ex.args
+    assert args is not None
+    assert _value(args[8]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[11]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[15]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[18]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[20]) == ROCBLAS_DATATYPE_F16_R
+    assert _value(args[16]) == 1024
+    assert _value(args[19]) == 1024
 
 
 def test_rocblas_fp16_f32_out_uses_fp32_c_and_d_descriptors() -> None:
@@ -70,3 +98,44 @@ def test_rocblas_fp16_f32_out_rejects_invalid_shapes_before_launch() -> None:
         )
 
     assert library.rocblas_gemm_ex.args is None
+
+
+def test_rocblas_sgemm_rowmajor_nt_uses_f32_shape_and_leading_dimensions() -> None:
+    library = _Library()
+    blas = Rocblas(library=library, handle=17)
+
+    blas.sgemm_rowmajor_nt(
+        101,
+        202,
+        303,
+        rows=512,
+        in_features=3072,
+        out_features=12288,
+        stream=404,
+    )
+
+    assert library.rocblas_set_stream.args is not None
+    assert tuple(_value(arg) for arg in library.rocblas_set_stream.args) == (17, 404)
+    args = library.rocblas_sgemm.args
+    assert args is not None
+    assert tuple(_value(args[index]) for index in (3, 4, 5)) == (12288, 512, 3072)
+    assert _value(args[8]) == 3072
+    assert _value(args[10]) == 3072
+    assert _value(args[13]) == 12288
+
+
+def test_rocblas_sgemm_rowmajor_nt_rejects_invalid_shapes_before_launch() -> None:
+    library = _Library()
+    blas = Rocblas(library=library, handle=17)
+
+    with pytest.raises(ValueError, match="out_features must be positive"):
+        blas.sgemm_rowmajor_nt(
+            101,
+            202,
+            303,
+            rows=17,
+            in_features=256,
+            out_features=0,
+        )
+
+    assert library.rocblas_sgemm.args is None

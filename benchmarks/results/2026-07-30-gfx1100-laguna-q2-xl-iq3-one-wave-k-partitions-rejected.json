@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_one_wave_k_partitions_rejection",
+  "date": "2026-07-30",
+  "status": "rejected_all_candidate_surfaces_removed",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "93e63cc2e",
+    "red_revision": "2d1f22e34",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-target.json",
+    "target_artifact_sha256": "f983a0cf45d085e3bb7453fca040583a3f4e9b5883a8b8359b6bc51ffa45d926",
+    "source": "net-new in-tree exact wave32 reconstruction of H5Q's four logical K256 partitions; no external device body copied",
+    "candidate_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "c19e663eab422d23f2fd68061036acf3581ee69357cc45a9abfdca76c25cec3b",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ca05dffa87be6c2a0ddd49aeff9f719d34888e05526c1402789738ef7abfc5c1",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "8b92444ae0b935293e9a1d83a85cabe9e6408c5f9384db6231aa6bdbabcd5ac4",
+      "tests/test_laguna_h5t_iq3_one_wave_partitions.py": "9d06bfda4edc52a1221a8c96356b074d614215c831231c0636e9a9845fc1225a"
+    },
+    "candidate_code_patch_sha256": "4f1382eb674d282db34f78e8963a71df5f2cc14572d569bfb7553ffaec617764",
+    "restored_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "466f6f3d2bacb9e76f16d45b0890a6b3b6375ee2376798707f0abab549b31c94",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "c7505678d3abde98a625bf57cc09a0eb48f378bae934ecdd5b880dcee96a115b",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "f9968f710cc237680bfc97b9701297a4a62d765e946347380eb78ef50fd9c564",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "2a7cf30ee1521b0450b05f907f72f5a44e39089f90bc4a350fbf6014233e1c57"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "candidate": {
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_wave32x4_resident_rowbatch8_bf16_bf16_out",
+    "abi": "grouped_raw_iq_active_experts",
+    "mapping": "physical lane i carries H5Q logical lanes i, i+32, i+64, and i+96 as independent K256 partitions",
+    "preserved": "P64 active-expert traversal, rowbatch8 order/tails, segment decode, scalar FMA order, four shuffle trees, serial partition 0..3 sum, BF16 store, metadata, allocation, workspace, and H5Q/H5J fallbacks",
+    "removed": "cross-wave LDS partials and two whole-block barriers per rowbatch phase",
+    "additional_launches": 0,
+    "additional_allocations": 0,
+    "additional_workspace_bytes": 0,
+    "persistent_sidecar_bytes": 0,
+    "production_policy_changed": false
+  },
+  "red_green": {
+    "red_failures_before_implementation": 4,
+    "red_failure_reason": "absent candidate wrapper and registry surface only; cached H5Q control loaded",
+    "focused_tests_passed": 4,
+    "retained_grouped_iq_h5q_gfx1151_tests_passed": 70,
+    "strict_shape_preflight_before_hip_loading": true,
+    "p64_boundary_active_counts": [64, 65],
+    "rowbatch8_tail_checked": true,
+    "empty_active_list_checked": true,
+    "all_candidate_outputs_byte_exact": true,
+    "independent_cpu_oracle_exact": true,
+    "package_policy_immutable": true,
+    "gfx1151_fail_closed": true,
+    "tracked_allocations_recovered": true
+  },
+  "resources": {
+    "initial_array_form": {
+      "local_size": 32,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes_per_thread": 104,
+      "decision": "blocked before timing"
+    },
+    "final_named_register_form": {
+      "local_size": 32,
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes_per_thread": 0,
+      "grid": [3072, 64],
+      "calls_traced": 3,
+      "compiler_spawned_under_profiler": false,
+      "admitted_to_actual_layer_timing": true
+    },
+    "initial_trace_sha256": "9c487205548411661dbb63388b001051aa8df04af9a5068934a739d9cecaf72f",
+    "final_trace_sha256": "5346159dc238d6c2d8b704261c1d9733421a0ffce444f72e80f8efe5a05d900b",
+    "final_trace_stdout_sha256": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "final_trace_stderr_sha256": "504b09f6d9b0107258632958698a8a2a26270f50356b00cab1ff6395d84aa6b0"
+  },
+  "fixture_signal": {
+    "scope": "P64 boundary correctness fixtures only; not production performance evidence",
+    "h5q_populated_event_sum_us": 1612.518,
+    "h5t_populated_event_sum_us": 801.68,
+    "speedup": 2.011425997156,
+    "interpretation": "justified the binding actual-layer screen but cannot override it"
+  },
+  "actual_layer_gate": {
+    "rows": 512,
+    "compact_rows": 5120,
+    "in_features": 1024,
+    "out_features": 3072,
+    "expert_count": 256,
+    "actual_iq3_layers": 45,
+    "actual_weights": true,
+    "natural_m512_routing_distributions": true,
+    "deterministic_bf16_compact_input": true,
+    "warmups": 5,
+    "counter_rotated_repetitions": 15,
+    "launches_per_sample": 5,
+    "control": "production H5Q exact active-expert P64 rowbatch8 local128",
+    "candidate": "H5T exact active-expert P64 rowbatch8 local32 wave32x4",
+    "h5q_event_sum_ms": 474.1067237854004,
+    "candidate_event_sum_ms": 475.945394897461,
+    "event_speedup": 0.9961368023899954,
+    "event_percent_change": 0.38781797848808086,
+    "h5q_wall_sum_ms": 485.29807133600116,
+    "candidate_wall_sum_ms": 469.67741665430367,
+    "wall_speedup": 1.0332582622195667,
+    "wall_percent_change": -3.218775347426095,
+    "event_positive_layers": 12,
+    "wall_positive_layers": 45,
+    "both_clock_positive_layers": 12,
+    "event_speedup_min_median_max": [0.9766290831120342, 0.9956700285968956, 1.0115889841509056],
+    "wall_speedup_min_median_max": [1.0158326682718204, 1.0327712005523444, 1.0487587898490083],
+    "all_outputs_byte_exact": true,
+    "tracked_returned_to_baseline": true,
+    "candidate_admitted": false
+  },
+  "source_artifacts": {
+    "actual_layer_json_sha256": "e437353a7b296d588285a881d499fb61aea390a900feaf7dd2c69ecf4707034e",
+    "actual_layer_harness_sha256": "ea3088369850537b6f3631a796af8257de6606e7381f014f6dff6af588446ac4",
+    "actual_layer_stdout_sha256": "9f216855be1808a273f1a6819c6ec695fd0a16aa8769123a192a493eb3698898",
+    "actual_layer_stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48"
+  },
+  "production": {
+    "unchanged": true,
+    "iq3_owner": "H5Q exact active-expert P64 resident rowbatch8",
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -v tests/test_laguna_h5t_iq3_one_wave_partitions.py tests/test_gguf_iq3_active_expert_persistent.py tests/test_gguf_iq_selected_prefill.py tests/test_laguna_h5q_runtime_policy.py tests/test_gfx1151_backend.py",
+    "cached_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5t-green-rocprof-final2 -- uv run pytest -q tests/test_laguna_h5t_iq3_one_wave_partitions.py",
+    "actual_layers": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5t_iq3_one_wave_actual_screen.py"
+  },
+  "decision": {
+    "candidate_rejected": true,
+    "standalone_leaf_retained": false,
+    "runtime_qualification_warranted": false,
+    "runtime_owner_added": false,
+    "production_default_changed": false,
+    "candidate_surfaces_removed": true,
+    "rejection_reason": "HIP-event sum regresses 0.388% and only 12/45 layers win both clocks; wall-only improvement cannot override the frozen both-clock device gate.",
+    "next_action": "Keep H5Q/H5R/H5L production and select a distinct exact target from the unchanged post-H5R residual; do not retry one-wave K-partition collapse without a new operation or data-reuse premise."
+  }
+}

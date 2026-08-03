@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_wpfh2_source_flash_attention_rejection",
+  "created_at": "2026-07-29",
+  "status": "rejected_complete_quality_gate",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "source": "llama.cpp HIP c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "quality_revision": "46866faa20a87cc874540248615bacdeb86fb69d",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "matrix_rows": 512,
+    "exact_attention_rows": 128,
+    "candidate_attention_scope": "one complete initial contiguous fill with at least 16 rows across all 12 global and 36 SWA layers",
+    "teacher_forced_steps_per_prompt": 32,
+    "teacher_forced_steps": 576,
+    "free_running_horizons": [16, 32],
+    "free_running_repetitions": 3,
+    "timed_order": "alternating exact_attention/source_flash_attention per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
+    "four_k_or_longer_run_performed": false
+  },
+  "performance": {
+    "exact_prefill_tok_s": 152.08695212807632,
+    "source_prefill_tok_s": 156.2187688602453,
+    "prefill_speedup": 1.0271674635749781,
+    "ttft_speedup": 1.0259107940377996,
+    "h16_e2e_speedup": 1.0191514765154828,
+    "h32_e2e_speedup": 1.0145637377425611,
+    "decode_speedup_h16": 0.9998968876348867,
+    "decode_speedup_h32": 1.0000732443773355,
+    "category_prefill_speedup": {
+      "code": 1.0222822785957701,
+      "general_en": 1.0223532864444764,
+      "general_ja": 1.0302391285297847,
+      "mixed_ja_en": 1.0338571079636363
+    },
+    "standalone_attention_family": {
+      "exact_qrow4_m128_ms": 490.919146,
+      "source_f16_wmma_ms": 21.718725872039798,
+      "speedup": 22.60349658135325,
+      "matched_llamacpp_main_plus_fixup_ms": 21.725298
+    },
+    "claim_valid": false,
+    "reason": "The mandatory quality gate failed; runtime speed and standalone parity are diagnostic only."
+  },
+  "complete_quality_gate": {
+    "pass": false,
+    "finite": true,
+    "max_kl_divergence": 1.8048603742929115,
+    "kl_threshold": 0.05,
+    "top1_matches": 564,
+    "steps": 576,
+    "top1_agreement": 0.9791666666666666,
+    "top1_threshold": 0.9,
+    "failed_checks": ["max_kl_above_0.05"],
+    "categories": {
+      "code": {"steps": 192, "max_kl_divergence": 0.17515195978116296, "top1_matches": 192, "top1_agreement": 1.0},
+      "general_en": {"steps": 128, "max_kl_divergence": 0.17084661222361713, "top1_matches": 124, "top1_agreement": 0.96875},
+      "general_ja": {"steps": 128, "max_kl_divergence": 1.8048603742929115, "top1_matches": 128, "top1_agreement": 1.0},
+      "mixed_ja_en": {"steps": 128, "max_kl_divergence": 0.7220650981338205, "top1_matches": 120, "top1_agreement": 0.9375}
+    },
+    "poolside_oracle": {
+      "pass": true,
+      "kl_divergence": 0.00009303088371731053,
+      "candidate_top1": 94557,
+      "reference_top1": 94557
+    },
+    "free_running": {
+      "pairs": 54,
+      "complete_exact_pairs": 36,
+      "h16_exact_pairs": 42,
+      "h32_exact_pairs": 36,
+      "same_mode_repeat_deterministic": true
+    }
+  },
+  "deep_state_screen": {
+    "rows": 512,
+    "pass": true,
+    "kl_divergence": 0.0012958496747001074,
+    "top1_agreement": 1.0,
+    "next_token_id": 2930,
+    "candidate_repeat_exact": true,
+    "tracked_returned_to_baseline": true
+  },
+  "bounded_followups": {
+    "f32_pv": {
+      "status": "rejected",
+      "m512_kl_divergence": 0.00030681882286473115,
+      "worst_four_heldouts_max_kl": 1.6870782365834036,
+      "reason": "F32 PV improves the single M512 boundary but does not fix teacher-forced QK/association drift."
+    },
+    "global_only": {
+      "status": "rejected",
+      "worst_four_heldouts_max_kl": 0.5890707739974762
+    },
+    "swa_only": {
+      "status": "rejected",
+      "worst_four_heldouts_max_kl": 0.8597825924630615
+    }
+  },
+  "memory": {
+    "peak_tracked_bytes": 41856412412,
+    "peak_allocations": 1873,
+    "total_allocated_bytes": 147008614992,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "decision": {
+    "pass": false,
+    "reason": "The source attention route is fast and deterministic but maximum KL 1.804860 exceeds the mandatory 0.05 ceiling; high top-1 agreement cannot waive the KL gate.",
+    "runtime_default_changed": false,
+    "production": "retain exact qrow4/M128 attention and the clean 169.253/159.229/123.084 tok/s 512/1K/4K packet",
+    "cleanup": "Remove the default-off runtime selector, eager library owner, package capabilities, KV dispatch methods, and focused integration tests; retain only the separately registered qualified primitive, its multi-K64 correctness fix, and leaf evidence.",
+    "next_action": "Start WPF-H3 source-faithful Q8_1 IQ3/IQ4 selected-down MMQ."
+  },
+  "source_artifacts": {
+    "raw_quality_sha256": "00906cf9f78a5eef1a6569498716035ac2585390d8f50d907b619ac7b8758b17",
+    "quality_harness_sha256": "5d9ab382d1e91a38aaed48186466a0dd10ff71a96041cd84cef16229d2e5d6e1",
+    "stderr_sha256": "1c46a942fa35ac0693b5cec78e5c4eed06067bd8d19ffde6d15b32e176e87919",
+    "f32_pv_screen_sha256": "25c0c27095ac3d0c93b4a07bd04ddee98cbc52a2efdc73fc71b3cee24e875053",
+    "global_only_screen_sha256": "0b48a0090ae2203c373765651ca59f75d6b6170ff9238de9b609f6987ca9dfdc",
+    "swa_only_screen_sha256": "5a20311464053631206be6b64fe62b0579b2246a85d777355dc7d2504529c1dd",
+    "candidate_leaf_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-source-flash-attention-candidate.json"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh2_source_fa_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpfh2_source_flash_attention --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpfh2-source-fa-quality.json"
+}

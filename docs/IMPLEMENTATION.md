@@ -96,6 +96,47 @@ Use `docs/KERNELS.md` "Current OPTIMAL MoE port checklist" as the live dependenc
 - [x] Add default-installed FastAPI/OpenAI-compatible server layer (`hipengine serve`) with `/v1/models`, `/v1/completions`, `/v1/chat/completions`, bearer-token auth, SSE streaming, and fake-engine endpoint tests.
 - [ ] Add benchmark harness polish beyond the current Qwen/PARO diagnostic scripts.
 
+## Moonshine ASR native HIP decoder
+
+- [x] Add torch-free NumPy primitives and model-derived Phase 1 fixture gates.
+- [x] Add the strict resident FP16 checkpoint/runtime/cache owner.
+- [x] Add source-F16 single, paired, triple, and row projection baselines.
+- [x] Add FP16 LayerNorm, residual, embedding, RoPE, and self-cache glue primitives.
+- [x] Add decoder gated-MLP activation and bias/residual primitives.
+- [x] Prove primitive CPU-oracle parity and cached gfx1151 kernel names.
+- [x] Add logical-dim-52 fixed self-cache and resident cross-cache attention kernels.
+- [x] Compose the exact unfused FP16 decoder fallback after attention kernels land.
+  - [x] Add head-major cross-K/V precompute and deterministic device FP16 argmax glue.
+  - [x] Give the tied LM-head baseline a distinct profile-visible kernel identity.
+  - [x] Wire prepared kernels, encoder state, and sequential token steps into the resident runtime.
+  - [x] Validate selected golden-fixture positions and prove timed steps do not allocate.
+  - [x] Validate padded 40/207-bucket position-0/193 boundaries for all six real Japanese fixtures.
+  - [x] Publish the Phase-2 correctness, dispatch, latency, and Amdahl baseline in the experiment ledger.
+- [x] Tune and promote the Phase-3 resident decoder route.
+  - [x] Tune source-F16 singleton, triple-QKV, and bias-aware MLP projections.
+  - [x] Tune tied LM-head/argmax with grouped exact wave32 rows.
+  - [x] Tune masked resident cross attention.
+  - [x] Tune short/long self-cache attention from refreshed profiles.
+  - [x] Test and promote bounded residual/LayerNorm and gated-MLP fusions.
+  - [x] Capture/replay the fixed-address token DAG after structural wins.
+    - [x] Add a lifecycle-safe four-bucket HIP graph API over the fixed resident token step.
+    - [x] Prove fake-runtime state/lifecycle contracts and real gfx1151 graph/eager parity with zero timed allocation.
+    - [x] Compare eager Python launch, available C-dispatch routes, graph replay, and capture/instantiate startup cost.
+    - [x] Retain or reject graph replay from repeated selected-position and complete-generation evidence, then publish the result.
+- [x] Close the Phase-4 bounded-fusion and megakernel ladder.
+  - [x] Model each prototype rung from the final graph-era profile, 40-CU cooperative residency, synchronization, and weight traffic.
+  - [x] Prototype only an admitted rung; otherwise apply the plan's Amdahl stop rule and retain explicit fallbacks.
+  - [x] Publish the measured megakernel verdict and Phase-5 handoff.
+- [x] Integrate the selected encoder with the promoted graph decoder.
+  - [x] Add a fixed-resident device-to-device encoder handoff without host tensor round-trip.
+  - [x] Validate exact six-file hybrid generation, padding/mask ownership, copies, allocation, and teardown.
+  - [x] Measure full-model hybrid latency and publish the honest ONNX CPU/MIGraphX/PyTorch/custom-HIP table.
+- [x] Qualify Phase-6 selective Moonshine W8A16; retain implementation but promote no quantized family.
+  - [x] Add a backend-neutral per-output-channel symmetric INT8 sidecar contract, deterministic host quantizer/CPU oracle, resident ownership, byte accounting, and explicit `hip_gfx1100 / moonshine_* / w8a16 / *` registrations.
+  - [x] Implement and benchmark the tied LM-head candidate first, preserving FP16 embedding ownership and the complete FP16 decoder fallback.
+  - [x] Qualify decoder MLP `fc1/fc2`, then self/cross projection candidates only in order, retaining a family only when primitive/Tier-B/six-file gates and repeated paired cached-token/complete-generation timing pass.
+  - [x] Profile selected/rejected kernel identities, run available Japanese quality gates, publish compact Phase-6 evidence, and hand off the retained FP16 graph route to Phase 7.
+
 ## Notes
 
 - Kernel R&D remains in `~/amd-gpu-tuning/`; this repo receives stable ports.

@@ -1,0 +1,187 @@
+{
+  "authority_links": [
+    "README.md",
+    "WORKLOG.md",
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/KERNELS.md",
+    "docs/PLAN.md",
+    "docs/LAGUNA-prefill.md"
+  ],
+  "builder_sha256": "ef9d7ea9a8ff8f55af845ce37e552b3dc5ee44accb32c781914e7e40273a9233",
+  "closed_controls": {
+    "attention": "H7K failed its frozen first-object aligned-record-load premise; H7A/online/LDS/wider-qrow/cross-head routes remain closed",
+    "iq_down": "H6T remains exact source; H6X/H6Y/H7B failed physical gates, H7E failed complete quality, and H7L is a new exact live-tail operation rather than a retry",
+    "q5": "source-MMQ/SGEMM, exact plane/geometry/persistence/prefetch/reduction/full-group/full-grid-bounds routes are measured closed; no subset salvage",
+    "q6": "H7I is current exact full-group source; H7F forbids rowbatch5 subset salvage and changed arithmetic failed complete quality"
+  },
+  "commands": {
+    "analysis": "PYTHONPATH=. .venv/bin/python /tmp/analyze_laguna_post_h7k_h7l_iq3_live_tail_target.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "next_red": "HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python -m pytest -q tests/test_laguna_h7l_iq3_full_batch_live_tail.py",
+    "routing": "GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/laguna_post_h7k_iq3_full_batch_routing.py"
+  },
+  "created_at": "2026-08-02T13:20:00+00:00",
+  "date": "2026-08-02",
+  "decision": {
+    "candidate_implemented": false,
+    "correctness_claim": "none_before_red_and_candidate_implementation",
+    "h7l_target_selected": true,
+    "next_action": "Commit target, freeze H7L RED, then build and screen exactly one candidate object under the frozen all-tail/all-layer rule.",
+    "performance_claim": "target_selection_only",
+    "production_changed": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h7k_matched_iq3_live_tail_target",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural C4096/direct-M512, matrix512/attention128, selector-unset H7H Q5 and H7I raw-Q6 source"
+  },
+  "production": {
+    "dispatches": 2192,
+    "family_gap_ms": {
+      "attention": 93.80462899999995,
+      "gate_up": 0.7850160000000983,
+      "iq_down": 118.44889399999988,
+      "q5": 176.88518099999993,
+      "q6": 59.74162400000009,
+      "remaining": 8.567487000000071
+    },
+    "family_ms": {
+      "attention": 115.31707599999996,
+      "gate_up": 398.5899390000001,
+      "iq_down": 272.3088049999999,
+      "q5": 235.19927099999992,
+      "q6": 74.40922200000009,
+      "remaining": 76.41692600000007
+    },
+    "kernel_sum_ms": 1172.2412389999988,
+    "llamacpp_over_hipengine": 1.6016107591271218,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "revision": "407f5c972",
+    "wall_tok_s": 431.31016450993457
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-candidate.json": "f1c125b40ef546755920e17ed268818f6fe08536b01ffb7d13c73709f2b66198",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json": "afff2e5909b2fde7eddd6a0447cdba22ccbad8b739cc593e56620c8b396d708e",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-swa-weight-publication-physical-rejected.json": "ae4a2301bfd858c358918e5ee8730f21afb29b16157ff79cf019ff3b8b64a4b7",
+    "/tmp/analyze_laguna_post_h7k_h7l_iq3_live_tail_target.py": "762473b8bc1003f4993d36aa156d190f9fa3d54f002a9eed19a3b1c27073dc69",
+    "/tmp/laguna-h7l-target-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7l-target-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7l-target-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-post-h7k-h7l-iq3-live-tail-target-analysis.json": "8ec81d04880d414dade4d5722c0e47f7909878ec5b24e4bd5f4b93fe166312c0",
+    "/tmp/laguna-post-h7k-h7l-target-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7k-h7l-target-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h7k-h7l-target-analysis.stdout": "8ec81d04880d414dade4d5722c0e47f7909878ec5b24e4bd5f4b93fe166312c0",
+    "/tmp/laguna-post-h7k-iq3-full-batch-routing.json": "273c99eb98add635f6843b8442118e251232bb5e739072d32d74a52ab7c0b796",
+    "/tmp/laguna-post-h7k-iq3-full-batch-routing.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7k-iq3-full-batch-routing.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-post-h7k-iq3-full-batch-routing.stdout": "047ff6bbe1cb4f7923974fb8e24384dcbfbae04967c2a6a992389a6b80d67311",
+    "/tmp/laguna_post_h7k_iq3_full_batch_routing.py": "f5efdd384d2007996df99867ea428b174cd2c0a3962fb514312c11887af2e2cd"
+  },
+  "repo": {
+    "h6t_kernel_body_sha256": "c00ed284a46c6b3f7f78ee4ea263b9ef503e98b2121e90379f9eca8681b84314",
+    "h6t_live_source": true,
+    "h6t_publication_helper_sha256": "70c7457b613ce53ceb6e937de3fb6e203d2c18e3fd24d5be73398016f5b8df52",
+    "h7l_implementation_absent": true,
+    "h7l_markers": [
+      "WPF-H7L",
+      "full_batch_live_tail",
+      "full_batch_live_tail_triple_output",
+      "test_laguna_h7l_iq3_full_batch_live_tail"
+    ],
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "9cf784e41d9f77983373f60c543342cfb7659a736ce84cdc762bb2bc93ab6abf",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe",
+      "hipengine/runtime/laguna_moe.py": "295890f46bf198cbc7e8c99de80dd1d17b6c62a18f8fe244e3e172d5c9c59eb6"
+    }
+  },
+  "routing": {
+    "dynamic_model": {
+      "active_experts": 9844,
+      "actual_iq3_layers": 45,
+      "full_batch_fraction": 0.7347899961248398,
+      "full_batches": 24650,
+      "full_row_fraction": 0.8559027777777778,
+      "full_rows": 197200,
+      "modeled_inactive_exchange_wave_operations": 2333245440,
+      "modeled_inactive_fma_wave_operations": 4199841792,
+      "output_triples_per_batch": 1024,
+      "padded_tail_rows": 37976,
+      "rows": 230400,
+      "tail_batches": 8897,
+      "tail_rows": 33200,
+      "total_batches": 33547,
+      "warning": "Source-operation model only; not physical issue count, elapsed-time forecast, or speed claim.",
+      "wasted_tail_compute_fraction": 0.14150296598801682,
+      "waves_per_workgroup": 4
+    },
+    "harness_sha256": "f5efdd384d2007996df99867ea428b174cd2c0a3962fb514312c11887af2e2cd",
+    "remainder_histogram": {
+      "0": 947,
+      "1": 1623,
+      "2": 1356,
+      "3": 1311,
+      "4": 1258,
+      "5": 1204,
+      "6": 1135,
+      "7": 1010
+    },
+    "source": "/tmp/laguna-post-h7k-iq3-full-batch-routing.json",
+    "source_sha256": "273c99eb98add635f6843b8442118e251232bb5e739072d32d74a52ab7c0b796",
+    "status_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "stderr_sha256": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "stdout_sha256": "047ff6bbe1cb4f7923974fb8e24384dcbfbae04967c2a6a992389a6b80d67311",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a"
+  },
+  "schema": 1,
+  "status": "accepted_matched_production_rerank_and_exact_h7l_target",
+  "target": {
+    "admission": {
+      "correctness": "empty/uneven experts, tails1..7, rows1/7/8/9/M512, P64/P65/reversed, complete H6T and sampled CPU bytes, poison, finite, lifecycle",
+      "no_salvage": "all tail sizes and layers are inseparable; no layer/tail/prompt subset, tuning, recompile, or favorable rerun after any miss",
+      "physical": "first object local128/grid32768x64, metadata/runtime VGPR<=101/104, LDS384/512, code<=14000 B, slots<=2400, private/spill/scratch0, bounded live-tail ISA",
+      "preflight": "strict K1024/N3072/E256/P256/P64/local128/rowbatch8; every miss uses H6T; compaction/ABI/allocation/workspace/maps unchanged",
+      "red_first": true,
+      "reject": "remove every H7L source/test/key/export/gfx1151-exclusion surface on any correctness/physical/trace/per-layer/aggregate miss",
+      "runtime_and_source_separate": true,
+      "timing": "one immutable five-warmup/15-counter-rotated/five-launch actual-weight screen; all 45 layers and aggregate each win HIP-event and synchronized-wall clocks",
+      "trace": "named cache-only H7L execution with positive duration, intended resources, and zero compiler executable"
+    },
+    "id": "WPF-H7L",
+    "implementation_absent": true,
+    "name": "exact IQ3 full-batch/live-tail split",
+    "operation": "Split each active expert into unconditional complete rowbatch8 iterations and at most one bounded live-tail iteration. Complete batches retain H6T interleaved row math and fused-DPP publication exactly. The tail computes and publishes only its 1..7 live rows with each row preserving the same eight ordered magnitude FMAs, scale multiply, permlanex16+DPP 8/4/2/1 reduction, serial wave0..3 sum, and BF16 store.",
+    "physical_gate": {
+      "code_bytes_max": 14000,
+      "full_path": "preserve H6T ordered/interleaved FMA and fused-DPP publication sequence",
+      "grid": [
+        32768,
+        64
+      ],
+      "instruction_slots_max": 2400,
+      "local_size": 128,
+      "metadata_lds_bytes": 384,
+      "metadata_vgpr_max": 101,
+      "private_spill_scratch_bytes": 0,
+      "runtime_lds_bytes": 512,
+      "runtime_vgpr_max": 104,
+      "tail_path": "one bounded 1..7-row live loop; no inactive-tail FMA or exchange body"
+    },
+    "scope": "one separately named gfx1100 registry-only H6T sibling at strict K1024/N3072/E256/P256/P64/local128/rowbatch8; package/runtime/source maps, compaction, allocation, workspace, ABI, H6T, and gfx1151 remain unchanged"
+  },
+  "validator_sha256": "2eb58f89dca50500e5bf523e1f046d8af50a0e835bb550e92058902702b66435"
+}

@@ -1,0 +1,183 @@
+{
+  "candidate": {
+    "arithmetic": "production two-pass max, denominator, FMA/value order, 128-thread reduction tree, and KVLiveSpans visibility preserved per row",
+    "fallback": "wave32 exact unless rows == 128 and absolute start_position >= 256",
+    "ownership": "one wave32 owns one query head and four adjacent causal query rows",
+    "package_default_changed": false,
+    "primitive_variant": "swa_context_rows_qrow4_exact_spans",
+    "qualified_variant": "swa_context_rows_qrow4_m128_c256_exact_spans"
+  },
+  "correctness_commands": [
+    "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap",
+    "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf3_qrow4_full_state.py"
+  ],
+  "created_at": "2026-07-29",
+  "decision": "Admit the explicit exact primitive and C256-qualified policy. Commit before changing the gfx1100 package default or benchmark topline.",
+  "full_state_m512": {
+    "candidate_exact": true,
+    "exact_hidden_boundaries": 48,
+    "harness_sha256": "6ba63edc0879b38379ece949749ca9d08bbefcacc8742436e69fd403e386c0d0",
+    "kl_max": 0.0,
+    "raw_sha256": "c068c62be88557306dafeb811f176475d0e8bd1f74b21fd9c758dba08da5a2fa",
+    "repeat_exact": true,
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_count": 1
+  },
+  "kernel_trace": {
+    "compiler_spawned_under_profiler": false,
+    "kernel": "laguna_swa_attention_prefill_qrows_exact_bf16_kernel<4>",
+    "lds_bytes": 0,
+    "local_size": 32,
+    "observed_calls": 2,
+    "plausible_duration_us": [
+      2086.077,
+      2133.276
+    ],
+    "raw_csv_sha256": "bc84f683a4809938552815c1ec963df48f3db15badb6592b19df9d10c007d459",
+    "scratch_bytes": 0,
+    "sgpr_count": 128,
+    "vgpr_count": 72
+  },
+  "kind": "hipengine_laguna_wpf3_swa_qrow4_exact_candidate",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "primitive_screen": {
+    "all_f32_bit_exact": true,
+    "allocation_recovered": true,
+    "baseline_four_slice_ms": 21.05870990753174,
+    "harness_sha256": "285c8a1b1bf01bb3dcf95bcba4c1985c9cb8a069ccc8f38f0dcdbd9d4ad2a04f",
+    "protocol": {
+      "burst": 5,
+      "order": "seven-mode counter-rotation",
+      "rows": 128,
+      "samples": 11,
+      "starts": [
+        0,
+        128,
+        256,
+        384
+      ],
+      "warmups": 2
+    },
+    "qrow4_all_four_slice_ms": 9.590093231201172,
+    "qrow4_all_speedup": 2.1958816666158842,
+    "qualified_four_slice_ms": 9.388916540145873,
+    "qualified_speedup": 2.2429329111071805,
+    "raw_sha256": "46c0be1f32d3c8e90dca868dd26af1820a02ee4a178fe764069e5658a40897ea",
+    "rows": [
+      {
+        "baseline_ms": 1.3180791854858398,
+        "qrow2_exact_ms": 0.8813570022583008,
+        "qrow4_exact_f32_bit_mismatches": 0,
+        "qrow4_exact_max_abs": 0.0,
+        "qrow4_exact_ms": 0.9517251968383789,
+        "qrow4_exact_speedup_vs_baseline": 1.3849367336963285,
+        "start_position": 0,
+        "wave32_exact_ms": 0.7548120021820068
+      },
+      {
+        "baseline_ms": 3.9164760589599608,
+        "qrow2_exact_ms": 1.948726272583008,
+        "qrow4_exact_f32_bit_mismatches": 0,
+        "qrow4_exact_max_abs": 0.0,
+        "qrow4_exact_ms": 1.861541175842285,
+        "qrow4_exact_speedup_vs_baseline": 2.1038890301139253,
+        "start_position": 128,
+        "wave32_exact_ms": 1.8572776794433594
+      },
+      {
+        "baseline_ms": 6.602069854736328,
+        "qrow2_exact_ms": 3.0425743103027343,
+        "qrow4_exact_f32_bit_mismatches": 0,
+        "qrow4_exact_max_abs": 0.0,
+        "qrow4_exact_ms": 2.7984527587890624,
+        "qrow4_exact_speedup_vs_baseline": 2.3591857443372226,
+        "start_position": 256,
+        "wave32_exact_ms": 3.0427888870239257
+      },
+      {
+        "baseline_ms": 9.22208480834961,
+        "qrow2_exact_ms": 4.128151321411133,
+        "qrow4_exact_f32_bit_mismatches": 0,
+        "qrow4_exact_max_abs": 0.0,
+        "qrow4_exact_ms": 3.9783740997314454,
+        "qrow4_exact_speedup_vs_baseline": 2.3180537016295513,
+        "start_position": 384,
+        "wave32_exact_ms": 4.242736053466797
+      }
+    ]
+  },
+  "repo": {
+    "base_revision": "946ab89dd",
+    "candidate_worktree": true
+  },
+  "same_weight_short_ab": {
+    "all_pairs_exact": true,
+    "attention_rows": 128,
+    "baseline_variant": "swa_context_rows_spans",
+    "candidate_variant": "swa_context_rows_qrow4_m128_c256_exact_spans",
+    "harness_sha256": "e36e66e146c2e44976b21384d0afa329a8b93a265a5b9323e61fbba630cc5040",
+    "matrix_rows": 512,
+    "next_tokens": {
+      "1024": 95,
+      "512": 2930
+    },
+    "raw_sha256": "3afb848fbc4f8db5f394fd9459036541c7fce123a8fad009d003706302d3bfe9",
+    "repetitions": 3,
+    "rows": {
+      "1024": {
+        "baseline_seconds": [
+          9.522207490168512,
+          9.592381421942264,
+          9.641961443936452
+        ],
+        "baseline_tok_s": 106.75138476641817,
+        "candidate_seconds": [
+          8.105619630077854,
+          8.203998324926943,
+          8.240268874913454
+        ],
+        "candidate_tok_s": 124.81718784469874,
+        "seconds_saved": 1.3883830970153213,
+        "speedup": 1.1692324939653964
+      },
+      "512": {
+        "baseline_seconds": [
+          4.2432676730677485,
+          4.328117250930518,
+          4.343335205921903
+        ],
+        "baseline_tok_s": 118.29624067830493,
+        "candidate_seconds": [
+          3.8427836389746517,
+          3.8831311489921063,
+          3.9158089861739427
+        ],
+        "candidate_tok_s": 131.85235840743962,
+        "seconds_saved": 0.4449861019384116,
+        "speedup": 1.1145946621076424
+      }
+    },
+    "same_mode_repeat_deterministic": true,
+    "tracked_returned_to_baseline": true
+  },
+  "schema_version": 1,
+  "scope": "gfx1100 W7900 exact SWA prefill candidate at M128 attention tiles inside matrix512 short prefill",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "3d20d2a31c4c3542b54be245e9a698ccd903129ff0b0c5bb82d5c79b72fb0f6d",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "e5fb9375e86d3881db5c8e9f11739335aebf2714b5223096c4b535522b0a29ff",
+    "hipengine/runtime/laguna_kv.py": "80243e29461f8fe511652efe01b09ea395157f9b7d58b6f30a7a1a37e83b9a01",
+    "tests/test_laguna_kv_attention.py": "1f0c5e78832fcfdb02d45f95099bda6e387e0cefa9366e66a286371c930f35f6"
+  },
+  "status": "retained_candidate_pending_package_default"
+}

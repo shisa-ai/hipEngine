@@ -48,6 +48,26 @@
       "applies_after": "0001-mtp-instrumentation-committed.patch"
     }
   ],
+  "measurement_patches": [
+    {
+      "path": "0003-laguna-content-only-raw-measurement.patch",
+      "sha256": "f010fbd1178bd79523a4fc6d5767f8cebabd72fac8b379fd45dbedbd35b9a443",
+      "bytes": 1122,
+      "lines": 25,
+      "applies_to": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "timed_device_work_changed": false,
+      "purpose": "Bypass redundant post-generation PEG parsing for content-only raw-token server measurements."
+    },
+    {
+      "path": "0004-laguna-matched-prefill-token-fixture.patch",
+      "sha256": "544cea4a0509a90e4ca89a563aaade8388353025c10b7f9299e23d29583cf354",
+      "bytes": 6030,
+      "lines": 64,
+      "applies_to": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "timed_device_work_changed": false,
+      "purpose": "Use the exact Laguna M512 token stream/context and report last-row top-1 without changing backend graph or timing ownership."
+    }
+  ],
   "validation": {
     "fresh_clone_git_apply_check": true,
     "combined_diff_matches_captured_working_tree": true,

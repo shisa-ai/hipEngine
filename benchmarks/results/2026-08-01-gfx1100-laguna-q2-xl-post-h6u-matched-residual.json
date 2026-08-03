@@ -1,0 +1,981 @@
+{
+  "authority_files": {
+    "README.md": "72f8a328566964168dfad9b6a8d31350916b258cb266fa818f3bae0f899167f7",
+    "WORKLOG.md": "7acefa12fc1364a67acdb79afe7feba13b47de5b85c2136fdc22ab406eab91c8",
+    "benchmarks/CHANGELOG.md": "25c5a83a15da71654517b9ce1a5ad6dd09e2e7c157987d4e488dcd6724377f6e",
+    "benchmarks/README.md": "39d693075e4df74790fa68a0d5a91bf79e11b80b37ab385b6e771352e43fc368",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "ee9dd6e9b9f0b919716de37c6d75a99250ff8e5ab650ca6ccbc756ff74929c9e",
+    "docs/LAGUNA-prefill.md": "ea0767b6403c5a93136c3f9aaee25e452dadfa6dff66f6989adfec2145a972cf",
+    "docs/PLAN.md": "b59690248cc722ab434e1e60018acee5db2e33dd89921bfc98a9d20ae05754b3",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "commands": {
+    "hipengine_trace": "compiler-free PATH plus cached-only rocprofv3 command captured in raw stdout/child evidence",
+    "hipengine_wall": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h6u-matched-c4096-m512.json",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "source_isa": "cache-bound unchanged source build outside profiler; extract .hip_fatbin with clang-offload-bundler; llvm-objdump -d and llvm-readobj --notes"
+  },
+  "correctness_claim": true,
+  "current_trace": {
+    "dispatches": 2192,
+    "families": {
+      "attention": {
+        "dispatches": 192,
+        "hipengine_ms": 148.88198999999997
+      },
+      "gate_up": {
+        "dispatches": 47,
+        "hipengine_ms": 398.742814
+      },
+      "iq_down": {
+        "dispatches": 47,
+        "hipengine_ms": 272.1306669999999
+      },
+      "q5": {
+        "dispatches": 658,
+        "hipengine_ms": 255.13671599999986
+      },
+      "q6": {
+        "dispatches": 431,
+        "hipengine_ms": 81.743583
+      },
+      "remaining": {
+        "dispatches": 817,
+        "hipengine_ms": 76.20013600000001
+      }
+    },
+    "h6t_calls": 45,
+    "h6t_ms": 263.51962999999995,
+    "h6t_resources": {
+      "grid_x": 32768,
+      "grid_y": 64,
+      "kernel": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+      "lds_bytes": 512,
+      "local_size": 128,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 104
+    },
+    "h6u_resources": {
+      "bf16_16x4": {
+        "consumer_kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 4>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+        "consumer_lds_bytes": 1024,
+        "consumer_local_size": 128,
+        "consumer_scratch_bytes": 0,
+        "consumer_sgpr": 128,
+        "consumer_vgpr": 112,
+        "pack_lds_bytes": 0,
+        "pack_local_size": 256,
+        "pack_scratch_bytes": 0,
+        "pack_sgpr": 128,
+        "pack_vgpr": 16,
+        "producer_scratch_bytes": 0
+      },
+      "bf16_16x5": {
+        "consumer_kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 5>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+        "consumer_lds_bytes": 1536,
+        "consumer_local_size": 128,
+        "consumer_scratch_bytes": 0,
+        "consumer_sgpr": 128,
+        "consumer_vgpr": 144,
+        "pack_lds_bytes": 0,
+        "pack_local_size": 256,
+        "pack_scratch_bytes": 0,
+        "pack_sgpr": 128,
+        "pack_vgpr": 16,
+        "producer_scratch_bytes": 0
+      },
+      "f32_16x5": {
+        "consumer_kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<float, 5>(unsigned short const*, float const*, float*, int, int, int)",
+        "consumer_lds_bytes": 1536,
+        "consumer_local_size": 128,
+        "consumer_scratch_bytes": 0,
+        "consumer_sgpr": 128,
+        "consumer_vgpr": 144,
+        "pack_lds_bytes": 0,
+        "pack_local_size": 256,
+        "pack_scratch_bytes": 0,
+        "pack_sgpr": 128,
+        "pack_vgpr": 16,
+        "producer_scratch_bytes": 0
+      }
+    },
+    "kernel_span_ms": 1255.013077,
+    "kernel_sum_ms": 1232.835906,
+    "no_compiler_under_profile": true,
+    "q5_route_ms": {
+      "h5g_fallback": 1.9246559999999993,
+      "h5y_bf16_12x8_row_major": 79.81632699999999,
+      "h5y_bf16_16x5_tile_k_col": 15.133976,
+      "h5y_bf16_8x12_row_major": 7.3583870000000005,
+      "h5y_bf16_8x4_tile_k_col": 24.16201,
+      "h5y_f32_16x5_tile_k_col": 16.532467,
+      "h5y_f32_8x10_tile_k_col": 79.22668300000001,
+      "pack_bf16_12x8_row_major": 1.17481,
+      "pack_bf16_16x5_tile_k_col": 0.42608599999999996,
+      "pack_bf16_8x12_row_major": 0.03316,
+      "pack_bf16_8x4_tile_k_col": 2.2441400000000007,
+      "pack_f32_16x5_tile_k_col": 0.22852299999999998,
+      "pack_f32_8x10_tile_k_col": 0.6800050000000002,
+      "row_major_producer": 5.976012999999999,
+      "tile_k_col_producer": 20.219473
+    },
+    "q5_routes": {
+      "h5g_fallback": 47,
+      "h5y_bf16_12x8_row_major": 35,
+      "h5y_bf16_16x5_tile_k_col": 12,
+      "h5y_bf16_8x12_row_major": 2,
+      "h5y_bf16_8x4_tile_k_col": 92,
+      "h5y_f32_16x5_tile_k_col": 12,
+      "h5y_f32_8x10_tile_k_col": 35,
+      "pack_bf16_12x8_row_major": 35,
+      "pack_bf16_16x5_tile_k_col": 12,
+      "pack_bf16_8x12_row_major": 2,
+      "pack_bf16_8x4_tile_k_col": 92,
+      "pack_f32_16x5_tile_k_col": 12,
+      "pack_f32_8x10_tile_k_col": 35,
+      "row_major_producer": 84,
+      "tile_k_col_producer": 151
+    },
+    "q5_sequence_exact": true,
+    "q6_route_ms": {
+      "h5i_ordered": 0.045081,
+      "h6u_bf16_16x4": 20.423507,
+      "h6u_bf16_16x5": 0.5848439999999999,
+      "h6u_f32_16x5": 27.908651999999986,
+      "pack_bf16_16x4": 0.38588300000000003,
+      "pack_bf16_16x5": 0.04088,
+      "pack_f32_16x5": 1.913177,
+      "producer": 2.0494220000000003,
+      "raw_fallback": 28.392136999999998
+    },
+    "q6_routes": {
+      "h5i_ordered": 1,
+      "h6u_bf16_16x4": 46,
+      "h6u_bf16_16x5": 2,
+      "h6u_f32_16x5": 94,
+      "pack_bf16_16x4": 46,
+      "pack_bf16_16x5": 2,
+      "pack_f32_16x5": 94,
+      "producer": 143,
+      "raw_fallback": 3
+    },
+    "q6_sequence_exact": true,
+    "span_minus_sum_ms": 22.177171000000044
+  },
+  "date": "2026-08-01",
+  "decision": {
+    "matched_reprofile_accepted": true,
+    "next_action": "Commit this post-H6U measurement/target unit, freeze WPF-H6V RED, then implement and run the one-shot exact six-role Q5 DPP-add reduction screen.",
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vram_bytes": 48301604864,
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h6u_matched_residual_and_h6v_q5_dpp_target",
+  "lineage": {
+    "artifacts": {
+      "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-prefetch-rejected.json": "f19acfb0eb53596e147470069d2254a2b10b1e6064ec612122b3ff0ca5b5bf56",
+      "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-q5-k-record-wait-split-rejected.json": "46ac2da6c540f624088f935a825ccd8af6996235ecb23fdcbe4362895ab5e808",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6t-matched-residual.json": "63c243215198f208ae92f7cbed4f49a8fedf555441a55d08e6b1acbd5762cb8b",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-candidate.json": "3df4f30f81f755dc7810f51e17a453a1b4b5ed6496a7a3bf738ad12a7341c9f5",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json": "57ff2d0bbfaf8114063954eea59ef919fe088fc5d0e291922b6d7c74a3d7036c",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json": "c5ee6420519ae4670b1c61aa2393ae51d9f389c0cd5489eb05620b33133d82e6"
+    },
+    "kernel_lineage_state": "all tracked Laguna/llama.cpp parents clean; four unrelated documented Qwen/PARO drifts",
+    "production_revision": "248b47d14843c3cc92968ea9c54521c766e38d99",
+    "source": "Net-new in-tree instruction-form sibling transferring retained H6U exact permlanex16/DPP-add wave reduction to unchanged H5Y Q5 consumers; no external kernel body selected or copied.",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d41dbceb8dd31dec07ba265d9da2c8a5d20da1ec00dd0bc73981758446f6b235",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "4ef2f2c2d5f708682a2ef43dc820d2a3ca35c4518d9e3d282544504174b978b2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "cf7354e539a7aaf35794b8dfca0c108d440f79dd2c4ebb32b6d74aa0cd601d8e",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "5bd3295ab3c032727cc2e2dac4106e98b5d77ceb9c0f8b42ae15ec8e0af61230"
+    }
+  },
+  "matched_component_table_ms": [
+    {
+      "campaign_start_ms": 1270.457977,
+      "current_gap_ms": 196.82262599999987,
+      "current_h6u_ms": 255.13671599999986,
+      "current_over_llamacpp": 4.375215595407557,
+      "family": "q5",
+      "llamacpp_hip_ms": 58.31409,
+      "retained_h6t_ms": 255.08160200000003
+    },
+    {
+      "campaign_start_ms": 488.304264,
+      "current_gap_ms": 127.36954299999996,
+      "current_h6u_ms": 148.88198999999997,
+      "current_over_llamacpp": 6.920737096993195,
+      "family": "attention",
+      "llamacpp_hip_ms": 21.512447,
+      "retained_h6t_ms": 148.687002
+    },
+    {
+      "campaign_start_ms": 557.09136,
+      "current_gap_ms": 118.27075599999989,
+      "current_h6u_ms": 272.1306669999999,
+      "current_over_llamacpp": 1.7686911764819615,
+      "family": "iq_down",
+      "llamacpp_hip_ms": 153.859911,
+      "retained_h6t_ms": 271.842409
+    },
+    {
+      "campaign_start_ms": 157.072613,
+      "current_gap_ms": 67.075985,
+      "current_h6u_ms": 81.743583,
+      "current_over_llamacpp": 5.573072223550172,
+      "family": "q6",
+      "llamacpp_hip_ms": 14.667597999999991,
+      "retained_h6t_ms": 87.06067799999998
+    },
+    {
+      "campaign_start_ms": 460.143234,
+      "current_gap_ms": 0.937891000000036,
+      "current_h6u_ms": 398.742814,
+      "current_over_llamacpp": 1.0023576656440725,
+      "family": "gate_up",
+      "llamacpp_hip_ms": 397.804923,
+      "retained_h6t_ms": 398.65676499999995
+    },
+    {
+      "campaign_start_ms": 68.622802,
+      "current_gap_ms": 8.35069699999994,
+      "current_h6u_ms": 76.20013600000001,
+      "current_over_llamacpp": 1.1230768761404193,
+      "family": "remaining",
+      "llamacpp_hip_ms": 67.84943900000007,
+      "retained_h6t_ms": 75.82130699999993
+    },
+    {
+      "campaign_start_ms": 3001.69225,
+      "current_gap_ms": 518.827498,
+      "current_h6u_ms": 1232.835906,
+      "current_over_llamacpp": 1.7266406000081724,
+      "family": "kernel_sum",
+      "llamacpp_hip_ms": 714.008408,
+      "retained_h6t_ms": 1237.149763
+    }
+  ],
+  "matched_wall": {
+    "campaign_start_tok_s": 169.51647248706007,
+    "current_h6u": {
+      "deterministic": true,
+      "gain_over_campaign_start_percent": 141.99416533271423,
+      "gain_over_h6t_percent": 0.31806398472020714,
+      "median_tok_s": 410.2199726965212,
+      "next_tokens": [
+        2930,
+        2930,
+        2930,
+        2930,
+        2930
+      ],
+      "revision": "248b47d14843c3cc92968ea9c54521c766e38d99",
+      "samples_tok_s": [
+        409.86091912341243,
+        411.2241670222621,
+        410.76481071239505,
+        410.2199726965212,
+        410.19088099649525
+      ],
+      "tracked_allocation_recovered": true
+    },
+    "llamacpp_hip_exact_natural": {
+      "dispatches": 2824,
+      "implementation_sha256": "68d1c3ac57bc15200c2e6986723d27fbb4ee4777f654dddb0d2b3f0db8102167",
+      "kernel_sum_ms": 714.008408,
+      "mean_tok_s": 691.61642,
+      "median_tok_s": 690.791,
+      "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "samples_tok_s": [
+        694.342,
+        692.318,
+        690.152,
+        690.791,
+        690.48
+      ],
+      "synthetic_default_pp512_disposition": "The user-reported 714.07 tok/s is synthetic/random pp512, not the fixed-natural-token/C4096 matched row.",
+      "top1_markers_verified": 5
+    },
+    "llamacpp_over_current": 1.683952625366303,
+    "retained_h6t_tok_s": 408.9193475254898,
+    "user_synthetic_pp512_disposition": "714.07 tok/s uses llama.cpp's default synthetic/random pp512 tokens and is not the matched fixed-natural comparator."
+  },
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "next_token_id": 2930,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_compact_json_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786",
+    "token_stream_int64_bytes_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a"
+  },
+  "performance_claim": true,
+  "protocol": {
+    "hipengine_trace": "same committed request sequence under cached-only rocprofv3 with compiler-free child PATH and monitor-audited zero compiler processes",
+    "hipengine_wall_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h6u-matched-c4096-m512.json",
+    "llamacpp_comparator": "patched c0bc8591 fixed-natural M512/C4096, -p 512 -n 0 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json, one queue",
+    "matched_axes": "same model bytes, fixed natural 512-token stream, C4096 admission, direct M512, package matrix512/attention128, FlashAttention, BF16 K/V, one W7900 queue, synchronized final-row first-token projection"
+  },
+  "raw_evidence_sha256": {
+    "artifact_builder": "956134a5b13b7e5788ba5457d40d36c95e3ea7a8b94237cf6b694d4951471331",
+    "artifact_validator": "12f8a7a6b8067f563d69d4e61dc462409a09d42d0075cbfe7466de50fe1b20cd",
+    "compiler_monitor": "bdf947ad61b16b394b9452258ad822e1b00cae9fb15855a9fc37bcb27613cbdb",
+    "compiler_monitor_audit": "1d51216f5f5b1bac53758da15922ac44b3b1f4866c0f2f482a439e5db71038f4",
+    "compiler_monitor_auditor": "8f7e21c79d7999d172834c9207378f480042163d644c4ebe74a8bc679da566af",
+    "compiler_version_file": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "h6g_rejection_artifact": "f19acfb0eb53596e147470069d2254a2b10b1e6064ec612122b3ff0ca5b5bf56",
+    "h6m_rejection_artifact": "46ac2da6c540f624088f935a825ccd8af6996235ecb23fdcbe4362895ab5e808",
+    "h6s_rejection_artifact": "c5ee6420519ae4670b1c61aa2393ae51d9f389c0cd5489eb05620b33133d82e6",
+    "h6t_production_artifact": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+    "h6u_candidate_artifact": "3df4f30f81f755dc7810f51e17a453a1b4b5ed6496a7a3bf738ad12a7341c9f5",
+    "h6u_production_artifact": "57ff2d0bbfaf8114063954eea59ef919fe088fc5d0e291922b6d7c74a3d7036c",
+    "post_h6t_artifact": "63c243215198f208ae92f7cbed4f49a8fedf555441a55d08e6b1acbd5762cb8b",
+    "source_build_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_build_stdout": "b137105adbb0adf922bfa3a37c1a478e05b5c14f9a9be8fe94ed13cc2c95e2ca",
+    "source_code_object_notes": "89e4c4b4c70f518994452f72b4ff3bdf369b7e9289c00015ef77fb868b309aee",
+    "source_fatbin": "65222b6b49ed184002da3fdf08279bd60bbce1fd0a22d4a30f5bd5f9a8578855",
+    "source_hsaco": "da88044f44d8614564f2fe66e1382957a91a571e42a84f81216e95c719c9d651",
+    "source_isa": "0430e8dfc98ca1ad522a41d6a0c93108d5ed55fd1d6cc1bdb622143d626d5605",
+    "source_library": "f0f2ea02d5d8663ba6673a1639242e887918af633402c26854c977a5a167637e",
+    "target_analysis": "bf180b3ed5b2ad05f6a75847084e666082b76a1cbc0b754a267fb78e839d9253",
+    "target_analyzer": "e2856cd2eef12edd5fcfe1b69ca9faf187e9b5d356dc7b4ec5613eb9da8fecda",
+    "trace_agent_csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "trace_analyzer": "19da8eb0ac230ff7ee0ef4b7d206b231edc2f7343d119687dbd7140f27769bf1",
+    "trace_child_json": "3255bfbe79e20a5d20443de89e87146d0b134f281aaa38183481e91cfde7badb",
+    "trace_csv": "3040b3845c3fd52e78b661f265feb876e40ac281cb8696b6a2137fd7b1dce897",
+    "trace_status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "trace_stderr": "9569fad56d8da12a512807c236e221713ad17b3852db26ad3d38c40cd446ddbd",
+    "trace_stdout": "3255bfbe79e20a5d20443de89e87146d0b134f281aaa38183481e91cfde7badb",
+    "trace_summary": "1a69c7ee42de0460fd3b588faf97df4b54bb70653ed6dfbf401b5be853760b64",
+    "wall_json": "aef2a3851c0c41ade3e3ff8a32fd659f6423f5ff74f172d88fc9174cc70658c8",
+    "wall_status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "wall_stderr": "44928e8021b5819b88f53d36c78a1160cedd44e9c44c16c2cd58b99111778116",
+    "wall_stdout": "aef2a3851c0c41ade3e3ff8a32fd659f6423f5ff74f172d88fc9174cc70658c8"
+  },
+  "schema": 1,
+  "scope": "Clean committed H6U fixed-natural C4096/direct-M512 wall and cached trace, matched llama.cpp HIP component reconciliation, and target-only WPF-H6V exact Q5 DPP-add wave-reduction selection on W7900",
+  "status": "accepted_matched_production_reprofile_and_exact_h6v_target",
+  "target_selection": {
+    "admission": {
+      "correctness": "Require complete H5Y-byte identity at rows17/33/M512 for all six actual roles, complete activation/weight-plane identity, sampled independent CPU values, tails, strict role preflight, lifecycle, unchanged H5Y source policy, and gfx1151 absence.",
+      "one_shot_stop": "Any physical, correctness, lifecycle, role-clock, or weighted-clock miss removes every H6V implementation/test/key/export/gfx1151-exclusion surface, skips runtime qualification, and closes Q5 DPP reduction without follow-up tuning.",
+      "performance": "Use five warmups, 15 counter-rotated repetitions, and five launches/sample on all six actual-weight roles; every role and the 188-call weighted aggregate must win both HIP-event and synchronized-wall clocks with exact bytes and recovered allocations.",
+      "physical": "Require exact per-role permlanex16/DPP/bpermute counts, zero DPP moves, unchanged source FMA/load/LDS/barrier/store facts, code/instruction slots no larger than H5Y, no VGPR/private/spill/scratch regression, intended named rocprof execution, and no compiler under profiling.",
+      "promotion": "Only an admitted leaf may enter a separate bounded default-off package capability; source promotion still requires complete natural-M512 state, exact topology, fixed C4096/M512, and selector-unset 512/1K/4K wins.",
+      "red_first": "Commit a test-only H6V contract before editing HIP/Python/registry/export/gfx1151 surfaces."
+    },
+    "closed_or_deferred": {
+      "attention": "H6S rejects the newest exact DPP-peer SWA premise on every start; changed-association, score replay, wider-row/head, and source-MMQ routes remain closed.",
+      "iq_down": "H6T was just promoted and remains the current exact fused-DPP IQ3 source.",
+      "q5_prior": "H6G and H6M reject compiler-managed prefetch and explicit wait splitting; H5G/H5L/H5P/H5S/H5V/H5X/H5Y close prior geometry, plane, and ownership routes. None screens wave-peer instruction form.",
+      "q6": "H6U was just promoted and supplies direct positive evidence for the exact peer-transfer mechanism now selected on Q5."
+    },
+    "q5_current": {
+      "calls": 188,
+      "consumer_ms": 222.35590100000002,
+      "consumer_share_of_q5_percent": 87.15166695176877,
+      "control_bpermute_wave_instruction_executions": 6813040640,
+      "family_ms": 255.13671599999986,
+      "gap_ms": 196.82262599999987,
+      "llamacpp_ms": 58.31409,
+      "request_workgroups": 5021440,
+      "roles": 6,
+      "source_analysis": {
+        "kind": "gfx1100_laguna_h6v_q5_dpp_target_analysis",
+        "roles": {
+          "bf16_k3072_n1024": {
+            "calls": 92,
+            "col_tile": 8,
+            "consumer_ms": 24.191384000000003,
+            "control_bpermute_wave_instruction_executions": 964689920,
+            "dtype": "bf16",
+            "pack_ms": 2.233537,
+            "request_workgroups": 1507328,
+            "row_batch": 4,
+            "runtime_resources": {
+              "lds_bytes": 512,
+              "vgpr": 72
+            },
+            "source_isa": {
+              "ds_bpermute_b32": 160,
+              "function_instruction_slots": 635,
+              "global_load_instructions": 3,
+              "lds_store_instructions": 8,
+              "physical_code_bytes": 3660,
+              "s_barrier": 1,
+              "v_add_f32_dpp": 0,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 0
+            },
+            "target_static": {
+              "ds_bpermute_b32": 0,
+              "v_add_f32_dpp": 128,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 32
+            },
+            "tile_k_col": true,
+            "trace_role": "bf16_8x4_tile_k_col"
+          },
+          "bf16_k3072_n12288": {
+            "calls": 2,
+            "col_tile": 8,
+            "consumer_ms": 7.3527059999999995,
+            "control_bpermute_wave_instruction_executions": 253624320,
+            "dtype": "bf16",
+            "pack_ms": 0.0336,
+            "request_workgroups": 132096,
+            "row_batch": 12,
+            "runtime_resources": {
+              "lds_bytes": 1536,
+              "vgpr": 200
+            },
+            "source_isa": {
+              "ds_bpermute_b32": 480,
+              "function_instruction_slots": 1718,
+              "global_load_instructions": 10,
+              "lds_store_instructions": 24,
+              "physical_code_bytes": 9920,
+              "s_barrier": 1,
+              "v_add_f32_dpp": 0,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 0
+            },
+            "target_static": {
+              "ds_bpermute_b32": 0,
+              "v_add_f32_dpp": 384,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 96
+            },
+            "tile_k_col": false,
+            "trace_role": "bf16_8x12_row_major"
+          },
+          "bf16_k6144_n3072": {
+            "calls": 12,
+            "col_tile": 16,
+            "consumer_ms": 15.118655000000002,
+            "control_bpermute_wave_instruction_executions": 379699200,
+            "dtype": "bf16",
+            "pack_ms": 0.42608599999999996,
+            "request_workgroups": 237312,
+            "row_batch": 5,
+            "runtime_resources": {
+              "lds_bytes": 1536,
+              "vgpr": 168
+            },
+            "source_isa": {
+              "ds_bpermute_b32": 400,
+              "function_instruction_slots": 1316,
+              "global_load_instructions": 6,
+              "lds_store_instructions": 20,
+              "physical_code_bytes": 7796,
+              "s_barrier": 1,
+              "v_add_f32_dpp": 0,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 0
+            },
+            "target_static": {
+              "ds_bpermute_b32": 0,
+              "v_add_f32_dpp": 320,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 80
+            },
+            "tile_k_col": true,
+            "trace_role": "bf16_16x5_tile_k_col"
+          },
+          "bf16_k9216_n3072": {
+            "calls": 35,
+            "col_tile": 12,
+            "consumer_ms": 79.865521,
+            "control_bpermute_wave_instruction_executions": 1101004800,
+            "dtype": "bf16",
+            "pack_ms": 1.1707299999999998,
+            "request_workgroups": 573440,
+            "row_batch": 8,
+            "runtime_resources": {
+              "lds_bytes": 1536,
+              "vgpr": 200
+            },
+            "source_isa": {
+              "ds_bpermute_b32": 480,
+              "function_instruction_slots": 1674,
+              "global_load_instructions": 13,
+              "lds_store_instructions": 24,
+              "physical_code_bytes": 9796,
+              "s_barrier": 1,
+              "v_add_f32_dpp": 0,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 0
+            },
+            "target_static": {
+              "ds_bpermute_b32": 0,
+              "v_add_f32_dpp": 384,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 96
+            },
+            "tile_k_col": false,
+            "trace_role": "bf16_12x8_row_major"
+          },
+          "f32_k3072_n6144": {
+            "calls": 12,
+            "col_tile": 16,
+            "consumer_ms": 16.566909,
+            "control_bpermute_wave_instruction_executions": 759398400,
+            "dtype": "f32",
+            "pack_ms": 0.227204,
+            "request_workgroups": 474624,
+            "row_batch": 5,
+            "runtime_resources": {
+              "lds_bytes": 1536,
+              "vgpr": 168
+            },
+            "source_isa": {
+              "ds_bpermute_b32": 400,
+              "function_instruction_slots": 1313,
+              "global_load_instructions": 6,
+              "lds_store_instructions": 20,
+              "physical_code_bytes": 7768,
+              "s_barrier": 1,
+              "v_add_f32_dpp": 0,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 0
+            },
+            "target_static": {
+              "ds_bpermute_b32": 0,
+              "v_add_f32_dpp": 320,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 80
+            },
+            "tile_k_col": true,
+            "trace_role": "f32_16x5_tile_k_col"
+          },
+          "f32_k3072_n9216": {
+            "calls": 35,
+            "col_tile": 8,
+            "consumer_ms": 79.260726,
+            "control_bpermute_wave_instruction_executions": 3354624000,
+            "dtype": "f32",
+            "pack_ms": 0.6760869999999999,
+            "request_workgroups": 2096640,
+            "row_batch": 10,
+            "runtime_resources": {
+              "lds_bytes": 1536,
+              "vgpr": 168
+            },
+            "source_isa": {
+              "ds_bpermute_b32": 400,
+              "function_instruction_slots": 1369,
+              "global_load_instructions": 4,
+              "lds_store_instructions": 20,
+              "physical_code_bytes": 7960,
+              "s_barrier": 1,
+              "v_add_f32_dpp": 0,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 0
+            },
+            "target_static": {
+              "ds_bpermute_b32": 0,
+              "v_add_f32_dpp": 320,
+              "v_mov_b32_dpp": 0,
+              "v_permlanex16_b32": 80
+            },
+            "tile_k_col": true,
+            "trace_role": "f32_8x10_tile_k_col"
+          }
+        },
+        "schema": 1,
+        "selection_model_only": {
+          "h6u_consumer_ratio": 0.8947070005086457,
+          "modeled_h6v_consumer_ms": 198.9433812291074,
+          "modeled_kernel_sum_ms": 1209.4233862291073,
+          "modeled_saved_ms": 23.41251977089263,
+          "modeled_wall_tok_s": 418.06213509794435,
+          "source": "Apply measured H6E-to-H6U consumer ratio to current H5Y consumer sum; no H6V implementation or speed claim exists."
+        },
+        "source_region": {
+          "current_sha256": "2d692f86bf57d8ae9da85fcd8f50a9ca0c2dcd563b90e9ed49503754baf24a23",
+          "h6g_cleanup_revision": "abc86fbee",
+          "h6g_cleanup_sha256": "2d692f86bf57d8ae9da85fcd8f50a9ca0c2dcd563b90e9ed49503754baf24a23",
+          "unchanged_since_h6g_cleanup": true
+        },
+        "status": "accepted_target_analysis_only",
+        "target_absence": {
+          "production_policy_unchanged": true,
+          "q5_dpp_kernel_absent": true,
+          "wpf_h6v_absent": true
+        },
+        "totals": {
+          "calls": 188,
+          "consumer_ms": 222.35590100000002,
+          "control_bpermute_wave_instruction_executions": 6813040640,
+          "request_workgroups": 5021440,
+          "roles": 6,
+          "target_dpp_add_wave_instruction_executions": 5450432512,
+          "target_permlanex16_wave_instruction_executions": 1362608128
+        }
+      }
+    },
+    "ranked_current_gaps_ms": [
+      {
+        "family": "q5",
+        "gap_ms": 196.82262599999987
+      },
+      {
+        "family": "attention",
+        "gap_ms": 127.36954299999996
+      },
+      {
+        "family": "iq_down",
+        "gap_ms": 118.27075599999989
+      },
+      {
+        "family": "q6",
+        "gap_ms": 67.075985
+      },
+      {
+        "family": "remaining",
+        "gap_ms": 8.35069699999994
+      },
+      {
+        "family": "gate_up",
+        "gap_ms": 0.937891000000036
+      }
+    ],
+    "selected": {
+      "expected_physical": {
+        "barriers_static": 1,
+        "code_bytes_max": {
+          "bf16_k3072_n1024": 3660,
+          "bf16_k3072_n12288": 9920,
+          "bf16_k6144_n3072": 7796,
+          "bf16_k9216_n3072": 9796,
+          "f32_k3072_n6144": 7768,
+          "f32_k3072_n9216": 7960
+        },
+        "instruction_slots_max": {
+          "bf16_k3072_n1024": 635,
+          "bf16_k3072_n12288": 1718,
+          "bf16_k6144_n3072": 1316,
+          "bf16_k9216_n3072": 1674,
+          "f32_k3072_n6144": 1313,
+          "f32_k3072_n9216": 1369
+        },
+        "local_size": 128,
+        "private_bytes": 0,
+        "runtime_lds_bytes": {
+          "bf16_k3072_n1024": 512,
+          "bf16_k3072_n12288": 1536,
+          "bf16_k6144_n3072": 1536,
+          "bf16_k9216_n3072": 1536,
+          "f32_k3072_n6144": 1536,
+          "f32_k3072_n9216": 1536
+        },
+        "runtime_vgpr_max": {
+          "bf16_k3072_n1024": 72,
+          "bf16_k3072_n12288": 200,
+          "bf16_k6144_n3072": 168,
+          "bf16_k9216_n3072": 200,
+          "f32_k3072_n6144": 168,
+          "f32_k3072_n9216": 168
+        },
+        "scratch_bytes": 0,
+        "sgpr_max": 128,
+        "spill_count": 0,
+        "static_target_by_role": {
+          "bf16_k3072_n1024": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 128,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 32
+          },
+          "bf16_k3072_n12288": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 384,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 96
+          },
+          "bf16_k6144_n3072": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 320,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 80
+          },
+          "bf16_k9216_n3072": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 384,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 96
+          },
+          "f32_k3072_n6144": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 320,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 80
+          },
+          "f32_k3072_n9216": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 320,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 80
+          }
+        },
+        "zero_ds_bpermute_b32": true,
+        "zero_v_mov_b32_dpp": true
+      },
+      "family": "q5",
+      "id": "WPF-H6V",
+      "implementation_absent": true,
+      "name": "exact DPP-add wave reduction for H5Y Q5 activation-row consumers",
+      "operation": "Add separately named gfx1100 siblings for all six production H5Y consumers and replace only their offset16/8/4/2/1 generic __shfl_down peer tree with exact permlanex16 followed by direct v_add_f32_dpp row shifts 8/4/2/1. Preserve every input/weight FMA, activation/weight record, four-wave lane-0 LDS publication, barrier, serial wave0..3 sum, output store, grid, ABI, producer, pack, allocation, workspace, and package policy.",
+      "performance_claim": false,
+      "preserved": [
+        "six exact production roles, 188 calls, rows17/33/M512 including tails, and complete output bytes",
+        "H5Y tile-K-row activation plane, H5X tile-K-col/H5L row-major weight planes, ordered fmaf sequence, and independent CPU values",
+        "all producer/pack/consumer dispatch sequences, local128/four-wave ownership, lane-0 LDS publication, one barrier, serial wave0..3 sum, and BF16/F32 stores",
+        "150994944-byte exact F32 plane, 10125312-byte activation plane, 161120256-byte workspace, 600141856-byte total scratch, and zero sidecar",
+        "H5Y source package map, H5G N48/N72 and raw fallbacks, H6U Q6 source, registry dispatch, and gfx1151 fail-closed behavior"
+      ],
+      "production_changed": false,
+      "roles": {
+        "bf16_k3072_n1024": {
+          "calls": 92,
+          "col_tile": 8,
+          "consumer_ms": 24.191384000000003,
+          "control_bpermute_wave_instruction_executions": 964689920,
+          "dtype": "bf16",
+          "pack_ms": 2.233537,
+          "request_workgroups": 1507328,
+          "row_batch": 4,
+          "runtime_resources": {
+            "lds_bytes": 512,
+            "vgpr": 72
+          },
+          "source_isa": {
+            "ds_bpermute_b32": 160,
+            "function_instruction_slots": 635,
+            "global_load_instructions": 3,
+            "lds_store_instructions": 8,
+            "physical_code_bytes": 3660,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 0,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 0
+          },
+          "target_static": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 128,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 32
+          },
+          "tile_k_col": true,
+          "trace_role": "bf16_8x4_tile_k_col"
+        },
+        "bf16_k3072_n12288": {
+          "calls": 2,
+          "col_tile": 8,
+          "consumer_ms": 7.3527059999999995,
+          "control_bpermute_wave_instruction_executions": 253624320,
+          "dtype": "bf16",
+          "pack_ms": 0.0336,
+          "request_workgroups": 132096,
+          "row_batch": 12,
+          "runtime_resources": {
+            "lds_bytes": 1536,
+            "vgpr": 200
+          },
+          "source_isa": {
+            "ds_bpermute_b32": 480,
+            "function_instruction_slots": 1718,
+            "global_load_instructions": 10,
+            "lds_store_instructions": 24,
+            "physical_code_bytes": 9920,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 0,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 0
+          },
+          "target_static": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 384,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 96
+          },
+          "tile_k_col": false,
+          "trace_role": "bf16_8x12_row_major"
+        },
+        "bf16_k6144_n3072": {
+          "calls": 12,
+          "col_tile": 16,
+          "consumer_ms": 15.118655000000002,
+          "control_bpermute_wave_instruction_executions": 379699200,
+          "dtype": "bf16",
+          "pack_ms": 0.42608599999999996,
+          "request_workgroups": 237312,
+          "row_batch": 5,
+          "runtime_resources": {
+            "lds_bytes": 1536,
+            "vgpr": 168
+          },
+          "source_isa": {
+            "ds_bpermute_b32": 400,
+            "function_instruction_slots": 1316,
+            "global_load_instructions": 6,
+            "lds_store_instructions": 20,
+            "physical_code_bytes": 7796,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 0,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 0
+          },
+          "target_static": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 320,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 80
+          },
+          "tile_k_col": true,
+          "trace_role": "bf16_16x5_tile_k_col"
+        },
+        "bf16_k9216_n3072": {
+          "calls": 35,
+          "col_tile": 12,
+          "consumer_ms": 79.865521,
+          "control_bpermute_wave_instruction_executions": 1101004800,
+          "dtype": "bf16",
+          "pack_ms": 1.1707299999999998,
+          "request_workgroups": 573440,
+          "row_batch": 8,
+          "runtime_resources": {
+            "lds_bytes": 1536,
+            "vgpr": 200
+          },
+          "source_isa": {
+            "ds_bpermute_b32": 480,
+            "function_instruction_slots": 1674,
+            "global_load_instructions": 13,
+            "lds_store_instructions": 24,
+            "physical_code_bytes": 9796,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 0,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 0
+          },
+          "target_static": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 384,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 96
+          },
+          "tile_k_col": false,
+          "trace_role": "bf16_12x8_row_major"
+        },
+        "f32_k3072_n6144": {
+          "calls": 12,
+          "col_tile": 16,
+          "consumer_ms": 16.566909,
+          "control_bpermute_wave_instruction_executions": 759398400,
+          "dtype": "f32",
+          "pack_ms": 0.227204,
+          "request_workgroups": 474624,
+          "row_batch": 5,
+          "runtime_resources": {
+            "lds_bytes": 1536,
+            "vgpr": 168
+          },
+          "source_isa": {
+            "ds_bpermute_b32": 400,
+            "function_instruction_slots": 1313,
+            "global_load_instructions": 6,
+            "lds_store_instructions": 20,
+            "physical_code_bytes": 7768,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 0,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 0
+          },
+          "target_static": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 320,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 80
+          },
+          "tile_k_col": true,
+          "trace_role": "f32_16x5_tile_k_col"
+        },
+        "f32_k3072_n9216": {
+          "calls": 35,
+          "col_tile": 8,
+          "consumer_ms": 79.260726,
+          "control_bpermute_wave_instruction_executions": 3354624000,
+          "dtype": "f32",
+          "pack_ms": 0.6760869999999999,
+          "request_workgroups": 2096640,
+          "row_batch": 10,
+          "runtime_resources": {
+            "lds_bytes": 1536,
+            "vgpr": 168
+          },
+          "source_isa": {
+            "ds_bpermute_b32": 400,
+            "function_instruction_slots": 1369,
+            "global_load_instructions": 4,
+            "lds_store_instructions": 20,
+            "physical_code_bytes": 7960,
+            "s_barrier": 1,
+            "v_add_f32_dpp": 0,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 0
+          },
+          "target_static": {
+            "ds_bpermute_b32": 0,
+            "v_add_f32_dpp": 320,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 80
+          },
+          "tile_k_col": true,
+          "trace_role": "f32_8x10_tile_k_col"
+        }
+      },
+      "totals": {
+        "calls": 188,
+        "consumer_ms": 222.35590100000002,
+        "control_bpermute_wave_instruction_executions": 6813040640,
+        "request_workgroups": 5021440,
+        "roles": 6,
+        "target_dpp_add_wave_instruction_executions": 5450432512,
+        "target_permlanex16_wave_instruction_executions": 1362608128
+      },
+      "variants": {
+        "bf16_k3072_n1024": "weight_major_tile_k_col_activation_tile_k_row_dpp_wave_reduction_coltile8_rowbatch4",
+        "bf16_k3072_n12288": "weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile8_rowbatch12",
+        "bf16_k6144_n3072": "weight_major_tile_k_col_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5",
+        "bf16_k9216_n3072": "weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_coltile12_rowbatch8",
+        "f32_k3072_n6144": "weight_major_tile_k_col_activation_tile_k_row_dpp_wave_reduction_coltile16_rowbatch5",
+        "f32_k3072_n9216": "weight_major_tile_k_col_activation_tile_k_row_dpp_wave_reduction_coltile8_rowbatch10"
+      }
+    },
+    "selection_model_only": {
+      "h6u_consumer_ratio": 0.8947070005086457,
+      "modeled_h6v_consumer_ms": 198.9433812291074,
+      "modeled_kernel_sum_ms": 1209.4233862291073,
+      "modeled_saved_ms": 23.41251977089263,
+      "modeled_wall_tok_s": 418.06213509794435,
+      "source": "Apply measured H6E-to-H6U consumer ratio to current H5Y consumer sum; no H6V implementation or speed claim exists."
+    },
+    "selection_rule": "Q5 is the largest 196.823-ms gap and its 188 H5Y consumers own 222.356 ms. Their wave-peer instruction form remains unscreened, current ISA proves 160/480/400/480/400/400 bpermutes, and H6U independently proves the same exact five-step association can move to permlanex16 plus DPP adds without scratch or a math change."
+  }
+}

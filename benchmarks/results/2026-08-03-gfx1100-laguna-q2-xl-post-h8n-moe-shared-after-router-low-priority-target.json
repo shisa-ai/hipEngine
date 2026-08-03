@@ -1,0 +1,340 @@
+{
+  "admission_contract": {
+    "clean_length_transfer_if_fixed_passes": {
+      "candidate_median_positive_every_length": true,
+      "complete_state_exact": true,
+      "counter_rotated_repetitions": 3,
+      "lengths": [
+        512,
+        1024,
+        4096
+      ],
+      "lifecycle_exact": true,
+      "no_length_subset": true
+    },
+    "fixed_c4096_m512": {
+      "all_finite": true,
+      "all_sessions_and_owner_recovered": true,
+      "attention_rows": 128,
+      "complete_state_exact_every_sample": true,
+      "counter_rotated_repetitions": 7,
+      "fresh_request_session_per_sample": true,
+      "matrix_rows": 512,
+      "model_and_h8a_setup_excluded": true,
+      "pinned_token_ids_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+      "queue_matched_GPU_MAX_HW_QUEUES": 2,
+      "required_candidate_median_wall_improvement": true,
+      "required_candidate_pair_wins": 5,
+      "rows": 512,
+      "same_resident_weights_and_h8a_sidecar": true,
+      "warmups_per_arm": 1
+    },
+    "named_trace": {
+      "activation_packs": 223,
+      "candidate_application_dispatches": 2155,
+      "candidate_caller_dispatches": 1734,
+      "candidate_queues": 2,
+      "candidate_shared_secondary_dispatches": 421,
+      "candidate_streams": 2,
+      "compiler_processes": 0,
+      "positive_cross_queue_overlap_required": true,
+      "resident_q5_planes": 24,
+      "same_kernel_multiset_as_control": true,
+      "secondary_composition_exact": {
+        "activation_pack_r4": {
+          "dispatches": 92,
+          "duration_ms": 1.595615,
+          "kernel": "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<4>(unsigned short const*, unsigned short*, int, int)"
+        },
+        "q5_dequant": {
+          "dispatches": 92,
+          "duration_ms": 3.439745,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_dequantize_f32_exact_tile_k_col_kernel<8>(unsigned char const*, float*, int)"
+        },
+        "q5_gate_up": {
+          "dispatches": 92,
+          "duration_ms": 22.036415,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_padded_compute_kernel<unsigned short, 8, 4, true>(unsigned short const*, float const*, unsigned short*, int, int, int)"
+        },
+        "q6_dequant": {
+          "dispatches": 48,
+          "duration_ms": 0.681283,
+          "kernel": "(anonymous namespace)::gguf_q6_k_dequantize_f32_exact_kernel(unsigned char const*, float*)"
+        },
+        "q6_down": {
+          "dispatches": 46,
+          "duration_ms": 20.411922,
+          "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 4>(unsigned short const*, float const*, unsigned short*, int, int, int)"
+        },
+        "shared_silu": {
+          "dispatches": 47,
+          "duration_ms": 0.260921,
+          "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)"
+        },
+        "special_pack_r5": {
+          "dispatches": 1,
+          "duration_ms": 0.02212,
+          "kernel": "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<5>(unsigned short const*, unsigned short*, int, int)"
+        },
+        "special_q6_down": {
+          "dispatches": 2,
+          "duration_ms": 0.592844,
+          "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 5>(unsigned short const*, float const*, unsigned short*, int, int, int)"
+        },
+        "special_q8": {
+          "dispatches": 1,
+          "duration_ms": 0.758526,
+          "kernel": "void (anonymous namespace)::gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 16, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)"
+        }
+      },
+      "shared_output_wait_before_every_combine": true
+    },
+    "no_salvage": "no eager-release/normal-priority/queue-count/layer/length/prompt/token/event-boundary/schedule/rewrite/recompile/favorable-rerun subset",
+    "red_before_source_or_execution_policy_change": true,
+    "source_default_if_all_runtime_gates_pass": {
+      "explicit_concurrency_false_rollback_retained": true,
+      "gfx1151_unchanged": true,
+      "same_fixed_and_length_gates": true,
+      "selector_unset_equals_candidate": true,
+      "separate_red_required": true
+    }
+  },
+  "authority_links": {
+    "README.md": "2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json"
+  },
+  "baseline": {
+    "activation_packs": 223,
+    "application_dispatches": 2155,
+    "kernel_span_ms": 1166.621068,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_current": 1.566800991062275,
+    "matched_components": {
+      "attention": {
+        "current_ms": 115.349089,
+        "gap_ms": 93.83664200000001,
+        "llamacpp_ms": 21.512447
+      },
+      "gate_up": {
+        "current_ms": 401.4025780000001,
+        "gap_ms": 3.5976550000001453,
+        "llamacpp_ms": 397.804923
+      },
+      "iq_down": {
+        "current_ms": 273.163353,
+        "gap_ms": 119.30344199999996,
+        "llamacpp_ms": 153.859911
+      },
+      "q5": {
+        "current_ms": 230.42948,
+        "gap_ms": 172.11539000000002,
+        "llamacpp_ms": 58.31409
+      },
+      "q6": {
+        "current_ms": 73.31982099999999,
+        "gap_ms": 58.65222299999999,
+        "llamacpp_ms": 14.667598
+      },
+      "remaining": {
+        "current_ms": 52.755422999999986,
+        "gap_ms": -15.094016000000018,
+        "llamacpp_ms": 67.849439
+      }
+    },
+    "matched_llamacpp_hip_wall_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "queues": 1,
+    "resident_q5_planes": 24,
+    "revision": "f9ca7d19e",
+    "source_owner": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction",
+    "streams": 1,
+    "wall_samples_tok_s": [
+      440.8926238498552,
+      441.72161256688145,
+      441.41095652819786,
+      440.82883438393327,
+      439.54292501197585
+    ],
+    "wall_seconds": 1.1612804848700762,
+    "wall_tok_s": 440.8926238498552
+  },
+  "closed_context": {
+    "h8n": "twin-team Q5 halves modeled weight bytes but regresses weighted event/wall 74.186%/63.059%",
+    "not_full_parity_solution": true,
+    "reason_for_schedule_target": "the serial shared branch is an exact dependency-independent cross-family window; no Q5/IQ3/Q6 arithmetic or kernel body is reopened"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "Commit this target-only packet, then freeze RED before explicitly executing the existing two-stream path on gfx1100.",
+    "performance_measured": false,
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "production_queues": 1,
+    "stream_priority_range": [
+      1,
+      -1
+    ],
+    "target_process_queue_cap": 2,
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h8n_moe_shared_after_router_low_priority_target",
+  "lineage": {
+    "base_revision": "f9ca7d19e",
+    "candidate_present": false,
+    "h8n_rejection_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json",
+    "h8n_rejection_artifact_sha256": "c563105e1e5fae13bc5b374d0679ad4ef0ab352858b9986bdd36d6090bbb190c",
+    "production_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "production_artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "red_present": false,
+    "source_policy_changed": false,
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+      "hipengine/runtime/laguna_gguf_runner.py": "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654",
+      "hipengine/runtime/laguna_moe.py": "0507c0ab9bcabddfda9d0390c66d46f80aaaf7c42357a58dfa24c692d43414fd"
+    }
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128"
+  },
+  "operation_contract": {
+    "allocation_or_workspace_changed": false,
+    "arithmetic_changed": false,
+    "backend": "hip_gfx1100",
+    "branch_internal_order_changed": false,
+    "candidate_implemented": false,
+    "existing_generic_runtime_mechanism": true,
+    "fixed_schedule": {
+      "GPU_MAX_HW_QUEUES_both_arms": 2,
+      "caller_priority": "default",
+      "caller_waits_before": "routed/shared BF16 add combine",
+      "candidate_moe_branch_concurrency": true,
+      "candidate_shared_after_router": true,
+      "candidate_shared_low_priority": true,
+      "control_moe_branch_concurrency": false,
+      "event_flags": "hipEventDisableTiming (0x2)",
+      "input_ready_event_recorded_after": "router logits and exact sigmoid-correction top-k",
+      "shared_output_event_recorded_after": "complete 421-dispatch shared branch",
+      "shared_priority": 1,
+      "shared_stream_waits_for": "input-ready event"
+    },
+    "gfx1151_policy_is_reference_only": true,
+    "id": "WPF-H8O",
+    "inter_branch_submission_order_changed": true,
+    "kernel_dispatch_count_changed": false,
+    "name": "exact gfx1100 after-router least-priority shared/routed MoE branch concurrency",
+    "one_queue_fallback_retained": true,
+    "production_changed": false,
+    "prospective_source_default_change_only": {
+      "constants": {
+        "LAGUNA_MOE_BRANCH_CONCURRENCY": true,
+        "LAGUNA_MOE_SHARED_AFTER_ROUTER": true,
+        "LAGUNA_MOE_SHARED_LOW_PRIORITY": true
+      },
+      "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+      "runtime_source_change_expected": false
+    },
+    "tensor_bytes_changed": false
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "source_unchanged_audit": {
+    "audit_script_sha256": "dc3180c7fbc354335306698659d4568a5f2c8b56bedc67bca9e467d99b79abec",
+    "audit_sha256": "05ff671b4129fa116e5d3b51a02902eff8ddaffdb61999f1b664285e1ad03afa",
+    "evidence_sha256": {
+      "/home/lhl/hipEngine-main/benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json": "c563105e1e5fae13bc5b374d0679ad4ef0ab352858b9986bdd36d6090bbb190c",
+      "/home/lhl/hipEngine-main/benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+      "/tmp/laguna-h8b-post-commit-rocprof/h8b-post-commit_kernel_trace.csv": "9f14ea6ec276dc5e4d00b716154d8956887b2833fd914ea690ab9049b5ca146c",
+      "/tmp/laguna-h8b-post-commit-trace-summary.json": "443f8fc9992150acd6a6c4f066401628aba1d2d0b0b7d4d65b2f25f3f507106c"
+    },
+    "serial_shared_branch": {
+      "boundary": "exclusive after routed weighted_lanes_sum_out through before first gguf_bf16_add combine",
+      "composition": {
+        "activation_pack_r4": {
+          "dispatches": 92,
+          "duration_ms": 1.595615,
+          "kernel": "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<4>(unsigned short const*, unsigned short*, int, int)"
+        },
+        "q5_dequant": {
+          "dispatches": 92,
+          "duration_ms": 3.439745,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_dequantize_f32_exact_tile_k_col_kernel<8>(unsigned char const*, float*, int)"
+        },
+        "q5_gate_up": {
+          "dispatches": 92,
+          "duration_ms": 22.036415,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_padded_compute_kernel<unsigned short, 8, 4, true>(unsigned short const*, float const*, unsigned short*, int, int, int)"
+        },
+        "q6_dequant": {
+          "dispatches": 48,
+          "duration_ms": 0.681283,
+          "kernel": "(anonymous namespace)::gguf_q6_k_dequantize_f32_exact_kernel(unsigned char const*, float*)"
+        },
+        "q6_down": {
+          "dispatches": 46,
+          "duration_ms": 20.411922,
+          "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 4>(unsigned short const*, float const*, unsigned short*, int, int, int)"
+        },
+        "shared_silu": {
+          "dispatches": 47,
+          "duration_ms": 0.260921,
+          "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)"
+        },
+        "special_pack_r5": {
+          "dispatches": 1,
+          "duration_ms": 0.02212,
+          "kernel": "void (anonymous namespace)::gguf_bf16_activation_pack_tile_k_row_kernel<5>(unsigned short const*, unsigned short*, int, int)"
+        },
+        "special_q6_down": {
+          "dispatches": 2,
+          "duration_ms": 0.592844,
+          "kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 5>(unsigned short const*, float const*, unsigned short*, int, int, int)"
+        },
+        "special_q8": {
+          "dispatches": 1,
+          "duration_ms": 0.758526,
+          "kernel": "void (anonymous namespace)::gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 16, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)"
+        }
+      },
+      "dispatches": 421,
+      "kernel_sum_ms": 49.799391,
+      "regular_segments": 46,
+      "serial_inter_kernel_idle_ms": 1.320187,
+      "serial_segment_span_ms": 51.119578,
+      "sparse_layers": 47,
+      "special_segments": 1
+    },
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+      "hipengine/runtime/laguna_gguf_runner.py": "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654",
+      "hipengine/runtime/laguna_moe.py": "0507c0ab9bcabddfda9d0390c66d46f80aaaf7c42357a58dfa24c692d43414fd"
+    },
+    "status": "pass_source_unchanged_target_audit",
+    "zero_contention_ceiling_not_speed_result": {
+      "estimated_wall_seconds": 1.1101609068700762,
+      "estimated_wall_tok_s": 461.19440599246406,
+      "gain_percent": 4.604699884823327,
+      "llamacpp_over_ceiling": 1.4978303965189197,
+      "not_performance_claim": true,
+      "shared_span_perfectly_hidden_ms": 51.119578,
+      "warning": "actual concurrent kernels may slow from memory/compute contention; only queue-matched complete-model A/B is binding"
+    }
+  },
+  "status": "target_selected_no_candidate_no_speed_result"
+}

@@ -1,0 +1,186 @@
+{
+  "admission": {
+    "all_45_layers_inseparable": true,
+    "correctness": "complete BF16-byte equality to H6T at rows1/7/8/9/M512, P64/P65 and all 45 actual layers; sampled CPU, poison, finite, lifecycle",
+    "fallback": "registered H6T grouped_raw_iq_active_experts primitive and complete H6R/H6Q/H6P chain",
+    "first_object": "separately named local128 H6T-equivalent sibling; metadata/runtime VGPR <=96, LDS 384/512, private/spill/scratch0, no operation-count drift",
+    "forbidden_salvage": "no layer/expert/routing/prompt/token/length/launch-bound/body-rewrite/resource-spill/recompile/favorable-rerun subset",
+    "named_trace": "exactly 45 candidate launches at grid32768x64/local128/runtime-VGPR<=96/LDS512/scratch0, positive durations, one queue/stream, zero compiler",
+    "no_sweep": "only __launch_bounds__(128,4) is admissible; do not screen 2/3/5 or choose after timing",
+    "post_leaf_if_admitted": "complete M512 state/topology, fixed C4096/M512, clean 512/1K/4K, then separate source RED and promotion gate",
+    "preflight_before_hip_load": true,
+    "red_first": true,
+    "timing": "one immutable all-45 actual-routing screen: five warmups, 15 counter-rotated repetitions, five launches/sample; every layer and aggregate must win HIP-event and synchronized-wall medians"
+  },
+  "authority_links": {
+    "README.md": "2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "Commit this target-only packet, then freeze RED before any executable source change.",
+    "performance_measured": false,
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vgpr_file_per_simd": 1536,
+    "wavefront_size": 32,
+    "waves_per_simd_max": 16
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h8i_iq3_four_workgroup_occupancy_target",
+  "lineage": {
+    "base_revision": "da47ac86ff",
+    "candidate_present": false,
+    "h6t_source_block_sha256": "c932d679f3b19e5126ae86b1fd6860ef55316b107c2749652c7ac84e2bd9fbf9",
+    "kernel_lineage_audit": "same four pre-existing documented external Qwen/PARO drifts; Laguna/llama.cpp references unchanged",
+    "package_policy_changed": false,
+    "prior_h8i_rejection_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json",
+    "prior_h8i_rejection_artifact_sha256": "9c84a555cdc08a7a5b8fe254f39472ac0bc23ba953d2191c5e8456ab5d01ebf3",
+    "production_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "production_artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "red_present": false,
+    "runtime_owner_present": false,
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
+    }
+  },
+  "matched_status": {
+    "application_dispatches": 2155,
+    "campaign_start_kernel_sum_ms": 3001.692,
+    "campaign_start_tok_s": 169.516,
+    "current_component_ms": {
+      "attention": 115.349089,
+      "gate_up": 401.402578,
+      "iq_down": 273.163353,
+      "q5": 230.42948,
+      "q6": 73.319821,
+      "remaining": 52.755423
+    },
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_component_ms": {
+      "attention": 21.512447,
+      "gate_up": 397.804923,
+      "iq_down": 153.859911,
+      "q5": 58.31409,
+      "q6": 14.667598,
+      "remaining": 67.849439
+    },
+    "llamacpp_kernel_sum_ms": 714.008408,
+    "llamacpp_wall_tok_s": 690.791,
+    "remaining_gap_ms": {
+      "attention": 93.836642,
+      "gate_up": 3.597655,
+      "iq_down": 119.303442,
+      "kernel_sum": 432.411336,
+      "q5": 172.11539,
+      "q6": 58.652223,
+      "remaining": -15.094016
+    },
+    "wall_tok_s": 440.8926238498552
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128, one queue"
+  },
+  "operation_contract": {
+    "candidate_launch_bounds": [
+      128,
+      4
+    ],
+    "candidate_name_suffix": "four_workgroup_occupancy",
+    "gfx1151_fail_closed": true,
+    "no_allocation_workspace_or_dispatch_change": true,
+    "only_source_semantic_change": "the separately named sibling changes H6T __launch_bounds__(128,1) to __launch_bounds__(128,4)",
+    "preserved": [
+      "raw IQ3 bytes, active-expert metadata, P64/P256 traversal, and rowbatch8 ownership",
+      "all 23 static global loads and exact IQ3 scale/selector/grid/sign/magnitude reconstruction",
+      "216 ordered scalar FMAs, 24 permlanex16, and 96 fused DPP adds",
+      "three staged accumulator scopes, 24 LDS b128 loads, 12 LDS stores, and two barrier sites",
+      "serial wave0->1->2->3 sums, BF16 publication bits, output layout, ABI, allocation, lifecycle, and fallback"
+    ],
+    "raw_pointer_abi": true,
+    "unfused_fallback": "registered H6T source owner; H6R/H6Q/H6P remain same-ABI rollback"
+  },
+  "operation_model": {
+    "candidate_complete_workgroups_per_simd": 4,
+    "candidate_resident_waves_per_simd": 16,
+    "candidate_runtime_vgpr_ceiling": 96,
+    "control_complete_workgroups_per_simd": 3,
+    "control_launch_bounds": [
+      128,
+      1
+    ],
+    "control_register_wave_ceiling": 14,
+    "control_resident_waves_per_simd": 12,
+    "control_runtime_vgpr": 104,
+    "h6t_calls": 45,
+    "h6t_excess_over_complete_llamacpp_iq_down_ms": 110.51705299999998,
+    "h6t_ms": 264.376964,
+    "h6t_share_of_iq_down_percent": 96.78346714392542,
+    "not_a_speed_claim": true,
+    "resident_wave_increase_percent": 33.33333333333333,
+    "vgpr_file_per_simd": 1536,
+    "waves_per_workgroup": 4
+  },
+  "performance_claim": false,
+  "prior_exact_iq3_boundaries": {
+    "closed": [
+      "H6X workgroup-resident grid table",
+      "H6Y packed prefix loads",
+      "H7B lane-parallel final publication",
+      "H7L full-batch/live-tail split",
+      "H7M two-wave K partitions",
+      "H7W output P128 crossover"
+    ],
+    "distinct_premise": "H8J changes only the compiler-enforced complete-workgroup occupancy contract and predeclares one value; it does not reopen a closed body/layout/ownership mechanism."
+  },
+  "production": {
+    "h6t": {
+      "calls": 45,
+      "excess_over_complete_llamacpp_iq_down_ms": 110.51705299999998,
+      "grid": [
+        32768,
+        64
+      ],
+      "launch_bounds": [
+        128,
+        1
+      ],
+      "local_size": 128,
+      "median_ms": 264.376964,
+      "metadata_lds_bytes": 384,
+      "metadata_vgpr": 101,
+      "runtime_lds_bytes": 512,
+      "runtime_vgpr": 104,
+      "scratch_bytes": 0,
+      "share_of_current_iq_down_percent": 96.78346714392542,
+      "source_block_sha256": "c932d679f3b19e5126ae86b1fd6860ef55316b107c2749652c7ac84e2bd9fbf9",
+      "waves_per_workgroup": 4
+    },
+    "source": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction"
+  },
+  "raw_evidence_sha256": {
+    "/tmp/audit_laguna_h8j_iq3_four_workgroup_occupancy.py": "c6cf38ba717769427eef08e0ee4df05bd5fb1133976cfbf3efa3c913a2190e07",
+    "/tmp/laguna-h8b-post-commit-trace-summary.json": "443f8fc9992150acd6a6c4f066401628aba1d2d0b0b7d4d65b2f25f3f507106c",
+    "/tmp/laguna-h8j-iq3-four-workgroup-occupancy-audit.json": "c8c0473d44f70aec64c716d9a32253114e5c03816811844e123eaa8f3f404d89"
+  },
+  "schema": 1,
+  "status": "target_selected_no_candidate_no_speed_result"
+}

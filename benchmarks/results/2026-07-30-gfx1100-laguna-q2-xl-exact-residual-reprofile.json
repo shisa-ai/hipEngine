@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_exact_residual_reprofile",
+  "status": "accepted_attribution_baseline",
+  "performance_claim": false,
+  "date": "2026-07-30",
+  "scope": "Clean exact-production direct-M512 wall refresh and cached all-family trace after independent WPF-H1 through WPF-H4 runtime rejection",
+  "platform": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "vram_bytes": 48301604864,
+    "gpu_max_hw_queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "repo": {
+    "revision": "0c7b82fb80678a4451051bdd37c233b9c5985574",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "context_length": 4096,
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "flash_attention": true,
+    "output": "one synchronized last-row first-token projection",
+    "repetitions": 5,
+    "warmup_rows": 128,
+    "token_source": {
+      "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+      "prompt_id": "mixed_ja_en_review",
+      "extension": "repeat_without_leading_bos",
+      "token_stream_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786"
+    },
+    "wall_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpfh5-exact-matched-m512.json",
+    "profile_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file /tmp/laguna-wpfh5-exact-rocprof/trace -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpfh5-exact-rocprof-child.json"
+  },
+  "wall": {
+    "median_seconds": 3.020355440909043,
+    "median_tok_s": 169.51647248706007,
+    "samples_tok_s": [
+      170.6289704607003,
+      170.17866165833803,
+      169.51647248706007,
+      169.3959989870362,
+      169.2335512629721
+    ],
+    "next_tokens": [2930, 2930, 2930, 2930, 2930],
+    "final_position": 511,
+    "deterministic": true,
+    "tracked_allocation_recovered": true
+  },
+  "matched_llamacpp_hip": {
+    "evidence": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "evidence_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "median_tok_s": 694.184,
+    "median_seconds": 0.737556105,
+    "next_token": 2930,
+    "required_speedup": 4.095082854281256,
+    "matched_axes": "same model bytes, 512 token IDs, context4096, direct M512, one GPU/queue, FlashAttention, BF16 K/V, and one last-row projection"
+  },
+  "trace": {
+    "kernel_sum_ms": 3001.69225,
+    "kernel_span_ms": 3016.779572,
+    "dispatches": 1477,
+    "span_minus_sum_ms": 15.087322,
+    "span_minus_sum_percent_of_span": 0.500113503155207,
+    "families": [
+      {
+        "rank": 1,
+        "family": "Q5_K exact coltile projections",
+        "calls": 235,
+        "duration_ms": 1270.457977,
+        "share_percent": 42.3247245616202,
+        "matched_llamacpp_ms": 58.95103,
+        "body_ratio": 21.55107344451556,
+        "gap_ms": 1211.506947
+      },
+      {
+        "rank": 2,
+        "family": "IQ3_XXS plus IQ4_XS exact selected down",
+        "calls": 47,
+        "duration_ms": 557.09136,
+        "share_percent": 18.55924304032167,
+        "matched_llamacpp_ms": 155.495249,
+        "gap_ms": 401.596111
+      },
+      {
+        "rank": 3,
+        "family": "global plus SWA exact attention",
+        "calls": 192,
+        "duration_ms": 488.304264,
+        "share_percent": 16.267632499634164,
+        "matched_llamacpp_ms": 21.725298,
+        "gap_ms": 466.578966
+      },
+      {
+        "rank": 4,
+        "family": "IQ2_XS plus special-IQ3 exact selected gate/up",
+        "calls": 47,
+        "duration_ms": 460.143234,
+        "share_percent": 15.329460706706358,
+        "matched_llamacpp_ms": 404.977857,
+        "gap_ms": 55.165377
+      },
+      {
+        "rank": 5,
+        "family": "Q6_K exact coltile projections",
+        "calls": 145,
+        "duration_ms": 157.072613,
+        "share_percent": 5.232802030254766,
+        "matched_llamacpp_stack_ms": 14.919865,
+        "gap_ms": 142.152748
+      },
+      {
+        "rank": 6,
+        "family": "all remaining kernels",
+        "calls": 811,
+        "duration_ms": 68.622802,
+        "share_percent": 2.2861371614628334
+      }
+    ],
+    "raw_trace_committed": false
+  },
+  "decision": {
+    "closed_lanes": [
+      "WPF-H1 source Q5 Q8_1/MMQ arithmetic",
+      "WPF-H2 source F16-WMMA FlashAttention arithmetic",
+      "WPF-H3 source IQ3/IQ4 Q8_1/MMQ arithmetic",
+      "WPF-H4 source Q6 F16/rocBLAS arithmetic",
+      "P6 IQ2 MMQ and sparse repair",
+      "launch/fusion while span-minus-sum remains below 5 percent"
+    ],
+    "next_target": "WPF-H5A transient exact-value Q5_K F32 dequantization plus rocBLAS SGEMM",
+    "rationale": "Q5 alone is 42.325% of current kernel time and 53% of the matched kernel gap. The candidate preserves resident BF16 activation values and raw-Q5 F32 dequantized values, avoiding rejected Q8_1/F16 operand rounding; only GEMM reduction association changes. It uses bounded transient scratch with no persistent weight sidecar and must fail closed to exact coltile.",
+    "prospective_gates": [
+      "Independent raw-Q5-to-F32 byte/value oracle including affine scale/min and K/N tails",
+      "All eight actual M512 Q5 roles and 235 calls must beat exact coltile inclusively, including dequantization, BF16-to-F32 conversion, SGEMM, and BF16 result cast where required",
+      "Finite primitive output with KL <= 0.05 and top-1 >= 90 percent versus cpu_reference",
+      "Complete natural-M512 state/repeat/lifecycle gate",
+      "Binding 18-prompt/576-step train plus heldout category quality before fixed 512/1K publication",
+      "Cached rocprofv3 trace naming the producer, SGEMM body, and cast with plausible resources/durations"
+    ],
+    "after_h5a": [
+      "F32 dense-initial attention using exact BF16-cache widening and complete KVLiveSpans",
+      "Exact-value IQ3/IQ4 active-expert expansion with grouped or batched F32 contraction",
+      "Q6 exact-value F32 dequantization plus SGEMM if H5A quality validates the association premise"
+    ]
+  },
+  "inputs_sha256": {
+    "/tmp/laguna-wpfh5-exact-matched-m512.json": "1cbe81e948cc7e14544e1965f81067e29b3f2561d88bb9fd44df18e0b8887a77",
+    "/tmp/laguna-wpfh5-exact-rocprof-child.json": "6af57908465c73c33db9308f61822011c2882b352550d8bf1ceca4345c85424d",
+    "/tmp/laguna-wpfh5-exact-rocprof-summary.json": "615c9e3f74a9622f92c1ee9a2e947697263d769e611172c86b8784d3b2b2145a",
+    "/tmp/laguna-wpfh5-exact-rocprof/trace_kernel_trace.csv": "eeb57b8b0d8e041e328341d09cea717db2729473b6737c9acadcc462f6bfb3b7"
+  }
+}

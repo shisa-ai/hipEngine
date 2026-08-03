@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,8 +16,11 @@ from scripts.laguna_long_context_profile import (
     LC0_TRACE_LENGTHS,
     MATCHED_LONG_SWEEP_LENGTHS,
     PROFILE_LENGTH_SETS,
+    SHORT_FOCUS_LENGTHS,
     STANDARD_DECODE_LENGTHS,
     _active_comparison_count,
+    WPF_SHORT_LENGTHS,
+    _parse_args,
     _parse_chunk_size,
     _parse_decode_output_tokens,
     _parse_lengths,
@@ -33,6 +37,10 @@ from scripts.laguna_long_context_trace_summary import (
 
 
 def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
+    assert SHORT_FOCUS_LENGTHS == (512, 4096)
+    assert SHORT_FOCUS_LENGTHS in PROFILE_LENGTH_SETS
+    assert WPF_SHORT_LENGTHS == (512, 1024)
+    assert WPF_SHORT_LENGTHS in PROFILE_LENGTH_SETS
     assert LAP0_LENGTHS == (128, 512, 1024, 4096)
     assert LAP0_LENGTHS in PROFILE_LENGTH_SETS
     assert ATTACK_LENGTHS == (4096, 16384, 65536, 131072)
@@ -81,6 +89,80 @@ def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
         _parse_chunk_size("64")
     with pytest.raises(argparse.ArgumentTypeError, match="1 or 128"):
         _parse_decode_output_tokens("32")
+
+
+def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = Path("/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "laguna_long_context_profile.py",
+            str(model),
+            "--direct-gguf",
+            "--safety-reserve-gib",
+            "0",
+            "--quant-label",
+            "UD-Q2_K_XL",
+            "--package-matrix-rows",
+            "--compare-raw-k-prefill-rowbatch",
+            "--raw-k-prefill-rowbatch",
+            "32",
+            "--raw-k-prefill-rowbatch-control",
+            "8",
+        ],
+    )
+
+    args = _parse_args()
+
+    assert args.model == model
+    assert args.direct_gguf is True
+    assert args.safety_reserve_gib == 0.0
+    assert args.quant_label == "UD-Q2_K_XL"
+    assert args.package_matrix_rows is True
+    assert args.compare_raw_k_prefill_rowbatch is True
+    assert args.raw_k_prefill_rowbatch == 32
+    assert args.raw_k_prefill_rowbatch_control == 8
+
+
+def test_lpf5_cli_supports_grouped_exact_iq_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = Path("/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "laguna_long_context_profile.py",
+            str(model),
+            "--direct-gguf",
+            "--compare-grouped-exact-iq",
+        ],
+    )
+
+    args = _parse_args()
+
+    assert args.compare_grouped_exact_iq is True
+
+
+def test_lpf5_cli_supports_pair16_grouped_gate_up_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = Path("/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "laguna_long_context_profile.py",
+            str(model),
+            "--direct-gguf",
+            "--compare-pair16-grouped-gate-up",
+        ],
+    )
+
+    args = _parse_args()
+
+    assert args.compare_pair16_grouped_gate_up is True
 
 
 def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:
@@ -245,6 +327,16 @@ def test_lpf5_trace_recognizes_published_control_argmax_chain() -> None:
     assert summary["dispatches"] == 4
     assert summary["families"]["embedding"]["calls"] == 1
     assert summary["families"]["lm_head_argmax"]["calls"] == 3
+
+
+def test_lpf5_trace_segments_non_q4_gguf_embedding_requests() -> None:
+    rows = _request_rows(100, 1)
+    rows[0]["Kernel_Name"] = "gguf_q5_k_embedding_bf16_out_kernel"
+
+    segments = _segment_requests(rows)
+
+    assert [(item["length"], item["chunks"]) for item in segments] == [(128, 1)]
+    assert _summarize_segment(segments[0])["families"]["embedding"]["calls"] == 1
 
 
 def test_lpf5_trace_attributes_structural_blas_attention_composite() -> None:
@@ -495,6 +587,24 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
         ),
         ("qk_t16_selected_direct_gemv_kernel<unsigned short, 6>", "selected_q4_q6_down"),
         ("qk_t16_selected_grouped_smallm_kernel<unsigned short, 6>", "selected_q4_q6_down"),
+        (
+            "gguf_iq2_xs_selected_dual_silu_gemv_tile2_kernel",
+            "selected_iq_gate_up",
+        ),
+        (
+            "gguf_iq3_xxs_selected_dual_silu_gemv_kernel",
+            "selected_iq_gate_up",
+        ),
+        ("gguf_iq3_xxs_selected_gemv_kernel", "selected_iq_down"),
+        (
+            "gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<8>",
+            "selected_iq_down",
+        ),
+        ("gguf_iq4_xs_selected_gemv_kernel", "selected_iq_down"),
+        (
+            "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+            "selected_iq_down",
+        ),
         ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
         (
             "laguna_global_attention_fused_exact_gated_mixed32_exp32_kernel",
@@ -513,6 +623,14 @@ def test_lpf5_trace_attributes_direct_packed_query_blas_attention_composite() ->
         ),
         (
             "gguf_k_prefill_out_kernel<unsigned short, unsigned short, 6>",
+            "dense_shared_quant_projection",
+        ),
+        (
+            "gguf_k_prefill_out_rowbatch_kernel<unsigned short, float, 5, 8>",
+            "dense_shared_quant_projection",
+        ),
+        (
+            "gguf_k_prefill_out_coltile_rowbatch_kernel<unsigned short, float, 5, 4, 8>",
             "dense_shared_quant_projection",
         ),
         (

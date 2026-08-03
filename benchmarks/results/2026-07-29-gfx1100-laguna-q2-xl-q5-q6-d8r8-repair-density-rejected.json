@@ -1,0 +1,741 @@
+{
+  "conservative_boundary_risk": {
+    "aggregate_coordinate_density": 0.39865263098431597,
+    "aggregate_modeled_exact_family_read_ratio": 13.668617404637729,
+    "coordinate_density": {
+      "max": 0.9341843922932943,
+      "median": 0.2777271270751953,
+      "min": 0.09141921997070312
+    },
+    "definition": "candidate FP32 distance to nearest BF16 midpoint <= per-invocation maximum observed exact-vs-D8R8 FP32 error, union measured BF16 mismatch oracle",
+    "distinct_touched_output_weight_row_density": {
+      "max": 1.0,
+      "median": 1.0,
+      "min": 0.9951171875
+    },
+    "failed_invocation_counts": {
+      "modeled_exact_family_reads_above_25pct": 333,
+      "touched_output_weight_rows_above_20pct": 333,
+      "uncertain_coordinate_density_above_5pct": 333
+    },
+    "modeled_exact_family_read_ratio": {
+      "max": 29.893900553385418,
+      "median": 8.88726806640625,
+      "min": 2.9254150390625
+    },
+    "worst_coordinate_density": [
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.35.ffn_down_shexp.weight",
+        "value": 0.9341843922932943
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.44.ffn_down_shexp.weight",
+        "value": 0.8394196828206381
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.30.ffn_down_shexp.weight",
+        "value": 0.8236090342203776
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.41.ffn_down_shexp.weight",
+        "value": 0.8234647115071615
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.40.ffn_down_shexp.weight",
+        "value": 0.8159236907958984
+      }
+    ],
+    "worst_modeled_reads": [
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.35.ffn_down_shexp.weight",
+        "value": 29.893900553385418
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.44.ffn_down_shexp.weight",
+        "value": 26.861429850260418
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.30.ffn_down_shexp.weight",
+        "value": 26.355489095052082
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.41.ffn_down_shexp.weight",
+        "value": 26.350870768229168
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q6_k",
+        "role": "ffn_down_shexp:K1024:N3072",
+        "tensor": "blk.40.ffn_down_shexp.weight",
+        "value": 26.10955810546875
+      }
+    ]
+  },
+  "created_at": "2026-07-28T20:14:11.766902+00:00",
+  "decision": {
+    "failed_checks": [
+      "distinct_touched_output_weight_rows_above_20pct",
+      "modeled_exact_family_reads_above_25pct",
+      "conservative_uncertain_coordinate_density_above_5pct"
+    ],
+    "next": "Remove the rejected default-off raw-Q5/Q6 MMQ runtime owner/public selector in a separate cleanup unit, then prioritize WPF-3 short attention.",
+    "pass": false,
+    "production": "exact matrix512/attention128/RB32/grouped-down remains 99.230/91.559 tok/s at 512/1K",
+    "reason": "Every one of 333 eligible actual projection tensors fails the frozen touched-row stop even on measured BF16 mismatches; 331 also fail the modeled-read stop before a conservative risk envelope. Sparse exact repair is not economically sparse.",
+    "repair_implementation_allowed": false,
+    "runtime_or_default_changed": false
+  },
+  "frozen_limits": {
+    "distinct_touched_output_weight_row_density_max": 0.2,
+    "modeled_exact_family_source_read_ratio_max": 0.25,
+    "uncertain_coordinate_density_max": 0.05
+  },
+  "inventory": {
+    "captured_invocations": 381,
+    "eligible_invocations": 333,
+    "expected_projection_tensors": 381,
+    "ineligible_exact_fallback_invocations": 48,
+    "inventory_complete": true,
+    "missing": [],
+    "production_output_dtype_counts": {
+      "bf16": 191,
+      "f32": 190
+    },
+    "quant_counts": {
+      "gguf_q5_k": 235,
+      "gguf_q6_k": 146
+    },
+    "role_ledger": {
+      "attn_gate:K3072:N48": {
+        "eligible_invocations": 0,
+        "invocations": 12,
+        "production_output_dtype": [
+          "f32"
+        ],
+        "quant": [
+          "gguf_q5_k"
+        ]
+      },
+      "attn_gate:K3072:N72": {
+        "eligible_invocations": 0,
+        "invocations": 36,
+        "production_output_dtype": [
+          "f32"
+        ],
+        "quant": [
+          "gguf_q5_k",
+          "gguf_q6_k"
+        ]
+      },
+      "attn_k:K3072:N1024": {
+        "bf16_mismatch_density": {
+          "max": 0.0249786376953125,
+          "median": 0.01100921630859375,
+          "min": 0.009298324584960938
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 0.79931640625,
+          "median": 0.352294921875,
+          "min": 0.29754638671875
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 0.990234375,
+          "median": 0.9736328125,
+          "min": 0.869140625
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 10.0828857421875,
+          "median": 3.75909423828125,
+          "min": 2.9254150390625
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.3150901794433594,
+          "median": 0.11747169494628906,
+          "min": 0.09141921997070312
+        },
+        "eligible_invocations": 47,
+        "invocations": 47,
+        "production_output_dtype": [
+          "f32"
+        ],
+        "quant": [
+          "gguf_q6_k"
+        ]
+      },
+      "attn_output:K6144:N3072": {
+        "bf16_mismatch_density": {
+          "max": 0.036954243977864586,
+          "median": 0.032837231953938804,
+          "min": 0.023433685302734375
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 1.1825358072916667,
+          "median": 1.0507914225260417,
+          "min": 0.7498779296875
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 0.9729817708333334
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 20.8714599609375,
+          "median": 15.949737548828125,
+          "min": 11.30126953125
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.6522331237792969,
+          "median": 0.4984292984008789,
+          "min": 0.3531646728515625
+        },
+        "eligible_invocations": 12,
+        "invocations": 12,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q5_k"
+        ]
+      },
+      "attn_output:K9216:N3072": {
+        "bf16_mismatch_density": {
+          "max": 0.04032580057779948,
+          "median": 0.03334490458170573,
+          "min": 0.017284393310546875
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 1.2904256184895833,
+          "median": 1.0670369466145833,
+          "min": 0.5531005859375
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 1.0,
+          "median": 1.0,
+          "min": 0.98828125
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 25.100240071614582,
+          "median": 18.141357421875,
+          "min": 12.647115071614584
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.7843825022379557,
+          "median": 0.5669174194335938,
+          "min": 0.39522234598795575
+        },
+        "eligible_invocations": 36,
+        "invocations": 36,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q5_k",
+          "gguf_q6_k"
+        ]
+      },
+      "attn_q:K3072:N6144": {
+        "bf16_mismatch_density": {
+          "max": 0.05269559224446615,
+          "median": 0.02331256866455078,
+          "min": 0.020709991455078125
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 1.6862589518229167,
+          "median": 0.746002197265625,
+          "min": 0.6627197265625
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 0.99609375,
+          "median": 0.9930013020833334,
+          "min": 0.9514973958333334
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 21.782084147135418,
+          "median": 9.934727986653646,
+          "min": 8.81683349609375
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.6806901295979818,
+          "median": 0.31046024958292645,
+          "min": 0.2755260467529297
+        },
+        "eligible_invocations": 12,
+        "invocations": 12,
+        "production_output_dtype": [
+          "f32"
+        ],
+        "quant": [
+          "gguf_q5_k"
+        ]
+      },
+      "attn_q:K3072:N9216": {
+        "bf16_mismatch_density": {
+          "max": 0.04805416531032986,
+          "median": 0.02545981936984592,
+          "min": 0.012909571329752604
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 1.5377332899305556,
+          "median": 0.8147142198350694,
+          "min": 0.4131062825520833
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 0.9986979166666666,
+          "median": 0.9963650173611112,
+          "min": 0.9191623263888888
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 22.48980034722222,
+          "median": 11.747033013237846,
+          "min": 7.080654568142361
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.7028062608506944,
+          "median": 0.3670947816636827,
+          "min": 0.22127045525444877
+        },
+        "eligible_invocations": 36,
+        "invocations": 36,
+        "production_output_dtype": [
+          "f32"
+        ],
+        "quant": [
+          "gguf_q5_k",
+          "gguf_q6_k"
+        ]
+      },
+      "attn_v:K3072:N1024": {
+        "bf16_mismatch_density": {
+          "max": 0.020589828491210938,
+          "median": 0.013971328735351562,
+          "min": 0.0115203857421875
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 0.65887451171875,
+          "median": 0.44708251953125,
+          "min": 0.36865234375
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 1.0,
+          "median": 0.998046875,
+          "min": 0.806640625
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 6.8023681640625,
+          "median": 3.8338623046875,
+          "min": 3.2408447265625
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.21257400512695312,
+          "median": 0.11980819702148438,
+          "min": 0.10127639770507812
+        },
+        "eligible_invocations": 47,
+        "invocations": 47,
+        "production_output_dtype": [
+          "f32"
+        ],
+        "quant": [
+          "gguf_q6_k"
+        ]
+      },
+      "ffn_down:K12288:N3072": {
+        "bf16_mismatch_density": {
+          "max": 0.008647918701171875,
+          "median": 0.008647918701171875,
+          "min": 0.008647918701171875
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 0.2767333984375,
+          "median": 0.2767333984375,
+          "min": 0.2767333984375
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 0.9736328125,
+          "median": 0.9736328125,
+          "min": 0.9736328125
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 24.852518717447918,
+          "median": 24.852518717447918,
+          "min": 24.852518717447918
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.7766412099202474,
+          "median": 0.7766412099202474,
+          "min": 0.7766412099202474
+        },
+        "eligible_invocations": 1,
+        "invocations": 1,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q6_k"
+        ]
+      },
+      "ffn_down_shexp:K1024:N3072": {
+        "bf16_mismatch_density": {
+          "max": 0.019533793131510418,
+          "median": 0.01701831817626953,
+          "min": 0.015286763509114584
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 0.6250813802083334,
+          "median": 0.544586181640625,
+          "min": 0.4891764322916667
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 1.0,
+          "median": 0.9990234375,
+          "min": 0.9788411458333334
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 29.893900553385418,
+          "median": 13.532338460286457,
+          "min": 7.62152099609375
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.9341843922932943,
+          "median": 0.4228855768839518,
+          "min": 0.2381725311279297
+        },
+        "eligible_invocations": 46,
+        "invocations": 46,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q6_k"
+        ]
+      },
+      "ffn_gate:K3072:N12288": {
+        "bf16_mismatch_density": {
+          "max": 0.019028504689534504,
+          "median": 0.019028504689534504,
+          "min": 0.019028504689534504
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 0.6089121500651041,
+          "median": 0.6089121500651041,
+          "min": 0.6089121500651041
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 0.8164876302083334,
+          "median": 0.8164876302083334,
+          "min": 0.8164876302083334
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 22.802642822265625,
+          "median": 22.802642822265625,
+          "min": 22.802642822265625
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.7125825881958008,
+          "median": 0.7125825881958008,
+          "min": 0.7125825881958008
+        },
+        "eligible_invocations": 1,
+        "invocations": 1,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q5_k"
+        ]
+      },
+      "ffn_gate_shexp:K3072:N1024": {
+        "bf16_mismatch_density": {
+          "max": 0.03986549377441406,
+          "median": 0.0190887451171875,
+          "min": 0.0049953460693359375
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 1.27569580078125,
+          "median": 0.61083984375,
+          "min": 0.15985107421875
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 1.0,
+          "median": 0.9765625,
+          "min": 0.77734375
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 19.1175537109375,
+          "median": 8.21112060546875,
+          "min": 4.484375
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.5974235534667969,
+          "median": 0.25659751892089844,
+          "min": 0.14013671875
+        },
+        "eligible_invocations": 47,
+        "invocations": 47,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q5_k",
+          "gguf_q6_k"
+        ]
+      },
+      "ffn_up:K3072:N12288": {
+        "bf16_mismatch_density": {
+          "max": 0.02037350336710612,
+          "median": 0.02037350336710612,
+          "min": 0.02037350336710612
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 0.6519521077473959,
+          "median": 0.6519521077473959,
+          "min": 0.6519521077473959
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 0.8228352864583334,
+          "median": 0.8228352864583334,
+          "min": 0.8228352864583334
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 24.833597819010418,
+          "median": 24.833597819010418,
+          "min": 24.833597819010418
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.7760499318440756,
+          "median": 0.7760499318440756,
+          "min": 0.7760499318440756
+        },
+        "eligible_invocations": 1,
+        "invocations": 1,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q5_k"
+        ]
+      },
+      "ffn_up_shexp:K3072:N1024": {
+        "bf16_mismatch_density": {
+          "max": 0.040027618408203125,
+          "median": 0.0242919921875,
+          "min": 0.0060367584228515625
+        },
+        "bf16_mismatch_modeled_exact_family_read_ratio": {
+          "max": 1.2808837890625,
+          "median": 0.77734375,
+          "min": 0.19317626953125
+        },
+        "bf16_mismatch_touched_output_weight_row_density": {
+          "max": 1.0,
+          "median": 0.99609375,
+          "min": 0.72265625
+        },
+        "conservative_modeled_exact_family_read_ratio": {
+          "max": 18.73553466796875,
+          "median": 8.29022216796875,
+          "min": 5.81585693359375
+        },
+        "conservative_uncertain_coordinate_density": {
+          "max": 0.5854854583740234,
+          "median": 0.25906944274902344,
+          "min": 0.1817455291748047
+        },
+        "eligible_invocations": 47,
+        "invocations": 47,
+        "production_output_dtype": [
+          "bf16"
+        ],
+        "quant": [
+          "gguf_q5_k",
+          "gguf_q6_k"
+        ]
+      }
+    },
+    "unexpected": [],
+    "unique_captured_tensors": 381
+  },
+  "kind": "hipengine_laguna_q2_xl_gfx1100_q5_q6_d8r8_repair_density_rejection",
+  "measured_bf16_mismatch_lower_bound": {
+    "aggregate_coordinate_density": 0.02436133808678502,
+    "coordinate_density": {
+      "max": 0.05269559224446615,
+      "median": 0.019437789916992188,
+      "min": 0.0049953460693359375
+    },
+    "distinct_touched_output_weight_row_density": {
+      "max": 1.0,
+      "median": 0.9965277777777778,
+      "min": 0.72265625
+    },
+    "failed_invocation_counts": {
+      "modeled_exact_family_reads_above_25pct": 331,
+      "touched_output_weight_rows_above_20pct": 333,
+      "uncertain_coordinate_density_above_5pct": 1
+    },
+    "modeled_exact_family_read_ratio": {
+      "max": 1.6862589518229167,
+      "median": 0.62200927734375,
+      "min": 0.15985107421875
+    },
+    "worst_coordinate_density": [
+      {
+        "production_output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "attn_q:K3072:N6144",
+        "tensor": "blk.0.attn_q.weight",
+        "value": 0.05269559224446615
+      },
+      {
+        "production_output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "attn_q:K3072:N9216",
+        "tensor": "blk.1.attn_q.weight",
+        "value": 0.04805416531032986
+      },
+      {
+        "production_output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "attn_q:K3072:N9216",
+        "tensor": "blk.2.attn_q.weight",
+        "value": 0.04292064242892795
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "attn_output:K9216:N3072",
+        "tensor": "blk.31.attn_output.weight",
+        "value": 0.04032580057779948
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "ffn_up_shexp:K3072:N1024",
+        "tensor": "blk.1.ffn_up_shexp.weight",
+        "value": 0.040027618408203125
+      }
+    ],
+    "worst_modeled_reads": [
+      {
+        "production_output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "attn_q:K3072:N6144",
+        "tensor": "blk.0.attn_q.weight",
+        "value": 1.6862589518229167
+      },
+      {
+        "production_output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "attn_q:K3072:N9216",
+        "tensor": "blk.1.attn_q.weight",
+        "value": 1.5377332899305556
+      },
+      {
+        "production_output_dtype": "f32",
+        "quant": "gguf_q5_k",
+        "role": "attn_q:K3072:N9216",
+        "tensor": "blk.2.attn_q.weight",
+        "value": 1.3734605577256944
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "attn_output:K9216:N3072",
+        "tensor": "blk.31.attn_output.weight",
+        "value": 1.2904256184895833
+      },
+      {
+        "production_output_dtype": "bf16",
+        "quant": "gguf_q5_k",
+        "role": "ffn_up_shexp:K3072:N1024",
+        "tensor": "blk.1.ffn_up_shexp.weight",
+        "value": 1.2808837890625
+      }
+    ]
+  },
+  "mechanical_checks": {
+    "all_finite": true,
+    "candidate_bf16_matches_candidate_f32_rne_all_eligible": true,
+    "conservative_risk_covers_all_mismatches": true,
+    "final_position": 511,
+    "four_k_or_longer_run_performed": false,
+    "inventory_complete": true,
+    "next_token_id": 2930,
+    "production_bf16_matches_exact_f32_rne_all_eligible": true,
+    "tracked_allocation_recovery": true
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "objective": "WPF-1R bounded exact repair screen for raw Q5_K/Q6_K D8R8/S8 MMQ at M512",
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "visible_device": 0
+  },
+  "protocol": {
+    "attention_rows": 128,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf1r_q5_q6_density_screen.py --output /tmp/laguna-wpf1r-q5-q6-density-m512.json",
+    "empirical_cover_definition": "smallest observed candidate boundary-distance threshold covering every measured BF16 mismatch in one invocation",
+    "four_k_or_longer_run_performed": false,
+    "grouped_iq_down": "package grouped_exact",
+    "harness_sha256": "c0f6fcafcd141558be9d42badcbda95fd6e8b31c2cffa51cdb048d3dba5a1b58",
+    "matrix_rows": 512,
+    "production_raw_k_mmq": false,
+    "raw_json_sha256": "4fca41d2ba59887b1e8d496b76f8861e110a8a1df6d81468be64d3785470edbd",
+    "raw_k_rowbatch": 32,
+    "risk_definition": "candidate FP32 distance to nearest BF16 midpoint <= per-invocation maximum observed exact-vs-D8R8 FP32 error, union measured BF16 mismatch oracle",
+    "rows": 512,
+    "seen_linear_calls": 385,
+    "stderr_sha256": "03c1213bc14ce6d5cb22292d1ff9b2676cd758bdaa51b9b76fcd525795593ed1",
+    "stdout_sha256": "8cfa9a2bf046e8bbf0986f8b3dc67a60fb6121023dd9a71223ee4ac6f74e8332",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 512,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786",
+    "traffic_model": "one exact coordinate repair rereads one encoded output-weight row; retained RB32 exact family reads the complete encoded tensor ceil(M/32)=16 times at M512"
+  },
+  "related_evidence": {
+    "p6_separate_rejection": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-p6-iq2-mmq-matrix512-rejected.json",
+    "primitive": "benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-primitive.json",
+    "runtime_quality_rejection": "benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-mmq32-d8r8-runtime-rejected.json"
+  },
+  "revision": "fba119ca626bb76c8be624211b3d7c1890da8dd7",
+  "schema": 1,
+  "status": "rejected_before_repair_implementation"
+}
