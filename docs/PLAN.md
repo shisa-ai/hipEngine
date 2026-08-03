@@ -3348,6 +3348,21 @@ physical operation
 ([H8C rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-shared-q5-dual-consumer-rejected.json) ·
 [H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
 
+Reject **WPF-H8D complete-class Q6 exact-value F32 SGEMM** before target
+publication. Screen all six ordinary-Q6 M512 shapes/**144 calls** with the
+current H6U/H7I/H5I routes as control and the retained exact Q6-to-F32
+producer, exact BF16 widening, rocBLAS SGEMM, and BF16 result cast as candidate.
+Five shapes win both clocks; the weighted diagnostic moves **74.099→40.969 ms
+event (1.809×)** and **74.469→41.232 ms wall (1.806×)**, materially below the
+H8B Q6 **73.320-ms** family. F32 K3072×N72 is binding and regresses
+**0.03965→0.09167 ms event (0.4325×)** and **0.04260→0.09559 ms wall
+(0.4456×)**. Exact operands, finite outputs, primitive quality, lifecycle, and
+zero compiler all pass. Honor the prospectively declared complete-class rule:
+do not salvage the other 143 calls after timing, publish no target/RED/runtime,
+skip the 576-step quality lane, and retain H8B **440.893 tok/s / 2,155
+dispatches**
+([H8D rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

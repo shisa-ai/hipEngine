@@ -2568,6 +2568,19 @@ removed; H8B/H7H remains the sole source path
 ([H8C rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-shared-q5-dual-consumer-rejected.json) ·
 [H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
 
+Do **not** add a complete-class Q6 exact-value F32-SGEMM composite as
+**WPF-H8D**. The retained local64 exact Q6-to-F32 producer, cast kernels, and
+rocBLAS SGEMM are individually valid, but the required all-six-shape/**144-call**
+M512 screen fails before target publication. Five shapes win both clocks and
+the weighted diagnostic improves **74.099→40.969 ms event (1.809×)** and
+**74.469→41.232 ms wall (1.806×)**. The F32 K3072×N72 role instead regresses
+**0.4325×/0.4456×** event/wall. Exact complete activation operands, sampled
+real-weight operands, primitive quality, lifecycle, and zero-compiler gates
+pass, but they cannot waive the complete-class timing rule. Add no Q6-SGEMM
+registry key, owner, capability, or test; skip the 576-step gate and forbid
+post-screen 143-call salvage
+([H8D rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
