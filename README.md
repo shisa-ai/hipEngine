@@ -1422,6 +1422,22 @@ recompile/resource-relaxation rule: skip trace and timing, remove candidate plus
 RED, and retain H8B **440.893 tok/s**, **1.5668×** behind matched llama.cpp HIP
 ([H8M rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
 
+**WPF-H8N exact Q5 twin-team weight staging is the next target-only leaf.** Q5
+remains the largest matched gap at **230.429 vs 58.314 ms (+172.115 ms)**; its
+six H7G/H7H consumers own **188 calls / 203.861 ms**. One fixed local256 body
+pairs two independent logical local128 teams: team 0 loads each exact F32
+K128×COL slab into ping-pong LDS, then both teams consume it for adjacent row
+groups while preserving every scalar FMA and reduction/store bit. Across the
+complete role class, modeled logical F32-plane bytes fall
+**807,571,292,160→407,862,509,568 (−49.495%)** and workgroups fall
+**5,021,440→2,689,792 (−46.434%)**, at unchanged **1,433,445,335,040 FMAs**.
+The cost is explicit: dynamic barrier epochs grow **5,021,440→90,764,032
+(18.075×)** and fixed LDS is **9,216–18,944 bytes**. This is no cache-traffic or
+speed result. Freeze RED before source work; all six roles and their weighted
+aggregate must win both clocks without role/geometry/buffer/recompile/rerun
+salvage
+([H8N target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

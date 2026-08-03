@@ -3565,6 +3565,27 @@ relaxation rule: skip named trace, all-45 timing, runtime/source work, remove
 candidate plus RED, and retain H6T/H8B production **440.893 tok/s**
 ([H8M rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
 
+Select target-only **WPF-H8N exact Q5 paired-rowgroup twin-team F32-weight
+staging** after H8M. Q5 remains the largest matched gap at **172.115 ms**; its
+six H7G/H7H consumers own **188 calls / 203.861 ms**. One fixed local256 body
+must contain two independent logical local128 teams and share each exact F32
+K128×COL slab from ping-pong LDS across adjacent activation row groups while
+preserving every current scalar FMA, wave reduction, serial wave sum, and store.
+The six fixed geometries model logical F32-plane bytes
+**807,571,292,160→407,862,509,568 (−49.495%)** and workgroups
+**5,021,440→2,689,792 (−46.434%)** with **1,433,445,335,040 FMAs** unchanged.
+Record the opposing cost: barrier epochs rise **5,021,440→90,764,032
+(18.075×)** and fixed LDS is **9,216–18,944 bytes**. This is not cache-traffic
+or speed evidence.
+
+Freeze RED before source work. Require exact odd-pair tails and all edge/CPU/
+M512 outputs, local256 with per-role VGPR/LDS ceilings and no spill/scratch, a
+six-name cache-only trace, then one immutable all-role 5/15/5 screen where every
+role and the weighted aggregate win both clocks. Forbid role/dtype/shape/layer/
+prompt/token/length/geometry/buffer/K-tile/resource-rewrite/recompile/rerun
+salvage
+([H8N target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

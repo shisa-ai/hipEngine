@@ -2358,6 +2358,43 @@ remove all H8M HIP/Python/registry/gfx1151 and RED-test surfaces, restore H6T
 byte-for-byte, and retain H8B **440.893 tok/s**
 ([H8M rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
 
+Select target-only **WPF-H8N exact Q5 paired-rowgroup twin-team F32-weight
+staging**. Clean post-H8M production remains H8B **440.893 tok/s / 1,146.420
+ms / 2,155 dispatches**, **1.566801×** behind matched llama.cpp HIP. Q5 is
+again first at **230.429 vs 58.314 ms**, a **172.115-ms** gap. Its complete six
+H7G/H7H consumer class is **188 calls / 203.861 ms**.
+
+H8N is not H5S persistence or another local128 geometry screen. One local256
+workgroup contains two independent logical local128 teams. Team 0 loads each
+exact F32 K128×COL slab once into ping-pong LDS; both teams consume it
+concurrently for adjacent existing activation row groups. Each team retains
+logical `tid=0..127`, `k=tid+128*n`, every scalar `fmaf`, the wave32
+16/8/4/2/1 tree, serial wave0→1→2→3 sum, final BF16/F32 store, activation/weight
+planes, composite/resident ownership, workspace, and fallback. Fix the six team
+geometries before code as `8×4`, `8×8`, `16×5`, `8×8`, `16×5`, and `8×10` in
+production role order; the two `8×8` choices replace VGPR200 96-accumulator
+controls with the already-established 64-accumulator boundary.
+
+Across M512 and all calls, current→candidate logical F32-plane bytes are
+**807,571,292,160→407,862,509,568 (−49.495%)** and workgroups are
+**5,021,440→2,689,792 (−46.434%)**. Useful work remains exactly
+**1,433,445,335,040 FMAs**. Price the opposing cost without hiding it: one
+K128 staging barrier per slab plus final publication grows dynamic barrier
+epochs **5,021,440→90,764,032 (18.075×)**, with fixed LDS
+**9,216/10,240/18,944/10,240/18,944/10,752 bytes**. These are source models,
+not cache traffic or speed claims.
+
+Freeze RED before executable edits. Require rows1/4/5/7/8/9/10/12/13/17/33/
+M512 including odd pair tails, complete H7G/H7H and sampled CPU bytes, poison,
+finite output, repeat, and lifecycle. The only object must name all six
+local256 siblings at per-role VGPR ceilings **80/144/176/144/176/176**, exact
+LDS, and private/spill/scratch0. Then consume one 5-warmup/15-counter-rotated/
+five-launch actual-weight screen where every role and the weighted aggregate
+win HIP-event and synchronized-wall medians. Do not salvage any role/dtype/
+shape/layer/prompt/token/length/geometry/buffer/K-tile/resource rewrite/
+recompile/favorable-rerun subset
+([H8N target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

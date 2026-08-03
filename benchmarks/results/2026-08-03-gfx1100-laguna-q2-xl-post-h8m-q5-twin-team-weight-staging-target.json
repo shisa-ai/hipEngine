@@ -1,0 +1,510 @@
+{
+  "admission": {
+    "all_six_roles_inseparable": true,
+    "correctness": "rows1/4/5/7/8/9/10/12/13/17/33/M512 including odd paired-rowgroup tails; complete H7G/H7H and sampled independent CPU bytes; exact activation/weight planes, poison overwrite, finiteness, repeat, lifecycle",
+    "fallback": "registered H7G/H7H exact local128 owner and complete earlier Q5 chain",
+    "first_object": "six separately named local256 siblings from one fixed ping-pong body; per-role fixed LDS 9216/10240/18944/10240/18944/10752 bytes, metadata/runtime VGPR ceilings 80/144/176/144/176/176, no private/spill/scratch, exact logical two-team K/FMA/reduction/store structure",
+    "forbidden_salvage": "no role/dtype/shape/layer/prompt/token/length/team-geometry/buffer-count/K-tile/resource-rewrite/recompile/favorable-rerun subset",
+    "named_trace": "all six names at expected paired grids/local256/LDS/VGPR, positive durations, one queue/stream, zero compiler; controls remain separately registered",
+    "no_sweep": "one fixed two-team, two-buffer, K128-slab body and the six predeclared geometries only",
+    "post_leaf_if_admitted": "bounded complete-class owner, exact M512 state/topology, fixed C4096/M512, clean 512/1K/4K, then separate source RED and promotion",
+    "preflight_before_hip_load": true,
+    "red_first": true,
+    "sole_build": true,
+    "timing": "one immutable actual-weight screen with five warmups, 15 counter-rotated repetitions, five launches/sample; every role and the weighted 188-call aggregate must win HIP-event and synchronized-wall medians"
+  },
+  "authority_links": {
+    "README.md": "2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "Commit this target-only packet, then freeze RED before any executable source change.",
+    "performance_measured": false,
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vgpr_file_per_simd": 1536,
+    "wavefront_size": 32,
+    "waves_per_simd_max": 16
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h8m_q5_twin_team_weight_staging_target",
+  "lineage": {
+    "base_revision": "9f44406da",
+    "candidate_present": false,
+    "kernel_lineage_audit": "same four pre-existing documented external Qwen/PARO drifts; Laguna/llama.cpp references unchanged",
+    "package_policy_changed": false,
+    "prior_h5p_geometry_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-candidate.json",
+    "prior_h5p_geometry_artifact_sha256": "8ad29d0553b41009f3ed68227d611136cb4206cb74688efa1703d62b439ae412",
+    "prior_h5s_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json",
+    "prior_h5s_rejection_artifact_sha256": "d358caa4e49e2e224f5d4511ae2110d8b80f565b52a3d0b6ccd842bf42652dcc",
+    "prior_h8m_rejection_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json",
+    "prior_h8m_rejection_artifact_sha256": "49c82f5413c902abb0eee6c3ea9b35150a8a95999f6d21cad306de6a17292822",
+    "production_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "production_artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "red_present": false,
+    "runtime_owner_present": false,
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+      "hipengine/runtime/qwen35_paro_runner.py": "dd08b9f91419bcd4ba0e0962a8f9dfca0b4c2f068224eb7a85880562ca1128fe"
+    }
+  },
+  "matched_status": {
+    "application_dispatches": 2155,
+    "campaign_start_kernel_sum_ms": 3001.692,
+    "campaign_start_tok_s": 169.516,
+    "components": {
+      "attention": {
+        "current_ms": 115.349089,
+        "gap_ms": 93.83664200000001,
+        "llamacpp_ms": 21.512447
+      },
+      "gate_up": {
+        "current_ms": 401.4025780000001,
+        "gap_ms": 3.5976550000001453,
+        "llamacpp_ms": 397.804923
+      },
+      "iq_down": {
+        "current_ms": 273.163353,
+        "gap_ms": 119.30344199999996,
+        "llamacpp_ms": 153.859911
+      },
+      "q5": {
+        "current_ms": 230.42948,
+        "gap_ms": 172.11539000000002,
+        "llamacpp_ms": 58.31409
+      },
+      "q6": {
+        "current_ms": 73.31982099999999,
+        "gap_ms": 58.65222299999999,
+        "llamacpp_ms": 14.667598
+      },
+      "remaining": {
+        "current_ms": 52.755422999999986,
+        "gap_ms": -15.094016000000018,
+        "llamacpp_ms": 67.849439
+      }
+    },
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_kernel_sum_ms": 714.008408,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "llamacpp_wall_tok_s": 690.791,
+    "wall_tok_s": 440.8926238498552
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128, one queue"
+  },
+  "operation_contract": {
+    "candidate_name_suffix": "twin_team_weight_staging",
+    "distinct_from_h5s": "H5S serially looped persistent row groups and did not remove useful F32-plane loads; H8N computes exactly two adjacent groups concurrently from one shared load and does not persist across further groups",
+    "fixed_role_geometries": [
+      {
+        "barrier_epoch_increase": 17334272,
+        "calls": 92,
+        "candidate_barriers_per_workgroup": 25,
+        "candidate_dynamic_barrier_epochs": 18841600,
+        "candidate_first_object_bounds": {
+          "fixed_lds_bytes": 9216,
+          "local_size": 256,
+          "metadata_vgpr_max": 80,
+          "private_bytes": 0,
+          "runtime_vgpr_max": 80,
+          "scratch_bytes": 0,
+          "sgpr_spills": 0,
+          "vgpr_spills": 0
+        },
+        "candidate_lds_breakdown": {
+          "ping_pong_weight_bytes": 8192,
+          "total_bytes": 9216,
+          "two_team_wave_sum_bytes": 1024
+        },
+        "candidate_logical_f32_weight_bytes": 74088185856,
+        "candidate_pair_groups": 64,
+        "candidate_row_groups": 128,
+        "candidate_team_geometry": {
+          "accumulators_per_thread": 32,
+          "col_tile": 8,
+          "row_batch": 4
+        },
+        "candidate_workgroups_per_call": 8192,
+        "current_consumer_ms": 22.017935,
+        "current_dynamic_barrier_epochs": 1507328,
+        "current_geometry": {
+          "accumulators_per_thread": 32,
+          "col_tile": 8,
+          "row_batch": 4
+        },
+        "current_logical_f32_weight_bytes": 148176371712,
+        "current_row_groups": 128,
+        "current_runtime_resources": {
+          "local_size": 128,
+          "scratch_bytes": 0,
+          "vgpr": 72
+        },
+        "current_workgroups_per_call": 16384,
+        "dtype": "bf16",
+        "logical_f32_weight_byte_reduction_percent": 50.0,
+        "name": "bf16_k3072_n1024",
+        "shape": {
+          "k": 3072,
+          "n": 1024,
+          "rows": 512
+        },
+        "useful_fmas_unchanged": 148176371712,
+        "workgroup_reduction_percent": 50.0
+      },
+      {
+        "barrier_epoch_increase": 2325504,
+        "calls": 2,
+        "candidate_barriers_per_workgroup": 25,
+        "candidate_dynamic_barrier_epochs": 2457600,
+        "candidate_first_object_bounds": {
+          "fixed_lds_bytes": 10240,
+          "local_size": 256,
+          "metadata_vgpr_max": 144,
+          "private_bytes": 0,
+          "runtime_vgpr_max": 144,
+          "scratch_bytes": 0,
+          "sgpr_spills": 0,
+          "vgpr_spills": 0
+        },
+        "candidate_lds_breakdown": {
+          "ping_pong_weight_bytes": 8192,
+          "total_bytes": 10240,
+          "two_team_wave_sum_bytes": 2048
+        },
+        "candidate_logical_f32_weight_bytes": 9663676416,
+        "candidate_pair_groups": 32,
+        "candidate_row_groups": 64,
+        "candidate_team_geometry": {
+          "accumulators_per_thread": 64,
+          "col_tile": 8,
+          "row_batch": 8
+        },
+        "candidate_workgroups_per_call": 49152,
+        "current_consumer_ms": 7.115735,
+        "current_dynamic_barrier_epochs": 132096,
+        "current_geometry": {
+          "accumulators_per_thread": 96,
+          "col_tile": 8,
+          "row_batch": 12
+        },
+        "current_logical_f32_weight_bytes": 12985565184,
+        "current_row_groups": 43,
+        "current_runtime_resources": {
+          "local_size": 128,
+          "scratch_bytes": 0,
+          "vgpr": 200
+        },
+        "current_workgroups_per_call": 66048,
+        "dtype": "bf16",
+        "logical_f32_weight_byte_reduction_percent": 25.58139534883721,
+        "name": "bf16_k3072_n12288",
+        "shape": {
+          "k": 3072,
+          "n": 12288,
+          "rows": 512
+        },
+        "useful_fmas_unchanged": 38654705664,
+        "workgroup_reduction_percent": 25.58139534883721
+      },
+      {
+        "barrier_epoch_increase": 5633280,
+        "calls": 12,
+        "candidate_barriers_per_workgroup": 49,
+        "candidate_dynamic_barrier_epochs": 5870592,
+        "candidate_first_object_bounds": {
+          "fixed_lds_bytes": 18944,
+          "local_size": 256,
+          "metadata_vgpr_max": 176,
+          "private_bytes": 0,
+          "runtime_vgpr_max": 176,
+          "scratch_bytes": 0,
+          "sgpr_spills": 0,
+          "vgpr_spills": 0
+        },
+        "candidate_lds_breakdown": {
+          "ping_pong_weight_bytes": 16384,
+          "total_bytes": 18944,
+          "two_team_wave_sum_bytes": 2560
+        },
+        "candidate_logical_f32_weight_bytes": 47110422528,
+        "candidate_pair_groups": 52,
+        "candidate_row_groups": 103,
+        "candidate_team_geometry": {
+          "accumulators_per_thread": 80,
+          "col_tile": 16,
+          "row_batch": 5
+        },
+        "candidate_workgroups_per_call": 9984,
+        "current_consumer_ms": 14.699077999999997,
+        "current_dynamic_barrier_epochs": 237312,
+        "current_geometry": {
+          "accumulators_per_thread": 80,
+          "col_tile": 16,
+          "row_batch": 5
+        },
+        "current_logical_f32_weight_bytes": 93314875392,
+        "current_row_groups": 103,
+        "current_runtime_resources": {
+          "local_size": 128,
+          "scratch_bytes": 0,
+          "vgpr": 168
+        },
+        "current_workgroups_per_call": 19776,
+        "dtype": "bf16",
+        "logical_f32_weight_byte_reduction_percent": 49.51456310679612,
+        "name": "bf16_k6144_n3072",
+        "shape": {
+          "k": 6144,
+          "n": 3072,
+          "rows": 512
+        },
+        "useful_fmas_unchanged": 115964116992,
+        "workgroup_reduction_percent": 49.51456310679612
+      },
+      {
+        "barrier_epoch_increase": 30822400,
+        "calls": 35,
+        "candidate_barriers_per_workgroup": 73,
+        "candidate_dynamic_barrier_epochs": 31395840,
+        "candidate_first_object_bounds": {
+          "fixed_lds_bytes": 10240,
+          "local_size": 256,
+          "metadata_vgpr_max": 144,
+          "private_bytes": 0,
+          "runtime_vgpr_max": 144,
+          "scratch_bytes": 0,
+          "sgpr_spills": 0,
+          "vgpr_spills": 0
+        },
+        "candidate_lds_breakdown": {
+          "ping_pong_weight_bytes": 8192,
+          "total_bytes": 10240,
+          "two_team_wave_sum_bytes": 2048
+        },
+        "candidate_logical_f32_weight_bytes": 126835752960,
+        "candidate_pair_groups": 32,
+        "candidate_row_groups": 64,
+        "candidate_team_geometry": {
+          "accumulators_per_thread": 64,
+          "col_tile": 8,
+          "row_batch": 8
+        },
+        "candidate_workgroups_per_call": 12288,
+        "current_consumer_ms": 68.939834,
+        "current_dynamic_barrier_epochs": 573440,
+        "current_geometry": {
+          "accumulators_per_thread": 96,
+          "col_tile": 12,
+          "row_batch": 8
+        },
+        "current_logical_f32_weight_bytes": 253671505920,
+        "current_row_groups": 64,
+        "current_runtime_resources": {
+          "local_size": 128,
+          "scratch_bytes": 0,
+          "vgpr": 200
+        },
+        "current_workgroups_per_call": 16384,
+        "dtype": "bf16",
+        "logical_f32_weight_byte_reduction_percent": 50.0,
+        "name": "bf16_k9216_n3072",
+        "shape": {
+          "k": 9216,
+          "n": 3072,
+          "rows": 512
+        },
+        "useful_fmas_unchanged": 507343011840,
+        "workgroup_reduction_percent": 25.0
+      },
+      {
+        "barrier_epoch_increase": 5515776,
+        "calls": 12,
+        "candidate_barriers_per_workgroup": 25,
+        "candidate_dynamic_barrier_epochs": 5990400,
+        "candidate_first_object_bounds": {
+          "fixed_lds_bytes": 18944,
+          "local_size": 256,
+          "metadata_vgpr_max": 176,
+          "private_bytes": 0,
+          "runtime_vgpr_max": 176,
+          "scratch_bytes": 0,
+          "sgpr_spills": 0,
+          "vgpr_spills": 0
+        },
+        "candidate_lds_breakdown": {
+          "ping_pong_weight_bytes": 16384,
+          "total_bytes": 18944,
+          "two_team_wave_sum_bytes": 2560
+        },
+        "candidate_logical_f32_weight_bytes": 47110422528,
+        "candidate_pair_groups": 52,
+        "candidate_row_groups": 103,
+        "candidate_team_geometry": {
+          "accumulators_per_thread": 80,
+          "col_tile": 16,
+          "row_batch": 5
+        },
+        "candidate_workgroups_per_call": 19968,
+        "current_consumer_ms": 16.647535,
+        "current_dynamic_barrier_epochs": 474624,
+        "current_geometry": {
+          "accumulators_per_thread": 80,
+          "col_tile": 16,
+          "row_batch": 5
+        },
+        "current_logical_f32_weight_bytes": 93314875392,
+        "current_row_groups": 103,
+        "current_runtime_resources": {
+          "local_size": 128,
+          "scratch_bytes": 0,
+          "vgpr": 168
+        },
+        "current_workgroups_per_call": 39552,
+        "dtype": "f32",
+        "logical_f32_weight_byte_reduction_percent": 49.51456310679612,
+        "name": "f32_k3072_n6144",
+        "shape": {
+          "k": 3072,
+          "n": 6144,
+          "rows": 512
+        },
+        "useful_fmas_unchanged": 115964116992,
+        "workgroup_reduction_percent": 49.51456310679612
+      },
+      {
+        "barrier_epoch_increase": 24111360,
+        "calls": 35,
+        "candidate_barriers_per_workgroup": 25,
+        "candidate_dynamic_barrier_epochs": 26208000,
+        "candidate_first_object_bounds": {
+          "fixed_lds_bytes": 10752,
+          "local_size": 256,
+          "metadata_vgpr_max": 176,
+          "private_bytes": 0,
+          "runtime_vgpr_max": 176,
+          "scratch_bytes": 0,
+          "sgpr_spills": 0,
+          "vgpr_spills": 0
+        },
+        "candidate_lds_breakdown": {
+          "ping_pong_weight_bytes": 8192,
+          "total_bytes": 10752,
+          "two_team_wave_sum_bytes": 2560
+        },
+        "candidate_logical_f32_weight_bytes": 103054049280,
+        "candidate_pair_groups": 26,
+        "candidate_row_groups": 52,
+        "candidate_team_geometry": {
+          "accumulators_per_thread": 80,
+          "col_tile": 8,
+          "row_batch": 10
+        },
+        "candidate_workgroups_per_call": 29952,
+        "current_consumer_ms": 74.44047600000002,
+        "current_dynamic_barrier_epochs": 2096640,
+        "current_geometry": {
+          "accumulators_per_thread": 80,
+          "col_tile": 8,
+          "row_batch": 10
+        },
+        "current_logical_f32_weight_bytes": 206108098560,
+        "current_row_groups": 52,
+        "current_runtime_resources": {
+          "local_size": 128,
+          "scratch_bytes": 0,
+          "vgpr": 168
+        },
+        "current_workgroups_per_call": 59904,
+        "dtype": "f32",
+        "logical_f32_weight_byte_reduction_percent": 50.0,
+        "name": "f32_k3072_n9216",
+        "shape": {
+          "k": 3072,
+          "n": 9216,
+          "rows": 512
+        },
+        "useful_fmas_unchanged": 507343011840,
+        "workgroup_reduction_percent": 50.0
+      }
+    ],
+    "gfx1151_fail_closed": true,
+    "id": "WPF-H8N",
+    "name": "exact Q5 paired-rowgroup twin-team shared-F32-weight staging",
+    "operation": "one local256 workgroup contains two independent logical local128 teams; team0 loads one exact F32 K128xCOL weight slab into ping-pong LDS and both teams consume it concurrently for adjacent existing row groups before the next slab",
+    "preserved": [
+      "all exact F32 weight-plane values, BF16 activation-pack bits, output dtype/layout, raw composite and resident plane ownership",
+      "per team logical tid 0..127 and k=tid+128*n traversal, every scalar fmaf, wave32 16/8/4/2/1 reduction, serial wave0->1->2->3 sum, and BF16/F32 store",
+      "all six role shapes and 188 calls, producers/packs, allocation/workspace/dispatch ownership, H7G/H7H controls, and complete fallbacks",
+      "one queue/stream, no extra global accumulation plane, no producer or package-policy change"
+    ],
+    "raw_pointer_abi": true,
+    "unfused_fallback": "registered H7G/H7H local128 production primitives and complete preceding exact chain"
+  },
+  "operation_model": {
+    "barrier_epoch_increase": 85742592,
+    "barrier_epoch_multiplier": 18.07529951567678,
+    "calls": 188,
+    "candidate_barrier_epochs": 90764032,
+    "candidate_logical_f32_weight_gib": 379.8515625,
+    "candidate_minus_current_barrier_epochs": 85742592,
+    "candidate_weight_bytes": 407862509568,
+    "candidate_workgroups": 2689792,
+    "current_barrier_epochs": 5021440,
+    "current_consumer_ms": 203.86059300000002,
+    "current_logical_f32_weight_gib": 752.109375,
+    "current_q5_family_ms": 230.42948,
+    "current_q5_gap_ms": 172.11539000000002,
+    "current_role_consumer_ms": 203.86059300000002,
+    "current_weight_bytes": 807571292160,
+    "current_workgroups": 5021440,
+    "interpretation": "the candidate halves logical F32-plane traffic and nearly halves workgroups while preserving all useful FMAs, but pays an 18.0753x dynamic barrier-epoch model; these are source counts, not cache traffic or speed evidence",
+    "logical_f32_weight_byte_reduction_percent": 49.495169834839515,
+    "not_cache_traffic_or_speed_result": true,
+    "useful_fmas": 1433445335040,
+    "workgroup_reduction_percent": 46.43385164414988
+  },
+  "performance_claim": false,
+  "prior_exact_q5_boundaries": {
+    "closed": [
+      "H5S serial persistent row-group traversal",
+      "H5P local128 geometry-only occupancy retune",
+      "H6G compiler-scheduled and H6M explicit K-record prefetch",
+      "H6V universal DPP wave reduction",
+      "H7G/H7H padded/full-group predicate elimination",
+      "H8A/H8F resident global/shared F32-plane lifetime",
+      "H8C dual-weight shared-activation consumer",
+      "H8I stream-ordered K partitions"
+    ],
+    "distinct_premise": "H8N shares each exact F32 K128xCOL slab across two simultaneously resident logical local128 teams. It neither loops serial row groups, merely changes local128 geometry, nor partitions K through global accumulation."
+  },
+  "raw_evidence_sha256": {
+    "/tmp/audit_laguna_h8n_q5_twin_team_weight_staging.py": "524e77e3766a510af8c7c0221b478faa173b3a0f5033b67e888630d238ff1bbe",
+    "/tmp/build_laguna_h8n_q5_twin_team_weight_staging_target.py": "f80b1928b8a1dd3a598da1ab80a36c8c9bf5a9d5a306dc3875da1e49f599fef1",
+    "/tmp/laguna-h8b-post-commit-trace-summary.json": "443f8fc9992150acd6a6c4f066401628aba1d2d0b0b7d4d65b2f25f3f507106c",
+    "/tmp/laguna-h8n-q5-twin-team-weight-staging-audit.json": "9fea6cae0aeb8fc6dcc6b3d688e7f4433938db172fdaf4a09f389d6ab5d9b326",
+    "/tmp/laguna-h8n-q5-twin-team-weight-staging-audit.status": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+    "/tmp/laguna-h8n-q5-twin-team-weight-staging-audit.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8n-q5-twin-team-weight-staging-audit.stdout": "9fea6cae0aeb8fc6dcc6b3d688e7f4433938db172fdaf4a09f389d6ab5d9b326"
+  },
+  "schema": 1,
+  "status": "target_selected_no_candidate_no_speed_result"
+}

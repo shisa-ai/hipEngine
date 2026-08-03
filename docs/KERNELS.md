@@ -2854,6 +2854,39 @@ body after observing it. Skip named runtime trace, all-45 timing, runtime/state/
 length/source work; remove candidate plus RED and retain H6T production
 ([H8M rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
 
+**WPF-H8N exact Q5 paired-rowgroup twin-team F32-weight staging is target-only.**
+After H8M, Q5 remains first at **230.429 vs 58.314 ms**, a **172.115-ms** gap.
+The complete six-role H7G/H7H class is **188 calls / 203.861 ms**. H8N adds
+one separately named local256 family: two independent logical local128 teams
+retain the production `tid=0..127`, `k=tid+128*n`, scalar `fmaf`, wave32
+16/8/4/2/1 tree, serial wave0→1→2→3 sum, and BF16/F32 store. Team 0 alone
+loads each exact F32 K128×COL slab into ping-pong LDS; both teams consume it
+concurrently for adjacent existing activation row groups.
+
+Freeze six geometries before code: team tiles `8×4`, `8×8`, `16×5`, `8×8`,
+`16×5`, and `8×10` for BF16 K3072/N1024, BF16 K3072/N12288, BF16
+K6144/N3072, BF16 K9216/N3072, F32 K3072/N6144, and F32 K3072/N9216.
+This deliberately replaces the two VGPR200 production tiles with known
+64-accumulator `8×8` ownership; the others retain their current accumulator
+shape. Aggregate logical F32-plane bytes model
+**807,571,292,160→407,862,509,568 (−49.495%)** and workgroups
+**5,021,440→2,689,792 (−46.434%)**, with all **1,433,445,335,040 useful FMAs**
+unchanged. Unlike H5S's serial persistent loop, each H8N pair removes one useful
+weight load before either team advances. The cost is **5,021,440→90,764,032
+barrier epochs (18.075×)** and per-role fixed LDS **9,216/10,240/18,944/
+10,240/18,944/10,752 bytes**. These are source counts, not cache traffic or
+speed evidence.
+
+RED must precede executable edits. One build must meet local256, per-role
+metadata/runtime VGPR ceilings **80/144/176/144/176/176**, exact fixed LDS, and
+private/spill/scratch0. Require odd-pair tails plus rows1/4/5/7/8/9/10/12/13/
+17/33/M512, H7G/H7H and sampled CPU bytes, poison/repeat/lifecycle, all six
+named cache-only traces, then one 5/15/5 actual-weight screen where every role
+and the weighted 188-call aggregate win event and synchronized wall. No role,
+dtype, shape, layer, prompt, token, length, geometry, buffer, K-tile, resource
+rewrite, recompile, or favorable-rerun salvage is admissible
+([H8N target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
