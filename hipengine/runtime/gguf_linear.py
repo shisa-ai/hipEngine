@@ -126,6 +126,9 @@ _ROWTILE_MIN_ROWS = 2
 _ROWTILE_MAX_ROWS = 8
 _DENSE_BF16_ROWTILE_MIN_ROWS = 2
 _DENSE_BF16_ROWTILE_MAX_ROWS = 4
+# The exact local128 virtual-partition schedule wins through K=10,240 on
+# gfx1100, then loses to the retained local256 block from K=12,288 onward.
+_DENSE_BF16_VIRTUAL256_MAX_IN_FEATURES = 10_240
 _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
@@ -843,23 +846,34 @@ def _dense_bf16_rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
+    in_features: int,
     enabled: bool,
+    native_batch: bool,
 ) -> GGUFLinearDispatch:
-    """Select the c1-association-preserving dense-BF16 small-row kernel."""
+    """Select exact dense-BF16 native-c1 or small-row arithmetic reuse."""
 
-    if (
-        not enabled
-        or rows < _DENSE_BF16_ROWTILE_MIN_ROWS
-        or rows > _DENSE_BF16_ROWTILE_MAX_ROWS
-        or dispatch.abi != "dense_bf16"
-        or dispatch.key.variant != "prefill_out"
+    if not enabled or dispatch.abi != "dense_bf16":
+        return dispatch
+    if rows == 1:
+        if (
+            not native_batch
+            or in_features > _DENSE_BF16_VIRTUAL256_MAX_IN_FEATURES
+            or dispatch.key.variant != "out"
+        ):
+            return dispatch
+        variant = "virtual256_out"
+    elif (
+        _DENSE_BF16_ROWTILE_MIN_ROWS <= rows <= _DENSE_BF16_ROWTILE_MAX_ROWS
+        and dispatch.key.variant == "prefill_out"
     ):
+        variant = "rowtile_out"
+    else:
         return dispatch
     key = KernelKey(
         dispatch.key.backend,
         dispatch.key.layer,
         dispatch.key.quant,
-        "rowtile_out",
+        variant,
     )
     if not is_registered(key):
         return dispatch
@@ -1298,7 +1312,9 @@ def launch_gguf_linear(
         dispatch = _dense_bf16_rowtile_dispatch(
             dispatch,
             rows=rows,
+            in_features=in_features,
             enabled=not use_wmma,
+            native_batch=_native_batch_decode_session_enabled,
         )
         dispatch = _pack8_rowtile_dispatch(
             dispatch,

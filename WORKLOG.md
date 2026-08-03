@@ -203486,3 +203486,43 @@ Vulkan local sizes verbatim will close the measured gap.
 - Kernel/marker/summary SHA-256s are `eedc0b63...8a9786`,
   `5a801289...526c7`, and `0c961438...ccc6d2`. Profiler timings are diagnostic,
   not substituted for the unprofiled natural25 topline.
+
+### D27-O3 exact virtual-256 local128 dense GEMV — GREEN
+
+- The one-wave local32 prototype preserved every local256 arithmetic partition
+  and output bit, but serialized eight partials per lane and measured only
+  **0.470-0.926x** local256 across the four production shapes. Remove it rather
+  than retaining a rejected device/runtime path.
+- The retained candidate maps virtual tids `tid` and `tid+128` onto each of 128
+  physical threads. Their register add is exactly the old s=128 LDS step; the
+  block then reproduces s=64/32 in 512 B LDS and the first wave performs the
+  exact 16..1 shuffle tree. The K traversal, eight-value FMA sequence, tail,
+  BF16 boundary, and 256 logical partitions are unchanged. It is registered as
+  `(hip_gfx1100,dense_gemv,bf16,virtual256_out)` with the old local256 kernel as
+  the exact fallback.
+- Final cached GPU1 production-shape screen:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/bench_dense_virtual256.py > /tmp/bench_dense_virtual256_local128-final.jsonl`.
+  K5120/N10240, K6144/N5120, and K5120/N1024 improve **1.1033x / 1.0988x /
+  1.0907x**. K17408/N5120 is **0.9927x**, so it is not routed. Raw SHA-256 is
+  `ed19264a...218f6`; this RX 7900 XTX leaf is not a W7900 topline.
+- A broader N5120 crossover screen measures local128 at **1.04198x** through
+  K=10,240, then **0.97467x** at K=12,288. Native-verifier rows-one dispatch
+  therefore selects the candidate only through K=10,240; larger K, non-native
+  sessions, rows 2-4, missing registry entries, and explicit WMMA all fail
+  closed to existing exact paths. Raw SHA-256 is `83b3c45d...8e9b2`.
+- GPU1 primitive/dispatch command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_dense_gemv_plan.py tests/test_gguf_linear_dispatch.py`
+  reports **80 passed**. All four virtual256 fixtures are BF16-byte identical to
+  local256 and pass KL <=0.05/top-1 >=90%; dispatch tests prove native c1
+  selection and the K=12,288 fallback. Ruff, py_compile, and diff checks pass.
+- Cached GPU1 `rocprofv3 --kernel-trace` on the K5120 fixture names
+  `dense_gemv_virtual256_local128_out_kernel<unsigned short>` at local128,
+  VGPR24, SGPR128, LDS512 B, scratch0, with a plausible 4.142 us duration.
+  Trace SHA-256 is `8dfac0f0...16d09`.
+- The complete W7900 command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1** while the strengthened fixture observes real candidate calls.
+  Native B1-B3 logits, reject/partial/full/rollback Conv/GDN/KV/hidden state,
+  correction logits, and provider output remain exact. Commit this correctness
+  unit before clean W7900 natural25 economics; no complete-suite speed claim is
+  made from component timings.

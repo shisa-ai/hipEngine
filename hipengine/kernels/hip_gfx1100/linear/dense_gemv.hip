@@ -165,6 +165,77 @@ __global__ void dense_gemv_out_kernel(
   }
 }
 
+// Four waves retain the same 256 virtual partitions with only two partials per
+// physical thread. The register add is the original s=128 step; LDS preserves
+// s=64 and s=32 before the exact first-wave shuffle tree.
+template <typename scalar_t>
+__launch_bounds__(128, 4)
+__global__ void dense_gemv_virtual256_local128_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ weight,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t w_base = out_col * in_features;
+  float acc0 = 0.0f;
+  float acc1 = 0.0f;
+
+  constexpr int kVirtualThreads = 256;
+  constexpr int kValuesPerThread = 8;
+  constexpr int kVirtualStride = kVirtualThreads * kValuesPerThread;
+  const int64_t main_end = (in_features / kVirtualStride) * kVirtualStride;
+#pragma unroll
+  for (int virtual_half = 0; virtual_half < 2; ++virtual_half) {
+    const int64_t virtual_tid = tid + 128 * virtual_half;
+    float& acc = virtual_half == 0 ? acc0 : acc1;
+    for (int64_t k_base = virtual_tid * kValuesPerThread;
+         k_base < main_end;
+         k_base += kVirtualStride) {
+      const scalar_t* x_ptr = x + k_base;
+      const scalar_t* w_ptr = weight + w_base + k_base;
+      acc = fmaf(scalar_to_float(x_ptr[0]), scalar_to_float(w_ptr[0]), acc);
+      acc = fmaf(scalar_to_float(x_ptr[1]), scalar_to_float(w_ptr[1]), acc);
+      acc = fmaf(scalar_to_float(x_ptr[2]), scalar_to_float(w_ptr[2]), acc);
+      acc = fmaf(scalar_to_float(x_ptr[3]), scalar_to_float(w_ptr[3]), acc);
+      acc = fmaf(scalar_to_float(x_ptr[4]), scalar_to_float(w_ptr[4]), acc);
+      acc = fmaf(scalar_to_float(x_ptr[5]), scalar_to_float(w_ptr[5]), acc);
+      acc = fmaf(scalar_to_float(x_ptr[6]), scalar_to_float(w_ptr[6]), acc);
+      acc = fmaf(scalar_to_float(x_ptr[7]), scalar_to_float(w_ptr[7]), acc);
+    }
+    for (int64_t in_col = main_end + virtual_tid;
+         in_col < in_features;
+         in_col += kVirtualThreads) {
+      acc = fmaf(
+          scalar_to_float(x[in_col]),
+          scalar_to_float(weight[w_base + in_col]),
+          acc);
+    }
+  }
+
+  __shared__ float sdata[128];
+  sdata[tid] = acc0 + acc1;
+  __syncthreads();
+  if (tid < 64) {
+    sdata[tid] += sdata[tid + 64];
+  }
+  __syncthreads();
+  if (tid < 32) {
+    sdata[tid] += sdata[tid + 32];
+  }
+  __syncthreads();
+  if (tid < 32) {
+    float sum = sdata[tid];
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      sum += __shfl_down(sum, offset);
+    }
+    if (tid == 0) {
+      out[out_col] = float_to_scalar<scalar_t>(sum);
+    }
+  }
+}
+
 
 template <typename scalar_t, int ROW_TILE>
 __global__ void dense_gemv_rowtile_out_kernel(
@@ -661,6 +732,32 @@ extern "C" int hipengine_dense_gemv_out_bf16(
       weight,
       out,
       rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_virtual256_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows != 1 || in_features <= 0 || out_features <= 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_virtual256_local128_out_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(out_features)),
+      dim3(128),
+      0,
+      stream,
+      x,
+      weight,
+      out,
       in_features,
       out_features);
   return static_cast<int>(hipGetLastError());
