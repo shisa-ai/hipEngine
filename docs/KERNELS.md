@@ -2710,6 +2710,18 @@ launch bounds or salvage any layer/expert/prompt/length/rewrite/recompile/rerun
 subset
 ([H8J target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
 
+**WPF-H8J is rejected at its first-object physical gate.** The sole AMD-clang22
+build emits H6T and H8J as relocation-normalized identical **7,920-byte /
+1,384-slot** bodies with the same **23 global loads / 216 FMAs / 24
+permlanex16 / 96 DPP adds / 24 LDS b128 loads / 12 LDS stores / 2 barriers**.
+Both metadata records remain **VGPR101 / SGPR78 / LDS384 / private0 / spill0 /
+wave32**. Thus `launch_bounds(128,4)` does not cross the required ≤96-VGPR
+boundary: 1,536/101 permits 15 register waves but only **3 complete four-wave
+workgroups**. Apply the frozen no-resource-rewrite/no-rerun rule, skip runtime
+trace, correctness, and timing, remove the candidate and RED, and retain H6T
+production
+([H8J rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
