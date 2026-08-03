@@ -2942,6 +2942,42 @@ key, package owner, RED, build, or timing screen for this format; rerank from
 unchanged H7G/H7H/H8B production
 ([H8P analytical rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
 
+**WPF-H8Q exact Q6 int16-product plus tiled-F32-scale transient plane is
+target-only.** Unlike H8P's impossible affine-Q5 contraction and gfx1151's
+byte-neutral resident qmicro reorder, Q6 structurally exposes an exact signed
+integer product before its sole super-scale multiply. A full production scan
+covers **146 tensors / 2,114,400 blocks / 541,286,400 values**, observes
+`scale×quant` **[-4,064,+4,096]**, and proves every product int16-safe.
+
+Fix the producer layout before code: row-major `int16[output][k]` products plus
+one exact F32 super-scale per raw block in
+`F32[out_tile16][qblock][col16]`. Fix ownership to BF16 K3072/N1024 ×2,
+BF16 K1024/N3072 ×46, and F32 K3072/N1024 ×94. H5I F32 N72 and the two-BF16/
+one-F32 H7I raw routes remain fallbacks. Each candidate consumer must outer-loop
+qblocks, load each tiled scale wave/workgroup-uniformly, then replay the current
+per-thread `qblock*256+tid`, `+128` sequence, explicit exact product conversion
+and scale multiply, scalar `fmaf`, DPP tree, serial wave sum, and store.
+
+Across the 142-call class, the producer and uniform-scale consumer model changes
+logical bytes **200,661,221,376→101,296,226,304 (−49.5188%)** at unchanged
+workspace/allocation/dispatches and no sidecar. The opposing operation count is
+not hidden: **49,627,004,928** conversions plus multiplies reconstruct weights
+before **228,707,008,512** unchanged useful FMAs. The zero-cost traffic model
+reaches only **450.782 tok/s (+2.243%)**, not a speed result.
+
+RED must precede source work. Require exact int16/F32 planes including
+**−4,064/+4,096**, rows17/33/M512 H6U and sampled-CPU bytes, poison/repeat/
+lifecycle, strict preflight, registration and gfx1151 fallback. The first
+object must keep the producer local64/VGPR≤24/LDS0/scratch0 and consumers
+local128 with exact LDS **1,536/1,024/1,536**, runtime VGPR≤**160/128/160**,
+private/spill/scratch0, scalar/readfirstlane scale loads, and explicit
+conversion+multiply before FMA. After a compiler-free named trace, one
+producer-inclusive 5/15/5 screen must make every role and weighted aggregate
+positive on HIP-event and synchronized wall clocks. No role/dtype/shape/layer/
+length/layout/scale-dtype/grouping/resource rewrite/recompile/favorable-rerun
+salvage is admissible
+([H8Q target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

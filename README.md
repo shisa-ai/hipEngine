@@ -1473,6 +1473,18 @@ subblock splitting cannot repair the invariant. No source, RED, compiler, GPU,
 or timing path was created; retain H8B **440.893 tok/s**
 ([H8P analytical rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
 
+**WPF-H8Q exact Q6 int16-product plus tiled-F32-scale plane is the next
+target-only dataflow.** All **541,286,400** actual Q6 values have
+`scale×quant` in **[-4,064,+4,096]**, so int16 is lossless unlike H8P's affine
+Q5 values. Cover the complete three-role/**142-call** H6U class while retaining
+H5I N72 and all three H7I raw fallbacks. The fixed 516-byte record models
+producer+consumer logical bytes **200.661→101.296 GB (-49.519%)** but adds
+**49.627B** exact conversions plus scale multiplies. Its zero-cost traffic-only
+**450.782 tok/s (+2.243%)** ceiling is not a speed result. Freeze RED and require
+all three roles plus aggregate on both clocks without role/layout/scale-dtype/
+resource/recompile/rerun salvage
+([H8Q target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
