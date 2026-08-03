@@ -1,0 +1,474 @@
+# Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
+
+Status: active, baseline bring-up (2026-08-04).
+
+Canonical target:
+`/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
+`gfx1100`.
+
+Comparator: latest tracked-clean llama.cpp Vulkan source at
+`/home/lhl/llama.cpp/llama.cpp-vulkan`, initially refreshed from
+`67d5978bb` to `ee0445c99` on 2026-08-04 and built in Release mode with
+`GGML_VULKAN=ON` and `GGML_HIP=OFF`.
+
+The goal is an honest, same-file comparison: make hipEngine AR and native GGUF
+MTP functional for this dense Qwen3.6 file, then meet or beat current
+llama.cpp Vulkan for matched prefill and decode. Optimization order is always
+set by measured complete-wall Amdahl impact, not by novelty, launch count, or an
+isolated microbenchmark.
+
+Related current authorities:
+
+- [`BENCHMARK.md`](BENCHMARK.md) — evidence, timing, correctness, and anti-gaming
+  contract.
+- [`MTP-gguf.md`](MTP-gguf.md) and
+  [`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md) — existing Qwen3.6 MoE GGUF
+  MTP state/transaction work and cross-engine timing boundary.
+- [`TUNING-gguf.md`](TUNING-gguf.md) — current GGUF measurement discipline and
+  the closed Qwen3.6-35B-A3B tuning pass.
+- [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) — older 27B PARO prefill plan; useful
+  structural hypotheses, but not a same-quant baseline.
+- [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) — retained and rejected RDNA3,
+  Vulkan, graph, and speculative-decode lessons.
+- [`HIP-vs-VULKAN.md`](HIP-vs-VULKAN.md) — current backend attribution rules.
+
+---
+
+## 1. Definition of done
+
+The campaign closes only when all of the following are true on **GPU0 W7900**:
+
+1. **Same model identity.** Both engines load the exact same GGUF fingerprint.
+   The file is 17,106,773,120 bytes with SHA-256
+   `a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f`;
+   retained artifacts must also add its tensor-inventory hash.
+2. **AR works and is correct.** hipEngine runs resident bulk prefill and true AR
+   decode for the 512/128 and 4096/128 gates, with finite logits, deterministic
+   generated IDs, graph/eager state validation, and the applicable KL/top-1
+   oracle.
+3. **MTP works and is honest.** The dense trailing NextN block runs through the
+   shared GGUF MTP proposal, target verify, accept/commit, rollback, and reseed
+   contracts. The full 10-prompt category suite plus heldouts reports a true
+   same-protocol AR denominator, acceptance ledgers, exact/default state
+   semantics, and complete cycle wall.
+4. **Matched performance.** hipEngine is at least as fast as latest llama.cpp
+   Vulkan on both matched prefill gates and both matched AR/MTP decode gates.
+   A win in one column does not hide a regression in another.
+5. **Profiles reconcile.** Both engines have functional fine-grained profiles
+   whose timed components reconcile closely enough to complete wall to rank the
+   next bottleneck. Profiler-perturbed numbers are never used as topline speed.
+6. **Default path.** Exact, same-suite, non-regressive wins are promoted to the
+   production registry route. Temporary selectors/fallbacks have explicit
+   removal conditions in `docs/REFACTOR.md`.
+
+A compatibility/accuracy-traded MTP route may be reported separately, but it
+cannot satisfy the exact/default closure gate.
+
+---
+
+## 2. Fixed model and hardware identity
+
+### 2.1 GGUF inventory
+
+The local scanner reports:
+
+| Field | Value |
+| --- | --- |
+| GGUF architecture | `qwen35` |
+| Quant | `MOSTLY_Q4_K_M` |
+| Tensor count | `866` |
+| Executable AR blocks | `64` |
+| Declared blocks | `65` |
+| Trailing NextN block | `blk.64` |
+| Hidden / dense FFN | `5120 / 17408` |
+| Layer mix | `48 linear_attention + 16 full_attention` |
+| Q / KV heads, head dim | `24 / 4, 256` |
+| Vocabulary | `248320` |
+| Experts | `0` (dense) |
+| NextN tensors | 15 total in `blk.64`, including 4 `nextn.*` tensors |
+
+The NextN layer is itself dense: Q4_K gate/up, Q6_K down, full attention, and
+`nextn.eh_proj/enorm/hnorm/shared_head_norm`. The optional NextN embedding and
+head tensors are absent: embedding falls back to `token_embd.weight`, while the
+head must fall back to this model's distinct Q6_K `output.weight` (the file is
+untied).
+
+### 2.2 Device policy
+
+| Device | Role | Rule |
+| --- | --- | --- |
+| GPU0, Radeon Pro W7900, 48 GiB | Canonical baseline, retained profiles, final comparisons | Every llama.cpp-vs-hipEngine performance ratio is measured here. |
+| GPU1, Radeon RX 7900 XTX, 24 GiB | Parallel build/smoke, correctness, micro-screening | May be used to shorten bring-up. A result is compared only with a same-GPU control and never promoted as a W7900 ratio. |
+
+Both devices are `gfx1100`, so code correctness and many shape decisions
+transfer. Clock, memory capacity, firmware residency, and absolute throughput do
+not. Every artifact records physical device name, logical selector, and VRAM.
+Avoid simultaneous performance measurements on the same physical GPU. GPU0 and
+GPU1 work may overlap only when CPU/I/O contention is either irrelevant
+(functional smoke) or explicitly excluded from retained timing.
+
+### 2.3 Software identity
+
+Canonical llama.cpp uses Vulkan device `Vulkan0`, which enumerates as the W7900,
+with RADV/Mesa `26.1.4`. Canonical hipEngine uses `HIP_VISIBLE_DEVICES=0`,
+target `gfx1100`, and the hermetic TheRock environment from
+`scripts/run_w7900_readme_refresh.sh`.
+
+The refreshed Release build completed successfully. Initial binary SHA-256s are
+`0d466d22...98759` (`llama-bench`) and `e83a9d8d...5a1e3`
+(`llama-server`); retained artifacts record the full hashes.
+
+A compiler/runtime/driver update opens a new baseline row; it never silently
+replaces the old denominator.
+
+---
+
+## 3. One-to-one benchmark contract
+
+### 3.1 AR prefill/decode matrix
+
+Two complementary rows are required:
+
+1. **Standardized kernel-oriented baseline:** llama-bench `pp512`, `pp4096`, and
+   `tg128`, one discarded warmup and at least five measurements.
+2. **Context-matched request baseline:** exact token prompt `[9707] * N`,
+   `N in {512,4096}`, 128 requested outputs, greedy/top-1, EOS ignored, prompt
+   cache disabled. This captures context-dependent decode and the real server
+   path that standalone `tg128` does not.
+
+hipEngine uses the same token IDs and lengths, one resident model, reset between
+runs, bulk prefill, production one-step state-bound graph decode, and separate
+prefill/decode timers. Graph capture/instantiate/destruction is recorded
+separately and excluded from steady-state decode only when llama.cpp's compared
+row also excludes one-time setup.
+
+Required columns:
+
+- prompt tokens, returned/timed output transitions, and exact token IDs;
+- prefill ms and tok/s;
+- decode complete wall ms/token and tok/s;
+- graph/capture/startup scope;
+- model load and peak memory outside the throughput denominator;
+- warmup and all raw measurement samples.
+
+### 3.2 Natural-prompt MTP matrix
+
+The canonical MTP gate is the committed 10-prompt
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl` suite. It covers `code`,
+`general_en`, `general_ja`, and `mixed_ja_en`, with the fixed six-train/four-
+heldout split from `BENCHMARK.md`.
+
+Initial settings:
+
+- greedy: temperature `0`, top-k `1`, top-p `1`, min-p `0`, seed `12345`;
+- reasoning `off` on both engines;
+- f16 K/V in llama.cpp; hipEngine's current exact/default BF16 K/V is disclosed
+  as the one remaining execution-format difference;
+- llama.cpp `--spec-type draft-mtp`;
+- start with B2 (`--spec-draft-n-max 2`) because the historical 27B natural
+  suite favored B2, then sweep B1-B4 on the new build rather than inheriting the
+  old optimum;
+- request 25 outputs and report 24 timed decode transitions for the cross-engine
+  table, following `MTP-LLAMACPP-PARITY.md`;
+- retain client/request wall separately from engine-reported generation wall.
+
+Every MTP row includes proposed drafts, accepted drafts, accepted/output,
+visible outputs, target passes, draft/target/accept-commit/replay timings, and
+complete cycle wall. A no-MTP run from the same harness/suite is the only valid
+MTP speedup denominator. Token-repeat MTP at 512/128 and 4096/128 remains an
+artificial perfect-acceptance diagnostic, never the natural-prompt headline.
+
+### 3.3 Comparison rules
+
+- Same GGUF, prompt token IDs, output horizon, GPU, backend revision, driver,
+  cache policy, sampling, warmup, and timing boundary or the cells are marked
+  non-comparable.
+- `llama.cpp predicted_n / predicted_ms` includes one untimed first token. Use
+  transition-normalized fields for cross-engine decode.
+- hipEngine BF16 KV vs llama.cpp F16 KV is always visible in the table. Do not
+  describe it as bit-identical execution.
+- A profile and a throughput run are separate runs. Timestamp-query, debug,
+  validation, or trace overhead never enters a topline.
+- Single-prompt or repeated-token results can bring up a path but cannot retain
+  an MTP optimization.
+
+---
+
+## 4. Fine-grained profiling contract
+
+### 4.1 llama.cpp Vulkan
+
+Use three levels, in order:
+
+1. **Request phase timing:** `llama-server --perf` response timings for prompt
+   and generation, plus client wall from `scripts/llamacpp_mtp_bench.py`.
+2. **Per-GGML-op GPU timestamps:** run a short, isolated leaf request with
+   `GGML_VK_PERF_LOGGER=1`. The upstream Vulkan backend uses a query pool and
+   prints operation/fusion name, call count, mean microseconds, total
+   microseconds, and aggregate GPU time. Keep the default non-concurrent logger
+   for per-op attribution. Parse it into a compact Amdahl JSON grouped by phase,
+   op, shape, count, and total time.
+3. **Escalation only if unresolved:** enable `GGML_VK_DEBUG_MARKERS=1` and a
+   Vulkan/RADV trace or use a separate instrumented llama.cpp worktree. The
+   existing `LLAMA_MTP_STAGE_TIMINGS` patch is not present in clean upstream
+   `ee0445c99`; do not claim those fields from the clean binary. Apply/update an
+   instrumentation patch only in a separate profile build and keep the clean
+   binary as the speed denominator.
+
+The Vulkan perf logger synchronizes for query results and can perturb graph
+submission. Its output ranks work; it does not establish throughput.
+
+### 4.2 hipEngine
+
+- AR eager/graph leaf: `scripts/gguf_decode_rocprof.py`,
+  `scripts/gguf_packed_ar_rocprof.py`, or selected regions in
+  `scripts/qwen35_gguf_bench.py`.
+- MTP leaf: `scripts/gguf_mtp_draft_rocprof.py` and
+  `scripts/gguf_mtp_verifier_rocprof.py`; never profile the parent prompt-suite
+  process.
+- Prebuild every JIT object outside rocprofv3, pass a compiler-version file, and
+  require cached builds.
+- Compact summaries report kernel family, exact symbol, calls/output, total and
+  per-output time, wall share, grid/workgroup, VGPR/SGPR/LDS/scratch when
+  available, and unmatched residual wall.
+
+### 4.3 Reconciliation gate
+
+For each AR and MTP profile, record:
+
+```text
+complete wall = GPU kernel/query sum + host/submission/sync residual
+```
+
+If the components differ from complete wall by more than 10%, first explain
+queue overlap, asynchronous timestamps, untimed sampling, or synchronization
+boundaries. Do not choose a kernel target from an unreconciled trace.
+
+---
+
+## 5. Prior work: what transfers and what does not
+
+### 5.1 Transfer directly from Qwen3.5/Qwen3.6 MoE GGUF
+
+- GGUF scanner, quant metadata, raw/replacement weight ownership, Q4_K/Q6_K/Q8
+  kernels, T16/X8 decode layouts, rows>1 MMQ/WMMA prefill, and resident memory
+  accounting.
+- Hybrid 48-GDN/16-full-attention execution, Conv/GDN state, paged K/V,
+  state-bound one-step graph replay, and exact graph/eager state oracles.
+- MTP hidden-seed, proposal, target verify, transactional K/V, accept/commit,
+  rollback/reseed, natural category suite, transition-normalized llama.cpp
+  comparison, and B1/B2 graph ownership.
+- Audit discipline: profile first, rank by time share, keep exact additive
+  micro-wins, and re-profile after structural changes.
+
+### 5.2 Dense-specific work that must be added
+
+- NextN maps currently assume MoE router/expert/shared-expert slots. The real
+  `blk.64` has dense `ffn_gate`, `ffn_up`, and `ffn_down` instead.
+- Dense NextN materialization and execution must reuse the existing registered
+  dense FFN chain rather than emulate one expert or add dispatch branches.
+- Dense verifier rows have no router/group/scatter cost; their highest-impact
+  target is expected to be gate+up/down projection work, but only a fresh
+  profile may establish priority.
+- Dense model bandwidth and FFN shapes differ materially from sparse MoE. MoE
+  expert compaction, selected-expert sidecars, router tuning, and selected-lane
+  kernels do not transfer.
+
+### 5.3 Lessons that constrain this campaign
+
+1. **Layout before dot intrinsics.** The largest Q4 decode gains came from
+   coalesced/replacement layouts; direct dp4a retries lost when activation prep
+   or layout was wrong.
+2. **M=1 is not WMMA by default.** Use GEMV/vector work for AR decode; use
+   MMQ/WMMA for prefill or multi-row verification only after shape measurement.
+3. **Launch removal is not enough.** Prior megakernels and graph segmentation
+   lost by reducing occupancy or breaking state. Fusion must remove measured
+   memory traffic while preserving the fast layout.
+4. **One-step state-bound graph is the safe baseline.** Multi-step replay has
+   produced token/state drift.
+5. **Speculative economics need a complete ledger.** Acceptance alone and
+   verifier-derived B0 rows are not speed evidence.
+6. **No single-prompt optimization.** Full/train/heldout/category gates decide
+   every MTP keep/revert.
+7. **Profile after every structural keep.** The top bucket changes; historical
+   MoE or PARO profiles cannot choose this dense GGUF target.
+8. **Reject tiny ceilings early.** LDS, broad geometry, wave64, generic
+   scheduler flags, and allocation-only output buffers need a current measured
+   bottleneck before any implementation.
+
+---
+
+## 6. Current bring-up finding
+
+AR block discovery is present: hipEngine correctly identifies 64 executable
+blocks and excludes trailing `blk.64` from the AR layer count. The first GPU1
+resident AR smoke nevertheless fails before allocation because the dense root
+map hardcodes a tied head and rejects the real Q6_K `output.weight` as
+unexpected:
+
+```text
+MissingGGUFTensorError: 'unexpected tensors: output.weight'
+```
+
+Dense MTP is also **not yet functional**. The first strict call-spec preflight
+fails independently:
+
+```text
+MissingGGUFTensorError:
+MTP block 64 has no GGUF tensor slot 'ffn_gate_inp'
+```
+
+`build_qwen35_gguf_mtp_draft_tensor_plans()` and the separate
+`qwen35_gguf_nextn` map currently enumerate the 20-tensor MoE NextN contract.
+Untied dense root support is the first AR hard blocker; architecture-shaped
+dense NextN mapping follows immediately. No MTP number is valid until a dense
+synthetic RED fixture, the real 15-tensor inventory, and one-step dense NextN
+correctness are green.
+
+---
+
+## 7. Prioritized execution plan
+
+| Priority | ID | Work | Exit gate / impact rule | Status |
+| ---: | --- | --- | --- | --- |
+| 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, B2 natural25, and B1-B4 sweep artifacts. | in progress |
+| 0 | D27-F0 | Add untied dense root-head support, then prove dense GGUF AR load/prefill/decode on GPU1 and GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | blocked on RED |
+| 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | blocked on RED |
+| 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | blocked by F1 |
+| 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | blocked by F0/F2 |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | blocked by M1 |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | blocked by M1 |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | blocked by M1 |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
+| 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
+
+### Impact admission rule
+
+Before coding an optimization, write down:
+
+```text
+ceiling_ms = current complete-wall bucket ms
+expected_saved_ms = ceiling_ms * credible reducible fraction
+engineering/risk = low | medium | high
+```
+
+Normally admit only work with a credible **>=5% complete-wall ceiling** or
+**>=0.20 ms/token** saving. Smaller work is admitted when it is an exact,
+low-risk additive win in an already-open family or removes a concrete blocker.
+Never spend a campaign iteration on a lower-ceiling candidate while a higher-
+ceiling measured bucket has an untried credible design.
+
+The first optimization target is deliberately **not preselected**. Dense Q4_K
+FFN, Q6_K down/lm-head, GDN prefill, attention, or host submission may lead;
+D27-M1 decides.
+
+---
+
+## 8. Correctness and promotion gates
+
+### Dense NextN RED/GREEN order
+
+1. Synthetic dense Qwen35 GGUF with one trailing NextN block: exact required,
+   optional, unexpected, shape, qtype, and fallback contracts.
+2. CPU reference for the dense NextN FFN chain; keep the existing MoE CPU
+   oracle untouched or select a separate registered variant.
+3. Real file inventory/call-spec test guarded by model existence.
+4. One-step GPU result versus CPU/llama oracle.
+5. Multi-step Conv/GDN/KV lifecycle, rollback, reseed, and reset reuse.
+6. Full natural category MTP suite with true AR and exact/default semantics.
+
+New/ported kernel gates remain KL <= 0.05 and top-1 >= 90%, plus a profile trace
+showing the expected symbol. Dense support must be selected through model/layer
+plugins and the four-axis registry; do not add backend/quant branches to engine
+or model dispatch. Every fused path keeps an unfused fallback.
+
+### Performance keep/revert
+
+Keep only when:
+
+- the intended profiled family improves;
+- complete unprofiled wall improves on the same GPU and protocol;
+- all primary shapes are non-regressive;
+- AR IDs/state or MTP full/train/heldout/category gates pass;
+- memory does not regress without an explicitly accepted tradeoff;
+- no benchmark-specific token/prompt branch exists.
+
+A micro-only win may be retained as a primitive but is not promoted to runtime
+until the complete-path gate wins.
+
+---
+
+## 9. Canonical commands (baseline skeleton)
+
+### Latest llama.cpp Vulkan build
+
+```bash
+cd /home/lhl/llama.cpp/llama.cpp-vulkan
+git pull --ff-only
+cmake -S . -B build \
+  -DGGML_VULKAN=ON -DGGML_HIP=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j 16
+```
+
+### llama-bench W7900 AR
+
+```bash
+/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+  -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
+  -dev Vulkan0 -ngl 99 -fa on -ctk f16 -ctv f16 \
+  -p 512,4096 -n 128 -r 5 -o json
+```
+
+### llama.cpp W7900 natural AR/MTP
+
+```bash
+python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server \
+  --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
+  --ctx-size 8192 --gpu-layers 99 --flash-attn on \
+  --cache-type-k f16 --cache-type-v f16 \
+  --draft-max 2 --mode both --protocol natural \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 \
+  --server-extra-arg=-dev --server-extra-arg=Vulkan0 \
+  --server-extra-arg=--reasoning --server-extra-arg=off \
+  --server-extra-arg=--perf \
+  --output /tmp/qwen36-27b-vulkan-natural25.json
+```
+
+### hipEngine GGUF AR development smoke on GPU1
+
+Use the same hermetic TheRock environment as the W7900 wrapper, changing only
+`HIP_VISIBLE_DEVICES=1` and labeling the physical RX 7900 XTX:
+
+```bash
+HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py \
+  --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --prompt-length 8 --decode-tokens 1 \
+  --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 0 \
+  --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk \
+  --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --json /tmp/qwen36-27b-gguf-gpu1-smoke.json
+```
+
+Final GPU0 rows use the full `env -i` TheRock wrapper, cached builds, one
+warmup, at least three measured resets, and production graph decode.
+
+---
+
+## 10. Campaign scoreboard
+
+Do not fill cells from historical PARO, MoE, HIP, or another GPU.
+
+| Date | Revision / route | GPU | Shape | Prefill tok/s | AR decode tok/s | MTP decode tok/s | MTP/AR | Correctness | Artifact |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 2026-08-04 | llama.cpp Vulkan `ee0445c99`, baseline pending | W7900 | 512/128, 4K/128, natural25 | — | — | — | — | pending | — |
+| 2026-08-04 | hipEngine `4b0d8450d`, baseline pending | W7900 | 512/128, 4K/128, natural suite | — | blocked: untied dense head map | blocked: dense NextN map | — | AR/MTP blocked pre-allocation | — |
+
+Update this table only with retained or explicitly labeled blocked/diagnostic
+rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines
+also update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and compact JSON
+artifacts when measured.
