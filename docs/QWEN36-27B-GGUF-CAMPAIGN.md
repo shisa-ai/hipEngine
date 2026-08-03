@@ -98,7 +98,7 @@ untied).
 | Device | Role | Rule |
 | --- | --- | --- |
 | GPU0, Radeon Pro W7900, 48 GiB | Canonical baseline, retained profiles, final comparisons | Every llama.cpp-vs-hipEngine performance ratio is measured here. |
-| GPU1, Radeon RX 7900 XTX, 24 GiB | Parallel build/smoke, correctness, micro-screening | May be used to shorten bring-up. A result is compared only with a same-GPU control and never promoted as a W7900 ratio. |
+| GPU1, Radeon RX 7900 XTX, 24 GiB | Parallel build, lightweight correctness, micro-screening | May be used when the allocation fits. The current full resident 27B path does not fit (25.69 GiB owned / 26.90 GiB sampled on GPU0). A result is compared only with a same-GPU control and never promoted as a W7900 ratio. |
 
 Both devices are `gfx1100`, so code correctness and many shape decisions
 transfer. Clock, memory capacity, firmware residency, and absolute throughput do
@@ -300,18 +300,27 @@ boundaries. Do not choose a kernel target from an unreconciled trace.
 
 ## 6. Current bring-up finding
 
-AR block discovery is present: hipEngine correctly identifies 64 executable
-blocks and excludes trailing `blk.64` from the AR layer count. The first GPU1
-resident AR smoke nevertheless fails before allocation because the dense root
-map hardcodes a tied head and rejects the real Q6_K `output.weight` as
-unexpected:
+AR block discovery correctly identifies 64 executable blocks and excludes
+trailing `blk.64`. The first bring-up then exposed and fixed four generic
+contract gaps rather than bypassing them:
 
-```text
-MissingGGUFTensorError: 'unexpected tensors: output.weight'
-```
+1. dense root mapping now selects an untied `output.weight` when present;
+2. Q4_K token embeddings stay raw GGUF so the registered lookup kernel can read
+   them instead of receiving a linear-only pack8 layout;
+3. the small-row native full-attention resolver no longer accepts a
+   `cpu_reference` fallback for device pointers; and
+4. GDN decode inserts the existing unfused FP32-to-BF16 cast only when the
+   resident `ssm_out` layout cannot consume FP32 directly.
 
-Dense MTP is also **not yet functional**. The first strict call-spec preflight
-fails independently:
+The hermetic W7900 eager 8/1 smoke is now green: finite logits, final token
+`9707`, 0.23738 s prefill, 0.04907 s decode, 25.69 GiB tracked resident peak,
+and 26.90 GiB sampled HIP use. The 33.70 prefill tok/s and 20.38 decode tok/s
+are **bring-up diagnostics only** (one sample, tiny prompt, no graph), not
+campaign performance claims. The same full allocation cannot fit GPU1's 24 GiB
+VRAM; GPU1 remains useful for smaller/component work.
+
+Dense MTP is still **not yet functional**. Strict call-spec construction fails
+independently:
 
 ```text
 MissingGGUFTensorError:
@@ -320,10 +329,9 @@ MTP block 64 has no GGUF tensor slot 'ffn_gate_inp'
 
 `build_qwen35_gguf_mtp_draft_tensor_plans()` and the separate
 `qwen35_gguf_nextn` map currently enumerate the 20-tensor MoE NextN contract.
-Untied dense root support is the first AR hard blocker; architecture-shaped
-dense NextN mapping follows immediately. No MTP number is valid until a dense
-synthetic RED fixture, the real 15-tensor inventory, and one-step dense NextN
-correctness are green.
+Architecture-shaped dense NextN mapping is now the first hard blocker. No MTP
+number is valid until a dense synthetic RED fixture, the real 15-tensor
+inventory, and one-step dense NextN correctness are green.
 
 ---
 
@@ -332,7 +340,7 @@ correctness are green.
 | Priority | ID | Work | Exit gate / impact rule | Status |
 | ---: | --- | --- | --- | --- |
 | 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, B2 natural25, and B1-B4 sweep artifacts. | in progress |
-| 0 | D27-F0 | Add untied dense root-head support, then prove dense GGUF AR load/prefill/decode on GPU1 and GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | blocked on RED |
+| 0 | D27-F0 | Add untied dense root/embedding/layout support, then prove dense GGUF AR load/prefill/decode on GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | 8/1 eager green; primary gates pending |
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | blocked on RED |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | blocked by F1 |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | blocked by F0/F2 |
@@ -466,7 +474,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | Date | Revision / route | GPU | Shape | Prefill tok/s | AR decode tok/s | MTP decode tok/s | MTP/AR | Correctness | Artifact |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | 2026-08-04 | llama.cpp Vulkan `ee0445c99`, baseline pending | W7900 | 512/128, 4K/128, natural25 | — | — | — | — | pending | — |
-| 2026-08-04 | hipEngine `4b0d8450d`, baseline pending | W7900 | 512/128, 4K/128, natural suite | — | blocked: untied dense head map | blocked: dense NextN map | — | AR/MTP blocked pre-allocation | — |
+| 2026-08-04 | hipEngine AR bring-up after `4b0d8450d` | W7900 | 8/1 diagnostic; primary gates pending | 33.70 diagnostic | 20.38 diagnostic | blocked: dense NextN map | — | finite 8/1 eager; primary AR/MTP pending | `/tmp/hipengine-qwen36-27b/hipengine-gpu0-ar-smoke.json` (not retained) |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

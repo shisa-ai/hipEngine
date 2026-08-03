@@ -15,8 +15,8 @@ LINEAR_ATTENTION = "linear_attention"
 _DENSE_ROOT_SLOTS = {
     "token_embedding": "token_embd.weight",
     "output_norm": "output_norm.weight",
-    # Dense Qwen3.5 GGUF omits a separate output tensor for this local target.
-    # The lm-head is tied to token_embd.weight and materialization should alias it.
+    # Dense exports may tie the head by omitting output.weight. Inventory-based
+    # config overrides this default when an untied output tensor is present.
     "lm_head": "token_embd.weight",
 }
 
@@ -108,6 +108,7 @@ class Qwen35GGUFConfig:
     ssm_state_size: int
     ssm_conv_kernel: int
     ssm_time_step_rank: int
+    lm_head_tensor_name: str
     expert_count: int = 0
     expert_used_count: int = 0
     expert_feed_forward_length: int = 0
@@ -708,6 +709,12 @@ def qwen35_gguf_config_from_metadata(info: GGUFModelInfo) -> Qwen35GGUFConfig:
         for layer_id in range(block_count)
     )
     token_embedding = info.tensor("token_embd.weight")
+    tensor_names = {tensor.name for tensor in info.tensors}
+    lm_head_tensor_name = (
+        "output.weight"
+        if architecture == "qwen35moe" or "output.weight" in tensor_names
+        else "token_embd.weight"
+    )
     expert_count = int(metadata.get(f"{prefix}.expert_count", 0) or 0)
     expert_used_count = int(metadata.get(f"{prefix}.expert_used_count", 0) or 0)
     expert_ffn = int(metadata.get(f"{prefix}.expert_feed_forward_length", 0) or 0)
@@ -737,6 +744,7 @@ def qwen35_gguf_config_from_metadata(info: GGUFModelInfo) -> Qwen35GGUFConfig:
         ssm_state_size=_int_metadata(metadata, f"{prefix}.ssm.state_size"),
         ssm_conv_kernel=_int_metadata(metadata, f"{prefix}.ssm.conv_kernel"),
         ssm_time_step_rank=_int_metadata(metadata, f"{prefix}.ssm.time_step_rank"),
+        lm_head_tensor_name=lm_head_tensor_name,
         expert_count=expert_count,
         expert_used_count=expert_used_count,
         expert_feed_forward_length=expert_ffn,
@@ -1182,7 +1190,10 @@ def _build_layer_map(
 
 
 def _root_slots_for_config(config: Qwen35GGUFConfig) -> Mapping[str, str]:
-    return _MOE_ROOT_SLOTS if config.is_moe else _DENSE_ROOT_SLOTS
+    root_slots = _MOE_ROOT_SLOTS if config.is_moe else _DENSE_ROOT_SLOTS
+    if root_slots["lm_head"] == config.lm_head_tensor_name:
+        return root_slots
+    return {**root_slots, "lm_head": config.lm_head_tensor_name}
 
 
 def _layer_slot_suffixes(config: Qwen35GGUFConfig, layer_type: str) -> dict[str, str]:

@@ -202792,3 +202792,47 @@ Vulkan local sizes verbatim will close the measured gap.
   reconciliation, transfer/rejection lessons, RED/GREEN order, impact admission,
   prioritized phase gates, commands, and an initially blocked scoreboard. No
   fresh speed result is claimed yet.
+
+### Dense 27B AR 8/1 bring-up — GREEN on W7900
+
+- Add a real-file RED for the untied dense head. It fails exactly on
+  `unexpected tensors: output.weight`; make `Qwen35GGUFConfig` inventory-aware
+  for the LM-head source while preserving tied Qwen3.5 and required untied MoE
+  behavior. The strict 27B map now selects Q6_K `output.weight`, retains
+  `token_embd.weight` separately, executes 64 layers, and ignores only
+  `blk.64`.
+- The next RED reaches embedding dispatch and finds that generic rank-2 Q4_K
+  materialization used the linear-only pack8 layout. Preserve raw GGUF for
+  semantic token-embedding slots across Q4_K/Q5_K/Q6_K/Q8_0; dense linear Q4_K
+  remains pack8. This reuses the existing registry lookup ABI and avoids a
+  second embedding layout/kernel.
+- The small-prompt native full-attention RED finds the four-axis resolver's
+  broad FP16/CPU fallback returning NumPy `full_attn_prefill` for device
+  pointers when `gguf_q4_k_m` has no exact plugin. Gate the optional plugin on
+  exact-key registration, then use the existing native GGUF fallback. No
+  backend/quant branch is added.
+- Decode then reaches the 27B Q5_K `ssm_out`, which is resident BF16 while GDN
+  produces FP32. Add a layout-capability check: retain direct FP32 input for
+  Q8T16 and any future registered layout, but insert the existing unfused
+  FP32-to-BF16 cast when the resident linear dispatch cannot consume FP32.
+  Apply the same rule to scalar and indexed-row decode.
+- GPU1 cannot host the complete current resident path: materialization reaches
+  OOM on the 24 GiB RX 7900 XTX. The successful W7900 run reports 25.6908 GiB
+  owned/tracked peak and 26.9004 GiB sampled HIP use, so GPU1 remains a
+  component/lightweight lane rather than a full-model lane.
+- Hermetic TheRock W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1`
+  plus `scripts/qwen35_gguf_bench.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 8
+  --decode-tokens 1 --warmup-runs 0 --measured-runs 1
+  --warmup-decode-tokens 0 --persistent-session --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode
+  --no-graph-replay-decode`. Result: load **169.326 s**, finite logits, final
+  token **9707**, prefill **0.237383 s / 33.701 tok/s**, decode **0.049068 s /
+  20.380 tok/s**. This one-sample tiny-prompt eager result is functional
+  evidence only, not a performance claim. Raw local artifact:
+  `/tmp/hipengine-qwen36-27b/hipengine-gpu0-ar-smoke.json`.
+- Focused validation passes **77 with 4 local-fixture skips** across mapping,
+  embedding dispatch, GDN/prefill routing, and existing MoE MTP mapping. Ruff
+  and pycompile pass all touched Python paths. Dense NextN mapping remains the
+  next functional blocker before MTP.
