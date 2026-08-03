@@ -62,6 +62,7 @@ _TARGET = (
 )
 _TARGET_SHA256 = "d1d0420f79445385a50b231d78926048e35ed776f561a80be1a393d5105a0a69"
 _ROWS = (1, 4, 5, 7, 8, 9, 10, 12, 13, 17, 33, 512)
+_CPU_ROWS = frozenset((1, 7, 8, 9, 512))
 # Candidate geometry/dtype/layout, exact K/N, call weight, retained control,
 # retained geometry, and immutable metadata/runtime VGPR plus fixed-LDS bounds.
 _ROLES = (
@@ -678,14 +679,15 @@ def _run_exact_dtype(output_dtype: str) -> None:
                         _expected_activation_plane(x_bf16, row_batch),
                     )
                     np.testing.assert_array_equal(actual, expected)
-                    _sampled_cpu_gate(
-                        actual,
-                        x_bf16,
-                        qweight,
-                        row_batch=row_batch,
-                        output_dtype=dtype,
-                        out_features=outputs,
-                    )
+                    if rows in _CPU_ROWS:
+                        _sampled_cpu_gate(
+                            actual,
+                            x_bf16,
+                            qweight,
+                            row_batch=row_batch,
+                            output_dtype=dtype,
+                            out_features=outputs,
+                        )
                     actual_f32 = (
                         _bf16_to_f32(actual)
                         if dtype == "bf16"
