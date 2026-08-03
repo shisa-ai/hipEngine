@@ -68,7 +68,7 @@ _H5Y_PRIMITIVE_WRAPPER_SHA256 = (
     "8e5a2ca92c84c4414e2a7ad70dcf47653d0da3b1c1570bbe31e5a22810af327a"
 )
 _H5Y_COMPOSITE_WRAPPER_SHA256 = (
-    "c9cb4b2ccc8f5b3cc2831eb73a25e50e2d42d16e48bf9bb52074722a96a12339"
+    "eda4458dc396d7d5c414738c476c62899ec89d8c8bf2cf33643309ac73807283"
 )
 _H5Y_GUARDED_COMPUTE = """#pragma unroll
     for (int row_index = 0; row_index < ROW_BATCH; ++row_index) {

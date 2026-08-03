@@ -2679,6 +2679,17 @@ registered H7G/H7H plus producer/pack fallback; forbid any subset, resource
 rewrite, recompile, or favorable rerun
 ([H8I target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json)).
 
+Do **not** retain H8I. The complete first object passes: all **24** stage
+specializations are exact at partition and final-output boundaries, local32,
+LDS/private/scratch/spill-free, and within role VGPR ceilings at runtime maxima
+**80/200/168/200/168/168**. Its physical validity does not transfer to speed.
+Every actual-weight role loses both event and synchronized wall; the weighted
+188-call aggregate regresses **222.555→289.013 ms event (+29.861%)** and
+**225.438→286.922 ms wall (+27.273%)**. Remove the HIP body/exports, Python
+wrappers/keys, gfx1151 exclusions, and RED test. Keep H7G/H7H plus exact
+producer/pack fallback and add no owner, allocation, capability, or source map
+([H8I rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

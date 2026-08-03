@@ -122,7 +122,9 @@ superseded by its three-route runtime-VGPR first-object physical rejection in
 [`2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json).
 The clean post-H8H rerank and target-only H8I exact stream-ordered Q5 logical-K
 partition-accumulation contract is recorded in
-[`2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json`](results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json).
+[`2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json`](results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json),
+superseded by its complete six-role both-clock rejection in
+[`2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json).
 The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
 rejection are also summarized below; the rejection packet is
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json),
