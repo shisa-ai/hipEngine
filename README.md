@@ -1206,6 +1206,20 @@ gate
 ([H8B runtime candidate](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
 [H8B target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
+H8B is now retained gfx1100 source production at clean commit `6b9411b15`.
+Selector-unset qualification preserves exact M512 state and **223 packs / 2,155
+dispatches**, improves fixed disabled rollback **438.114→439.243 tok/s
+(+0.258%, 5/5)**, and wins clean 512/1K/4K by
+**+0.109%/+0.0097%/+0.055%**. The frozen post-commit wall is **440.893
+tok/s** from **440.893/441.722/441.411/440.829/439.543**, all exact and
+lifecycle-clean. Five-request tracing records **1,146.420-ms** median kernel
+sum / **1,166.621-ms** span, **2,155 dispatches**, one queue/stream, and zero
+compiler activity. This is **+0.122%** over H8A **440.353 tok/s**, **+160.089%**
+over campaign start, and **1.56680×** behind matched llama.cpp HIP **690.791
+tok/s / 714.008 ms**. The remaining kernel gaps are Q5 **172.115 ms**,
+IQ-down **119.303**, attention **93.837**, and Q6 **58.652**
+([H8B production](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
