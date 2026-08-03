@@ -1338,6 +1338,16 @@ aggregate to win both clocks in one immutable screen; no launch-bound sweep,
 layer subset, rewrite, recompile, or favorable rerun is admissible
 ([H8J target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
 
+**WPF-H8J is rejected at its first-object physical gate.** AMD clang preserves
+H6T's exact **7,920-byte / 1,384-slot** instruction stream (apart from two
+PC-relative table relocations) and its **VGPR101 / SGPR78 / LDS384 / spill0**
+metadata despite `launch_bounds(128,4)`. Because **101 > 96**, the object still
+fits only **3 complete four-wave workgroups per SIMD**, not the required four.
+The no-rewrite rule skips correctness, runtime tracing, and timing; every H8J
+source/RED surface is removed and H8B production remains **440.893 tok/s / 2,155
+dispatches**, **1.5668×** behind matched llama.cpp HIP
+([H8J rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

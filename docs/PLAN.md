@@ -3480,6 +3480,16 @@ physical, named-trace, both-clock screen; forbid launch-bound sweeps, subsets,
 rewrites, recompiles, and favorable reruns
 ([H8J target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
 
+Reject **WPF-H8J** at the first-object physical gate. The one
+`launch_bounds(128,4)` object keeps H6T's relocation-normalized **7,920-byte /
+1,384-slot** instruction stream and **VGPR101 / SGPR78 / LDS384 / spill0**
+metadata. Because **101>96**, it still admits only **3 complete four-wave
+workgroups/SIMD** instead of four. Honor the no-resource-rewrite/no-rerun rule:
+skip correctness, runtime tracing, all-layer timing, and runtime/source work;
+remove candidate plus RED and retain H6T/H8B production **440.893 tok/s / 2,155
+dispatches**
+([H8J rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

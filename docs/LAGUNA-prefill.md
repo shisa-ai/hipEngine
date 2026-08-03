@@ -2174,6 +2174,18 @@ wall. No layer/expert/routing/prompt/token/length/launch-bound/rewrite/recompile
 favorable-rerun subset is admissible
 ([H8J target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
 
+Reject **WPF-H8J** at the first-object physical gate. Its single compiler build
+keeps H6T and H8J relocation-normalized instruction streams identical at
+**7,920 bytes / 1,384 slots**, including **23 loads / 216 FMAs / 24
+permlanex16 / 96 DPP adds / 24 LDS b128 loads / 12 LDS stores / 2 barriers**.
+Metadata is also unchanged at **VGPR101 / SGPR78 / LDS384 / private0 / spill0 /
+wave32**. `launch_bounds(128,4)` therefore does not reach the required ≤96
+VGPR; 101 VGPR still rounds 15 register waves down to **3 complete four-wave
+workgroups/SIMD**. Under the frozen no-rewrite/no-rerun rule, do not execute
+candidate correctness, runtime trace, or all-layer timing. Remove all H8J
+source/RED surfaces and retain H6T plus H8B **440.893 tok/s / 2,155 dispatches**
+([H8J rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
