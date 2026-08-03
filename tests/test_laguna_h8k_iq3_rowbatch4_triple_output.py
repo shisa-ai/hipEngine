@@ -145,7 +145,7 @@ _PHYSICAL_CONTRACT = {
     "permlanex16": 12,
     "dpp_adds": 48,
     "lds_load_b128": 12,
-    "lds_stores": 12,
+    "lds_stores": 6,
     "barriers": 2,
 }
 _TRACE_CONTRACT = {
