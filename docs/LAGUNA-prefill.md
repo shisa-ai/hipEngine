@@ -1999,6 +1999,23 @@ RED test; skip state/topology/fixed/length gates and retain H8B/H7H production
 ([H8C rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-shared-q5-dual-consumer-rejected.json) ·
 [H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
 
+Reject **WPF-H8D complete-class exact-value Q6 F32 SGEMM** before publishing a
+target or adding runtime policy. The cached M512 screen covers all six ordinary
+Q6 shapes/**144 calls**, comparing current H6U/H7I/H5I controls with exact
+Q6-to-F32 expansion, exact BF16-to-F32 widening, rocBLAS SGEMM, and BF16 result
+casting where required. Complete activations and sampled actual-model weights
+are F32-bit exact, all outputs are finite, maximum primitive row KL is
+**3.42e-7**, top-1 is **100%**, lifecycle recovers, and compiler count is zero.
+
+Five shapes win both HIP-event and synchronized-wall clocks. The weighted
+diagnostic improves **74.099→40.969 ms (1.809×)** event and **74.469→41.232
+ms (1.806×)** wall, modeling **32.35/32.09 ms** below H8B's profiled Q6 family.
+F32 K3072×N72 nevertheless regresses **0.03965→0.09167 ms (0.4325×)** event
+and **0.04260→0.09559 ms (0.4456×)** wall. The predeclared complete-class rule
+is binding: do not salvage a favorable 143-call subset, add no target/RED/owner,
+and skip full-model quality. H8B remains production
+([H8D rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

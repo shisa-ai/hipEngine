@@ -1234,6 +1234,19 @@ tok/s**
 ([H8C rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-shared-q5-dual-consumer-rejected.json) ·
 [H8C target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
 
+**WPF-H8D complete-class exact-value Q6 F32 SGEMM is rejected before target
+publication.** A cached all-six-shape/**144-call** M512 screen compares the
+current H6U/H7I/H5I controls with exact Q6-to-F32 expansion, exact BF16-to-F32
+widening, rocBLAS SGEMM, and BF16 result casting where required. Five shapes
+win both clocks and the diagnostic aggregate improves **74.099→40.969 ms
+(1.809×)** by HIP events and **74.469→41.232 ms (1.806×)** by synchronized
+wall. F32 K3072×N72 nevertheless regresses **0.03965→0.09167 ms (0.4325×)**
+event and **0.04260→0.09559 ms (0.4456×)** wall. The frozen complete-class
+rule forbids a post-screen 143-call subset, so no H8D target, RED, runtime, or
+576-step quality gate follows. Production remains H8B **440.893 tok/s / 2,155
+dispatches**
+([H8D rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
