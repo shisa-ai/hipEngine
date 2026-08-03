@@ -2148,6 +2148,32 @@ state/topology, length, and source gates; remove all candidate and RED surfaces;
 retain H8B **440.893 tok/s / 2,155 dispatches**
 ([H8I rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json)).
 
+Select target-only **WPF-H8J exact IQ3 four-workgroup occupancy**. Q5 remains
+numerically largest, but H8I closes its last straightforward exact partition
+publication route. IQ-down is next at a **119.303-ms** matched gap. H6T alone
+owns **45 calls / 264.377 ms**, **96.783%** of current IQ-down and **110.517 ms**
+more than llama.cpp's complete IQ-down family.
+
+H6T is local128 with four wave32s/workgroup, metadata/runtime VGPR **101/104**,
+LDS **384/512**, and scratch0. Against RDNA3's 1,536-VGPR SIMD budget, 104 VGPR
+permits 14 waves but only **3 complete workgroups / 12 resident waves**. Add one
+separately named H6T-equivalent sibling with the sole semantic source change
+`launch_bounds(128,1)→(128,4)`. It must compile and trace at **≤96 VGPR** and
+zero scratch, admitting **4 workgroups / 16 waves (+33.333%)**. This occupancy
+calculation is not a speed claim, and values 2/3/5 are not a sweep.
+
+Freeze RED before source edits. Preserve all 23 global loads, 216 ordered FMAs,
+24 permlanex16, 96 fused DPP adds, 24 LDS b128 loads, 12 LDS stores, two barrier
+sites, three staged scopes, serial wave0→1→2→3 sums, BF16 publication, P64/P256
+traversal, raw ABI, allocation/workspace/dispatches, and registered H6T/H6R/
+H6Q/H6P fallback. Require exact rows1/7/8/9/M512, P64/P65, CPU/poison/finite/
+lifecycle and all **45/45** actual outputs; metadata/runtime VGPR≤96,
+LDS384/512, private/spill/scratch0; named cache-only tracing; then one immutable
+5/15/5 screen where every layer and the aggregate win event and synchronized
+wall. No layer/expert/routing/prompt/token/length/launch-bound/rewrite/recompile/
+favorable-rerun subset is admissible
+([H8J target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

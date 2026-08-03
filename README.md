@@ -1326,6 +1326,18 @@ behind matched llama.cpp HIP
 ([H8I target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json) ·
 [H8I rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json)).
 
+**WPF-H8J exact IQ3 four-workgroup occupancy is the next target-only leaf.**
+H6T owns **45 calls / 264.377 ms**, or **96.783%** of current IQ-down. At
+local128/runtime-VGPR104, its four-wave workgroups fit only **3 complete
+workgroups / 12 resident waves per SIMD**. One separately named, otherwise
+identical `launch_bounds(128,4)` sibling must compile at **≤96 VGPR** and zero
+scratch to admit **4 workgroups / 16 waves**. This **+33.333% resident-wave**
+model is not a speed result. Freeze RED before source changes, preserve every
+H6T operation and byte, and require all **45/45** actual layers plus the
+aggregate to win both clocks in one immutable screen; no launch-bound sweep,
+layer subset, rewrite, recompile, or favorable rerun is admissible
+([H8J target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

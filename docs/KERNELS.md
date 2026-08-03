@@ -2690,6 +2690,26 @@ wrappers/keys, gfx1151 exclusions, and RED test. Keep H7G/H7H plus exact
 producer/pack fallback and add no owner, allocation, capability, or source map
 ([H8I rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json)).
 
+**WPF-H8J exact IQ3 four-workgroup occupancy is target-only.** Retained H6T
+owns **45 calls / 264.377 ms**, **96.783%** of current IQ-down, at local128,
+metadata/runtime VGPR **101/104**, LDS **384/512**, and scratch0. RDNA3's
+1,536-VGPR SIMD budget gives 14 register-limited waves, but four waves per
+workgroup round this down to **3 complete workgroups / 12 resident waves**.
+A separately named H6T-equivalent sibling fixes only `launch_bounds(128,4)` and
+must compile at **≤96 VGPR** to admit **4 workgroups / 16 waves (+33.333%)**.
+This is an occupancy model, not speed evidence.
+
+Freeze RED before executable changes. Preserve all 23 global loads, 216 FMAs,
+24 permlanex16, 96 DPP adds, 24 LDS b128 loads, 12 LDS stores, two barrier
+sites, serial wave sum, BF16 bytes, raw ABI, H6T fallback, allocation/workspace,
+and dispatch count. Require metadata/runtime VGPR≤96, LDS384/512,
+private/spill/scratch0, complete boundary/CPU/all-45 bytes, and a named
+compiler-free trace. The single immutable 5/15/5 actual-routing screen must win
+every layer and the aggregate on event and synchronized wall. Do not sweep
+launch bounds or salvage any layer/expert/prompt/length/rewrite/recompile/rerun
+subset
+([H8J target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
