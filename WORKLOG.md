@@ -203526,3 +203526,38 @@ Vulkan local sizes verbatim will close the measured gap.
   correction logits, and provider output remain exact. Commit this correctness
   unit before clean W7900 natural25 economics; no complete-suite speed claim is
   made from component timings.
+
+### D27-O3 clean dense-local128 natural25 promotion — RETAINED
+
+- Clean commit `03ba1c479efd16701b0376469f936baef051d88b` uses the same GPU0
+  W7900, exact GGUF/model hash, TheRock HIP 7.15, BF16 K/V, cached-only JIT,
+  one warmup, and ten-prompt/240-transition true-AR plus native B1-B3 protocol
+  as retained baseline `4181b85fb`. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-03ba1c479/natural25-native-dense-local128-b1-b3.json`.
+- True AR is noise-flat **20.3719 -> 20.3621 tok/s (-0.048%)**, as expected
+  from the native-verifier-only scope. B1/B2/B3 improve
+  **20.6344/21.7523/21.4672 -> 20.8465/22.1016/21.8403 tok/s**, or
+  **+1.028%/+1.606%/+1.738%**. Complete decode wall falls
+  **1.017%/1.580%/1.708%** and target verify falls
+  **1.100%/1.807%/1.781%**. Own-AR ratios advance
+  **1.0129x/1.0678x/1.0538x -> 1.0238x/1.0854x/1.0726x**.
+- Every one of the 30 prompt/budget rows improves (**+0.125% to +2.720%**).
+  Every full/train/heldout/category rollup improves (**+0.543% to +2.063%**).
+  All 250 visible IDs at each budget match true AR and the prior route; all
+  accepted-count/proposal/cycle ledgers match; every GPU accept summary matches
+  CPU; all stage ledgers reconcile exactly.
+- Tracked peak is byte-identical at **31,133,274,076 bytes / 28.995 GiB** and
+  every allocation frees after close. Model load 173.728 s is excluded. Raw
+  candidate SHA-256 is `ab6619d0...3f91e1`; the exact comparison matrix is
+  `64636470...60544e`.
+- In parallel, an isolated detached-worktree local64 sibling passed eight
+  local256/CPU exactness cases but is **0.696x/0.897x/0.840x/0.913x** local128
+  across FFN-down/QKV/SSM-out/full-V. Reject and remove it; raw timing SHA-256
+  is `6f4b3f4b...a99673`. Local128 remains the unique tested physical width
+  that improves the production matrix.
+- Retain compact artifact
+  `benchmarks/results/2026-08-04-qwen36-27b-dense-local128-retained.json`.
+  B2 stays selected at **22.102 tok/s / 1.0854x own AR**, but remains 67.54%
+  below Vulkan B3 68.082 tok/s. Re-profile the retained native B3 route before
+  admitting another D27-O3 candidate; do not extrapolate the next target from
+  the pre-local128 trace.

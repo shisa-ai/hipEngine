@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact dense local128 verifier GEMV] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: resident-Q4 baseline **20.634/21.752/21.467 -> 20.846/22.102/21.840 tok/s (+1.03%/+1.61%/+1.74%)** by mapping the exact 256-partition dense reduction onto local128 for qualified native c1 shapes; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance and 28.995-GiB peak remain exact, and B2 reaches **1.0854x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-dense-local128-retained.json`.
+
 - [accepted exact resident-Q4 verifier row reuse] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: prior native **18.751/18.752/17.983 -> 20.634/21.752/21.467 tok/s (+10.04%/+16.00%/+19.38%)** by reusing each pack8 gate/up weight across 2-4 rows; every full/train/heldout/category row improves, IDs/state/acceptance remain exact, memory is unchanged at 28.995 GiB, and B2 reaches **1.0678x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`.
 
 - [accepted exact target batching] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: serial-exact **17.128/16.005/14.858 -> 18.751/18.752/17.983 tok/s (+9.48%/+17.17%/+21.03%)** via native row-attention/block-FFN plus c1-association-preserving dense-BF16 rowtile; every full/train/heldout/category row improves with exact IDs/state/acceptance, while tracked peak rises 28.392 -> 28.995 GiB; `benchmarks/results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json`.
