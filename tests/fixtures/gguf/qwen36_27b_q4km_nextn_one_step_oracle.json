@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "model": "Qwen3.6-27B-Q4_K_M.gguf",
+  "model_sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+  "source": {
+    "implementation": "llama.cpp Vulkan LLM_GRAPH_TYPE_DECODER_MTP",
+    "commit": "ee0445c99cffbe8d920b05cad28cb055d7049c0a",
+    "libllama_sha256": "35e49c943a600f584c4a9ebe99fd680488eb7a361862855be16eefac7ecd74f4",
+    "hardware": "AMD Radeon Pro W7900",
+    "input": "token=9707, position=0, zero F32 target-hidden row, empty F16 draft KV"
+  },
+  "input": {
+    "token_id": 9707,
+    "token_dtype": "int32",
+    "position": 0,
+    "target_hidden_dtype": "float32",
+    "target_hidden_shape": [1, 5120],
+    "target_hidden_values": "all zeros",
+    "draft_kv": "empty F16"
+  },
+  "tolerance": {
+    "top1_id": "exact",
+    "top10_ids": "exact",
+    "top10_logits_atol": 0.16,
+    "top10_logits_rtol": 0.0
+  },
+  "full_logit_gate": {
+    "comparison": "llama.cpp Vulkan W7900 vs hipEngine HIP RX 7900 XTX",
+    "vocab_size": 248320,
+    "kl_llamacpp_to_hipengine": 0.0015659130943969145,
+    "kl_threshold": 0.05,
+    "top1_agreement": 1.0,
+    "top1_threshold": 0.9,
+    "max_abs": 0.25402307510375977,
+    "mean_abs": 0.032296475023031235,
+    "llamacpp_logits_sha256": "5815a7416b51d002d789d28edcebcbf3411d7e58d46a266596480bda8b0c9509",
+    "hipengine_logits_sha256": "0fc4cb2288e47710e5e9f080e523119b16351a10947022e2b3993a483a1a4dd6"
+  },
+  "token_id": 46424,
+  "top10": [
+    [46424, 12.934542655944824],
+    [10417, 12.688980102539062],
+    [16451, 12.295648574829102],
+    [1896, 12.122304916381836],
+    [74187, 11.961214065551758],
+    [48, 11.752824783325195],
+    [356, 11.44932746887207],
+    [30454, 11.250663757324219],
+    [26685, 10.702553749084473],
+    [49444, 10.656327247619629]
+  ]
+}

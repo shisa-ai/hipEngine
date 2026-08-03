@@ -69,7 +69,8 @@ class Qwen35GGUFNextNExecutor:
 
     Target-normalized hidden rows enter through ``target_hidden``.  The executor
     applies NextN embedding/hidden normalization and Q8_0 fusion, runs only the
-    mapped trailing full-attention/MoE block, then uses the mapped shared-head
+    mapped trailing full-attention block with its architecture-selected FFN,
+    then uses the mapped shared-head
     norm and target output fallback.  It never mutates or extends the AR map.
     """
 

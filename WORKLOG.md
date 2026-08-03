@@ -202936,3 +202936,52 @@ Vulkan local sizes verbatim will close the measured gap.
   local/GPU skips. Ruff, pycompile, and `git diff --check` pass all changed
   Python paths. Real full-layer oracle comparison and resident one-step
   execution remain D27-F2; no MTP correctness or performance number is claimed.
+
+### Dense 27B NextN resident one-step + independent llama oracle — GREEN
+
+- Exercise the architecture-shaped map through the unchanged resident
+  `Qwen35GGUFNextNExecutor` on GPU1 RX 7900 XTX. The draft-only owner fits:
+  initialization takes 3.029 s and moves free VRAM from 23.91 to 21.79 GiB.
+  Token `9707`, position zero, a zero BF16 target-hidden row, and empty draft KV
+  produce finite full-vocabulary logits with top-1 `46424`. No production math
+  changed in this unit: the prior mapping/materialization commit made the
+  existing full-attention+dense-FFN adapter reachable, so this unit adds the
+  previously missing independent runtime gate rather than manufacturing a RED
+  against already-green execution.
+- Generate the oracle independently with clean llama.cpp Vulkan
+  `ee0445c99cffbe8d920b05cad28cb055d7049c0a` / libllama SHA-256
+  `35e49c...74f4` on GPU0 W7900. A temporary C++ driver uses only the public
+  `LLAMA_CONTEXT_TYPE_MTP` API, loads the same model SHA-256
+  `a7cbd3...e0f`, submits token `9707` plus a zero F32 `[1,5120]` hidden row at
+  position zero, and writes the one output row. The exact top ten are
+  `[46424,10417,16451,1896,74187,48,356,30454,26685,49444]`.
+- Compare all 248,320 llama/Vulkan and hipEngine/HIP logits, not only the
+  compact fixture: llama-to-HIP KL is **0.001565913 <= 0.05**, top-1 agreement
+  is **1.0 >= 0.9**, maximum absolute difference is **0.254023**, and mean
+  absolute difference is **0.0322965**. All top-10 IDs agree; their largest
+  logit difference is **0.144706**, so the committed oracle uses a 0.16 absolute
+  top-10 tolerance. Raw local row hashes are `5815a7...9509` (llama) and
+  `0fc4cb...4dd6` (hipEngine); raw logits are validation inputs and are not
+  committed.
+- Add guarded real-file coverage in
+  `tests/test_qwen35_gguf_nextn_provider.py` plus compact fixture
+  `tests/fixtures/gguf/qwen36_27b_q4km_nextn_one_step_oracle.json`. The test
+  asserts dense block 64 selection, finite full logits, exact llama top-10 IDs
+  and top-1, bounded values, then resets draft KV and proves provider replay is
+  FP32 array-exact to direct execution. Under the complete hermetic TheRock
+  environment from `scripts/run_w7900_readme_refresh.sh`, the exact leaf command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_nextn_provider.py -k real_dense`
+  passes **1/1**; the complete provider file passes **4/4** with the same env.
+- Cache-only GPU1 `rocprofv3 --kernel-trace` of that direct+provider test records
+  **63 launches / 12.544256 ms** summed kernels and the expected dense symbols:
+  Q4_K gate/up pack8, separate SiLU, Q6_K dense down, full-attention KV/context,
+  and Q6_K F32 LM head. The two full-vocabulary Q6_K head calls dominate at
+  **9.803 ms**; ten Q4_K projection calls total **1.084 ms** and four BF16 Q6_K
+  projection calls total **0.903 ms**. The raw trace is
+  `/tmp/hipengine-qwen36-dense-nextn-one-step-profile/nextn_kernel_trace.csv`,
+  SHA-256 `200065...85d0`; every traced kernel reports zero scratch.
+- Fixture JSON parsing, focused Ruff, py_compile, `git diff --check`, and the
+  cached GPU test pass. D27-F2 is now one-step green, but **not end-to-end MTP
+  green**: target-attached multi-step state/KV transaction, reject/partial/full
+  commit, rollback/reseed, and natural-suite economics remain next. No dense
+  MTP performance number is claimed from this one-step gate.
