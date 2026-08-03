@@ -2642,6 +2642,24 @@ current H6N/H6Z schedule; add no gfx1100 capability, dispatch branch, owner, or
 RED, and forbid favorable start128-only salvage
 ([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
 
+Target-only **WPF-H8H exact prefill attention+softplus dual publication** adds
+four separately named gfx1100 fused-composite siblings for current H6N/H6Z
+global and H6A/H6W SWA. Keep every score, reduction, softmax, PV, F32 context
+store, `KVLiveSpans` field, and registered standalone softplus result unchanged;
+add only the same BF16 gate store after each final context value. The unfused
+four-route attention + registered gate chain remains mandatory fallback.
+
+The clean H8B trace records **192 attention + 48 gate** calls; the gate costs
+**3.978268 ms median** and rereads **207,618,048 F32 values / 830,472,192
+bytes**. H8H models **2,155→2,107 dispatches** and no allocation/workspace
+growth; **442.408 tok/s (+0.344%)** is a zero-increment ceiling, not a result.
+Freeze RED before code. First objects must retain local256/32/32/32,
+scratch0, unchanged LDS/planes, and runtime VGPR ceilings **48/56/72/64** for
+H6N/H6Z/H6A/H6W. Require F32-context and BF16-gated byte identity plus complete
+global/SWA four-start both-clock wins before runtime. No route/start/layer/
+prompt/length/output-only/resource-rewrite/favorable-rerun subset is admissible
+([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

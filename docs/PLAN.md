@@ -3430,11 +3430,29 @@ source map; prohibit start128-only salvage and retain H6N/H6Z plus H8B
 **440.893 tok/s / 2,155 dispatches**
 ([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
 
+Select target-only **WPF-H8H exact prefill attention+softplus dual publication**.
+Current M512 has **192** H6N/H6Z/H6A/H6W attention calls and **48** separate
+BF16 gates at **3.978268 ms median**. The gate rereads **207,618,048 F32 context
+values / 830,472,192 bytes** after attention. Add four separately named gfx1100
+fused composites that retain all current score/reduction/softmax/PV/context
+arithmetic and stores, then emit the same registered softplus-multiply BF16
+value. Preserve both outputs, complete `KVLiveSpans`, allocation/workspace, and
+the required registered unfused chain.
+
+The operation models **2,155→2,107 dispatches**; gate deletion alone gives a
+**442.408 tok/s (+0.344%)** zero-overhead ceiling, not a candidate claim. Commit
+the target before RED. Require all four first objects within local/resource
+ceilings, exact F32 context and BF16 gated bytes, complete global/SWA four-start
+both-clock wins, then all-route state/topology/fixed/512–4K gates before a
+separate source RED. Any miss removes H8H without route/start/layer/prompt/
+length/output-only/resource-rewrite/favorable-rerun salvage
+([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
 P6/repair routes remain closed.
-Launch fusion remains deferred.
+Cross-boundary launch fusion other than the explicitly bounded H8H target remains deferred.
 Keep 16K+ closed until direct M512 reaches **696.342 tok/s**, then measure
 matched llama.cpp HIP at M4K before setting a long-context parity gate; 800/700
 remains stretch. The full ledger, source-port boundaries, and admission gates

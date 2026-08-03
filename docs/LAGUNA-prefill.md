@@ -2087,6 +2087,25 @@ predeclared complete-class rule: do not salvage start128, add no target/RED/
 owner/source map, and retain H6N/H6Z plus H8B production
 ([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
 
+Select **WPF-H8H exact prefill attention+softplus dual publication** as the next
+materially distinct boundary. It does not change attention arithmetic like H8E
+or transfer qrow ownership like H8G. Four separately named gfx1100 composites
+retain H6N/H6Z global and H6A/H6W SWA score/reduction/softmax/PV/context stores,
+then reproduce the registered per-element softplus multiply and BF16 store in
+the same epilogue. Preserve both F32 context and BF16 gated context, complete
+`KVLiveSpans`, all metadata, allocation/workspace, and the unfused fallback.
+
+Five H8B requests contain exact **192 attention + 48 gate** calls. Gate medians
+are **3.940074/3.978268/3.969634/3.995827/3.985592 ms**; each request rereads
+**207,618,048 F32 values / 830,472,192 bytes** and writes the same **415,236,096
+BF16 bytes**. The target models **2,155→2,107 dispatches**; deleting the measured
+gate cost with zero fused overhead gives **442.408 tok/s (+0.344%)**, only a
+ceiling. Commit target then RED. Require all four physical/correctness and
+complete global/SWA four-start both-clock gates before owner/state/topology/
+fixed/length/source work; reject without route/start/layer/prompt/length or
+favorable-rerun salvage
+([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
