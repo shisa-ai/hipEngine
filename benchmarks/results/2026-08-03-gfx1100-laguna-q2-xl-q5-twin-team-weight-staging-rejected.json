@@ -1,0 +1,843 @@
+{
+  "admission": {
+    "downstream_skipped": [
+      "bounded complete-class runtime owner and complete-state topology",
+      "fixed C4096/M512 timing qualification",
+      "clean 512/1K/4K transfer",
+      "source-default RED and promotion"
+    ],
+    "no_salvage": "no role/dtype/shape/layer/prompt/token/length/team-geometry/buffer-count/K-tile/resource-rewrite/recompile/favorable-rerun subset",
+    "observed_failure": "0/6 actual Q5 roles win both clocks; weighted event/wall regress 74.186066%/63.058957%"
+  },
+  "authority_links": {
+    "README.md": "2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json"
+  },
+  "correctness": {
+    "compiler_processes_new": 0,
+    "complete_control_bytes_exact": true,
+    "control_and_candidate_activation_planes_exact": true,
+    "finite": true,
+    "green_nodes": 5,
+    "lifecycle_recovered": true,
+    "poison_overwritten": true,
+    "repeat_exact": true,
+    "roles": 6,
+    "rows": [
+      1,
+      4,
+      5,
+      7,
+      8,
+      9,
+      10,
+      12,
+      13,
+      17,
+      33,
+      512
+    ],
+    "sampled_cpu_fixture_passed": true,
+    "sampled_cpu_rows": [
+      1,
+      7,
+      8,
+      9,
+      512
+    ]
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_executed": true,
+    "candidate_implemented_transiently": true,
+    "candidate_removed": true,
+    "correctness_measured": true,
+    "next_action": "Commit this rejection, then rerank clean H8B production without retrying twin-team role, geometry, buffer, or K-tile subsets.",
+    "performance_measured": true,
+    "production_changed": false,
+    "red_removed": true,
+    "rejected": true
+  },
+  "first_object": {
+    "build": {
+      "cache_key": "219926837f5bf5f693aae506d8fdbd2af7d782f12fadcebfa69d9ce06695c1c4",
+      "compiler_version_file_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+      "output_nbytes": 707504,
+      "output_sha256": "7dbc02ab521b9dea7ddf3d15c18699cc7195c2288fd9bc8a0af277a5002039dc",
+      "sole_build_compiler_processes": 1
+    },
+    "failures": [],
+    "instances": {
+      "bf16_c16r5": {
+        "code_bytes": 8036,
+        "expected_lds_bytes": 18944,
+        "isa": {
+          "ds_instructions": 430,
+          "encoded_text_sha256": "5f4467e590f8f5591d798bc042b3e6a56ea35fd4c3642f8bba862a19d96fcc99",
+          "global_load_instructions": 6,
+          "global_store_instructions": 1,
+          "instruction_slots": 1343,
+          "scratch_instructions": 0,
+          "static_barriers": 2
+        },
+        "kernel_name": "_ZN12_GLOBAL__N_195gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernelItLi16ELi5ELb1EEEvPKtPKfPT_iii",
+        "metadata": {
+          "group_segment_fixed_size": 18944,
+          "max_flat_workgroup_size": 256,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 18,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 165,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "roles": [
+          "bf16_k6144_n3072"
+        ],
+        "vgpr_ceiling": 176
+      },
+      "bf16_c8r4": {
+        "code_bytes": 3860,
+        "expected_lds_bytes": 9216,
+        "isa": {
+          "ds_instructions": 174,
+          "encoded_text_sha256": "e6901d53b82d0d2a75a88f7ba7b3e0ee15bdccb4f20b1cb142efc2b7f974e33d",
+          "global_load_instructions": 3,
+          "global_store_instructions": 1,
+          "instruction_slots": 657,
+          "scratch_instructions": 0,
+          "static_barriers": 2
+        },
+        "kernel_name": "_ZN12_GLOBAL__N_195gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernelItLi8ELi4ELb1EEEvPKtPKfPT_iii",
+        "metadata": {
+          "group_segment_fixed_size": 9216,
+          "max_flat_workgroup_size": 256,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 18,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 75,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "roles": [
+          "bf16_k3072_n1024"
+        ],
+        "vgpr_ceiling": 80
+      },
+      "bf16_c8r8": {
+        "code_bytes": 7100,
+        "expected_lds_bytes": 10240,
+        "isa": {
+          "ds_instructions": 342,
+          "encoded_text_sha256": "2ab5d2f635bd997c2e28f02cc6a7df99f9d3be46bda459aed5141a2c46ae5664",
+          "global_load_instructions": 9,
+          "global_store_instructions": 1,
+          "instruction_slots": 1178,
+          "scratch_instructions": 0,
+          "static_barriers": 2
+        },
+        "kernel_name": "_ZN12_GLOBAL__N_195gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernelItLi8ELi8ELb0EEEvPKtPKfPT_iii",
+        "metadata": {
+          "group_segment_fixed_size": 10240,
+          "max_flat_workgroup_size": 256,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 29,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 133,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "roles": [
+          "bf16_k3072_n12288",
+          "bf16_k9216_n3072"
+        ],
+        "vgpr_ceiling": 144
+      },
+      "f32_c16r5": {
+        "code_bytes": 8008,
+        "expected_lds_bytes": 18944,
+        "isa": {
+          "ds_instructions": 430,
+          "encoded_text_sha256": "d41eabb28fd93049f34dc3416e90899d034369f44101c718b81ce36cecfdb574",
+          "global_load_instructions": 6,
+          "global_store_instructions": 1,
+          "instruction_slots": 1341,
+          "scratch_instructions": 0,
+          "static_barriers": 2
+        },
+        "kernel_name": "_ZN12_GLOBAL__N_195gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernelIfLi16ELi5ELb1EEEvPKtPKfPT_iii",
+        "metadata": {
+          "group_segment_fixed_size": 18944,
+          "max_flat_workgroup_size": 256,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 18,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 165,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "roles": [
+          "f32_k3072_n6144"
+        ],
+        "vgpr_ceiling": 176
+      },
+      "f32_c8r10": {
+        "code_bytes": 7932,
+        "expected_lds_bytes": 10752,
+        "isa": {
+          "ds_instructions": 426,
+          "encoded_text_sha256": "3ce8bce249fecfecc4dc5b146c4c351587baed98c590090db6f50e0416cd4074",
+          "global_load_instructions": 4,
+          "global_store_instructions": 1,
+          "instruction_slots": 1319,
+          "scratch_instructions": 0,
+          "static_barriers": 2
+        },
+        "kernel_name": "_ZN12_GLOBAL__N_195gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernelIfLi8ELi10ELb1EEEvPKtPKfPT_iii",
+        "metadata": {
+          "group_segment_fixed_size": 10752,
+          "max_flat_workgroup_size": 256,
+          "private_segment_fixed_size": 0,
+          "sgpr_count": 18,
+          "sgpr_spill_count": 0,
+          "uses_dynamic_stack": false,
+          "vgpr_count": 165,
+          "vgpr_spill_count": 0,
+          "wavefront_size": 32
+        },
+        "roles": [
+          "f32_k3072_n9216"
+        ],
+        "vgpr_ceiling": 176
+      }
+    },
+    "kernel_instance_count": 5,
+    "role_count": 6,
+    "shape_qualified_exports": 6,
+    "status": "pass_first_object_physical_gate"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vgpr_file_per_simd": 1536,
+    "wavefront_size": 32,
+    "waves_per_simd_max": 16
+  },
+  "kind": "gfx1100_laguna_q2_xl_q5_twin_team_weight_staging_rejected",
+  "lineage": {
+    "candidate_implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "7fa5f10a98e5b89a82b81b5694c87276ee7bbc6eb0ad0cf4ec9766d254aec88f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "d66a87f0334b08981e4d5a1323f4f7d0c7f67067a2681b7e999b498e54160c6b",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "c026706bc4a2c9e68c0d890fbe76f0b0ad0db9195c3fe093bf4c51aea2431e43"
+    },
+    "candidate_patch_sha256": "938857c133a0fdfa8e407a662ba278c330b13ca6773f76a3d3a1cba0ffa92cba",
+    "candidate_present": false,
+    "production_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "production_artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "production_changed": false,
+    "red_present": false,
+    "red_repairs": [
+      "9f9e2ad5e",
+      "fb6e2e2d3"
+    ],
+    "red_revision": "c6a8a5d9e",
+    "red_test_sha256": "b21fba2762af6a1ff93f9eccdf72aa793853c6513d5f79124bd9c734aa46a894",
+    "restored_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+      "hipengine/runtime/qwen35_paro_runner.py": "dd08b9f91419bcd4ba0e0962a8f9dfca0b4c2f068224eb7a85880562ca1128fe"
+    },
+    "runtime_owner_present": false,
+    "target_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json",
+    "target_artifact_sha256": "d1d0420f79445385a50b231d78926048e35ed776f561a80be1a393d5105a0a69",
+    "target_revision": "997a65c8d"
+  },
+  "matched_status": {
+    "application_dispatches": 2155,
+    "campaign_start_kernel_sum_ms": 3001.692,
+    "campaign_start_tok_s": 169.516,
+    "components": {
+      "attention": {
+        "current_ms": 115.349089,
+        "gap_ms": 93.83664200000001,
+        "llamacpp_ms": 21.512447
+      },
+      "gate_up": {
+        "current_ms": 401.4025780000001,
+        "gap_ms": 3.5976550000001453,
+        "llamacpp_ms": 397.804923
+      },
+      "iq_down": {
+        "current_ms": 273.163353,
+        "gap_ms": 119.30344199999996,
+        "llamacpp_ms": 153.859911
+      },
+      "q5": {
+        "current_ms": 230.42948,
+        "gap_ms": 172.11539000000002,
+        "llamacpp_ms": 58.31409
+      },
+      "q6": {
+        "current_ms": 73.31982099999999,
+        "gap_ms": 58.65222299999999,
+        "llamacpp_ms": 14.667598
+      },
+      "remaining": {
+        "current_ms": 52.755422999999986,
+        "gap_ms": -15.094016000000018,
+        "llamacpp_ms": 67.849439
+      }
+    },
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_kernel_sum_ms": 714.008408,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "llamacpp_wall_tok_s": 690.791,
+    "wall_tok_s": 440.8926238498552
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128, one queue"
+  },
+  "named_trace": {
+    "all_exact_lds": true,
+    "all_local256": true,
+    "all_positive": true,
+    "all_vgpr_within_ceiling": true,
+    "all_zero_scratch": true,
+    "candidate_dispatches": 6,
+    "child_sha256": "decd30ad43557d34dcb26feee43e7b6dfacc573f4f86ae43f866a5a72dfabdad",
+    "kernel_instance_names": 5,
+    "queue_ids": [
+      1
+    ],
+    "role_dispatches": 6,
+    "roles": [
+      {
+        "col_tile": 8,
+        "dtype": "bf16",
+        "expected_lds_bytes": 9216,
+        "id": "bf16_k3072_n1024_c8r4",
+        "k": 3072,
+        "n": 1024,
+        "output_sha256": "21a5e1b425450467cd533b86306e4219dc684018d184d97b1b4ad0ee05f85a71",
+        "row_batch": 4,
+        "tile_k_col": true,
+        "trace": {
+          "accum_vgpr": 0,
+          "col_tile": 8,
+          "dispatch_id": 3,
+          "dtype": "bf16",
+          "duration_ns": 588752,
+          "end_timestamp": 1914553221502911,
+          "grid_size": 2097152,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernel<unsigned short, 8, 4, true>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+          "lds_bytes": 9216,
+          "local_size": 256,
+          "queue_id": 1,
+          "row_batch": 4,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "start_timestamp": 1914553220914159,
+          "stream_id": 0,
+          "tile_k_col": true,
+          "vgpr": 80
+        },
+        "vgpr_ceiling": 80,
+        "workgroups": 8192
+      },
+      {
+        "col_tile": 8,
+        "dtype": "bf16",
+        "expected_lds_bytes": 10240,
+        "id": "bf16_k3072_n12288_c8r8",
+        "k": 3072,
+        "n": 12288,
+        "output_sha256": "1eddfdb206d4eb284f1fd1d9fea2d9b81578fdca38978ddfd011548dd79ad0f0",
+        "row_batch": 8,
+        "tile_k_col": false,
+        "trace": {
+          "accum_vgpr": 0,
+          "col_tile": 8,
+          "dispatch_id": 6,
+          "dtype": "bf16",
+          "duration_ns": 5019054,
+          "end_timestamp": 1914553357961506,
+          "grid_size": 12582912,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernel<unsigned short, 8, 8, false>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+          "lds_bytes": 10240,
+          "local_size": 256,
+          "queue_id": 1,
+          "row_batch": 8,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "start_timestamp": 1914553352942452,
+          "stream_id": 0,
+          "tile_k_col": false,
+          "vgpr": 136
+        },
+        "vgpr_ceiling": 144,
+        "workgroups": 49152
+      },
+      {
+        "col_tile": 16,
+        "dtype": "bf16",
+        "expected_lds_bytes": 18944,
+        "id": "bf16_k6144_n3072_c16r5",
+        "k": 6144,
+        "n": 3072,
+        "output_sha256": "3aba3881f0ca58f9cbcb413c964a032547fec38419be3ca3e881c27dbdf73bce",
+        "row_batch": 5,
+        "tile_k_col": true,
+        "trace": {
+          "accum_vgpr": 0,
+          "col_tile": 16,
+          "dispatch_id": 9,
+          "dtype": "bf16",
+          "duration_ns": 2946775,
+          "end_timestamp": 1914553643015137,
+          "grid_size": 2555904,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernel<unsigned short, 16, 5, true>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+          "lds_bytes": 18944,
+          "local_size": 256,
+          "queue_id": 1,
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "start_timestamp": 1914553640068362,
+          "stream_id": 0,
+          "tile_k_col": true,
+          "vgpr": 168
+        },
+        "vgpr_ceiling": 176,
+        "workgroups": 9984
+      },
+      {
+        "col_tile": 8,
+        "dtype": "bf16",
+        "expected_lds_bytes": 10240,
+        "id": "bf16_k9216_n3072_c8r8",
+        "k": 9216,
+        "n": 3072,
+        "output_sha256": "40fa49b1d0c405c056aa58f7fc22696f9412aae2b7f9e9faa7ef7e2365da2db0",
+        "row_batch": 8,
+        "tile_k_col": false,
+        "trace": {
+          "accum_vgpr": 0,
+          "col_tile": 8,
+          "dispatch_id": 12,
+          "dtype": "bf16",
+          "duration_ns": 2325213,
+          "end_timestamp": 1914554090673452,
+          "grid_size": 3145728,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernel<unsigned short, 8, 8, false>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+          "lds_bytes": 10240,
+          "local_size": 256,
+          "queue_id": 1,
+          "row_batch": 8,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "start_timestamp": 1914554088348239,
+          "stream_id": 0,
+          "tile_k_col": false,
+          "vgpr": 136
+        },
+        "vgpr_ceiling": 144,
+        "workgroups": 12288
+      },
+      {
+        "col_tile": 16,
+        "dtype": "f32",
+        "expected_lds_bytes": 18944,
+        "id": "f32_k3072_n6144_c16r5",
+        "k": 3072,
+        "n": 6144,
+        "output_sha256": "ab48ab65d2882d13758b8bede95451a53f804ba4d2657b9a23a0f3eb4ea14fd0",
+        "row_batch": 5,
+        "tile_k_col": true,
+        "trace": {
+          "accum_vgpr": 0,
+          "col_tile": 16,
+          "dispatch_id": 15,
+          "dtype": "f32",
+          "duration_ns": 3533940,
+          "end_timestamp": 1914554232450518,
+          "grid_size": 5111808,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernel<float, 16, 5, true>(unsigned short const*, float const*, float*, int, int, int)",
+          "lds_bytes": 18944,
+          "local_size": 256,
+          "queue_id": 1,
+          "row_batch": 5,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "start_timestamp": 1914554228916578,
+          "stream_id": 0,
+          "tile_k_col": true,
+          "vgpr": 168
+        },
+        "vgpr_ceiling": 176,
+        "workgroups": 19968
+      },
+      {
+        "col_tile": 8,
+        "dtype": "f32",
+        "expected_lds_bytes": 10752,
+        "id": "f32_k3072_n9216_c8r10",
+        "k": 3072,
+        "n": 9216,
+        "output_sha256": "dc7f1132ce544596bcdd924ba31d4622905a3e6706a9d9c0cd70a7f645306b03",
+        "row_batch": 10,
+        "tile_k_col": true,
+        "trace": {
+          "accum_vgpr": 0,
+          "col_tile": 8,
+          "dispatch_id": 18,
+          "dtype": "f32",
+          "duration_ns": 2788096,
+          "end_timestamp": 1914554364220789,
+          "grid_size": 7667712,
+          "kernel": "void (anonymous namespace)::gguf_q5_k_f32_weight_ordered_weight_major_activation_tile_k_row_twin_team_weight_staging_kernel<float, 8, 10, true>(unsigned short const*, float const*, float*, int, int, int)",
+          "lds_bytes": 10752,
+          "local_size": 256,
+          "queue_id": 1,
+          "row_batch": 10,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "start_timestamp": 1914554361432693,
+          "stream_id": 0,
+          "tile_k_col": true,
+          "vgpr": 168
+        },
+        "vgpr_ceiling": 176,
+        "workgroups": 29952
+      }
+    ],
+    "shape_qualified_host_exports": 6,
+    "status": "pass_named_six_role_runtime_trace",
+    "stream_ids": [
+      0
+    ],
+    "trace_sha256": "00539990b3b809e469775e579ba2682359e55eab0b3a89048fbfa8b8a55e231a"
+  },
+  "operation_model": {
+    "barrier_epoch_increase": 85742592,
+    "barrier_epoch_multiplier": 18.07529951567678,
+    "calls": 188,
+    "candidate_barrier_epochs": 90764032,
+    "candidate_logical_f32_weight_gib": 379.8515625,
+    "candidate_minus_current_barrier_epochs": 85742592,
+    "candidate_weight_bytes": 407862509568,
+    "candidate_workgroups": 2689792,
+    "current_barrier_epochs": 5021440,
+    "current_consumer_ms": 203.86059300000002,
+    "current_logical_f32_weight_gib": 752.109375,
+    "current_q5_family_ms": 230.42948,
+    "current_q5_gap_ms": 172.11539000000002,
+    "current_role_consumer_ms": 203.86059300000002,
+    "current_weight_bytes": 807571292160,
+    "current_workgroups": 5021440,
+    "interpretation": "the candidate halves logical F32-plane traffic and nearly halves workgroups while preserving all useful FMAs, but pays an 18.0753x dynamic barrier-epoch model; these are source counts, not cache traffic or speed evidence",
+    "logical_f32_weight_byte_reduction_percent": 49.495169834839515,
+    "not_cache_traffic_or_speed_result": true,
+    "useful_fmas": 1433445335040,
+    "workgroup_reduction_percent": 46.43385164414988
+  },
+  "performance_claim": false,
+  "production": {
+    "application_dispatches": 2155,
+    "gap_ratio": 1.566800991062275,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_hip_wall_tok_s": 690.791,
+    "llamacpp_kernel_sum_ms": 714.008408,
+    "matched_components": {
+      "attention": {
+        "current_ms": 115.349089,
+        "gap_ms": 93.83664200000001,
+        "llamacpp_ms": 21.512447
+      },
+      "gate_up": {
+        "current_ms": 401.4025780000001,
+        "gap_ms": 3.5976550000001453,
+        "llamacpp_ms": 397.804923
+      },
+      "iq_down": {
+        "current_ms": 273.163353,
+        "gap_ms": 119.30344199999996,
+        "llamacpp_ms": 153.859911
+      },
+      "q5": {
+        "current_ms": 230.42948,
+        "gap_ms": 172.11539000000002,
+        "llamacpp_ms": 58.31409
+      },
+      "q6": {
+        "current_ms": 73.31982099999999,
+        "gap_ms": 58.65222299999999,
+        "llamacpp_ms": 14.667598
+      },
+      "remaining": {
+        "current_ms": 52.755422999999986,
+        "gap_ms": -15.094016000000018,
+        "llamacpp_ms": 67.849439
+      }
+    },
+    "retained_q5_bundle": {
+      "compiler_processes": 0,
+      "passed": 76,
+      "source_restored_byte_exact": true
+    },
+    "source": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction",
+    "wall_tok_s": 440.8926238498552
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h8n_first_object_trace.py": "9723f763402b7af6315dc570655bcbf9b6f9e486e65091d5c18918d2209eb63f",
+    "/tmp/analyze_laguna_h8n_first_physical.py": "b52fa616eafb36a54b21899adab7c013cebe892aa314c9e88f7426cd7901c65f",
+    "/tmp/build_laguna_h8n_first_object.py": "f1c049900a8caac8fbd61809bd19f2171b2e5ae5ed3e1155255ec721a2426544",
+    "/tmp/build_laguna_h8n_rejection_artifact.py": "3ee13592c903eb2da16a6a6f35f9af5fcf5930e51b9a8ddd82a8a05a0e4c115a",
+    "/tmp/laguna-h8n-actual-role-screen.json": "1bdbb892132f47df4e02f8383371c9b5bf6be3ee93422ebde912d97c0290a70b",
+    "/tmp/laguna-h8n-actual-roles-compiler-monitor.json": "8f2e483c31ca16e12be895c1dabb4db18c691c5f2efd0c640b8863e7e6657935",
+    "/tmp/laguna-h8n-actual-roles.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8n-actual-roles.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8n-actual-roles.stdout": "cb7ea202e4e4f3b88e98efcf4d4c1f808a04c228c991c08a89f1ab10148f7fad",
+    "/tmp/laguna-h8n-build-compiler-monitor.json": "871b50fc322ccc43042ef9ad0bbcbe9005f1641cb0d7be29715c3b110a5abb0e",
+    "/tmp/laguna-h8n-candidate-final.patch": "938857c133a0fdfa8e407a662ba278c330b13ca6773f76a3d3a1cba0ffa92cba",
+    "/tmp/laguna-h8n-first-codeobj/gfx1100.hsaco": "22936c51bbdd0784e41db30e3cb8ae69ebded330d14451406e9b648344196762",
+    "/tmp/laguna-h8n-first-codeobj/notes.txt": "49ade51ce67574d0239aa7804c7e706c6efa03a3b14216f8f921f0aa88877050",
+    "/tmp/laguna-h8n-first-object-build.json": "115a29ba21e2193d5184417292c2b5dca8f6364fbe1fe2f331de7f880eb25272",
+    "/tmp/laguna-h8n-first-object-build.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8n-first-object-build.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8n-first-object-build.stdout": "115a29ba21e2193d5184417292c2b5dca8f6364fbe1fe2f331de7f880eb25272",
+    "/tmp/laguna-h8n-first-object-rocprof-csv/h8n-first-object_kernel_trace.csv": "00539990b3b809e469775e579ba2682359e55eab0b3a89048fbfa8b8a55e231a",
+    "/tmp/laguna-h8n-first-object-trace-summary.json": "c042c80de0cfd9224dd0cd736b2e1a464988ca736a4d813cae4e169ad2a8f3a6",
+    "/tmp/laguna-h8n-first-physical.json": "6a420874dc7ae18fc6d8ad48391630d93da9d59b4b39d3e783a0eb52b1737a97",
+    "/tmp/laguna-h8n-first-physical.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8n-first-physical.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8n-first-physical.stdout": "6a420874dc7ae18fc6d8ad48391630d93da9d59b4b39d3e783a0eb52b1737a97",
+    "/tmp/laguna-h8n-green-compiler-monitor.json": "8286dad44b74d8af42de8d424b4dffda41af0ca67285b2016b34f92231853593",
+    "/tmp/laguna-h8n-green.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8n-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8n-green.stdout": "4d2df7a96ce4a667da3ccf295f2d16c728a65ed0e861a3baa919f7bb469b02b5",
+    "/tmp/laguna-h8n-red-test-final.py": "b21fba2762af6a1ff93f9eccdf72aa793853c6513d5f79124bd9c734aa46a894",
+    "/tmp/laguna-h8n-restored-bundle-compiler-monitor.json": "4b516158b015a6dd564fa8f520e00fdb3c6f5c3419e4a23795663416826ed392",
+    "/tmp/laguna-h8n-restored-bundle.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8n-restored-bundle.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8n-restored-bundle.stdout": "09efabbe841d5a8f293aba74741670e19f3bd0993cd9cbbc9f6011f34f0a683e",
+    "/tmp/laguna-h8n-timing-validator.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8n-timing-validator.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8n-timing-validator.stdout": "60e827838095d8bad6ecba5a2da3466775e175eff0157d60dec6f02db81fed69",
+    "/tmp/laguna-h8n-trace-child.json": "decd30ad43557d34dcb26feee43e7b6dfacc573f4f86ae43f866a5a72dfabdad",
+    "/tmp/laguna-h8n-trace-compiler-monitor.json": "211815cff82e757b92c3d62cd78eccabcca13544f0160395ddd18a8bb03e2edb",
+    "/tmp/laguna-h8n-trace-prewarm-compiler-monitor.json": "3389ec2b9bbfd8a0b25c20d34d533fb4bacb6da4f29ed1588bad36bab65b89d3",
+    "/tmp/run_laguna_h8n_actual_roles_with_compiler_monitor.py": "4f577414d24c5dd43a1f3765b04ea5bcbc58a368d90c4263f316c054bcdaf2de",
+    "/tmp/run_laguna_h8n_first_build_with_compiler_monitor.py": "572c73a71c41fe080e3e7a366c737f42761d4bc8272f57fbda539ea7bbd8d30b",
+    "/tmp/run_laguna_h8n_green_with_compiler_monitor.py": "3a2646b3579ae92f8507b32a8042a47e7185e31106a1fb59e88063a2aded446f",
+    "/tmp/run_laguna_h8n_restored_bundle_with_compiler_monitor.py": "cb7d49d69cf573dc5215632d9f2b0e321f4abd1f38d7ef0bd7dd0654e6a24ff3",
+    "/tmp/run_laguna_h8n_trace_prewarm_with_compiler_monitor.py": "5dd0ede4d500e6bd7e7ec3e6ebc2456e36d566090fd22f7957fe671e529762c5",
+    "/tmp/run_laguna_h8n_trace_with_compiler_monitor.py": "8b9a683faf6efd738ffde85ad9a143bfe3490f85a9fbc0b48c97356f8b019728",
+    "/tmp/screen_laguna_h8n_actual_roles.py": "4f81c6e6ce35781d171cc83e3b61105bb271e96d5574b9ee13d7fb9fe6e6a0bb",
+    "/tmp/trace_laguna_h8n_first_object.py": "2674345504cdb9afbb6e41926c988cb2893793e61abffafd607b3ffcf951b13b",
+    "/tmp/validate_laguna_h8n_actual_role_screen.py": "9cf5fe290e14bc079dcd491a46c84610a3c616678dc86419829fa2a911d856ef"
+  },
+  "schema": 1,
+  "status": "rejected_all_role_timing_candidate_and_red_removed",
+  "timing": {
+    "aggregate": {
+      "candidate_event_weighted_ms": 370.56639671325684,
+      "candidate_wall_weighted_ms": 365.40670203976333,
+      "control_event_weighted_ms": 212.74169921875,
+      "control_wall_weighted_ms": 224.0948352497071,
+      "event_percent_change": 74.18606604821032,
+      "event_speedup": 0.5740987340073603,
+      "wall_percent_change": 63.058957442099704,
+      "wall_speedup": 0.6132751096210634
+    },
+    "all_candidate_bytes_exact": true,
+    "all_candidate_finite": true,
+    "all_roles_both_clock_positive": false,
+    "both_clock_positive_roles": 0,
+    "independent_validator_sha256": "9cf5fe290e14bc079dcd491a46c84610a3c616678dc86419829fa2a911d856ef",
+    "per_role": [
+      {
+        "both_clock_positive": false,
+        "byte_exact": true,
+        "candidate_event_ms": 0.5611477851867676,
+        "candidate_geometry": "coltile8_rowbatch4",
+        "candidate_wall_ms": 0.5651835817843676,
+        "control": "H7H",
+        "control_event_ms": 0.24838500022888182,
+        "control_geometry": "coltile8_rowbatch4",
+        "control_wall_ms": 0.24800137616693974,
+        "event_speedup": 0.4426374063763105,
+        "finite": true,
+        "id": "bf16_k3072_n1024_c8r4",
+        "output_dtype": "bf16",
+        "output_sha256": "9bd2c5943b4df63b15752cf74dcecb574df1e2f74603401991f29078e52e8ae9",
+        "production_invocations": 92,
+        "shape": [
+          1024,
+          3072
+        ],
+        "tensor": "blk.1.ffn_gate_shexp.weight",
+        "wall_speedup": 0.43879791303201515,
+        "weight_layout": "tile_k_col"
+      },
+      {
+        "both_clock_positive": false,
+        "byte_exact": true,
+        "candidate_event_ms": 4.575907897949219,
+        "candidate_geometry": "coltile8_rowbatch8",
+        "candidate_wall_ms": 4.512150399386883,
+        "control": "H7G",
+        "control_event_ms": 3.2463142395019533,
+        "control_geometry": "coltile8_rowbatch12",
+        "control_wall_ms": 3.410287806764245,
+        "event_speedup": 0.709436097032646,
+        "finite": true,
+        "id": "bf16_k3072_n12288_c8r8",
+        "output_dtype": "bf16",
+        "output_sha256": "1e81a80c43a2f2179d3e29f24c796af3ef140b5a20b3505f51d50a74483333ae",
+        "production_invocations": 2,
+        "shape": [
+          12288,
+          3072
+        ],
+        "tensor": "blk.0.ffn_gate.weight",
+        "wall_speedup": 0.7558010050435463,
+        "weight_layout": "row_major"
+      },
+      {
+        "both_clock_positive": false,
+        "byte_exact": true,
+        "candidate_event_ms": 3.549421691894531,
+        "candidate_geometry": "coltile16_rowbatch5",
+        "candidate_wall_ms": 3.5532993730157614,
+        "control": "H7G",
+        "control_event_ms": 1.3790003776550293,
+        "control_geometry": "coltile16_rowbatch5",
+        "control_wall_ms": 1.4373771846294403,
+        "event_speedup": 0.38851410098837175,
+        "finite": true,
+        "id": "bf16_k6144_n3072_c16r5",
+        "output_dtype": "bf16",
+        "output_sha256": "47b0add9c689f464558d62f3641935dacf718ae78955ccfb27caa757f5adf169",
+        "production_invocations": 12,
+        "shape": [
+          3072,
+          6144
+        ],
+        "tensor": "blk.0.attn_output.weight",
+        "wall_speedup": 0.4045190212637522,
+        "weight_layout": "tile_k_col"
+      },
+      {
+        "both_clock_positive": false,
+        "byte_exact": true,
+        "candidate_event_ms": 2.8691619873046874,
+        "candidate_geometry": "coltile8_rowbatch8",
+        "candidate_wall_ms": 2.811483619734645,
+        "control": "H7H",
+        "control_event_ms": 2.179285430908203,
+        "control_geometry": "coltile12_rowbatch8",
+        "control_wall_ms": 2.348469430580735,
+        "event_speedup": 0.7595546854973637,
+        "finite": true,
+        "id": "bf16_k9216_n3072_c8r8",
+        "output_dtype": "bf16",
+        "output_sha256": "8109b6ac6c311027bd08441114bc813b7004ea38043966f8d52bdfd0062db622",
+        "production_invocations": 35,
+        "shape": [
+          3072,
+          9216
+        ],
+        "tensor": "blk.1.attn_output.weight",
+        "wall_speedup": 0.8353132182937597,
+        "weight_layout": "row_major"
+      },
+      {
+        "both_clock_positive": false,
+        "byte_exact": true,
+        "candidate_event_ms": 3.891398239135742,
+        "candidate_geometry": "coltile16_rowbatch5",
+        "candidate_wall_ms": 3.798054764047265,
+        "control": "H7G",
+        "control_event_ms": 1.3729207992553711,
+        "control_geometry": "coltile16_rowbatch5",
+        "control_wall_ms": 1.3643064070492983,
+        "event_speedup": 0.3528091228103884,
+        "finite": true,
+        "id": "f32_k3072_n6144_c16r5",
+        "output_dtype": "f32",
+        "output_sha256": "47ae70782aee6539b7d279deec8af968757d496242135d3ef8cc59d51f9ead00",
+        "production_invocations": 12,
+        "shape": [
+          6144,
+          3072
+        ],
+        "tensor": "blk.0.attn_q.weight",
+        "wall_speedup": 0.3592118839264636,
+        "weight_layout": "tile_k_col"
+      },
+      {
+        "both_clock_positive": false,
+        "byte_exact": true,
+        "candidate_event_ms": 3.4308135986328123,
+        "candidate_geometry": "coltile8_rowbatch10",
+        "candidate_wall_ms": 3.3647810108959675,
+        "control": "H7G",
+        "control_event_ms": 2.1171316146850585,
+        "control_geometry": "coltile8_rowbatch10",
+        "control_wall_ms": 2.2468999959528446,
+        "event_speedup": 0.6170931628371593,
+        "finite": true,
+        "id": "f32_k3072_n9216_c8r10",
+        "output_dtype": "f32",
+        "output_sha256": "5a30383a0c94cccf498dc0305015b8dacbb8653e8e0c2fdae24d43943913607e",
+        "production_invocations": 35,
+        "shape": [
+          9216,
+          3072
+        ],
+        "tensor": "blk.1.attn_q.weight",
+        "wall_speedup": 0.667770053586502,
+        "weight_layout": "tile_k_col"
+      }
+    ],
+    "protocol": {
+      "actual_weights": true,
+      "candidate": "H8N local256 twin-team exact weight staging",
+      "control": "retained H7G/H7H exact Q5 consumers",
+      "counter_rotated_repetitions": 15,
+      "deterministic_bf16_input": true,
+      "event_and_synchronized_wall": true,
+      "launches_per_sample": 5,
+      "mode_starts_per_role": {
+        "h7g_h7h": 8,
+        "h8n_twin_team_weight_staging": 7
+      },
+      "no_subset_rewrite_recompile_or_favorable_rerun": true,
+      "producer_and_activation_packs": "prepared once outside timed region",
+      "production_invocations": 188,
+      "rows": 512,
+      "selection_rule": "all six roles and their weighted 188-call aggregate must improve on both clocks",
+      "unique_roles": 6,
+      "warmups": 5
+    },
+    "raw_report_sha256": "1bdbb892132f47df4e02f8383371c9b5bf6be3ee93422ebde912d97c0290a70b",
+    "tracked_returned_to_baseline": true,
+    "weighted_aggregate_both_clock_positive": false
+  }
+}

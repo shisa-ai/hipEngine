@@ -2395,6 +2395,32 @@ shape/layer/prompt/token/length/geometry/buffer/K-tile/resource rewrite/
 recompile/favorable-rerun subset
 ([H8N target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
 
+Reject **WPF-H8N** after consuming its sole immutable all-role timing screen.
+The one **707,504-byte** host object passes complete RED→GREEN **5/5** with
+zero further compiler process. All twelve row counts match H7G/H7H bytes and
+activation planes; the five retained CPU-fixture rows pass quality; poison,
+finiteness, repeat, strict preflight, and lifecycle all pass.
+
+All five physical instances and six role traces meet their frozen bounds. The
+instances are metadata/runtime VGPR **75/80**, **133/136**, or **165/168**,
+with exact role LDS **9,216/10,240/18,944/10,240/18,944/10,752 bytes**, two
+static barriers, local256, and private/spill/scratch0. The compiler-free named
+trace covers all six shape-qualified roles at exact M512 grids on one queue and
+stream. Physical and runtime admission therefore pass before timing.
+
+The fixed actual-weight 5-warmup/15-counter-rotated/five-launch screen remains
+byte-exact and finite but has **0/6 both-clock wins**. Per-role event speedups
+are only **0.443/0.709/0.389/0.760/0.353/0.617×**; wall speedups are
+**0.439/0.756/0.405/0.835/0.359/0.668×**. The weighted **188-call** aggregate
+event regresses **212.741699→370.566397 ms (+74.186066%)** and synchronized
+wall regresses **224.094835→365.406702 ms (+63.058957%)**. Honor the no-role/
+dtype/shape/geometry/buffer/K-tile/resource-rewrite/recompile/rerun rule. Skip
+bounded runtime, state/topology, fixed/length, and source gates; remove all H8N
+HIP/Python/registry/gfx1151 and RED-test surfaces, restore H7G/H7H byte-for-
+byte, and retain H8B **440.893 tok/s / 2,155 dispatches**, **1.566801×** behind
+matched llama.cpp HIP
+([H8N rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

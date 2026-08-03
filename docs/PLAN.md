@@ -3586,6 +3586,18 @@ prompt/token/length/geometry/buffer/K-tile/resource-rewrite/recompile/rerun
 salvage
 ([H8N target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
 
+Reject **WPF-H8N** after its one immutable six-role timing screen. Complete
+control/CPU bytes pass **5/5**, all five object instances and six named traces
+meet local256 VGPR/LDS/spill/scratch bounds, and no compiler appears after the
+sole build. Yet **0/6** actual-weight roles win both clocks: weighted 188-call
+H7G/H7H→H8N event regresses **212.742→370.566 ms (+74.186%)** and synchronized
+wall regresses **224.095→365.407 ms (+63.059%)**. The 49.495% modeled logical
+weight-byte saving cannot repay LDS staging and 18.075× barrier epochs. Forbid
+role/geometry/buffer/K-tile/rewrite/recompile/rerun salvage, remove candidate
+plus RED, add no runtime/source owner, and retain H7G/H7H plus H8B production
+**440.893 tok/s**
+([H8N rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
