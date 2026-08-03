@@ -559,7 +559,7 @@ def _run_exact_dtype(output_dtype: str) -> None:
             hidden,
             outputs,
             call_weight,
-            _,
+            control,
             control_col,
             control_rows,
             *_,
@@ -588,8 +588,9 @@ def _run_exact_dtype(output_dtype: str) -> None:
             candidate_pack = _pack(col_tile, row_batch, dtype, layout)
 
             for rows in _ROWS:
+                control_seed = 20260803 if control == "H7H" else 20260802
                 rng = np.random.default_rng(
-                    0x8_2000 + rows + 17 * hidden + outputs
+                    control_seed + 53 * rows + 17 * hidden + outputs
                 )
                 x_bf16 = _bf16_bits(
                     rng.normal(0.0, 0.2, (rows, hidden)).astype(np.float32)
