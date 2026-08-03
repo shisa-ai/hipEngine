@@ -1980,6 +1980,31 @@ Retain disabled complete-pack rollback; remove the redundant `_SUPPORTED` and
 explicit positive candidate seam in a separate cleanup before reranking
 ([H8B production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
 
+The clean post-H8B rerank keeps Q5 first at a **172.115-ms** matched gap and
+selects target-only **WPF-H8C exact dual-weight shared-Q5 gate/up consumption**.
+The complete sparse-layer shared-expert class is exactly 46 Q5 gate/up pairs:
+**92** rowbatch4/coltile8 BF16 H7H/H5Y consumers at **22.018 ms**, 46 H8B packs,
+and 92 exact tile-K-col F32 producers. Each current consumer is
+local128/VGPR72/LDS512/scratch0.
+
+H8C may replace each pair with one local128 8+8-output body that loads one H8B
+activation record for two independent weight accumulator sets. Both exact F32
+weight planes, **148.176B** logical weight bytes, **148.176B** FMAs, per-output
+K/FMA/reduction/store association, packs, producers, allocations, workspace,
+and downstream gating remain unchanged. The target model halves logical
+activation loads **37.044→18.522 GB** and changes **92→46 consumers /
+2,155→2,109 application dispatches**. It is not a performance claim.
+
+Freeze RED before implementation. The first cached object must be local128,
+runtime VGPR≤136, LDS≤1 KiB, and scratch/private/spills zero while physically
+sharing each activation load. Require independent edge and actual rows17/33/
+M512 bytes, then all **46/46** actual pairs to win both clocks before runtime.
+Complete state, exact 46-dual topology, fixed C4096/M512, and clean 512/1K/4K
+must then pass before separate source promotion. Any miss removes H8C without
+layer, role, prompt, token, length, geometry, threshold, or favorable-rerun
+salvage
+([H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
