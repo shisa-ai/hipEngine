@@ -2808,6 +2808,37 @@ width/formula/load-source/layer/rewrite/recompile/rerun rule: add no owner or
 source policy, remove candidate plus RED, and retain H6T production
 ([H8L rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
 
+**WPF-H8M exact IQ3 sign-folded BF16 codebook is target-only.** Current H6T
+loads six divergent uint32 unsigned-grid entries across its triple-output body,
+converts their 24 magnitudes, then applies signs through exactly **24
+`v_cmp_eq_u32` + 24 `v_cndmask_b32`** sites. Independently enumerate the fixed
+index `(sign_nibble << 8) | grid_index`: all **4,096/4,096** uint64 records are
+exact and unique, with four little-endian signed BF16 magnitudes per record and
+SHA-256 `fd6a3253...eb90f`.
+
+This deliberately trades bytes for ALU. Read-only table storage grows
+**1,024→32,768 bytes**. Across the immutable **103,056,384** all-45 segment
+decodes, wave loads remain **824,451,072**, while modeled logical table bytes
+grow **105,529,737,216→211,059,474,432 (+100%)**. These are operation/address-
+width counts, not cache traffic or speed. The fixed candidate must change H6T's
+static loads **8 b128 + 9 b32 + 6 d16_b16 → 8 b128 + 3 b32 + 6 b64 + 6
+d16_b16**, expand the 24 BF16 values to identical F32 bits, and remove every
+sign compare/select site. It must not change scale decoding, **216 ordered dot
+FMAs / 24 permlanex16 / 96 DPP adds**, serial wave sums, **24 LDS b128 loads /
+12 stores / two barriers**, raw ABI, P64/P256, rowbatch8/triple-output ownership,
+or BF16 outputs.
+
+Freeze RED before executable work. Compile one table dtype/layout/index/body
+once. Require all records plus rows1/7/8/9/M512, P64/P65, empty/uneven/reordered
+routing, H6T and sampled CPU bytes, poison/repeat/lifecycle, and all **45/45**
+actual layers. The first object must have exactly six b64 table loads, zero sign
+cmp/cndmask sites, code≤8,500 B, slots≤1,500, metadata/runtime VGPR≤101/104,
+LDS384/512, and private/spill/scratch0. Then one 5/15/5 all-layer screen must
+win every layer and aggregate on event and synchronized wall. Do not compile
+signed-int8/F16/F32/split/LDS alternatives or salvage any cache placement,
+layer/expert/routing/prompt/token/length/body/recompile/favorable-rerun subset
+([H8M target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

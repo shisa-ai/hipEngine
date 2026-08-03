@@ -2296,6 +2296,47 @@ Skip runtime owner, fixed/length, and source gates; remove all H8L HIP/Python/
 registry/gfx1151 and RED-test surfaces; retain H6T and H8B **440.893 tok/s**
 ([H8L rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
 
+Select target-only **WPF-H8M exact IQ3 sign-folded BF16 codebook**. H8L proved
+that halving codebook bytes while adding 24 magnitude extracts is exact but
+**11.710%/11.382%** slower. H8M takes the materially opposite fixed operation:
+spend read-only table bytes to remove dynamic sign application. Current H6T's
+relocation-normalized **1,384-slot** ISA contains exactly **24
+`v_cmp_eq_u32` + 24 `v_cndmask_b32`** sign sites across its three segment
+decodes.
+
+Independently enumerate all `(sign_nibble, grid_index)` pairs. Every one of the
+**4,096** uint64 records is exact and unique; each stores four little-endian
+signed BF16 magnitudes and the table SHA-256 is `fd6a3253...eb90f`. Index lower
+and upper sign nibbles against the two unchanged grid bytes. Expand BF16 bits to
+the same F32 signed magnitudes before the unchanged scale and dot arithmetic.
+This differs from H6B's producer-built per-weight plane and H8L's compressed
+unsigned table: it adds no producer, allocation, workspace, or dispatch and
+never reconstructs a magnitude code.
+
+Table storage grows **1,024→32,768 bytes**. Across immutable all-45 routing,
+**103,056,384** segment decodes retain **824,451,072 wave loads** while modeled
+logical table bytes grow **105,529,737,216→211,059,474,432 (+100%)**. This is a
+byte-for-ALU operation model, not cache traffic or a speed result. The sole
+candidate changes static loads **8 b128 + 9 b32 + 6 d16_b16 → 8 b128 + 3 b32
++ 6 b64 + 6 d16_b16**, removes all 24 compare plus 24 select sign sites, and
+keeps 24 BF16 expansions. Preserve raw bytes/sign decode, active-expert ABI,
+P64/P256, local128/four-wave/rowbatch8/triple-output ownership, **216 ordered
+dot FMAs / 24 permlanex16 / 96 DPP adds**, serial wave sums, **24 LDS b128 loads
+/ 12 stores / two barriers**, output layout, and every BF16 bit.
+
+Freeze RED before source changes. Require exact all-4,096 reconstruction plus
+rows1/7/8/9/M512, P64/P65, uneven/reordered/empty routing, H6T and sampled CPU
+bytes, poison, finiteness, repeat, lifecycle, and complete **45/45** actual
+outputs. The one first object must realize six b64 table loads and zero sign
+cmp/cndmask sites at code≤8,500 B, slots≤1,500, metadata/runtime VGPR≤101/104,
+LDS384/512, private/spill/scratch0. Require a compiler-free exact-state **45
+H8M / 0 H6T / 2 IQ4** trace, then one 5-warmup/15-counter-rotated/five-launch
+actual-weight screen where every layer and aggregate win event and synchronized
+wall. Do not compile another table dtype/width/index/layout/cache placement or
+salvage any layer/expert/routing/prompt/token/length/body/recompile/favorable-
+rerun subset
+([H8M target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

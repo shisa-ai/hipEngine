@@ -1398,6 +1398,20 @@ no-width/layer/rerun rule, remove candidate plus RED, and retain H8B **440.893
 tok/s**, **1.5668×** behind matched llama.cpp HIP
 ([H8L rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
 
+**WPF-H8M exact IQ3 sign-folded BF16 codebook is the next target-only leaf.**
+The current H6T object contains **24 `v_cmp_eq_u32` + 24 `v_cndmask_b32`**
+sign-application sites across its triple-output body. Independent enumeration
+builds **4,096/4,096 exact and unique** uint64 records indexed by one sign
+nibble plus one grid byte; each record carries four signed magnitudes as BF16.
+This expands the table **1,024→32,768 bytes** and the all-45 logical table-byte
+model **105,529,737,216→211,059,474,432 (+100%)** at unchanged wave-load count,
+while targeting removal of all 48 sign sites. It is an explicit byte-for-ALU
+trade, not cache-traffic or speed evidence. Freeze RED before source changes;
+require the fixed **six-b64** load shape, no sign cmp/select sites, non-growing
+VGPR/resources, exact H6T/CPU/all-45 bytes, and every layer plus aggregate to
+win both clocks without dtype/layout/cache/layer/rerun salvage
+([H8M target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
