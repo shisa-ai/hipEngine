@@ -559,6 +559,18 @@ class _RoctxProfilerRegion:
             self.control.pause()
 
 
+def _rearm_reused_decode_graph(session: Any, graph: Any, runtime: HipRuntime) -> None:
+    """Rearm a retained graph after reset+identical prefill restored its start state."""
+
+    graph.rearm_replay_window()
+    stream = runtime.stream_create()
+    try:
+        session._set_full_attention_position_device(session.position, stream=stream)
+        runtime.stream_synchronize(stream)
+    finally:
+        runtime.stream_destroy(stream)
+
+
 def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk_attention_mode: str) -> str:
     if use_bulk_prefill is True:
         prefill = f"bulk_prefill_{bulk_attention_mode}_attention"
@@ -772,16 +784,10 @@ def _run_existing_session_once(
                 decode_graph_reused = True
             decode_graph_recorded_tokens = getattr(graph, "generated", None) is not None
             if decode_graph_reused:
-                # capture_decode_graph() primes the device position scalar before
-                # capture, outside the graph body. A retained graph therefore
-                # needs the same scalar reset before each replay after
-                # session.reset()+prefill()+warmup.
-                stream = runtime.stream_create()
-                try:
-                    session._set_full_attention_position_device(session.position, stream=stream)
-                    runtime.stream_synchronize(stream)
-                finally:
-                    runtime.stream_destroy(stream)
+                # reset()+identical prefill+warmup reconstructs the captured
+                # recurrent/KV/hidden/token state. Rearm host replay accounting
+                # and the device position scalar before the retained launch.
+                _rearm_reused_decode_graph(session, graph, runtime)
             try:
                 decode_start = time.perf_counter()
                 with roctx.region("measured_decode_graph", selected=rocprof_selected_region):

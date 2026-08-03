@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.core.dtype import DType
 from hipengine.runtime.gguf_decode_graph import (
@@ -194,6 +196,42 @@ def test_decode_graph_close_releases_device_kv_pin_after_destroy() -> None:
     assert session._decode_graphs == []
     assert unpinned == [graph]
     assert calls == [("exec", 12), ("graph", 11), ("stream", 13)]
+
+
+def test_decode_graph_rearm_replay_window_requires_restored_capture_cursor() -> None:
+    session = SimpleNamespace(position=512)
+    graph = Qwen35GGUFDecodeGraph(
+        session=session,
+        graph=11,
+        graph_exec=12,
+        stream=13,
+        position=512,
+        steps_per_replay=1,
+        max_replay_steps=128,
+        generated=None,
+        generated_hidden_seeds=None,
+        generated_index=None,
+        record_steps=0,
+        bucket_key=SimpleNamespace(),
+        attention_max_context_len=640,
+        capture_hidden_seed_fp32=False,
+        replayed_steps=128,
+    )
+
+    graph.rearm_replay_window()
+
+    assert graph.replayed_steps == 0
+    graph.replayed_steps = 128
+    session.position = 513
+    with pytest.raises(RuntimeError, match="capture cursor"):
+        graph.rearm_replay_window()
+    assert graph.replayed_steps == 128
+
+    session.position = 512
+    graph.record_steps = 128
+    with pytest.raises(RuntimeError, match="recording"):
+        graph.rearm_replay_window()
+    assert graph.replayed_steps == 128
 
 
 def test_decode_graph_input_seed_updates_feedback_buffer_before_cross_stream_capture(

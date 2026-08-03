@@ -3,8 +3,9 @@
 The graph is session-local: every kernel argument is bound to resident weight,
 scratch, recurrent-state, KV, sampler, and token buffers.  The key records that
 full identity plus the starting state generation and declared transition
-window.  Callers must never reuse a graph after reset, rollback, or a cursor
-change outside that window.
+window. Callers must not reuse a graph after reset, rollback, or an out-of-window
+cursor change unless they first restore the exact captured state and explicitly
+rearm a non-recording replay window.
 """
 
 from __future__ import annotations
@@ -461,6 +462,26 @@ class Qwen35GGUFDecodeGraph:
     capture_hidden_seed_fp32: bool
     replayed_steps: int = 0
     closed: bool = False
+
+    def rearm_replay_window(self) -> None:
+        """Rearm a non-recording graph after its exact start state is restored.
+
+        This resets only host replay accounting. The caller remains responsible
+        for reconstructing recurrent/KV/hidden/token state byte-for-byte at the
+        capture cursor before calling this method. Recording graphs are excluded
+        because their device-side output index is stateful across launches.
+        """
+
+        if self.closed:
+            raise RuntimeError("GGUF decode graph is closed")
+        if self.record_steps:
+            raise RuntimeError("recording GGUF decode graphs cannot be rearmed")
+        if int(self.session.position) != int(self.position):
+            raise RuntimeError(
+                "decode graph cannot be rearmed away from its capture cursor: "
+                f"expected {self.position}, observed {self.session.position}"
+            )
+        self.replayed_steps = 0
 
     def replay(self, steps: int) -> None:
         if self.closed:
