@@ -3468,6 +3468,18 @@ remove all candidate/RED surfaces, skip owner/state/length/source work, and
 retain unchanged H8B **440.893 tok/s / 2,155 dispatches**
 ([H8I rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json)).
 
+Select target-only **WPF-H8J exact IQ3 four-workgroup occupancy** after closing
+Q5's remaining straightforward partition route. H6T owns **264.377 ms / 45
+calls**, or **96.783%** of current IQ-down. Its local128/runtime-VGPR104 object
+fits **3 complete workgroups / 12 resident waves per SIMD**; one separately
+named, otherwise identical `launch_bounds(128,4)` sibling must reach **≤96
+VGPR**, zero scratch, and **4 workgroups / 16 waves (+33.333%)**. This is target
+arithmetic, not a performance claim. Freeze RED first and preserve every H6T
+operation/byte/ABI/fallback. Bind all 45 layers and the aggregate to one exact,
+physical, named-trace, both-clock screen; forbid launch-bound sweeps, subsets,
+rewrites, recompiles, and favorable reruns
+([H8J target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8i-iq3-four-workgroup-occupancy-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
