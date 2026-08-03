@@ -4667,6 +4667,8 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_dense_prefix_nontemporal_key_value_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
         laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_allwave_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_allwave_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
     from hipengine.quant.gguf import bf16_to_float32
@@ -5322,6 +5324,49 @@ def test_laguna_large_capacity_dense_prefix_global_decode_is_bit_exact() -> None
                         )
                     assert np.array_equal(candidate, control)
                     assert np.array_equal(candidate_gate_bits, control_gate_bits)
+                for prefetch_fn, allwave_fn in (
+                    (
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_allwave_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+                    ),
+                    (
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+                        laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_allwave_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+                    ),
+                ):
+                    prefetch_fn(
+                        *common,
+                        control_out.ptr,
+                        gate_device.ptr,
+                        control_gated.ptr,
+                        *tail,
+                        library=library,
+                        runtime=runtime,
+                    )
+                    allwave_fn(
+                        *common,
+                        candidate_out.ptr,
+                        gate_device.ptr,
+                        candidate_gated.ptr,
+                        *tail,
+                        library=library,
+                        runtime=runtime,
+                    )
+                    runtime.device_synchronize()
+                    for host, device in (
+                        (control, control_out),
+                        (candidate, candidate_out),
+                        (control_gate_bits, control_gated),
+                        (candidate_gate_bits, candidate_gated),
+                    ):
+                        copy_device_to_host(
+                            host_array_ptr(host),
+                            device,
+                            host.nbytes,
+                            runtime=runtime,
+                        )
+                    assert np.array_equal(candidate, control)
+                    assert np.array_equal(candidate_gate_bits, control_gate_bits)
                 laguna_global_attention_decode_split_exact_gated_bf16_spans(
                     *common,
                     control_out.ptr,
@@ -5556,14 +5601,12 @@ def test_laguna_large_capacity_global_decode_keeps_resource_safe_fast_routes() -
         "global_context_allwave_gqa6_tile1024_dense_prefix_spans",
         (
             "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
-            "tokenloop4_deferrednorm_compensated_prefetch16_dense_prefix_"
-            "nontemporal_"
+            "allwave_compensated_prefetch16_dense_prefix_nontemporal_"
             "key_value_spans"
         ),
         (
             "global_context_split_gated_gqa6_dim64_vstage64_ctx4096_"
-            "tokenloop4_deferrednorm_prefetch4_dense_prefix_nontemporal_"
-            "key_value_spans"
+            "allwave_prefetch4_dense_prefix_nontemporal_key_value_spans"
         ),
         "global_context_split_exact_gated_gqa6_tokenloop4_deferrednorm_dim32_vstage80_spans",
         (
@@ -5789,6 +5832,7 @@ def test_laguna_kv_owner_defaults_bounded_split_workspace_and_retains_rollback()
             gfx1151_cache.global_split_gqa6_allwave_tile1024_dense_prefix_min_live
             == 32_768
         )
+        assert gfx1151_cache.global_split_gqa6_ctx4096_allwave_score
         assert gfx1151_cache.global_dense_prefix_idle_double_buffer is True
         assert gfx1151_cache.global_local1024 is True
         assert gfx1151_cache.swa_split_wave_local

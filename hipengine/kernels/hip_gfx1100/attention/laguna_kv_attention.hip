@@ -10688,7 +10688,8 @@ hipengine_laguna_global_attention_decode_split_exact_gated_qhead_dim32_direct_bf
 
 template <bool kCompensated, int kDimTile, bool kTokenLoop4 = false,
           bool kDeferredNorm = false, bool kDensePrefixScore = false,
-          bool kNonTemporalKeyValue = false, int kOperandPrefetch = 1>
+          bool kNonTemporalKeyValue = false, int kOperandPrefetch = 1,
+          bool kAllwaveScore = false>
 static int
 laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
     const float* query,
@@ -10740,7 +10741,24 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
       ? inverse_sums + kInverseElements
       : reinterpret_cast<float*>(physical_scratch + capacity);
   int32_t* repair_mask = reinterpret_cast<int32_t*>(partial_out);
-  if constexpr (kTokenLoop4) {
+  if constexpr (kAllwaveScore) {
+    static_assert(kDensePrefixScore);
+    hipLaunchKernelGGL(
+        laguna_global_attention_gqa6_tile1024_dense_prefix_scores_kernel,
+        dim3(8, static_cast<unsigned int>((scan_slots + 1023) / 1024)),
+        dim3(1024),
+        0,
+        stream,
+        query,
+        key_cache,
+        score_scratch,
+        live_counts,
+        row_positions,
+        capacity,
+        scratch_stride,
+        scan_slots,
+        scale);
+  } else if constexpr (kTokenLoop4) {
     hipLaunchKernelGGL(
         (laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<kDensePrefixScore, kNonTemporalKeyValue>),
         dim3(8, static_cast<unsigned int>((scan_slots + 3) / 4)),
@@ -10970,7 +10988,24 @@ LAGUNA_CTX4096_NONTEMPORAL_PREFETCH_WRAPPER(
     true,
     16)
 
+#define LAGUNA_CTX4096_ALLWAVE_PREFETCH_WRAPPER(NAME, COMPENSATED, PREFETCH)   \
+  extern "C" int NAME(LAGUNA_CTX4096_ARGUMENTS) {                              \
+    return laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl< \
+        COMPENSATED, 64, true, true, true, true, PREFETCH, true>(              \
+        LAGUNA_CTX4096_FORWARD);                                               \
+  }
+
+LAGUNA_CTX4096_ALLWAVE_PREFETCH_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_allwave_prefetch4_dense_prefix_nontemporal_key_value_bf16_spans,
+    false,
+    4)
+LAGUNA_CTX4096_ALLWAVE_PREFETCH_WRAPPER(
+    hipengine_laguna_global_attention_decode_split_gated_gqa6_dim64_vstage64_ctx4096_allwave_compensated_prefetch16_dense_prefix_nontemporal_key_value_bf16_spans,
+    true,
+    16)
+
 #undef LAGUNA_CTX4096_NONTEMPORAL_PREFETCH_WRAPPER
+#undef LAGUNA_CTX4096_ALLWAVE_PREFETCH_WRAPPER
 
 #undef LAGUNA_CTX4096_FORWARD
 #undef LAGUNA_CTX4096_ARGUMENTS

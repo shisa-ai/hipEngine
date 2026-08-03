@@ -198553,3 +198553,39 @@ Vulkan local sizes verbatim will close the measured gap.
   remains blocked because read-only
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. No external code was
   ported.
+
+## 2026-08-04 01:32 JST — Retain exact all-wave QK in ctx4096 layers
+
+- RED first failed import on the absent ordinary and compensated ctx4096
+  all-wave wrappers. GREEN reuses the exact local1024/K1024 dense score
+  producer in ordinary layers 32/36/40/44 and compensated layer 28 without
+  changing the admitted D64 partial-PV/merge arithmetic. gfx1151 selects it
+  only for dense identity metadata at **98,304+ live slots**; shorter contexts,
+  explicit eviction/non-dense metadata, and peer backends retain tokenloop4.
+- Serial formal 5-warmup/13-sample/burst10 screens are byte-exact in F32
+  context and gated BF16. At 128K, ordinary changes **3.245126 -> 3.175079 ms
+  (-2.159%)** and compensated changes **3.309347 -> 3.240814 ms (-2.071%)**.
+  The initial parallel GPU screen was discarded as invalid because the two
+  benchmark processes contended and produced bimodal samples; no claim uses
+  it. Raw serial SHA-256 values are
+  `b98559c21660605479a37704293ecc463548f31f335f77615409174ca3084cad`
+  and `e6eb69c160dac954ad06942fcb7fffd807e4349cb072af90b0f98c8ee85d6e48`.
+- After an expected cache-only miss identified the missing compiler-version
+  build, the source was prebuilt outside the profiler. The successful
+  require-cached trace names the candidate at
+  local1024/VGPR48/SGPR128/LDS0/scratch0 and changes the score median
+  **1,254.715 -> 1,198.570 us (-4.475%)**. Trace SHA-256 is
+  `6e0b09a4a1c44cb519ee225bfba722f6c6e1f88d4ede5610a20fec96776fceb7`.
+- Mandatory one-run production 128K improves **11.318784 -> 11.374827 tok/s
+  (+0.495%)**, cuts 127-transition wall **11.220286 -> 11.165005 s
+  (-0.493%)**, and reaches **79.896%** same-GGUF Vulkan parity. Final token
+  **874**, generated hash `c8307c...`, and position **131,198** are unchanged;
+  all **87,407,934,744 bytes / 1,452 allocations** are freed. Raw production
+  SHA-256 is
+  `147c9e45d1669aa2cf87193aeb9354ecda9c79a8d759b31fcc00f77d1699e6a4`.
+- Focused GPU differential/selector/capability plus profile validation passes
+  **43/43**; `py_compile`, JSON validation, and diff checks pass. The lineage
+  audit remains blocked by missing read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external code was ported.
+  Canonical evidence is
+  `benchmarks/results/2026-08-04-gfx1151-laguna-long-global-ctx4096-allwave-qk1024-retained.json`.

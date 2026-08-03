@@ -1563,8 +1563,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "compensated owner at global layer 28 and the ordinary split "
                 "at layers "
                 "32/36/40/44, with byte-identical D64 PV geometry for all "
-                "five admitted layers and non-temporal aligned K/V streaming "
-                "while dense-initial identity remains valid.",
+                "five admitted layers, the same exact local1024 all-wave "
+                "score producer, and non-temporal aligned K/V streaming while "
+                "dense-initial identity remains valid.",
             ]
         ),
     }

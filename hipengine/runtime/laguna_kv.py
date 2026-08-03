@@ -395,6 +395,18 @@ class LagunaKVCache:
             if self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value
             else 1
         )
+        self.global_split_gqa6_ctx4096_allwave_score = bool(
+            self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value
+            and self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value_prefetch
+            == 4
+            and self.global_split_gqa6_ctx4096_compensated_dense_prefix_nontemporal_key_value_prefetch
+            == 16
+            and backend_package_capability(
+                backend,
+                "LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_ALLWAVE_SCORE",
+                False,
+            )
+        )
         for prefetch in (
             self.global_split_gqa6_ctx4096_dense_prefix_nontemporal_key_value_prefetch,
             self.global_split_gqa6_ctx4096_compensated_dense_prefix_nontemporal_key_value_prefetch,
@@ -954,6 +966,20 @@ class LagunaKVCache:
                         and state.q_heads == 48
                     )
                     else (
+                        "global_context_split_gated_gqa6_dim64_vstage64_"
+                        "ctx4096_allwave_compensated_prefetch16_dense_prefix_"
+                        "nontemporal_key_value_spans"
+                    )
+                    if (
+                        use_gated
+                        and self.global_split_gqa6_ctx4096_allwave_score
+                        and self._dense_initial_metadata_valid
+                        and state.q_heads == 48
+                        and live_count >= self.global_split_gqa6_ctx4096_min_live
+                        and layer_id
+                        == self.global_split_gqa6_ctx4096_compensated_layer
+                    )
+                    else (
                         "global_context_split_gated_gqa6_"
                         f"dim{self.global_split_gqa6_ctx4096_dim_tile}_"
                         f"vstage64_ctx4096{'_tokenloop4' if self.global_split_gqa6_ctx4096_tokenloop4 else ''}"
@@ -976,6 +1002,20 @@ class LagunaKVCache:
                         >= self.global_split_gqa6_ctx4096_min_live
                         and layer_id
                         == self.global_split_gqa6_ctx4096_compensated_layer
+                    )
+                    else (
+                        "global_context_split_gated_gqa6_dim64_vstage64_"
+                        "ctx4096_allwave_prefetch4_dense_prefix_nontemporal_"
+                        "key_value_spans"
+                    )
+                    if (
+                        use_gated
+                        and self.global_split_gqa6_ctx4096_allwave_score
+                        and self._dense_initial_metadata_valid
+                        and state.q_heads == 48
+                        and live_count >= self.global_split_gqa6_ctx4096_min_live
+                        and self.global_split_gqa6_ctx4096_min_layer is not None
+                        and layer_id >= self.global_split_gqa6_ctx4096_min_layer
                     )
                     else (
                         "global_context_split_gated_gqa6_"

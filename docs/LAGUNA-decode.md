@@ -10606,6 +10606,33 @@ The remaining attention sequence is:
      recover all **87,407,934,744 bytes / 1,452 allocations**:
      [`all-wave K1024 production`](../benchmarks/results/2026-08-04-gfx1151-laguna-long-global-allwave-qk1024-retained.json).
 
+246. Reuse exact all-wave QK in the five quality-scoped ctx4096 layers.
+     **Retained/default at 98,304+ live slots; LC-D3 twenty-eighth screen and
+     twenty-sixth production checkpoint.**
+
+     The ordinary layers 32/36/40/44 and compensated layer 28 still use their
+     admitted D64 partial-PV and merge arithmetic, but now produce the same
+     exact F32 score plane with the local1024/K1024 all-wave owner instead of
+     tokenloop4. Shorter contexts, non-dense metadata, explicit eviction, and
+     peer backends retain their previous route.
+
+     | 128K ctx4096 leaf | Tokenloop4 QK | All-wave K1024 QK | Delta |
+     | --- | ---: | ---: | ---: |
+     | Ordinary prefetch4 | 3.245126 ms | **3.175079 ms** | **-2.159%** |
+     | Compensated prefetch16 | 3.309347 ms | **3.240814 ms** | **-2.071%** |
+
+     Both F32 context and gated BF16 outputs are byte-identical. Cached tracing
+     names the intended local1024/VGPR48/SGPR128/LDS0/scratch0 producer and
+     cuts its score stage **1,254.715 -> 1,198.570 us (-4.475%)**. The
+     mandatory production run advances 128K **11.318784 -> 11.374827 tok/s
+     (+0.495%)**, cuts the 127-transition wall **11.220286 -> 11.165005 s
+     (-0.493%)**, and reaches **79.896%** of same-GGUF Vulkan. Final token
+     **874**, trajectory hash `c8307c...`, position **131,198**, and complete
+     **87,407,934,744-byte / 1,452-allocation** recovery are unchanged. The
+     512/1K/4K guard is structural: this selector cannot become active below
+     98,304 live slots.
+     [`ctx4096 all-wave K1024 production`](../benchmarks/results/2026-08-04-gfx1151-laguna-long-global-ctx4096-allwave-qk1024-retained.json).
+
 ### Long-context decode attack
 
 Use one-run passes while changes are architectural. A candidate must move
@@ -10623,7 +10650,7 @@ allocation teardown remain mandatory at every retained step.
    reducer/PV is **76.527 ms/token**. Profiling 4K/64K/128K before changing the
    owner would not alter the decision; those depths remain directional and
    promotion gates for LC-D3.
-3. **LC-D3 — replace the full score-plane/reducer path. Twenty-five milestones
+3. **LC-D3 — replace the full score-plane/reducer path. Twenty-six milestones
    retained; the fused-online approximation family is closed; active.** Exact GQA6 ownership and
    dimension-sharded staged V cut
    live16,448 global attention to **16.209 ms/token**. Deferred normalization
@@ -10726,7 +10753,12 @@ allocation teardown remain mandatory at every retained step.
    K1024 score ownership cuts its producer **4.722%** and improves complete
    64K/128K another **0.948%/0.760%**, reaching
    **83.207%/79.502%** Vulkan parity with exact recurrent state and noise-flat
-   512/1K/4K guards. Next attack the exact V stream or develop an association-
+   512/1K/4K guards. Reusing that same exact score owner in the five
+   quality-scoped ctx4096 layers cuts their ordinary/compensated 128K leaves
+   **2.159%/2.071%** and improves complete 128K another **0.495%**, reaching
+   **79.896%** Vulkan parity with exact recurrent state; the 98,304-live
+   selector threshold makes the 512/1K/4K guard structurally inactive. Next
+   attack the exact V stream or develop an association-
    preserving scoreless owner; do not reopen split-local online softmax,
    F32 handoff, cooperative BF16, or sparse replay without a new numerical
    argument. Merge and dormant scalar repair are not active targets.
