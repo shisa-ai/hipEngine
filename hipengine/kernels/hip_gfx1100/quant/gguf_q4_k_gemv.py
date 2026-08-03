@@ -36,6 +36,9 @@ _SYMBOL_PACK8_FP16_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_fp16_fp16_out"
 _SYMBOL_PACK8_BF16_F32_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_f32_out"
 _SYMBOL_PACK8_BF16_FP16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_fp16_out"
 _SYMBOL_PACK8_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out"
+_SYMBOL_PACK8_ROWTILE_BF16_BF16_OUT = (
+    "hipengine_gguf_q4_k_pack8_rowtile_bf16_bf16_out"
+)
 _SYMBOL_PACK8_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_dual_gemv_bf16_bf16_out"
 _SYMBOL_PACK8_DUAL_SILU_BF16_BF16_OUT = (
     "hipengine_gguf_q4_k_pack8_dual_silu_gemv_bf16_bf16_out"
@@ -334,6 +337,44 @@ def gguf_q4_k_pack8_gemv_bf16_bf16_out(
         in_features,
         out_features,
         threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_pack8_rowtile_bf16_bf16_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    scales_ptr: int,
+    mins_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Reuse one resident Q4_K pack8 weight stream across 2-4 exact rows."""
+
+    if rows not in (2, 3, 4):
+        raise ValueError("pack8 rowtile rows must be 2, 3, or 4")
+    if threads not in (0, 32):
+        raise ValueError("pack8 rowtile threads must be 0 or 32")
+    _launch_pack8(
+        _SYMBOL_PACK8_ROWTILE_BF16_BF16_OUT,
+        x_ptr,
+        qweight_ptr,
+        scales_ptr,
+        mins_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=32,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -1036,6 +1077,7 @@ _EXTRA_Q4_K_WRAPPERS = {
     "pack8_prefill_bf16_f32_out": gguf_q4_k_pack8_prefill_bf16_f32_out,
     "pack8_prefill_bf16_fp16_out": gguf_q4_k_pack8_prefill_bf16_fp16_out,
     "pack8_prefill_bf16_bf16_out": gguf_q4_k_pack8_prefill_bf16_bf16_out,
+    "pack8_rowtile_bf16_bf16_out": gguf_q4_k_pack8_rowtile_bf16_bf16_out,
 }
 
 register_gguf_q4_k_gemv_kernels()
@@ -1069,6 +1111,7 @@ __all__ = [
     "gguf_q4_k_pack8_gemv_f32_fp16_out",
     "gguf_q4_k_pack8_gemv_fp16_f32_out",
     "gguf_q4_k_pack8_gemv_fp16_fp16_out",
+    "gguf_q4_k_pack8_rowtile_bf16_bf16_out",
     "gguf_q4_k_pack8_prefill_bf16_bf16_out",
     "gguf_q4_k_pack8_prefill_bf16_f32_out",
     "gguf_q4_k_pack8_prefill_bf16_fp16_out",
