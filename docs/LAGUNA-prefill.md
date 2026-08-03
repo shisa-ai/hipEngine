@@ -2074,6 +2074,19 @@ backend-exclusion, and RED-test surface; preserve H8A/H8B/H7H production and
 require a materially different operation before revisiting shared-Q5 residency
 ([H8F rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
 
+Reject **WPF-H8G existing exact global-qrow6 architecture transfer** before
+publishing a target or adding policy. The source-unchanged cached W7900 screen
+covers the complete start128/256/384 class, with H6N fixed-512 at start128 and
+H6Z score/weight replay at starts256/384 as controls. The sibling-RDNA3 qrow6
+body is finite and lifecycle-clean, but differs from the current exact outputs
+at every start by **730,971–749,888 F32 bits**. It wins both clocks only at
+start128; starts256/384 regress to roughly **0.632–0.640×** event/wall. Across
+all 36 calls, event moves **15.869→21.545 ms (0.7365×)** and wall moves
+**16.078→21.803 ms (0.7374×)**. Zero compiler processes execute. Honor the
+predeclared complete-class rule: do not salvage start128, add no target/RED/
+owner/source map, and retain H6N/H6Z plus H8B production
+([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

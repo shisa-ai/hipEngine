@@ -2630,6 +2630,18 @@ test under the no-length-subset/no-rerun rule. The HIP source/object remains
 unchanged and H7H/H8B stays production
 ([H8F rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
 
+Do **not** transfer the existing dense-initial global qrow6 body to gfx1100 as
+**WPF-H8G**. The registered primitive remains valid for its qualified sibling
+RDNA3 route, but a cached complete W7900 starts128/256/384 screen fails both
+current-output identity and all-class timing. Qrow6 wins start128
+**1.0492×/1.0362×** event/wall, yet differs from H6N/H6Z by
+**730,971/742,825/749,888 F32 bits**, and starts256/384 lose both clocks. The
+weighted 36-call route regresses **15.869→21.545 ms event (0.7365×)** and
+**16.078→21.803 ms wall (0.7374×)**. Keep start0 and all measured starts on the
+current H6N/H6Z schedule; add no gfx1100 capability, dispatch branch, owner, or
+RED, and forbid favorable start128-only salvage
+([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
