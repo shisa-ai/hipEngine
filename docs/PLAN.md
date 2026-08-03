@@ -3643,6 +3643,14 @@ a rejected model, not a result
 ([H8Q rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json) ·
 [H8Q target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
 
+**Table W7900 Laguna parity implementation here; select no H8R target.** Any
+resumption starts from the campaign/current/matched-llama.cpp table and
+high-leverage admission rules in
+[`LAGUNA-PARITY-STATUS.md`](LAGUNA-PARITY-STATUS.md): prioritize Q5, IQ-down,
+and attention algorithm/dataflow transfers, require a plausible ≥50-ms or ≥5%
+end-to-end target before code, and do not restart an adjacent micro-variant
+ladder.
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

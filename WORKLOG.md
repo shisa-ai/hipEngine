@@ -190868,3 +190868,43 @@ Vulkan local sizes verbatim will close the measured gap.
   future Laguna parity implementation after this closure; any later resumption
   must begin with the highest-impact remaining component gaps rather than
   another narrow H8-class micro-target.
+
+## 2026-08-03 — Table Laguna parity implementation and publish final status
+
+- Per user direction, pause future W7900/gfx1100 Laguna parity implementation at
+  clean H8B production after committed H8Q rejection `f219af660`. Select no H8R
+  target. H8Q executable/package/RED surfaces are absent; no candidate remains
+  default-off or available for salvage.
+- Freeze the apples-to-apples natural C4096/direct-M512/BF16-KV status:
+
+  | Component | Campaign start | Current H8B | llama.cpp HIP | Gap |
+  | --- | ---: | ---: | ---: | ---: |
+  | Q5 projections | 1,270.458 ms | 230.429 ms | 58.314 ms | 172.115 ms |
+  | IQ3/IQ4 expert-down | 557.091 ms | 273.163 ms | 153.860 ms | 119.303 ms |
+  | Attention | 488.304 ms | 115.349 ms | 21.512 ms | 93.837 ms |
+  | Q6 projections | 157.073 ms | 73.320 ms | 14.668 ms | 58.652 ms |
+  | Gate/up | 460.143 ms | 401.403 ms | 397.805 ms | 3.598 ms |
+  | Remaining | 68.623 ms | 52.755 ms | 67.849 ms | −15.094 ms |
+  | **Kernel sum** | **3,001.692 ms** | **1,146.420 ms** | **714.008 ms** | **432.411 ms** |
+  | **Wall** | **169.516 tok/s** | **440.893 tok/s** | **690.791 tok/s** | **1.566801× behind** |
+
+- Campaign wall throughput improves **169.516→440.893 tok/s (+160.089%)** and
+  kernel sum falls **3,001.692→1,146.420 ms (−61.808%)**. Retained checkpoints
+  are H6Q **390.947**, H6Z **423.233**, H7U **437.189**, H8A **440.353**, and
+  H8B **440.893 tok/s**. H8C-H8Q contributes **zero retained gain** across 15
+  consecutive analytical/correctness/physical/timing screens.
+- The user-reported llama.cpp **714.07 tok/s** remains synthetic/random default
+  `pp512`; the status uses the same-token **690.791 tok/s** natural comparator.
+  Both engines return token 2930 under the matched protocol.
+- Publish `docs/LAGUNA-PARITY-STATUS.md` as the canonical pause/resumption
+  handoff and link it from root README, benchmark rollup, plan, kernel catalog,
+  and Laguna ledger. The top gaps are Q5 **172.115 ms (39.804%)**,
+  IQ-down **119.303 ms (27.590%)**, and attention **93.837 ms (21.701%)**;
+  together they explain **89.095%** of the net kernel gap.
+- Any resumption must re-run both pinned engines, perform side-by-side source
+  and trace attribution, and select a complete-family algorithm/dataflow
+  transfer. Default admission requires a plausible **≥50-ms request kernel
+  saving or ≥5% end-to-end gain** and a phase aimed at at least **108.103 ms
+  (25% of the total gap)**. Do not reopen gate/up, launch-count work, H8C-H8Q
+  salvage, or adjacent geometry/codebook/resource micro-variants without new
+  dominant-trace evidence.

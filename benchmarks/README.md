@@ -2,6 +2,11 @@
 
 Last updated: **2026-08-03**
 
+**W7900 Laguna parity implementation is tabled at H8B production after the H8Q
+physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
+records the campaign/current/matched-llama.cpp table, retained gains, closed
+H8C-H8Q ladder, and high-leverage-only resumption policy.
+
 The retained source-selected H7H exact full-group Q5 production owner is
 summarized below in
 [`2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-production.json`](results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-group-compute-production.json),

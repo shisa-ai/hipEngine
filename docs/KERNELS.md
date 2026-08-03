@@ -2963,6 +2963,12 @@ recompile/rerun rule; remove candidate plus RED and retain H8B production
 ([H8Q rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json) ·
 [H8Q target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
 
+The W7900 Laguna parity kernel campaign is **tabled** at this boundary; no H8R
+kernel is selected. A later campaign must use the component ranking and
+high-leverage source-transfer gates in
+[`LAGUNA-PARITY-STATUS.md`](LAGUNA-PARITY-STATUS.md), not continue Q5 packing,
+IQ codebook/occupancy, qrow/prefetch, or H8Q resource-salvage variants.
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
