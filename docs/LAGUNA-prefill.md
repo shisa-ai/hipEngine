@@ -2105,6 +2105,33 @@ unfused four attention routes plus registered standalone gate at H8B
 ([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json) ·
 [H8H rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json)).
 
+Select target-only **WPF-H8I exact stream-ordered Q5 logical-K partition
+accumulation** after the clean H8H rejection. Q5 remains the largest matched
+gap at **172.115 ms**. The complete six-role class is **188** H7G/H7H consumer
+calls and **203.861 ms**: BF16 K3072×N1024, K3072×N12288, K6144×N3072,
+K9216×N3072, plus F32 K3072×N6144 and K3072×N9216.
+
+Launch four stream-ordered local32 grids per call. For partition `p`, physical
+lane `i` visits `k=p*32+i+128*n`, exactly the retained local128 logical lane.
+Stages 0/1/2 publish one F32 accumulation plane; stage 3 adds partition 3 and
+performs the retained BF16 or F32 store. This preserves each scalar `fmaf`, the
+wave32 16/8/4/2/1 shuffle tree, the initial `+0.0f`, and serial
+**0→1→2→3** sum. It keeps all **20,085,760** compute waves while replacing
+**5,021,440** local128 workgroups/barriers with saturated partition grids.
+
+Price the operation honestly: **752** candidate partition launches,
+**2,155→2,719** application dispatches, **7.546875 GiB** extra M512 global
+traffic, and up to **25,165,824 bytes (24 MiB)** of F32 accumulation storage.
+A bounded owner may only borrow an aligned inactive interval of the existing
+**600,141,856-byte** request scratch. This is not a candidate or speed claim.
+Freeze RED before source edits; require local32/LDS0/no private-spill-scratch,
+current+8 runtime-VGPR ceilings, exact rows1/7/8/9/17/33/M512 partials and final
+outputs, named four-stage traces, and both-clock wins for every role plus the
+weighted 188-call aggregate. No role, dtype, shape, layer, prompt, token,
+length, partition, resource-rewrite, threshold, recompile, or favorable-rerun
+subset is admissible
+([H8I target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

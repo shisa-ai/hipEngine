@@ -1313,6 +1313,20 @@ behind matched llama.cpp HIP
 ([H8H target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json) ·
 [H8H rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json)).
 
+**WPF-H8I exact stream-ordered Q5 partition accumulation is selected as a
+target only.** Q5 remains the largest matched gap at **172.115 ms**. The
+complete six-role class contains **188 H7G/H7H consumers / 203.861 ms**.
+H8I models four stream-ordered local32 grids per consumer: they preserve all
+**20,085,760** compute waves, each logical lane's scalar FMA sequence, wave32
+reduction, and final partition sum **0→1→2→3**, while removing **5,021,440**
+workgroup barriers. The explicit costs are **2,155→2,719 dispatches**,
+**7.546875 GiB** of extra M512 global traffic, and at most **24 MiB** of F32
+accumulation space borrowed from inactive request scratch. No candidate or
+performance result exists. Freeze RED before implementation; require every
+role plus the weighted 188-call aggregate to win both event and synchronized
+wall clocks, with no subset, rewrite, recompile, or favorable-rerun salvage
+([H8I target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

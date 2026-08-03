@@ -3446,6 +3446,19 @@ standalone-gate chain and unchanged H8B **440.893 tok/s / 2,155 dispatches**
 ([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json) ·
 [H8H rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json)).
 
+Select target-only **WPF-H8I exact stream-ordered Q5 partition accumulation**.
+Q5 remains the largest matched gap at **172.115 ms**; its complete six-role
+class is **188 H7G/H7H calls / 203.861 ms**. Replace each local128 four-wave
+consumer with four stream-ordered local32 partition grids. Preserve every
+logical lane's FMA sequence, wave32 reduction, and **0→1→2→3** sum, so compute
+waves remain **20,085,760**, while removing **5,021,440** workgroup barriers.
+The operation explicitly adds **564 dispatches (2,155→2,719)** and **7.546875
+GiB** of M512 global traffic; borrow at most **24 MiB** of aligned inactive
+request scratch. No candidate or performance result exists. Freeze RED first
+and bind all six roles plus the weighted aggregate to exactness, first-object
+resources, and both-clock wins without subset/rewrite/recompile/rerun salvage
+([H8I target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
