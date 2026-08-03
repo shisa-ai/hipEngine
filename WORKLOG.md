@@ -203391,3 +203391,39 @@ Vulkan local sizes verbatim will close the measured gap.
   state/KV/hidden commits, and provider output versus scalar AR. Commit this
   correctness unit, then run the clean natural25 promotion gate; no complete-
   suite speed claim is made from the component screen.
+
+### D27-O3 first pack8-rowtile natural25 screen — BLOCKED by dormant route
+
+- Clean commit `2fadf425c6735f48200ee521d2fc73384c5d7423` used the same W7900,
+  TheRock HIP 7.15, cached-only, one-warmup, ten-prompt/24-transition true-AR +
+  native B1-B3 command as the retained `14bcea43b` row. True AR is unchanged
+  **20.3623 -> 20.3615 tok/s (-0.004%)**. B1/B2/B3 move only
+  **18.7511/18.7523/17.9829 -> 18.7849/18.8206/18.0481 tok/s**, or
+  **+0.180%/+0.364%/+0.363%**; target verify moves just
+  **11.7048/11.6707/12.1755 -> 11.6984/11.6313/12.1298 s**. This is normal
+  run noise and nowhere near the 1.22-3.11x production-shape leaf evidence.
+- All 250 IDs per budget, GPU/CPU accept summaries, stage ledgers, and lifecycle
+  gates remain exact; tracked peak remains 28.995 GiB and allocations return to
+  zero. Raw JSON SHA-256 is `ee3c349a...80766`.
+- Source audit finds the integration miss: `verify_target_block(...,
+  bulk_attention_mode="native")` entered WMMA and GEMV-decode sessions but not
+  `native_batch_decode_session`, while the new resident-pack8 selector fails
+  closed unless that session is active. The earlier transaction pass therefore
+  proved compatibility but not execution of the new route. Treat this clean run
+  as an integration RED, not a kernel rejection and not a retained perf row.
+
+### D27-O3 production native-route scope — GREEN
+
+- Scope `native_batch_decode_session(True)` to the existing target-block linear
+  session only when `bulk_attention_mode == "native"`. The serial-exact
+  rollback and ordinary bulk mode explicitly enter the same context disabled;
+  row-one and rows-above-four still fail closed in dispatch.
+- Strengthen the real dense transaction test by forwarding/counting the actual
+  pair-rowtile wrapper and requiring observed row sets exactly `{2, 3, 4}`. The
+  same W7900 node now passes **1/1**, proving the routed kernel preserves B1-B3
+  logits, reject/partial/full/rollback state/KV/hidden commits, correction
+  logits, and natural provider output versus scalar AR. GPU1 focused
+  pack8/suite tests report **18 passed**; Ruff, py_compile, and diff checks pass.
+- Commit this routing correction before benchmarking so the next natural25
+  artifact has tracked-clean provenance. The complete promotion gate remains
+  next; no speed claim is made from the dormant-route screen.

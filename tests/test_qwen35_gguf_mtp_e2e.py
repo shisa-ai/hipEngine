@@ -13,6 +13,7 @@ from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import dflash_accept_chain_i32
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVTransaction
+import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFMTPDecodeSession,
     Qwen35GGUFTransactionalVerifier,
@@ -349,10 +350,24 @@ def test_ud_q3_k_m_real_nextn_chain_matches_mtp_disabled_greedy_output() -> None
 
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar() -> None:
+def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
     _require_free_vram(32.0)
+    rowtile_rows: set[int] = set()
+    original_rowtile = gguf_linear_module.gguf_q4_k_pack8_rowtile_bf16_bf16_out
+
+    def counted_rowtile(*args, **kwargs):
+        rowtile_rows.add(int(args[5]))
+        return original_rowtile(*args, **kwargs)
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_pack8_rowtile_bf16_bf16_out",
+        counted_rowtile,
+    )
     prompt = (9707, 9707, 9707, 9707)
     require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
     with Qwen35GGUFResidentSession(
@@ -536,6 +551,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar() -> None:
     assert all(record["experts_per_token"] == 0 for record in actual.cycle_records)
     assert all(record["target_verify_mode"] == "native" for record in actual.cycle_records)
     assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
+    assert rowtile_rows == {2, 3, 4}
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:
