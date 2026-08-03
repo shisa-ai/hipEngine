@@ -1,4 +1,4 @@
-"""GGUF blk.40 executor and candidate-only DraftModel provider gates."""
+"""GGUF trailing-NextN executors and candidate-only DraftModel provider gates."""
 
 from __future__ import annotations
 
@@ -24,6 +24,10 @@ from hipengine.speculative import MtpDraftProvider, MtpProposalContext
 
 _MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf")
 _ORACLE = Path(__file__).parent / "fixtures" / "gguf" / "q3km_nextn_one_step_oracle.json"
+_DENSE_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+_DENSE_ORACLE = (
+    Path(__file__).parent / "fixtures" / "gguf" / "qwen36_27b_q4km_nextn_one_step_oracle.json"
+)
 
 
 def _hip_available() -> bool:
@@ -124,9 +128,9 @@ def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
         provider.advance_full_accept_tail(41, accepted_count=3)
 
 
-def _require_real_nextn() -> None:
-    if not _MODEL.exists():
-        pytest.skip(f"local GGUF fixture not found: {_MODEL}")
+def _require_real_nextn(model: Path) -> None:
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
     free_bytes, _ = get_hip_runtime().mem_get_info()
@@ -136,7 +140,7 @@ def _require_real_nextn() -> None:
 
 @pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
 def test_real_blk40_one_step_logits_match_direct_executor_and_provider() -> None:
-    _require_real_nextn()
+    _require_real_nextn(_MODEL)
     runtime = get_hip_runtime()
     hidden_buf = malloc(2048 * DType.BF16.itemsize, runtime=runtime)
     runtime.memset(hidden_buf.ptr, 0, hidden_buf.nbytes)
@@ -174,6 +178,68 @@ def test_real_blk40_one_step_logits_match_direct_executor_and_provider() -> None
             MtpProposalContext(
                 request_ids=(7,),
                 root_tokens=(11,),
+                root_positions=(0,),
+                target_hidden=hidden,
+            ),
+            candidate_budget=1,
+            return_logits=True,
+        )
+        proposed = provider.last_results[7][-1]
+        assert proposed.logits is not None
+        np.testing.assert_array_equal(proposed.logits, direct.logits)
+        assert proposed.token_id == direct.token_id
+        assert proposed.logit == direct.logit
+        assert draft.candidate_tokens == (direct.token_id,)
+        assert draft.parent_positions == (0,)
+        assert draft.draft_depths == (1,)
+    finally:
+        executor.close()
+        free(hidden_buf, runtime=runtime)
+
+
+@pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
+def test_real_dense_blk64_one_step_logits_match_llamacpp_oracle() -> None:
+    _require_real_nextn(_DENSE_MODEL)
+    runtime = get_hip_runtime()
+    hidden_buf = malloc(5120 * DType.BF16.itemsize, runtime=runtime)
+    runtime.memset(hidden_buf.ptr, 0, hidden_buf.nbytes)
+    hidden = Tensor.from_handle(hidden_buf.ptr, (1, 5120), DType.BF16, Device("hip", 0))
+    executor = Qwen35GGUFNextNExecutor(
+        _DENSE_MODEL,
+        max_positions=256,
+        max_requests=1,
+        runtime=runtime,
+        require_cached_build=os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1",
+    )
+    try:
+        assert executor.weights is not None
+        assert executor.weights.block_id == 64
+        assert not executor.weights.config.is_moe
+        direct = executor.run_step(7, 9707, 0, hidden, return_logits=True)
+        assert direct.logits is not None
+        assert direct.logits.shape == (1, executor.vocab_size)
+        assert np.all(np.isfinite(direct.logits))
+        oracle = json.loads(_DENSE_ORACLE.read_text())
+        top_ids = np.argpartition(direct.logits[0], -10)[-10:]
+        top_ids = top_ids[np.argsort(direct.logits[0, top_ids])[::-1]]
+        expected_ids = np.asarray([row[0] for row in oracle["top10"]], dtype=np.int64)
+        expected_values = np.asarray([row[1] for row in oracle["top10"]], dtype=np.float32)
+        np.testing.assert_array_equal(top_ids, expected_ids)
+        tolerance = oracle["tolerance"]
+        np.testing.assert_allclose(
+            direct.logits[0, top_ids],
+            expected_values,
+            atol=tolerance["top10_logits_atol"],
+            rtol=tolerance["top10_logits_rtol"],
+        )
+        assert direct.token_id == oracle["token_id"]
+        executor.reset_request(7)
+
+        provider = Qwen35GGUFNextNDraftProvider(executor)
+        draft = provider.propose(
+            MtpProposalContext(
+                request_ids=(7,),
+                root_tokens=(9707,),
                 root_positions=(0,),
                 target_hidden=hidden,
             ),
