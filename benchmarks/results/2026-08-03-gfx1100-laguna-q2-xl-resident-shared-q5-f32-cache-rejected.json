@@ -1,0 +1,403 @@
+{
+  "builder_sha256": "dc489358f7bd75c5b6761bfa79d72e660809cb2249968a91f6d2de336172ffd5",
+  "clean_length_gate": {
+    "compiler_monitor_sha256": "0f41bfa17555a76b5c8a5e75975e1edf4273cbbb303852e79b51999eb8371166",
+    "compiler_processes": 0,
+    "exact_all_samples": true,
+    "failed_lengths": [
+      1024,
+      4096
+    ],
+    "lifecycle_clean": true,
+    "protocol": {
+      "acceptance": "exact state/lifecycle and positive H8F median at every length on the immutable first three-pair 512/1K/4K run; any median miss rejects without rerun or subset",
+      "attention_rows": 128,
+      "candidate_package_default": false,
+      "candidate_view_planes": 116,
+      "control_view_planes": 24,
+      "counter_rotated_repetitions": 3,
+      "fresh_request_session_per_sample": true,
+      "lengths": [
+        512,
+        1024,
+        4096
+      ],
+      "matrix_rows": 512,
+      "model_and_resident_setup_excluded": true,
+      "resident_cache_allocations_held": 116,
+      "resident_cache_nbytes_held": 2969567232,
+      "same_complete_116_plane_allocations_held_for_both_modes": true,
+      "same_resident_weights": true,
+      "selector": "explicit bounded H8F versus H8B global-only view of the same 116 held allocations",
+      "shared_total_scratch_bytes": 600141856,
+      "shared_workspace_bytes": 161120256,
+      "warmups_per_mode_length": 1
+    },
+    "raw_report_sha256": "2a45edc59232e54ac33e5e496d35c3270b39b63bb65d07887b6b35d05f5975af",
+    "status": "fail",
+    "status_sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "stderr_sha256": "9e87db9081bfa003dae9534fd4d5b623e25f7236d50172119557b120dc0bff94",
+    "stdout_sha256": "7f991108a9c396ef34067b299059d4b9a0d0391659e7b2c321475a4dedadbe2c",
+    "summaries": {
+      "1024": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 3.1732302189338952,
+        "candidate_median_tok_s": 322.6995614405915,
+        "candidate_over_llamacpp": 0.4671449996317142,
+        "candidate_resident_plane_count": [
+          116
+        ],
+        "control_median_seconds": 3.1709787191357464,
+        "control_median_tok_s": 322.9286888052949,
+        "control_resident_plane_count": [
+          24
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": -0.07095292943809506,
+        "llamacpp_hip_tok_s": 690.791,
+        "llamacpp_over_candidate": 2.140662965007387,
+        "paired_candidate_wins": 1,
+        "speedup": 0.999290470705619
+      },
+      "4096": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 20.62318013701588,
+        "candidate_median_tok_s": 198.61146403159336,
+        "candidate_over_llamacpp": 0.2875131031405929,
+        "candidate_resident_plane_count": [
+          116
+        ],
+        "control_median_seconds": 20.622826890088618,
+        "control_median_tok_s": 198.61486603315998,
+        "control_resident_plane_count": [
+          24
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": -0.0017128635104612933,
+        "llamacpp_hip_tok_s": 690.791,
+        "llamacpp_over_candidate": 3.478102351081381,
+        "paired_candidate_wins": 1,
+        "speedup": 0.9999828713648954
+      },
+      "512": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 1.254516727058217,
+        "candidate_median_tok_s": 408.125287576369,
+        "candidate_over_llamacpp": 0.5908086347048079,
+        "candidate_resident_plane_count": [
+          116
+        ],
+        "control_median_seconds": 1.2588081259746104,
+        "control_median_tok_s": 406.73394891186683,
+        "control_resident_plane_count": [
+          24
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.34207586266756795,
+        "llamacpp_hip_tok_s": 690.791,
+        "llamacpp_over_candidate": 1.692595438283736,
+        "paired_candidate_wins": 3,
+        "speedup": 1.0034207586266757
+      }
+    }
+  },
+  "complete_owner_state": {
+    "allocation_count": 116,
+    "candidate_exact": true,
+    "candidate_repeat_exact": true,
+    "compiler_monitor_sha256": "4a0d5ea23dc0957c06746464bffc582911760924c7411377814272c94b15aaca",
+    "compiler_processes": 0,
+    "complete_plane_matches": 116,
+    "exact_hidden_boundaries": 48,
+    "final_position": 511,
+    "global_plane_count": 24,
+    "kl_max": 0.0,
+    "lifecycle_recovered": true,
+    "next_token_id": 2930,
+    "raw_report_sha256": "039660671efee77f20d8dd86a3f971593353191c38ac3d49a0e9c201c52a6010",
+    "resident_nbytes": 2969567232,
+    "shared_plane_count": 92,
+    "status": "pass",
+    "stdout_sha256": "98f6b99a5306edaea8b99e50d1be5b997a63a7be962cd12fbfc46135fb8f9d42",
+    "top1_agreement": 1.0,
+    "unique_raw_pointer_count": 116,
+    "unique_resident_pointer_count": 116,
+    "workspace_unchanged": true
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_admitted": false,
+    "candidate_surfaces_removed": true,
+    "forbid_retry": "do not retry shared-Q5 residency by length/subset/rerun; require a materially different representation or operation",
+    "next_action": "retain H8B production and rerank the unmatched Q5, IQ-down, attention, and Q6 physical residuals",
+    "production_changed": false,
+    "reason": "the immutable first 512/1K/4K gate regressed at both 1K and 4K despite exact state, a positive fixed M512 gate, and the expected 92-dispatch deletion",
+    "red_test_removed": true,
+    "runtime_owner_retained": false,
+    "source_default_changed": false
+  },
+  "fixed_c4096_m512": {
+    "all_finite": true,
+    "all_score_scratch_reuses_q5_plane": true,
+    "all_sessions_recovered": true,
+    "all_total_scratch_bytes": [
+      600141856
+    ],
+    "all_workspace_bytes": [
+      161120256
+    ],
+    "candidate_median_seconds": 1.164136429084465,
+    "candidate_median_tok_s": 439.81099397659295,
+    "candidate_over_llamacpp": 0.6366773654789841,
+    "candidate_resident_plane_count": [
+      116
+    ],
+    "compiler_monitor_sha256": "59e9f02174ed755f2413fb070377faffaefc00233b69443a19f0edf587c7453f",
+    "control_median_seconds": 1.1654887178447098,
+    "control_median_tok_s": 439.3006917705909,
+    "control_resident_plane_count": [
+      24
+    ],
+    "exact_all_repetitions": true,
+    "gain_percent": 0.11616239527083572,
+    "llamacpp_hip_tok_s": 690.791,
+    "llamacpp_over_candidate": 1.570654234343138,
+    "paired_candidate_wins": 5,
+    "protocol": {
+      "acceptance": "exact state/lifecycle and positive H8F median on the immutable first five-pair natural M512 run; any median miss rejects without rerun or subset",
+      "attention_rows": 128,
+      "candidate_package_default": false,
+      "candidate_view_planes": 116,
+      "context_length": 4096,
+      "control_view_planes": 24,
+      "counter_rotated_repetitions": 5,
+      "fresh_request_session_per_sample": true,
+      "lengths": [
+        512
+      ],
+      "matched_llamacpp_hip_tok_s": 690.791,
+      "matrix_rows": 512,
+      "model_and_resident_setup_excluded": true,
+      "pinned_token_ids": "/tmp/laguna-matched-m512-token-ids.json",
+      "pinned_token_ids_file_sha256": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+      "resident_cache_allocations_held": 116,
+      "resident_cache_nbytes_held": 2969567232,
+      "same_complete_116_plane_allocations_held_for_both_modes": true,
+      "same_resident_weights": true,
+      "selector": "explicit bounded H8F versus H8B global-only view of the same 116 held allocations",
+      "shared_total_scratch_bytes": 600141856,
+      "shared_workspace_bytes": 161120256,
+      "warmups_per_mode_length": 1
+    },
+    "raw_report_sha256": "6f04754a1994ef1ec536e1b00710540414dcfd5447373d7800a7104d87204793",
+    "speedup": 1.0011616239527084,
+    "status": "pass",
+    "stdout_sha256": "a7921efa9fbcb33af236daa0e70d32d6f1a53e454946d38d283886a7c2a6cbd3"
+  },
+  "focused_green": {
+    "compiler_monitor_sha256": "5d8217e719112ac2434e39dc71c63855bd07f04d0e416fea006d99f752e7b074",
+    "compiler_processes": 0,
+    "failure_and_incomplete_class_rollback": true,
+    "gfx1151_fail_closed": true,
+    "owner_all_or_nothing": true,
+    "plane_rows": [
+      1,
+      7,
+      8,
+      9,
+      512
+    ],
+    "pytest": "6 passed",
+    "status": "pass",
+    "stdout_sha256": "700bc0322b00f8e8db3ce495047983b54ab27ab59ed1fedac05f3aeba47dae24"
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "implementation": {
+    "base_revision": "0b35eabc1",
+    "candidate_committed": false,
+    "candidate_diff_sha256": "6b8bb3a895a6ca28b58510758cc93fa90b2e55763c587e8a78070bdc85378547",
+    "candidate_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "e2d9c70808c6b3ba629da163bf325cc12eec8f629ea1933fe02333526fa81d56",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "b0442798c1e951710b4a2c51db48b87046ee32675c249a4587f50664ab4e76fb",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3280a8438f372a15da2b227e829e10993a5994c021a9ada9e0a29aa21a706139",
+      "hipengine/runtime/gguf_linear.py": "ae40fd91f619801bf15c0eb1b2c1cc6fe0ba3685cec400e7a37fd33ffa6c1e9a",
+      "hipengine/runtime/laguna_gguf_runner.py": "43b5249e4b8bc854a6f0beede3fd7a34a702136909629a7528182fa23236f2cd",
+      "tests/test_laguna_h8b_source_default.py": "ca16c9dcd4a5a6e99bbf88c05a799ba97f84f00ebeb7685f8a8226439bc3e2ac",
+      "tests/test_laguna_h8f_resident_shared_q5_cache.py": "e8d7940876f9ca2b9f0fbff9e0626f9f62e55c465007ca33f49d12b05847482b"
+    },
+    "hip_source_changed": false,
+    "hip_source_sha256": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "new_allocations": 92,
+    "new_device_body": false,
+    "new_jit_object": false,
+    "new_resident_bytes": 1157627904,
+    "python_only": true,
+    "resident_map_after": 116,
+    "resident_map_before": 24,
+    "total_resident_bytes": 2969567232
+  },
+  "kind": "gfx1100_laguna_q2_xl_resident_shared_q5_f32_cache_rejected",
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "named_trace": {
+    "compiler_processes": 0,
+    "consumer_resources": {
+      "Grid_Size_X": [
+        2097152
+      ],
+      "Grid_Size_Y": [
+        1
+      ],
+      "LDS_Block_Size": [
+        512
+      ],
+      "SGPR_Count": [
+        128
+      ],
+      "Scratch_Size": [
+        0
+      ],
+      "VGPR_Count": [
+        72
+      ],
+      "Workgroup_Size_X": [
+        128
+      ],
+      "Workgroup_Size_Y": [
+        1
+      ]
+    },
+    "control_shared_producers": 92,
+    "nonshared_names_resources_counts_unchanged": true,
+    "one_queue": true,
+    "one_stream": true,
+    "removed_producer_ms_in_control_trace": 3.444552,
+    "request_activation_packs": 223,
+    "request_dispatches_after": 2063,
+    "request_dispatches_before": 2155,
+    "request_h7h_consumers": 92,
+    "request_shared_activation_packs": 46,
+    "request_shared_producers": 0,
+    "setup_global_producers": 24,
+    "setup_shared_producers": 92,
+    "status": "pass",
+    "summary_sha256": "0023c8c0690e45b33bad259bb1793835862c3087e66d81423ec844499d1d8edb",
+    "trace_sha256": "9e923709a92dc5d1b946ac3b4614c65a7d12d3b12ada113bc18a28d68de93cbe"
+  },
+  "performance_claim": false,
+  "raw_sha256": {
+    "/tmp/analyze_laguna_h8f_runtime_trace.py": "2e02bce5e6e989793def38736793638c60cfa112f55c9e94425f0256b0dd59b3",
+    "/tmp/laguna-h8f-focused-green-compiler-monitor.json": "5d8217e719112ac2434e39dc71c63855bd07f04d0e416fea006d99f752e7b074",
+    "/tmp/laguna-h8f-focused-green.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8f-focused-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8f-focused-green.stdout": "700bc0322b00f8e8db3ce495047983b54ab27ab59ed1fedac05f3aeba47dae24",
+    "/tmp/laguna-h8f-rejected-implementation.diff": "6b8bb3a895a6ca28b58510758cc93fa90b2e55763c587e8a78070bdc85378547",
+    "/tmp/laguna-h8f-runtime-clean-512-4k-compiler-monitor.json": "0f41bfa17555a76b5c8a5e75975e1edf4273cbbb303852e79b51999eb8371166",
+    "/tmp/laguna-h8f-runtime-clean-512-4k.json": "2a45edc59232e54ac33e5e496d35c3270b39b63bb65d07887b6b35d05f5975af",
+    "/tmp/laguna-h8f-runtime-clean-512-4k.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h8f-runtime-clean-512-4k.stderr": "9e87db9081bfa003dae9534fd4d5b623e25f7236d50172119557b120dc0bff94",
+    "/tmp/laguna-h8f-runtime-clean-512-4k.stdout": "7f991108a9c396ef34067b299059d4b9a0d0391659e7b2c321475a4dedadbe2c",
+    "/tmp/laguna-h8f-runtime-m512-full-state-compiler-monitor.json": "4a0d5ea23dc0957c06746464bffc582911760924c7411377814272c94b15aaca",
+    "/tmp/laguna-h8f-runtime-m512-full-state.json": "039660671efee77f20d8dd86a3f971593353191c38ac3d49a0e9c201c52a6010",
+    "/tmp/laguna-h8f-runtime-m512-full-state.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8f-runtime-m512-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8f-runtime-m512-full-state.stdout": "98f6b99a5306edaea8b99e50d1be5b997a63a7be962cd12fbfc46135fb8f9d42",
+    "/tmp/laguna-h8f-runtime-matched-c4096-m512-compiler-monitor.json": "59e9f02174ed755f2413fb070377faffaefc00233b69443a19f0edf587c7453f",
+    "/tmp/laguna-h8f-runtime-matched-c4096-m512.json": "6f04754a1994ef1ec536e1b00710540414dcfd5447373d7800a7104d87204793",
+    "/tmp/laguna-h8f-runtime-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8f-runtime-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8f-runtime-matched-c4096-m512.stdout": "a7921efa9fbcb33af236daa0e70d32d6f1a53e454946d38d283886a7c2a6cbd3",
+    "/tmp/laguna-h8f-runtime-rocprof/h8f-runtime_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h8f-runtime-rocprof/h8f-runtime_kernel_trace.csv": "9e923709a92dc5d1b946ac3b4614c65a7d12d3b12ada113bc18a28d68de93cbe",
+    "/tmp/laguna-h8f-runtime-trace-analyzer.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8f-runtime-trace-analyzer.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8f-runtime-trace-analyzer.stdout": "0023c8c0690e45b33bad259bb1793835862c3087e66d81423ec844499d1d8edb",
+    "/tmp/laguna-h8f-runtime-trace-child.json": "4cc1db3bcfffa335538811ceccd80e935d3b57854d0f081a82a684726331a8ff",
+    "/tmp/laguna-h8f-runtime-trace-compiler-monitor.json": "7e680930cb893d50324c192b513c2eac4a041e431af56e65e00e74fa7963f603",
+    "/tmp/laguna-h8f-runtime-trace-summary.json": "0023c8c0690e45b33bad259bb1793835862c3087e66d81423ec844499d1d8edb",
+    "/tmp/laguna_h8f_runtime_clean_512_4k.py": "ae0e8d1c4b4ca969ffddb99b4739242a209162556cee0ab57aa166f0766a02fb",
+    "/tmp/laguna_h8f_runtime_m512_full_state.py": "03c76b7c9fd9123e90a60da562d48fe0237f6084ca63552a7d60cc01f8dfa40d",
+    "/tmp/laguna_h8f_runtime_matched_c4096_m512.py": "4d839226b2a94a558777ee25af2e0411cd9fe0e3921ead970eab3611a1bdbb0b",
+    "/tmp/laguna_h8f_runtime_trace_child.py": "32098bf53f8613541ae788c1406be615521976c0297b6ee10ddc0ae05b69ca9e",
+    "/tmp/run_laguna_h8f_focused_green_with_monitor.py": "2b2406e768c5ac427ac394007b02aaf7a9e90c9cd413978b569a4ff3ba87bcb5",
+    "/tmp/run_laguna_h8f_runtime_full_state_with_compiler_monitor.py": "2ad3568dbd5ceb392363233387a28f6a7a59c3e59dc80fa642b26860be115e75",
+    "/tmp/run_laguna_h8f_runtime_lengths_with_compiler_monitor.py": "8ad26f887d8af8b08a56d2cbd6e95e4c314df9495510ced0ca7e20b785d4e52b",
+    "/tmp/run_laguna_h8f_runtime_matched_with_compiler_monitor.py": "081e35b5962532c8c0a2c66a25213a564c04061715c013f729261a3029427d4c",
+    "/tmp/run_laguna_h8f_runtime_rocprof_with_compiler_monitor.py": "562d0347b7532d271ad8fdabe6ecd7210df7af86785f85eec8baf53ce349e896",
+    "/tmp/run_laguna_h8f_runtime_trace_prewarm_with_compiler_monitor.py": "4fbc80aeda02e4f266987674702ccf75864740873a9cad18960b8af2ea15577a"
+  },
+  "restored_production": {
+    "artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "commit": "f0069b89a",
+    "dispatches": 2155,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "matched_llamacpp_hip_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "median_tok_s": 440.8926238498552,
+    "remaining_matched_gaps_ms": {
+      "attention": 93.83664200000001,
+      "iq_down": 119.30344199999996,
+      "q5": 172.11539000000002,
+      "q6": 58.65222299999999
+    },
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+      "hipengine/runtime/gguf_linear.py": "f9ebb089b31937dcaea27f8bb43bfc2936b294d541c2841465c498d6f6dbd363",
+      "hipengine/runtime/laguna_gguf_runner.py": "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654",
+      "tests/test_laguna_h8b_source_default.py": "8d759aa476c9c18d7006c40bcf2f6acd3e2e4254b44529bcb01075ddffcf1b2b"
+    }
+  },
+  "schema": 1,
+  "status": "rejected_clean_length_transfer_gate",
+  "target": {
+    "id": "WPF-H8F",
+    "name": "complete resident shared-Q5 tile-K-col F32 cache",
+    "no_salvage_rule": "any plane/state/topology/fixed/512/1K/4K miss removes H8F; no partial-plane/layer/role/prompt/token/route/length/threshold/favorable-rerun salvage",
+    "red_commit": "0b35eabc1",
+    "scope": "all 92 layer1-46 ffn_gate_shexp/ffn_up_shexp K3072xN1024 raw-Q5 tensors",
+    "target_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json",
+    "target_artifact_sha256": "aaa9a5bc4145f6f6150df31c2d1fbfc3099ab3b315d59590324b7c077f7dde99",
+    "target_commit": "a8355f40f"
+  }
+}

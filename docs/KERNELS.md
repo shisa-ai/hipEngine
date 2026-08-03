@@ -2617,6 +2617,19 @@ source attempt. HIP source/object changes and partial-plane/layer/role/prompt/
 token/route/length/favorable-rerun salvage are forbidden
 ([H8F target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
 
+Do **not** retain the H8F resident wrapper/owner. Reusing the admitted
+coltile8 producer and H7H device body is mathematically and topologically valid:
+focused tests pass **6/6**, all **116/116** planes match fresh producers, M512 is
+KL0/exact through all **48** boundaries and KV state, and the named request has
+**0 shared producers / 46 packs / 92 H7H consumers / 2,063 dispatches** at the
+retained local128/VGPR72/LDS512/scratch0 consumer resources. Fixed M512 wins
+**+0.1162% (5/5)**, but the binding first clean 512/1K/4K medians are
+**+0.3421%/-0.0710%/-0.00171%**. Remove the Python composite/key, plane-kind
+extension, 92-plane owner, gfx1100 capabilities, gfx1151 exclusion, and RED
+test under the no-length-subset/no-rerun rule. The HIP source/object remains
+unchanged and H7H/H8B stays production
+([H8F rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

@@ -2057,6 +2057,23 @@ rows/full-state/topology/fixed/length gates. Do not admit a partial-plane,
 layer, role, prompt, token, route, length, threshold, or favorable-rerun subset
 ([H8F target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
 
+H8F reaches but does not pass runtime admission. Its bounded Python owner reuses
+the unchanged HIP object and passes focused GREEN **6/6**. All **116/116**
+resident planes match fresh exact producers; natural M512 is KL0 and byte-exact
+at logits, all **48** hidden boundaries, final/post hidden, KV state, and repeat,
+with clean lifecycle and zero compiler activity. The cache-only trace records
+**24 global + 92 shared** setup producers and a **2,063-dispatch** request with
+zero shared producers, unchanged **46** shared activation packs, and **92** H7H
+consumers. Fixed C4096/M512 improves **439.301→439.811 tok/s (+0.1162%, 5/5)**.
+
+The predeclared all-length gate rejects the owner: the first 512/1K/4K medians
+move **406.734→408.125 (+0.3421%)**, **322.929→322.700 (-0.0710%)**, and
+**198.6149→198.6115 tok/s (-0.00171%)**. Do not retain or rerun a favorable
+M512/length subset. Remove every H8F composite, registry, package, owner,
+backend-exclusion, and RED-test surface; preserve H8A/H8B/H7H production and
+require a materially different operation before revisiting shared-Q5 residency
+([H8F rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

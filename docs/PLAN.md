@@ -3401,6 +3401,22 @@ No partial-plane, layer, role, prompt, token, route, length, threshold, or
 favorable-rerun salvage is allowed
 ([H8F target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
 
+Reject H8F at the binding clean-length transfer gate. The Python-only bounded
+owner and reused device primitives pass focused GREEN **6/6**, complete
+**116/116** plane identity, KL0/exact full M512 state and repeat, lifecycle, and
+zero-compiler gates. Named tracing proves exact **24 global + 92 shared** setup
+producers, then **0** shared request producers with unchanged **46** shared
+packs/**92** H7H consumers and **2,155→2,063** request dispatches. Fixed
+C4096/M512 is positive at **439.301→439.811 tok/s (+0.1162%, 5/5)**.
+
+The immutable first three-pair 512/1K/4K gate is nevertheless
+**+0.3421%/-0.0710%/-0.00171%**; only 512 wins. Honor the declared every-length
+rule without subset or rerun: remove all H8F package/registry/runtime/backend
+and RED-test surfaces, retain the unchanged HIP object and H8B production, and
+do not retry shared-Q5 residency without a materially different representation
+or operation
+([H8F rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
