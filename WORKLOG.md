@@ -202832,3 +202832,37 @@ Vulkan local sizes verbatim will close the measured gap.
   least three independent 128K warmup+3 processes. It exceeds five minutes and
   is not started without explicit approval. Prefer an updated-kernel
   `enable_lr_compute_wa` A/B before treating host drains as production policy.
+
+## 2026-08-04 — Audit Hipfire Redline for a minimum gfx1151 dispatch step
+
+- Review `warpfront/hipfire` `redline@a373c688` and
+  `codex/gfx1151-redline-mq4r@661cb5d6` read-only. Hipfire attributes the
+  retained-PM4/Redline design and implementation to Kaden Schutt. The product
+  path keeps public ROCr/HSA resource ownership and replaces hundreds of
+  per-dispatch AQL publications with one vendor packet referencing a retained
+  PM4 indirect buffer only after artifact, kernarg, shadow-state, fault, and
+  repeated-speed gates.
+- Upstream-reported gfx1201 HipGraph -> retained-PM4 medians are
+  **363.682 -> 392.248 tok/s (+7.855%)** for Qwen3.5 0.8B,
+  **97.727 -> 98.775 (+1.073%)** for Qwen3.5 9B, and
+  **165.839 -> 178.320 (+7.526%)** for Qwen3.6 A3B. Its direct public-AQL
+  packet route is neutral versus HipGraph. These are upstream results, not
+  locally reproduced hipEngine claims.
+- Automatic Redline admission remains deliberately gfx12-only. The gfx1151
+  branch adds seven kernel/fusion and PM4-ABI experiments but does not widen
+  that predicate or publish a certified gfx1151 PM4 product A/B. The smallest
+  selection change (`871a47cc`, Q8 tile32) is exact-shape and conditional on
+  the Radiowave experiment flag; it is not evidence for a generic transport
+  promotion.
+- Do not implement a retained-PM4 route in hipEngine now. Current gfx1151
+  Q4_K_M graph replay improves matched wall only **+1.00%/+0.86%/+0.36%** at
+  512/4K/bounded-128K, below PLAN's `>~3%` trigger for another dispatch lever.
+  The unresolved non-retiring AQL queue failure further makes new low-level
+  queue ownership premature. A future rung starts shadow-only and single-queue,
+  then requires exact artifact/kernarg identity, 15-position logits/state/KV
+  parity, timeout/fault fallback, and two independent `>1.03x` samples versus
+  HipGraph before registry admission.
+- No Hipfire source was modified: this repository's `AGENTS.md` designates
+  external reference repositories read-only. Implementing inside Hipfire needs
+  a task rooted in that repository; the evidence above does not yet justify
+  such a promotion anyway.
