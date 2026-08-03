@@ -2,9 +2,15 @@
 
 Last updated: 2026-08-03
 
-## Active W7900 / gfx1100 UD-Q2_K_XL prefill port
+## Tabled W7900 / gfx1100 UD-Q2_K_XL prefill port
 
-Status: **WPF-H1 through WPF-H5B changed-arithmetic runtimes are rejected;
+**Implementation is tabled at H8B production after H8Q's physical rejection.**
+No H8R target is selected. Any resumption must begin with the largest measured
+Q5/IQ-down/attention gaps and pass the high-leverage admission policy in the
+canonical [Laguna parity status report](LAGUNA-PARITY-STATUS.md); do not resume
+the adjacent H8 micro-target ladder.
+
+Historical status: **WPF-H1 through WPF-H5B changed-arithmetic runtimes are rejected;
 exact H5M source-qualified qrow4, H5L weight-major Q5, H5I ordered-Q6, H5J
 IQ4 row ownership, and H5Q active-expert IQ3 are production; H5H closes larger Q5 tiles, H5K closes larger
 resident-IQ3 row batches, H5N retains an exact dense-first-fill qrow4 leaf but

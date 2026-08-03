@@ -1486,6 +1486,11 @@ recompile/rerun salvage rule; remove candidate and RED, retain H8B
 ([H8Q rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json) ·
 [H8Q target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
 
+**Future W7900 Laguna parity implementation is tabled.** The canonical
+[status and resumption handoff](docs/LAGUNA-PARITY-STATUS.md) records the final
+campaign/current/llama.cpp table, retained gain timeline, closed H8C-H8Q ladder,
+and mandatory high-leverage restart policy. No H8R target is selected.
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
@@ -2474,6 +2479,7 @@ request examples, feature contracts, diagnostics, and current limitations.
 | [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
 | [`docs/LAGUNA.md`](docs/LAGUNA.md) | Laguna S 2.1 gfx1151 support contract, implementation record, DFlash boundary, and evidence index |
 | [`docs/LAGUNA-prefill.md`](docs/LAGUNA-prefill.md) | Laguna prefill plans: W7900 exact WPF-1T coltile/grouped-IQ/qrow4 production through 4K, plus the gfx1151 campaign record |
+| [`docs/LAGUNA-PARITY-STATUS.md`](docs/LAGUNA-PARITY-STATUS.md) | Tabled W7900 Laguna parity status, apples-to-apples component table, gain timeline, and high-leverage resumption gates |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
