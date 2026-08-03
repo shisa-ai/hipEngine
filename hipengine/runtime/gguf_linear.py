@@ -23,6 +23,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
+    gguf_q4_k_pack8_rowtile_bf16_bf16_out,
     register_gguf_q4_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
@@ -115,16 +116,18 @@ _GEMV_DECODE_ENV = "HIPENGINE_GGUF_GEMV_DECODE"
 _gemv_decode_session_enabled: bool | None = None
 _native_batch_decode_session_enabled = False
 
-# Small-B weight-amortized raw Q4_K row-tile GEMV (verifier continuation
-# blocks). Default ON: it is bit-identical to the per-row prefill alias and
-# ~3x faster at B=4 (see WORKLOG 2026-06-26 and docs/REFACTOR.md). The opt-out
-# exists only for bisection; set HIPENGINE_GGUF_Q4K_ROWTILE=0 to disable.
+# Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
+# Q4_K verifier continuation blocks. Default ON: every specialization preserves
+# the corresponding per-row arithmetic. The opt-out exists only for bisection;
+# set HIPENGINE_GGUF_Q4K_ROWTILE=0 to disable.
 _Q4K_ROWTILE_ENV = "HIPENGINE_GGUF_Q4K_ROWTILE"
 _q4k_rowtile_session_enabled: bool | None = None
 _ROWTILE_MIN_ROWS = 2
 _ROWTILE_MAX_ROWS = 8
 _DENSE_BF16_ROWTILE_MIN_ROWS = 2
 _DENSE_BF16_ROWTILE_MAX_ROWS = 4
+_PACK8_ROWTILE_MIN_ROWS = 2
+_PACK8_ROWTILE_MAX_ROWS = 4
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
 )
@@ -541,7 +544,7 @@ def gemv_decode_session(enabled: bool | None) -> Iterator[None]:
 
 @contextlib.contextmanager
 def native_batch_decode_session(enabled: bool = True) -> Iterator[None]:
-    """Use raw pack8 decode GEMVs for native c=2/4/8 row launches."""
+    """Select exact small-row native projection families for c=2/4/8."""
 
     global _native_batch_decode_session_enabled
     previous = _native_batch_decode_session_enabled
@@ -760,7 +763,7 @@ def _resolve_use_wmma_prefill(kwarg: bool | None) -> bool:
 
 
 def set_q4k_rowtile_enabled(enabled: bool | None) -> None:
-    """Set the session-scoped opt-out for the raw Q4_K row-tile GEMV.
+    """Set the session-scoped opt-out for exact small-B row-tile GEMVs.
 
     Pass ``False`` to force the legacy per-row prefill alias (bisection only);
     ``None`` clears the override and falls back to the env var, which itself
@@ -857,6 +860,36 @@ def _dense_bf16_rowtile_dispatch(
         dispatch.key.layer,
         dispatch.key.quant,
         "rowtile_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
+def _pack8_rowtile_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    use_rowtile: bool,
+    native_batch: bool,
+) -> GGUFLinearDispatch:
+    """Select exact resident-pack8 weight reuse for native B1-B3 rows."""
+
+    if (
+        not use_rowtile
+        or not native_batch
+        or rows < _PACK8_ROWTILE_MIN_ROWS
+        or rows > _PACK8_ROWTILE_MAX_ROWS
+        or dispatch.abi != "pack8"
+        or dispatch.key.quant != "gguf_q4_k"
+        or dispatch.key.variant != "pack8_prefill_bf16_bf16_out"
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "pack8_rowtile_bf16_bf16_out",
     )
     if not is_registered(key):
         return dispatch
@@ -1266,6 +1299,12 @@ def launch_gguf_linear(
             dispatch,
             rows=rows,
             enabled=not use_wmma,
+        )
+        dispatch = _pack8_rowtile_dispatch(
+            dispatch,
+            rows=rows,
+            use_rowtile=f_rowtile and not use_q4_pack8_wmma,
+            native_batch=_native_batch_decode_session_enabled,
         )
         dispatch = _q8_mmq_prefill_dispatch(
             dispatch,
@@ -1843,6 +1882,41 @@ def launch_gguf_linear_pair(
         return True
 
     if pair_kind == "q4_pack8_dual_prefill":
+        if (
+            _native_batch_decode_session_enabled
+            and not use_wmma
+            and _resolve_use_q4k_rowtile(None)
+            and _PACK8_ROWTILE_MIN_ROWS <= rows <= _PACK8_ROWTILE_MAX_ROWS
+        ):
+            pair_library = None if libraries is None else libraries.get("gguf_q4_k")
+            common_kwargs = {
+                "stream": stream,
+                "runtime": runtime,
+                "library": pair_library,
+            }
+            gguf_q4_k_pack8_rowtile_bf16_bf16_out(
+                x_ptr,
+                weight_a.allocation("qweight").tensor.ptr,
+                weight_a.allocation("scales").tensor.ptr,
+                weight_a.allocation("mins").tensor.ptr,
+                out_a_ptr,
+                rows,
+                in_features,
+                out_features,
+                **common_kwargs,
+            )
+            gguf_q4_k_pack8_rowtile_bf16_bf16_out(
+                x_ptr,
+                weight_b.allocation("qweight").tensor.ptr,
+                weight_b.allocation("scales").tensor.ptr,
+                weight_b.allocation("mins").tensor.ptr,
+                out_b_ptr,
+                rows,
+                in_features,
+                out_features,
+                **common_kwargs,
+            )
+            return True
         gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
             x_ptr,
             weight_a.allocation("qweight").tensor.ptr,

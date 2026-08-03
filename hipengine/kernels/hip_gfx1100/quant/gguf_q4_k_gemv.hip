@@ -947,6 +947,153 @@ __global__ void gguf_q4_k_pack8_prefill_out_kernel(
   }
 }
 
+struct pack8_row_acc {
+  float a0;
+  float a1;
+  float a2;
+  float a3;
+  float a4;
+  float a5;
+  float a6;
+  float a7;
+};
+
+// Exact small-B sibling of gguf_q4_k_pack8_prefill_out_kernel. One local32
+// block still owns eight output columns, but keeps one independent accumulator
+// set per verifier row so qweight/scales/mins are loaded only once. For every
+// row, the k traversal, fmaf sequence, wave shuffle tree, zero-seeded wave sum,
+// and BF16 store match the retained grid-y kernel exactly.
+template <typename scalar_t, typename out_t, int ROW_TILE>
+__launch_bounds__(32, 1)
+__global__ void gguf_q4_k_pack8_rowtile_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int32_t* __restrict__ qweight,
+    const float* __restrict__ scales,
+    const float* __restrict__ mins,
+    out_t* __restrict__ out,
+    int in_features,
+    int out_features,
+    int out_packed) {
+  const int64_t out_pack = blockIdx.x;
+  const int tid = threadIdx.x;
+  if (out_pack >= out_packed) return;
+
+  const int64_t out_col = out_pack << 3;
+  const int64_t qw_base = out_pack * static_cast<int64_t>(in_features);
+  pack8_row_acc acc[ROW_TILE];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    acc[r] = pack8_row_acc{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  }
+
+  constexpr int kThreads = 32;
+  constexpr int kValuesPerThread = 8;
+  constexpr int kStride = kThreads * kValuesPerThread;
+  for (int64_t k_base = static_cast<int64_t>(tid) * kValuesPerThread;
+       k_base < in_features;
+       k_base += kStride) {
+    const int64_t group32 = k_base >> 5;
+    const float* __restrict__ scale_ptr = scales + group32 * out_features + out_col;
+    const float* __restrict__ min_ptr = mins + group32 * out_features + out_col;
+    const float s0 = scale_ptr[0];
+    const float s1 = scale_ptr[1];
+    const float s2 = scale_ptr[2];
+    const float s3 = scale_ptr[3];
+    const float s4 = scale_ptr[4];
+    const float s5 = scale_ptr[5];
+    const float s6 = scale_ptr[6];
+    const float s7 = scale_ptr[7];
+    const float m0 = min_ptr[0];
+    const float m1 = min_ptr[1];
+    const float m2 = min_ptr[2];
+    const float m3 = min_ptr[3];
+    const float m4 = min_ptr[4];
+    const float m5 = min_ptr[5];
+    const float m6 = min_ptr[6];
+    const float m7 = min_ptr[7];
+
+#pragma unroll
+    for (int j = 0; j < kValuesPerThread; ++j) {
+      const uint32_t pw = static_cast<uint32_t>(qweight[qw_base + k_base + j]);
+      const float w0 = static_cast<float>((pw >> pack8_shift_for_lane(0)) & 0x0Fu) * s0 - m0;
+      const float w1 = static_cast<float>((pw >> pack8_shift_for_lane(1)) & 0x0Fu) * s1 - m1;
+      const float w2 = static_cast<float>((pw >> pack8_shift_for_lane(2)) & 0x0Fu) * s2 - m2;
+      const float w3 = static_cast<float>((pw >> pack8_shift_for_lane(3)) & 0x0Fu) * s3 - m3;
+      const float w4 = static_cast<float>((pw >> pack8_shift_for_lane(4)) & 0x0Fu) * s4 - m4;
+      const float w5 = static_cast<float>((pw >> pack8_shift_for_lane(5)) & 0x0Fu) * s5 - m5;
+      const float w6 = static_cast<float>((pw >> pack8_shift_for_lane(6)) & 0x0Fu) * s6 - m6;
+      const float w7 = static_cast<float>((pw >> pack8_shift_for_lane(7)) & 0x0Fu) * s7 - m7;
+#pragma unroll
+      for (int r = 0; r < ROW_TILE; ++r) {
+        const float xv = scalar_to_float<scalar_t>(
+            x[static_cast<int64_t>(r) * in_features + k_base + j]);
+        acc[r].a0 = fmaf(xv, w0, acc[r].a0);
+        acc[r].a1 = fmaf(xv, w1, acc[r].a1);
+        acc[r].a2 = fmaf(xv, w2, acc[r].a2);
+        acc[r].a3 = fmaf(xv, w3, acc[r].a3);
+        acc[r].a4 = fmaf(xv, w4, acc[r].a4);
+        acc[r].a5 = fmaf(xv, w5, acc[r].a5);
+        acc[r].a6 = fmaf(xv, w6, acc[r].a6);
+        acc[r].a7 = fmaf(xv, w7, acc[r].a7);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc[r].a0 += __shfl_down(acc[r].a0, offset);
+      acc[r].a1 += __shfl_down(acc[r].a1, offset);
+      acc[r].a2 += __shfl_down(acc[r].a2, offset);
+      acc[r].a3 += __shfl_down(acc[r].a3, offset);
+      acc[r].a4 += __shfl_down(acc[r].a4, offset);
+      acc[r].a5 += __shfl_down(acc[r].a5, offset);
+      acc[r].a6 += __shfl_down(acc[r].a6, offset);
+      acc[r].a7 += __shfl_down(acc[r].a7, offset);
+    }
+  }
+
+  __shared__ float xchg[4 * 8];
+  if (tid == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      xchg[r * 8 + 0] = acc[r].a0;
+      xchg[r * 8 + 1] = acc[r].a1;
+      xchg[r * 8 + 2] = acc[r].a2;
+      xchg[r * 8 + 3] = acc[r].a3;
+      xchg[r * 8 + 4] = acc[r].a4;
+      xchg[r * 8 + 5] = acc[r].a5;
+      xchg[r * 8 + 6] = acc[r].a6;
+      xchg[r * 8 + 7] = acc[r].a7;
+    }
+  }
+  __syncthreads();
+  if (tid == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      float r0 = 0.0f, r1 = 0.0f, r2 = 0.0f, r3 = 0.0f;
+      float r4 = 0.0f, r5 = 0.0f, r6 = 0.0f, r7 = 0.0f;
+      r0 += xchg[r * 8 + 0];
+      r1 += xchg[r * 8 + 1];
+      r2 += xchg[r * 8 + 2];
+      r3 += xchg[r * 8 + 3];
+      r4 += xchg[r * 8 + 4];
+      r5 += xchg[r * 8 + 5];
+      r6 += xchg[r * 8 + 6];
+      r7 += xchg[r * 8 + 7];
+      const int64_t out_base = static_cast<int64_t>(r) * out_features + out_col;
+      store_output<out_t>(out, out_base + 0, r0);
+      store_output<out_t>(out, out_base + 1, r1);
+      store_output<out_t>(out, out_base + 2, r2);
+      store_output<out_t>(out, out_base + 3, r3);
+      store_output<out_t>(out, out_base + 4, r4);
+      store_output<out_t>(out, out_base + 5, r5);
+      store_output<out_t>(out, out_base + 6, r6);
+      store_output<out_t>(out, out_base + 7, r7);
+    }
+  }
+}
+
 template <typename scalar_t, bool kFuseSilu>
 __launch_bounds__(128, 2)
 __global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
@@ -1177,6 +1324,45 @@ int launch_gguf_q4_k_pack8_gemv_out(
       static_cast<int>(in_features),
       static_cast<int>(out_features),
       static_cast<int>(out_packed));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, typename out_t>
+int launch_gguf_q4_k_pack8_rowtile_out(
+    const scalar_t* x,
+    const int32_t* qweight,
+    const float* scales,
+    const float* mins,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || scales == nullptr || mins == nullptr ||
+      out == nullptr || rows < 2 || rows > 4 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % 8) != 0 || threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const dim3 block(32);
+  const dim3 grid(static_cast<unsigned int>(out_packed));
+#define GGUF_Q4K_PACK8_ROWTILE_CASE(N)                                       \
+  case N:                                                                     \
+    gguf_q4_k_pack8_rowtile_out_kernel<scalar_t, out_t, N>                   \
+        <<<grid, block, 0, stream>>>(                                         \
+            x, qweight, scales, mins, out, static_cast<int>(in_features),    \
+            static_cast<int>(out_features), static_cast<int>(out_packed));   \
+    break;
+  switch (static_cast<int>(rows)) {
+    GGUF_Q4K_PACK8_ROWTILE_CASE(2)
+    GGUF_Q4K_PACK8_ROWTILE_CASE(3)
+    GGUF_Q4K_PACK8_ROWTILE_CASE(4)
+    default:
+      return static_cast<int>(hipErrorInvalidValue);
+  }
+#undef GGUF_Q4K_PACK8_ROWTILE_CASE
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1580,5 +1766,20 @@ extern "C" int hipengine_gguf_q4_k_pack8_gemv_bf16_bf16_out(
     int64_t threads,
     hipStream_t stream) {
   return launch_gguf_q4_k_pack8_gemv_out<uint16_t, uint16_t>(
+      x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_pack8_rowtile_bf16_bf16_out(
+    const uint16_t* x,
+    const int32_t* qweight,
+    const float* scales,
+    const float* mins,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_pack8_rowtile_out<uint16_t, uint16_t>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
 }

@@ -203322,5 +203322,72 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json`
   (SHA-256 `25528c29...8fb2a`) and update the benchmark rollup/changelog/campaign.
   B1/B2 remain about 7.9% slower than true AR and far below Vulkan B3 68.082
-  tok/s; re-profile the clean
-  native B3 target before admitting the next D27-O3 candidate.
+  tok/s; re-profile the clean native B3 target before admitting the next
+  D27-O3 candidate.
+
+### D27-O3 refreshed native-B3 profile and second impact admission
+
+- Re-profile committed `c29c26605` on GPU0 W7900 with the same one-prompt B3
+  leaf, native target mode, cached-only JIT, and nested ROCTX markers. The first
+  launch inherited system `/opt/rocm` libraries (HSA 1.18) and emitted no marker
+  CSV, so it is discarded for phase attribution. The accepted rerun uses the
+  prior `env -i` TheRock SDK path plus
+  `/tmp/hipengine-roctx-sdk-override-qwen36-dense`; rocprof reports HSA 1.21 and
+  ROCTX 1.3.2. Raw directory:
+  `/tmp/hipengine-qwen36-27b/final-c29c26605/profile-native-mtp-b3-hermetic`.
+- The refreshed wall reconciles: **1,358.202 ms** host versus **1,357.746 ms**
+  device-activity span (0.457 ms outside activity), with **1,018.040 ms** kernel
+  sum and 339.706 ms of in-queue spacing/copy overlap. Target verify remains
+  **1,231.617 ms / 90.68%** of complete wall; proposal is 114.474 ms, commit+
+  finish 8.824 ms, and scheduler residual 3.287 ms. IDs and GPU/CPU accept
+  summaries remain exact.
+- Q4_K pack8 is now the largest target family at **499.928 ms**. The row-four
+  dense gate/up pair is **323.310 ms** and the row-four singleton is
+  **37.536 ms**, together **360.846 ms / 26.57%** of complete wall. The retained
+  dense-BF16 rowtile is visible at 67.309 ms, while still-serial dense GEMV is
+  239.044 ms; it is lower priority than the directly amortizable Q4 row-four
+  bucket.
+- Admit a pack8 rows-2/3/4 exact rowtile: preserve each row's existing local32
+  K/FMA/shuffle sequence, but load Q4 values/scales/mins once across the live
+  rows. The pair owner may call two single-matrix rowtiles to bound VGPR pressure;
+  the existing dual and singleton pack8 kernels remain fallbacks. Credible
+  saving is at least 50% of the 360.846-ms row-four bucket, or **180.423 ms /
+  13.28% complete wall**; engineering/risk is **medium**. RED requires BF16-byte
+  equality to the retained pack8 device oracle plus the CPU KL/top-1 gate.
+- Trace/marker/summary SHA-256s are `de610646...7cca`, `519e3489...9f71`, and
+  `3f075602...87f`. The required lineage audit reports only the already-known
+  parent DRIFT through nano-vllm-amd `59195ed`; this is a net-new in-tree
+  verifier specialization, not an external port.
+
+### D27-O3 exact resident-pack8 Q4 row reuse — GREEN
+
+- RED added `tests/test_gguf_q4_k_pack8_rowtile.py` and failed collection on the
+  missing wrapper. GREEN registers `pack8_rowtile_bf16_bf16_out` for exactly
+  2-4 rows. One local32 block owns the same output pack as the retained kernel,
+  but keeps an independent eight-value accumulator per row and loads each
+  qweight/scale/min once. Every row preserves the original K traversal, `fmaf`
+  sequence, 16..1 shuffle tree, zero-seeded wave sum, and BF16 store.
+- Native pair dispatch calls two bounded rowtiles instead of one high-pressure
+  dual row-grid launch; this shares weights across rows without keeping both
+  matrices live. The native-session, row-count, layout, registry, and opt-out
+  gates fail closed to the existing dual/single kernels. gfx1151 and every
+  non-native or rows-one/rows-above-four path remain unchanged.
+- GPU1 RX 7900 XTX focused tests report **12 passed**; the adjacent pack8/Q4/
+  dispatch bundle reports **51 passed**. Rows 2/3/4 are BF16 byte-identical to
+  the retained device kernel across nine synthetic shapes and pass the CPU
+  KL <=0.05/top-1 >=90% gate. Ruff, py_compile, and `git diff --check` pass.
+- Same-GPU production-shape screen uses cached code and nine burst-five samples.
+  The real K5120/N17408 gate+up pair improves **1.715x / 2.353x / 3.114x** at
+  rows 2/3/4; the K6144/N5120 singleton improves **1.219x / 1.236x / 1.296x**.
+  All six compared output sets are byte-exact. Raw SHA-256 is
+  `b7368180...0b1ba`; this RX 7900 XTX component row is not a W7900 topline.
+- Hermetic cached GPU1 tracing names
+  `gguf_q4_k_pack8_rowtile_out_kernel<unsigned short,unsigned short,4>` at
+  local32, VGPR96, SGPR128, LDS512 B, scratch0, with plausible 13.000 us tiny-
+  fixture duration. Trace SHA-256 is `6ff618f6...73e4`.
+- The complete W7900 transaction command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1**. It covers native B1-B3 logits, reject/partial/full/rollback
+  state/KV/hidden commits, and provider output versus scalar AR. Commit this
+  correctness unit, then run the clean natural25 promotion gate; no complete-
+  suite speed claim is made from the component screen.
