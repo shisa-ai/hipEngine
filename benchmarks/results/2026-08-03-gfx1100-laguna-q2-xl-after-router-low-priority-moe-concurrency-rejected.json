@@ -1,0 +1,331 @@
+{
+  "admission": {
+    "counter_rotated_repetitions": 7,
+    "downstream_skipped": [
+      "named 421-secondary/1734-caller two-queue trace",
+      "clean 512/1K/4K transfer",
+      "source-default RED and promotion"
+    ],
+    "fresh_request_session_per_sample": true,
+    "host_state_capture_excluded_from_timing": true,
+    "model_and_h8a_setup_excluded": true,
+    "no_salvage": "no eager-release/normal-priority/queue-count/layer/length/prompt/token/event-boundary/schedule/rewrite/recompile/favorable-rerun subset",
+    "required_candidate_median_wall_improvement": true,
+    "required_candidate_pair_wins": 5,
+    "same_resident_weights_and_h8a_sidecar": true,
+    "warmups_per_arm": 1
+  },
+  "authority_links": {
+    "README.md": "2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json"
+  },
+  "builder_sha256": "f804e2f0791b0f4dc39ef8d8fbfbc08e6e194ae3bb6fe83d5555f01952c64353",
+  "candidate": {
+    "allocation_or_workspace_changed": false,
+    "arithmetic_changed": false,
+    "descriptor_enabled_production": false,
+    "existing_generic_runtime_mechanism": true,
+    "id": "WPF-H8O",
+    "kernel_dispatch_count_changed": false,
+    "schedule": {
+      "caller_priority": "default",
+      "candidate_moe_branch_concurrency": true,
+      "candidate_shared_after_router": true,
+      "candidate_shared_low_priority": true,
+      "control_moe_branch_concurrency": false,
+      "event_flags": 2,
+      "gpu_max_hw_queues_both_arms": 2,
+      "shared_priority": 1
+    },
+    "tensor_bytes_changed": false
+  },
+  "correctness": {
+    "all_48_hidden_boundaries_exact": true,
+    "all_finite": true,
+    "all_position_511": true,
+    "all_sessions_recovered": true,
+    "all_token_2930": true,
+    "compiler_processes_new": 0,
+    "complete_fields": [
+      "next token",
+      "next-token logit bits",
+      "complete logits",
+      "final hidden",
+      "post-layer hidden",
+      "all 48 hidden boundaries in both warmups",
+      "complete K/V and KVLiveSpans",
+      "position"
+    ],
+    "owner_recovered": true,
+    "resident_q5_planes": 24,
+    "timed_complete_state_exact_every_sample": true,
+    "total_scratch_bytes": 600141856,
+    "warmup_complete_state_exact": true,
+    "workspace_bytes": 161120256
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_executed": true,
+    "candidate_removed": true,
+    "correctness_measured": true,
+    "length_transfer_skipped": true,
+    "next_action": "Commit this rejection, then rerank clean H8B production without retrying an H8O schedule, priority, queue, boundary, layer, length, or favorable-rerun subset.",
+    "performance_measured": true,
+    "production_changed": false,
+    "red_removed": true,
+    "rejected": true,
+    "trace_skipped": true
+  },
+  "fixed_gate": {
+    "candidate_median_seconds": 1.1729298729915172,
+    "candidate_median_tok_s": 436.51373521092245,
+    "candidate_samples_seconds": [
+      1.1670812310185283,
+      1.1685561921913177,
+      1.1699411829467863,
+      1.1729298729915172,
+      1.1758087740745395,
+      1.1740497110877186,
+      1.1791907120496035
+    ],
+    "candidate_samples_tok_s": [
+      438.70125437041804,
+      438.1475220629995,
+      437.6288376398558,
+      436.51373521092245,
+      435.44495609244547,
+      436.0973774489061,
+      434.1960929373928
+    ],
+    "control_median_seconds": 1.1673411699011922,
+    "control_median_tok_s": 438.60356612226525,
+    "control_samples_seconds": [
+      1.1588475620374084,
+      1.1639904719777405,
+      1.1622742898762226,
+      1.1673411699011922,
+      1.169419048121199,
+      1.1723423800431192,
+      1.1730697299353778
+    ],
+    "control_samples_tok_s": [
+      441.81824838103455,
+      439.86614351753144,
+      440.5156377110655,
+      438.60356612226525,
+      437.82423488191387,
+      436.7324842262961,
+      436.46169271472473
+    ],
+    "gain_percent": -0.4764737619028514,
+    "median_gate_pass": false,
+    "pair_win_gate_pass": false,
+    "paired_candidate_wins": 0,
+    "paired_rows": [
+      {
+        "candidate_gain_percent": -0.7054923652515921,
+        "candidate_seconds": 1.1670812310185283,
+        "candidate_tok_s": 438.70125437041804,
+        "candidate_won": false,
+        "control_seconds": 1.1588475620374084,
+        "control_tok_s": 441.81824838103455,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 0
+      },
+      {
+        "candidate_gain_percent": -0.390714648049173,
+        "candidate_seconds": 1.1685561921913177,
+        "candidate_tok_s": 438.1475220629995,
+        "candidate_won": false,
+        "control_seconds": 1.1639904719777405,
+        "control_tok_s": 439.86614351753144,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 1
+      },
+      {
+        "candidate_gain_percent": -0.6553229497616941,
+        "candidate_seconds": 1.1699411829467863,
+        "candidate_tok_s": 437.6288376398558,
+        "candidate_won": false,
+        "control_seconds": 1.1622742898762226,
+        "control_tok_s": 440.5156377110655,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 2
+      },
+      {
+        "candidate_gain_percent": -0.4764737619028514,
+        "candidate_seconds": 1.1729298729915172,
+        "candidate_tok_s": 436.51373521092245,
+        "candidate_won": false,
+        "control_seconds": 1.1673411699011922,
+        "control_tok_s": 438.60356612226525,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 3
+      },
+      {
+        "candidate_gain_percent": -0.5434324096084242,
+        "candidate_seconds": 1.1758087740745395,
+        "candidate_tok_s": 435.44495609244547,
+        "candidate_won": false,
+        "control_seconds": 1.169419048121199,
+        "control_tok_s": 437.82423488191387,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 4
+      },
+      {
+        "candidate_gain_percent": -0.14542238105212935,
+        "candidate_seconds": 1.1740497110877186,
+        "candidate_tok_s": 436.0973774489061,
+        "candidate_won": false,
+        "control_seconds": 1.1723423800431192,
+        "control_tok_s": 436.7324842262961,
+        "order": [
+          "candidate",
+          "control"
+        ],
+        "repetition": 5
+      },
+      {
+        "candidate_gain_percent": -0.5190833044797727,
+        "candidate_seconds": 1.1791907120496035,
+        "candidate_tok_s": 434.1960929373928,
+        "candidate_won": false,
+        "control_seconds": 1.1730697299353778,
+        "control_tok_s": 436.46169271472473,
+        "order": [
+          "control",
+          "candidate"
+        ],
+        "repetition": 6
+      }
+    ],
+    "speedup": 0.9952352623809715,
+    "status": "binding_rejection"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 2,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "stream_priority_range": [
+      1,
+      -1
+    ],
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_after_router_low_priority_moe_concurrency_rejected",
+  "lineage": {
+    "candidate_descriptor_present": false,
+    "candidate_descriptor_revision": "0fca56c95",
+    "candidate_descriptor_source_sha256": "3eeaf1d01c46a3fc0ed1b6a069b2ba5b7c823a1008ff1bb909f4646c64bfa0b2",
+    "execution_revision": "0fca56c95e4c750653becf58582815077349f347",
+    "production_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "production_artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "production_capabilities_enabled": false,
+    "red_present": false,
+    "red_revision": "97ab55984",
+    "red_test_git_blob": "4b3ac5298e9e7174dc0e93cc206d8a3a6dd5face",
+    "red_test_sha256": "b7588e803744449466107267c6633f8ce64d968f7edb322775a7f90e1e1a36af",
+    "restored_source_sha256": {
+      "docs/REFACTOR.md": "06a81ed76dbc7835a068f4023106fac89c619b863d2ad9c362e2b2b9dbcf0d3e",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d"
+    },
+    "runtime_source_changed": false,
+    "target_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json",
+    "target_artifact_sha256": "975a67d6bdef02b4fddf7b15265e5a08029a3d4a722ec91ff80cfe016bbddd23",
+    "target_revision": "e83b8a6cc"
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128"
+  },
+  "performance_claim": false,
+  "production": {
+    "application_dispatches": 2155,
+    "changed": false,
+    "components": {
+      "attention": {
+        "current_ms": 115.349089,
+        "gap_ms": 93.83664200000001,
+        "llamacpp_ms": 21.512447
+      },
+      "gate_up": {
+        "current_ms": 401.4025780000001,
+        "gap_ms": 3.5976550000001453,
+        "llamacpp_ms": 397.804923
+      },
+      "iq_down": {
+        "current_ms": 273.163353,
+        "gap_ms": 119.30344199999996,
+        "llamacpp_ms": 153.859911
+      },
+      "q5": {
+        "current_ms": 230.42948,
+        "gap_ms": 172.11539000000002,
+        "llamacpp_ms": 58.31409
+      },
+      "q6": {
+        "current_ms": 73.31982099999999,
+        "gap_ms": 58.65222299999999,
+        "llamacpp_ms": 14.667598
+      },
+      "remaining": {
+        "current_ms": 52.755422999999986,
+        "gap_ms": -15.094016000000018,
+        "llamacpp_ms": 67.849439
+      }
+    },
+    "kernel_span_ms": 1166.621068,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "queues": 1,
+    "source_owner": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction",
+    "wall_samples_tok_s": [
+      440.8926238498552,
+      441.72161256688145,
+      441.41095652819786,
+      440.82883438393327,
+      439.54292501197585
+    ],
+    "wall_seconds": 1.1612804848700762,
+    "wall_tok_s": 440.8926238498552
+  },
+  "raw_evidence_sha256": {
+    "/tmp/hipengine-hipcc-version-laguna-iq2.txt": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "/tmp/laguna-h8o-gfx1100-fixed-c4096-m512-compiler-monitor.json": "3aafa07451ec8717b0413b9b323dd6ad21d7da3bcbc73ff8ac43fa3614406623",
+    "/tmp/laguna-h8o-gfx1100-fixed-c4096-m512.json": "93191a51140e42546aa70ffa515fb174e1219a5d8c0e4c31e36967ef2969ecc8",
+    "/tmp/laguna-h8o-gfx1100-fixed-c4096-m512.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h8o-gfx1100-fixed-c4096-m512.stderr": "6fd4d3ffcccccf9ebb53687483e82a6d86bbe7aef9d81b3fe5476087a21fb375",
+    "/tmp/laguna-h8o-gfx1100-fixed-c4096-m512.stdout": "05d065ac2037fd7d12eb79a4f9c3e9f970083d8ddcc10571aada7eab179f2db8",
+    "/tmp/laguna-matched-m512-token-ids.json": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+    "/tmp/laguna_h8o_gfx1100_fixed_c4096_m512.py": "b2672b58916a0a3544d533d79b9fce5c7ad6326cd2660436d7d668b51cb33e50",
+    "/tmp/run_laguna_h8o_fixed_with_compiler_monitor.py": "44696e0467eeae678578483346c3e518936f3c5ca779c3f4a61604fefa8a5088"
+  },
+  "schema": 1,
+  "status": "rejected_at_binding_queue_matched_fixed_gate"
+}

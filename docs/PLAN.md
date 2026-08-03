@@ -3598,23 +3598,22 @@ plus RED, add no runtime/source owner, and retain H7G/H7H plus H8B production
 **440.893 tok/s**
 ([H8N rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
 
-Select target-only **WPF-H8O exact gfx1100 after-router least-priority MoE
-branch concurrency** as a cross-family schedule operation after H8N. The clean
-one-queue trace has **47 serial shared windows / 421 dispatches / 49.799-ms
-kernel sum / 51.120-ms span**, while the generic runtime already provides exact
-input/output event dependencies and W7900 priorities are **(+1, −1)**. Keep
-package policy unchanged at the target boundary. Freeze two queues in both
-arms, after-router release and priority +1 shared work; preserve all bytes,
-branch-internal order, 2,155 dispatches, allocation/workspace, and rollback.
+Reject **WPF-H8O exact gfx1100 after-router least-priority MoE branch
+concurrency** at the binding fixed gate. The exact frozen two-queue schedule
+passes all-48-boundary complete-state, logits/hidden/KV+`KVLiveSpans`, token,
+finiteness, session/owner lifecycle, resident-sidecar, priority, and zero-
+compiler checks. It fails both mandatory timing checks: queue-matched serial
+control→candidate is **438.604→436.514 tok/s (-0.4765%)** with **0/7 wins**
+versus required positive median and ≥5/7.
 
-RED precedes execution. Require seven queue-matched fixed-M512 pairs with exact
-complete state, positive candidate median and ≥5/7 wins; an exact **421
-secondary + 1,734 caller** two-queue trace with positive overlap; then positive
-clean 512/1K/4K medians before source-default RED. Forbid eager/normal-priority/
-queue-count/layer/length/event-boundary/rerun salvage. The **461.194 tok/s
-(+4.605%)** perfect-hide estimate is only a no-contention ceiling, not a result
-or complete parity solution
-([H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
+Apply the no eager/normal-priority/queue-count/layer/length/event-boundary/
+schedule/recompile/favorable-rerun rule. Skip the named two-queue trace, clean
+512/1K/4K transfer, and source-default RED; remove the temporary descriptor and
+RED, leave all three gfx1100 concurrency capabilities false, preserve gfx1151's
+independent policy, and retain H8B production **440.893 tok/s / 2,155
+dispatches**, **1.566801×** behind matched llama.cpp HIP
+([H8O rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json) ·
+[H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent

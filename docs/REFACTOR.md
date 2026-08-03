@@ -74,20 +74,6 @@ should be removed or collapsed.
   explicit transient-H7G rollback. Remove that false opt-out after one later Q5
   family checkpoint if no rollback is needed.
 
-## Laguna H8O default-off gfx1100 MoE branch concurrency candidate
-
-- Added 2026-08-03 as a qualification-only package descriptor for the existing
-  generic two-stream runtime path. It freezes `GPU_MAX_HW_QUEUES=2`,
-  after-router release, least-priority (+1) shared work, default-priority caller
-  work, and disable-timing events without enabling any production capability,
-  adding an allocation, or changing runtime dispatch.
-- Remove `LAGUNA_MOE_BRANCH_CONCURRENCY_H8O_CANDIDATE` when the fixed/trace/
-  length admission is adjudicated. On promotion, replace it with the three
-  normal gfx1100 source capabilities and then delete the descriptor; on
-  rejection, delete the descriptor without retaining another selector seam.
-  Keep the generic serial path as the exact rollback and gfx1151's independent
-  policy unchanged.
-
 ## Laguna H8B scoped activation-pack reuse production cleanup
 
 - Added 2026-08-03 for complete all-class qualification. The gfx1100 source

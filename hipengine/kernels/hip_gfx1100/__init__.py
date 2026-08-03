@@ -183,19 +183,6 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 # standalone, bounded-runtime, fixed, length, and source-trace qualification.
 # Explicit serial remains the registered rollback; peer backends stay local.
 LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
-# WPF-H8O qualification descriptor only. The generic runtime already owns this
-# exact schedule; keeping it default-off leaves all live concurrency capability
-# names absent/false until the fixed W7900 admission contract is adjudicated.
-LAGUNA_MOE_BRANCH_CONCURRENCY_H8O_CANDIDATE = {
-    "supported": True,
-    "enabled_by_default": False,
-    "gpu_max_hw_queues": 2,
-    "shared_after_router": True,
-    "shared_low_priority": True,
-    "shared_priority": 1,
-    "caller_priority": "default",
-    "event_flags": 0x2,
-}
 # WPF-2b's exact expert-major IQ2 gate/up route compounds grouped IQ3/IQ4 down
 # at M512 with both attention capacities fixed at 128. Complete state is KL0 and
 # dirty paired 512/1K admission improves 19.65%/18.01%. Explicit grouped_exact

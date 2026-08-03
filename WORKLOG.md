@@ -190625,3 +190625,55 @@ Vulkan local sizes verbatim will close the measured gap.
   `c39493ef...e59`. Pycompile, 100-column, and diff checks pass. Commit only the
   gfx1100 descriptor, refactor entry, and this handoff before executing any
   W7900 candidate path.
+
+## 2026-08-03 — Reject WPF-H8O at binding queue-matched fixed gate
+
+- From clean default-off revision `0fca56c95`, execute exactly the frozen
+  `GPU_MAX_HW_QUEUES=2` schedule: serial control versus after-router concurrent
+  candidate, shared priority +1, caller default priority, disable-timing events,
+  one all-48-boundary warmup/arm, and seven counter-rotated C4096/M512 pairs.
+  Both arms share the same resident weights and 24-plane H8A sidecar; model and
+  sidecar setup plus host state capture are outside timed windows.
+- Correctness and ownership pass completely. Both warmups and all 14 timed
+  requests preserve next-token/logit bits, complete logits, final/post hidden,
+  all 48 hidden boundaries, complete K/V plus `KVLiveSpans`, token2930,
+  position511, finiteness, **161,120,256-byte** workspace,
+  **600,141,856-byte** total scratch, and every session/owner lifecycle.
+  Compiler monitoring observes **zero new** compiler processes.
+- H8O fails both mandatory timing checks. Control samples are
+  **441.818/439.866/440.516/438.604/437.824/436.732/436.462 tok/s**; candidate
+  samples are **438.701/438.148/437.629/436.514/435.445/436.097/434.196**.
+  Medians move **438.603566→436.513735 tok/s (-0.476474%, 0.995235×)** and the
+  candidate wins **0/7**, below required positive median and ≥5/7.
+- Honor the no-schedule/priority/queue/boundary/layer/length/recompile/rerun
+  contract. Skip named trace, 512/1K/4K transfer, and source-default RED. Delete
+  candidate descriptor plus RED and restore gfx1100 package/refactor SHA-256
+  exactly to `3638a8fb...7968d` / `06a81ed7...cf0d3e`; all three production
+  capabilities remain false and gfx1151 is unchanged. Raw report/harness/
+  wrapper/monitor/stdout/stderr/status hashes are `93191a51...9ecc8` /
+  `b2672b58...b33e50` / `44696e04...a5088` / `3aafa074...06623` /
+  `05d065ac...2db8` / `6fd4d3ff...b375` / `4355a46b...d865`.
+- Publish `benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json`
+  at SHA-256 `9318caed...fb7c7`; deterministic builder SHA-256 is
+  `f804e2f0...c64353`. Production remains H8B **440.892624 tok/s /
+  1,146.419744-ms / 2,155 dispatches**, **1.566801×** behind matched llama.cpp
+  HIP **690.791 tok/s / 714.008408 ms**. Validate the exact eleven-path cleanup/
+  publication packet, commit it, then rerank clean production without reopening
+  an H8O schedule, priority, queue, boundary, length, or favorable-rerun subset.
+- Independent rejection validator SHA-256 `dca04e9c...f3e22` replays all **14**
+  timed requests plus two all-48-boundary warmups, independently derives the
+  exact medians/gain/**0 wins**, verifies **9 raw hashes + 6 authority links**,
+  zero new compilers, no trace/length outputs, restored package/refactor hashes,
+  descriptor/RED absence, unchanged runtime/gfx1151/production, deterministic
+  artifact regeneration, and the exact **11-path** publication inventory.
+  Validator stdout/stderr/status hashes are `534eb7fa...f610` /
+  `e3b0c442...b855` / `9a271f2a...86aa`. Run final benchmark/static/link/HIP/
+  lineage/worklog/diff checks, stage only those eleven paths, inspect, and
+  commit before reranking.
+- Final benchmark matrix/provenance/README synchronization passes **20/20** and
+  surviving queue/concurrency/backend policy coverage passes **5/5**. JSON,
+  pycompile, UTF-8, six new links, worklog-conflict, diff, and HIP checks pass.
+  Lineage retains exactly the same four catalogued external-reference drifts.
+  Final validator replay remains pass and artifact regeneration remains
+  byte-identical at `9318caed...fb7c7`; explicitly stage and inspect only the
+  eleven declared rejection paths, then commit.
