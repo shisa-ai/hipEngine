@@ -3330,25 +3330,23 @@ ms**, IQ-down **119.303**, attention **93.837**, and Q6 **58.652**; rerank those
 families after candidate-seam cleanup
 ([H8B production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
 
-After H8B cleanup, select target-only **WPF-H8C exact dual-weight shared-Q5
-gate/up consumption**. Q5 still leads the matched residual by **172.115 ms**.
-The complete 46-layer shared-expert class contains **92** identical
-rowbatch4/coltile8 BF16 consumers at **22.018 ms**; each is
-local128/VGPR72/LDS512/scratch0. H8C keeps the two exact F32 weight planes,
-**148.176B** FMAs, 92 producers, 46 H8B packs, every output association,
-allocation, and workspace unchanged while sharing one packed activation record
-between two 8-output accumulator sets. The operation model halves logical
-activation loads **37.044→18.522 GB** and changes **2,155→2,109 dispatches**;
-no candidate or speed result exists.
+WPF-H8C exact dual-weight shared-Q5 gate/up consumption is rejected before
+runtime integration. The first object and leaf checks pass: local128,
+metadata/runtime VGPR **134/136**, LDS **1 KiB**, zero private/scratch/spills,
+one shared activation load, and byte-exact rows17/33/M512 gate/up outputs versus
+H7H and sampled CPU references. A cache-only named trace confirms one H8C call
+at **808.921 µs** with zero compiler activity.
 
-Commit the target before RED. Require a first object at local128, runtime
-VGPR≤136, LDS≤1 KiB, scratch/private/spills zero, and physical activation-load
-sharing; rows17/33/M512 and all **46/46** actual pairs must be byte-exact and
-win both clocks. Only then qualify complete state, exact 46-dual topology,
-fixed C4096/M512, and clean 512/1K/4K before a separately frozen source gate.
-Forbid layer/role/prompt/token/length/geometry/threshold and favorable-rerun
-salvage
-([H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
+The frozen complete-class timing gate does not pass. All **46/46** actual Q5
+shared gate/up pairs remain byte-exact and finite, but only **14/46** win both
+clocks. Summed H7H→H8C event time is **27.8051→27.8323 ms (0.9990×)** and wall
+time is **28.0210→28.0053 ms (1.0006×)**. Honor the no-salvage boundary: remove
+all candidate code/capabilities/tests, skip runtime/state/topology/fixed/length
+qualification, and retain H8B/H7H production at **440.893 tok/s / 2,155
+dispatches**. Do not retry this dual-weight schedule without a materially new
+physical operation
+([H8C rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-shared-q5-dual-consumer-rejected.json) ·
+[H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
