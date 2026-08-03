@@ -2539,6 +2539,17 @@ lifecycle-clean. Keep the source capability false and H8A production at
 ([H8B runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
 [H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
+H8B now owns the gfx1100 source path after selector-unset state, fixed,
+length-transfer, topology, and clean committed production gates. Fixed disabled
+rollback→source improves **438.114→439.243 tok/s (+0.258%, 5/5)**; clean
+512/1K/4K improves **+0.109%/+0.0097%/+0.055%**. Clean commit `6b9411b15`
+reaches **440.893 tok/s**, and five exact profiled requests record **2,155
+dispatches**, **1,146.420-ms** median sum / **1,166.621-ms** span, one
+queue/stream, and zero compiler. Retain explicit disabled full-pack rollback;
+source promotion changes no device body, JIT object, allocation, workspace, or
+output byte
+([H8B production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

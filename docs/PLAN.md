@@ -3319,6 +3319,17 @@ separately; H8A remains production **440.353 tok/s**
 ([H8B runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
 [H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
+H8B source promotion now passes the frozen selector-unset and post-commit
+production gates. Fixed rollback→source improves **+0.258% (5/5)** and clean
+512/1K/4K improves **+0.109%/+0.0097%/+0.055%**. Clean commit `6b9411b15`
+reaches **440.893 tok/s (+0.122% over H8A)**. Five exact profiled requests have
+**2,155 dispatches**, **1,146.420-ms** median sum / **1,166.621-ms** span,
+one queue/stream, and zero compiler. Retain disabled rollback and prohibit every
+class/layer/prompt/length subset. Current matched kernel gaps rank Q5 **172.115
+ms**, IQ-down **119.303**, attention **93.837**, and Q6 **58.652**; rerank those
+families after candidate-seam cleanup
+([H8B production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

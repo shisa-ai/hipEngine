@@ -26,6 +26,9 @@ _NORMALIZED_PACKAGE_SHA256 = (
 _RUNTIME_ARTIFACT_H8B_TEST_SHA256 = (
     "710bcdc740ac691c2ac4f0fa5e9fa81f55be939b1582be78a9d62c6218ff06ff"
 )
+_RUNTIME_ARTIFACT_REFACTOR_SHA256 = (
+    "3de213a389e980e7b84393acdae64e81eed0c93356ab10fac63605fbd2fcee71"
+)
 _SOURCE_SHA256 = {
     "hipengine/kernels/activation_pack.py": (
         "2b10234b49ee19417e439fa598b0b069ae4b832eebb3751357c7819891072f67"
@@ -49,7 +52,7 @@ _SOURCE_SHA256 = {
         "76a289657a6efc15ff4d9df0627663f1f83dcdd476db56f624ab14eb8dfbd7e5"
     ),
     "docs/REFACTOR.md": (
-        "3de213a389e980e7b84393acdae64e81eed0c93356ab10fac63605fbd2fcee71"
+        "f9cea17c88c76045b44dec0686871ce1ab68b7919d249892e410467d7a923b5d"
     ),
 }
 _SOURCE_TOPOLOGY = {
@@ -197,11 +200,12 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert "self.use_activation_pack_reuse" in session_source
     for relative, expected in _SOURCE_SHA256.items():
         assert _sha256(_ROOT / relative) == expected
-        artifact_expected = (
-            _RUNTIME_ARTIFACT_H8B_TEST_SHA256
-            if relative == "tests/test_laguna_h8b_scoped_activation_pack_reuse.py"
-            else expected
-        )
+        artifact_expected = {
+            "tests/test_laguna_h8b_scoped_activation_pack_reuse.py": (
+                _RUNTIME_ARTIFACT_H8B_TEST_SHA256
+            ),
+            "docs/REFACTOR.md": _RUNTIME_ARTIFACT_REFACTOR_SHA256,
+        }.get(relative, expected)
         assert artifact["source_sha256"].get(relative, artifact_expected) == (
             artifact_expected
         )

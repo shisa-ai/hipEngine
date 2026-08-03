@@ -1970,6 +1970,16 @@ introduced
 ([H8B runtime](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json) ·
 [H8B target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8a-activation-pack-reuse-target.json)).
 
+Source promotion now passes every frozen gate. Selector-unset M512 remains
+exact at **223 packs / 2,155 dispatches**. Disabled rollback→source improves
+fixed **438.114→439.243 tok/s (+0.258%, 5/5)** and clean 512/1K/4K by
+**+0.109%/+0.0097%/+0.055%**. Clean commit `6b9411b15` reaches **440.893
+tok/s** from five exact samples. Five profiled requests record **1,146.420-ms**
+median kernel sum / **1,166.621-ms** span, one queue/stream, and zero compiler.
+Retain disabled complete-pack rollback; remove the redundant `_SUPPORTED` and
+explicit positive candidate seam in a separate cleanup before reranking
+([H8B production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
