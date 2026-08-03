@@ -325,7 +325,7 @@ def test_iq4_composite_key_is_excluded_from_unvalidated_backends(
         lambda key, _kernel, *, replace=False: registered.append(key),
     )
     backend.register_gfx1151_kernels()
-    assert registered == []
+    assert _KEY not in registered
 
 
 def test_iq4_composite_source_preserves_selected_fallback_and_exact_topology() -> None:

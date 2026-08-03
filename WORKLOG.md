@@ -202748,3 +202748,44 @@ Vulkan local sizes verbatim will close the measured gap.
   prefill-publication/native-batch tests. Python compile-all, staged whitespace,
   conflict-marker, and WORKLOG union checks are clean. Untracked benchmark
   artifacts remain untouched.
+
+## 2026-08-04 — Repair the post-merge repository-wide failure set
+
+- The required exclusive baseline `uv run pytest -q --tb=short` completes with
+  **67 failing nodes**. They reduce to stale post-merge contracts rather than
+  67 independent runtime defects: 23 superseded H6 scratch/variant guards, six
+  historical source-hash guards, nine registry-scope assertions, two Laguna
+  materialization expectations, 14 gfx1100 code objects launched on gfx1151,
+  three benchmark/router/root follow-on failures, and ten stale or stateful
+  Qwen GGUF/PARO fixtures. The Laguna root probe passes alone; its broad-run
+  failure follows the invalid-device-function launches in the same process.
+- Refresh the historical guards without changing their archived artifacts:
+  retain the artifact-time hashes and add explicit post-merge hashes for the
+  later gfx1151/Laguna owners. Include the merged 768-byte MoE completion plane
+  (`104,370,976` MoE bytes and `600,142,624` total prefill bytes), and select
+  the current H6T fused-add IQ3 fallback in the H6C/H6L historical tests.
+  Registry exclusion tests now assert that the candidate key itself is absent
+  while allowing independently qualified gfx1151 keys from collection-time
+  registration.
+- Make GPU test builds target the detected device rather than hard-coded
+  `gfx1100`. Pin the tiny Q6 materialization case to its intended non-planar
+  qmicro fallback, include current gfx1151 auxiliary sidecars in resident-byte
+  and allocation accounting, and update synthetic resident sessions for the
+  target-scratch and compact-position owners. The real MoE graph test now uses
+  pytest-scoped environment changes and explicitly disables the incompatible
+  MoE-tail-next-RMS fusion, removing its leak into later tests.
+- Focused repair evidence covers every original failure class: the 49-node
+  non-GPU last-failed bundle reaches 46 pass with only three sequential hash
+  guards left, then those three pass after adding the explicit post-merge
+  hashes; `tests/test_laguna_gguf_materialize_gpu.py` passes **2/2**;
+  the two MoE-tail GPU files pass **18/18** on detected `gfx1151`; the real
+  graph test followed immediately by its formerly contaminated routing file
+  passes **4/4**; and the real Laguna root probe passes **1/1**. `compileall`,
+  `git diff --check`, and conflict-marker checks pass. Ruff is not installed in
+  either the project or `therock` environment, so no Ruff result is claimed.
+- A final `pytest --lf` found an empty last-failed cache and therefore began a
+  redundant full run; stop it at 13% with no failures instead of violating the
+  required approval gate for another multi-minute broad run. Per the focused
+  repair rule, the original complete broad baseline plus repaired failing-node
+  evidence is retained; a second full-suite-green claim remains intentionally
+  unmade pending explicit approval.

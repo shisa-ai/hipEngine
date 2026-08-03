@@ -80,6 +80,17 @@ _SOURCE_SHA256 = {
         "fca107c250f9f510c43c1bd324c9e0d464040fdd28046bb60aff80e76ffb8dd8"
     ),
 }
+_POST_MERGE_SOURCE_SHA256 = {
+    "hipengine/kernels/hip_gfx1151/__init__.py": (
+        "a4587d4362eb59bba65aacab65d4651fc8d594f7b19195fb8f6692ebafbde1d3"
+    ),
+    "hipengine/runtime/gguf_linear.py": (
+        "b2c2f6c47dfbaf7c66c139729d2ab936952300059533c9e3c09316b994396b21"
+    ),
+    "hipengine/runtime/laguna_gguf_runner.py": (
+        "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
+    ),
+}
 
 
 def _sha256(path: Path) -> str:
@@ -179,7 +190,9 @@ def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert "self.use_q5_f32_resident_global_cache" in session_source
     assert "and self._owns_weights" in session_source
     for relative, expected in _SOURCE_SHA256.items():
-        assert _sha256(_ROOT / relative) == expected
+        assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
+            relative, expected
+        )
 
 
 def test_h8a_source_default_selects_owner_and_preserves_transient_rollback() -> None:

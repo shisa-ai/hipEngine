@@ -163,8 +163,11 @@ def _run_mixed(
         free(x_buf)
 
 
-def test_mixed_q5_q6_attention_registry_is_role_specific_and_gfx1100_only() -> None:
+def test_mixed_q5_q6_attention_registry_resolves_supported_backends() -> None:
+    from hipengine.kernels import hip_gfx1151
+
     register_gguf_k_gemv_kernels()
+    hip_gfx1151.register_gfx1151_kernels()
     assert resolve(
         backend="hip_gfx1100",
         layer="attention_projection_quad",
@@ -195,9 +198,12 @@ def test_mixed_q5_q6_attention_registry_is_role_specific_and_gfx1100_only() -> N
         quant=_Q5_QG_QUANT,
         variant=_LOCAL32_FIXED_META_VARIANT,
     ) is gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out
-    assert not is_registered(
-        KernelKey("hip_gfx1151", "attention_projection_quad", _Q5_QG_QUANT, _VARIANT)
-    )
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="attention_projection_quad",
+        quant=_Q5_QG_QUANT,
+        variant=_VARIANT,
+    ) is gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out
 
 
 def test_mixed_q5_q6_attention_wrapper_rejects_out_of_scope_shapes() -> None:

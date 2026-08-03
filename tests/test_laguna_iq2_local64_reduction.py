@@ -301,7 +301,7 @@ def test_local64_reduction_key_is_excluded_from_unvalidated_backends(
         lambda key, _kernel, *, replace=False: registered.append(key),
     )
     backend.register_gfx1151_kernels()
-    assert registered == []
+    assert _KEY not in registered
 
 
 def test_local64_reduction_source_preserves_generic_reducer_and_exact_tree() -> None:

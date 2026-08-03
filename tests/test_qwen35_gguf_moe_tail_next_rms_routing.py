@@ -118,6 +118,7 @@ def test_resident_decode_keeps_unfused_layer_inputs_when_disabled(
 ) -> None:
     session, calls = _session_and_calls()
     monkeypatch.setattr(qgr, "_gguf_moe_tail_next_rms_enabled", lambda: False)
+    monkeypatch.setattr(qgr, "_gguf_moe_graph_enabled", lambda: False)
     monkeypatch.setattr(qgr, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None)
 
     session._run_current_hidden_to_final_hidden(position=2, stream=4)

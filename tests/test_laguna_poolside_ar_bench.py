@@ -154,7 +154,7 @@ def test_matched_server_command_pins_hip_bf16_and_flash_attention() -> None:
     assert command[:3] == [
         "/tmp/build/bin/llama-server",
         "-m",
-        "/models/laguna.gguf",
+        str(args.model.resolve()),
     ]
     assert command[command.index("-ctk") + 1] == "bf16"
     assert command[command.index("-ctv") + 1] == "bf16"
