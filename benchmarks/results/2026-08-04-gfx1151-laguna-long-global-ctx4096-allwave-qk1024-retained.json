@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_long_global_ctx4096_allwave_qk1024_retained",
+  "created_at": "2026-08-04T01:32:43+09:00",
+  "status": "accepted",
+  "decision": "retained_production_default_for_dense_ctx4096_at_live_ge_98304",
+  "performance_claim": true,
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "kv_dtype": "bf16"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "rocm": "7.15.0-0000000",
+    "source_revision": "c9f3a7617bdc5b00664d852499cf116a5895f64b"
+  },
+  "change": {
+    "summary": "Reuse the exact local1024/K1024 all-wave score producer in the five quality-scoped ctx4096 layers instead of their tokenloop4 score producer.",
+    "scope": "Select only for gfx1151 dense-initial 48Q/8KV/D128 full attention at live >=98304: ordinary layers 32/36/40/44 and compensated layer 28.",
+    "unchanged": "The F32 score values, exact denominator, ordinary or compensated partial-PV association, merge, gate, BF16 rounding, allocations, KVLiveSpans ABI, shorter contexts, peer backends, and explicit-eviction fallback."
+  },
+  "protocol": {
+    "ordinary_leaf": "PYTHONPATH=. python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-allwave-prefetch4-dense-prefix-nontemporal-key-value --live-counts 4097,16448,65664,131072 --capacity 131200 --warmups 5 --samples 13 --burst 10 --allow-dirty --output /tmp/laguna-ctx4096-allwave-ordinary-formal-serial.json",
+    "compensated_leaf": "PYTHONPATH=. python3 scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-allwave-compensated-prefetch16-dense-prefix-nontemporal-key-value --live-counts 4097,16448,65664,131072 --capacity 131200 --warmups 5 --samples 13 --burst 10 --allow-dirty --output /tmp/laguna-ctx4096-allwave-compensated-formal-serial.json",
+    "trace": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-ctx4096-allwave.6nL8JX --output-file trace2 -- .venv/bin/python3 -u scripts/laguna_global_fixedshape_reduce_leaf.py --candidate split-gqa6-dim64-vstage64-ctx4096-allwave-prefetch4-dense-prefix-nontemporal-key-value --capacity 131200 --live-counts 131072 --samples 1 --warmups 1 --burst 3 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty",
+    "production_128k": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/laguna_hipcc_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/laguna_long_context_profile.py --context-length 131200 --lengths 131072 --chunk-size 2048 --decode-output-tokens 128 --repetitions 1 --warmup-rows 128 --compiler-version-file /tmp/laguna_hipcc_version.txt --require-cached-build --allow-dirty --output /tmp/laguna-ctx4096-allwave-production-128k.json"
+  },
+  "leaf_screen": {
+    "live_counts": [4097, 16448, 65664, 131072],
+    "ordinary_control_ms": [0.208459, 0.459651, 1.715419, 3.245126],
+    "ordinary_candidate_ms": [0.207970, 0.468235, 1.685519, 3.175079],
+    "ordinary_delta_percent": [-0.235, 1.868, -1.743, -2.159],
+    "compensated_control_ms": [0.211076, 0.467453, 1.750000, 3.309347],
+    "compensated_candidate_ms": [0.210219, 0.477985, 1.719062, 3.240814],
+    "compensated_delta_percent": [-0.406, 2.253, -1.768, -2.071],
+    "context_f32_byte_exact": true,
+    "gated_bf16_byte_exact": true,
+    "gated_bf16_mismatches": 0,
+    "raw_sha256": {
+      "ordinary": "b98559c21660605479a37704293ecc463548f31f335f77615409174ca3084cad",
+      "compensated": "e6eb69c160dac954ad06942fcb7fffd807e4349cb072af90b0f98c8ee85d6e48"
+    }
+  },
+  "production": {
+    "length": 131072,
+    "before_tok_s": 11.318784,
+    "after_tok_s": 11.374826822664643,
+    "delta_percent": 0.495,
+    "vulkan_tok_s": 14.237076,
+    "vulkan_parity_percent": 79.896,
+    "decode_seconds_before": 11.220286,
+    "decode_seconds_after": 11.165005145128816,
+    "decode_wall_delta_percent": -0.493,
+    "final_token_id": 874,
+    "generated_ids_sha256": "c8307cbfde8b47be1c39d560d01524fe978a10ee4517be424af0cbd081baeaed",
+    "final_position": 131198,
+    "lifecycle": {
+      "allocated_bytes": 87407934744,
+      "freed_bytes": 87407934744,
+      "allocations": 1452,
+      "active_allocations_after": 0
+    },
+    "raw_sha256": "147c9e45d1669aa2cf87193aeb9354ecda9c79a8d759b31fcc00f77d1699e6a4"
+  },
+  "trace": {
+    "control_kernel": "laguna_global_attention_split_exact_gqa6_tokenloop4_scores_kernel<true,true>",
+    "candidate_kernel": "laguna_global_attention_gqa6_tile1024_dense_prefix_scores_kernel",
+    "control_score_median_us": 1254.715,
+    "candidate_score_median_us": 1198.570,
+    "score_delta_percent": -4.475,
+    "candidate_resources": "local1024/VGPR48/SGPR128/LDS0/scratch0",
+    "csv_sha256": "6e0b09a4a1c44cb519ee225bfba722f6c6e1f88d4ede5610a20fec96776fceb7"
+  },
+  "validation": {
+    "focused_and_profile_tests": "43 passed",
+    "cpu_reference_and_retained_kernel_byte_parity": true,
+    "runtime_threshold_and_eviction_fallback_tested": true,
+    "short_context_guard": "selector-inactive below live 98304",
+    "jit_cached_during_trace_and_production": true,
+    "lineage_audit": "blocked by missing read-only /home/lhl/amd-gpu-tuning/reference/atlas checkout"
+  }
+}

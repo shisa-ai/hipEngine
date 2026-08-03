@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted byte-exact gfx1151 Laguna ctx4096 all-wave K1024 QK] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d128K: reuse the exact local1024 all-wave score owner in ordinary layers 32/36/40/44 and compensated layer 28 at 98,304+ live slots, cutting their leaves **2.159%/2.071%** and moving production **11.318784 -> 11.374827 tok/s (+0.495%)** with exact recurrent state, structural short-context exclusion, safe metadata fallback, and full lifecycle recovery; `benchmarks/results/2026-08-04-gfx1151-laguna-long-global-ctx4096-allwave-qk1024-retained.json`.
+
 - [accepted byte-exact gfx1151 Laguna all-wave K1024 QK] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: replace only tokenloop4 QK from the measured 32K crossover with a local1024 all-wave dense score owner, cutting its 128K median **1,261.046 -> 1,201.495 us (-4.722%)** and moving d64K/d128K **14.620/11.233 -> 14.759/11.319 tok/s (+0.948%/+0.760%)** with byte-exact leaves, exact recurrent trajectories, noise-flat 512/1K/4K, and full lifecycle recovery; `benchmarks/results/2026-08-04-gfx1151-laguna-long-global-allwave-qk1024-retained.json`.
 
 - [rejected gfx1151 Laguna online/fused approximation family] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / live16K-128K: a full-F32 local1024 online core cuts the leaf **34-42%** but fails 16K recurrent quality at **0.749636 max KL**; single-layer chronological PV and F32 handoff also fail, exact sparse replay regresses the 128K leaf **162.677%**, and cooperative BF16 K128/K512 loses 3.7-4.9x, so remove every approximate/repair prototype; `benchmarks/results/2026-08-04-gfx1151-laguna-online-fused-attention-rejected.json`.
