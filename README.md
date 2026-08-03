@@ -1473,17 +1473,18 @@ subblock splitting cannot repair the invariant. No source, RED, compiler, GPU,
 or timing path was created; retain H8B **440.893 tok/s**
 ([H8P analytical rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
 
-**WPF-H8Q exact Q6 int16-product plus tiled-F32-scale plane is the next
-target-only dataflow.** All **541,286,400** actual Q6 values have
-`scale×quant` in **[-4,064,+4,096]**, so int16 is lossless unlike H8P's affine
-Q5 values. Cover the complete three-role/**142-call** H6U class while retaining
-H5I N72 and all three H7I raw fallbacks. The fixed 516-byte record models
-producer+consumer logical bytes **200.661→101.296 GB (-49.519%)** but adds
-**49.627B** exact conversions plus scale multiplies. Its zero-cost traffic-only
-**450.782 tok/s (+2.243%)** ceiling is not a speed result. Freeze RED and require
-all three roles plus aggregate on both clocks without role/layout/scale-dtype/
-resource/recompile/rerun salvage
-([H8Q target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
+**WPF-H8Q exact Q6 int16-product plus tiled-F32-scale plane is rejected at
+the first-object physical gate.** The transient implementation passes **15/15**
+correctness tests across all three roles, rows 17/33/512, sampled CPU values,
+and exact **−4,064/+4,096** product planes. Its local64 producer passes at
+**VGPR14/LDS0/spill0**, and each consumer is spill/scratch-free with the intended
+uniform scale load, but consumer metadata VGPR is **169/136/169** versus frozen
+runtime ceilings **160/128/160**. Metadata already exceeds every ceiling, so no
+named trace or timing screen is admissible. Honor the no-resource-rewrite/
+recompile/rerun salvage rule; remove candidate and RED, retain H8B
+**440.893 tok/s / 2,155 dispatches**, and make no speed claim
+([H8Q rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json) ·
+[H8Q target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below

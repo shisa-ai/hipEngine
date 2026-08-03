@@ -190824,3 +190824,47 @@ Vulkan local sizes verbatim will close the measured gap.
   kernel, primitive, and composite. Do not alter that unrelated test in this
   RED unit. Kernel lineage remains the same four catalogued external-reference
   drifts. Commit only the RED test and this handoff before source work.
+
+## 2026-08-03 — Reject WPF-H8Q Q6 product plane at first-object physical gate
+
+- Implement the frozen operation transiently without changing production
+  ownership: one local64 exact raw-Q6 producer writes row-major int16 products
+  and tiled F32 super-scales; three local128 consumers replay H6U's BF16
+  K3072/N1024, BF16 K1024/N3072, and F32 K3072/N1024 arithmetic. Candidate
+  source remains default-off and H5I/H7I/H6U fallbacks remain explicit.
+- `PYTHONPATH=. python3 -m pytest -q
+  tests/test_laguna_h8q_q6_int16_product_plane.py` passes **15/15** against the
+  final exact-source object. Coverage includes product/scale extrema
+  **−4,064/+4,096**, all three roles at rows17/33/M512, sampled CPU values,
+  activation/poison/finiteness/repeat/lifecycle, strict preflight, package/
+  registry fallbacks, and gfx1151 isolation.
+- The initial build object is **652,272 bytes**, SHA-256 `356a1d22...4ca6`.
+  During the parallel GREEN run the cache automatically rebuilt the same source
+  once and overwrote it with another 652,272-byte object, SHA-256
+  `ce036a6f...39ce`. There was no source edit, tuning, or recompile salvage, but
+  the record honestly carries **two compiler invocations** and is therefore not
+  a timing packet. Use only final object `ce036a6f...39ce` for physical
+  adjudication.
+- `PYTHONPATH=. python3 /tmp/analyze_laguna_h8q_physical.py` extracts the final
+  fatbin/HSACO and fails the binding object gate. The producer passes at
+  **VGPR14/SGPR27/LDS0/private0/spill0**, **1,340 code bytes / 289 slots**.
+  Consumer metadata is **VGPR169/136/169** against frozen runtime ceilings
+  **160/128/160** for BF16 K3072/N1024, BF16 K1024/N3072, and F32 K3072/N1024:
+  over by **9/8/9**. All are private/spill/scratch-free and contain one
+  readfirstlane plus scalar scale loads and explicit int16 conversion/multiply,
+  but metadata already makes all three runtime ceilings impossible.
+- Honor the frozen no-resource-rewrite/recompile/rerun salvage rule. Skip named
+  trace, producer-inclusive 5/15/5 timing, runtime owner, state/topology,
+  fixed/length, and source gates. Remove every candidate/package surface and
+  delete the H8Q RED. Restored source hashes are gfx1100 package
+  `3638a8fb...968d`, HIP `1a06011e...7110`, Python wrapper
+  `fb9b2ae1...f33e`, and gfx1151 package `a5838ffc...ba3b`, exactly committed
+  H8B production.
+- Publish
+  `benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json`.
+  No H8Q performance result exists and production remains H8B
+  **440.892624 tok/s / 1,146.419744-ms / 2,155 dispatches**, **1.566801×**
+  behind matched llama.cpp HIP **690.791 tok/s**. Per user direction, table
+  future Laguna parity implementation after this closure; any later resumption
+  must begin with the highest-impact remaining component gaps rather than
+  another narrow H8-class micro-target.

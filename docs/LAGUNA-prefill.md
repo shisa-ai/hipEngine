@@ -2473,48 +2473,33 @@ HIP, and do not implement fixed16 power-of-two Q5 planes without a different
 exact representation
 ([H8P analytical rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
 
-Select target-only **WPF-H8Q exact Q6 int16-product plus tiled-F32-super-scale
-transient plane**. This is not gfx1151's byte-neutral resident selected-expert
-qmicro reorder. H8Q changes only gfx1100's transient exact dense/shared H6U
-weight representation. The retained H5I N72 call and three H7I long-K/raw calls
-remain explicit fallbacks before implementation.
+Reject **WPF-H8Q exact Q6 int16-product plus tiled-F32-super-scale transient
+plane** at the first-object physical gate. The transient implementation owns
+only the intended three H6U roles and passes **15/15** exact tests: product and
+scale planes including **−4,064/+4,096**, all roles at rows17/33/M512, sampled
+CPU outputs, activation/poison/finiteness/repeat/lifecycle, strict preflight,
+registry fallbacks, and gfx1151 isolation. The local64 producer is
+**VGPR14/LDS0/private0/spill0**. All consumers are private/spill/scratch-free and
+the ISA contains the intended scalar/readfirstlane scale load, int16 conversion,
+and multiply.
 
-The format is exact by construction. Raw Q6 uses signed int8 scale and signed
-6-bit quant, so `scale×quant` is bounded **[-4,064,+4,096]**. A complete scan
-of **146 tensors / 2,114,400 blocks / 541,286,400 values** observes both bounds
-and all **3,454** distinct products fit int16. Store row-major int16 products
-plus one exact F32 super-scale per block in tiled `[out_tile16][qblock][col16]`
-order. The consumer walks qblocks but preserves each thread's current
-`qblock*256+tid`, then `+128`, sequence; reconstruct one exact F32 weight before
-the unchanged scalar `fmaf`, DPP/wave reduction, serial wave sum, and BF16/F32
-store.
+The immutable object fails the binding resource contract before runtime:
+consumer metadata is **VGPR169/136/169** for BF16 K3072/N1024, BF16
+K1024/N3072, and F32 K3072/N1024, versus frozen runtime ceilings
+**160/128/160**. The overages are **9/8/9 VGPR**, so metadata alone makes a
+passing runtime allocation impossible. No compiler-free named trace,
+producer-inclusive 5/15/5 timing, runtime owner, state/topology, length, or
+source-promotion gate is run. The candidate and RED are removed; H5I/H7I/H6U
+fallbacks and H8B source remain exact.
 
-Own exactly the three H6U package roles: BF16 K3072/N1024 ×2, BF16
-K1024/N3072 ×46, and F32 K3072/N1024 ×94. Current H8B tracing assigns their
-consumers **48.849227 ms**, all 143 exact producers **1.938174 ms**, retained
-H5I **0.045121 ms**, and raw H7I **21.310490 ms** inside Q6's **73.319821 ms**.
-For the fixed 142-call class, the 516-byte record and uniform once-per-workgroup
-scale loads model producer+consumer logical bytes **200,661,221,376→
-101,296,226,304 (−49.5188%)**. Price the cost: reconstruct
-**49,627,004,928** weights with one int16-to-F32 conversion and one F32 multiply
-while preserving **228,707,008,512** useful FMAs. These are source-level bytes
-and operations, not HBM/cache or speed evidence. Applying the byte ratio with
-zero ALU/resource cost yields only **450.782 tok/s (+2.243%)**, explicitly not a
-result.
-
-Freeze RED before executable changes. Require exact product/scale planes at
-synthetic **−4,064/+4,096** and actual bytes; rows17/33/M512 equality to H6U
-plus sampled CPU values; unchanged activation plane, poison/finiteness/repeat/
-lifecycle, strict preflight, registry fallback, and gfx1151 absence. One build
-must show a local64/VGPR≤24/LDS0/scratch0 producer; local128 consumers at exact
-H6U LDS and runtime VGPR≤160/128/160; uniform scalar/readfirstlane scale loads;
-explicit conversion+multiply before unchanged FMA; and all names in one
-compiler-free trace. Then consume one indivisible producer-inclusive 5/15/5
-actual-weight screen where every role and the weighted 142-call aggregate win
-HIP-event and synchronized wall. Do not salvage any role/dtype/shape/layer/
-length/layout/scale dtype/grouping/resource rewrite/recompile/favorable-rerun
-subset
-([H8Q target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
+The build record carries one protocol caveat: the initial successful object was
+automatically overwritten by one exact-source rebuild during parallel GREEN
+execution. There was no source edit or tuning salvage, and the final immutable
+object is the one inspected. Since the candidate already fails every consumer
+VGPR ceiling, no speed result or claim is made. Honor the no-resource-rewrite/
+recompile/rerun rule and retain H8B **440.893 tok/s / 2,155 dispatches**
+([H8Q rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json) ·
+[H8Q target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

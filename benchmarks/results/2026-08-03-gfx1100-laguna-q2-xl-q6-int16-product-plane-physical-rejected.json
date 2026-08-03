@@ -1,0 +1,207 @@
+{
+  "admission": {
+    "downstream_skipped": [
+      "compiler-free named runtime trace",
+      "producer-inclusive three-role 5/15/5 actual-weight timing",
+      "bounded runtime owner and complete-state qualification",
+      "fixed C4096/M512 and 512/1K/4K transfer",
+      "source-default promotion"
+    ],
+    "first_object_required": "producer metadata/runtime VGPR <=24, LDS0, scratch0; consumer runtime VGPR <=160/128/160, exact H6U runtime LDS1536/1024/1536, private/spill/scratch0",
+    "no_salvage": "no role/dtype/shape/layer/length/layout/scale-dtype/grouping/resource rewrite/recompile/favorable-rerun subset",
+    "observed_failure": "all three consumer metadata VGPR counts already exceed the frozen runtime ceilings: 169>160, 136>128, 169>160"
+  },
+  "authority_links": {
+    "README.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json"
+  },
+  "candidate": {
+    "implementation": "one exact local64 Q6 int16-product/F32-scale producer and three local128 H6U-equivalent consumers; scale remains one exact F32 value per raw Q6 block in out_tile16/qblock/col16 order",
+    "repository_surfaces_removed": true,
+    "representation": "row-major int16[output][K] product plane plus tiled F32[out_tile16][qblock][col16] scale plane",
+    "roles": {
+      "bf16_k1024_n3072_calls": 46,
+      "bf16_k3072_n1024_calls": 2,
+      "f32_k3072_n1024_calls": 94,
+      "total_calls": 142
+    }
+  },
+  "correctness": {
+    "command": "PYTHONPATH=. python3 -m pytest -q tests/test_laguna_h8q_q6_int16_product_plane.py",
+    "compiler_processes_during_green": 1,
+    "passed": 15,
+    "scope": "exact products/scales including -4064/+4096, all three roles at rows17/33/512, CPU samples, poison/finiteness/repeat/lifecycle, preflight, registry/fallback, and gfx1151 isolation",
+    "status": "pass"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_executed": true,
+    "candidate_implemented_transiently": true,
+    "candidate_removed": true,
+    "correctness_measured": true,
+    "future_implementation_tabled": true,
+    "performance_measured": false,
+    "production_changed": false,
+    "red_removed": true,
+    "rejected": true
+  },
+  "first_object": {
+    "build": {
+      "cache_key": "7586c36149657b78c505829fc3e49566fe13c135e2ffc695774217c2b307e177",
+      "compiler_invocations_total": 2,
+      "compiler_version_file_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+      "final_object_nbytes": 652272,
+      "final_object_sha256": "ce036a6f1aef0f101834bc19fcfb826be85240906ec8db4c2da7e1fc7d6f39ce",
+      "initial_object_nbytes": 652272,
+      "initial_object_sha256": "356a1d222ee12abf096f4f442149182515630d00b8a22723cebbadcf00d94ca6",
+      "protocol_caveat": "the initial successful object was overwritten by an automatic exact-source rebuild during the parallel GREEN process; no source changed and no tuning/recompile salvage occurred, but this is not a single-compiler-invocation timing packet"
+    },
+    "consumer_instances": {
+      "bf16_k1024_n3072": {
+        "code_bytes": 7524,
+        "frozen_vgpr_ceiling": 128,
+        "instruction_slots": 1139,
+        "lds_metadata_bytes": 1024,
+        "private_bytes": 0,
+        "sgpr": 67,
+        "uniform_scale_readfirstlane": 1,
+        "vgpr": 136,
+        "vgpr_delta_to_ceiling": 8
+      },
+      "bf16_k3072_n1024": {
+        "code_bytes": 9032,
+        "frozen_vgpr_ceiling": 160,
+        "instruction_slots": 1349,
+        "lds_metadata_bytes": 1280,
+        "private_bytes": 0,
+        "sgpr": 67,
+        "uniform_scale_readfirstlane": 1,
+        "vgpr": 169,
+        "vgpr_delta_to_ceiling": 9
+      },
+      "f32_k3072_n1024": {
+        "code_bytes": 9004,
+        "frozen_vgpr_ceiling": 160,
+        "instruction_slots": 1346,
+        "lds_metadata_bytes": 1280,
+        "private_bytes": 0,
+        "sgpr": 67,
+        "uniform_scale_readfirstlane": 1,
+        "vgpr": 169,
+        "vgpr_delta_to_ceiling": 9
+      }
+    },
+    "consumer_isa_common": {
+      "explicit_int16_to_f32_sites": 32,
+      "global_int16_loads": 32,
+      "scalar_scale_loads": {
+        "s_load_b128": 2,
+        "s_load_b512": 1,
+        "s_load_b64": 2
+      },
+      "scratch_instructions": 0,
+      "sgpr_spills": 0,
+      "vgpr_spills": 0,
+      "wavefront_size": 32
+    },
+    "failures": [
+      "bf16_k3072_n1024_metadata_vgpr_169_gt_runtime_ceiling_160",
+      "bf16_k1024_n3072_metadata_vgpr_136_gt_runtime_ceiling_128",
+      "f32_k3072_n1024_metadata_vgpr_169_gt_runtime_ceiling_160"
+    ],
+    "producer": {
+      "code_bytes": 1340,
+      "frozen_vgpr_ceiling": 24,
+      "instruction_slots": 289,
+      "lds_bytes": 0,
+      "private_bytes": 0,
+      "sgpr": 27,
+      "sgpr_spills": 0,
+      "vgpr": 14,
+      "vgpr_spills": 0,
+      "wavefront_size": 32
+    },
+    "status": "reject_first_object_all_consumer_vgpr_gates"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_q6_int16_product_plane_first_object_physical_rejected",
+  "lineage": {
+    "base_revision": "cdfcca098",
+    "candidate_present": false,
+    "package_policy_changed": false,
+    "red_present": false,
+    "red_revision": "cdfcca098",
+    "red_test_sha256": "294b75391baae12d5e210f97c2d4b4158bce8f4d9cb931e4334ed2db019ad623",
+    "restored_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
+    },
+    "runtime_owner_present": false,
+    "target_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json",
+    "target_artifact_sha256": "f6f616f985b08dd9f7c52fb28d8cb253ef1d3ed2da93a19dc7cfad4639387a63"
+  },
+  "matched_status": {
+    "campaign_start": {
+      "kernel_sum_ms": 3001.692,
+      "wall_tok_s": 169.516
+    },
+    "components_ms": {
+      "attention": {"current": 115.349089, "llamacpp": 21.512447, "remaining_gap": 93.836642},
+      "gate_up": {"current": 401.402578, "llamacpp": 397.804923, "remaining_gap": 3.597655},
+      "iq3_iq4_expert_down": {"current": 273.163353, "llamacpp": 153.859911, "remaining_gap": 119.303442},
+      "q5_projections": {"current": 230.42948, "llamacpp": 58.31409, "remaining_gap": 172.11539},
+      "q6_projections": {"current": 73.319821, "llamacpp": 14.667598, "remaining_gap": 58.652223},
+      "remaining": {"current": 52.755423, "llamacpp": 67.849439, "remaining_gap": -15.094016}
+    },
+    "current": {
+      "application_dispatches": 2155,
+      "kernel_sum_ms": 1146.419744,
+      "wall_tok_s": 440.8926238498552
+    },
+    "llamacpp_hip": {
+      "kernel_sum_ms": 714.008408,
+      "wall_tok_s": 690.791
+    },
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "remaining_kernel_gap_ms": 432.411336
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128, one queue"
+  },
+  "performance_claim": false,
+  "production": {
+    "application_dispatches": 2155,
+    "artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "kernel_sum_ms": 1146.419744,
+    "source": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction",
+    "wall_tok_s": 440.8926238498552
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h8q_physical.py": "8522dddc64556547d720d482e9a7916a64294974022419dec217e0c075bff6de",
+    "/tmp/laguna-h8q-code-object-notes.txt": "a04675d6d1ba80dd2459bf1ea983cf175649f4f39181aeae4248dd56a7cd725b",
+    "/tmp/laguna-h8q-device-isa.txt": "2ed129b8c77b715c9e7b4d8aa11a8aae713cff3137b1e82bceabd2835eb56920",
+    "/tmp/laguna-h8q-fatbin.bin": "60a3885ab596fc86ecef7cd3b1b59d22cdf09b8d586d96d6f75c969755ac89b1",
+    "/tmp/laguna-h8q-gfx1100.hsaco": "2f0191c7ffe774d28037e18aea139d45750565c0ed6b58b0eac8a646d7bdc105",
+    "/tmp/laguna-h8q-physical-summary.json": "4299a55a85d74920ad7ad0972492b708ed6b8bc8d009ab0b7982d47c93323af5",
+    "/tmp/laguna-h8q-physical.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8q-physical.stdout": "4299a55a85d74920ad7ad0972492b708ed6b8bc8d009ab0b7982d47c93323af5"
+  }
+}
