@@ -1,0 +1,250 @@
+{
+  "admission": {
+    "correctness": "F32 context and BF16 gated output byte identity versus current attention then registered softplus for global/SWA starts0/128/256/384, complete KVLiveSpans including wrap/eviction fallback, rows1/7/8/9/M512, finite/poison/lifecycle",
+    "fixed_and_length_gates": "only after all four leaf routes pass: complete natural-M512 state, named 192-attention/0-separate-gate topology at 2107 dispatches, fixed five-pair C4096/M512, then clean 512/1K/4K three-pair positive medians",
+    "leaf_timing": "one immutable complete global four-start and SWA four-start screen; each complete layer-class transaction and weighted 12+36 aggregate must improve HIP-event and synchronized-wall medians",
+    "no_salvage": "no route, start, layer, prompt, token, length, output-only, favorable rerun, resource rewrite, or partial four-route subset",
+    "physical": "first object separately names all four fused siblings, preserves local sizes and zero scratch, and stays within current runtime VGPR plus 8 and no LDS growth",
+    "physical_route_contracts": {
+      "H6A": {
+        "candidate_runtime_vgpr_max": 72,
+        "current_runtime_vgpr": 64,
+        "kv_layout_and_metadata_unchanged": true,
+        "local_size": 32,
+        "scratch_bytes": 0
+      },
+      "H6N": {
+        "candidate_runtime_vgpr_max": 48,
+        "current_runtime_vgpr": 40,
+        "dynamic_score_arena_unchanged": true,
+        "local_size": 256,
+        "scratch_bytes": 0
+      },
+      "H6W": {
+        "candidate_runtime_vgpr_max": 64,
+        "current_runtime_vgpr": 56,
+        "local_size": 32,
+        "score_record_plane_unchanged": true,
+        "scratch_bytes": 0
+      },
+      "H6Z": {
+        "candidate_runtime_vgpr_max": 56,
+        "current_runtime_vgpr": 48,
+        "local_size": 32,
+        "score_record_plane_unchanged": true,
+        "scratch_bytes": 0
+      }
+    },
+    "red_first": true,
+    "reject": "on any correctness, physical, per-route, aggregate, state, topology, fixed, or length miss remove every H8H body/wrapper/key/capability/test and retain the unfused production path",
+    "runtime": "only after leaf admission, all four routes must activate together and remove exactly 48 gate calls while retaining 192 attention calls and every other family",
+    "scope": "four separately registered gfx1100 attention-prefill+attention-gate/f32 dual-output siblings with raw pointers; package/runtime/source remain unchanged until later gates",
+    "source_promotion": "separate RED and clean selector-unset fixed/length/topology gates after bounded owner admission",
+    "unfused_fallback": "retain all current H6N/H6Z/H6A/H6W attention keys plus registered softplus gate as the required exact unfused chain"
+  },
+  "authority_links": {
+    "README.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+    "WORKLOG.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "commit this target-only boundary, then freeze RED before any HIP/Python/registry/package/runtime edit",
+    "production_changed": false,
+    "red_test_added": false,
+    "runtime_owner_implemented": false,
+    "source_default_changed": false
+  },
+  "distinction": {
+    "from_cache_lifetime": "H8H adds no resident plane, sidecar, mirror, allocation, workspace, or lifetime change.",
+    "from_decode_fusion": "existing gated decode bodies are c=1 split/single-page routes; H8H is a separately named M128 prefill four-route class and does not alter decode.",
+    "from_h8e": "H8E changed QK/PV algorithm association and failed category quality; H8H preserves every current attention score, reduction, softmax, PV, context store, and separate-gate arithmetic result bit-for-bit.",
+    "from_h8g": "H8G transferred a wider qrow body and failed current-output identity/timing; H8H keeps the four current H6N/H6Z/H6A/H6W bodies and adds only a second exact epilogue publication.",
+    "not_subset_salvage": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h8g_exact_prefill_attention_softplus_dual_publication_target",
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "prior_artifacts_sha256": {
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json": "f1c2861822641180e4d4ce416359b2837f275bd2e8434ffc8ab167d142fbfd05",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json": "a02e2f741577b8e4d00cbb30c4018ccdf2ddb979760d6a1b680b867772293d1e",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91"
+  },
+  "production": {
+    "commit": "790206bf8e90923fd3a72b0f50dd4b5016e47427",
+    "dispatches": 2155,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "matched_llamacpp_hip_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "median_tok_s": 440.8926238498552,
+    "remaining_matched_gaps_ms": {
+      "attention": 93.83664200000001,
+      "iq_down": 119.30344199999996,
+      "q5": 172.11539000000002,
+      "q6": 58.65222299999999
+    },
+    "source": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction"
+  },
+  "publication_paths": [
+    "README.md",
+    "WORKLOG.md",
+    "benchmarks/CHANGELOG.md",
+    "benchmarks/README.md",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "docs/PLAN.md"
+  ],
+  "raw_evidence_sha256": {
+    "/tmp/audit_laguna_h8h_prefill_attention_gate_target.py": "61276b3af94f4e97be42b6f77eb02300c02d2d576335f701a122ef1f320690f1",
+    "/tmp/laguna-h8b-post-commit-profile-child.json": "9dbe17b2a81c7e69b32463c41b6213d4dcbad86e7410b77ecaa8a6775075a78f",
+    "/tmp/laguna-h8b-post-commit-rocprof/h8b-post-commit_kernel_trace.csv": "9f14ea6ec276dc5e4d00b716154d8956887b2833fd914ea690ab9049b5ca146c",
+    "/tmp/laguna-h8b-post-commit-trace-compiler-monitor.json": "80c1f269cb866f0e609e92b915e6461354f449d17f491b325793758dc1095d83",
+    "/tmp/laguna-h8b-post-commit-trace-summary.json": "443f8fc9992150acd6a6c4f066401628aba1d2d0b0b7d4d65b2f25f3f507106c",
+    "/tmp/laguna-h8h-prefill-attention-gate-target-audit.json": "0eca5bfaf5c97a95b4d6575a36fc3f13090710ee52a958efd244210de8c7147b"
+  },
+  "schema": 1,
+  "selection": {
+    "all_trace_checks_pass": true,
+    "complete_architecture_class": "all H6N/H6Z global and H6A/H6W SWA production slices across all 48 layers",
+    "current_attention_calls": 192,
+    "current_gate_calls": 48,
+    "current_gate_median_ms": 3.9782680000000004,
+    "current_gate_samples_ms": [
+      3.940074,
+      3.9782680000000004,
+      3.9696339999999997,
+      3.9958270000000002,
+      3.985592
+    ],
+    "current_route_profile": {
+      "h6a_swa": {
+        "calls": 72,
+        "layers": 36,
+        "profile_ms": 32.20589499999999,
+        "resources": {
+          "grid_x": 2304,
+          "grid_y": 32,
+          "kernel": "void (anonymous namespace)::laguna_attention_prefill_qrow4_cached_exact_bf16_kernel<false, true>(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+          "lds_bytes": 0,
+          "local_size": 32,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 64
+        },
+        "starts": [
+          0,
+          128
+        ]
+      },
+      "h6n_global": {
+        "calls": 24,
+        "layers": 12,
+        "profile_ms": 8.292387999999999,
+        "resources": {
+          "grid_x": 12288,
+          "grid_y": 128,
+          "kernel": "(anonymous namespace)::laguna_global_attention_prefill_dense_initial_fixed512_cached_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+          "lds_bytes": 0,
+          "local_size": 256,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 40
+        },
+        "starts": [
+          0,
+          128
+        ]
+      },
+      "h6w_swa": {
+        "calls": 72,
+        "layers": 36,
+        "profile_ms": 62.600142999999996,
+        "resources": {
+          "grid_x": 2304,
+          "grid_y": 32,
+          "kernel": "(anonymous namespace)::laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, HIP_vector_type<float, 4u>*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+          "lds_bytes": 0,
+          "local_size": 32,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 56
+        },
+        "starts": [
+          256,
+          384
+        ]
+      },
+      "h6z_global": {
+        "calls": 24,
+        "layers": 12,
+        "profile_ms": 12.105693,
+        "resources": {
+          "grid_x": 1536,
+          "grid_y": 32,
+          "kernel": "(anonymous namespace)::laguna_global_attention_prefill_qrow4_dense_initial_global_score_weight_replay_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, HIP_vector_type<float, 4u>*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+          "lds_bytes": 0,
+          "local_size": 32,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "vgpr": 48
+        },
+        "starts": [
+          256,
+          384
+        ]
+      }
+    },
+    "ranking_reason": "after H8G closes the existing qrow6 transfer, exact prefill attention plus gate publication is an untried physical boundary across the third-ranked 93.837-ms attention gap"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "77398def2dca3430a544e390d8f8f588adcfb69b82940536b3b13f3306c773a8",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "e5ac3c0825de4ccdc1f22eea25a9bc2e541bb76402bf73c348c643446a43fe83",
+    "hipengine/kernels/hip_gfx1100/fused/laguna_attention.hip": "f12b47013cd290d731f66e72cf18fd8c10cd531f330b16912043032bedddab10",
+    "hipengine/runtime/laguna_gguf_runner.py": "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654"
+  },
+  "stage": "target_selection_before_red_and_implementation",
+  "status": "selected_target_only",
+  "target": {
+    "allocation_and_workspace_growth_bytes": 0,
+    "attention_calls_retained": 192,
+    "bf16_gated_output_bytes_retained": 415236096,
+    "bf16_gated_output_elements_retained": 207618048,
+    "context_f32_output_retained": true,
+    "dispatches_after_modeled": 2107,
+    "dispatches_before": 2155,
+    "f32_context_bytes_reread_removed": 830472192,
+    "f32_context_elements_reread_removed": 207618048,
+    "gate_only_zero_increment_ceiling_percent": 0.343753597116514,
+    "gate_only_zero_increment_ceiling_tok_s": 442.4082081037605,
+    "id": "WPF-H8H",
+    "kv_live_spans_abi_retained": true,
+    "name": "exact prefill attention plus softplus dual-output publication",
+    "not_a_candidate_or_speed_claim": true,
+    "scope": "all H6N/H6Z global and H6A/H6W SWA production M128 slices across all 48 layers",
+    "separate_gate_calls_removed": 48,
+    "softplus_and_multiply_per_element_retained": true,
+    "unfused_fallback_retained": true
+  },
+  "target_id": "WPF-H8H"
+}
