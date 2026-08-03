@@ -80,6 +80,15 @@ from hipengine.quant.gguf_t16 import (
     unpack_gguf_q8_0_tile16,
 )
 from hipengine.quant.w4_paro import W4_PARO, W4ParoQuant
+from hipengine.quant.w8a16 import (
+    W8A16,
+    W8A16HostTensor,
+    W8A16Quant,
+    W8A16_LAYOUT,
+    dequantize_w8a16_per_output,
+    quantize_w8a16_per_output,
+    w8a16_linear_fp16,
+)
 from hipengine.quant.registry import (
     DuplicateQuantError,
     MissingQuantError,
@@ -145,10 +154,15 @@ __all__ = [
     "QK_K",
     "W4ParoQuant",
     "W4_PARO",
+    "W8A16",
+    "W8A16HostTensor",
+    "W8A16Quant",
+    "W8A16_LAYOUT",
     "awq_pack8_shift_for_lane",
     "bf16_to_float32",
     "dequantization_supported",
     "dequantize_gguf_data",
+    "dequantize_w8a16_per_output",
     "ggml_type",
     "ggml_type_name",
     "llama_file_type_name",
@@ -156,6 +170,7 @@ __all__ = [
     "quant_layout",
     "quant_shape_from_byte_shape",
     "quant_shape_to_byte_shape",
+    "quantize_w8a16_per_output",
     "register_quant",
     "repack_gguf_q4_k_pack8",
     "repack_gguf_q4_k_tile16",
@@ -169,4 +184,5 @@ __all__ = [
     "unpack_gguf_q6_k_tile16",
     "unpack_gguf_q8_0_tile16",
     "unpack_q4_k_scale_min",
+    "w8a16_linear_fp16",
 ]

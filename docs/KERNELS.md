@@ -343,6 +343,166 @@ Registered by `hipengine.kernels.cpu_reference.register_cpu_reference_kernels()`
 
 Fixture coverage currently includes `rmsnorm`, `linear`, `rotate`, masked `attention_decode`, and causal-GQA `full_attn_prefill`; varlen full-attn is covered by direct NumPy unit tests. Run committed fixtures with `python3 scripts/check_fixtures.py`.
 
+### Moonshine source-F16 projection baselines (**hipEngine landed**)
+
+`linear/moonshine_projection.{hip,py}` provides raw-pointer FP16-input,
+FP16-weight, FP16-output single, paired, and triple projections with FP32
+accumulation. The single wrapper also has an explicit row-precompute key for
+encoder-frame K/V materialization. The keys are
+`moonshine_projection/single_fp32_accum`,
+`moonshine_lm_head/tied_fp32_accum`,
+`moonshine_projection_rows/single_fp32_accum`,
+`moonshine_projection_bias/single_fp32_accum`,
+`moonshine_projection_pair/pair_fp32_accum`,
+`moonshine_cross_kv_precompute/pair_head_major_fp32_accum`, and
+`moonshine_qkv_proj/triple_fp32_accum`, all under `quant="fp16"`; gfx1151
+uses the peer backend alias and native `gfx1151` code object. The tied LM-head
+entry preserves the singleton reduction under a distinct HIP kernel symbol so
+whole-token profiles can separate its 30.671-MB stream from other 416-wide
+projections. Phase-3 runtime uses the separately registered
+`tied_wave8_fp32_accum` symbol: one local256 block owns eight independent
+wave32 vocabulary rows. The one-row-per-block local256 wrapper remains the
+explicit fallback. The cross-K/V variant preserves the same dot products but writes direct resident
+`[heads,frames,52]` storage instead of row-major `[frames,416]`, avoiding a
+separate transpose or temporary frame buffer. Four-row output matches the
+transposed NumPy projection within max absolute error `3.052e-5`; cache-only
+tracing names the head-major pair at 17.073 us, local256/VGPR16/LDS512/scratch0.
+
+The production-shape fixture covers hidden 416, batch-one single/triple, and a
+40-row paired cross-K/V baseline against the independent NumPy oracle. Maximum
+absolute error is `3.052e-5`, all outputs are finite, and the cache-only
+`rocprofv3` smoke names all three kernels at local256/VGPR16/LDS512/scratch0.
+Measured four-row diagnostic durations are 20.759/56.788/69.772 us for
+single/pair/triple; these are bring-up diagnostics, not promoted performance
+claims. The bias-aware sibling adds each FP16 bias to the FP32 reduced dot
+before the FP16 boundary, matching decoder `fc1`/`fc2`; its cache-only
+four-row trace is 10.620 us at the same local256/VGPR16/LDS512/scratch0 tuple.
+
+The Phase-3 gfx1151 decode route retains every key above as a fallback but uses
+measured production geometry: local32 for triple QKV, bias-aware fc1, and
+head-major cross-K/V; local64 for bias-aware fc2; and the existing vectorized
+`dense_gemv_out_fp16` local64 kernel for the 24 unbiased singleton Q/O calls.
+The generic Moonshine reduction now returns directly from wave32 and removes an
+unneeded second block barrier for larger groups; thread-0 arithmetic is
+unchanged. A 15x20-launch event matrix measures single/triple/fc1/fc2/cross at
+3.436/4.963/12.373/6.665/52.251 us versus the original local256
+5.783/10.324/25.142/7.035/165.463 us. Existing dense three-dispatch triple,
+WMMA, rocBLAS GEMM-ex, and inclusive hipBLASLt candidates are slower. Full
+fixture/token/selected-region promotion evidence remains in the Moonshine
+experiment ledger rather than treating these leaf numbers as a standalone
+speed claim. Fixture token equality is required through first EOS and at every
+captured boundary position; uncaptured teacher-forced continuation after EOS is
+reported diagnostically because it is neither generated ASR output nor a Tier-B
+boundary.
+
+`norm/moonshine_layernorm.{hip,py}` registers
+`moonshine_layernorm/fp16/fp32_stats`. One local256 block computes the FP32
+mean and centered variance in two passes, then writes the weighted FP16
+boundary. The hidden-416 seven-row fixture is byte-equal to the NumPy oracle.
+Cache-only gfx1151 tracing names `moonshine_layernorm_fp16_kernel` at 14.948 us,
+local256/VGPR24/LDS512/scratch0. Moonshine uses LayerNorm; this does not reuse
+or alter the Qwen/PARO RMSNorm math. The separately registered
+`moonshine_residual+moonshine_layernorm/rounded_fp32_stats` composite writes the
+exact rounded FP16 residual boundary, synchronizes the workgroup, and computes
+the following FP32-statistics LayerNorm in the same launch. The production
+hidden-416 boundary is byte-exact/all-close to the primitive chain and improves
+5.384 -> 3.657 us (1.47x), local256/VGPR24/LDS512/scratch0.
+
+`fused/moonshine_glue.{hip,py}` registers explicit FP16 primitives for device
+int64 embedding lookup, rounded residual add, pair-interleaved partial RoPE,
+fixed self-cache append, and deterministic lowest-ID FP16-logit argmax. It also registers
+`moonshine_partial_rope+moonshine_self_cache/interleaved_fixed_append`; the
+separate RoPE and cache keys remain its required unfused fallback. Positions
+0/1/63/193 and logical 8x52 heads are byte-equal to the NumPy oracle, and the
+composite is byte-equal to the two-kernel chain. Cache-only gfx1151 tracing
+reports embedding/residual/RoPE/cache/composite at
+3.326/1.403/2.645/1.844/1.763 us, local256, LDS0, scratch0, and maximum VGPR24.
+The 36,864-way argmax is tie-stable and traces at 31.219 us,
+local256/VGPR16/LDS3072/scratch0; it uses no caller scratch allocation.
+
+`fused/moonshine_mlp.{hip,py}` registers
+`moonshine_gated_silu/fp16/value_gate_split`: it consumes the bias-aware FP16
+`fc1` boundary as `[value,gate]`, evaluates SiLU in FP32, multiplies in FP32,
+and writes FP16. The complete unfused production-shape chain is bias-aware
+`416->3328` projection, gated SiLU to 1664, bias-aware `1664->416`
+projection, and the registered residual primitive. It is byte-equal to the
+NumPy decoder-MLP-plus-residual oracle. Cached gfx1151 tracing reports
+51.497/4.289/12.664/2.966 us for fc1/activation/fc2/residual; the activation is
+local256/VGPR16/LDS0/scratch0. Phase 3 adds exact
+`moonshine_mlp_fc1/bias_gated_silu_fp32_accum` and
+`moonshine_mlp_fc2_residual/bias_rounded_residual_fp32_accum` composites. The
+first computes paired value/gate rows with the original FP32 reduction and FP16
+boundaries before SiLU; the second preserves the FP16 projection boundary before
+the rounded residual. Complete boundaries improve 15.265 -> 9.636 us and 9.278
+-> 6.899 us; the selected whole MLP+next-norm chain improves 30.604 -> 22.116 us
+(1.38x). Resources are local32/VGPR16/LDS0/scratch0 and
+local64/VGPR16/LDS512/scratch0. Primitive fallbacks remain registered.
+
+`attention/moonshine_attention.{hip,py}` registers
+`moonshine_self_attention/fp16/fixed_cache_logical_dim` and
+`moonshine_cross_attention/fp16/resident_masked_logical_dim`, with matching
+explicit CPU fallback keys. One wave32 owns each of the eight heads, reduces
+only the logical 52 dimensions, and maintains FP32 online-softmax max,
+denominator, and output state without 56-dimension padding or score scratch.
+Self-cache past lengths 0/1/2/8/32/64/128/193 and masked resident cross-cache
+lengths 40/207/1248 pass the NumPy oracle. The maximum-length smoke is finite;
+self output is byte-equal and masked cross output has max absolute error
+`4.768e-7` and relative L2 `7.961e-6`. Cache-only gfx1151 tracing names the
+self/cross kernels at 96.982/558.650 us for lengths 194/1248, local32,
+VGPR32/SGPR128/LDS0/scratch0. These remain the explicit correctness fallbacks.
+
+The Phase-3 gfx1151 cross-attention default is the separately registered
+`resident_masked_parallel_tokens` route. One local256 block owns each head;
+eight waves process interleaved masked tokens and merge FP32 online-softmax
+partials in 2,048 bytes of LDS. It keeps logical dimension 52, resident
+head-major FP16 K/V, scratch0, and no score plane. Clean 15x20-launch timing
+improves fallback to selected at 40/24, 40/40, 207/105, 207/207, and
+1,248/1,248 frames by 3.27x/3.64x/6.22x/5.93x/6.71x. Full synthetic and six
+padded real Tier-B gates retain exact generated IDs through EOS, 100% logit
+top-1, zero timed allocation, and clean teardown. The clean decoder profile
+reduces eight past-1 cross calls from roughly 0.23 ms to 0.060 ms and moves the
+long-cache bottleneck to self attention. Detailed evidence is in the Moonshine
+experiment ledger's `results/2026-07-31-hip-phase3-cross-attention.md`.
+
+The Phase-3 self-attention route registers a branch-specialized one-wave
+candidate plus `fixed_cache_parallel_tokens` at local64/128/256. The runtime
+keeps the exact fallback at position 0, uses two waves at position 1, four waves
+at positions 2-3, and eight waves from position 4 through 193. These are general
+cache-length buckets, not fixture/token conditions. At positions 1/2/3/4/8/32/
+64/128/193, selected leaf speedups are 1.07x/1.15x/1.26x/1.33x/1.57x/3.05x/
+4.13x/5.26x/6.03x. The local256 route uses VGPR32/SGPR128/LDS2,048/scratch0
+and no score plane. Full synthetic and all six padded real Tier-B gates retain
+exact generated IDs, 100% logit top-1, zero timed allocation, and clean
+teardown. Clean position-193 profiling cuts self attention from 0.999 ms /
+57.4% to 0.192 ms / 20.0%, while the selected event median falls from 1.951 to
+1.122 ms. Evidence is in the experiment ledger's
+`results/2026-07-31-hip-phase3-self-attention.md`.
+
+`runtime/moonshine.py` composes these primitives into the complete unfused
+resident decoder. Code objects are explicitly prepared before timed work;
+validated FP16 encoder hidden state and int32 masks upload once; eight
+head-major cross-K/V pairs precompute once; then each sequential token runs
+embedding, eight self/cross/MLP layers, final LayerNorm, tied FP16 LM projection,
+and lowest-ID argmax without a tracked allocation. A diagnostic callback can
+snapshot the 25 per-position layer/final boundaries without changing the
+default chain. The retained synthetic 40-frame fixture checks 310 cross,
+boundary, logit, and self-cache tensors at positions 0/1/8/32/64/128/193,
+plus every one of 194 greedy selections. All tokens are exact; maximum boundary
+absolute error is `0.75`, maximum relative L2 is `0.003506`, selected-logit
+KL max/mean is `1.538e-5/8.824e-6`, top-1 is 100%, timed tracked allocations
+are zero, and teardown returns 129,686,968 resident bytes to zero. This is the
+correctness fallback; synchronized timing and baseline publication are a
+separate Phase-2 gate.
+
+The retained Phase-3 runtime now combines tuned projections, wave8 LM head,
+masked cross attention, cache-bucketed self attention, residual+LayerNorm, and
+the two MLP composites. It issues 103 kernels/token versus the 135-kernel Phase-2
+fallback. Clean past-1 timing is 0.861 ms HIP event / 0.915 ms wall; the six-file
+decoder-only median is 5.449 ms with exact generated IDs. Past-1 aggregate
+kernel time is 0.767 ms. Detailed bounded-fusion evidence is in the experiment
+ledger's `results/2026-07-31-hip-phase3-bounded-fusions.md`; fixed-address graph
+capture/replay remains the next structural step.
+
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
 WPF-1 adds separately registered exact raw-Q5_K/Q6_K prefill
