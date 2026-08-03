@@ -1463,6 +1463,16 @@ matched llama.cpp HIP
 ([H8O rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json) ·
 [H8O target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
 
+**WPF-H8P lossless Q5 signed-int16 power-of-two plane is rejected before a
+GPU target.** The proposed 520-byte block would replace 1,024 exact F32 bytes,
+but a real `blk.0.attn_q.weight` value is `0x3d72fd00 = 62205 × 2^-20`.
+Because 62,205 is odd, no larger binary exponent is exact; because it exceeds
+32,767, signed int16 cannot hold it even with one exponent per value. A
+16,777,216-value audit confirms **46.132%** of individual values fail, so
+subblock splitting cannot repair the invariant. No source, RED, compiler, GPU,
+or timing path was created; retain H8B **440.893 tok/s**
+([H8P analytical rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

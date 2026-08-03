@@ -2450,6 +2450,29 @@ capabilities false, and retain H8B production **440.893 tok/s / 1,146.420-ms /
 ([H8O rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json) ·
 [H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
 
+Reject no-code **WPF-H8P lossless Q5 signed-int16 power-of-two transient
+plane** before target publication. The intended record stores 256 signed-int16
+mantissas plus eight one-byte exponents per Q5_K block: **520 bytes** versus the
+current **1,024 exact F32 bytes (−49.219%)**. This is materially lower-ALU than
+H5O's rejected quant+F32-coefficient reconstruction, but it still requires each
+current producer bit pattern to equal `int16 * 2**exponent` exactly.
+
+The model header contains **236 Q5 tensors / 12,177,696 blocks / 3,117,490,176
+values**. A deterministic first-65,536-block audit of real production tensor
+`blk.0.attn_q.weight` checks **16,777,216** values. Fixed 32/16/8-value exponent
+groups fit only **10.085%/11.640%/14.186%**. Splitting cannot rescue the
+representation: even one exponent per value fits only **53.868%**.
+
+The decisive block-0/subblock-0/lane-17 value is F32 `0x3d72fd00 = 62205 ×
+2^-20`. Its magnitude 62,205 is odd, so increasing the binary exponent loses
+exactness; it also exceeds signed-int16's +32,767 bound. Thus one actual weight
+alone disproves the format independent of group size. Add no candidate, RED,
+compiler, GPU execution, allocation, workspace, or timing claim; retain H8B
+**440.893 tok/s / 2,155 dispatches**, **1.566801×** behind matched llama.cpp
+HIP, and do not implement fixed16 power-of-two Q5 planes without a different
+exact representation
+([H8P analytical rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

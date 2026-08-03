@@ -2925,6 +2925,23 @@ one-queue exact serial path
 ([H8O rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json) ·
 [H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
 
+**WPF-H8P lossless Q5 signed-int16 power-of-two plane is analytically rejected;
+no kernel exists.** The proposed transient format would store 256 signed-int16
+mantissas and eight exponents per raw Q5_K block, reducing the exact expanded
+record **1,024→520 bytes (−49.219%)** while reconstructing each weight with an
+integer conversion and binary scale rather than H5O's coefficient arithmetic.
+
+The representation invariant fails before implementation. A deterministic
+first-65,536-block production audit checks **16,777,216** values from
+`blk.0.attn_q.weight`; 32-value exponent groups fit only **10.085%**, and even
+one exponent per value fits only **53.868%**. Block 0/subblock 0/lane 17 is
+F32 `0x3d72fd00 = 62205 × 2^-20`. The magnitude is odd, making `2^-20` its
+largest exact binary scale, and 62,205 exceeds signed-int16. Therefore no fixed
+group split can satisfy bit identity. Do not add a producer, consumer, registry
+key, package owner, RED, build, or timing screen for this format; rerank from
+unchanged H7G/H7H/H8B production
+([H8P analytical rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
