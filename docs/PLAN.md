@@ -3626,24 +3626,22 @@ compiler, runtime, or timing path; retain H8B **440.893 tok/s** and rerank
 outside fixed16 Q5 planes
 ([H8P analytical rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
 
-Select target-only **WPF-H8Q exact Q6 int16-product plus tiled-F32-scale
-transient plane** over exactly the three H6U roles/**142 calls**. A complete
-**541,286,400-value** model scan confirms `scale×quant` spans only
-**[-4,064,+4,096]**, so the representation is lossless. Keep H5I N72 and all
-three H7I raw routes unchanged. The 516-byte record and one uniform scale load
-per block/workgroup model combined producer+consumer bytes
-**200.661→101.296 GB (−49.519%)**, but add **49.627B** conversions plus F32
-multiplies before unchanged H6U FMAs/reductions/stores. The traffic-only
-**450.782 tok/s (+2.243%)** ceiling assumes zero ALU/resource cost and is not a
-result.
+Reject **WPF-H8Q exact Q6 int16-product plus tiled-F32-scale transient plane**
+at the first-object physical gate. Its transient producer/three-consumer family
+passes **15/15** exact correctness tests, including **−4,064/+4,096** planes,
+all roles at rows17/33/M512, sampled CPU values, lifecycle, fallbacks, and
+backend isolation. The producer is **VGPR14/LDS0/spill0**, and the consumers
+contain the intended uniform scale load with no private segment/spills/scratch.
+Consumer metadata VGPR is nevertheless **169/136/169**, already above all
+frozen runtime ceilings **160/128/160**.
 
-Freeze RED for exact planes/edge values/rows17/33/M512/CPU/fallbacks, scalar
-scale loads, bounded VGPR/LDS/scratch, and a named compiler-free trace. Then one
-fixed producer-inclusive 5/15/5 actual-weight screen must make all three roles
-and the weighted aggregate positive on event and wall clocks. Forbid role/
-shape/layout/scale-dtype/resource/recompile/rerun salvage; only a passing leaf
-may proceed to bounded state/topology/fixed/length/source gates
-([H8Q target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
+Honor the no-resource-rewrite/recompile/rerun rule: skip named trace and timing,
+remove candidate plus RED, add no owner, and retain H8B production
+**440.893 tok/s / 1,146.420-ms / 2,155 dispatches**, **1.566801×** behind
+matched llama.cpp HIP. The prior **450.782 tok/s** traffic-only ceiling remains
+a rejected model, not a result
+([H8Q rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-int16-product-plane-physical-rejected.json) ·
+[H8Q target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
