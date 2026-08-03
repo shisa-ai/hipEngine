@@ -2764,6 +2764,33 @@ timing and all owner/state/length/source gates, remove candidate plus RED, and
 retain H6T production
 ([H8K rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-rowbatch4-triple-output-runtime-lds-rejected.json)).
 
+**WPF-H8L exact IQ3 lossless 12-bit codebook packing is target-only.** H6T's
+read-only 256-entry `iq3xxs_grid` stores four magnitudes per uint32, and the
+complete value alphabet is **4/12/20/28/36/44/52/62**. Encode each coordinate
+as a 3-bit code in one uint16 and reconstruct exactly with
+`magnitude = 4 + 8*code + 2*(code == 7)`. Independent enumeration proves all
+**256/256** entries reconstruct and all 256 packed words remain unique. Table
+storage falls **1,024→512 bytes** without moving the table into LDS.
+
+Across the immutable natural-M512 all-45 routing, **103,056,384** segment
+decodes model **105,529,737,216→52,764,868,608 logical table bytes (−50%)** at
+the same **824,451,072** wave loads. This is an address-width operation count,
+not a cache-traffic or speed claim. The one separately named H6T-derived body
+must retain local128/grid32768×64, P64/P256, rowbatch8/triple-output ownership,
+raw weight and active-expert ABI, **216 ordered FMAs / 24 permlanex16 / 96 DPP
+adds**, serial wave sums, **24 LDS b128 loads / 12 stores / two barriers**, and
+BF16 bytes. Its sole table delta is fixed **8 b128 + 9 b32 + 6 d16 → 8 b128 +
+3 b32 + 12 d16** plus 24 code extracts.
+
+Freeze RED first. Require all 256 table values plus rows1/7/8/9/M512, P64/P65,
+empty/uneven/reordered routing, sampled CPU, and all **45/45** actual layers.
+The first object must be VGPR≤128, LDS384/512, code≤10,000 B, slots≤1,800, and
+private/spill/scratch0; then one 5/15/5 all-layer screen must win every layer
+and aggregate on event and synchronized wall. Do not compile another table
+width/formula/load source or salvage any layer/expert/routing/prompt/token/
+length/body/recompile/favorable-rerun subset
+([H8L target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

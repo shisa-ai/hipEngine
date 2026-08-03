@@ -3514,6 +3514,21 @@ runtime/source work, remove candidate plus RED, and retain H6T/H8B production
 **440.893 tok/s**
 ([H8K rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-rowbatch4-triple-output-runtime-lds-rejected.json)).
 
+Select target-only **WPF-H8L exact IQ3 lossless 12-bit codebook packing** as a
+representation-width operation distinct from H6X's rejected LDS table and
+H8J/H8K occupancy/ownership misses. All **256** four-coordinate uint32 entries
+reconstruct exactly and uniquely from uint16 3-bit codes using
+`4 + 8*code + 2*(code == 7)`. Storage falls **1,024→512 bytes**; across frozen
+all-45 natural routing, modeled logical codebook bytes fall
+**105,529,737,216→52,764,868,608 (−50%)** at unchanged wave-load count. This is
+not cache-traffic or speed evidence. Freeze RED and one fixed representation;
+preserve H6T's 216 FMAs, reductions, rowbatch8/triple-output ownership, raw ABI,
+LDS order, and all bytes. Require exact table/H6T/CPU/all-45 results, bounded
+physical resources, then every layer and aggregate to win one immutable both-
+clock screen. Forbid alternate widths/formulas, subsets, rewrites, recompiles,
+and favorable reruns
+([H8L target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

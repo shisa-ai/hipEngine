@@ -1373,6 +1373,20 @@ work, remove candidate plus RED, and retain H8B **440.893 tok/s**, **1.5668×**
 behind matched llama.cpp HIP
 ([H8K rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-rowbatch4-triple-output-runtime-lds-rejected.json)).
 
+**WPF-H8L exact IQ3 lossless 12-bit codebook packing is the next target-only
+leaf.** H6T's 256-entry table stores four magnitudes in each uint32. Every
+coordinate is one of **4/12/20/28/36/44/52/62**, so one uint16 can carry four
+3-bit codes and recover each exact magnitude with
+`4 + 8*code + 2*(code == 7)`. All **256/256** entries reconstruct exactly and
+remain unique while storage falls **1,024→512 bytes (−50%)**. Across all **45**
+IQ3 layers, the immutable operation model changes **105,529,737,216→52,764,868,608
+logical codebook bytes** while preserving H6T's raw weights, 216 FMAs, exchange/
+DPP reductions, LDS publication, ownership, and outputs. This is neither cache-
+traffic nor speed evidence. Freeze RED before source changes; require exact
+H6T/CPU/all-45 bytes and every layer plus aggregate to win both clocks with no
+representation/layer/routing/rerun salvage
+([H8L target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
