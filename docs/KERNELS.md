@@ -2745,6 +2745,25 @@ routing, prompt, token, length, output partition, rewrite, recompile, or
 favorable rerun
 ([H8K target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json)).
 
+**WPF-H8K is rejected at its frozen named-trace resource gate.** Complete
+rows1/3/4/5/7/8/9/M512, P64/P65, uneven/empty, H6T/CPU bytes, poison, repeat,
+and lifecycle pass. The sole immutable build passes first-object metadata and
+ISA at **VGPR70 / SGPR58 / LDS192 / private/spill0**, **4,916 B / 882 slots**,
+**19 global loads / 108 FMAs / 12 permlanex16 / 48 DPP adds / 12 LDS b128
+loads / 6 dual-address stores / 2 barriers / scratch0**.
+
+A cache-only natural-M512 selected-region trace preserves exact token2930 and
+all logits/hidden/KV digests, names **45 H8K / 0 H6T / 2 IQ4** calls within
+**2,155 application dispatches**, one queue/stream, and zero compiler. Runtime
+resources are local128/grid32768×64/**VGPR72/LDS512/scratch0**. The sole failure
+is runtime LDS **512 > frozen 256 B**. The first profiler attempt emitted zero
+rows because the system roctx lacked profiler resume/pause; the exact cached
+retry used the existing SDK roctx override without source, object, or resource
+change. Apply the no-resource-gate-rewrite/no-rerun rule: skip the all-45 5/15/5
+timing and all owner/state/length/source gates, remove candidate plus RED, and
+retain H6T production
+([H8K rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-rowbatch4-triple-output-runtime-lds-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

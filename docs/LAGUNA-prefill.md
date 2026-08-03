@@ -2217,6 +2217,31 @@ row batches or salvage any layer/expert/routing/prompt/token/length/output-
 partition/rewrite/recompile/favorable-rerun subset
 ([H8K target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json)).
 
+Reject **WPF-H8K** at its frozen named-trace runtime-resource gate. Complete
+rows1/3/4/5/7/8/9/M512, P64/P65, uneven/reordered/empty routing, H6T and sampled
+CPU bytes, poison overwrite, finiteness, repeat, and lifecycle pass **4/4**.
+The only compiled object realizes the exact uniform-rowbatch4 operation at
+metadata **VGPR70 / SGPR58 / LDS192 / private0 / spill0**, code/slots
+**4,916/882**, and **19 loads / 108 FMAs / 12 permlanex16 / 48 DPP adds / 12 LDS
+b128 loads / 6 dual-address LDS stores / 2 barriers / scratch0**. It meets every
+first-object ceiling.
+
+The cache-only natural-M512 trace returns exact token2930/position511 and the
+retained logits/final/post-hidden/KV hashes. It records **45 H8K / 0 H6T / 2
+IQ4** calls within exact **2,155 application dispatches**, one queue/stream, and
+zero compiler. Runtime is local128/grid32768×64/**VGPR72/LDS512/scratch0**. The
+sole admission failure is runtime LDS **512 > predeclared 256 B**. The first
+selected-region profiler attempt produced no rows because system roctx lacked
+resume/pause; rerun the identical cached object with the existing SDK roctx
+override, not a candidate or resource change.
+
+Honor the no-resource-gate-rewrite/no-rerun contract. Do not run the all-45
+5/15/5 timing, owner/state/topology/length, or source-promotion gates. Remove
+every H8K HIP/Python/registry/gfx1151 and RED-test surface, restore H6T sources
+byte-for-byte, and retain H8B **440.893 tok/s / 2,155 dispatches**, **1.566801×**
+behind matched llama.cpp HIP
+([H8K rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-rowbatch4-triple-output-runtime-lds-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
