@@ -123,6 +123,8 @@ _Q4K_ROWTILE_ENV = "HIPENGINE_GGUF_Q4K_ROWTILE"
 _q4k_rowtile_session_enabled: bool | None = None
 _ROWTILE_MIN_ROWS = 2
 _ROWTILE_MAX_ROWS = 8
+_DENSE_BF16_ROWTILE_MIN_ROWS = 2
+_DENSE_BF16_ROWTILE_MAX_ROWS = 4
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
 )
@@ -834,6 +836,33 @@ def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
         _raw_k_prefill_variant.reset(token)
 
 
+def _dense_bf16_rowtile_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    enabled: bool,
+) -> GGUFLinearDispatch:
+    """Select the c1-association-preserving dense-BF16 small-row kernel."""
+
+    if (
+        not enabled
+        or rows < _DENSE_BF16_ROWTILE_MIN_ROWS
+        or rows > _DENSE_BF16_ROWTILE_MAX_ROWS
+        or dispatch.abi != "dense_bf16"
+        or dispatch.key.variant != "prefill_out"
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "rowtile_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
 def _rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -1232,6 +1261,11 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_wmma=use_wmma,
+        )
+        dispatch = _dense_bf16_rowtile_dispatch(
+            dispatch,
+            rows=rows,
+            enabled=not use_wmma,
         )
         dispatch = _q8_mmq_prefill_dispatch(
             dispatch,

@@ -400,6 +400,18 @@ kernel time. D27-O3 target row batching/projection routing is therefore first,
 followed by D27-O1 bulk Q4_K/BF16 prefill. Full evidence is retained in
 `benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json`.
 
+The first D27-O3 candidate is now mechanically exact. A 2-4-row dense-BF16
+kernel loads each weight once while preserving the c1 pack8 FMA order and
+256-thread reduction tree for every row. On RX 7900 XTX/GPU1 it is 3.44-7.85x
+faster than the prior small-row prefill GEMM across the four real dense shapes.
+With native row-serial attention plus block FFN, real B1/B2/B3 target logits,
+trunk hidden rows, and all 129 Conv/GDN/KV/hidden buffers are byte-exact to
+scalar execution; target-block wall improves 1.041x/1.034x/1.139x. The complete
+W7900 reject/partial/full/rollback/provider gate also passes. The dense suite
+therefore defaults to `--target-verify-mode native`, with `serial-exact` as the
+explicit rollback control. This is an exact admitted candidate, not yet a
+retained full-suite speed claim; clean natural25 W7900 economics are next.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -413,7 +425,7 @@ followed by D27-O1 bulk Q4_K/BF16 prefill. Full evidence is retained in
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | next; target verify 92.58% of profiled wall |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | exact native rowtile candidate; clean natural25 gate next |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

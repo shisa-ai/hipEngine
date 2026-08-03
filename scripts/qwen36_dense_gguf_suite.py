@@ -469,6 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--max-new-tokens", type=int, default=25)
     parser.add_argument("--candidate-budgets", type=parse_candidate_budgets, default=(1, 2, 3))
+    parser.add_argument(
+        "--target-verify-mode",
+        choices=("native", "serial-exact"),
+        default="native",
+        help="dense target block route; serial-exact is the rollback control",
+    )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--warmup", action=argparse.BooleanOptionalAction, default=True)
@@ -541,6 +547,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             target,
             max_candidate_budget=max(args.candidate_budgets),
             quant=str(args.quant),
+            target_verify_mode=str(args.target_verify_mode),
         )
         timed_provider = _TimedDraftProvider(provider, ledger)
         timed_verifier = _TimedVerifier(verifier, ledger)
@@ -708,6 +715,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "max_new_tokens_visible": int(args.max_new_tokens),
             "timed_decode_transitions": timed_transition_count(args.max_new_tokens),
             "candidate_budgets": list(args.candidate_budgets),
+            "target_verify_mode": str(args.target_verify_mode),
             "runs": int(args.runs),
             "warmup": bool(args.warmup),
             "max_sequence_length": max_sequence_length,

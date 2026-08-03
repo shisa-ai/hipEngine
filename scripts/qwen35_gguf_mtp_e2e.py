@@ -52,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-tokens", type=_parse_tokens)
     parser.add_argument("--max-new-tokens", type=int, default=16)
     parser.add_argument("--candidate-budgets", type=_parse_budgets, default=(1, 2, 3))
+    parser.add_argument(
+        "--target-verify-mode",
+        choices=("serial-exact", "native"),
+        default="serial-exact",
+    )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--max-sequence-length", type=int, default=0)
     parser.add_argument("--json", type=Path, required=True)
@@ -157,6 +162,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         provider,
                         candidate_budget=int(budget),
                         quant=str(args.quant),
+                        target_verify_mode=str(args.target_verify_mode),
                     ) as decoder:
                         mtp = decoder.generate(
                             prompt_tokens,
@@ -247,6 +253,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "prompt_length": len(prompt_tokens),
             "max_new_tokens": int(args.max_new_tokens),
             "candidate_budgets": list(args.candidate_budgets),
+            "target_verify_mode": str(args.target_verify_mode),
             "runs": int(args.runs),
             "max_sequence_length": max_sequence,
             "quant": str(args.quant),
