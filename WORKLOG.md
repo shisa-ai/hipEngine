@@ -190726,3 +190726,68 @@ Vulkan local sizes verbatim will close the measured gap.
   **20/20**, JSON/semantic/link/UTF-8/worklog/diff/HIP checks pass, and lineage
   retains the same four catalogued external-reference drifts. Stage and inspect
   only the eight declared paths, then commit before reranking.
+
+## 2026-08-03 — Select WPF-H8Q exact Q6 int16-product transient plane
+
+- Start from clean committed H8P rejection `cd7ba18bf`; production remains H8B
+  **440.892624 tok/s / 1,146.419744-ms / 2,155 dispatches**, **1.566801×**
+  behind matched llama.cpp HIP **690.791 tok/s**. Q6 remains **73.319821 vs
+  14.667598 ms**, a **58.652223-ms** gap behind larger Q5/IQ-down/attention
+  gaps.
+- Distinguish the new premise from closed work. gfx1151 planar Q6 is a
+  byte-neutral resident selected-expert qmicro reorder; H8Q is a compressed
+  transient exact dense/shared plane on gfx1100. H8P fails because affine Q5
+  values need >int16 mantissas; Q6 already forms signed int8 scale × signed
+  6-bit quant before one F32 super-scale multiply. H5O's losing Q5 coefficient
+  replay used quant plus scale/min and more reconstruction arithmetic.
+- Scan every actual Q6 tensor and raw block: **146 tensors / 444,024,000 bytes /
+  2,114,400 blocks / 541,286,400 values**. The product spans exactly
+  **−4,064..+4,096**, reaches both format bounds, contains **3,454** distinct
+  values, and is wholly int16-safe. Raw audit SHA-256 is
+  `88b46a54...c23a8`; no model/GPU/compiler path executes.
+- Freeze ownership before implementation to exactly H6U's three package roles:
+  BF16 K3072/N1024 ×2, BF16 K1024/N3072 ×46, and F32 K3072/N1024 ×94. Keep the
+  one H5I F32-N72 plane route and H7I's two BF16/one F32 raw routes unchanged.
+  H8B's representative trace assigns the 142 H6U consumers **48.849227 ms**,
+  all 143 producers **1.938174 ms**, H5I **0.045121 ms**, and H7I raw
+  **21.310490 ms** inside the exact 73.319821-ms Q6 family.
+- Select a row-major int16 product plane plus
+  `F32[out_tile16][qblock][col16]` exact super-scales. A 516-byte record replaces
+  1,024 F32 bytes. Across the fixed 142-call class, producer+uniform-scale
+  consumer logical bytes model **200,661,221,376→101,296,226,304
+  (−49.518783%)** at unchanged allocation, **161,120,256-byte** workspace,
+  sidecar0, and dispatches. Price the operation cost explicitly:
+  **49,627,004,928** int16-to-F32 conversions plus scale multiplies precede
+  **228,707,008,512** unchanged useful FMAs. Applying the byte ratio with zero
+  ALU/resource cost models only **440.893→450.782 tok/s (+2.24293%)** and is not
+  a speed claim.
+- Freeze RED before source edits. Require exact product/F32-scale planes at
+  synthetic **−4,064/+4,096** and actual bytes; rows17/33/M512 complete H6U and
+  sampled CPU bytes; strict preflight/fallback/gfx1151/poison/finite/repeat/
+  lifecycle. The one object must keep producer local64/VGPR≤24/LDS0/scratch0,
+  consumers local128 at exact LDS **1,536/1,024/1,536** and runtime
+  VGPR≤**160/128/160**, scalar/readfirstlane scale loads, explicit conversion+
+  multiply before FMA, and all names in a compiler-free trace. Then one
+  indivisible producer-inclusive 5-warmup/15-counter-rotated/five-launch screen
+  requires all three roles and weighted aggregate positive on both clocks. No
+  role/shape/layout/scale-dtype/grouping/resource rewrite/recompile/rerun
+  salvage.
+- Publish
+  `benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8p-q6-int16-product-plane-target.json`
+  at SHA-256 `f6f616f9...87a63`; deterministic builder/audit/stdout/stderr/status
+  hashes are `cc0fb4c4...fc447` / `88b46a54...c23a8` /
+  `11fcd575...6e41` / `e3b0c442...b855` / `9a271f2a...86aa`. No candidate,
+  RED, package capability, executable source, build, GPU execution, or speed
+  result exists. Validate and commit the exact eight-path target packet before
+  RED.
+- Independent validator SHA-256 `3f162550...7b13f` enumerates the entire Q6
+  format bound independently, raw-decodes the first actual **−4,064/+4,096**
+  extrema, re-derives the complete Q6 header inventory and all role/workgroup/
+  producer/consumer/FMA traffic arithmetic, verifies trace/source/artifact
+  hashes, candidate/RED absence, seven authority links, and exact eight-path
+  inventory. Validator stdout/stderr/status hashes are `de3d7754...6489d` /
+  `e3b0c442...b855` / `9a271f2a...86aa`. Deterministic regeneration remains
+  byte-identical; benchmark matrix/provenance/README synchronization passes
+  **20/20**, JSON/link/UTF-8/worklog/diff/HIP checks pass, and lineage retains
+  the same four catalogued external-reference drifts. Stage and inspect only
+  the eight target paths, then commit before RED.

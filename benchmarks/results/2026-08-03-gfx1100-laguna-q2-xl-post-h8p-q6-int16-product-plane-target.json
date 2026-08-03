@@ -1,0 +1,301 @@
+{
+  "admission": {
+    "correctness": [
+      "producer int16 products and tiled F32 scales exact for synthetic extremes -4064/+4096 and actual Q6 bytes",
+      "rows17/33/M512 complete output bytes equal current H6U for all three roles and sampled CPU reference",
+      "preserve activation plane, poison overwrite, finiteness, repeat, strict preflight, registry/gfx1151 fallback, and lifecycle"
+    ],
+    "downstream_only_if_leaf_passes": "bounded owner, complete state/topology, fixed C4096/M512, clean 512/1K/4K, then source-default RED",
+    "no_salvage": "no role/dtype/shape/layer/length/layout/scale-dtype/grouping/resource rewrite/recompile/favorable-rerun subset after the fixed screen",
+    "physical": {
+      "consumers": "local128, exact H6U LDS 1536/1024/1536, runtime VGPR<=160/128/160 in role order, private/spill/scratch0",
+      "named_trace": "all three candidate consumers plus producer, positive durations, exact grids, one queue/stream, zero compiler",
+      "producer": "local64, LDS0, metadata/runtime VGPR<=24, private/spill/scratch0",
+      "scale_loads": "tiled scale addresses must be wave/workgroup-uniform and compile to scalar/readfirstlane loads; no per-lane scale-plane vector-load multiplication of traffic",
+      "weight_reconstruction": "one explicit F32 conversion and one F32 multiply per int16 product before the unchanged fmaf; complete bytes decide association"
+    },
+    "red_first": true,
+    "timing": {
+      "protocol": "one immutable actual-weight producer-inclusive 5-warmup/15-counter-rotated/five-launch screen with HIP-event and synchronized-wall medians",
+      "required": "every role and weighted 142-call aggregate positive on both clocks",
+      "roles": [
+        "bf16 K3072/N1024 x2",
+        "bf16 K1024/N3072 x46",
+        "f32 K3072/N1024 x94"
+      ]
+    }
+  },
+  "builder_sha256": "cc0fb4c4f81609cff718500f788e83b1641caaeb9ed17dcfedefae708b2fc447",
+  "command": "PYTHONPATH=. python3 /tmp/build_laguna_h8q_q6_product_plane_target.py",
+  "complete_q6_product_audit": {
+    "all_products_fit_int16": true,
+    "blocks": 2114400,
+    "distinct_products": 3454,
+    "first_max": {
+      "block": 1,
+      "group": 5,
+      "lane": 5,
+      "tensor": "blk.0.attn_k.weight"
+    },
+    "first_min": {
+      "block": 307,
+      "group": 11,
+      "lane": 9,
+      "tensor": "blk.0.attn_k.weight"
+    },
+    "format_bound": {
+      "product": [
+        -4064,
+        4096
+      ],
+      "quant_signed_6bit": [
+        -32,
+        31
+      ],
+      "scale_int8": [
+        -128,
+        127
+      ]
+    },
+    "kind": "laguna_q2_xl_complete_q6_integer_product_audit",
+    "model": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "product_max": 4096,
+    "product_min": -4064,
+    "q6_tensors": 146,
+    "raw_bytes": 444024000,
+    "raw_path": "/tmp/laguna-h8q-q6-product-audit.json",
+    "raw_sha256": "88b46a541ed712b28b99a4e812610ff5f97267bd04a5765a0d965681f9c23a8a",
+    "schema": 1,
+    "values": 541286400,
+    "zero_values": 25955405
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "next_action": "commit target, freeze RED, then implement one fixed producer/three-consumer family and consume the indivisible physical/timing gates",
+    "production_changed": false,
+    "status": "selected_target_only"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h8p_q6_int16_product_plane_target",
+  "lineage": {
+    "candidate_source_added": false,
+    "distinct_from_gfx1151_planar_q6": "gfx1151 planar Q6 is a byte-neutral resident selected-expert qmicro reorder; H8Q is a compressed transient exact dense/shared weight plane on gfx1100",
+    "gpu_candidate_executed": false,
+    "h8d_rejection": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json",
+    "h8d_rejection_sha256": "6b2d759f077b5f32c5208a0063c08d9ca59669d9b6de529944519e8242a096a6",
+    "h8p_rejection": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json",
+    "h8p_rejection_sha256": "f3d1ceab82d1d433b22dbe262fec52d49108db821d775eaa36c488dd9b0bec19",
+    "performance_result_exists": false,
+    "red_test_added": false,
+    "source": "net-new in-tree exact representation over the retained H6U producer/consumer; no external body copied"
+  },
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "production": {
+    "artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "commit": "cd7ba18bf39565239fecd62487c1dc77be237a33",
+    "dispatches": 2155,
+    "kernel_span_ms": 1166.621068,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_current": 1.566800991062275,
+    "matched_llamacpp_hip_q6_ms": 14.667598,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "q6_ms": 73.31982099999999,
+    "remaining_gaps_ms": {
+      "attention": 93.836642,
+      "iq_down": 119.303442,
+      "q5": 172.11539,
+      "q6": 58.652223
+    },
+    "tok_s": 440.8926238498552
+  },
+  "production_q6_trace": {
+    "all_143_producer_ms": 1.938173999999999,
+    "family_dispatches": 371,
+    "family_ms": 73.31982099999999,
+    "preserved_h5i_n72_ms": 0.045121,
+    "preserved_h7i_raw_ms": 21.310489999999998,
+    "route_counts": {
+      "h5i_ordered": 1,
+      "h6u_bf16_16x4": 46,
+      "h6u_bf16_16x5": 2,
+      "h6u_f32_16x5": 94,
+      "h7i_raw_bf16": 2,
+      "h7i_raw_f32": 1,
+      "pack_bf16_16x4": 46,
+      "pack_bf16_16x5": 1,
+      "pack_f32_16x5": 35,
+      "producer": 143
+    },
+    "route_ms": {
+      "h5i_ordered": 0.045121,
+      "h6u_bf16_16x4": 20.411922,
+      "h6u_bf16_16x5": 0.5928439999999999,
+      "h6u_f32_16x5": 27.844461,
+      "h7i_raw_bf16": 14.814557999999998,
+      "h7i_raw_f32": 6.495932,
+      "pack_bf16_16x4": 0.37872400000000006,
+      "pack_bf16_16x5": 0.02212,
+      "pack_f32_16x5": 0.7759649999999998,
+      "producer": 1.938173999999999
+    },
+    "target_h6u_consumer_ms": 48.849227,
+    "trace_summary": "/tmp/laguna-h8b-post-commit-trace-summary.json",
+    "trace_summary_sha256": "443f8fc9992150acd6a6c4f066401628aba1d2d0b0b7d4d65b2f25f3f507106c"
+  },
+  "schema": 1,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e",
+    "hipengine/runtime/laguna_gguf_runner.py": "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654"
+  },
+  "status": "target_only_no_candidate",
+  "target": {
+    "allocation_unchanged": true,
+    "consumer_schedule": "outer qblock, exact current per-thread k=qblock*256+tid then +128; reconstruct weight=float(product)*scale before unchanged fmaf",
+    "dispatches_unchanged": true,
+    "gfx1151_unchanged": true,
+    "name": "exact Q6 int16-product plus tiled-F32-super-scale transient plane",
+    "ownership": "exactly all three current H6U package roles / 142 consumers and their producers",
+    "persistent_sidecar_bytes": 0,
+    "preserved_fallbacks": [
+      "one H5I F32 K3072/N72 plane route",
+      "two H7I raw BF16 routes",
+      "one H7I raw F32 route"
+    ],
+    "product_layout": "row-major int16[output][k] storing signed int8(scale) * signed-6-bit quant",
+    "scale_layout": "F32[out_tile16][qblock][col16], one exact FP16-to-F32 super-scale per raw Q6 block",
+    "workspace_unchanged": true
+  },
+  "target_id": "WPF-H8Q",
+  "traffic_model": {
+    "combined": {
+      "candidate_bytes": 101296226304,
+      "candidate_to_current_ratio": 0.5048121685364938,
+      "current_bytes": 200661221376,
+      "reduction_fraction": 0.4951878314635062
+    },
+    "consumer": {
+      "candidate_bytes_if_each_tiled_scale_is_uniformly_loaded_once_per_workgroup": 100029431808,
+      "candidate_to_current_ratio": 0.50390625,
+      "current_bytes": 198508019712,
+      "explicit_cost": "49,627,004,928 exact int16-to-F32 conversions plus F32 scale multiplies; no speed/cache/HBM inference"
+    },
+    "maximum_role_workspace_bytes": {
+      "candidate_int16_products": 6291456,
+      "candidate_tiled_f32_scales": 49152,
+      "candidate_total": 6340608,
+      "current_f32_plane": 12582912,
+      "shared_owner_unchanged": 161120256
+    },
+    "producer": {
+      "candidate_raw_read_plus_product_scale_write_bytes": 1266794496,
+      "candidate_to_current_ratio": 0.5883306320907618,
+      "current_raw_read_plus_f32_write_bytes": 2153201664
+    },
+    "record": {
+      "candidate_bytes_per_q6_block": 516,
+      "candidate_f32_scale_bytes_per_q6_block": 4,
+      "candidate_int16_product_bytes_per_q6_block": 512,
+      "candidate_reduction_fraction": 0.49609375,
+      "candidate_to_current_ratio": 0.50390625,
+      "current_bytes_per_q6_block": 1024
+    },
+    "roles": [
+      {
+        "calls": 2,
+        "candidate_consumer_int16_product_bytes": 1296039936,
+        "candidate_consumer_uniform_f32_scale_bytes": 10125312,
+        "candidate_producer_f32_scale_write_bytes": 98304,
+        "candidate_producer_int16_write_bytes": 12582912,
+        "candidate_reconstructed_weights": 648019968,
+        "current_consumer_f32_weight_bytes": 2592079872,
+        "current_producer_f32_write_bytes": 25165824,
+        "current_producer_raw_read_bytes": 5160960,
+        "k": 3072,
+        "n": 1024,
+        "name": "bf16_k3072_n1024",
+        "output_dtype": "bf16",
+        "producer_values": 6291456,
+        "row_batch": 5,
+        "row_groups": 103,
+        "unchanged_useful_fmas": 3221225472,
+        "workgroups": 13184
+      },
+      {
+        "calls": 46,
+        "candidate_consumer_int16_product_bytes": 37044092928,
+        "candidate_consumer_uniform_f32_scale_bytes": 289406976,
+        "candidate_producer_f32_scale_write_bytes": 2260992,
+        "candidate_producer_int16_write_bytes": 289406976,
+        "candidate_reconstructed_weights": 18522046464,
+        "current_consumer_f32_weight_bytes": 74088185856,
+        "current_producer_f32_write_bytes": 578813952,
+        "current_producer_raw_read_bytes": 118702080,
+        "k": 1024,
+        "n": 3072,
+        "name": "bf16_k1024_n3072",
+        "output_dtype": "bf16",
+        "producer_values": 144703488,
+        "row_batch": 4,
+        "row_groups": 128,
+        "unchanged_useful_fmas": 74088185856,
+        "workgroups": 1130496
+      },
+      {
+        "calls": 94,
+        "candidate_consumer_int16_product_bytes": 60913876992,
+        "candidate_consumer_uniform_f32_scale_bytes": 475889664,
+        "candidate_producer_f32_scale_write_bytes": 4620288,
+        "candidate_producer_int16_write_bytes": 591396864,
+        "candidate_reconstructed_weights": 30456938496,
+        "current_consumer_f32_weight_bytes": 121827753984,
+        "current_producer_f32_write_bytes": 1182793728,
+        "current_producer_raw_read_bytes": 242565120,
+        "k": 3072,
+        "n": 1024,
+        "name": "f32_k3072_n1024",
+        "output_dtype": "f32",
+        "producer_values": 295698432,
+        "row_batch": 5,
+        "row_groups": 103,
+        "unchanged_useful_fmas": 151397597184,
+        "workgroups": 619648
+      }
+    ],
+    "totals": {
+      "candidate_consumer_int16_product_bytes": 99254009856,
+      "candidate_consumer_uniform_f32_scale_bytes": 775421952,
+      "candidate_producer_f32_scale_write_bytes": 6979584,
+      "candidate_producer_int16_write_bytes": 893386752,
+      "candidate_reconstructed_weights": 49627004928,
+      "current_consumer_f32_weight_bytes": 198508019712,
+      "current_producer_f32_write_bytes": 1786773504,
+      "current_producer_raw_read_bytes": 366428160,
+      "producer_values": 446693376,
+      "unchanged_useful_fmas": 228707008512,
+      "workgroups": 1763328
+    }
+  },
+  "traffic_only_ceiling": {
+    "assumption": "apply the modeled combined-byte ratio directly to the current H6U-plus-all-producer time with zero conversion/multiply/resource cost; not a speed claim",
+    "modeled_gain_percent": 2.2429292743760154,
+    "modeled_saving_ms": 25.149302966857505,
+    "modeled_tok_s": 450.78153357874817,
+    "not_a_performance_claim": true
+  }
+}
