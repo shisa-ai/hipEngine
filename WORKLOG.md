@@ -202836,3 +202836,60 @@ Vulkan local sizes verbatim will close the measured gap.
   embedding dispatch, GDN/prefill routing, and existing MoE MTP mapping. Ruff
   and pycompile pass all touched Python paths. Dense NextN mapping remains the
   next functional blocker before MTP.
+
+### Clean llama.cpp Vulkan W7900 floor — complete
+
+- Run the refreshed clean Release Vulkan build at llama.cpp
+  `ee0445c99cffbe8d920b05cad28cb055d7049c0a` on `Vulkan0` W7900 with the exact
+  Qwen3.6-27B Q4_K_M file. The canonical llama-bench command is
+  `llama-bench -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf -dev Vulkan0 -ngl 99
+  -fa on -ctk f16 -ctv f16 -p 512,4096 -n 128 -r 5 -o json`. Five post-warmup
+  samples measure **792.307556 +/- 1.299783 pp512**, **754.093241 +/- 4.584479
+  pp4096**, and **12.617952 +/- 0.001261 tg128 tok/s**. The standalone tg row has
+  no 512/4096 context and is not substituted for the matched server boundary.
+- Run the committed 10-prompt natural25 category suite with clean llama-server,
+  F16 K/V, prompt cache off, greedy seed 12345, reasoning off, and then sweep
+  B1-B4. B3 wins weighted engine and complete client throughput. A fresh B3
+  base/MTP pair measures transition-normalized **12.546297 -> 68.082480 tok/s
+  (5.426500x)**, native llama accounting **13.069060 -> 70.919250 tok/s**, and
+  complete client **9.606909 -> 36.121502 tok/s (3.759950x)**. Draft acceptance
+  is **77.2512%**, accepted/output **65.20%**, and every category improves.
+  Base/MTP content hashes match 6/10 prompts; the four batching/numerical
+  differences remain external llama diagnostics, not a hipEngine correctness
+  gate.
+- Start one resident base server with raw `[9707] * N` prompts, no prompt cache,
+  one discarded 32/8 warmup, and five completed 512/128 plus five completed
+  4096/128 requests. Median prefill is **79.805350 / 81.791604 tok/s** and
+  127-transition AR is **12.574307 / 12.487795 tok/s**. The server phase totals
+  are **16,513.82 / 60,247.65 ms**. Three retained raw responses across both
+  shapes are exactly `[9707] * 128` with token hash `42555d...2f95a`. One partial
+  4096 request cancelled by the first client's 300-second process timeout has
+  no final timing row and is excluded. The roughly 10x llama-bench/stateful-
+  server prefill split is an observed boundary difference, not a blended metric.
+- Profile a fresh base 512/8 request with non-concurrent
+  `GGML_VK_PERF_LOGGER=1` and deferred destruction printing. Query intervals sum
+  to **5,783.430 ms**, +2.014% versus the 5,669.270-ms server phases and +1.890%
+  versus 5,676.177-ms client wall. Dense FFN leads at **2,836.470 ms / 49.045%**,
+  followed by elementwise/transport **26.080%**, other projections **14.069%**,
+  and GDN/activations **9.370%**. The two largest exact rows are Q6_K dense down
+  at **1,274.120 ms** and Q4_K gate/up at **1,265.830 ms**.
+- Profile one natural `code_merge_intervals` B3 request under the same logger.
+  Separate draft and target Vulkan contexts sum **69.562 + 553.562 = 623.124
+  ms**, -1.782% versus 634.429-ms server phases and -2.945% versus 642.030-ms
+  client wall. Combined families are dense FFN **46.520%**, other projections
+  **27.343%**, elementwise/transport **13.187%**, LM head **7.533%**, and
+  GDN/activations **3.163%**. The draft's Q6_K LM head alone is **31.873 ms**;
+  target Q4_K gate/up rows lead. Profiles reconcile within the required 10% but
+  are synchronized Amdahl evidence only, never throughput toplines.
+- Retain the complete external floor in
+  `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json`,
+  update the benchmark rollup/changelog and campaign scoreboard, and mark
+  D27-M0 complete. D27-M1 is half-green on the llama side; dense hipEngine
+  NextN mapping remains the blocker for matched AR/MTP profiles.
+- Validation: compact artifact parses with `python3 -m json.tool`, WORKLOG union
+  check and `git diff --check` pass, root README exports are refreshed with
+  `scripts/sync_benchmark_readme.py --write`, and
+  `uv run pytest -q tests/test_benchmark_readme_sync.py` passes **6/6**. The
+  initially attempted nonexistent `tests/test_benchmark_rollup.py` path exited
+  at collection with no tests run; the actual rollup suite is the passing sync
+  file above.

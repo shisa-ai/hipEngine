@@ -1,0 +1,502 @@
+{
+  "schema": 1,
+  "status": "retained_external_baseline",
+  "performance_claim": true,
+  "kind": "qwen36_27b_llamacpp_vulkan_w7900_baseline",
+  "timestamp": "2026-08-03T18:12:50Z",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor_inventory_sha256": "90a732f0f8ed945ed219846ca6610f7d4678402b3ee22d6eaed5d14956bb6084",
+    "tensor_inventory_hash_contract": "sha256(canonical compact JSON of ordered name,shape,ggml_type,ggml_type_name,nbytes rows)",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866,
+    "ar_blocks": 64,
+    "nextn_block": 64
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "vulkan_device": "Vulkan0",
+    "vulkan_driver": "RADV NAVI31",
+    "mesa_version": "26.1.4",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "llama_cpp_repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "llama_cpp_commit": "ee0445c99cffbe8d920b05cad28cb055d7049c0a",
+    "llama_cpp_build": 10250,
+    "llama_cpp_tracked_clean": true,
+    "llama_cpp_untracked": [
+      ".pi/tasks/"
+    ],
+    "llama_bench_sha256": "0d466d22faf045c7bfd8c03bac28fd8f581a3a82edafacf99e51202ab5988759",
+    "llama_server_sha256": "e83a9d8d26d9de3e7b8d0b836614dccf21de3e85ec331f4e2dd53482d5a5a1e3",
+    "build": {
+      "CMAKE_BUILD_TYPE": "Release",
+      "GGML_VULKAN": true,
+      "GGML_HIP": false,
+      "compiler": "GNU 16.1.1"
+    },
+    "hipengine_harness_commit": "b2cd2518939fdf90713ba846a6b71ac40176328f"
+  },
+  "ar": {
+    "protocol": {
+      "device": "Vulkan0",
+      "gpu_layers": 99,
+      "flash_attention": true,
+      "kv_k": "f16",
+      "kv_v": "f16",
+      "repetitions": 5,
+      "llama_bench_warmup": "default one warmup"
+    },
+    "command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf -dev Vulkan0 -ngl 99 -fa on -ctk f16 -ctv f16 -p 512,4096 -n 128 -r 5 -o json",
+    "rows": [
+      {
+        "shape": "pp512",
+        "avg_tok_s": 792.307556,
+        "stddev_tok_s": 1.299783,
+        "samples_tok_s": [
+          793.437,
+          793.945,
+          791.783,
+          791.103,
+          791.27
+        ],
+        "avg_ms": 646.215094,
+        "samples_ms": [
+          645.293935,
+          644.881151,
+          646.641914,
+          647.197251,
+          647.06122
+        ]
+      },
+      {
+        "shape": "pp4096",
+        "avg_tok_s": 754.093241,
+        "stddev_tok_s": 4.584479,
+        "samples_tok_s": [
+          759.508,
+          757.969,
+          753.479,
+          750.683,
+          748.827
+        ],
+        "avg_ms": 5431.849578,
+        "samples_ms": [
+          5392.967687,
+          5403.914891,
+          5436.119404,
+          5456.360796,
+          5469.885113
+        ]
+      },
+      {
+        "shape": "tg128",
+        "avg_tok_s": 12.617952,
+        "stddev_tok_s": 0.001261,
+        "samples_tok_s": [
+          12.6186,
+          12.6192,
+          12.6159,
+          12.6178,
+          12.6184
+        ],
+        "avg_ms": 10144.27715,
+        "samples_ms": [
+          10143.779738,
+          10143.313699,
+          10145.957049,
+          10144.383545,
+          10143.951721
+        ]
+      }
+    ]
+  },
+  "natural_mtp": {
+    "protocol": {
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompts": 10,
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "max_tokens_requested": 25,
+      "timed_transitions": 240,
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "reasoning": "off",
+      "prompt_cache": false,
+      "ctx_size": 8192,
+      "concurrency": 1,
+      "kv_k": "f16",
+      "kv_v": "f16",
+      "device": "Vulkan0"
+    },
+    "selected_budget": 3,
+    "command": "python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --ctx-size 8192 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --draft-max 3 --mode both --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-extra-arg=-dev --server-extra-arg=Vulkan0 --server-extra-arg=--spec-draft-device --server-extra-arg=Vulkan0 --server-extra-arg=--reasoning --server-extra-arg=off --server-extra-arg=--perf",
+    "base": {
+      "native_predicted_tok_s": 13.069059524338508,
+      "transition_tok_s": 12.54629714336497,
+      "client_tok_s": 9.606909490667858
+    },
+    "mtp": {
+      "native_predicted_tok_s": 70.91924964029756,
+      "transition_tok_s": 68.08247965468567,
+      "client_tok_s": 36.12150182715668,
+      "draft_acceptance": 0.7725118483412322,
+      "accepted_per_output": 0.652
+    },
+    "speedup": {
+      "native_predicted": 5.426499857026793,
+      "transition": 5.426499857026792,
+      "client": 3.7599502589511293
+    },
+    "category": {
+      "base": {
+        "code": {
+          "transition_tok_s": 12.552393166058748,
+          "client_tok_s": 9.791493587781064,
+          "draft_acceptance": null,
+          "accepted_per_output": 0.0
+        },
+        "general_en": {
+          "transition_tok_s": 12.54504127187901,
+          "client_tok_s": 9.969143920231518,
+          "draft_acceptance": null,
+          "accepted_per_output": 0.0
+        },
+        "general_ja": {
+          "transition_tok_s": 12.54722199277071,
+          "client_tok_s": 9.69356654545512,
+          "draft_acceptance": null,
+          "accepted_per_output": 0.0
+        },
+        "mixed_ja_en": {
+          "transition_tok_s": 12.534453426018654,
+          "client_tok_s": 8.871164703779725,
+          "draft_acceptance": null,
+          "accepted_per_output": 0.0
+        }
+      },
+      "mtp": {
+        "code": {
+          "transition_tok_s": 74.77520703385447,
+          "client_tok_s": 40.14481461101781,
+          "draft_acceptance": 0.8947368421052632,
+          "accepted_per_output": 0.68
+        },
+        "general_en": {
+          "transition_tok_s": 74.51472286732654,
+          "client_tok_s": 40.27657848780583,
+          "draft_acceptance": 0.85,
+          "accepted_per_output": 0.68
+        },
+        "general_ja": {
+          "transition_tok_s": 58.4782497459851,
+          "client_tok_s": 32.81544231384061,
+          "draft_acceptance": 0.6122448979591837,
+          "accepted_per_output": 0.6
+        },
+        "mixed_ja_en": {
+          "transition_tok_s": 61.831606771591474,
+          "client_tok_s": 30.033230469488597,
+          "draft_acceptance": 0.6739130434782609,
+          "accepted_per_output": 0.62
+        }
+      }
+    },
+    "output_hash_agreement": {
+      "matching_prompts": 6,
+      "total_prompts": 10,
+      "differing_prompt_ids": [
+        "code_lru_cache",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_translate"
+      ],
+      "classification": "diagnostic: llama.cpp target batching can change greedy ties/numerics; no hipEngine correctness gate implied"
+    },
+    "budget_sweep": {
+      "command": "python3 scripts/llamacpp_vulkan_mtp_sweep.py ... --draft-max-values 1,2,3,4 --max-tokens 25 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "rows": [
+        {
+          "mode": "base",
+          "total_predicted": 250,
+          "total_wall_s": 25.1,
+          "request_wall_s_total": 25.1,
+          "concurrency": 1,
+          "wall_tps": 9.9601593625498,
+          "mean_tps": 13.059999999999999,
+          "median_tps": 13.06,
+          "total_draft": 0,
+          "total_accepted": 0,
+          "accept_rate": null,
+          "accepted_per_output": 0.0,
+          "draft_per_output": 0.0,
+          "speedup_mean_vs_base": 1.0,
+          "speedup_wall_vs_base": 1.0,
+          "weighted_engine_tok_s_from_rounded_rows": 13.059995405818217,
+          "transition_tok_s_from_rounded_rows": 12.53759558958549,
+          "client_transition_tok_s": 9.56175298804781
+        },
+        {
+          "mode": "b1",
+          "total_predicted": 250,
+          "total_wall_s": 7.06,
+          "request_wall_s_total": 7.06,
+          "concurrency": 1,
+          "wall_tps": 35.41076487252125,
+          "mean_tps": 53.835,
+          "median_tps": 56.305,
+          "total_draft": 123,
+          "total_accepted": 114,
+          "accept_rate": 0.926829268292683,
+          "accepted_per_output": 0.456,
+          "draft_per_output": 0.492,
+          "speedup_mean_vs_base": 4.122128637059725,
+          "speedup_wall_vs_base": 3.555240793201133,
+          "weighted_engine_tok_s_from_rounded_rows": 53.627669816076185,
+          "transition_tok_s_from_rounded_rows": 51.48256302343314,
+          "client_transition_tok_s": 33.9943342776204
+        },
+        {
+          "mode": "b2",
+          "total_predicted": 250,
+          "total_wall_s": 6.16,
+          "request_wall_s_total": 6.16,
+          "concurrency": 1,
+          "wall_tps": 40.58441558441558,
+          "mean_tps": 67.183,
+          "median_tps": 66.92500000000001,
+          "total_draft": 174,
+          "total_accepted": 149,
+          "accept_rate": 0.8563218390804598,
+          "accepted_per_output": 0.596,
+          "draft_per_output": 0.696,
+          "speedup_mean_vs_base": 5.144180704441043,
+          "speedup_wall_vs_base": 4.074675324675324,
+          "weighted_engine_tok_s_from_rounded_rows": 66.226727105774,
+          "transition_tok_s_from_rounded_rows": 63.577658021543044,
+          "client_transition_tok_s": 38.96103896103895
+        },
+        {
+          "mode": "b3",
+          "total_predicted": 250,
+          "total_wall_s": 5.95,
+          "request_wall_s_total": 5.95,
+          "concurrency": 1,
+          "wall_tps": 42.016806722689076,
+          "mean_tps": 71.899,
+          "median_tps": 72.75999999999999,
+          "total_draft": 211,
+          "total_accepted": 163,
+          "accept_rate": 0.7725118483412322,
+          "accepted_per_output": 0.652,
+          "draft_per_output": 0.844,
+          "speedup_mean_vs_base": 5.5052833078101076,
+          "speedup_wall_vs_base": 4.218487394957983,
+          "weighted_engine_tok_s_from_rounded_rows": 70.59156394556852,
+          "transition_tok_s_from_rounded_rows": 67.76790138774578,
+          "client_transition_tok_s": 40.33613445378151
+        },
+        {
+          "mode": "b4",
+          "total_predicted": 250,
+          "total_wall_s": 6.08,
+          "request_wall_s_total": 6.08,
+          "concurrency": 1,
+          "wall_tps": 41.118421052631575,
+          "mean_tps": 72.09400000000001,
+          "median_tps": 77.89500000000001,
+          "total_draft": 242,
+          "total_accepted": 171,
+          "accept_rate": 0.7066115702479339,
+          "accepted_per_output": 0.684,
+          "draft_per_output": 0.968,
+          "speedup_mean_vs_base": 5.520214395099542,
+          "speedup_wall_vs_base": 4.12828947368421,
+          "weighted_engine_tok_s_from_rounded_rows": 68.31330244953453,
+          "transition_tok_s_from_rounded_rows": 65.58077035155316,
+          "client_transition_tok_s": 39.473684210526315
+        }
+      ],
+      "selection": "B3 maximizes weighted engine and complete client throughput; B4 has higher accepted/output but lower weighted/client throughput"
+    }
+  },
+  "context_matched_ar": {
+    "protocol": {
+      "endpoint": "/completion",
+      "server_command": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 1 --no-cache-prompt -dev Vulkan0 --reasoning off --perf",
+      "prompt": "raw token 9707 repeated to 512 or 4096 tokens",
+      "decode_tokens": 128,
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "ignore_eos": true,
+      "cache_prompt": false,
+      "warmup": "one discarded 32/8 request",
+      "measurements": "five completed same-server samples per shape"
+    },
+    "rows": [
+      {
+        "shape": "512/128",
+        "samples": 5,
+        "prompt_tok_s_median": 79.80535,
+        "prompt_tok_s_mean": 79.99237,
+        "prompt_tok_s_stdev": 0.476752,
+        "prompt_ms_samples": [6415.61, 6346.56, 6417.23, 6444.7, 6379.86],
+        "transition_tok_s_median": 12.574307,
+        "transition_tok_s_mean": 12.575361,
+        "transition_tok_s_stdev": 0.001951,
+        "predicted_ms_samples": [10100.18, 10100.26, 10096.59, 10099.96, 10098.58],
+        "transition_tok_s_samples": [12.574033, 12.573934, 12.578504, 12.574307, 12.576026],
+        "native_predicted_tok_s_median": 12.673318,
+        "engine_total_ms_median": 16513.82
+      },
+      {
+        "shape": "4096/128",
+        "samples": 5,
+        "prompt_tok_s_median": 81.791604,
+        "prompt_tok_s_mean": 81.764797,
+        "prompt_tok_s_stdev": 0.361442,
+        "prompt_ms_samples": [49892.5, 50124.45, 49930.1, 50452.93, 50078.49],
+        "transition_tok_s_median": 12.487795,
+        "transition_tok_s_mean": 12.488157,
+        "transition_tok_s_stdev": 0.004272,
+        "predicted_ms_samples": [10169.93, 10164.1, 10171.76, 10173.23, 10169.16],
+        "transition_tok_s_samples": [12.487795, 12.494958, 12.485548, 12.483744, 12.48874],
+        "native_predicted_tok_s_median": 12.586124,
+        "engine_total_ms_median": 60247.65
+      }
+    ],
+    "trajectory": {
+      "captured_raw_response_samples": 3,
+      "shapes": ["512/128", "4096/128", "4096/128"],
+      "all_exact": true,
+      "generated": "token 9707 repeated 128 times",
+      "tokens_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    "excluded": "one partial 4096 request was cancelled by the first client's 300-second process timeout; it emitted no final timing row and is excluded"
+  },
+  "vulkan_query_profiles": {
+    "protocol": {
+      "environment": {
+        "GGML_VK_PERF_LOGGER": "1",
+        "GGML_VK_PERF_LOGGER_FREQUENCY": "100000"
+      },
+      "logger_mode": "default non-concurrent per-op query timestamps, aggregated and force-printed at backend destruction",
+      "topline_eligible": false,
+      "family_grouping": "shape/name heuristic over the exact logger rows; raw logs are hash-pinned below"
+    },
+    "base_512_8": {
+      "response": {
+        "prompt_n": 512,
+        "prompt_ms": 5080.17,
+        "predicted_n": 8,
+        "predicted_ms": 589.1,
+        "server_phase_total_ms": 5669.27,
+        "client_wall_ms": 5676.177063,
+        "tokens": "token 9707 repeated 8 times"
+      },
+      "query_total_ms": 5783.43,
+      "reconciliation": {
+        "query_minus_server_phase_percent": 2.013663,
+        "query_minus_client_wall_percent": 1.889528,
+        "within_10_percent": true,
+        "explanation": "the non-concurrent logger serializes timestamp boundaries and its aggregate is 1.9-2.0% above the response/client clocks"
+      },
+      "families": [
+        {"name": "dense_ffn", "total_ms": 2836.47022, "query_share_percent": 49.044775},
+        {"name": "elementwise_transport", "total_ms": 1508.34628, "query_share_percent": 26.08048},
+        {"name": "other_projection", "total_ms": 813.6431, "query_share_percent": 14.068522},
+        {"name": "gdn_and_activations", "total_ms": 541.93362, "query_share_percent": 9.370454},
+        {"name": "attention", "total_ms": 68.56947, "query_share_percent": 1.185619},
+        {"name": "lm_head", "total_ms": 14.4756, "query_share_percent": 0.250294}
+      ],
+      "top_exact_rows": [
+        {"name": "MUL_MAT q6_K m=5120 n=508 k=17408", "calls": 32, "mean_us": 39816.2, "total_ms": 1274.12},
+        {"name": "MUL_MAT q4_K m=17408 n=508 k=5120", "calls": 128, "mean_us": 9889.29, "total_ms": 1265.83},
+        {"name": "GLU", "calls": 704, "mean_us": 501.839, "total_ms": 353.295},
+        {"name": "GATED_DELTA_NET", "calls": 528, "mean_us": 632.598, "total_ms": 334.012},
+        {"name": "ADD", "calls": 1376, "mean_us": 171.174, "total_ms": 235.536}
+      ]
+    },
+    "natural_b3_code_merge_intervals": {
+      "response": {
+        "prompt_n": 40,
+        "prompt_ms": 277.785,
+        "predicted_n": 25,
+        "predicted_ms": 356.644,
+        "draft_n": 19,
+        "draft_n_accepted": 17,
+        "server_phase_total_ms": 634.429,
+        "client_wall_ms": 642.030158,
+        "content_sha256": "618944d0e2233b9235c46307470b0e0ed0bd96b3e4830bdd5a00376c1a3c0240"
+      },
+      "query_contexts": {
+        "draft_nextn_ms": 69.5624,
+        "target_ms": 553.562,
+        "combined_ms": 623.1244
+      },
+      "reconciliation": {
+        "query_minus_server_phase_percent": -1.781854,
+        "query_minus_client_wall_percent": -2.944684,
+        "within_10_percent": true,
+        "host_and_submission_residual_ms": 11.3046
+      },
+      "combined_families": [
+        {"name": "dense_ffn", "total_ms": 289.87812, "query_share_percent": 46.520104},
+        {"name": "other_projection", "total_ms": 170.38356, "query_share_percent": 27.343426},
+        {"name": "elementwise_transport", "total_ms": 82.17447, "query_share_percent": 13.18749},
+        {"name": "lm_head", "total_ms": 46.94212, "query_share_percent": 7.533346},
+        {"name": "gdn_and_activations", "total_ms": 19.70996, "query_share_percent": 3.163086},
+        {"name": "attention", "total_ms": 11.93412, "query_share_percent": 1.915207},
+        {"name": "sampling_topk", "total_ms": 2.10189, "query_share_percent": 0.337315}
+      ],
+      "top_draft_rows": [
+        {"name": "MUL_MAT_VEC q6_K m=248320 n=1 k=5120", "calls": 22, "mean_us": 1448.78, "total_ms": 31.8732},
+        {"name": "PAD", "calls": 22, "mean_us": 220.676, "total_ms": 4.85488},
+        {"name": "MUL_MAT_VEC q4_K m=17408 n=1 k=5120", "calls": 42, "mean_us": 77.52, "total_ms": 3.25584}
+      ],
+      "top_target_rows": [
+        {"name": "MUL_MAT_VEC q4_K m=17408 n=4 k=5120", "calls": 896, "mean_us": 97.618, "total_ms": 87.4658},
+        {"name": "MUL_MAT q4_K m=17408 n=36 k=5120", "calls": 128, "mean_us": 371.483, "total_ms": 47.5498},
+        {"name": "MUL_MAT_VEC q4_K m=17408 n=2 k=5120", "calls": 384, "mean_us": 89.905, "total_ms": 34.5236},
+        {"name": "MUL_MAT_VEC q6_K m=5120 n=4 k=17408", "calls": 224, "mean_us": 130.491, "total_ms": 29.2301},
+        {"name": "MUL_MAT q6_K m=5120 n=36 k=17408", "calls": 32, "mean_us": 738.302, "total_ms": 23.6257}
+      ]
+    }
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/llamacpp-vulkan-w7900-ar.json": "3ae43a5a2d9b36f3da51089adde7bd1239d58e7928c42c593ff543b38bd0df7b",
+    "/tmp/hipengine-qwen36-27b/llamacpp-vulkan-w7900-natural25-b3.json": "46844243e44f9a92ce742883a43879c5439140023e7ab30806497d9b234ba1d9",
+    "/tmp/hipengine-qwen36-27b/llamacpp-vulkan-w7900-b1-b4/run.json": "b307080d2cccb4445897c58f9033d564f8c8ec45c4bc29ef5baca72b46ad0dec",
+    "/tmp/hipengine-qwen36-27b/llamacpp-vulkan-w7900-context-ar.json": "e764db73e6c06634ee712898aa7a222026a9da2af47aefc983866ec534fc9ba3",
+    "/tmp/hipengine-qwen36-27b/llamacpp-vulkan-w7900-context-ar-tail.json": "65f525d4fac6ac363b7d800a0eb842cc0bf2a5919379d878957ffa666f25f5f7",
+    "/tmp/hipengine-qwen36-27b/llamacpp-vulkan-w7900-profile-base-response.json": "6471dac9037eaae8e092ef19b8313d96d6bb9abcbd2876e393a7f066f9c56ecf",
+    "/tmp/hipengine-qwen36-27b/llamacpp-vulkan-w7900-profile-b3-response.json": "9cd615b55504e1fce19d3d2278ac436b271b67ef6386de991de96178d6fd9c13",
+    "/tmp/vstack-pi-bg/bg-10-1785782227771.log": "14bed59b1b7634172164c308734e378aff4e9c3bb78315922f0d1264816f6b61",
+    "/tmp/vstack-pi-bg/bg-11-1785782315414.log": "a983fc92e6c22755eb108c0071984734177679f74158d21218131bb3416cb854"
+  },
+  "notes": [
+    "Same-file external comparator baseline; hipEngine AR/MTP rows are not yet primary-gate comparable.",
+    "llama-bench tg128 has no 512/4096 prompt context; the separate server rows are the context-matched denominator.",
+    "llama-bench pp and stateful server prompt processing have intentionally separate timing boundaries and differ by roughly 10x for this hybrid model; neither is substituted for the other.",
+    "Natural engine timing excludes the first prompt-produced output token per llama.cpp convention; transition_tok_s normalizes to 24 timed transitions per request.",
+    "Client timing includes prompt/request overhead and is reported separately.",
+    "Vulkan query profiles are profiler-perturbed Amdahl evidence only and do not replace unprofiled toplines."
+  ]
+}
