@@ -190610,3 +190610,18 @@ Vulkan local sizes verbatim will close the measured gap.
 - From clean target revision `e83b8a6cc`, add only `tests/test_laguna_h8o_moe_branch_concurrency.py` at SHA-256 `b7588e80...36af`. Its three-node contract pins target artifact `975a67d6...dd23`, all **47/421 / 49.799391-ms / 51.119578-ms** serial-window arithmetic, the **461.194 tok/s** non-claim ceiling, seven-pair/5-win fixed admission, exact 421-secondary/1,734-caller trace topology, 512/1K/4K transfer, existing event ordering, and the retained serial/concurrent GPU byte-oracle lineage.
 - Freeze one temporary backend-local `LAGUNA_MOE_BRANCH_CONCURRENCY_H8O_CANDIDATE` descriptor with exact fields `{supported: true, enabled_by_default: false, GPU_MAX_HW_QUEUES: 2, after_router: true, low_priority: true, shared_priority: +1, caller_priority: default, event_flags: 0x2}`. The three production capability names must remain false and gfx1151 must not gain the H8O descriptor. This descriptor is an explicit qualification seam only; it activates no runtime path or package default and must be removed on promotion or rejection.
 - The first RED run was **1 passed / 2 failed**: the intended descriptor absence plus a test-only lexical-scope error that matched the earlier `_launch_laguna_shared_rows` definition. Narrow only the source oracle to the `launch_concurrent_shared` closure; remove gfx1100's intentionally changing package hash from the immutable runtime-source list. No production/GPU path executed. Final RED is exact **2 passed / 1 failed**, solely the first missing descriptor `AttributeError`, with **0 baseline / 0 new** compiler processes. Test/wrapper/stdout/stderr/status/monitor SHA-256 values are `b7588e80...36af` / `273e61cb...d1cd` / `a19f60e1...d479` / `e3b0c442...b855` / `4355a46b...d865` / `6e16e806...4433`; three-node collection is `76ab0a9a...37b`. Pycompile, 100-column, diff, and worklog checks pass. Commit only RED plus this handoff before adding the default-off descriptor.
+
+## 2026-08-03 — Add WPF-H8O default-off gfx1100 qualification owner
+
+- From committed RED revision `97ab55984`, add exactly one inert backend-local
+  `LAGUNA_MOE_BRANCH_CONCURRENCY_H8O_CANDIDATE` dictionary at gfx1100 package
+  SHA-256 `3eeaf1d0...a0b2`. Its fields exactly freeze two hardware queues,
+  after-router release, least-priority (+1) shared work, default-priority caller
+  work, and disable-timing events. It neither enables the three live concurrency
+  capabilities nor changes runtime, allocation, workspace, dispatch, or gfx1151.
+- Record the promotion/rejection deletion trigger in `docs/REFACTOR.md` at
+  SHA-256 `573e4ebe...1e13`. Cache-free static GREEN passes **3/3** in **0.33 s**
+  with exact compiler executable counts **0 before / 0 after**; pytest stdout is
+  `c39493ef...e59`. Pycompile, 100-column, and diff checks pass. Commit only the
+  gfx1100 descriptor, refactor entry, and this handoff before executing any
+  W7900 candidate path.
