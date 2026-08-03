@@ -364,19 +364,37 @@ def test_h8h_strict_preflight_and_raw_pointer_abi() -> None:
         common = [0x6000, 0x7000, 0x8000, 0x9000, 0xA000, 0xB000, 0xC000, 0xD000]
         if name.endswith("late"):
             common.append(0xE000)
-        candidates[name](
-            *common,
-            arguments.pop("spans"),
-            int(arguments.pop("rows")),
-            int(arguments.pop("capacity")),
+        spans = arguments.pop("spans")
+        rows = int(arguments.pop("rows"))
+        capacity = int(arguments.pop("capacity"))
+        shape = (
             int(arguments.pop("num_q_heads")),
             int(arguments.pop("num_kv_heads")),
             int(arguments.pop("head_dim")),
             _HEAD_DIM**-0.5,
-            **arguments,
-            library=library,
-            runtime=SimpleNamespace(),
         )
+        if global_route:
+            candidates[name](
+                *common,
+                spans,
+                rows,
+                capacity,
+                *shape,
+                **arguments,
+                library=library,
+                runtime=SimpleNamespace(),
+            )
+        else:
+            candidates[name](
+                *common,
+                spans,
+                rows,
+                *shape,
+                sliding_window=capacity,
+                **arguments,
+                library=library,
+                runtime=SimpleNamespace(),
+            )
 
     for name, contract in _ROUTES.items():
         for start in contract["starts"]:
@@ -550,20 +568,33 @@ def _run_route(
             state.key_cache.ptr,
             state.value_cache.ptr,
         ]
-        suffix = [
-            state.spans,
-            _ROWS,
-            capacity,
-            heads,
-            _KV_HEADS,
-            _HEAD_DIM,
-            _HEAD_DIM**-0.5,
-        ]
+        if global_route:
+            suffix = [
+                state.spans,
+                _ROWS,
+                capacity,
+                heads,
+                _KV_HEADS,
+                _HEAD_DIM,
+                _HEAD_DIM**-0.5,
+            ]
+            route_keywords: dict[str, object] = {}
+        else:
+            suffix = [
+                state.spans,
+                _ROWS,
+                heads,
+                _KV_HEADS,
+                _HEAD_DIM,
+                _HEAD_DIM**-0.5,
+            ]
+            route_keywords = {"sliding_window": capacity}
         if scratch is None:
             control(
                 *base,
                 control_context.ptr,
                 *suffix,
+                **route_keywords,
                 start_position=start_position,
                 library=library,
                 runtime=runtime,
@@ -574,6 +605,7 @@ def _run_route(
                 control_context.ptr,
                 scratch.ptr,
                 *suffix,
+                **route_keywords,
                 score_scratch_nbytes=scratch.nbytes,
                 start_position=start_position,
                 library=library,
@@ -599,6 +631,7 @@ def _run_route(
             candidate(
                 *fused_base,
                 *suffix,
+                **route_keywords,
                 start_position=start_position,
                 library=library,
                 runtime=runtime,
@@ -608,6 +641,7 @@ def _run_route(
                 *fused_base,
                 scratch.ptr,
                 *suffix,
+                **route_keywords,
                 score_scratch_nbytes=scratch.nbytes,
                 start_position=start_position,
                 library=library,
