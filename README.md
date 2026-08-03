@@ -1288,6 +1288,18 @@ capabilities, backend exclusion, and RED test; H8B remains production at
 **440.893 tok/s / 2,155 dispatches**, **1.56680×** behind matched llama.cpp HIP
 ([H8F rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
 
+**WPF-H8G existing exact global-qrow6 transfer is rejected before target
+publication.** A cached complete W7900 screen compares the already-registered
+sibling-RDNA3 qrow6 body with H6N at start128 and H6Z at starts256/384. Qrow6
+wins both clocks only at start128 (**1.0492× event / 1.0362× wall**), differs
+from the current exact output at every start (**730,971–749,888 F32-bit
+mismatches**), and loses both late starts. The 36-call aggregate regresses
+**15.869→21.545 ms event (0.7365×)** and **16.078→21.803 ms wall (0.7374×)**.
+The complete-class/no-subset rule forbids retaining start128 alone; add no
+H8G target, RED, runtime owner, or source policy. H8B remains production at
+**440.893 tok/s / 2,155 dispatches**, **1.56680×** behind matched llama.cpp HIP
+([H8G rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

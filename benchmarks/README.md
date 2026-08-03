@@ -112,6 +112,9 @@ The next H8F resident shared-Q5 F32 cache target is recorded in
 [`2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json`](results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json),
 superseded by its clean 1K/4K transfer rejection in
 [`2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json).
+The subsequent H8G complete existing-global-qrow6 W7900 transfer rejection is
+recorded in
+[`2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json).
 The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
 rejection are also summarized below; the rejection packet is
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json),

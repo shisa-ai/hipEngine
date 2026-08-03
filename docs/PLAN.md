@@ -3417,6 +3417,19 @@ do not retry shared-Q5 residency without a materially different representation
 or operation
 ([H8F rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
 
+Reject **WPF-H8G complete existing global-qrow6 transfer** before target
+publication. Screen the already-registered sibling-RDNA3 dense-initial qrow6
+body on W7900 at the architecture-defined starts128/256/384, retaining start0
+on H6N. Against current H6N/H6Z, qrow6 wins both clocks only at start128 but is
+not F32-bit identical at any start (**730,971–749,888 mismatches**). Starts256
+and 384 lose both clocks, and the 36-call aggregate regresses
+**15.869→21.545 ms event (0.7365×)** and **16.078→21.803 ms wall (0.7374×)**.
+Finite output, lifecycle, and zero-compiler checks pass but cannot waive the
+complete-class identity/timing gate. Add no target, RED, runtime selector, or
+source map; prohibit start128-only salvage and retain H6N/H6Z plus H8B
+**440.893 tok/s / 2,155 dispatches**
+([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

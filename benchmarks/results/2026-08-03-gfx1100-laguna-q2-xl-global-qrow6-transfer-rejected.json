@@ -1,0 +1,196 @@
+{
+  "aggregate": {
+    "all_outputs_finite": true,
+    "both_clock_positive_starts": 1,
+    "candidate_event_ms": 21.544646072387692,
+    "candidate_wall_ms": 21.803083084523678,
+    "control_event_ms": 15.868704414367675,
+    "control_wall_ms": 16.078190691769123,
+    "event_speedup": 0.7365497841575367,
+    "f32_bit_exact_starts": 0,
+    "not_a_production_or_wall_throughput_claim": true,
+    "required_both_clock_positive_starts": 3,
+    "required_f32_bit_exact_starts": 3,
+    "tracked_lifecycle_clean": true,
+    "wall_speedup": 0.7374273917793666
+  },
+  "authority_links": {
+    "README.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json",
+    "WORKLOG.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json"
+  },
+  "binding_failures": {
+    "correctness": "candidate differs from the current exact H6N/H6Z controls at every measured start (730971/742825/749888 F32 bits)",
+    "timing": "starts 256 and 384 lose both clocks; the 36-call aggregate is 0.736550x event and 0.737427x wall"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_admitted": false,
+    "next_action": "retain H8B production and rerank a materially distinct physical operation outside existing global-qrow6 transfer and closed cache-lifetime lanes",
+    "production_changed": false,
+    "reason": "the complete transfer fails F32 identity at all starts and loses both clocks at starts 256/384 plus the weighted aggregate; the frozen rule forbids a favorable start-128 subset or rerun",
+    "red_test_added": false,
+    "runtime_owner_implemented": false,
+    "source_default_changed": false,
+    "target_artifact_published": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_existing_global_qrow6_complete_transfer_rejected",
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "prior_artifacts_sha256": {
+    "benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-default.json": "72093b99053b1cafe18b5508df2f7fb24a86253d7b2f19c883c7869d14340fe5",
+    "benchmarks/results/2026-07-26-gfx1151-laguna-global-qrow6-production.json": "46baaeb13ebbcf22d1788db0c8acf3cfede48c281966e9caa2736e0904f6ecb3",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json": "352cc01ac7aaecf0d526a7f16c3649484d9cfc5004198e7098eec9f9251b8c71",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91"
+  },
+  "publication_paths": [
+    "README.md",
+    "WORKLOG.md",
+    "benchmarks/CHANGELOG.md",
+    "benchmarks/README.md",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "docs/PLAN.md"
+  ],
+  "raw_evidence_sha256": {
+    "/tmp/laguna-h8g-qrow6-compiler-monitor.json": "2b7c988ac2da7fcb33052bc2ae3fd3e0ed6e8456533aca123d49c8571a8adabb",
+    "/tmp/laguna-h8g-qrow6-selection-screen.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h8g-qrow6-selection-screen.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8g-qrow6-selection-screen.stdout": "2b6cb1f40372ea4030c36e76a25880d106dc6fe09dd7ee2f9c20785fbac0e206",
+    "/tmp/laguna-h8g-qrow6-w7900-selection-screen.json": "1caf812a9b7cdf7f9ce7e756e1f61d7813d02cdc1c1e2ce8d239d50c61126c78",
+    "/tmp/laguna_h8g_qrow6_w7900_selection_screen.py": "a989df9d00310cec6772ec18617ba073005f53879b53c609eeba78dffb00a92d",
+    "/tmp/monitor_h8g_qrow6_compiler_execs.py": "c65808363033c95b2efc5743a7a298339babddf4ec2eee58a8229833b2c01200",
+    "/tmp/run_laguna_h8g_qrow6_screen.py": "8ba3dd403f730f82bd345b141707c3921ae9377181bbfb1f9b32418712193b66"
+  },
+  "repo": {
+    "measurement_revision": "424e9ae5447c651b85015532569fc2a05d3ec4b5",
+    "tracked_production_unchanged": true
+  },
+  "restored_production": {
+    "commit": "f0069b89a",
+    "dispatches": 2155,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "matched_llamacpp_hip_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "median_tok_s": 440.8926238498552,
+    "remaining_matched_gaps_ms": {
+      "attention": 93.83664200000001,
+      "iq_down": 119.30344199999996,
+      "q5": 172.11539000000002,
+      "q6": 58.65222299999999
+    }
+  },
+  "schema": 1,
+  "screen": {
+    "acceptance": "all three starts and weighted 36-call aggregate must be F32-bit exact, finite, lifecycle-clean, and positive on HIP-event and synchronized-wall medians; no start subset or favorable rerun",
+    "candidate": "existing registered exact dense-initial global qrow6 body qualified on sibling RDNA3 gfx1151",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -u /tmp/laguna_h8g_qrow6_w7900_selection_screen.py",
+    "compiler_processes_baseline": 0,
+    "compiler_processes_new": 0,
+    "control": "H6N fixed-512 at start 128 and H6Z global score/weight replay at starts 256/384",
+    "counter_rotated_repetitions": 15,
+    "event_clock": "HIP events",
+    "launches_per_sample": 5,
+    "operation_class": "complete registered dense-initial global-qrow6 transfer at starts 128/256/384; start 0 retains H6N fallback",
+    "production_invocations": 36,
+    "require_cached_build": true,
+    "rows": [
+      {
+        "both_clock_positive": true,
+        "candidate_route": "existing exact dense-initial global qrow6",
+        "candidate_sha256": "a6c6d3ad3c5158f92ef783dfcae7628b047ae9bfbd01565acf56a5992a285983",
+        "control_route": "H6N fixed512",
+        "control_sha256": "baef1a5d3188afed03502dee6f71d6f35f1ee666c4b8f629cbf2aea6645321c2",
+        "event_ms_median": {
+          "candidate": 0.43663477897644043,
+          "control": 0.45810661315917967
+        },
+        "event_speedup": 1.0491757304195362,
+        "f32_bit_mismatches": 730971,
+        "finite": true,
+        "production_invocations": 12,
+        "start_position": 128,
+        "wall_ms_median": {
+          "candidate": 0.45231799595057964,
+          "control": 0.46871197409927845
+        },
+        "wall_speedup": 1.036244364132021
+      },
+      {
+        "both_clock_positive": false,
+        "candidate_route": "existing exact dense-initial global qrow6",
+        "candidate_sha256": "b6ad750ed5d5e33dfb972925ce2cb2d8f797ea84d45b44cb93d661af52325a90",
+        "control_route": "H6Z score-weight replay",
+        "control_sha256": "b28c424b9043ba8587325545d0bfa23b337e264b83cf53c061aa892f036b2794",
+        "event_ms_median": {
+          "candidate": 0.5894917964935302,
+          "control": 0.37227439880371094
+        },
+        "event_speedup": 0.6315175224118605,
+        "f32_bit_mismatches": 742825,
+        "finite": true,
+        "production_invocations": 12,
+        "start_position": 256,
+        "wall_ms_median": {
+          "candidate": 0.5905956029891968,
+          "control": 0.37621683441102505
+        },
+        "wall_speedup": 0.6370125895060327
+      },
+      {
+        "both_clock_positive": false,
+        "candidate_route": "existing exact dense-initial global qrow6",
+        "candidate_sha256": "fa22fef97adaf12dcfcc8536a0d2a99f8e10500655cf9ab79a7c8aa1f4ef098c",
+        "control_route": "H6Z score-weight replay",
+        "control_sha256": "a5714cec9de0a5fe742775b1df95382a10c7b7e611c94cf824c44d52c417f2a3",
+        "event_ms_median": {
+          "candidate": 0.7692605972290039,
+          "control": 0.49201102256774903
+        },
+        "event_speedup": 0.639589528360154,
+        "f32_bit_mismatches": 749888,
+        "finite": true,
+        "production_invocations": 12,
+        "start_position": 384,
+        "wall_ms_median": {
+          "candidate": 0.7740099914371967,
+          "control": 0.4949204158037901
+        },
+        "wall_speedup": 0.6394238075464792
+      }
+    ],
+    "subset_salvage_allowed": false,
+    "wall_clock": "perf_counter plus device_synchronize",
+    "warmups": 5
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "77398def2dca3430a544e390d8f8f588adcfb69b82940536b3b13f3306c773a8",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "e5ac3c0825de4ccdc1f22eea25a9bc2e541bb76402bf73c348c643446a43fe83",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+    "hipengine/runtime/laguna_kv.py": "97d168047053f0c57ef1e00b776ccc943f22febeee5f103f2ab7f2cf97ca337c"
+  },
+  "stage": "selection_screen_before_target_publication",
+  "status": "rejected_complete_class_correctness_and_both_clock_gate",
+  "target_id": "WPF-H8G"
+}
