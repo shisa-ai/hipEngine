@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark real GGUF blk.40 MTP through the shared transactional verifier."""
+"""Benchmark a real trailing GGUF NextN block through the shared transactional verifier."""
 
 from __future__ import annotations
 
@@ -47,6 +47,7 @@ def _parse_tokens(value: str) -> tuple[int, ...]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--quant", default="gguf_ud_q3_k_m")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--prompt-tokens", type=_parse_tokens)
     parser.add_argument("--max-new-tokens", type=int, default=16)
@@ -135,7 +136,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         max_sequence_length=max_sequence,
         require_cached_build=bool(args.require_cached_build),
     ) as target:
-        target.select_prefill_quant("gguf_ud_q3_k_m")
+        target.select_prefill_quant(str(args.quant))
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             model,
             max_positions=max_sequence,
@@ -155,6 +156,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         target,
                         provider,
                         candidate_budget=int(budget),
+                        quant=str(args.quant),
                     ) as decoder:
                         mtp = decoder.generate(
                             prompt_tokens,
@@ -247,6 +249,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "candidate_budgets": list(args.candidate_budgets),
             "runs": int(args.runs),
             "max_sequence_length": max_sequence,
+            "quant": str(args.quant),
             "sampling": "exact greedy raw target top-1",
         },
         "contract": {

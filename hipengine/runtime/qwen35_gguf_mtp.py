@@ -582,17 +582,23 @@ class Qwen35GGUFMTPDecodeSession:
         draft_provider: Qwen35GGUFNextNDraftProvider,
         *,
         candidate_budget: int = 1,
+        quant: str = "gguf_ud_q3_k_m",
         verifier: Qwen35GGUFTransactionalVerifier | None = None,
         owns_verifier: bool = True,
     ) -> None:
         if int(candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
             raise ValueError("candidate_budget must be 1, 2, or 3")
+        selected_quant = str(quant).strip()
+        if not selected_quant:
+            raise ValueError("quant must be non-empty")
         self.target = target
         self.draft_provider = draft_provider
         self.candidate_budget = int(candidate_budget)
+        self.quant = selected_quant
         self.verifier = verifier or Qwen35GGUFTransactionalVerifier(
             target,
             max_candidate_budget=max(_GGUF_MTP_CANDIDATE_BUDGETS),
+            quant=self.quant,
         )
         self.owns_verifier = bool(owns_verifier if verifier is not None else True)
 
@@ -677,12 +683,14 @@ class Qwen35GGUFMTPDecodeSession:
                 root_tokens=(root,),
                 root_positions=(int(self.target.position),),
             )
+            config = self.target.runner.weights.config
+            experts_per_token = int(getattr(config, "expert_used_count", 0) or 0)
             plan = scheduler.plan_speculative_verify(
                 policy,
                 work,
                 lambda key, batch=work.target_batch: self.verifier.graph_bucket(key, batch),
-                top_k=8,
-                experts_per_token=8,
+                top_k=experts_per_token,
+                experts_per_token=experts_per_token,
             )
             bucket = plan.graph
             if not isinstance(bucket, Qwen35GGUFVerifyGraphBucket):
@@ -751,6 +759,8 @@ class Qwen35GGUFMTPDecodeSession:
                 "transaction_id": int(commit.commit_plan.transaction_id),
                 "graph_bucket": bucket.owner.spec.bucket,
                 "graph_replay_count": int(bucket.replay_count),
+                "quant": self.quant,
+                "experts_per_token": experts_per_token,
                 "draft_tail_advanced": draft_tail_advanced,
             }
             # ``prepared`` is cleared only after the transaction is fully
