@@ -2791,6 +2791,23 @@ width/formula/load source or salvage any layer/expert/routing/prompt/token/
 length/body/recompile/favorable-rerun subset
 ([H8L target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
 
+**WPF-H8L is rejected by its first and only all-45 timing screen.** Complete
+all-entry, rows1/7/8/9/M512, P64/P65, uneven/empty, H6T/CPU, poison, repeat,
+and lifecycle checks pass. Its sole object realizes **8 b128 + 3 b32 + 6
+d16_b16 + 6 u16**, **216 FMAs / 24 permlanex16 / 96 DPP adds / 24 LDS b128
+loads / 12 stores / two barriers**, at **8,740 B / 1,523 slots / VGPR111 /
+SGPR78 / LDS384 / private/spill/scratch0**. The exact-state selected-region
+trace records **45 H8L / 0 H6T / 2 IQ4**, 2,155 application dispatches, one
+queue/stream, and runtime **VGPR112/LDS512/scratch0**.
+
+The binding 5/15/5 screen is byte-exact on every actual layer, but **0/45** win
+both clocks. H6T→H8L aggregate event moves **260.043597→290.495983 ms
+(+11.710493%, 0.895171×)** and synchronized wall moves
+**260.756712→290.437301 ms (+11.382483%, 0.897807×)**. Apply the frozen no-
+width/formula/load-source/layer/rewrite/recompile/rerun rule: add no owner or
+source policy, remove candidate plus RED, and retain H6T production
+([H8L rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

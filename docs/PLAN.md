@@ -3529,6 +3529,16 @@ clock screen. Forbid alternate widths/formulas, subsets, rewrites, recompiles,
 and favorable reruns
 ([H8L target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
 
+Reject **WPF-H8L** after its one immutable all-45 timing screen. All entry/
+edge/CPU bytes, first-object bounds, and exact-state **45 H8L + 2 IQ4** trace
+pass; candidate metadata/runtime is VGPR **111/112**, LDS **384/512**, and
+scratch0. Nevertheless **0/45** layers win both clocks and aggregate H6T→H8L
+event/wall regresses **260.044/260.757→290.496/290.437 ms
+(+11.710%/+11.382%)**. Forbid table-width/formula/load-source/layer/rerun
+salvage, remove candidate plus RED, add no runtime/source owner, and retain
+H6T/H8B production **440.893 tok/s**
+([H8L rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and

@@ -1387,6 +1387,17 @@ H6T/CPU/all-45 bytes and every layer plus aggregate to win both clocks with no
 representation/layer/routing/rerun salvage
 ([H8L target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
 
+**WPF-H8L is rejected by its sole immutable all-45 screen.** All 256 entries,
+edge/CPU outputs, and **45/45** actual layers are byte-exact. The first object
+passes at **8,740 B / 1,523 slots / VGPR111 / LDS384 / spill0** and realizes the
+frozen **8 b128 + 3 b32 + 12 d16** load shape; an exact-state trace names **45
+H8L / 0 H6T / 2 IQ4** calls at runtime **VGPR112/LDS512/scratch0**. Timing is
+decisively negative: **0/45** layers win both clocks and aggregate event/wall
+regresses **260.044/260.757→290.496/290.437 ms (+11.710%/+11.382%)**. Honor the
+no-width/layer/rerun rule, remove candidate plus RED, and retain H8B **440.893
+tok/s**, **1.5668×** behind matched llama.cpp HIP
+([H8L rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

@@ -2272,6 +2272,30 @@ compile alternate widths/formulas/LDS/table pairs or salvage any layer/expert/
 routing/prompt/token/length/load-source/body/recompile/favorable-rerun subset
 ([H8L target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
 
+Reject **WPF-H8L** after consuming its only immutable all-45 timing screen.
+Complete table reconstruction, rows1/7/8/9/M512, P64/P65, uneven/reordered/
+empty routing, H6T and sampled CPU bytes, poison, finiteness, repeat, and
+lifecycle all pass. The one object realizes the exact prescribed load shape as
+**8 global b128 + 3 b32 + 6 d16_b16 + 6 u16** and preserves **216 FMAs / 24
+permlanex16 / 96 DPP adds / 24 LDS b128 loads / 12 stores / two barriers**. It
+passes first-object bounds at **8,740 B / 1,523 slots / metadata VGPR111 / SGPR78
+/ LDS384 / private0 / spill0 / scratch0**.
+
+A cache-only selected-region request preserves exact token2930 and every logits/
+hidden/KV digest, records **45 H8L / 0 H6T / 2 IQ4** calls within **2,155
+application dispatches**, one queue/stream, and zero compiler. Runtime is
+local128/grid32768×64/**VGPR112/LDS512/scratch0**. Thus all correctness,
+physical, and trace gates pass before timing.
+
+The 5-warmup/15-counter-rotated/five-launch actual-weight screen is byte-exact
+on all 45 layers but produces **0/45 both-clock wins**. Aggregate H6T→H8L event
+is **260.043597→290.495983 ms (+11.710493%, 0.895171×)**; synchronized wall is
+**260.756712→290.437301 ms (+11.382483%, 0.897807×)**. Honor the predeclared
+no-table-width/formula/load-source/layer/body/recompile/favorable-rerun rule.
+Skip runtime owner, fixed/length, and source gates; remove all H8L HIP/Python/
+registry/gfx1151 and RED-test surfaces; retain H6T and H8B **440.893 tok/s**
+([H8L rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
