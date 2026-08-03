@@ -203427,3 +203427,62 @@ Vulkan local sizes verbatim will close the measured gap.
 - Commit this routing correction before benchmarking so the next natural25
   artifact has tracked-clean provenance. The complete promotion gate remains
   next; no speed claim is made from the dormant-route screen.
+
+### D27-O3 clean routed resident-Q4 promotion — RETAINED
+
+- Clean commit `4181b85fb9ebd909d26fef4434ae89d9d799f0de` uses the same GPU0
+  W7900, model, BF16 K/V, cached-only kernels, one warmup, and ten-prompt/
+  240-transition natural25 protocol as retained native baseline `14bcea43b`.
+  Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-4181b85fb/natural25-native-q4-rowtile-b1-b3.json`.
+- True AR is noise-flat **20.3623 -> 20.3719 tok/s (+0.047%)**. Prior native
+  B1/B2/B3 -> routed Q4 rowtile is **18.7511/18.7523/17.9829 ->
+  20.6344/21.7523/21.4672 tok/s**, or **+10.043%/+15.998%/+19.376%**.
+  Complete decode wall falls **9.127%/13.792%/16.231%** and target verify falls
+  **10.159%/15.144%/17.913%**. Own-AR ratios become
+  **1.0129x/1.0678x/1.0538x**: B2 is now the clear exact budget winner.
+- Every full, train, heldout, and category row improves; the complete range is
+  **+9.776% to +19.939%**. All 250 IDs at each budget match prior native/true
+  AR, every acceptance ledger and GPU/CPU summary matches, all stage ledgers
+  reconcile, and the separate production transaction oracle observed rows
+  `{2,3,4}` while preserving all state/KV/hidden/provider bytes.
+- Peak remains **28.995 GiB** and allocations return to zero, so the Q4 rowtile
+  adds no memory beyond the prior accepted native-state rows. Model load
+  171.366 s is excluded. Raw JSON SHA-256 is `c8d6b023...cdc208`; compact
+  artifact is
+  `benchmarks/results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`
+  (SHA-256 `395f8170...bfdaab`). Keep and promote the rowtile in native dense
+  verification; retain its opt-out and dual/single fallbacks for one release.
+  Vulkan B3 remains 68.082 tok/s, so this closes own-AR economics, not external
+  parity.
+
+### D27-O3 post-Q4 profile and next impact admission
+
+- Re-profile the retained clean commit with the same hermetic TheRock/HSA 1.21
+  ROCTX B3 leaf. Host wall is **1,216.080 ms**, device activity spans
+  **1,215.569 ms**, and kernels sum **794.523 ms**; the remaining **421.046 ms**
+  is in-queue spacing/copy overlap across 25,322 launches, with only 0.511 ms
+  outside activity. Target verify remains **1,089.216 ms / 89.57%** of complete
+  wall. IDs and GPU/CPU accept summaries remain exact.
+- The retained rowtile is visible for 1,120 calls / 136.539 ms; serial Q4 calls
+  are 147.212 ms and total target Q4 is 274.234 ms. The new largest single
+  kernel is the still-serial `dense_gemv_out_kernel<unsigned short>`:
+  **2,240 calls / 238.766 ms / 19.63% complete wall / 30.05% kernel sum**.
+  The existing dense rowtile is another 67.212 ms; Q6 head, RMSNorm, GDN, and
+  attention are all individually lower.
+- Admit a bounded exact local32/virtual-256 dense-GEMV screen. Each physical
+  lane would retain eight independent virtual-thread partials, reproduce the
+  original `tid*8 + n*2048` FMA sequences, then emulate the 128/64/32 cross-wave
+  LDS combines before the 16..1 wave tree. A credible 30% reduction saves
+  **71.630 ms / 5.89% complete wall**; engineering/risk is **medium**. RED must
+  require BF16 byte identity to the local256 device oracle and CPU gate.
+- Do not repeat the parent thread-count or naive-shuffle trials. Parent
+  `~/amd-gpu-tuning/WORKLOG.md:38105-38173` retained 256 threads after 64/128
+  lost on broader workloads; lines 40438-40443 record that simply replacing
+  the LDS tree with a wave shuffle produced huge numerical errors. The proposed
+  virtual-partition mapping is specifically the missing exact cross-wave tree,
+  not another thread-count substitution. Lineage audit reports only known
+  parent DRIFT through nano-vllm-amd `59195ed`; development remains in-tree.
+- Kernel/marker/summary SHA-256s are `eedc0b63...8a9786`,
+  `5a801289...526c7`, and `0c961438...ccc6d2`. Profiler timings are diagnostic,
+  not substituted for the unprofiled natural25 topline.
