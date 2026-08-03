@@ -32,6 +32,7 @@ from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_gguf_bench import (
+    _RoctxProfilerControl,
     _memory_snapshot as _gguf_memory_snapshot,
     _memory_summary as _gguf_memory_summary,
     _prefill_chunk_sizes as _gguf_prefill_chunk_sizes,
@@ -92,6 +93,12 @@ def main() -> int:
         default="chunk",
         help="GGUF: GPU completion marker cadence (chunk is least perturbing)",
     )
+    parser.add_argument(
+        "--prefill-queue-drain",
+        choices=("none", "chunk", "layer"),
+        default="none",
+        help="GGUF: synchronously drain the prefill stream at selected boundaries",
+    )
     parser.add_argument("--use-expert-sidecar", action="store_true")
     parser.add_argument("--expert-sidecar-cache-dir", type=Path, default=None)
     parser.add_argument("--require-expert-sidecar", action="store_true")
@@ -135,6 +142,8 @@ def main() -> int:
         raise ValueError("--force-bulk-prefill and --no-bulk-prefill are mutually exclusive")
     if args.engine != "gguf" and args.prefill_flight_recorder is not None:
         raise ValueError("--prefill-flight-recorder is GGUF-only")
+    if args.engine != "gguf" and args.prefill_queue_drain != "none":
+        raise ValueError("--prefill-queue-drain is GGUF-only")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
     model = args.model or (DEFAULT_PARO_MODEL if args.engine == "paro" else DEFAULT_GGUF_MODEL)
@@ -420,6 +429,7 @@ def _run_gguf_sweep(
 
     use_bulk_prefill = True if args.force_bulk_prefill else False if args.no_bulk_prefill else None
     runtime = get_hip_runtime()
+    roctx = _RoctxProfilerControl(enabled=False)
     kv_policy = resolve_args_kv_policy(args, block_size=256)
     reset_memory_stats()
     persistent_memory: dict[str, Any] = {"before_load": _gguf_memory_snapshot("before_load", runtime)}
@@ -441,6 +451,7 @@ def _run_gguf_sweep(
         prefill_config=prefill_config,
         prefill_flight_recorder_path=args.prefill_flight_recorder,
         prefill_flight_recorder_granularity=args.prefill_flight_recorder_granularity,
+        prefill_queue_drain=args.prefill_queue_drain,
         kv_policy=kv_policy.create_policy(),
         kv_scale_dtype=kv_policy.scale_dtype,
         kv_scale_granularity=kv_policy.scale_granularity,
@@ -485,6 +496,8 @@ def _run_gguf_sweep(
                         load_seconds=load_seconds,
                         persistent_session=True,
                         graph_holder=graph_holder,
+                        roctx=roctx,
+                        rocprof_selected_region="none",
                     )
                     runs.append(run)
                     _print_run(label, run)
@@ -534,6 +547,7 @@ def _run_gguf_sweep(
                     "granularity": args.prefill_flight_recorder_granularity,
                 }
             ),
+            "prefill_queue_drain": args.prefill_queue_drain,
             "host_token_embedding_enabled": host_token_embedding_enabled,
             "host_token_embedding_reason": host_token_embedding_reason,
         },
