@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-03**
+Last updated: **2026-08-04**
 
 The current Laguna arithmetic-prefill production packet is
 [`2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json`](results/2026-07-27-gfx1151-laguna-attention-packed-query-producer-production.json).
@@ -75,21 +75,24 @@ selector-unset production advances **22.752894 -> 22.780604 tok/s
 **79,066,169,172-byte** residency.
 [`paired-Q4 down production`](results/2026-07-31-gfx1151-laguna-q4-selected-down-paircoeff-production.json).
 
-The current long-decode checkpoint vectorizes aligned groups of four exact
-FP32 probabilities while loading and storing the shared D32/V128 PV stage.
-It retains token-loop4 GQA6 ownership, non-temporal aligned BF16 K/V, and
-sixteen chronological probability/V operands in flight. The PV kernel remains
-local512/VGPR56/LDS22,528/scratch0 and improves **5.551%** at live131,200;
-the complete exact leaf improves **1.107-3.453%** across
-live4K/16K/64K/128K. Complete 16K/64K/128K advances
-**20.135472/14.404054/11.093431 -> 20.181043/14.620180/11.233382 tok/s
-(+0.226%/+1.500%/+1.262%)**, reaching **92.879%/82.425%/78.902%** of
-same-GGUF Vulkan. The 512/1K/4K guard is noise-flat at
-**23.192/23.049/21.676 tok/s**, every generated hash is unchanged, and
-unaligned score strides fail closed to scalar V128 while explicit eviction
-still selects metadata-aware temporal V80. The five quality-scoped ctx4096
-owners remain ordinary prefetch4 at layers 32/36/40/44 and compensated
-prefetch16 at layer 28; their repair mask is diagnostic only.
+The current long-decode checkpoint replaces only exact tokenloop4 QK with a
+local1024 all-wave K1024 score owner from the measured 32K crossover. It keeps
+the exact denominator, aligned float4 probabilities, chronological D32/V128
+PV, non-temporal BF16 K/V, and complete `KVLiveSpans` fallback unchanged.
+The score producer improves **1,261.046 -> 1,201.495 us (-4.722%)** at 128K;
+complete 64K/128K advances **14.620180/11.233382 ->
+14.758786/11.318784 tok/s (+0.948%/+0.760%)**, reaching
+**83.207%/79.502%** of same-GGUF Vulkan. The 512/1K/4K guard is noise-flat at
+**23.191/23.041/21.668 tok/s**, 16K is noise-positive at **20.249 tok/s**,
+every generated hash is unchanged, and explicit eviction or peer backends
+retain the previous score owner. The faster full-F32 online core is closed:
+despite a **34-42%** leaf win, it fails recurrent quality at **0.749636 max
+KL**; exact sparse repair regresses the 128K leaf **162.677%**. All approximate
+prototypes were removed. The five quality-scoped ctx4096 owners remain
+ordinary prefetch4 at layers 32/36/40/44 and compensated prefetch16 at layer
+28; their repair mask is diagnostic only.
+[`all-wave K1024 production`](results/2026-08-04-gfx1151-laguna-long-global-allwave-qk1024-retained.json),
+[`online/fused rejection`](results/2026-08-04-gfx1151-laguna-online-fused-attention-rejected.json),
 [`V128 float4 probability production`](results/2026-08-03-gfx1151-laguna-long-global-v128-probability-vec4-retained.json),
 [`dense V128 prefetch16 production`](results/2026-08-03-gfx1151-laguna-long-global-dense-v128-prefetch16-retained.json),
 [`ctx4096 operand-prefetch production`](results/2026-08-03-gfx1151-laguna-long-global-ctx4096-operand-prefetch-retained.json),
