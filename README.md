@@ -1300,18 +1300,18 @@ H8G target, RED, runtime owner, or source policy. H8B remains production at
 **440.893 tok/s / 2,155 dispatches**, **1.56680×** behind matched llama.cpp HIP
 ([H8G rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
 
-**WPF-H8H targets exact prefill attention+softplus dual publication.** H8B's
-five-request trace has **192** H6N/H6Z/H6A/H6W attention calls followed by
-**48** separate BF16 softplus gates at **3.978268 ms median**. Those gates
-reread **207,618,048 F32 context values / 830,472,192 bytes** per M512 request.
-The complete all-48-layer target keeps every current attention and gate
-operation plus both existing outputs, but writes gated BF16 context in each
-attention epilogue and models **2,155→2,107 dispatches** with no allocation or
-workspace growth. Its gate-deletion-only wall ceiling is **442.408 tok/s
-(+0.344%)**, not a candidate claim. Freeze all four routes together, preserve
-the registered unfused chain, and forbid route/start/layer/prompt/length or
-favorable-rerun salvage
-([H8H target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json)).
+**WPF-H8H exact prefill attention+softplus dual publication is rejected at
+its first-object physical gate.** All four separately named kernels execute
+with F32-bit-exact context, BF16-byte-exact gated output, unchanged complete
+`KVLiveSpans`, clean lifecycle, and zero compiler processes. H6N stays within
+its ceiling at runtime VGPR **40≤48**, but H6Z is **88>56**, H6A **80>72**, and
+H6W **80>64**. The frozen no-resource-rewrite/no-subset rule therefore skips
+leaf timing and removes all four kernels, wrappers, keys, gfx1151 exclusions,
+and the RED test. The registered H6N/H6Z/H6A/H6W plus standalone-gate fallback
+remains production at H8B **440.893 tok/s / 2,155 dispatches**, **1.56680×**
+behind matched llama.cpp HIP
+([H8H target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json) ·
+[H8H rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
