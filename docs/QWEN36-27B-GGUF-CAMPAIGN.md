@@ -223,9 +223,12 @@ submission. Its output ranks work; it does not establish throughput.
 - AR eager/graph leaf: `scripts/gguf_decode_rocprof.py`,
   `scripts/gguf_packed_ar_rocprof.py`, or selected regions in
   `scripts/qwen35_gguf_bench.py`.
-- MTP leaf: `scripts/gguf_mtp_draft_rocprof.py` and
-  `scripts/gguf_mtp_verifier_rocprof.py`; never profile the parent prompt-suite
-  process.
+- Dense MTP leaf: run `scripts/qwen36_dense_gguf_suite.py --limit 1
+  --no-warmup --roctx-markers` directly under rocprofv3 and slice its nested
+  proposal/verify/commit marker windows. The older
+  `scripts/gguf_mtp_draft_rocprof.py` and
+  `scripts/gguf_mtp_verifier_rocprof.py` remain MoE-oriented references. Never
+  profile a parent prompt-suite process.
 - Prebuild every JIT object outside rocprofv3, pass a compiler-version file, and
   require cached builds.
 - Compact summaries report kernel family, exact symbol, calls/output, total and
@@ -361,9 +364,17 @@ mandatory before any MTP economics claim.
 
 A cached GPU1 one-step trace confirms the expected dense Q4_K gate/up and Q6_K
 down/head symbols; its two executions total 63 launches / 12.544 ms of kernels,
-with the Q6_K full-vocabulary head accounting for 9.803 ms. The next hard gate
-is the reconciled GPU0 AR/MTP profile and primary 512/128, 4K/128, and natural
-category measurements.
+with the Q6_K full-vocabulary head accounting for 9.803 ms.
+
+The matched dense natural-suite leaf is now available as
+`scripts/qwen36_dense_gguf_suite.py`. It uses the committed 10-prompt fixture,
+Qwen chat rendering with reasoning off, one true scalar-AR denominator, B1-B3
+transactional MTP, the fixed train/heldout/category split, 24 timed transitions
+for 25 visible outputs, complete proposal/verify/commit/residual accounting, and
+optional nested ROCTX markers. A source-dirty one-prompt smoke is AR-exact and
+fully reconciled; it is functional evidence only. The next hard gate remains
+the clean full suite plus reconciled GPU0 AR/MTP profiles and primary 512/128
+and 4K/128 measurements.
 
 ---
 
@@ -496,6 +507,28 @@ PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py \
 
 Final GPU0 rows use the full `env -i` TheRock wrapper, cached builds, one
 warmup, at least three measured resets, and production graph decode.
+
+### hipEngine dense natural AR/MTP category suite
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_GGUF_DECODE_REPACK=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. \
+python3 scripts/qwen36_dense_gguf_suite.py \
+  --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
+  --quant gguf_q4_k_m \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --max-new-tokens 25 --candidate-budgets 1,2,3 --runs 1 \
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt \
+  --require-cached-build \
+  --output /tmp/hipengine-qwen36-27b/dense-natural25-b1-b3.json
+```
+
+The suite's engine numerator is 24 timed transitions per prompt because output
+zero is produced by prefill. Request/client wall and the legacy visible-output
+numerator remain separate fields. Use `--limit 1 --no-warmup --roctx-markers`
+only for a profiler leaf, never for a performance claim.
 
 ---
 
