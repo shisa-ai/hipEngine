@@ -2722,6 +2722,29 @@ trace, correctness, and timing, remove the candidate and RED, and retain H6T
 production
 ([H8J rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
 
+**WPF-H8K exact IQ3 uniform-rowbatch4 triple-output ownership is target-only.**
+Replay the immutable all-45 natural routing: **230,400 useful rows** map under
+H6T rowbatch8 to **24,650 full + 8,897 tail = 33,547 epochs**, **268,376
+compute slots**, and **37,976 padded slots (14.150%)**. Fixed rowbatch4 maps the
+same counts to **53,907 full + 7,639 tail = 61,546 epochs**, **246,184 slots**,
+and **15,784 padded slots (6.411%)**. It therefore removes **22,192 slots
+(−8.269%)**, **2,454,257,664 modeled FMA-wave operations**, and
+**1,363,476,480 exchange-wave operations**, but adds **28,670,976 output-triple
+and 57,341,952 barrier epochs**. These are source-operation counts, not speed.
+
+The one separately named gfx1100 body must keep H6T local128/P256/four-wave/
+three-output ownership, raw ABI, active-expert traversal, each row's exact IQ3
+decode/eight ordered FMAs/permlanex16+DPP tree/serial wave sum/BF16 store, and
+all registered fallbacks. Only uniform row ownership changes **8→4**. The
+explicit resident activation plus per-scope accumulator model falls **40→20
+dwords**, but compiler output must independently prove metadata/runtime VGPR
+**≤96**, LDS **≤192/256 B**, code/slots **≤7,920/1,384**, and zero
+private/spill/scratch. Freeze RED first and consume one all-45 5/15/5 both-clock
+screen. Do not compile alternate row batches or salvage a layer, expert,
+routing, prompt, token, length, output partition, rewrite, recompile, or
+favorable rerun
+([H8K target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

@@ -3490,6 +3490,20 @@ remove candidate plus RED and retain H6T/H8B production **440.893 tok/s / 2,155
 dispatches**
 ([H8J rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
 
+Select target-only **WPF-H8K exact IQ3 uniform-rowbatch4 triple-output
+ownership** as a body/liveness operation distinct from H8J's launch-bound-only
+miss and H7L's branched tail path. Frozen all-45 natural routing keeps
+**230,400 useful rows** while changing rowbatch8 **33,547 epochs / 268,376
+slots / 37,976 padded** to rowbatch4 **61,546 / 246,184 / 15,784**. That removes
+**8.269%** of compute slots and models explicit activation-plus-accumulator
+liveness **40→20 dwords**, at the declared cost of **83.462%** more row epochs
+and **57,341,952** more barrier epochs. This is target arithmetic, not speed.
+Freeze RED, require metadata/runtime VGPR≤96 and complete H6T/CPU/all-45 bytes,
+then require every layer and aggregate to win one immutable both-clock screen.
+Forbid alternate rowbatch compilation, subsets, rewrites, recompiles, and
+favorable reruns
+([H8K target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
