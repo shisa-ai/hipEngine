@@ -2017,6 +2017,84 @@ of kernel time. Target row batching/projection routing is therefore the first
 optimization target. Artifact:
 [`2026-08-04-qwen36-27b-hipengine-baseline.json`](results/2026-08-04-qwen36-27b-hipengine-baseline.json).
 
+#### Qwen3.6-27B exact native target rowtile, W7900/gfx1100
+
+Clean hipEngine `14bcea43b` keeps the same GGUF, BF16 K/V, ten natural25
+prompts, 24-transition denominator, true-AR control, candidate streams, and
+acceptance semantics as `da6865f74`. Native row-serial attention plus block FFN
+uses the exact 2-4-row dense-BF16 rowtile; `serial-exact` remains the rollback
+control.
+
+| Route | Serial-exact baseline | Native rowtile | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.361 tok/s | **20.362 tok/s** | +0.009% | 1.0000x | n/a |
+| B1 | 17.128 tok/s | **18.751 tok/s** | **+9.48%** | 0.9209x | **-9.28%** |
+| B2 | 16.005 tok/s | **18.752 tok/s** | **+17.17%** | **0.9209x** | **-15.78%** |
+| B3 | 14.858 tok/s | **17.983 tok/s** | **+21.03%** | 0.8831x | **-18.70%** |
+
+Every full/train/heldout row improves. All four categories improve at every
+budget (decode range **+9.14% to +21.21%**), all 250 visible IDs per budget
+match true AR, GPU accept summaries match CPU, and stage ledgers reconcile.
+B1/B2 are numerically tied, so this promotes the native target path rather than
+a budget winner. Exact per-row state capture raises tracked peak **28.392 ->
+28.995 GiB (+0.603 GiB)**, accepted for the 9-21% complete-wall gain; ownership
+returns to zero. hipEngine MTP remains below own AR and Vulkan B3, so D27-O3
+continues from a refreshed profile. Artifact:
+[`2026-08-04-qwen36-27b-native-target-rowtile-retained.json`](results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json).
+
+#### Qwen3.6-27B exact resident-Q4 verifier rowtile, W7900/gfx1100
+
+Clean hipEngine `4181b85fb` keeps the prior native transaction/state route and
+reuses each resident Q4_K pack8 gate/up weight across exactly 2-4 verifier rows.
+The local32 kernel preserves every pack8 FMA, shuffle, and BF16 output bit;
+serial-exact, row-one, rows above four, registry misses, and the explicit
+rowtile opt-out remain exact fallbacks.
+
+| Route | Prior native rowtile | Native + resident Q4 rowtile | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.362 tok/s | **20.372 tok/s** | +0.047% | 1.0000x | n/a |
+| B1 | 18.751 tok/s | **20.634 tok/s** | **+10.04%** | **1.0129x** | **-10.16%** |
+| B2 | 18.752 tok/s | **21.752 tok/s** | **+16.00%** | **1.0678x** | **-15.14%** |
+| B3 | 17.983 tok/s | **21.467 tok/s** | **+19.38%** | **1.0538x** | **-17.91%** |
+
+Every full/train/heldout row improves, as does every category at every budget
+(**+9.78% to +19.94%**). All 250 IDs per budget, acceptance ledgers, GPU/CPU
+accept summaries, and state/KV/hidden/provider oracles remain exact. The real
+transaction gate observes rowtile rows `{2,3,4}`. Peak stays **28.995 GiB**
+with zero allocations after close, so this optimization adds no memory beyond
+the prior native-state tradeoff. B2 is now a clear exact winner at **1.0678x**
+own AR, although it remains far below Vulkan B3 at 68.082 tok/s.
+
+The refreshed retained B3 profile assigns **89.57%** of wall to target verify
+and selected the still-serial exact dense-BF16 GEMV at **238.766 ms / 19.63%**
+of complete wall. Its exact local128 successor is promoted below. Artifact:
+[`2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`](results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json).
+
+#### Qwen3.6-27B exact dense local128 verifier GEMV, W7900/gfx1100
+
+Clean hipEngine `03ba1c479` maps the original 256 independent dense-BF16
+arithmetic partitions onto 128 physical threads. The register/LDS/wave tree
+reproduces every local256 FMA and reduction boundary. Native-verifier c1 shapes
+through K=10,240 select local128; larger K, non-native rows, registry misses,
+and WMMA retain exact established paths.
+
+| Route | Prior resident-Q4 rowtile | + exact dense local128 | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.372 tok/s | **20.362 tok/s** | -0.048% | 1.0000x | n/a |
+| B1 | 20.634 tok/s | **20.846 tok/s** | **+1.03%** | **1.0238x** | **-1.10%** |
+| B2 | 21.752 tok/s | **22.102 tok/s** | **+1.61%** | **1.0854x** | **-1.81%** |
+| B3 | 21.467 tok/s | **21.840 tok/s** | **+1.74%** | **1.0726x** | **-1.78%** |
+
+All 30 prompt/budget rows improve (**+0.12% to +2.72%**), and every full,
+train, heldout, and category rollup improves (**+0.54% to +2.06%**). All 250
+IDs per budget, acceptance ledgers, GPU/CPU summaries, state/KV/hidden/provider
+oracles, and stage reconciliations remain exact. Peak is unchanged at
+**28.995 GiB** with zero live allocations after close. Local32 and local64
+siblings were exact but slower and were removed/rejected; the K=17,408
+local256 fallback avoids a measured regression. B2 remains selected at
+**1.0854x** own AR and 22.102 tok/s, still 67.54% below Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-dense-local128-retained.json`](results/2026-08-04-qwen36-27b-dense-local128-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |

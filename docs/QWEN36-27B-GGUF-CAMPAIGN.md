@@ -439,17 +439,23 @@ dense-BF16 GEMV (**238.766 ms / 19.63%** of wall) as the next single-kernel
 audit. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`.
 
-The third exact D27-O3 kernel candidate is correctness-green and awaits clean
-natural25 economics. A local128 block retains the original 256 arithmetic
-partitions two per physical thread, performs the original s=128 combine in
-registers, then reproduces the s=64/32 LDS and 16..1 wave trees. The one-wave
-local32 prototype was exact but only 0.47-0.93x local256 and was removed. On
-GPU1, local128 improves the qualifying Qwen3.6 shapes by **1.091-1.103x**; a
-broader screen wins through K=10,240 and crosses negative at K=12,288, so
-native-verifier dispatch fails closed to local256 above 10,240. Primitive,
-CPU-reference, registry, and real W7900 B1-B3 transaction/state/provider gates
-pass. Cached tracing reports local128, VGPR24, LDS512 B, scratch0. No complete-
-suite speed claim is made until the clean W7900 run.
+The third exact D27-O3 kernel is retained. A local128 block keeps the original
+256 arithmetic partitions two per physical thread, performs the s=128 combine
+in registers, then reproduces the s=64/32 LDS and 16..1 wave trees. The one-wave
+local32 prototype was exact but only 0.47-0.93x local256 and was removed; an
+isolated exact local64 sibling is 0.70-0.91x local128 on three major shapes and
+is also rejected. GPU1 local128 improves qualifying production shapes by
+**1.091-1.103x**. A broader screen wins through K=10,240 and crosses negative
+at K=12,288, so larger K fails closed to local256.
+
+Clean W7900 natural25 improves retained B1/B2/B3
+**20.634/21.752/21.467 -> 20.846/22.102/21.840 tok/s**
+(**+1.03%/+1.61%/+1.74%**) with target verify down
+**1.10%/1.81%/1.78%**. Every prompt, full/train/heldout, and category row
+improves; IDs, acceptance, transaction state, and 28.995-GiB peak remain exact.
+True AR is noise-flat at 20.362 tok/s. B2 remains selected at **1.0854x** own
+AR. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-dense-local128-retained.json`.
 
 ---
 
@@ -464,7 +470,7 @@ suite speed claim is made until the clean W7900 run.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | two wins retained; exact B2 1.0678x AR, local128 dense candidate green/promotion pending |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | three wins retained; exact B2 1.0854x AR, re-profile next |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
