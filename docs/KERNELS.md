@@ -2887,6 +2887,25 @@ dtype, shape, layer, prompt, token, length, geometry, buffer, K-tile, resource
 rewrite, recompile, or favorable-rerun salvage is admissible
 ([H8N target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
 
+**WPF-H8N is rejected by its first and only all-role both-clock screen.** One
+build passes complete rows1/4/5/7/8/9/10/12/13/17/33/M512 control-byte and
+sampled-CPU correctness **5/5** with zero further compiler activity. The five
+object instances satisfy all fixed local256 resource gates: metadata/runtime
+VGPR is **75/80**, **133/136**, or **165/168** within the six frozen ceilings;
+LDS is exactly **9,216/10,240/18,944/10,240/18,944/10,752 bytes**, with two
+static barriers and private/spill/scratch0. A compiler-free trace names all six
+shape-qualified roles at their exact M512 grids on one queue/stream.
+
+The binding actual-weight 5/15/5 screen remains byte-exact but yields **0/6**
+roles positive on both clocks. The weighted 188-call H7G/H7H→H8N aggregate
+event moves **212.741699→370.566397 ms (+74.186066%, 0.574099×)** and
+synchronized wall moves **224.094835→365.406702 ms (+63.058957%, 0.613275×)**.
+Thus the modeled 49.495% logical-weight-byte reduction is overwhelmed by LDS
+staging and the 18.075× barrier-epoch cost. Apply the frozen no-role/dtype/
+shape/geometry/buffer/K-tile/rewrite/recompile/rerun rule: add no runtime or
+source owner, remove candidate plus RED, and retain H7G/H7H production
+([H8N rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

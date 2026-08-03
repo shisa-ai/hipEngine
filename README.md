@@ -1438,6 +1438,17 @@ aggregate must win both clocks without role/geometry/buffer/recompile/rerun
 salvage
 ([H8N target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json)).
 
+**WPF-H8N is rejected by its sole immutable six-role timing screen.** Complete
+edge/control/CPU bytes pass **5/5**; the five object instances meet all frozen
+VGPR/LDS/spill/scratch limits, and a compiler-free trace names all six local256
+roles. The intended traffic model is physically realized but loses decisively:
+**0/6** roles win both clocks. The weighted 188-call H7G/H7H→H8N aggregate
+regresses event **212.742→370.566 ms (+74.186%)** and synchronized wall
+**224.095→365.407 ms (+63.059%)**. Honor the no-role/geometry/buffer/K-tile/
+rewrite/recompile/rerun rule, remove candidate plus RED, and retain H8B
+**440.893 tok/s / 2,155 dispatches**, **1.5668×** behind matched llama.cpp HIP
+([H8N rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

@@ -147,7 +147,9 @@ superseded by its metadata-VGPR102>101 first-object rejection in
 [`2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json).
 The clean post-H8M rerank and target-only H8N exact Q5 paired-rowgroup
 local256 twin-team weight-staging contract is recorded in
-[`2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json`](results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json).
+[`2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json`](results/2026-08-03-gfx1100-laguna-q2-xl-post-h8m-q5-twin-team-weight-staging-target.json),
+superseded by its zero-of-six both-clock timing rejection in
+[`2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json).
 The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
 rejection are also summarized below; the rejection packet is
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json),
