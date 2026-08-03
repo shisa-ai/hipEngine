@@ -18,10 +18,13 @@ _RUNTIME_ARTIFACT_SHA256 = (
     "ed3ee363ceb8b095b38fd28c0ebd1eb692d22dce61a4ce4ebd9e14be25cd73e7"
 )
 _PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
-_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
+_REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 _NORMALIZED_PACKAGE_SHA256 = (
-    "dad41b57f69034807a091f595182b3e0ad118d535cbf5dd0aa300705ef67923b"
+    "72c0630bbc46a485ca80d9a6634cc1b4cc2e43f2019088b544db53102edc6a86"
+)
+_RUNTIME_ARTIFACT_RUNNER_SHA256 = (
+    "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
 )
 _RUNTIME_ARTIFACT_H8B_TEST_SHA256 = (
     "710bcdc740ac691c2ac4f0fa5e9fa81f55be939b1582be78a9d62c6218ff06ff"
@@ -43,16 +46,16 @@ _SOURCE_SHA256 = {
         "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
+        "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "0507c0ab9bcabddfda9d0390c66d46f80aaaf7c42357a58dfa24c692d43414fd"
     ),
     "tests/test_laguna_h8b_scoped_activation_pack_reuse.py": (
-        "76a289657a6efc15ff4d9df0627663f1f83dcdd476db56f624ab14eb8dfbd7e5"
+        "c8c7c949f9ca314aa3048e90f4d34481e486d5bc0f0cf307fb7fcf54200398e8"
     ),
     "docs/REFACTOR.md": (
-        "f9cea17c88c76045b44dec0686871ce1ab68b7919d249892e410467d7a923b5d"
+        "06a81ed76dbc7835a068f4023106fac89c619b863d2ad9c362e2b2b9dbcf0d3e"
     ),
 }
 _SOURCE_TOPOLOGY = {
@@ -184,23 +187,27 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
         "no_subset_or_favorable_rerun": True,
     }
 
-    assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
-    assert _SUPPORTED_CAPABILITY in hip_gfx1100.__all__
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
+    assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert _SOURCE_CAPABILITY in hip_gfx1100.__all__
-    assert not hasattr(hip_gfx1151, _SUPPORTED_CAPABILITY)
+    assert _REMOVED_SUPPORTED_CAPABILITY not in hip_gfx1100.__all__
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
+    assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
     assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256
 
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters
     assert "use_activation_pack_reuse" in parameters
     resolver_source = inspect.getsource(runner.resolve_laguna_activation_pack_reuse)
-    assert "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED" in resolver_source
-    assert "LAGUNA_ACTIVATION_PACK_REUSE" in resolver_source
+    assert _REMOVED_SUPPORTED_CAPABILITY not in resolver_source
+    assert _SOURCE_CAPABILITY in resolver_source
     session_source = inspect.getsource(runner.LagunaGGUFResidentSession.__init__)
     assert "self.use_activation_pack_reuse" in session_source
     for relative, expected in _SOURCE_SHA256.items():
         assert _sha256(_ROOT / relative) == expected
         artifact_expected = {
+            "hipengine/runtime/laguna_gguf_runner.py": (
+                _RUNTIME_ARTIFACT_RUNNER_SHA256
+            ),
             "tests/test_laguna_h8b_scoped_activation_pack_reuse.py": (
                 _RUNTIME_ARTIFACT_H8B_TEST_SHA256
             ),
@@ -219,18 +226,18 @@ def test_h8b_source_default_selects_complete_owner_and_preserves_rollback() -> N
 
     live_source = getattr(hip_gfx1100, _SOURCE_CAPABILITY)
 
-    # This is the sole intentional RED before changing package policy. Once
-    # promoted, None follows source; explicit false preserves complete H8A
-    # rollback and explicit true remains the temporary bounded-owner seam.
+    # Source ownership is now the sole positive policy; explicit false keeps
+    # complete H8A rollback and the former positive candidate seam is removed.
     assert live_source is True
-    assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
+    assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
-    assert not hasattr(hip_gfx1151, _SUPPORTED_CAPABILITY)
+    assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
     assert resolve_laguna_activation_pack_reuse("hip_gfx1100", None) is True
     assert resolve_laguna_activation_pack_reuse("hip_gfx1100", False) is False
-    assert resolve_laguna_activation_pack_reuse("hip_gfx1100", True) is True
     assert resolve_laguna_activation_pack_reuse("hip_gfx1151", None) is False
     assert resolve_laguna_activation_pack_reuse("hip_gfx1151", False) is False
-    with pytest.raises(ValueError, match="not supported"):
+    with pytest.raises(ValueError, match="positive selector was removed"):
+        resolve_laguna_activation_pack_reuse("hip_gfx1100", True)
+    with pytest.raises(ValueError, match="positive selector was removed"):
         resolve_laguna_activation_pack_reuse("hip_gfx1151", True)
     assert _normalized_package_sha256() == _NORMALIZED_PACKAGE_SHA256

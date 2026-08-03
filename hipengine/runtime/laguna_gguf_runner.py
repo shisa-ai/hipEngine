@@ -1983,28 +1983,21 @@ def resolve_laguna_activation_pack_reuse(
     backend: str,
     requested: bool | None = None,
 ) -> bool:
-    """Resolve the bounded H8B owner or its source default."""
+    """Resolve H8B source ownership or its explicit complete-pack rollback."""
 
-    supported = bool(
-        backend_package_capability(
-            backend,
-            "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED",
-            False,
-        )
-    )
-    if requested is True and not supported:
+    if requested is True:
         raise ValueError(
-            f"activation-pack reuse is not supported on backend {backend!r}"
+            "the activation-pack reuse positive selector was removed; "
+            "use the source-qualified backend default"
         )
-    if requested is not None:
-        return bool(requested) and supported
-    return supported and bool(
+    source_enabled = bool(
         backend_package_capability(
             backend,
             "LAGUNA_ACTIVATION_PACK_REUSE",
             False,
         )
     )
+    return source_enabled if requested is None else False
 
 
 def _resolve_laguna_q5_activation_tile_k_row(backend: str) -> bool:
@@ -2861,9 +2854,13 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "a shared resident Q5 cache requires its source-qualified backend"
             )
-        self.use_activation_pack_reuse = resolve_laguna_activation_pack_reuse(
-            self.backend,
-            use_activation_pack_reuse,
+        self.use_activation_pack_reuse = (
+            False
+            if use_activation_pack_reuse is False
+            else resolve_laguna_activation_pack_reuse(
+                self.backend,
+                use_activation_pack_reuse,
+            )
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(
