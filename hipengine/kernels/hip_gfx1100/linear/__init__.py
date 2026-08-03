@@ -15,6 +15,7 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_gemv_out_fp16,
     dense_gemv_out_fp16_wmma,
     dense_gemv_rowtile_out_bf16,
+    dense_gemv_virtual256_out_bf16,
     plan_dense_gemv_build,
     register_dense_gemv_kernels,
 )
@@ -91,6 +92,7 @@ __all__ = [
     "dense_gemv_out_fp16",
     "dense_gemv_out_fp16_wmma",
     "dense_gemv_rowtile_out_bf16",
+    "dense_gemv_virtual256_out_bf16",
     "plan_dense_gemv_build",
     "register_dense_gemv_kernels",
     "argmax_f32",

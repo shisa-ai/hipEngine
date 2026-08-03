@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +12,7 @@ import pytest
 
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import dflash_accept_chain_i32
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kvcache import KVTransaction
 import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.runtime.qwen35_gguf_mtp import (
@@ -348,10 +349,37 @@ def test_ud_q3_k_m_real_nextn_chain_matches_mtp_disabled_greedy_output() -> None
     assert all(int(record["transaction_id"]) >= 0 for record in actual.cycle_records)
 
 
+@pytest.fixture
+def dense_virtual256_calls() -> Iterator[list[tuple[int, int, int]]]:
+    """Count real native-verifier launches while restoring the registry safely."""
+
+    key = KernelKey("hip_gfx1100", "dense_gemv", "bf16", "virtual256_out")
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, int, int]] = []
+
+    def counted(*args, **kwargs):
+        calls.append((int(args[3]), int(args[4]), int(args[5])))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     monkeypatch: pytest.MonkeyPatch,
+    dense_virtual256_calls: list[tuple[int, int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
@@ -552,6 +580,8 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert all(record["target_verify_mode"] == "native" for record in actual.cycle_records)
     assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
     assert rowtile_rows == {2, 3, 4}
+    assert dense_virtual256_calls
+    assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:

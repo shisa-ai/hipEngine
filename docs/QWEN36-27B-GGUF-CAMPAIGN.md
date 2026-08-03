@@ -439,6 +439,18 @@ dense-BF16 GEMV (**238.766 ms / 19.63%** of wall) as the next single-kernel
 audit. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`.
 
+The third exact D27-O3 kernel candidate is correctness-green and awaits clean
+natural25 economics. A local128 block retains the original 256 arithmetic
+partitions two per physical thread, performs the original s=128 combine in
+registers, then reproduces the s=64/32 LDS and 16..1 wave trees. The one-wave
+local32 prototype was exact but only 0.47-0.93x local256 and was removed. On
+GPU1, local128 improves the qualifying Qwen3.6 shapes by **1.091-1.103x**; a
+broader screen wins through K=10,240 and crosses negative at K=12,288, so
+native-verifier dispatch fails closed to local256 above 10,240. Primitive,
+CPU-reference, registry, and real W7900 B1-B3 transaction/state/provider gates
+pass. Cached tracing reports local128, VGPR24, LDS512 B, scratch0. No complete-
+suite speed claim is made until the clean W7900 run.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -452,7 +464,7 @@ audit. Artifact:
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | two wins retained; exact B2 1.0678x AR, serial dense-BF16 GEMV next |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | two wins retained; exact B2 1.0678x AR, local128 dense candidate green/promotion pending |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

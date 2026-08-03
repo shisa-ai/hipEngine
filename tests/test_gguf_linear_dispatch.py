@@ -30,6 +30,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
+    native_batch_decode_session,
     q8_mmq_prefill_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
@@ -310,6 +311,81 @@ def test_launch_gguf_linear_calls_registry_kernel_with_expected_abi(
     args, kwargs = calls[0]
     assert args == expected_args
     assert kwargs == {"stream": 7, "runtime": "runtime-sentinel", "threads": 128}
+
+
+def test_native_batch_decode_routes_dense_bf16_c1_to_exact_virtual256() -> None:
+    weight = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
+    baseline_key = KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out")
+    candidate_key = KernelKey(
+        "hip_gfx1100", "dense_gemv", "bf16", "virtual256_out"
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (baseline_key, candidate_key)
+    }
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def capture(label: str):
+        def fake_kernel(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake_kernel
+
+    register(baseline_key, capture("local256"), replace=True)
+    register(candidate_key, capture("virtual256_local128"), replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=5120,
+            out_features=10240,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+        with native_batch_decode_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=5120,
+                out_features=10240,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=200,
+                rows=1,
+                in_features=12288,
+                out_features=5120,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    expected_args = (100, 10, 200, 1, 5120, 10240)
+    expected_kwargs = {"stream": 7, "runtime": "runtime-sentinel"}
+    assert calls == [
+        ("local256", expected_args, expected_kwargs),
+        ("virtual256_local128", expected_args, expected_kwargs),
+        (
+            "local256",
+            (100, 10, 200, 1, 12288, 5120),
+            expected_kwargs,
+        ),
+    ]
 
 
 def test_launch_gguf_linear_dense_f32_activation_f32_output_calls_registry_kernel() -> None:
