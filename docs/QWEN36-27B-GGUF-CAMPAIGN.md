@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: active, baseline bring-up (2026-08-04).
+Status: active, dense NextN bring-up (2026-08-04); external Vulkan baseline complete.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -319,7 +319,17 @@ are **bring-up diagnostics only** (one sample, tiny prompt, no graph), not
 campaign performance claims. The same full allocation cannot fit GPU1's 24 GiB
 VRAM; GPU1 remains useful for smaller/component work.
 
-Dense MTP is still **not yet functional**. Strict call-spec construction fails
+The clean external Vulkan floor is now complete. llama-bench measures
+**792.308 pp512 / 754.093 pp4096 / 12.61795 tg128 tok/s**. The separate
+stateful server boundary measures **79.805 / 81.792 prefill tok/s** and
+**12.57431 / 12.48779 transition-normalized AR tok/s** at 512/128 and
+4096/128. Natural25 selects B3 at **68.082 MTP vs 12.546 AR tok/s (5.4265x)**
+engine time and **36.122 vs 9.607 tok/s (3.7600x)** client time. Query-timestamp
+profiles reconcile within 3%; dense FFN leads base 512/8 and sampled B3 at
+49.04% and 46.52% of query time. Full evidence is in
+`benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json`.
+
+Dense hipEngine MTP is still **not yet functional**. Strict call-spec construction fails
 independently:
 
 ```text
@@ -339,11 +349,11 @@ inventory, and one-step dense NextN correctness are green.
 
 | Priority | ID | Work | Exit gate / impact rule | Status |
 | ---: | --- | --- | --- | --- |
-| 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, B2 natural25, and B1-B4 sweep artifacts. | in progress |
+| 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, natural25, B1-B4 sweep, and query-profile artifacts. | complete; B3 selected |
 | 0 | D27-F0 | Add untied dense root/embedding/layout support, then prove dense GGUF AR load/prefill/decode on GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | 8/1 eager green; primary gates pending |
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | blocked on RED |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | blocked by F1 |
-| 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | blocked by F0/F2 |
+| 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | llama side green; hipEngine blocked by F0/F2 |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | blocked by M1 |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | blocked by M1 |
 | 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | blocked by M1 |
@@ -435,7 +445,7 @@ python3 scripts/llamacpp_mtp_bench.py \
   --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
   --ctx-size 8192 --gpu-layers 99 --flash-attn on \
   --cache-type-k f16 --cache-type-v f16 \
-  --draft-max 2 --mode both --protocol natural \
+  --draft-max 3 --mode both --protocol natural \
   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
   --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 \
   --server-extra-arg=-dev --server-extra-arg=Vulkan0 \
@@ -473,7 +483,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 
 | Date | Revision / route | GPU | Shape | Prefill tok/s | AR decode tok/s | MTP decode tok/s | MTP/AR | Correctness | Artifact |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
-| 2026-08-04 | llama.cpp Vulkan `ee0445c99`, baseline pending | W7900 | 512/128, 4K/128, natural25 | — | — | — | — | pending | — |
+| 2026-08-04 | llama.cpp Vulkan `ee0445c99` | W7900 | stateful 512/128, 4K/128; natural25 B3 | 79.805 / 81.792 | 12.574 / 12.488; natural AR 12.546 | 68.082 engine / 36.122 client | 5.4265x engine / 3.7600x client | `[9707]*128` captured exact; all categories improve; 6/10 natural content hashes match AR | `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json` |
 | 2026-08-04 | hipEngine AR bring-up after `4b0d8450d` | W7900 | 8/1 diagnostic; primary gates pending | 33.70 diagnostic | 20.38 diagnostic | blocked: dense NextN map | — | finite 8/1 eager; primary AR/MTP pending | `/tmp/hipengine-qwen36-27b/hipengine-gpu0-ar-smoke.json` (not retained) |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
