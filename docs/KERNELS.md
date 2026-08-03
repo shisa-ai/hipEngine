@@ -2906,6 +2906,37 @@ shape/geometry/buffer/K-tile/rewrite/recompile/rerun rule: add no runtime or
 source owner, remove candidate plus RED, and retain H7G/H7H production
 ([H8N rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
 
+**WPF-H8O exact gfx1100 after-router least-priority shared/routed MoE branch
+concurrency is target-only.** This is a schedule operation, not another Q5/Q6/
+IQ body. Independently parse one committed H8B request between each routed
+`weighted_lanes_sum_out` and the first shared/routed `gguf_bf16_add`: all **47**
+serial shared segments are exact **421 dispatches / 49.799391-ms kernel sum /
+51.119578-ms span**. The regular 46 layers contain **92** Q5 gate/up consumers,
+**92** Q5 dequantizers, **92** row4 packs, **46** Q6 down consumers, and their
+Q6 dequantizers; one special layer plus all **47** SiLU calls complete the exact
+multiset.
+
+The generic runtime already records one input-ready event on the caller stream,
+waits on a separate shared stream, records output-ready after the complete
+shared branch, and makes the caller wait before the exact BF16 combine. W7900
+reports priority range **(+1, −1)**, but `hip_gfx1100` correctly registers none
+of the three concurrency/after-router/low-priority capabilities. Freeze the
+candidate to `GPU_MAX_HW_QUEUES=2` in both arms, after-router release, shared
+priority +1, default caller priority, and disable-timing events. Preserve every
+kernel, byte, branch-internal order, **2,155 dispatches**, 24 resident planes,
+223 packs, allocation, workspace, fallback, and gfx1151 policy.
+
+RED must precede explicit gfx1100 execution or source policy. Require seven
+counter-rotated fixed C4096/M512 pairs with complete-state/lifecycle exactness,
+candidate median positive and ≥5/7 wins; then one compiler-free trace with two
+queues/streams, exact **421 secondary + 1,734 caller** dispatches, unchanged
+kernel multiset, and positive overlap. If fixed passes, require clean 512/1K/4K
+positive medians before a separate source-default RED. Do not salvage eager
+release, normal priority, another queue count, layer/length subset, event
+boundary, rewrite, recompile, or favorable rerun. Perfectly hiding 51.120 ms
+models **461.194 tok/s (+4.605%)** only; contention makes this no speed claim
+([H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
