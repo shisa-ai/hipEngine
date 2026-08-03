@@ -190791,3 +190791,36 @@ Vulkan local sizes verbatim will close the measured gap.
   **20/20**, JSON/link/UTF-8/worklog/diff/HIP checks pass, and lineage retains
   the same four catalogued external-reference drifts. Stage and inspect only
   the eight target paths, then commit before RED.
+
+## 2026-08-03 — Freeze WPF-H8Q Q6 product-plane RED
+
+- Commit target-only boundary `cd9be0ff8`, then add
+  `tests/test_laguna_h8q_q6_int16_product_plane.py` without executable changes.
+  The contract fixes one generic local64 raw-Q6 encoder, row-major int16
+  products, tiled `F32[out_tile16][qblock][col16]` scales, the same caller-owned
+  workspace pointer, and exactly the three H6U composite roles/**142 calls**.
+  H5I N72, H7I raw roles, live H6U policy, gfx1151, allocation, and dispatch
+  ownership remain controls.
+- The independent CPU decoder injects and recovers both legal extrema
+  **−4,064/+4,096** and reconstructs every synthetic weight bit-exactly against
+  `_exact_q6_f32_cpu`. RED also freezes producer plane bytes/repeat/lifecycle,
+  rows17/33/M512 complete H6U output bytes plus sampled CPU/activation/poison/
+  finiteness/repeat/lifecycle, strict preflight, registry/package isolation,
+  scalar/readfirstlane reconstruction source form, local/LDS/VGPR/scratch
+  bounds, exact trace names/grids, and indivisible producer-inclusive 5/15/5
+  both-clock timing admission with no role/aggregate subset.
+- `uv run pytest -q tests/test_laguna_h8q_q6_int16_product_plane.py` is the
+  intended RED: **3 passed / 1 failed / 11 skipped**, with the sole failure
+  `H8Q producer and three-consumer family are absent`. Excluding that assertion
+  gives **3 passed / 11 skipped**; candidate-dependent tests activate when the
+  producer symbol appears. `ruff check`, `py_compile`, and `git diff --check`
+  pass.
+- Retained H6U controls pass **14/14** under
+  `uv run pytest -q tests/test_laguna_h6u_q6_dpp_wave_reduction.py tests/test_laguna_h6u_runtime_policy.py tests/test_laguna_h6u_source_default.py -k 'not h6u_registry_source_policy_and_h6e_immutability'`, including available
+  HIP paths. The unfiltered bundle has one pre-existing stale assertion:
+  `test_h6u_registry_source_policy_and_h6e_immutability` expects H6E composite
+  wrapper SHA `d799...` while the live generated wrapper is `f320...`; H8Q's
+  retained-body controls independently pin and pass the live H6U producer,
+  kernel, primitive, and composite. Do not alter that unrelated test in this
+  RED unit. Kernel lineage remains the same four catalogued external-reference
+  drifts. Commit only the RED test and this handoff before source work.
