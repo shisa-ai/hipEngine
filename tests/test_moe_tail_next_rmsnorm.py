@@ -33,7 +33,7 @@ def _runtime():
 
 
 @pytest.fixture(scope="module")
-def _libs():
+def _libs(hip_test_target_arch):
     from hipengine.kernels.backends import hip_target_arch_environment
     from hipengine.kernels.hip_gfx1100.fused.gguf_ops import build_gguf_ops
     from hipengine.kernels.hip_gfx1100.fused.paro_combine import build_paro_combine
@@ -41,7 +41,7 @@ def _libs():
 
     compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
     compiler_version = Path(compiler_file).read_text(encoding="utf-8") if compiler_file else None
-    with hip_target_arch_environment("gfx1100"):
+    with hip_target_arch_environment(hip_test_target_arch):
         return (
             build_paro_combine(load=True, compiler_version=compiler_version),
             build_gguf_ops(load=True, compiler_version=compiler_version),

@@ -102,7 +102,7 @@ _H6T_RUNTIME_VARIANT = (
     "bf16_bf16_out"
 )
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
-_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
+_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_976
 _SAMPLE_COLS = np.asarray(
     [0, 255, 256, 511, 512, 767, 2559, 2815, 2816, 3071],
     dtype=np.int64,

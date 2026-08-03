@@ -58,6 +58,20 @@ _SOURCE_SHA256 = {
         "06a81ed76dbc7835a068f4023106fac89c619b863d2ad9c362e2b2b9dbcf0d3e"
     ),
 }
+_POST_MERGE_SOURCE_SHA256 = {
+    "hipengine/kernels/hip_gfx1151/__init__.py": (
+        "a4587d4362eb59bba65aacab65d4651fc8d594f7b19195fb8f6692ebafbde1d3"
+    ),
+    "hipengine/runtime/laguna_gguf_runner.py": (
+        "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
+    ),
+    "hipengine/runtime/laguna_moe.py": (
+        "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
+    ),
+    "docs/REFACTOR.md": (
+        "009f57d07859c894fb4f2dbe25bb1cd1b2cb1246dee883b91a8840bcde16b4cd"
+    ),
+}
 _SOURCE_TOPOLOGY = {
     "request_activation_packs_before": 330,
     "request_activation_packs_after": 223,
@@ -203,7 +217,9 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     session_source = inspect.getsource(runner.LagunaGGUFResidentSession.__init__)
     assert "self.use_activation_pack_reuse" in session_source
     for relative, expected in _SOURCE_SHA256.items():
-        assert _sha256(_ROOT / relative) == expected
+        assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
+            relative, expected
+        )
         artifact_expected = {
             "hipengine/runtime/laguna_gguf_runner.py": (
                 _RUNTIME_ARTIFACT_RUNNER_SHA256

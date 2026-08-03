@@ -76,12 +76,14 @@ def test_laguna_tiny_pack8_and_t16_gpu_payloads_match_host_repack() -> None:
             device=None,
             runtime=runtime,
             backend="hip_gfx1151",
+            q6_qmicro=True,
+            q6_qmicro_planar=False,
         )
         try:
             for name in names:
                 assert (
                     _readback(weight.allocation(name), runtime) == getattr(expected, name).tobytes()
-                )
+                ), (slot_path, name)
         finally:
             weight.free(runtime=runtime)
 
@@ -114,20 +116,27 @@ def test_completed_laguna_selected_slots_materialize_and_recover_gpu_memory() ->
     stats_loaded = memory_stats()
     try:
         assert total_loaded == total_before
-        assert resident.resident_nbytes == sum(
+        planned_selected_nbytes = sum(
             resident.admission.weights.root_specs[slot].resident_nbytes for slot in ("output_norm",)
         ) + sum(
             resident.admission.weights.layer_specs[layer][slot].resident_nbytes
             for layer, slot in ((0, "attn_gate"), (1, "ffn_gate_shexp"))
         )
+        assert resident.resident_nbytes == (
+            planned_selected_nbytes + resident.admission.auxiliary_weight_nbytes
+        )
         assert (
             stats_loaded["current_allocated_bytes"] - stats_before["current_allocated_bytes"]
             == resident.resident_nbytes
         )
-        assert stats_loaded["active_allocations"] - stats_before["active_allocations"] == 5
+        expected_allocations = sum(len(weight.allocations) for weight in resident.weights)
+        assert (
+            stats_loaded["active_allocations"] - stats_before["active_allocations"]
+            == expected_allocations
+        )
         assert len(profiles) == len(selected)
-        assert sum(profile.allocation_count for profile in profiles) == 5
-        assert sum(profile.upload_count for profile in profiles) == 5
+        assert sum(profile.allocation_count for profile in profiles) == expected_allocations
+        assert sum(profile.upload_count for profile in profiles) == expected_allocations
         assert sum(profile.allocated_nbytes for profile in profiles) == resident.resident_nbytes
         assert sum(profile.uploaded_nbytes for profile in profiles) == resident.resident_nbytes
         assert all(profile.total_seconds > 0.0 for profile in profiles)

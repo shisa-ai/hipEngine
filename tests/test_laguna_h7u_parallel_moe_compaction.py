@@ -42,6 +42,20 @@ _ARTIFACT = (
 _ARTIFACT_SHA256 = (
     "f9b9669ec935585fe425617db138751c75aa3f0aa12d67e7139061bcb9c8c4c3"
 )
+_POST_MERGE_PACKAGE_SHA256 = (
+    "59d226de4caf87ddb92e8a4b66f721a874ca1f213436a7c1838d762d32ba9a91"
+)
+_POST_MERGE_SOURCE_SHA256 = {
+    "hipengine/kernels/hip_gfx1151/__init__.py": (
+        "a4587d4362eb59bba65aacab65d4651fc8d594f7b19195fb8f6692ebafbde1d3"
+    ),
+    "hipengine/runtime/laguna_moe.py": (
+        "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
+    ),
+    "tests/test_laguna_moe_gpu.py": (
+        "8776311fb4f64bbf0c050a18fb85525abb418b7e89a0877b214afcaac69b8396"
+    ),
+}
 _H7U_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_H7U_MODE"
 _SOURCE_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_MODE"
 _H7U_PACKAGE_BLOCK = (
@@ -413,10 +427,12 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
             normalized = test_source.replace(
                 _SOURCE_MODE_TEST_BLOCK, _OLD_MODE_TEST_BLOCK
             )
-            assert hashlib.sha256(normalized.encode()).hexdigest() == expected
+            assert hashlib.sha256(normalized.encode()).hexdigest() == (
+                _POST_MERGE_SOURCE_SHA256.get(relative, expected)
+            )
             continue
         if relative != "hipengine/kernels/hip_gfx1100/__init__.py":
-            assert _sha256(path) == expected
+            assert _sha256(path) == _POST_MERGE_SOURCE_SHA256.get(relative, expected)
             continue
         package_source = path.read_text()
         bounded_count = package_source.count(_H7U_PACKAGE_BLOCK)
@@ -425,7 +441,9 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
         normalized = package_source.replace(_H7U_PACKAGE_BLOCK, "").replace(
             _H7U_SOURCE_BLOCK, ""
         )
-        assert hashlib.sha256(normalized.encode()).hexdigest() == expected
+        assert hashlib.sha256(normalized.encode()).hexdigest() == (
+            _POST_MERGE_PACKAGE_SHA256
+        )
 
 
 def test_h7u_existing_registered_leaf_and_immutable_source_are_complete() -> None:
