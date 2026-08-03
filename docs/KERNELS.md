@@ -2659,6 +2659,26 @@ capability, allocation, workspace, or source policy
 ([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json) ·
 [H8H rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json)).
 
+**WPF-H8I exact stream-ordered Q5 partition accumulation is target-only.** It
+must add separately registered local32 four-stage siblings for all six current
+H7G/H7H Q5 roles, not alter the retained controls. Partition `p`, lane `i`
+visits `p*32+i+128*n`; stage 0 publishes `0.0f + partial`, stages 1/2 load-add-
+store the next partial, and stage 3 retains the exact BF16/F32 publication.
+This preserves all **20,085,760** compute waves and every scalar/reduction/final
+sum association while replacing **5,021,440** local128 workgroups/barriers.
+
+The physical trade is binding: four launches per consumer produce **752**
+partition launches and **2,155→2,719** application dispatches, plus **7.546875
+GiB** extra M512 global traffic and ≤**24 MiB** accumulation storage. Runtime
+may only borrow aligned inactive request scratch; standalone tests may allocate
+explicitly. Freeze strict shape/pointer/preflight before HIP loading, gfx1151
+fail-closed, local32/LDS0/private-spill-scratch0 and current+8 VGPR ceilings,
+exact partition/final-output and named-trace gates, then require every role and
+the weighted **188-call** aggregate to win event and synchronized wall. Keep
+registered H7G/H7H plus producer/pack fallback; forbid any subset, resource
+rewrite, recompile, or favorable rerun
+([H8I target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
