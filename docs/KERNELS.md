@@ -2598,6 +2598,25 @@ registry/runtime surface, and prohibit a post-result alternate-class rerun.
 H6N/H6Z/H6A/H6W exact attention remains production
 ([H8E rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
 
+No new device body is selected for **WPF-H8F exact resident shared-Q5 F32
+cache**. Reuse the retained coltile8/rowbatch4 producer once at owner setup for
+all **92** layer1–46 `ffn_gate_shexp`/`ffn_up_shexp` raw-Q5 K3072×N1024
+tensors, then publish those planes through the existing raw-pointer map to the
+unchanged H7H consumer. H8B's 46 shared activation packs remain unchanged. The
+clean trace measures exactly 92 targeted producer launches/request at
+**3.439745 ms median**; request dispatches model **2,155→2,063**.
+
+The live target audit holds the exact **92 allocations / 1.078125 GiB** beside
+H8A and M512, reaches token2930/position511 with finite logits and clean
+lifecycle, and leaves **2.802734 GiB** free. Extend the H8A map all-or-nothing
+from **24→116** planes; a shared-class miss/failure frees every new buffer and
+retains the 24-plane H8A plus registered producer/H7H fallback. Freeze complete
+plane bytes, CPU edge values, rows1/7/8/9/M512 output identity, full state,
+named setup/request topology, fixed and 512/1K/4K both-clock gates before any
+source attempt. HIP source/object changes and partial-plane/layer/role/prompt/
+token/route/length/favorable-rerun salvage are forbidden
+([H8F target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

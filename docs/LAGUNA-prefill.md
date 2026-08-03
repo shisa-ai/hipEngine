@@ -2037,6 +2037,26 @@ numerical class after observing quality. H8B and exact H6N/H6Z/H6A/H6W remain
 production
 ([H8E rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
 
+The next exact target is **WPF-H8F resident shared-Q5 tile-K-col F32
+publication**. Its complete architecture class is **92** immutable K3072×N1024
+raw-Q5 tensors: both `ffn_gate_shexp` and `ffn_up_shexp` in every layer1–46.
+The H8B profile records 92 matching coltile8 producers in each of five clean
+requests, **3.439745 ms median**, followed by 92 unchanged H7H consumers and 46
+H8B-shared activation packs. Extending plane lifetime models request dispatches
+**2,155→2,063** without a new body, HIP object, activation operation, or output
+association.
+
+Actual feasibility is green before target publication. Alongside H8A's 24
+planes, allocate all **92 × 12,582,912 = 1,157,627,904 bytes (1.078125 GiB)**,
+run exact C4096/M512 to token2930/position511 with finite logits, recover the
+complete lifecycle, observe zero compiler, and retain **3,009,413,120 bytes
+(2.802734 GiB)** free. Extend the immutable H8A pointer map all-or-nothing
+**24→116**; any shared-class failure restores the complete transient producer +
+H7H chain without disabling admitted H8A. Freeze RED for complete plane/CPU/
+rows/full-state/topology/fixed/length gates. Do not admit a partial-plane,
+layer, role, prompt, token, route, length, threshold, or favorable-rerun subset
+([H8F target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
