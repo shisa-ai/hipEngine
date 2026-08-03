@@ -2550,26 +2550,23 @@ source promotion changes no device body, JIT object, allocation, workspace, or
 output byte
 ([H8B production](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
 
-Post-H8B, select target-only **WPF-H8C exact dual-weight shared-Q5 gate/up
-consumption** on the complete 46-layer architecture class. The immutable H8B
-trace names **92** rowbatch4/coltile8 BF16 consumers at **22.018 ms**, plus the
-unchanged 46 activation packs and 92 exact F32 weight-plane producers. Each
-current consumer is local128/VGPR72/LDS512/scratch0. H8C may use one local128
-8+8-output workgroup per pair only if every gate and up output independently
-preserves H7H/H5Y's K/FMA/wave/serial/store sequence.
+WPF-H8C's exact dual-weight shared-Q5 leaf passes physical admission at
+local128, metadata/runtime VGPR **134/136**, LDS **1,024 B**, and zero
+private/scratch/spills. Its ISA contains one 64-bit activation-record load for
+two independent weight streams, and rows17/33/M512 gate/up outputs are
+BF16-byte exact to H7H plus sampled CPU references. The cache-only named trace
+records the intended symbol once at **808.921 µs**, with two producers, one
+pack, one queue/stream, and zero compiler activity.
 
-The operation model keeps both exact tile-K-col weight planes, **148.176B**
-weight-load bytes, **148.176B** FMAs, all producers/packs, allocation, and
-workspace unchanged. Sharing one H8B tile-K-row activation record across both
-accumulator sets halves logical activation loads **37.044→18.522 GB** and
-models **92→46 consumers / 2,155→2,109 application dispatches**. This is not a
-speed result. Freeze RED before adding the device body; require local128,
-runtime VGPR≤136, LDS≤1 KiB, scratch/private/spills zero, actual rows17/33/M512
-byte identity, and all **46/46** actual pairs to win both HIP-event and
-synchronized-wall clocks. Only then run complete state/topology/fixed and
-512/1K/4K gates; no layer, prompt, token, geometry, threshold, or favorable-
-rerun salvage is admissible
-([H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
+Do **not** register or port this leaf. The required actual-weight screen rejects
+it before runtime ownership: all **46/46** Q5 shared gate/up pairs remain exact
+and finite, but only **14/46** win both clocks. Summed H7H→H8C consumer event
+time moves **27.8051→27.8323 ms (0.9990×)** and synchronized wall moves
+**28.0210→28.0053 ms (1.0006×)**. Per the frozen no-subset/no-rerun rule, the
+HIP body, wrapper/key, gfx1100 capabilities, gfx1151 exclusion, and RED test are
+removed; H8B/H7H remains the sole source path
+([H8C rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-shared-q5-dual-consumer-rejected.json) ·
+[H8C target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

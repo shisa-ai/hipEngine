@@ -1220,19 +1220,19 @@ tok/s / 714.008 ms**. The remaining kernel gaps are Q5 **172.115 ms**,
 IQ-down **119.303**, attention **93.837**, and Q6 **58.652**
 ([H8B production](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json)).
 
-The post-H8B rerank selects **WPF-H8C exact dual-weight shared-Q5 gate/up
-consumption** on the complete 46-layer shared-expert class. Those 46 pairs own
-**92** identical-shape H7H/H5Y consumers at **22.018 ms**, with each current
-body local128/VGPR72/LDS512/scratch0. H8C keeps both exact F32 weight planes,
-the H8B pack, all **148.176 billion** FMAs, **92** weight producers, and every
-per-output association unchanged; one dual 8+8-output workgroup instead loads
-the packed BF16 activation record once for both weights. The operation model
-halves logical activation loads **37.044→18.522 GB** and changes
-**2,155→2,109 dispatches**, while weight loads, arithmetic, allocation, and
-workspace remain unchanged. This is a target-only model, not a speed claim.
-Freeze the physical/object RED and require every one of the 46 actual pairs to
-be byte-exact and win both clocks before any runtime gate
-([H8C target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
+WPF-H8C's exact dual-weight shared-Q5 gate/up leaf passes its first-object and
+correctness gates: local128/runtime-VGPR136/LDS1KiB/scratch0, one physical
+activation load for two weight streams, and byte-exact gate/up outputs at
+rows17/33/M512. The binding complete-class screen nevertheless rejects it.
+All **46/46** real layer pairs are byte-exact and finite, but only **14/46**
+win both clocks; summed H7H→H8C event time is **27.8051→27.8323 ms
+(0.9990×)** and synchronized wall is **28.0210→28.0053 ms (1.0006×)**.
+The frozen no-salvage rule therefore removes the leaf, capabilities, and RED
+surface before runtime wiring. Production remains H8B at **440.893 tok/s /
+2,155 dispatches**, **1.56680×** behind matched llama.cpp HIP **690.791
+tok/s**
+([H8C rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-shared-q5-dual-consumer-rejected.json) ·
+[H8C target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8b-shared-q5-dual-consumer-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
