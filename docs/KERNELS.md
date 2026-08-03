@@ -2839,6 +2839,21 @@ signed-int8/F16/F32/split/LDS alternatives or salvage any cache placement,
 layer/expert/routing/prompt/token/length/body/recompile/favorable-rerun subset
 ([H8M target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
 
+**WPF-H8M is rejected at the frozen first-object metadata-VGPR gate.** Complete
+all-record, rows1/7/8/9/M512, P64/P65, uneven/empty, H6T/CPU, poison, repeat,
+and lifecycle checks pass **4/4** from one cache-only object after exactly one
+build. The candidate realizes the exact prescribed **8 b128 + 3 b32 + 6 b64 +
+6 d16_b16** loads, zero sign compare/cndmask sites, **216 FMAs / 24
+permlanex16 / 96 DPP adds / 24 LDS b128 loads / 12 stores / two barriers**, and
+private/spill/scratch0. It cuts code/slots **7,920/1,384→7,768/1,321** and all
+24 byte conversions associated with the unsigned table.
+
+The sole failure is metadata VGPR **101→102 > frozen 101**; SGPR78/LDS384 and
+all other gates pass. Do not relax the resource bound or rewrite/recompile the
+body after observing it. Skip named runtime trace, all-45 timing, runtime/state/
+length/source work; remove candidate plus RED and retain H6T production
+([H8M rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses

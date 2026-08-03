@@ -3555,6 +3555,16 @@ widths, indexing/layout, cache placement, subsets, rewrites, recompiles, and
 favorable reruns
 ([H8M target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
 
+Reject **WPF-H8M** at the frozen first-object metadata gate. Exact codebook and
+edge/CPU GREEN pass **4/4**. The one object realizes six b64 loads, removes all
+24 compare and 24 select sign sites, preserves 216 FMAs and every reduction/LDS/
+barrier/store count, and reduces code/slots **7,920/1,384→7,768/1,321**. It
+nevertheless increases metadata VGPR **101→102**, failing the explicit
+non-growing ≤101 requirement. Honor the no-rewrite/recompile/resource-gate-
+relaxation rule: skip named trace, all-45 timing, runtime/source work, remove
+candidate plus RED, and retain H6T/H8B production **440.893 tok/s**
+([H8M rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
