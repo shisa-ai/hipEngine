@@ -190677,3 +190677,52 @@ Vulkan local sizes verbatim will close the measured gap.
   Final validator replay remains pass and artifact regeneration remains
   byte-identical at `9318caed...fb7c7`; explicitly stage and inspect only the
   eleven declared rejection paths, then commit.
+
+## 2026-08-03 — Reject WPF-H8P Q5 fixed16 plane analytically
+
+- Start from clean H8O rejection revision `4b671ea2b`. Production remains H8B
+  **440.892624 tok/s / 1,146.419744-ms / 2,155 dispatches**, **1.566801×**
+  behind matched llama.cpp HIP **690.791 tok/s / 714.008408 ms**. The remaining
+  gaps remain Q5 **172.115390 ms**, IQ-down **119.303442**, attention
+  **93.836642**, Q6 **58.652223**, and gate/up **3.597655**.
+- Audit a new lossless representation premise before any target, RED, or GPU
+  work: replace each 1,024-byte exact-F32 Q5_K block with 256 signed-int16
+  mantissas plus eight one-byte power-of-two exponents, **520 bytes total
+  (−49.21875%)**. This differs from H5O's losing quant+F32-coefficient plane by
+  requiring only exact integer conversion and binary scaling in a hypothetical
+  consumer, but every current producer F32 bit must equal
+  `int16 * 2**exponent`.
+- Header inventory covers **236 Q5 tensors / 2,143,274,496 raw bytes /
+  12,177,696 blocks / 3,117,490,176 values**. Scan the first **65,536** blocks
+  of actual `blk.0.attn_q.weight`, or **16,777,216** values. Fit is only
+  **52,872/524,288 (10.085%)** for 32-value exponent groups and
+  **9,037,600/16,777,216 (53.868%)** even with one exponent per value; group
+  sizes 16/8/4/2 also fail broadly. Splitting therefore cannot salvage the
+  format.
+- The decisive real weight is block0/subblock0/lane17. Raw block SHA-256 is
+  `b7e01295...6ae9`; `d=0x05c0`, `dmin=0x1561`, scale/min/quant are
+  **40/35/30**, and the retained producer expression yields F32
+  `0x3d72fd00 = 0.05932331085205078 = 62205 × 2^-20`. Since 62,205 is odd,
+  no larger exponent is exact; since it exceeds signed-int16 +32,767, even a
+  per-value exponent cannot encode it. Reject H8P before target publication and
+  do not add source, RED, compiler, GPU execution, allocation, workspace, or
+  timing.
+- Publish
+  `benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json`
+  at SHA-256 `f3d1ceab...bec19`. Deterministic builder/stdout/stderr/status
+  SHA-256 values are `c5ce2f39...bcd88` / `a8014f4b...e688` /
+  `e3b0c442...b855` / `9a271f2a...86aa`. Synchronize the seven documentation/
+  rollup authorities plus artifact, validate deterministic regeneration and
+  source hashes, then commit the exact eight-path no-code rejection before
+  reranking unchanged H8B production.
+- Independent validator SHA-256 `c1f9a7a2...f7ad6` re-reads the raw 176-byte
+  model block, derives FP16 `d/dmin` as exact fractions without the producer
+  helper, proves the raw **40/35/30** expression and F32 bits equal
+  **62205/1048576**, verifies odd/int16 impossibility, source/artifact hashes,
+  all seven authority links, unchanged production, and exact eight-path
+  inventory. Validator stdout/stderr/status hashes are `25fa274c...a368` /
+  `e3b0c442...b855` / `9a271f2a...86aa`. Deterministic regeneration remains
+  byte-identical; benchmark matrix/provenance/README synchronization passes
+  **20/20**, JSON/semantic/link/UTF-8/worklog/diff/HIP checks pass, and lineage
+  retains the same four catalogued external-reference drifts. Stage and inspect
+  only the eight declared paths, then commit before reranking.

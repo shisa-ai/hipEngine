@@ -3615,6 +3615,17 @@ dispatches**, **1.566801×** behind matched llama.cpp HIP
 ([H8O rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json) ·
 [H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
 
+Reject no-code **WPF-H8P lossless Q5 signed-int16 power-of-two plane** before a
+GPU target. Although 256 int16 values plus eight exponents would reduce each
+transient Q5 block **1,024→520 bytes (−49.219%)**, exact representation is
+impossible on production weights. In a 16,777,216-value audit, only **53.868%**
+of individual values fit even with one exponent each. The decisive F32 bit
+pattern is `0x3d72fd00 = 62205 × 2^-20`: 62,205 is odd and exceeds +32,767, so
+no signed-int16/power-of-two pair can encode it. Add no source, RED, GPU,
+compiler, runtime, or timing path; retain H8B **440.893 tok/s** and rerank
+outside fixed16 Q5 planes
+([H8P analytical rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-fixed16-power2-plane-analytical-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
