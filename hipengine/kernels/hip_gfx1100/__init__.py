@@ -96,7 +96,7 @@ LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE = True
 # immutable projection group. The bounded owner is default-off until complete
 # state, exact 223-pack topology, and fixed/length timing gates all pass.
 LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED = True
-LAGUNA_ACTIVATION_PACK_REUSE = False
+LAGUNA_ACTIVATION_PACK_REUSE = True
 # Exact mixed Q5/Q6 and corrected Q6/Q8 projection quads pass actual layers,
 # full state, both clean context orders, and both complete category orders.
 # Explicit disable retains the registered Q5/Q6 pair and Q8 singleton chain.

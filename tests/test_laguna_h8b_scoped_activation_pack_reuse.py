@@ -174,19 +174,19 @@ def test_h8b_frozen_target_sources_state_topology_and_admission_contract() -> No
             assert target_sources[relative] == expected
 
 
-def test_h8b_package_and_runtime_owner_are_bounded_default_off() -> None:
+def test_h8b_package_and_runtime_owner_follow_source_default() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime import laguna_gguf_runner as runner
 
     assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
-    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is False
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
     assert _SUPPORTED_CAPABILITY in hip_gfx1100.__all__
     assert _SOURCE_CAPABILITY in hip_gfx1100.__all__
     assert not hasattr(hip_gfx1151, _SUPPORTED_CAPABILITY)
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
 
     resolver = getattr(runner, "resolve_laguna_activation_pack_reuse")
-    assert resolver("hip_gfx1100", None) is False
+    assert resolver("hip_gfx1100", None) is True
     assert resolver("hip_gfx1100", False) is False
     assert resolver("hip_gfx1100", True) is True
     assert resolver("hip_gfx1151", None) is False

@@ -23,6 +23,9 @@ _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
 _NORMALIZED_PACKAGE_SHA256 = (
     "dad41b57f69034807a091f595182b3e0ad118d535cbf5dd0aa300705ef67923b"
 )
+_RUNTIME_ARTIFACT_H8B_TEST_SHA256 = (
+    "710bcdc740ac691c2ac4f0fa5e9fa81f55be939b1582be78a9d62c6218ff06ff"
+)
 _SOURCE_SHA256 = {
     "hipengine/kernels/activation_pack.py": (
         "2b10234b49ee19417e439fa598b0b069ae4b832eebb3751357c7819891072f67"
@@ -43,7 +46,7 @@ _SOURCE_SHA256 = {
         "0507c0ab9bcabddfda9d0390c66d46f80aaaf7c42357a58dfa24c692d43414fd"
     ),
     "tests/test_laguna_h8b_scoped_activation_pack_reuse.py": (
-        "710bcdc740ac691c2ac4f0fa5e9fa81f55be939b1582be78a9d62c6218ff06ff"
+        "76a289657a6efc15ff4d9df0627663f1f83dcdd476db56f624ab14eb8dfbd7e5"
     ),
     "docs/REFACTOR.md": (
         "3de213a389e980e7b84393acdae64e81eed0c93356ab10fac63605fbd2fcee71"
@@ -194,7 +197,14 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert "self.use_activation_pack_reuse" in session_source
     for relative, expected in _SOURCE_SHA256.items():
         assert _sha256(_ROOT / relative) == expected
-        assert artifact["source_sha256"].get(relative, expected) == expected
+        artifact_expected = (
+            _RUNTIME_ARTIFACT_H8B_TEST_SHA256
+            if relative == "tests/test_laguna_h8b_scoped_activation_pack_reuse.py"
+            else expected
+        )
+        assert artifact["source_sha256"].get(relative, artifact_expected) == (
+            artifact_expected
+        )
 
 
 def test_h8b_source_default_selects_complete_owner_and_preserves_rollback() -> None:
