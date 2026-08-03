@@ -2642,23 +2642,22 @@ current H6N/H6Z schedule; add no gfx1100 capability, dispatch branch, owner, or
 RED, and forbid favorable start128-only salvage
 ([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
 
-Target-only **WPF-H8H exact prefill attention+softplus dual publication** adds
-four separately named gfx1100 fused-composite siblings for current H6N/H6Z
-global and H6A/H6W SWA. Keep every score, reduction, softmax, PV, F32 context
-store, `KVLiveSpans` field, and registered standalone softplus result unchanged;
-add only the same BF16 gate store after each final context value. The unfused
-four-route attention + registered gate chain remains mandatory fallback.
+Do **not** retain **WPF-H8H exact prefill attention+softplus dual publication**.
+Its four first objects preserve every H6N/H6Z/H6A/H6W output bit: cache-only
+all-start tests are F32-context and BF16-gate exact, complete `KVLiveSpans` is
+unchanged, lifecycle recovers, and cached tracing names every candidate with
+positive duration and zero compiler. The retained control bodies are source-
+identical.
 
-The clean H8B trace records **192 attention + 48 gate** calls; the gate costs
-**3.978268 ms median** and rereads **207,618,048 F32 values / 830,472,192
-bytes**. H8H models **2,155→2,107 dispatches** and no allocation/workspace
-growth; **442.408 tok/s (+0.344%)** is a zero-increment ceiling, not a result.
-Freeze RED before code. First objects must retain local256/32/32/32,
-scratch0, unchanged LDS/planes, and runtime VGPR ceilings **48/56/72/64** for
-H6N/H6Z/H6A/H6W. Require F32-context and BF16-gated byte identity plus complete
-global/SWA four-start both-clock wins before runtime. No route/start/layer/
-prompt/length/output-only/resource-rewrite/favorable-rerun subset is admissible
-([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json)).
+The physical gate fails before timing. Runtime VGPR is H6N **40≤48**, H6Z
+**88>56**, H6A **80>72**, and H6W **80>64**; local sizes remain
+**256/32/32/32**, with zero LDS/scratch. The immutable policy forbids resource
+rewrite or favorable route subset, so remove all four bodies, C/Python wrappers,
+registry keys, gfx1151 exclusions, and RED coverage. Keep the registered
+unfused H6N/H6Z/H6A/H6W plus standalone softplus chain; add no owner,
+capability, allocation, workspace, or source policy
+([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json) ·
+[H8H rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json)).
 
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages

@@ -3430,23 +3430,21 @@ source map; prohibit start128-only salvage and retain H6N/H6Z plus H8B
 **440.893 tok/s / 2,155 dispatches**
 ([H8G rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-global-qrow6-transfer-rejected.json)).
 
-Select target-only **WPF-H8H exact prefill attention+softplus dual publication**.
-Current M512 has **192** H6N/H6Z/H6A/H6W attention calls and **48** separate
-BF16 gates at **3.978268 ms median**. The gate rereads **207,618,048 F32 context
-values / 830,472,192 bytes** after attention. Add four separately named gfx1100
-fused composites that retain all current score/reduction/softmax/PV/context
-arithmetic and stores, then emit the same registered softplus-multiply BF16
-value. Preserve both outputs, complete `KVLiveSpans`, allocation/workspace, and
-the required registered unfused chain.
+Reject **WPF-H8H exact prefill attention+softplus dual publication** at the
+first-object physical gate. The four separately named H6N/H6Z/H6A/H6W siblings
+all execute with F32-bit-exact context, BF16-byte-exact gated output, unchanged
+complete `KVLiveSpans`, clean lifecycle, and zero new compiler processes.
+Control bodies remain source-identical. Runtime resources are H6N **VGPR40≤48**,
+H6Z **88>56**, H6A **80>72**, and H6W **80>64**, all at their frozen local sizes
+with zero LDS/scratch.
 
-The operation models **2,155→2,107 dispatches**; gate deletion alone gives a
-**442.408 tok/s (+0.344%)** zero-overhead ceiling, not a candidate claim. Commit
-the target before RED. Require all four first objects within local/resource
-ceilings, exact F32 context and BF16 gated bytes, complete global/SWA four-start
-both-clock wins, then all-route state/topology/fixed/512–4K gates before a
-separate source RED. Any miss removes H8H without route/start/layer/prompt/
-length/output-only/resource-rewrite/favorable-rerun salvage
-([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json)).
+Three immutable ceilings fail before timing. Honor the declared no-resource-
+rewrite/no-partial-route rule: run no leaf timing, owner, state/topology, fixed,
+length, or source gate; remove all candidate bodies/wrappers/keys/backend
+exclusions and the RED test. Retain the registered H6N/H6Z/H6A/H6W plus
+standalone-gate chain and unchanged H8B **440.893 tok/s / 2,155 dispatches**
+([H8H target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json) ·
+[H8H rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json)).
 
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
