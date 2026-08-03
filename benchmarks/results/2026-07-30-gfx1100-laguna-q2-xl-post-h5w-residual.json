@@ -1,0 +1,312 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_post_h5w_exact_residual_target",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": true,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "production_revision": "0f392e229",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-weight-major-production.json",
+    "production_artifact_sha256": "6edbc5a7482f73e06cf592baba805cff7c1e54eeb4a15dca7688ab3f05c89022",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "trace_reuse": "the cached one-queue H5W qualification trace is package-production-identical: source-default publication changed only the same three Q6 package-policy values already scoped in the traced candidate and changed no kernel body, launch, allocation, workspace, Q5, IQ, or attention route",
+    "trace_sha256": "753cffed1ec8bf8aa586ddeed3182232b2f8171d934cf8f2e3cc65692269629c",
+    "trace_analyzer_sha256": "8e3b2ec66bb6efd1994d9adf9d2fd4ed761f2299c18cd9abde7f5aff380f4699",
+    "trace_summary_sha256": "a23048b56e0bd79a539e9f98e3d3ef80afcb4f66532397a94e57a48c5642c3df",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "kernel_lineage_output_sha256": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "145f124cd8ce367ebf32741f0dd4c42f24d688fbeda525dd8691acd52790feb1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "a2b5e1f9eeaedda75c95b2402960624634bb6e42b7c3b40f6a67d77c81acc7f0",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "87589c91f2f813584c2a2b65121cee32840a72e9780d1df3f84c2d03b8b0f5e7",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "1c7b0523d5e97f53620196e5c49253457e13ce54f87f4964319d58d1a33f5751"
+    }
+  },
+  "production": {
+    "m512_tok_s": 271.52551262043875,
+    "m1024_tok_s": 234.02049160491273,
+    "m4096_tok_s": 161.85276620822188,
+    "next_token_id_m512": 2930,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5566069033460916,
+    "request_kernel_sum_ms": 1803.036149,
+    "unchanged_by_target_selection": true
+  },
+  "hipengine_trace": {
+    "request_segment": "dispatch-ID-bounded Q5 embedding through argmax stage 2",
+    "dispatch_first": 391,
+    "dispatch_last": 2252,
+    "dispatches": 1862,
+    "kernel_sum_ms": 1803.036149,
+    "kernel_span_ms": 1829.762621,
+    "span_minus_sum_ms": 26.726472000000058,
+    "span_minus_sum_percent": 1.4606524197873019,
+    "families": {
+      "attention": {
+        "dispatches": 192,
+        "hipengine_ms": 213.7541550000002
+      },
+      "gate_up": {
+        "dispatches": 47,
+        "hipengine_ms": 465.876301
+      },
+      "iq_down": {
+        "dispatches": 47,
+        "hipengine_ms": 483.34163300000006
+      },
+      "q5": {
+        "dispatches": 470,
+        "hipengine_ms": 476.43327999999974
+      },
+      "q6": {
+        "dispatches": 289,
+        "hipengine_ms": 92.63578099999995
+      },
+      "remaining": {
+        "dispatches": 817,
+        "hipengine_ms": 70.99499900000013
+      }
+    },
+    "q5_routes": {
+      "exact_f32_producers": 235,
+      "h5l_weight_major_consumers": 188,
+      "h5g_fallback_consumers": 47,
+      "producer_ms": 15.664751,
+      "h5l_weight_major_ms": 459.23180399999967,
+      "h5g_fallback_ms": 1.536725,
+      "h5l_share_of_q5_percent": 96.38953097483028
+    },
+    "q6_routes": {
+      "exact_f32_producers": 143,
+      "h5w_weight_major_consumers": 142,
+      "h5i_ordered_consumers": 1,
+      "raw_exact_fallback_consumers": 3,
+      "producer_ms": 1.8950589999999992,
+      "h5w_weight_major_ms": 62.58506399999998,
+      "h5i_ordered_ms": 0.044198,
+      "raw_exact_fallback_ms": 28.11146
+    },
+    "no_compiler_under_profile": true
+  },
+  "matched_llamacpp_trace": {
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "kernel_sum_ms": 724.298567,
+    "dispatches": 2824,
+    "families_ms": {
+      "q5_k_mmq": 58.95103,
+      "q6_k_dequant_cast_gemm": 14.919865,
+      "iq3_iq4_mmq": 155.495249,
+      "iq2_and_special_iq3_gate_up": 404.977857,
+      "flash_attention_main_and_fixup": 21.725298
+    },
+    "protocol": "same model, same fixed 512 token IDs, context4096, direct M512/ubatch512, FlashAttention, BF16 K/V, one W7900 and one HIP queue, last-row first-token projection"
+  },
+  "matched_gap_ranking": {
+    "total_kernel_gap_ms": 1078.737582,
+    "named_families_explain_percent": 99.74361410539973,
+    "families": [
+      {
+        "family": "q5",
+        "gap_ms": 417.48224999999974,
+        "hipengine_ms": 476.43327999999974,
+        "llamacpp_ms": 58.95103,
+        "rank": 1,
+        "ratio": 8.081848273049678,
+        "share_of_total_gap_percent": 38.70100170478716
+      },
+      {
+        "family": "iq_down",
+        "gap_ms": 327.84638400000006,
+        "hipengine_ms": 483.34163300000006,
+        "llamacpp_ms": 155.495249,
+        "rank": 2,
+        "ratio": 3.108401292698017,
+        "share_of_total_gap_percent": 30.39167166051327
+      },
+      {
+        "family": "attention",
+        "gap_ms": 192.0288570000002,
+        "hipengine_ms": 213.7541550000002,
+        "llamacpp_ms": 21.725298,
+        "rank": 3,
+        "ratio": 9.838951576176319,
+        "share_of_total_gap_percent": 17.801257711256806
+      },
+      {
+        "family": "q6",
+        "gap_ms": 77.71591599999995,
+        "hipengine_ms": 92.63578099999995,
+        "llamacpp_ms": 14.919865,
+        "rank": 4,
+        "ratio": 6.208888686325242,
+        "share_of_total_gap_percent": 7.204339340427277
+      },
+      {
+        "family": "gate_up",
+        "gap_ms": 60.89844400000004,
+        "hipengine_ms": 465.876301,
+        "llamacpp_ms": 404.977857,
+        "rank": 5,
+        "ratio": 1.1503747499952819,
+        "share_of_total_gap_percent": 5.6453436884152275
+      }
+    ]
+  },
+  "q5_h5l_role_inventory": {
+    "actual_h5l_calls": 188,
+    "actual_h5l_consumer_ms": 459.23180399999995,
+    "actual_h5l_producer_inclusive_ms": 474.76768,
+    "roles": [
+      {
+        "name": "bf16_k3072_n1024",
+        "calls": 92,
+        "in_features": 3072,
+        "out_features": 1024,
+        "geometry": "coltile8_rowbatch4",
+        "producer_ms": 1.6236790000000005,
+        "consumer_ms": 36.002734000000004,
+        "producer_inclusive_ms": 37.62641300000001,
+        "weighted_workgroups": 1507328,
+        "modeled_scalar_weight_load_instruction_instances": 1157627904,
+        "modeled_float4_weight_load_instruction_instances": 289406976
+      },
+      {
+        "name": "bf16_k3072_n12288",
+        "calls": 2,
+        "in_features": 3072,
+        "out_features": 12288,
+        "geometry": "coltile8_rowbatch12",
+        "producer_ms": 0.454217,
+        "consumer_ms": 16.003208,
+        "producer_inclusive_ms": 16.457425,
+        "weighted_workgroups": 132096,
+        "modeled_scalar_weight_load_instruction_instances": 101449728,
+        "modeled_float4_weight_load_instruction_instances": 25362432
+      },
+      {
+        "name": "bf16_k6144_n3072",
+        "calls": 12,
+        "in_features": 6144,
+        "out_features": 3072,
+        "geometry": "coltile16_rowbatch5",
+        "producer_ms": 1.2182170000000003,
+        "consumer_ms": 27.271901999999997,
+        "producer_inclusive_ms": 28.490118999999996,
+        "weighted_workgroups": 237312,
+        "modeled_scalar_weight_load_instruction_instances": 729022464,
+        "modeled_float4_weight_load_instruction_instances": 182255616
+      },
+      {
+        "name": "bf16_k9216_n3072",
+        "calls": 35,
+        "in_features": 9216,
+        "out_features": 3072,
+        "geometry": "coltile12_rowbatch8",
+        "producer_ms": 5.2349250000000005,
+        "consumer_ms": 187.85237299999997,
+        "producer_inclusive_ms": 193.08729799999998,
+        "weighted_workgroups": 573440,
+        "modeled_scalar_weight_load_instruction_instances": 1981808640,
+        "modeled_float4_weight_load_instruction_instances": 495452160
+      },
+      {
+        "name": "f32_k3072_n6144",
+        "calls": 12,
+        "in_features": 3072,
+        "out_features": 6144,
+        "geometry": "coltile16_rowbatch5",
+        "producer_ms": 1.7263509999999997,
+        "consumer_ms": 26.562700999999997,
+        "producer_inclusive_ms": 28.289051999999998,
+        "weighted_workgroups": 474624,
+        "modeled_scalar_weight_load_instruction_instances": 729022464,
+        "modeled_float4_weight_load_instruction_instances": 182255616
+      },
+      {
+        "name": "f32_k3072_n9216",
+        "calls": 35,
+        "in_features": 3072,
+        "out_features": 9216,
+        "geometry": "coltile8_rowbatch10",
+        "producer_ms": 5.278487,
+        "consumer_ms": 165.538886,
+        "producer_inclusive_ms": 170.817373,
+        "weighted_workgroups": 2096640,
+        "modeled_scalar_weight_load_instruction_instances": 1610219520,
+        "modeled_float4_weight_load_instruction_instances": 402554880
+      }
+    ],
+    "current_weighted_workgroups": 5021440
+  },
+  "selected_target": {
+    "id": "WPF-H5X",
+    "name": "exact tile-K-col F32 AoSoA Q5 plane",
+    "reason": "Q5 remains the largest matched residual and H5L's consumer still issues one scalar global F32 weight load per output column for every lane/K iteration; no retained screen changes the exact plane address order so four adjacent output-column weights can be loaded by one aligned float4 operation",
+    "candidate_layout": "for each retained H5L output tile, store exact F32 values as [k][col] rather than row-major [col][k]; tile bases and every k-row are 16-byte aligned because all retained COL_TILE values are multiples of four",
+    "candidate_producer": "geometry-specialized raw-Q5 exact expansion writes the same F32 bits once into the tile-K-col plane",
+    "candidate_consumer": "the unchanged local128 H5L arithmetic loads COL_TILE/4 aligned float4 records, assigns the same scalar weight value to each unchanged accumulator FMA, and retains row-group-fast workgroup traversal",
+    "roles": 6,
+    "production_invocations": 188,
+    "new_launches": 0,
+    "new_allocations": 0,
+    "additional_workspace_bytes": 0,
+    "workspace_bytes": 150994944,
+    "persistent_sidecar_bytes": 0,
+    "production_policy_changed": false,
+    "gfx1151_policy_changed": false,
+    "preserved": "every raw-Q5 reconstructed F32 bit, BF16 activation widening, H5L role geometry, local128 K ownership, scalar fmaf order, wave32 shuffle tree, serial wave-0..3 sum, BF16/F32 store, weight-major workgroup order/count, one producer plus one consumer launch, plane byte count, allocation, and H5L/H5G fallback"
+  },
+  "instruction_model": {
+    "scope": "six H5L roles / 188 actual M512 calls / 5,021,440 workgroups",
+    "current_scalar_weight_load_instruction_instances": 6309150720,
+    "candidate_float4_weight_load_instruction_instances": 1577287680,
+    "modeled_reduction_percent": 75.0,
+    "f32_weight_value_bytes_unchanged": true,
+    "useful_dot_fma_work_unchanged": true,
+    "interpretation": "This is a static per-wave source/ISA-intent count, not a hardware counter, bandwidth claim, or speed claim. Actual bytes, cache-line traffic, compiler vectorization, producer cost, and both clocks decide admission."
+  },
+  "closed_predecessors": {
+    "h5o_factorized_plane": "H5O compressed exact values into quant+coefficient records and paid per-consumer reconstruction ALU, losing both clocks on all eight roles; H5X retains the full exact F32 plane, adds no reconstruction, and changes only address order to expose aligned vector loads",
+    "h5p_geometry": "H5P already cross-screened exact accumulator geometry under weight-major traversal and rejected runtime ownership; H5X keeps all six production geometries unchanged",
+    "h5s_persistent_row_groups": "H5S reduced workgroup lifetime count but regressed all roles; H5X keeps one row group per workgroup and all retained parallelism",
+    "h5v_one_wave_k_partitions": "H5V lost four-wave K parallelism and regressed all roles; H5X keeps local128/four-wave K ownership unchanged",
+    "source_mmq_and_sgemm": "Q8_1/WMMA and SGEMM changed association and remain complete-quality rejected; H5X preserves each H5L scalar FMA and reduction boundary",
+    "iq_down": "H5K larger rows and H5T one-wave partitions are rejected, while source MMQ fails complete quality; no exact instruction-count/dataflow lane stronger than H5X is open there",
+    "attention": "cross-head, key-split, wider-qrow and changed-association routes are closed; H5U's exact global cached-source leaf remains retained but package ownership failed the balanced 1K gate",
+    "q6": "H5W has just promoted the open F32 weight-major transfer; retain its raw long-K/wide-N fallbacks while H5X screens the larger Q5 opportunity",
+    "gate_up": "the exact gate/up family is already within 1.150x of matched llama.cpp and leaves only a 60.898-ms gap"
+  },
+  "required_gates": [
+    "RED before implementation for six separate gfx1100 tile-K-col producer/composite role keys, unchanged H5L/Q5 package policy, row-major fallbacks, and gfx1151 absence",
+    "rows17/33 plus actual-M512 byte identity against each H5L control, exact plane permutation round-trip, BF16/F32 outputs, and allocation recovery",
+    "cached-only resource and ISA trace proving the intended producer and consumer symbols, aligned dwordx4/float4 weight loads, scratch0, expected grids, no more than +8 VGPR per consumer, and no compiler under rocprofv3",
+    "actual-weight six-role/188-call screen with five warmups, 15 counter-rotated samples, five launches/sample, producer-inclusive HIP-event plus synchronized-wall medians, and complete output bytes",
+    "retain only roles that improve both clocks; require the final selected weighted aggregate to improve both clocks before any runtime owner",
+    "only after standalone admission, add bounded default-off role ownership and require complete natural-M512 state, exact integrated call inventory, unchanged launch/allocation/workspace, and clean one-queue 512/1K/4K non-regression before source default"
+  ],
+  "commands": {
+    "production_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5w-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5w_q6_weight_major_trace_integrated.py",
+    "attribution": "PYTHONPATH=. python3 /tmp/analyze_laguna_post_h5w_residual.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "decision": {
+    "production_changed": false,
+    "target_selected": true,
+    "next_action": "Freeze RED and implement separately registered exact tile-K-col F32 AoSoA Q5 producer/consumer composites; do not alter package policy before byte/layout/resource/all-role admission."
+  }
+}

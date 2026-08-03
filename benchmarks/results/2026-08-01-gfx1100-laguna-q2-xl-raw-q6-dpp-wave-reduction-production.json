@@ -1,0 +1,506 @@
+{
+  "commands": {
+    "complete_state": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh7c_source_m512_full_state.py",
+    "fixed_c4096_m512": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh7c_source_matched_c4096_m512.py",
+    "guards": "42/42 focused source + 38/38 runner = 80/80",
+    "production_trace": "GPU_MAX_HW_QUEUES=1 cache-only rocprofv3 --kernel-trace over four counter-rotated /tmp/laguna_wpfh7c_source_trace_integrated_paired.py requests",
+    "selector_unset_512_1k_4k": "GPU_MAX_HW_QUEUES=1 cache-only /tmp/laguna_wpfh7c_source_clean_512_4k.py"
+  },
+  "correctness": {
+    "candidate_repeat_exact": true,
+    "complete_logits_hidden_kv_live_spans_exact": true,
+    "hidden_boundaries_exact": 48,
+    "hidden_boundaries_total": 48,
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "next_token_id": 2930,
+    "quality_gate": true,
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top1_agreement": 1.0,
+    "total_scratch_bytes": 600141856,
+    "tracked_allocations_recovered": true,
+    "workspace_bytes": 161120256
+  },
+  "date": "2026-08-01",
+  "decision": {
+    "generic_rollback_retained": true,
+    "next_action": "Commit source publication, cleanly reprofile production, and rerank Q5, IQ-down, attention, and Q6 residuals against matched llama.cpp HIP.",
+    "production_changed": true,
+    "reason": "two independent integrated traces and the immutable all-role leaf screen reduce the changed raw-Q6 work/span; exact state and resources are unchanged; mixed aggregate rows are disclosed and not claimed as wins",
+    "retention_policy": "cycle-wall",
+    "source_promoted": true
+  },
+  "guards": {
+    "failed": 0,
+    "focused": 42,
+    "focused_stdout_sha256": "45e00f2cc162072e381af0198bc09a54daa73544fa9cd47b4ed25760a061c4aa",
+    "runner": 38,
+    "runner_stdout_sha256": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
+    "total": 80
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h7c_raw_q6_dpp_wave_reduction_production",
+  "matched_component_status": {
+    "gap_ms": {
+      "attention": 93.89020999999997,
+      "gate_up": 0.41014200000000756,
+      "iq_down": 118.30456200000003,
+      "q5": 197.7832070000001,
+      "q6": 66.74832500000002,
+      "remaining": 8.432827999999944
+    },
+    "hipengine_clean_ms": {
+      "attention": 115.40265699999996,
+      "gate_up": 398.215065,
+      "iq_down": 272.16447300000004,
+      "q5": 256.0972970000001,
+      "q6": 81.41592300000002,
+      "remaining": 76.28226699999995
+    },
+    "matched_llamacpp_ms": {
+      "attention": 21.512447,
+      "gate_up": 397.804923,
+      "iq_down": 153.859911,
+      "q5": 58.31409,
+      "q6": 14.667598,
+      "remaining": 67.849439
+    },
+    "note": "Clean component table predates source publication; reprofile after commit before selecting the next target.",
+    "top_four_explain_percent": 98.17884481710432
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural matrix512/attention128; source-selected exact three-role raw-Q6 H7C map"
+  },
+  "performance": {
+    "aggregate_rows_mixed": true,
+    "clean_post_commit_reprofile_pending": true,
+    "last_clean_committed_checkpoint_tok_s": 422.94749689948384,
+    "last_clean_committed_kernel_sum_ms": 1199.577682,
+    "last_clean_llamacpp_over_hipengine": 1.633278373944771,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "negative_aggregate_rows": [
+      "fixed_natural_c4096_m512",
+      "4096"
+    ],
+    "negative_rows_claimed_as_wins": false,
+    "prior_default_off_512_1k_4k": {
+      "1024": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 3.2933990119490772,
+        "candidate_median_tok_s": 310.924973343568,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 3.2942999969236553,
+        "control_median_tok_s": 310.8399359366939,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.02735729777381124,
+        "paired_candidate_wins": 2,
+        "speedup": 1.0002735729777381
+      },
+      "4096": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 21.12808389798738,
+        "candidate_median_tok_s": 193.86519003695253,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 21.13185622403398,
+        "control_median_tok_s": 193.83058244270464,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.01785455824965254,
+        "paired_candidate_wins": 1,
+        "speedup": 1.0001785455824965
+      },
+      "512": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 1.3130449510645121,
+        "candidate_median_tok_s": 389.9333374572677,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 1.3137694299221039,
+        "control_median_tok_s": 389.7183085089425,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.05517548024569496,
+        "paired_candidate_wins": 2,
+        "speedup": 1.000551754802457
+      }
+    },
+    "prior_default_off_fixed_gain_percent": 0.05051041822645708,
+    "source_selected_512_1k_4k": {
+      "1024": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 3.289558785967529,
+        "candidate_median_tok_s": 311.2879466900361,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 3.290781646966934,
+        "control_median_tok_s": 311.1722714704593,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.037174012655483146,
+        "paired_candidate_wins": 2,
+        "speedup": 1.0003717401265548
+      },
+      "4096": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 21.077945295954123,
+        "candidate_median_tok_s": 194.32634170400948,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 21.067664303118363,
+        "control_median_tok_s": 194.4211727065408,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": -0.0487760675502491,
+        "paired_candidate_wins": 1,
+        "speedup": 0.9995122393244975
+      },
+      "512": {
+        "all_finite": true,
+        "all_score_scratch_reuses_q5_plane": true,
+        "all_sessions_recovered": true,
+        "all_total_scratch_bytes": [
+          600141856
+        ],
+        "all_workspace_bytes": [
+          161120256
+        ],
+        "candidate_median_seconds": 1.31247374904342,
+        "candidate_median_tok_s": 390.1030404403629,
+        "candidate_score_scratch_nbytes": [
+          18874368
+        ],
+        "control_median_seconds": 1.3136871471069753,
+        "control_median_tok_s": 389.7427185213278,
+        "control_score_scratch_nbytes": [
+          18874368
+        ],
+        "exact_all_repetitions": true,
+        "gain_percent": 0.09245122536276629,
+        "paired_candidate_wins": 2,
+        "speedup": 1.0009245122536277
+      }
+    },
+    "source_selected_fixed_natural_c4096_m512": {
+      "all_finite": true,
+      "all_sessions_recovered": true,
+      "all_total_scratch_bytes": [
+        600141856
+      ],
+      "all_workspace_bytes": [
+        161120256
+      ],
+      "candidate_median_seconds": 1.2234536451287568,
+      "candidate_median_tok_s": 418.4874531524379,
+      "candidate_over_llamacpp": 0.6058090698234891,
+      "control_median_seconds": 1.2206958059687167,
+      "control_median_tok_s": 419.4329148150782,
+      "exact_all_repetitions": true,
+      "gain_percent": -0.22541427466585828,
+      "llamacpp_hip_tok_s": 690.791,
+      "llamacpp_over_candidate": 1.6506850917424591,
+      "paired_candidate_wins": 2,
+      "speedup": 0.9977458572533414
+    }
+  },
+  "prior_evidence": {
+    "candidate_runtime_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-candidate.json",
+    "candidate_runtime_artifact_sha256": "504070377fde5afd09c3a71f4bbbb614faf13e5065f553dd1d11d37d41220154",
+    "clean_target_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json",
+    "clean_target_artifact_sha256": "418e04dbe6f9f35afefadb17c37230feefa1143e276c329cba11feea04c804eb"
+  },
+  "production_trace": {
+    "changed_work_wins": [
+      "selected_raw_q6_ms",
+      "q6_ms",
+      "span_ms"
+    ],
+    "compiler_monitor_samples": 1614,
+    "dispatches_per_request": 2192,
+    "family_dispatches_each_request": {
+      "attention": 192,
+      "gate_up": 47,
+      "iq_down": 47,
+      "q5": 658,
+      "q6": 431,
+      "remaining": 817
+    },
+    "kernel_sum_is_opposite_direction_noise": true,
+    "medians": {
+      "candidate_kernel_sum_ms": 1259.7588490000007,
+      "candidate_q6_ms": 81.47040450000003,
+      "candidate_selected_raw_q6_ms": 28.376359,
+      "candidate_span_ms": 1280.788266,
+      "control_kernel_sum_ms": 1255.8114624999996,
+      "control_q6_ms": 81.63935000000001,
+      "control_selected_raw_q6_ms": 28.5829615,
+      "control_span_ms": 1283.416854,
+      "kernel_sum_ms_delta": 3.94738650000113,
+      "kernel_sum_ms_reduction_percent": -0.3143295484931308,
+      "q6_ms_delta": -0.1689454999999782,
+      "q6_ms_reduction_percent": 0.2069412605563148,
+      "selected_raw_q6_ms_delta": -0.2066024999999989,
+      "selected_raw_q6_ms_reduction_percent": 0.7228169831177134,
+      "span_ms_delta": -2.628588000000036,
+      "span_ms_reduction_percent": 0.20481170960219286
+    },
+    "mode_order": [
+      "control",
+      "candidate",
+      "candidate",
+      "control"
+    ],
+    "new_compiler_processes": 0,
+    "production_resources": {
+      "h7c_bf16": [
+        [
+          128,
+          64,
+          128,
+          512,
+          0,
+          98304,
+          64
+        ]
+      ],
+      "h7c_f32": [
+        [
+          128,
+          56,
+          128,
+          512,
+          0,
+          589824,
+          32
+        ]
+      ]
+    },
+    "production_routes": {
+      "h7c_bf16": 2,
+      "h7c_f32": 1
+    },
+    "relative_dispatch_offsets": [
+      34,
+      2153,
+      2168
+    ],
+    "requests": 4,
+    "rollback_resources": {
+      "generic_bf16": [
+        [
+          128,
+          72,
+          128,
+          512,
+          0,
+          98304,
+          64
+        ]
+      ],
+      "generic_f32": [
+        [
+          128,
+          72,
+          128,
+          512,
+          0,
+          589824,
+          32
+        ]
+      ]
+    },
+    "rollback_routes": {
+      "generic_bf16": 2,
+      "generic_f32": 1
+    }
+  },
+  "provenance": {
+    "authority_sha256": {
+      "README.md": "548f999259e8d5b1c40661b809b39295bcbc3c52879aae28e250dcaee280cd68",
+      "WORKLOG.md": "c82051c5130b6b4b984824d3469f525cb25535ed8cc8f3606102e413e8f131bc",
+      "benchmarks/CHANGELOG.md": "1edafc54f18d110db013b45b0dc48c39eed4a55172b6b453a59b16788195d0c1",
+      "benchmarks/README.md": "bb6d1e298ec5b15015b2f3bb5e3c807dbbc6a63291400975c12d8835973c7b42",
+      "docs/KERNELS.md": "970ebe645425bc233e6bdfc9b15a74127841bdb8ca04c3725d7d622afc481fd5",
+      "docs/LAGUNA-prefill.md": "f6564a75b6697d3d0503329f18d4afa04917d5a96846fbd5e90819fc76898395",
+      "docs/PLAN.md": "8ff11b7767e0b307c192fd7542b03fb7e467f269b1a93925d8044d8aaa40cd69"
+    },
+    "builder_sha256": "6505b454cf332aeb23b4cd40d0e09fb47e2038dff9d60bbc8023e62c4bd32b01",
+    "raw_evidence_sha256": {
+      "/tmp/analyze-laguna-h7c-source-trace.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/analyze-laguna-h7c-source-trace.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/analyze-laguna-h7c-source-trace.stdout": "66aa5e0a63b47d74641529272083940ad8c689fd569167e1859bff7062bf7c3a",
+      "/tmp/analyze_laguna_wpfh7c_source_integrated_trace.py": "a3e02103d568e71b923ab0b2299d6a6b89c91aaf162d4dbecb725d82692d7ae1",
+      "/tmp/build_laguna_h7c_production.py": "6505b454cf332aeb23b4cd40d0e09fb47e2038dff9d60bbc8023e62c4bd32b01",
+      "/tmp/laguna-h7c-source-compiler-monitor.json": "97f366e9e11a81f8ee23223ff4c8dfb490161d3b9c421a98845f4f098e8de017",
+      "/tmp/laguna-h7c-source-final-focused-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7c-source-final-focused-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7c-source-final-focused-guards.stdout": "45e00f2cc162072e381af0198bc09a54daa73544fa9cd47b4ed25760a061c4aa",
+      "/tmp/laguna-h7c-source-final-runner-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7c-source-final-runner-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7c-source-final-runner-guards.stdout": "8e0dd3e259f68c193f05e3e04acef6407a9ed36e5124438d9f9a04fbd0db33db",
+      "/tmp/laguna-h7c-source-green-guards.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7c-source-green-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7c-source-green-guards.stdout": "a82a0b51cd86fa0131904e08c34ef556963104f0e3677f688117e093ebf2d3fe",
+      "/tmp/laguna-h7c-source-promotion.patch": "0614623d08e74a7f0e7b1dfe597e4014b8e0d971bc8a870e239e727b3edc4ba3",
+      "/tmp/laguna-h7c-source-red-retained.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7c-source-red-retained.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7c-source-red-retained.stdout": "64576d99c4cef913eb9b9bd4e5a096807fe2289f77eb08a67c7de2e43fc6349d",
+      "/tmp/laguna-h7c-source-red.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "/tmp/laguna-h7c-source-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "/tmp/laguna-h7c-source-red.stdout": "588d29ad56b1cd7553bd7eabbc9bbaa13704010402773853f24b071a5e4797ee",
+      "/tmp/laguna-h7c-source-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-h7c-source-rocprof.stderr": "13dba0d27c46d93992859231c66350eadb071a4f6196222d00fad51cc382165c",
+      "/tmp/laguna-h7c-source-rocprof.stdout": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+      "/tmp/laguna-h7c-source-rocprof/h7c_source_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+      "/tmp/laguna-h7c-source-rocprof/h7c_source_kernel_trace.csv": "c2b445c7e695e605bb5173c3025cb5f75c809617e94e36bf4a88a5b7a063367c",
+      "/tmp/laguna-wpfh7c-source-clean-512-4k.json": "a6fe5b09ba6298d1672cb00aa6e5cbe648b8aa564e87aee2d3d8ca21d84ef417",
+      "/tmp/laguna-wpfh7c-source-clean-512-4k.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-wpfh7c-source-clean-512-4k.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "/tmp/laguna-wpfh7c-source-clean-512-4k.stdout": "115c2f2d6b0b6d9f21514700a850b03b599aad8b44ab168bc347856bf7762c28",
+      "/tmp/laguna-wpfh7c-source-integrated-trace-summary.json": "66aa5e0a63b47d74641529272083940ad8c689fd569167e1859bff7062bf7c3a",
+      "/tmp/laguna-wpfh7c-source-m512-full-state.json": "b9686400877d4d1485dba0de87ed5d3abd6c56e80bbc1d7dd7bea0c89e9a4b6a",
+      "/tmp/laguna-wpfh7c-source-m512-full-state.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-wpfh7c-source-m512-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "/tmp/laguna-wpfh7c-source-m512-full-state.stdout": "03f064a8ffe40ef04c72e9c26b82d0bcc17f8567786e81515bcadba67e75feb5",
+      "/tmp/laguna-wpfh7c-source-matched-c4096-m512.json": "8282a7ad869222c51b3a924f36976291de7815f9503cc056a881f9b9d4faabe1",
+      "/tmp/laguna-wpfh7c-source-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "/tmp/laguna-wpfh7c-source-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+      "/tmp/laguna-wpfh7c-source-matched-c4096-m512.stdout": "444c1aa48641d3d841ac3799664767e98bd3ee40cc90f8d4b3ff119bb4d8d6b0",
+      "/tmp/laguna_wpfh7c_source_clean_512_4k.py": "e8eb46ffb82ac8226bcd6c056c5dcee43c2d10f531e77fc4e678ebb37547c274",
+      "/tmp/laguna_wpfh7c_source_m512_full_state.py": "d1658e75ab238233665e07b791a11d8605d150534f0a579c9b76864f18342883",
+      "/tmp/laguna_wpfh7c_source_matched_c4096_m512.py": "33d0c87f86e0eab62e8a5013a33f0020c573d13e6305e388eec2718d13cb1ff9",
+      "/tmp/laguna_wpfh7c_source_trace_integrated_paired.py": "cb90f73954c2c0fa4525a9474ff0ca7f58dca89a865e922a380776738ced986c",
+      "/tmp/monitor_laguna_h7c_source_compilers.py": "4a506c8ecbe9edbeaa970133f8dfcfa5157db62211d4c4dcbdffb986a9f66467",
+      "/tmp/validate_laguna_h7c_production.py": "078fb5534441fa4487029de6968a21c789db7903c6607b72691d56359d4ef6a4"
+    },
+    "validator_sha256": "078fb5534441fa4487029de6968a21c789db7903c6607b72691d56359d4ef6a4"
+  },
+  "schema": 1,
+  "source": {
+    "candidate_policy_name": "GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS",
+    "changed_roles": 3,
+    "gfx1151_excluded": true,
+    "id": "WPF-H7C",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "6e8cbf7b7332005c5d142911dea04f09aac444b9e1253b5fda92e14a8b015310",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "c0fe0262d0f38a9e0ccf8c831e35af19c5ce1ee45bb757380657a1b7ff0c9fa8",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "e2d98daad8dcf2b56f9f857c35ce87f4cb9096b3800e08dc2ab6dc77e0c45ebc",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "96b726402f6f795bfeeba07f2e8ec8c659fa72fec42b8e328c36f5cd15e453a7",
+      "hipengine/runtime/gguf_linear.py": "85e7faa7d5129a40cf5afcedfa538e8733b263d3c058f676a9aae9f9736fe8d1",
+      "tests/test_gguf_k_rowtile_gemv.py": "aba2cc204d0b9ab765317768b4804b69ef2959703313be4d72c2d721a595211b",
+      "tests/test_laguna_h7c_raw_q6_dpp_wave_reduction.py": "474752062b09d1ddb05c1c43f26dfe65817fc6b5086165ba70ade20ab02fe1da",
+      "tests/test_laguna_h7c_runtime_policy.py": "212b5c8252bde6251515485ba5d8827a85c6ba20d1a9c736177354e17c82f427",
+      "tests/test_laguna_h7c_source_default.py": "6a7dc835b6b3329ea8aad8f09c2a32da4a44a8c42ac8716995002605cd9876e2"
+    },
+    "kernel_wrapper_registry_unchanged": true,
+    "new_allocation_bytes": 0,
+    "new_dispatches_per_request": 0,
+    "new_workspace_bytes": 0,
+    "rollback_policy": [],
+    "rollback_policy_name": "GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS",
+    "runtime_selector_unchanged_sha256": "c12ea5317a53973204166ffe5589d44674e4f9d8df3b9f9964fb5656bce4df92",
+    "selected_policy": [
+      [
+        [
+          "gguf_q6_k",
+          "bf16_bf16_out",
+          512,
+          9216,
+          3072
+        ],
+        "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out"
+      ],
+      [
+        [
+          "gguf_q6_k",
+          "bf16_bf16_out",
+          512,
+          12288,
+          3072
+        ],
+        "dpp_wave_reduction_coltile4_rowbatch8_bf16_bf16_out"
+      ],
+      [
+        [
+          "gguf_q6_k",
+          "bf16_f32_out",
+          512,
+          3072,
+          9216
+        ],
+        "dpp_wave_reduction_coltile2_rowbatch16_bf16_f32_out"
+      ]
+    ],
+    "selected_policy_name": "GGUF_RAW_K_PREFILL_ROLE_VARIANTS",
+    "source_patch_sha256": "0614623d08e74a7f0e7b1dfe597e4014b8e0d971bc8a870e239e727b3edc4ba3",
+    "source_red_revision": "bfa64b6744ae61161f0f571f41ac9f0861e337a4"
+  },
+  "status": "retained_source_production_pending_clean_post_commit_reprofile"
+}

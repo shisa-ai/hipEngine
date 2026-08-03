@@ -1,5 +1,11 @@
 """gfx1100 normalization kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
+    build_moonshine_layernorm,
+    moonshine_layernorm_fp16,
+    plan_moonshine_layernorm_build,
+    register_moonshine_layernorm_kernels,
+)
 from hipengine.kernels.hip_gfx1100.norm.rmsnorm import (
     build_qwen35_rmsnorm,
     paro_add_rmsnorm_out_bf16,
@@ -15,6 +21,10 @@ from hipengine.kernels.hip_gfx1100.norm.rmsnorm import (
 )
 
 __all__ = [
+    "build_moonshine_layernorm",
+    "moonshine_layernorm_fp16",
+    "plan_moonshine_layernorm_build",
+    "register_moonshine_layernorm_kernels",
     "build_qwen35_rmsnorm",
     "paro_add_rmsnorm_out_bf16",
     "paro_add_rmsnorm_out_fp16",

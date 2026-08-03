@@ -57,6 +57,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q8_T16_PREFILL_TWO_WAVE as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS as GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
     GGUF_ROUTER_F32_BF16_HIDDEN_THREADS as GFX1100_GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
+    LAGUNA_SWA_PREFILL_VARIANT as GFX1100_LAGUNA_SWA_PREFILL_VARIANT,
 )
 from hipengine.kernels.hip_gfx1151 import (
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
@@ -148,7 +149,7 @@ from hipengine.kernels.hip_gfx1151 import (
     TARGET_ARCH,
     register_gfx1151_kernels,
 )
-from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
 
 def test_auto_backend_selects_supported_hip_arches() -> None:
@@ -269,6 +270,28 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "moe_linear",
             "gguf_iq3_xxs",
             "selected_gemv_decode_k1024_wave4_signbit_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_iq3_xxs",
+            "selected_grouped_prefill_compact_k1024_resident_rowbatch8_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_iq4_xs",
+            "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out",
+        ),
+        *(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_grouped_prefill_compact_k1024_active_expert_p"
+                f"{partition}_resident_rowbatch8_bf16_bf16_out",
+            )
+            for partition in (64,)
         ),
         KernelKey(
             "hip_gfx1100",
@@ -749,9 +772,24 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == 2048
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_PREFILL_MATRIX_ROWS", None
+        )
+        == 512
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_SELECTED_GATE_UP_MODE", None
+        )
+        == "grouped_pair16"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_SELECTED_DOWN_MODE", None
+        )
+        == "grouped_exact"
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_PREFILL_CACHED_META", None
@@ -776,9 +814,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         is True
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_PREFILL_KV_PREAPPEND", None
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_PREFILL_KV_PREAPPEND", None
+        )
+        is True
+    )
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_GLOBAL_PREFILL_VARIANT", None
@@ -794,9 +835,13 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == "swa_context_rows_qrow4_m128_online_spans"
     )
-    assert backend_package_capability(
-        "hip_gfx1100", "LAGUNA_SWA_PREFILL_VARIANT", None
-    ) is None
+    assert (
+        backend_package_capability(
+            "hip_gfx1100", "LAGUNA_SWA_PREFILL_VARIANT", None
+        )
+        == "swa_context_rows_qrow4_m128_c256_exact_spans"
+        == GFX1100_LAGUNA_SWA_PREFILL_VARIANT
+    )
     assert GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GFX1100_GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GGUF_PREFILL_ROUTER_SELECT_THREADS == 128
@@ -1124,6 +1169,91 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == 4096
     )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_ROWBATCH",
+        )
+        == 32
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_VARIANT",
+        )
+        == "coltile"
+    )
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
+    ) == frozenset(
+        {
+            ("gguf_q5_k", "bf16_bf16_out", 3072, 12288),
+            ("gguf_q5_k", "bf16_f32_out", 3072, 6144),
+            ("gguf_q5_k", "bf16_f32_out", 3072, 9216),
+            ("gguf_q6_k", "bf16_f32_out", 3072, 9216),
+        }
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+        )
+        is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_ROWBATCH",
+        )
+        == 0
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_VARIANT",
+        )
+        == "rowbatch"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+        )
+        is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
+        )
+        == frozenset()
+    )
+    for quant in ("gguf_q5_k", "gguf_q6_k"):
+        for row_batch in (4, 8):
+            for output_dtype in ("bf16", "f32"):
+                assert not is_registered(
+                    KernelKey(
+                        "hip_gfx1151",
+                        "linear",
+                        quant,
+                        f"rowbatch{row_batch}_bf16_{output_dtype}_out",
+                    )
+                )
     assert (
         backend_package_capability(
             "hip_gfx1100",

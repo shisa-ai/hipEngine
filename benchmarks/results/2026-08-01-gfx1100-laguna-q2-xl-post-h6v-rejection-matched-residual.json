@@ -1,0 +1,648 @@
+{
+  "authority_files": {
+    "README.md": "daa3c9f66c63b9590b69b086381899deb95192bdb78f3c091b71173912433c8b",
+    "WORKLOG.md": "476ea814f88394007584d4bf14583786a416b8aaf6b899067abd0b283d1d4313",
+    "benchmarks/CHANGELOG.md": "adcf6f8d301dc1550f09734c1548178093a88ba8118e86800886c23fe5828c09",
+    "benchmarks/README.md": "b47e1df3b384566b17def51e4c4d13c88586e05e69db19bbc57b9163e4f88899",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "23748b4c5c96198ec208f2cd3b34b21e17437cbe474a92fc5f555dcae7edca94",
+    "docs/LAGUNA-prefill.md": "28c981f2c01064c87283cbc4b40a9868f0a59c7258a00130210994ee601cf3c0",
+    "docs/PLAN.md": "d6773cfe97b10f3b80379b6ab76302f6d33c1018f43a8be8d56b2f022b18a96c",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "commands": {
+    "hip_health": "python3 -c \"import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')\"",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "matched_trace": "compiler-free PATH plus cached-only rocprofv3 command captured in raw stdout/child evidence",
+    "matched_wall": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h6u-matched-c4096-m512.json",
+    "target_analysis": "PYTHONPATH=. .venv/bin/python /tmp/analyze_laguna_post_h6v_h6w_target.py"
+  },
+  "correctness_claim": true,
+  "current_trace": {
+    "dispatches": 2192,
+    "families": {
+      "attention": {
+        "dispatches": 192,
+        "hipengine_ms": 148.88198999999997
+      },
+      "gate_up": {
+        "dispatches": 47,
+        "hipengine_ms": 398.742814
+      },
+      "iq_down": {
+        "dispatches": 47,
+        "hipengine_ms": 272.1306669999999
+      },
+      "q5": {
+        "dispatches": 658,
+        "hipengine_ms": 255.13671599999986
+      },
+      "q6": {
+        "dispatches": 431,
+        "hipengine_ms": 81.743583
+      },
+      "remaining": {
+        "dispatches": 817,
+        "hipengine_ms": 76.20013600000001
+      }
+    },
+    "h6t_calls": 45,
+    "h6t_ms": 263.51962999999995,
+    "h6t_resources": {
+      "grid_x": 32768,
+      "grid_y": 64,
+      "kernel": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+      "lds_bytes": 512,
+      "local_size": 128,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 104
+    },
+    "h6u_resources": {
+      "bf16_16x4": {
+        "consumer_kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 4>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+        "consumer_lds_bytes": 1024,
+        "consumer_local_size": 128,
+        "consumer_scratch_bytes": 0,
+        "consumer_sgpr": 128,
+        "consumer_vgpr": 112,
+        "pack_lds_bytes": 0,
+        "pack_local_size": 256,
+        "pack_scratch_bytes": 0,
+        "pack_sgpr": 128,
+        "pack_vgpr": 16,
+        "producer_scratch_bytes": 0
+      },
+      "bf16_16x5": {
+        "consumer_kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<unsigned short, 5>(unsigned short const*, float const*, unsigned short*, int, int, int)",
+        "consumer_lds_bytes": 1536,
+        "consumer_local_size": 128,
+        "consumer_scratch_bytes": 0,
+        "consumer_sgpr": 128,
+        "consumer_vgpr": 144,
+        "pack_lds_bytes": 0,
+        "pack_local_size": 256,
+        "pack_scratch_bytes": 0,
+        "pack_sgpr": 128,
+        "pack_vgpr": 16,
+        "producer_scratch_bytes": 0
+      },
+      "f32_16x5": {
+        "consumer_kernel": "void (anonymous namespace)::gguf_q6_k_f32_weight_ordered_weight_major_row_major_activation_tile_k_row_dpp_wave_reduction_kernel<float, 5>(unsigned short const*, float const*, float*, int, int, int)",
+        "consumer_lds_bytes": 1536,
+        "consumer_local_size": 128,
+        "consumer_scratch_bytes": 0,
+        "consumer_sgpr": 128,
+        "consumer_vgpr": 144,
+        "pack_lds_bytes": 0,
+        "pack_local_size": 256,
+        "pack_scratch_bytes": 0,
+        "pack_sgpr": 128,
+        "pack_vgpr": 16,
+        "producer_scratch_bytes": 0
+      }
+    },
+    "kernel_span_ms": 1255.013077,
+    "kernel_sum_ms": 1232.835906,
+    "no_compiler_under_profile": true,
+    "q5_route_ms": {
+      "h5g_fallback": 1.9246559999999993,
+      "h5y_bf16_12x8_row_major": 79.81632699999999,
+      "h5y_bf16_16x5_tile_k_col": 15.133976,
+      "h5y_bf16_8x12_row_major": 7.3583870000000005,
+      "h5y_bf16_8x4_tile_k_col": 24.16201,
+      "h5y_f32_16x5_tile_k_col": 16.532467,
+      "h5y_f32_8x10_tile_k_col": 79.22668300000001,
+      "pack_bf16_12x8_row_major": 1.17481,
+      "pack_bf16_16x5_tile_k_col": 0.42608599999999996,
+      "pack_bf16_8x12_row_major": 0.03316,
+      "pack_bf16_8x4_tile_k_col": 2.2441400000000007,
+      "pack_f32_16x5_tile_k_col": 0.22852299999999998,
+      "pack_f32_8x10_tile_k_col": 0.6800050000000002,
+      "row_major_producer": 5.976012999999999,
+      "tile_k_col_producer": 20.219473
+    },
+    "q5_routes": {
+      "h5g_fallback": 47,
+      "h5y_bf16_12x8_row_major": 35,
+      "h5y_bf16_16x5_tile_k_col": 12,
+      "h5y_bf16_8x12_row_major": 2,
+      "h5y_bf16_8x4_tile_k_col": 92,
+      "h5y_f32_16x5_tile_k_col": 12,
+      "h5y_f32_8x10_tile_k_col": 35,
+      "pack_bf16_12x8_row_major": 35,
+      "pack_bf16_16x5_tile_k_col": 12,
+      "pack_bf16_8x12_row_major": 2,
+      "pack_bf16_8x4_tile_k_col": 92,
+      "pack_f32_16x5_tile_k_col": 12,
+      "pack_f32_8x10_tile_k_col": 35,
+      "row_major_producer": 84,
+      "tile_k_col_producer": 151
+    },
+    "q5_sequence_exact": true,
+    "q6_route_ms": {
+      "h5i_ordered": 0.045081,
+      "h6u_bf16_16x4": 20.423507,
+      "h6u_bf16_16x5": 0.5848439999999999,
+      "h6u_f32_16x5": 27.908651999999986,
+      "pack_bf16_16x4": 0.38588300000000003,
+      "pack_bf16_16x5": 0.04088,
+      "pack_f32_16x5": 1.913177,
+      "producer": 2.0494220000000003,
+      "raw_fallback": 28.392136999999998
+    },
+    "q6_routes": {
+      "h5i_ordered": 1,
+      "h6u_bf16_16x4": 46,
+      "h6u_bf16_16x5": 2,
+      "h6u_f32_16x5": 94,
+      "pack_bf16_16x4": 46,
+      "pack_bf16_16x5": 2,
+      "pack_f32_16x5": 94,
+      "producer": 143,
+      "raw_fallback": 3
+    },
+    "q6_sequence_exact": true,
+    "span_minus_sum_ms": 22.177171000000044
+  },
+  "date": "2026-08-01",
+  "decision": {
+    "h6v_cleanup_accepted": true,
+    "matched_residual_reused": true,
+    "next_action": "Commit this synchronized post-H6V/H6W target packet, freeze WPF-H6W RED, then implement and run the one-shot starts256/384 exact leaf screen.",
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vram_bytes": 48301604864,
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h6v_rejection_matched_residual_and_h6w_target",
+  "lineage": {
+    "kernel_lineage_state": "all tracked Laguna/llama.cpp parents clean; four unrelated documented Qwen/PARO drifts",
+    "measured_revision": "248b47d14843c3cc92968ea9c54521c766e38d99",
+    "prior_artifacts": {
+      "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json": "c24ec84e40be2b5727e1960ebc127872d262bf4042d2a1318b382f0a7bc20dd4",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-dense-initial-score-arena512-production.json": "d27c1b4f8f2e82a7aa662d9449bb6fca5c2a64da284cd6fe78019e63f83450df",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-fused-dpp-add-production.json": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6u-matched-residual.json": "99fff5185f4d2ea42cf34e7684775942e1ff18b53edc68aea2c0015afd60fbc3",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q5-dpp-wave-reduction-rejected.json": "6034259ae146bd7c9b6b3818bec8dacfb8da87d26a2e30ea59ad23ef9e5eaf63",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-q6-dpp-wave-reduction-production.json": "57ff2d0bbfaf8114063954eea59ef919fe088fc5d0e291922b6d7c74a3d7036c",
+      "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json": "c5ee6420519ae4670b1c61aa2393ae51d9f389c0cd5489eb05620b33133d82e6"
+    },
+    "selection_revision": "0bc63e474469a6282b114b800139ab253f8347ec",
+    "source": "Net-new in-tree aligned global score-record storage mechanism; no external kernel body selected or copied.",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d41dbceb8dd31dec07ba265d9da2c8a5d20da1ec00dd0bc73981758446f6b235",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "9f34de916ecfb54225b5e921b556373a3f3ba7fed0ab5fc8ddaef180476643fb",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "cec1d2c9998d7ecb989865e17ea371e4af15ba5d365cefbea4f466c0973e9604",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "5bd3295ab3c032727cc2e2dac4106e98b5d77ceb9c0f8b42ae15ec8e0af61230"
+    }
+  },
+  "matched_component_table_ms": [
+    {
+      "campaign_start_ms": 1270.457977,
+      "current_gap_ms": 196.82262599999987,
+      "current_h6u_ms": 255.13671599999986,
+      "current_over_llamacpp": 4.375215595407557,
+      "family": "q5",
+      "llamacpp_hip_ms": 58.31409,
+      "retained_h6t_ms": 255.08160200000003
+    },
+    {
+      "campaign_start_ms": 488.304264,
+      "current_gap_ms": 127.36954299999996,
+      "current_h6u_ms": 148.88198999999997,
+      "current_over_llamacpp": 6.920737096993195,
+      "family": "attention",
+      "llamacpp_hip_ms": 21.512447,
+      "retained_h6t_ms": 148.687002
+    },
+    {
+      "campaign_start_ms": 557.09136,
+      "current_gap_ms": 118.27075599999989,
+      "current_h6u_ms": 272.1306669999999,
+      "current_over_llamacpp": 1.7686911764819615,
+      "family": "iq_down",
+      "llamacpp_hip_ms": 153.859911,
+      "retained_h6t_ms": 271.842409
+    },
+    {
+      "campaign_start_ms": 157.072613,
+      "current_gap_ms": 67.075985,
+      "current_h6u_ms": 81.743583,
+      "current_over_llamacpp": 5.573072223550172,
+      "family": "q6",
+      "llamacpp_hip_ms": 14.667597999999991,
+      "retained_h6t_ms": 87.06067799999998
+    },
+    {
+      "campaign_start_ms": 460.143234,
+      "current_gap_ms": 0.937891000000036,
+      "current_h6u_ms": 398.742814,
+      "current_over_llamacpp": 1.0023576656440725,
+      "family": "gate_up",
+      "llamacpp_hip_ms": 397.804923,
+      "retained_h6t_ms": 398.65676499999995
+    },
+    {
+      "campaign_start_ms": 68.622802,
+      "current_gap_ms": 8.35069699999994,
+      "current_h6u_ms": 76.20013600000001,
+      "current_over_llamacpp": 1.1230768761404193,
+      "family": "remaining",
+      "llamacpp_hip_ms": 67.84943900000007,
+      "retained_h6t_ms": 75.82130699999993
+    },
+    {
+      "campaign_start_ms": 3001.69225,
+      "current_gap_ms": 518.827498,
+      "current_h6u_ms": 1232.835906,
+      "current_over_llamacpp": 1.7266406000081724,
+      "family": "kernel_sum",
+      "llamacpp_hip_ms": 714.008408,
+      "retained_h6t_ms": 1237.149763
+    }
+  ],
+  "matched_wall": {
+    "campaign_start_tok_s": 169.51647248706007,
+    "current_h6u": {
+      "deterministic": true,
+      "gain_over_campaign_start_percent": 141.99416533271423,
+      "gain_over_h6t_percent": 0.31806398472020714,
+      "median_tok_s": 410.2199726965212,
+      "next_tokens": [
+        2930,
+        2930,
+        2930,
+        2930,
+        2930
+      ],
+      "revision": "248b47d14843c3cc92968ea9c54521c766e38d99",
+      "samples_tok_s": [
+        409.86091912341243,
+        411.2241670222621,
+        410.76481071239505,
+        410.2199726965212,
+        410.19088099649525
+      ],
+      "tracked_allocation_recovered": true
+    },
+    "llamacpp_hip_exact_natural": {
+      "dispatches": 2824,
+      "implementation_sha256": "68d1c3ac57bc15200c2e6986723d27fbb4ee4777f654dddb0d2b3f0db8102167",
+      "kernel_sum_ms": 714.008408,
+      "mean_tok_s": 691.61642,
+      "median_tok_s": 690.791,
+      "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "samples_tok_s": [
+        694.342,
+        692.318,
+        690.152,
+        690.791,
+        690.48
+      ],
+      "synthetic_default_pp512_disposition": "The user-reported 714.07 tok/s is synthetic/random pp512, not the fixed-natural-token/C4096 matched row.",
+      "top1_markers_verified": 5
+    },
+    "llamacpp_over_current": 1.683952625366303,
+    "retained_h6t_tok_s": 408.9193475254898,
+    "user_synthetic_pp512_disposition": "714.07 tok/s uses llama.cpp's default synthetic/random pp512 tokens and is not the matched fixed-natural comparator."
+  },
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "next_token_id": 2930,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_compact_json_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786",
+    "token_stream_int64_bytes_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a"
+  },
+  "performance_claim": true,
+  "production_equivalence": {
+    "current_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d41dbceb8dd31dec07ba265d9da2c8a5d20da1ec00dd0bc73981758446f6b235",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "9f34de916ecfb54225b5e921b556373a3f3ba7fed0ab5fc8ddaef180476643fb",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "cec1d2c9998d7ecb989865e17ea371e4af15ba5d365cefbea4f466c0973e9604",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "5bd3295ab3c032727cc2e2dac4106e98b5d77ceb9c0f8b42ae15ec8e0af61230"
+    },
+    "h6v_candidate_fully_removed": true,
+    "h6v_cleanup_revision": "0bc63e474469a6282b114b800139ab253f8347ec",
+    "measured_attention_and_package_sources_byte_identical_at_selection": true,
+    "measured_revision": "248b47d14843c3cc92968ea9c54521c766e38d99",
+    "measured_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "d41dbceb8dd31dec07ba265d9da2c8a5d20da1ec00dd0bc73981758446f6b235",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "9f34de916ecfb54225b5e921b556373a3f3ba7fed0ab5fc8ddaef180476643fb",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "cec1d2c9998d7ecb989865e17ea371e4af15ba5d365cefbea4f466c0973e9604",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "5bd3295ab3c032727cc2e2dac4106e98b5d77ceb9c0f8b42ae15ec8e0af61230"
+    },
+    "production_changed_by_h6v": false,
+    "retained_production": "H5Y Q5 + H6U Q6 + H6T IQ3 + H6N global attention + H6A SWA attention",
+    "selection_revision": "0bc63e474469a6282b114b800139ab253f8347ec"
+  },
+  "protocol": {
+    "hipengine_trace": "same committed request sequence under cached-only rocprofv3 with compiler-free child PATH and monitor-audited zero compiler processes",
+    "hipengine_wall_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h6u-matched-c4096-m512.json",
+    "llamacpp_comparator": "patched c0bc8591 fixed-natural M512/C4096, -p 512 -n 0 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json, one queue",
+    "matched_axes": "same model bytes, fixed natural 512-token stream, C4096 admission, direct M512, package matrix512/attention128, FlashAttention, BF16 K/V, one W7900 queue, synchronized final-row first-token projection"
+  },
+  "raw_evidence_sha256": {
+    "artifact_builder": "31f00ea5d783dbcd5861c50a70780ef95738172de8130ecbeae19b3de6081362",
+    "artifact_validator": "ced4a28df4ee580c2507d6fe7f97e5b2132d785309088361efd3f4767b564bb4",
+    "compiler_version_file": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "h6j_control_source_snapshot": "351d7b1465ef92f946095d94b183ff2ee2941424198cc1394d982f14f115d47d",
+    "h6j_lds_replay_rejection_artifact": "c24ec84e40be2b5727e1960ebc127872d262bf4042d2a1318b382f0a7bc20dd4",
+    "h6n_global_score_arena_production_artifact": "d27c1b4f8f2e82a7aa662d9449bb6fca5c2a64da284cd6fe78019e63f83450df",
+    "h6s_control_source_snapshot": "cec1d2c9998d7ecb989865e17ea371e4af15ba5d365cefbea4f466c0973e9604",
+    "h6s_dpp_rejection_artifact": "c5ee6420519ae4670b1c61aa2393ae51d9f389c0cd5489eb05620b33133d82e6",
+    "h6t_production_artifact": "4ba7f781b2867045fb002a8fcc10704d36df812fe6f5fc32149c02c78e08c9e6",
+    "h6u_production_artifact": "57ff2d0bbfaf8114063954eea59ef919fe088fc5d0e291922b6d7c74a3d7036c",
+    "h6v_rejection_artifact": "6034259ae146bd7c9b6b3818bec8dacfb8da87d26a2e30ea59ad23ef9e5eaf63",
+    "hip_health": "25e8b4aeab2132ef660c7925876b0e1679b6816abdb261faa7937fde4236bf87",
+    "lineage_report": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "post_h6u_matched_artifact": "99fff5185f4d2ea42cf34e7684775942e1ff18b53edc68aea2c0015afd60fbc3",
+    "target_analysis": "6afc0b996d40898c97e6b1e201a2f388fce5ba27974f99d4f47f132d613c420e",
+    "target_analysis_stdout": "808ebb70e76d0cd27f59a06fd192c9c966d43fd17a3274dc2e25ed7347fe989f",
+    "target_analyzer": "42b3d53d4abf37cf438db8495d046b2dfc19c546b395bb275a4b9e001d362b54"
+  },
+  "schema": 1,
+  "scope": "Clean H6U fixed-natural C4096/direct-M512 matched residual carried through complete H6V cleanup, plus target-only WPF-H6W exact late-start SWA aligned global-score-record replay selection on W7900.",
+  "status": "accepted_matched_residual_reuse_and_exact_h6w_target",
+  "target_selection": {
+    "admission": {
+      "correctness": "Require H6A byte identity, sampled independent CPU agreement, finite output, immutable complete KVLiveSpans, poisoned scratch/output overwrite, 16-byte scratch alignment, exact starts256/384 preflight, starts0/128 rejection/fallback, and lifecycle recovery.",
+      "one_shot_stop": "Any physical, correctness, lifecycle, start-clock, or aggregate-clock miss removes every H6W implementation/test/key/export/gfx1151-exclusion surface without tuning and skips runtime qualification.",
+      "performance": "Use five warmups, 15 counter-rotated repetitions, and five launches/sample at starts256/384 with complete output copies; each start and the 72-call weighted aggregate must improve both HIP-event and synchronized-wall clocks.",
+      "physical": "Require one aligned score-record global b128 store/load, exact removal of four second-QK u16 load and 20 bpermute sites, no LDS/barrier/private/spill/runtime scratch, local32/grid2304x32, metadata/runtime VGPR <=80, intended named cached-only rocprof execution, and no compiler under profiling.",
+      "promotion": "Only an admitted leaf may enter separate bounded runtime ownership. Runtime must reuse the existing same-stream workspace under an explicit lifetime/size proof, preserve 0/128 H6A fallback, pass complete natural-M512 state and exact 48 H6N + 72 H6A + 72 H6W topology, then win fixed C4096/M512 and selector-unset 512/1K/4K before source promotion.",
+      "red_first": "Commit a test-only H6W contract before editing HIP/Python/registry/export/gfx1151 surfaces."
+    },
+    "analysis": {
+      "admission": {
+        "correctness": "Require H6A byte identity, sampled independent CPU agreement, finite output, immutable complete KVLiveSpans, poisoned scratch/output overwrite, 16-byte scratch alignment, exact starts256/384 preflight, starts0/128 rejection/fallback, and lifecycle recovery.",
+        "one_shot_stop": "Any physical, correctness, lifecycle, start-clock, or aggregate-clock miss removes every H6W implementation/test/key/export/gfx1151-exclusion surface without tuning and skips runtime qualification.",
+        "performance": "Use five warmups, 15 counter-rotated repetitions, and five launches/sample at starts256/384 with complete output copies; each start and the 72-call weighted aggregate must improve both HIP-event and synchronized-wall clocks.",
+        "physical": "Require one aligned score-record global b128 store/load, exact removal of four second-QK u16 load and 20 bpermute sites, no LDS/barrier/private/spill/runtime scratch, local32/grid2304x32, metadata/runtime VGPR <=80, intended named cached-only rocprof execution, and no compiler under profiling.",
+        "promotion": "Only an admitted leaf may enter separate bounded runtime ownership. Runtime must reuse the existing same-stream workspace under an explicit lifetime/size proof, preserve 0/128 H6A fallback, pass complete natural-M512 state and exact 48 H6N + 72 H6A + 72 H6W topology, then win fixed C4096/M512 and selector-unset 512/1K/4K before source promotion.",
+        "red_first": "Commit a test-only H6W contract before editing HIP/Python/registry/export/gfx1151 surfaces."
+      },
+      "bounded_role": {
+        "calls": 72,
+        "control_event_ms": 67.62399787902832,
+        "control_event_share_of_all_swa_percent": 71.41134909566256,
+        "control_wall_ms": 68.79788506776094,
+        "control_wall_share_of_all_swa_percent": 71.1408718523146,
+        "fallback_starts": [
+          0,
+          128
+        ],
+        "layers_per_start": 36,
+        "selection_reason": "Only starts 256/384 are admitted before implementation: they own over 70% of the measured SWA stack and maximize duplicate-QK work. Starts 0/128 remain H6A fallback and are part of later complete-state/topology gates.",
+        "starts": [
+          256,
+          384
+        ]
+      },
+      "kind": "gfx1100_laguna_h6w_global_score_record_replay_target_analysis",
+      "prior_mechanism_evidence": {
+        "h6j": {
+          "artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-swa-dot-replay-rejected.json",
+          "body_control_identical": true,
+          "complete_bytes_exact": true,
+          "disposition": "The duplicate-dot removal is numerically exact, but full 4x512 LDS caused runtime VGPR248 and universal regression. H6W changes the storage mechanism and bounds ownership to late starts.",
+          "lds_bytes": 8192,
+          "metadata_vgpr": 54,
+          "runtime_vgpr": 248,
+          "second_qk_key_load_sites_removed": 4,
+          "second_qk_wave_reduce_sites_removed": 20,
+          "weighted_event_speedup": 0.7183082191190043,
+          "weighted_wall_speedup": 0.6991925951458632
+        },
+        "h6s": {
+          "artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-dpp-peer-rejected.json",
+          "body_control_identical": true,
+          "complete_bytes_exact": true,
+          "disposition": "H6W preserves H6A generic peer order and does not reopen DPP attention reduction.",
+          "dpp_peer_rejected": true
+        }
+      },
+      "production_unchanged": true,
+      "schema": 1,
+      "source": {
+        "body_bytes": 17922,
+        "body_sha256": "c73d333779e5db7382ea9142874ca3992ea3abb393517ec01e80f23e149a2806",
+        "current_runtime": {
+          "calls": 144,
+          "grid_x": 2304,
+          "grid_y": 32,
+          "local_size": 32,
+          "request_ms": 117.08514399999997,
+          "runtime_lds_bytes": 0,
+          "runtime_scratch_bytes": 0,
+          "runtime_sgpr": 128,
+          "runtime_vgpr": 64,
+          "trace_exact_ms": 117.08514400000003
+        },
+        "static_isa": {
+          "code_bytes": 7044,
+          "instructions": {
+            "ds_bpermute_b32": 52,
+            "global_load_u16": 12,
+            "global_store_b32": 16,
+            "s_barrier": 0,
+            "v_exp_f32_e32": 4,
+            "v_fma_f32": 56,
+            "v_fmac_f32_e32": 37,
+            "v_mov_b32_dpp": 0,
+            "v_permlanex16_b32": 0
+          },
+          "metadata": {
+            "lds_bytes": 0,
+            "max_workgroup_size": 32,
+            "private_bytes": 0,
+            "sgpr": 46,
+            "sgpr_spills": 0,
+            "uses_dynamic_stack": false,
+            "vgpr": 64,
+            "vgpr_spills": 0,
+            "wavefront_size": 32
+          },
+          "name": "_ZN12_GLOBAL__N_155laguna_attention_prefill_qrow4_cached_exact_bf16_kernelILb0ELb1EEEvPKfPKtS4_PfPKiPKlS9_PKhS9_lllllllf"
+        },
+        "unchanged_from_h6j_control": true,
+        "unchanged_from_h6s_control": true,
+        "wrapper_bytes": 1795,
+        "wrapper_sha256": "cb2b530f8881f75c8ad9722b8a534619a9a8b35a7c91451bdc2b2d492908229c"
+      },
+      "status": "accepted_target_analysis_only",
+      "target": {
+        "dynamic_work_model": {
+          "added_logical_score_bytes": 2049048576,
+          "aligned_score_record_load_store_wave_instructions": 128065536,
+          "context_iterations_by_start_per_layer": {
+            "256": 741888,
+            "384": 1036800
+          },
+          "context_iterations_per_request": 64032768,
+          "net_logical_bytes_removed": 14343340032,
+          "note": "Logical instruction/byte model only; cache traffic and speed are not claimed before executable profiling.",
+          "removed_bpermute_wave_instructions": 1280655360,
+          "removed_logical_k_bytes": 16392388608,
+          "removed_second_qk_u16_load_wave_instructions": 256131072
+        },
+        "expected_physical": {
+          "block_barriers": 0,
+          "ds_bpermute_b32": 32,
+          "global_load_b128_score_records": 1,
+          "global_load_u16": 8,
+          "global_store_b128_score_records": 1,
+          "global_store_b32_output": 16,
+          "grid_x": 2304,
+          "grid_y": 32,
+          "lds_bytes": 0,
+          "local_size": 32,
+          "metadata_vgpr_max": 80,
+          "private_bytes": 0,
+          "runtime_scratch_bytes": 0,
+          "runtime_sgpr_max": 128,
+          "runtime_vgpr_max": 80,
+          "second_qk_key_load_sites": 0,
+          "second_qk_wave_reduce_sites": 0,
+          "spill_count": 0,
+          "v_exp_f32_e32": 4
+        },
+        "id": "WPF-H6W",
+        "implementation_absent": true,
+        "name": "exact late-start dense-initial SWA qrow4 aligned global-score-record replay",
+        "names_absent": [
+          "WPF-H6W",
+          "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans",
+          "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_kernel",
+          "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_spans",
+          "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_spans"
+        ],
+        "operation": "Add one separately named gfx1100 local32 qrow4 sibling for starts 256/384. First pass writes lane-0 four-row unscaled dots as one aligned float4 global record per logical slot into caller scratch; second pass loads that record instead of reloading BF16 K and recomputing four exact wave reductions. Preserve H6A ordered score scaling, max, exp, denominator, PV, output stores, complete KVLiveSpans validation, grid, and starts0/128 fallback.",
+        "performance_claim": false,
+        "score_record": {
+          "alignment_bytes": 16,
+          "bytes": 16,
+          "capacity": 512,
+          "dtype": "float4",
+          "existing_workspace_bytes": 161120256,
+          "fits_existing_workspace": true,
+          "runtime_reuse_requires_separate_lifetime_gate": true,
+          "scratch_bytes": 18874368,
+          "workgroups_per_launch": 2304
+        }
+      },
+      "target_absence": {
+        "all_names_absent": true,
+        "h6v_absent": true,
+        "production_policy_unchanged": true
+      }
+    },
+    "closed_or_deferred": {
+      "attention_lds_replay": "H6J proved duplicate-QK replay byte-exact but full 4x512 LDS produced runtime VGPR248 and regressed every start. It explicitly permits a materially different occupancy-preserving mechanism.",
+      "attention_peer_exchange": "H6S DPP peer exchange regressed every start and remains fully removed.",
+      "iq_down": "H6T fused-DPP-add IQ3 is the just-promoted exact source; wider grouping and changed-association source-MMQ remain closed.",
+      "q5": "H6V universal DPP-add reduction is fully removed after only 3/6 roles passed both clocks; H6G/H6M and preceding plane/geometry/ownership routes remain closed. Do not restore or tune H6V.",
+      "q6": "H6U is the just-promoted exact source; F16 changed arithmetic remains quality-rejected."
+    },
+    "ranked_current_gaps_ms": [
+      {
+        "family": "q5",
+        "gap_ms": 196.82262599999987
+      },
+      {
+        "family": "attention",
+        "gap_ms": 127.36954299999996
+      },
+      {
+        "family": "iq_down",
+        "gap_ms": 118.27075599999989
+      },
+      {
+        "family": "q6",
+        "gap_ms": 67.075985
+      },
+      {
+        "family": "remaining",
+        "gap_ms": 8.35069699999994
+      },
+      {
+        "family": "gate_up",
+        "gap_ms": 0.937891000000036
+      }
+    ],
+    "selected": {
+      "dynamic_work_model": {
+        "added_logical_score_bytes": 2049048576,
+        "aligned_score_record_load_store_wave_instructions": 128065536,
+        "context_iterations_by_start_per_layer": {
+          "256": 741888,
+          "384": 1036800
+        },
+        "context_iterations_per_request": 64032768,
+        "net_logical_bytes_removed": 14343340032,
+        "note": "Logical instruction/byte model only; cache traffic and speed are not claimed before executable profiling.",
+        "removed_bpermute_wave_instructions": 1280655360,
+        "removed_logical_k_bytes": 16392388608,
+        "removed_second_qk_u16_load_wave_instructions": 256131072
+      },
+      "expected_physical": {
+        "block_barriers": 0,
+        "ds_bpermute_b32": 32,
+        "global_load_b128_score_records": 1,
+        "global_load_u16": 8,
+        "global_store_b128_score_records": 1,
+        "global_store_b32_output": 16,
+        "grid_x": 2304,
+        "grid_y": 32,
+        "lds_bytes": 0,
+        "local_size": 32,
+        "metadata_vgpr_max": 80,
+        "private_bytes": 0,
+        "runtime_scratch_bytes": 0,
+        "runtime_sgpr_max": 128,
+        "runtime_vgpr_max": 80,
+        "second_qk_key_load_sites": 0,
+        "second_qk_wave_reduce_sites": 0,
+        "spill_count": 0,
+        "v_exp_f32_e32": 4
+      },
+      "id": "WPF-H6W",
+      "implementation_absent": true,
+      "name": "exact late-start dense-initial SWA qrow4 aligned global-score-record replay",
+      "names_absent": [
+        "WPF-H6W",
+        "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans",
+        "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_kernel",
+        "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_spans",
+        "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_spans"
+      ],
+      "operation": "Add one separately named gfx1100 local32 qrow4 sibling for starts 256/384. First pass writes lane-0 four-row unscaled dots as one aligned float4 global record per logical slot into caller scratch; second pass loads that record instead of reloading BF16 K and recomputing four exact wave reductions. Preserve H6A ordered score scaling, max, exp, denominator, PV, output stores, complete KVLiveSpans validation, grid, and starts0/128 fallback.",
+      "performance_claim": false,
+      "score_record": {
+        "alignment_bytes": 16,
+        "bytes": 16,
+        "capacity": 512,
+        "dtype": "float4",
+        "existing_workspace_bytes": 161120256,
+        "fits_existing_workspace": true,
+        "runtime_reuse_requires_separate_lifetime_gate": true,
+        "scratch_bytes": 18874368,
+        "workgroups_per_launch": 2304
+      }
+    },
+    "selection_rule": "After H6V cleanup, attention is the first materially distinct actionable family at a 127.370-ms matched gap. Its 144 H6A SWA calls own 117.085 ms. Starts 256/384 alone own 72 calls and over 70% of the frozen standalone SWA control; replacing duplicate late-start QK with aligned caller-global score records attacks H6J's measured blocker without reopening DPP or changed association."
+  }
+}

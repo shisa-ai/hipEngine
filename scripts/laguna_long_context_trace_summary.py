@@ -29,6 +29,8 @@ _FAMILY_ORDER = (
     "source_f16_projection",
     "selected_q4_gate_up",
     "selected_q4_q6_down",
+    "selected_iq_gate_up",
+    "selected_iq_down",
     "dense_shared_quant_projection",
     "router",
     "prefill_kv_write",
@@ -54,7 +56,10 @@ def _duration_ns(row: Mapping[str, Any]) -> int:
 
 
 def _is_embedding(name: str) -> bool:
-    return "q4_k_embedding_bf16_out_kernel" in name
+    return (
+        "gguf_" in name
+        and "_embedding_bf16_out_kernel" in name
+    )
 
 
 def _is_argmax_end(name: str) -> bool:
@@ -116,6 +121,24 @@ def _kernel_family(name: str) -> str:
         for marker in ("gemv_kernel", "grouped_smallm_kernel", "mmq64x32")
     ):
         return "selected_q4_q6_down"
+    if any(
+        marker in lowered
+        for marker in (
+            "gguf_iq2_xs_selected_dual_",
+            "gguf_iq3_xxs_selected_dual_",
+        )
+    ):
+        return "selected_iq_gate_up"
+    if any(
+        marker in lowered
+        for marker in (
+            "gguf_iq3_xxs_selected_gemv",
+            "gguf_iq3_xxs_selected_grouped_prefill",
+            "gguf_iq4_xs_selected_gemv",
+            "gguf_iq4_xs_selected_grouped_prefill",
+        )
+    ):
+        return "selected_iq_down"
     if "laguna_global_attention_" in lowered:
         return "global_attention"
     if "laguna_swa_attention_" in lowered:
@@ -149,6 +172,8 @@ def _kernel_family(name: str) -> str:
             "q6_k_t16_gemv",
             "q4_k_t16_dense_",
             "gguf_k_prefill_out_kernel",
+            "gguf_k_prefill_out_rowbatch_kernel",
+            "gguf_k_prefill_out_coltile_rowbatch_kernel",
             "_k_prefill_wmma_kernel",
         )
     ):

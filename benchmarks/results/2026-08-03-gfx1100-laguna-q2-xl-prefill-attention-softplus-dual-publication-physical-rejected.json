@@ -1,0 +1,180 @@
+{
+  "authority_links": {
+    "README.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json",
+    "WORKLOG.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_and_red_removed": true,
+    "leaf_timing_executed": false,
+    "performance_claim": false,
+    "physical_gate_passed": false,
+    "production_changed": false,
+    "reason": "three of four immutable first-object runtime VGPR ceilings fail",
+    "resource_rewrite_attempted": false,
+    "runtime_owner_implemented": false,
+    "source_default_changed": false,
+    "subset_salvaged": false
+  },
+  "first_object": {
+    "all_four_candidate_kernels_executed": true,
+    "allocation_lifecycle_recovered": true,
+    "baseline_bodies_unchanged": true,
+    "bf16_gated_output_byte_exact_all_starts": true,
+    "compiler_processes_new": 0,
+    "complete_kv_live_spans_unchanged": true,
+    "f32_context_bit_exact_all_starts": true,
+    "preflight_and_registry_green": true,
+    "routes": {
+      "H6A": {
+        "candidate_metadata_vgpr": 75,
+        "candidate_runtime_vgpr": 80,
+        "control_metadata_vgpr": 64,
+        "control_runtime_vgpr": 64,
+        "lds_bytes": 0,
+        "local_size": 32,
+        "physical_gate_passed": false,
+        "runtime_scratch_bytes": 0,
+        "runtime_vgpr_ceiling": 72,
+        "starts": [
+          0,
+          128
+        ]
+      },
+      "H6N": {
+        "candidate_metadata_vgpr": 33,
+        "candidate_runtime_vgpr": 40,
+        "control_metadata_vgpr": 33,
+        "control_runtime_vgpr": 40,
+        "lds_bytes": 0,
+        "local_size": 256,
+        "physical_gate_passed": true,
+        "runtime_scratch_bytes": 0,
+        "runtime_vgpr_ceiling": 48,
+        "starts": [
+          0,
+          128
+        ]
+      },
+      "H6W": {
+        "candidate_metadata_vgpr": 75,
+        "candidate_runtime_vgpr": 80,
+        "control_metadata_vgpr": 54,
+        "control_runtime_vgpr": 56,
+        "lds_bytes": 0,
+        "local_size": 32,
+        "physical_gate_passed": false,
+        "runtime_scratch_bytes": 0,
+        "runtime_vgpr_ceiling": 64,
+        "starts": [
+          256,
+          384
+        ]
+      },
+      "H6Z": {
+        "candidate_metadata_vgpr": 86,
+        "candidate_runtime_vgpr": 88,
+        "control_metadata_vgpr": 47,
+        "control_runtime_vgpr": 48,
+        "lds_bytes": 0,
+        "local_size": 32,
+        "physical_gate_passed": false,
+        "runtime_scratch_bytes": 0,
+        "runtime_vgpr_ceiling": 56,
+        "starts": [
+          256,
+          384
+        ]
+      }
+    },
+    "test_result": "4 passed",
+    "trace_positive_duration": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_prefill_attention_softplus_dual_publication_first_object_physical_rejected",
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "no_salvage": "no route, start, layer, prompt, token, length, output-only, favorable rerun, resource rewrite, or partial four-route subset",
+  "performance_claim": false,
+  "production": {
+    "commit": "790206bf8e90923fd3a72b0f50dd4b5016e47427",
+    "dispatches": 2155,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "matched_llamacpp_hip_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "median_tok_s": 440.8926238498552,
+    "remaining_matched_gaps_ms": {
+      "attention": 93.83664200000001,
+      "iq_down": 119.30344199999996,
+      "q5": 172.11539000000002,
+      "q6": 58.65222299999999
+    },
+    "source": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction"
+  },
+  "publication_paths": [
+    "README.md",
+    "WORKLOG.md",
+    "benchmarks/CHANGELOG.md",
+    "benchmarks/README.md",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-prefill-attention-softplus-dual-publication-physical-rejected.json",
+    "docs/KERNELS.md",
+    "docs/LAGUNA-prefill.md",
+    "docs/PLAN.md"
+  ],
+  "raw_evidence_sha256": {
+    "/tmp/audit_laguna_h8h_first_object.py": "61debfe30c51d7194e1e97b3377581c22b58f627e85fcbc744d7fb0d4b590bc7",
+    "/tmp/h8h-metadata.txt": "02f605a641a6c2446fcbe69c9568b585d4802fafd268d68e1e35b9f1931961e5",
+    "/tmp/laguna-h8h-first-object-audit.json": "25bacb6beb8dd7939a4a55c560fcda404168032819e698a78a3623bfdb58962b",
+    "/tmp/laguna-h8h-first-object-green-compiler-monitor.json": "164cc89e295a347c43ebaa217e5faafc71ffb85a2b6a3a6d68a1547fdc99b0d3",
+    "/tmp/laguna-h8h-first-object-green.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8h-first-object-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8h-first-object-green.stdout": "c4b808d34f4db00b333696dec1f3a43a2887d8bfe0cb7af07a3cb98ff43a7830",
+    "/tmp/laguna-h8h-first-object-rocprof-csv/h8h-first-object_kernel_trace.csv": "62f5af45a064d1ca76405ceed4cecfa1e6ab0ffdc82a60e9a743911d6b25bc77",
+    "/tmp/laguna-h8h-first-object.diff": "af3b53ec80fa658a5bc2757ef0e0914fbe6e22ff3d74743d144a6d4009885e65"
+  },
+  "restored": {
+    "candidate_names_absent": true,
+    "red_test_absent": true,
+    "red_test_sha256_before_removal": "627bf2613a2f7c3e8e8d889798fcf59382ed212b58e6d86e0f7a82ff59861536",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "77398def2dca3430a544e390d8f8f588adcfb69b82940536b3b13f3306c773a8",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "e5ac3c0825de4ccdc1f22eea25a9bc2e541bb76402bf73c348c643446a43fe83",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
+    },
+    "unfused_h6n_h6z_h6a_h6w_plus_gate_retained": true
+  },
+  "schema": 1,
+  "status": "rejected_first_object_physical_gate",
+  "target_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8g-prefill-attention-softplus-dual-publication-target.json",
+  "target_artifact_sha256": "70bba53e21249b3108c288cfd7f24d6375266d167898e15179bbc3d2b84b4efd",
+  "target_id": "WPF-H8H",
+  "transient_candidate": {
+    "audit_sha256": "25bacb6beb8dd7939a4a55c560fcda404168032819e698a78a3623bfdb58962b",
+    "candidate_diff_sha256": "af3b53ec80fa658a5bc2757ef0e0914fbe6e22ff3d74743d144a6d4009885e65",
+    "candidate_object_sha256": "ace01348eaf4fc2ee9af3cdfa2ed31726958eee0313a8c7a40278f0cf76135ca",
+    "candidate_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "a810c6873dffe8b0876eddb02eceafd01a19bda860e6f89efbce90d08bb349fa",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "239216b5b61169b2237a4e30f860db9461b087c84067da431d80ea48dda0afe6",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "e32c0162ac138322f72219fb2d1841244338792b63bc469aaf769977d51f2768",
+      "tests/test_laguna_h8h_prefill_attention_gate_dual.py": "82d991122f0ac6e6af63ccbe66027e843d5cb55bc1dea9504bf949a51f420679"
+    }
+  }
+}

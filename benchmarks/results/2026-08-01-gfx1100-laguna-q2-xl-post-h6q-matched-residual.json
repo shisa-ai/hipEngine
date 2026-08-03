@@ -1,0 +1,436 @@
+{
+  "authority_files": {
+    "README.md": "98771e7c6f65159cc867aa193a705d40e779fbb9669bd7e31f8d7f2748f03b5c",
+    "WORKLOG.md": "17a62e6d566ad5fb01470d4d9ecf31fd723e84a0c81adfeaf78c79b5becf851e",
+    "benchmarks/CHANGELOG.md": "a4ec0edcf84ec12d7c9ffc8957bfb9f2e495fea78662e5500b9a17ddd088a608",
+    "benchmarks/README.md": "b8bc150b88674d77b913936acaa09dc75442f4f73140496a162e836b424de75a",
+    "docs/BENCHMARK.md": "2149af7286a56198c1a850bdbeae5857b7feaaf18919ea2ce0b98163ccfdaa90",
+    "docs/KERNELS.md": "1f8624a64ac4a147123b3d3568fe94dd2f6d5d2b854e59cf547afcdedbf6b007",
+    "docs/PLAN.md": "996b4676721282b50687cf9196af869353412dcbecc64d19098506ce1fa1aa18",
+    "docs/TESTING.md": "cbbab46568ed55456ce5d4a930a1260f4406c2aed7392811157fa2c8ef4d2aa7"
+  },
+  "commands": {
+    "hipengine_trace": "same committed-source command under cached-only rocprofv3 --kernel-trace with .venv/bin/python and output /tmp/laguna-post-h6q-matched-c4096-m512-rocprof-child.json",
+    "hipengine_wall": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512 --package-matrix-rows --repetitions 5 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-post-h6q-matched-c4096-m512.json",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "correctness_claim": true,
+  "current_trace": {
+    "all_q5_sequences_exact": true,
+    "all_q6_sequences_exact": true,
+    "dispatches": 2192,
+    "h6a_swa_calls": 144,
+    "h6a_swa_ms": 118.93776900000002,
+    "h6c_special_iq3_gate_up_calls": 1,
+    "h6l_iq2_calls": 46,
+    "h6n_global_calls": 48,
+    "h6q_iq3_calls": 45,
+    "h6q_iq3_ms": 314.21619600000014,
+    "h6q_resources": {
+      "grid_x": 32768,
+      "grid_y": 64,
+      "kernel": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+      "lds_bytes": 512,
+      "local_size": 128,
+      "scratch_bytes": 0,
+      "sgpr": 128,
+      "vgpr": 96
+    },
+    "kernel_span_median_ms": 1323.495578,
+    "kernel_sum_ms": 1301.2355809999967,
+    "no_compiler_under_profile": true,
+    "q6_route_ms": {
+      "h5i_ordered": 0.044361,
+      "h6e_bf16_16x4": 26.690499000000003,
+      "h6e_bf16_16x5": 0.589926,
+      "h6e_f32_16x5": 28.157313000000006,
+      "pack_bf16_16x4": 0.39276599999999995,
+      "pack_bf16_16x5": 0.041440000000000005,
+      "pack_f32_16x5": 1.9387789999999998,
+      "producer": 2.0360970000000003,
+      "raw_fallback": 28.269076999999996
+    },
+    "q6_routes": {
+      "h5i_ordered": 1,
+      "h6e_bf16_16x4": 46,
+      "h6e_bf16_16x5": 2,
+      "h6e_f32_16x5": 94,
+      "pack_bf16_16x4": 46,
+      "pack_bf16_16x5": 2,
+      "pack_f32_16x5": 94,
+      "producer": 143,
+      "raw_fallback": 3
+    },
+    "representative_request": 3
+  },
+  "date": "2026-08-01",
+  "decision": {
+    "matched_reprofile_accepted": true,
+    "next_action": "Commit this post-H6Q measurement/target unit, freeze WPF-H6R RED, then implement and run the one-shot exact DPP peer-exchange screen.",
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vram_bytes": 48301604864,
+    "wavefront_size": 32
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h6q_matched_residual_and_h6r_target",
+  "lineage": {
+    "campaign_start_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json",
+    "campaign_start_artifact_sha256": "1d1e9fc1486523b01a744ea9b7fce8b1e6122a1b84d7fdbb1a03bd348b621a81",
+    "candidate_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-candidate.json",
+    "candidate_artifact_sha256": "a5339db68144a541d9e299e07c3f2a815b793de6fcb8c7a333889fdc6b00c504",
+    "kernel_lineage_state": "all 14 tracked Laguna/llama.cpp parents clean; four unrelated documented Qwen/PARO drifts",
+    "preceding_residual_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json",
+    "preceding_residual_artifact_sha256": "46f56e2b96caa531268ea122884eb1e0c419a060e1a9ffef1d28c0eaefb96cc6",
+    "production_artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json",
+    "production_artifact_sha256": "0e6bc45503ec1602a016eee41ae828fa8ca2942d3b641bf1bc53b0a1b708be57",
+    "production_revision": "8e624bfb2e94d333c41b8e8694a9180001d989de",
+    "source": "Net-new in-tree sibling using an already-present gfx1100 intrinsic sequence; no external device body selected or copied.",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "c8f212bb97520e0660f7c1cedd7b511b5673e4e60aac51549e6bc894979df905",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "b78198db6edee39099378d0adce3629dce020edddc67378b93716be90db6c87a",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "67878ed5c7b11474e6d08314d18c542bbe53b36871745deabc82dd1288709a28",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "a131b83a768db3f214c53a21b3aa52bf1a0cb27264aeae8b80f6ff3cc2359d06",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "fde4e53a77c483a3c7ff9d4539b49f2ad30fd668e037792c40709348d43622fe",
+      "hipengine/runtime/laguna_moe.py": "295890f46bf198cbc7e8c99de80dd1d17b6c62a18f8fe244e3e172d5c9c59eb6"
+    }
+  },
+  "matched_component_table_ms": [
+    {
+      "campaign_start_ms": 557.09136,
+      "current_h6q_ms": 322.86628000000013,
+      "current_over_llamacpp": 2.098443174063711,
+      "current_vs_campaign_start_percent": -42.044285159978045,
+      "current_vs_pre_h6q_percent": -4.294122918554699,
+      "family": "iq_down",
+      "llamacpp_hip_ms": 153.859911,
+      "pre_h6q_h6p_ms": 337.35261599999995,
+      "remaining_gap_ms": 169.00636900000012
+    },
+    {
+      "campaign_start_ms": 1270.457977,
+      "current_h6q_ms": 258.472416,
+      "current_over_llamacpp": 4.432417894200184,
+      "current_vs_campaign_start_percent": -79.6551778430055,
+      "current_vs_pre_h6q_percent": 1.4258221450968556,
+      "family": "q5",
+      "llamacpp_hip_ms": 58.31409,
+      "pre_h6q_h6p_ms": 254.83886700000008,
+      "remaining_gap_ms": 200.15832600000002
+    },
+    {
+      "campaign_start_ms": 488.304264,
+      "current_h6q_ms": 151.40812300000005,
+      "current_over_llamacpp": 7.038163673337581,
+      "current_vs_campaign_start_percent": -68.99307784869147,
+      "current_vs_pre_h6q_percent": 1.6656813324144926,
+      "family": "attention",
+      "llamacpp_hip_ms": 21.512447,
+      "pre_h6q_h6p_ms": 148.9274660000001,
+      "remaining_gap_ms": 129.89567600000004
+    },
+    {
+      "campaign_start_ms": 460.143234,
+      "current_h6q_ms": 403.2424259999999,
+      "current_over_llamacpp": 1.0136687674928546,
+      "current_vs_campaign_start_percent": -12.365890400118351,
+      "current_vs_pre_h6q_percent": 1.414969998398563,
+      "family": "gate_up",
+      "llamacpp_hip_ms": 397.804923,
+      "pre_h6q_h6p_ms": 397.616275,
+      "remaining_gap_ms": 5.437502999999936
+    },
+    {
+      "campaign_start_ms": 157.072613,
+      "current_h6q_ms": 88.160258,
+      "current_over_llamacpp": 6.01054501220991,
+      "current_vs_campaign_start_percent": -43.87292837612626,
+      "current_vs_pre_h6q_percent": 0.9320976377345191,
+      "family": "q6",
+      "llamacpp_hip_ms": 14.667597999999991,
+      "pre_h6q_h6p_ms": 87.34610699999993,
+      "remaining_gap_ms": 73.49266
+    },
+    {
+      "campaign_start_ms": 68.622802,
+      "current_h6q_ms": 77.08607800000007,
+      "current_over_llamacpp": 1.1361343459302586,
+      "current_vs_campaign_start_percent": 12.333037639588195,
+      "current_vs_pre_h6q_percent": 0.8844478744082673,
+      "family": "remaining",
+      "llamacpp_hip_ms": 67.84943900000007,
+      "pre_h6q_h6p_ms": 76.41026899999993,
+      "remaining_gap_ms": 9.236638999999997
+    },
+    {
+      "campaign_start_ms": 3001.69225,
+      "current_h6q_ms": 1301.2355809999967,
+      "current_over_llamacpp": 1.8224373360600492,
+      "current_vs_campaign_start_percent": -56.64993368324163,
+      "current_vs_pre_h6q_percent": -0.09643202305514853,
+      "family": "kernel_sum",
+      "llamacpp_hip_ms": 714.008408,
+      "pre_h6q_h6p_ms": 1302.4916,
+      "remaining_gap_ms": 587.2271729999967
+    }
+  ],
+  "matched_wall": {
+    "campaign_start": {
+      "artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-exact-residual-reprofile.json",
+      "median_tok_s": 169.51647248706007
+    },
+    "current_h6q_clean": {
+      "deterministic": true,
+      "final_positions_exact": true,
+      "gain_over_campaign_start_percent": 130.6248226064234,
+      "gain_over_pre_h6q_percent": 0.4630701577752694,
+      "median_seconds": 1.3096402229275554,
+      "median_tok_s": 390.94706396194886,
+      "next_tokens": [
+        2930,
+        2930,
+        2930,
+        2930,
+        2930
+      ],
+      "revision": "8e624bfb2e94d333c41b8e8694a9180001d989de",
+      "samples_seconds": [
+        1.3096402229275554,
+        1.3070649087894708,
+        1.3102609440684319,
+        1.3090381708461791,
+        1.310902635101229
+      ],
+      "samples_tok_s": [
+        390.94706396194886,
+        391.7173482028412,
+        390.76185726044156,
+        391.12686811037497,
+        390.5705780814629
+      ],
+      "tracked_allocation_recovered": true
+    },
+    "current_percent_below_llamacpp": 43.405883405842175,
+    "h6q_source_paired_adjudication": {
+      "artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-compact-shuffle-loop-production.json",
+      "h6p_rollback_median_tok_s": 389.07170317886107,
+      "h6q_source_median_tok_s": 390.88738410442943,
+      "paired_wins": 5
+    },
+    "llamacpp_hip_exact_natural": {
+      "dispatches": 2824,
+      "implementation_sha256": "68d1c3ac57bc15200c2e6986723d27fbb4ee4777f654dddb0d2b3f0db8102167",
+      "kernel_sum_ms": 714.008408,
+      "mean_tok_s": 691.61642,
+      "median_tok_s": 690.791,
+      "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+      "samples_tok_s": [
+        694.342,
+        692.318,
+        690.152,
+        690.791,
+        690.48
+      ],
+      "synthetic_default_pp512_disposition": "The user-reported 714.07 tok/s is synthetic/random pp512, not the fixed-natural-token/C4096 matched row.",
+      "top1_markers_verified": 5
+    },
+    "llamacpp_over_current": 1.7669681235084942,
+    "pre_h6q_h6p_clean": {
+      "artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h6p-matched-residual.json",
+      "median_tok_s": 389.1450493678664
+    }
+  },
+  "model": {
+    "attention_rows": 128,
+    "compact_rows": 5120,
+    "context_length": 4096,
+    "expert_count": 256,
+    "final_position": 511,
+    "in_features": 1024,
+    "kv_dtype": "bf16",
+    "logical_parameters": 117561977600,
+    "matrix_rows": 512,
+    "next_token_id": 2930,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top_k": 10
+  },
+  "performance_claim": true,
+  "protocol": {
+    "cached_build_required": true,
+    "hipengine_repetitions": 5,
+    "hipengine_trace_repetitions": "one M128 warmup plus five production requests",
+    "hipengine_warmup": "one M128 request",
+    "llamacpp_comparator_reuse": "fresh c0bc8591 fixed-natural M512/C4096 wall and no-warmup trace already bound by the H6P/H6Q production packets",
+    "matched_axes": "same model bytes, fixed natural 512 tokens, context4096 admission, direct M512/batch2048/ubatch512, FlashAttention, BF16 K/V, one W7900 queue, and synchronized last-row first-token projection"
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_post_h6q_matched.py": "d02408ebd1d0ce7c604fc0f9f58dc83e149046308eb417f3c4010b4332fe862d",
+    "/tmp/analyze_laguna_post_h6q_matched_publication.py": "d1f0b316b40765dad3b92673800b8ba381751f17d3d253422b95d89f0f93da89",
+    "/tmp/build_laguna_post_h6q_dpp_target.py": "d20fc6cd935cff6c4ce0541d4ff6a912d83f14dadac8a275e3c93355c3b122d9",
+    "/tmp/gguf-iq2-dpp-peer.isa": "55b4e6c76a2c23227340f545ec884267a604b6664446a570debdbf9c42b47c40",
+    "/tmp/h6q-h6q-candidate.isa": "99065d13f7e1af74a954229656e2e14a6b6d04bba9537fc5fc5d0bb63ed3ba1e",
+    "/tmp/laguna-post-h6q-matched-c4096-m512-rocprof-child.json": "0f38904cea6278bcf96c359a83261bccda1b5a51277224b2b70748a93389e160",
+    "/tmp/laguna-post-h6q-matched-c4096-m512-rocprof.stderr": "35154417adb6160153810ed8d3395a1baa6c2c13044f1a0cbebad21338462cca",
+    "/tmp/laguna-post-h6q-matched-c4096-m512-rocprof.stdout": "0f38904cea6278bcf96c359a83261bccda1b5a51277224b2b70748a93389e160",
+    "/tmp/laguna-post-h6q-matched-c4096-m512-trace-summary.json": "e6ac9bc4518c787c89b33ef59146f75b1ca7e94b55cba3b00abbc47e8dd97bb7",
+    "/tmp/laguna-post-h6q-matched-c4096-m512.json": "c28bccda5768bb6e03496ae1b1945f33809c53732e846fed35026e7433d084e8",
+    "/tmp/laguna-post-h6q-matched-c4096-m512.stderr": "7bd5456ac0f52628c21999d6f380ae336b8ac0c94716a5e9b0d8b2b6275c323b",
+    "/tmp/laguna-post-h6q-matched-c4096-m512.stdout": "c28bccda5768bb6e03496ae1b1945f33809c53732e846fed35026e7433d084e8",
+    "/tmp/laguna-post-h6q-matched-publication-analysis.json": "73420c6e60797336a111340948e4083a6163801f7ccf585338e58253471ca8b6",
+    "/tmp/laguna-post-h6q-matched-rocprof/h6q_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-post-h6q-matched-rocprof/h6q_kernel_trace.csv": "94b9b670ffa18e9b300af8f52505e92abfbd86e0c891bea463da92f4f4f723ec"
+  },
+  "schema": 1,
+  "scope": "Clean committed H6Q fixed-natural C4096/direct-M512 wall and cached trace, matched llama.cpp HIP component reconciliation, and target-only WPF-H6R DPP peer-exchange staged-wave IQ3 selection on W7900",
+  "status": "accepted_matched_production_reprofile_and_exact_h6r_target",
+  "target_selection": {
+    "admission": {
+      "performance": "Use all 45 actual IQ3 layers and natural-M512 routing with five warmups, 15 counter-rotated samples, five launches/sample, HIP events and synchronized wall. Every complete output must be byte-exact and every layer must win both clocks.",
+      "prior_rejection_stop": "The 2026-07-26 four-accumulator local64 DPP reducer regressed pooled IQ2 family and span. H6R gets one H6Q-context screen only; do not tune DPP controls, geometry, output grouping, rowbatch, or unrolling after any miss.",
+      "red_first": "Freeze H6Q helper/kernel/source hashes, exact three-call/two-barrier structure, source production, separate H6R key/wrapper/symbol, K1024/N3072/E256, rows1/7/8/9/M512 and P64/P65 complete H6Q bytes plus sampled CPU values, workspace, all seven rollbacks, registration miss, and gfx1151 absence.",
+      "rejection": "Remove every H6R HIP/Python/key/test/exclusion surface if emitted counts/resources are not realized, any exact gate fails, or any one of 45 layers fails either clock; retain H6Q source production.",
+      "source_and_physical": "Require explicit permlanex16 then DPP controls 0x108/0x104/0x102/0x101 in each staged publication; zero ds_bpermute, exact 24 v_permlanex16 and 96 DPP instructions, unchanged 24 ds_load_b128/12 ds_store_2addr_b32, 216 FMAs, stride0x300, two barrier instructions/eight dynamic barriers, local128/grid32768x64/LDS512, metadata/runtime VGPR <=128/128, private0/spill0/scratch0, and no compiler under rocprof."
+    },
+    "closed_or_deferred_premises": {
+      "attention": "H6N supplies the latest global interval; current SWA is 118.938 ms but H6J's score replay reached runtime VGPR248 and lost every start, so the next SWA operation requires a new occupancy-preserving algorithm rather than a small transfer.",
+      "iq3_larger_rowbatch": "H5K rowbatch12/16 is exact/scratch-free but loses both clocks on every actual layer.",
+      "iq3_wider_grouping": "H6K is exact but runtime VGPR200 and 0/45 both-clock wins.",
+      "q5": "H5G/H5L/H5P/H5S/H5V/H5X/H5Y plus H6G/H6M close exact geometry, plane, ownership, compiler-prefetch, and explicit wait-split mechanisms.",
+      "q6": "Current Q6 is 88.160 ms, split across 142 H6E consumers and only three raw fallbacks; it remains behind the 169.006-ms IQ-down gap."
+    },
+    "named_families_explain_total_gap_percent": 98.42707568302589,
+    "ranked_family_gaps_ms": [
+      {
+        "family": "q5",
+        "gap_ms": 200.15832600000002,
+        "hipengine_ms": 258.472416,
+        "llamacpp_ms": 58.31409,
+        "rank": 1,
+        "ratio": 4.432417894200184,
+        "share_of_total_gap_percent": 34.08533106147681
+      },
+      {
+        "family": "iq_down",
+        "gap_ms": 169.00636900000012,
+        "hipengine_ms": 322.86628000000013,
+        "llamacpp_ms": 153.859911,
+        "rank": 2,
+        "ratio": 2.098443174063711,
+        "share_of_total_gap_percent": 28.780406760911433
+      },
+      {
+        "family": "attention",
+        "gap_ms": 129.89567600000004,
+        "hipengine_ms": 151.40812300000005,
+        "llamacpp_ms": 21.512447,
+        "rank": 3,
+        "ratio": 7.038163673337581,
+        "share_of_total_gap_percent": 22.120174605748495
+      },
+      {
+        "family": "q6",
+        "gap_ms": 73.49266,
+        "hipengine_ms": 88.160258,
+        "llamacpp_ms": 14.667597999999991,
+        "rank": 4,
+        "ratio": 6.01054501220991,
+        "share_of_total_gap_percent": 12.515200825013665
+      },
+      {
+        "family": "gate_up",
+        "gap_ms": 5.437502999999936,
+        "hipengine_ms": 403.2424259999999,
+        "llamacpp_ms": 397.804923,
+        "rank": 5,
+        "ratio": 1.0136687674928546,
+        "share_of_total_gap_percent": 0.9259624298754932
+      }
+    ],
+    "selected": {
+      "current_family_gap_ms": 169.00636900000012,
+      "current_family_ms": 322.86628000000013,
+      "current_iq3_calls": 45,
+      "current_iq3_ms": 314.21619600000014,
+      "current_resources": {
+        "grid_x": 32768,
+        "grid_y": 64,
+        "kernel": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_compact_shuffle_loop_triple_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+        "lds_bytes": 512,
+        "local_size": 128,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 96
+      },
+      "current_source_contract": {
+        "barrier_instructions": 2,
+        "code_bytes": 6620,
+        "dynamic_barriers_per_rowbatch": 8,
+        "dynamic_peer_exchanges": 120,
+        "fma_operations": 216,
+        "isa_counts": {
+          "barriers": 2,
+          "dpp_instructions": 0,
+          "ds_bpermute_b32": 24,
+          "ds_load_b128": 24,
+          "ds_store_2addr_b32": 12,
+          "v_permlanex16_b32": 0
+        },
+        "kernel_body_sha256": "95cde2d78231e0b1955df63635f890b6fcf551c9d7d758e35497a9362a5bbe8e",
+        "metadata_vgpr": 95,
+        "publication_calls": 3,
+        "publication_helper_sha256": "5d16ccf1e4f62de53336be2c51f1338752da6b0e50987459874de74b140cb541",
+        "runtime_vgpr": 96,
+        "serial_sum_helper_sha256": "02628055585cdb588c27cb18044175467eaf1a288456ab0f6cd68b828d671820"
+      },
+      "family": "iq_down",
+      "id": "WPF-H6R",
+      "in_tree_dpp_peer_reference": {
+        "compiled_four_value_isa_counts": {
+          "barriers": 1,
+          "dpp_instructions": 16,
+          "ds_bpermute_b32": 0,
+          "v_permlanex16_b32": 4
+        },
+        "controls_in_order": [
+          "0x108",
+          "0x104",
+          "0x102",
+          "0x101"
+        ],
+        "dpp_move_helper_sha256": "fe71839cc6242ff19d6ce9d6b020d7767bf34b39da007bd67fc3d1027914fd00",
+        "permlanex16_helper_sha256": "b283b68e56df94e5fcbc6ecf7705dfaba99b447212c3b44a41f716ceec263f7a",
+        "prior_runtime_rejection": {
+          "artifact": "benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-iq2-local64-reduction-rejected.json",
+          "artifact_sha256": "e454b31ce572df5a6bca1b00cfa9995a9cebd398e0d00f46d8327f66167a967f",
+          "candidate_iq2_family_ms": 1.8995095000000002,
+          "candidate_span_ms": 16.864296000000003,
+          "control_iq2_family_ms": 1.8705798928571429,
+          "control_span_ms": 15.7856255,
+          "disposition": "This closes the unchanged four-accumulator local64 reducer. H6R is a one-shot transfer into H6Q's three staged eight-accumulator local128 publication sites, not a retry of local64 geometry; any 45-layer clock miss removes H6R without follow-up tuning.",
+          "iq2_family_regression_percent": 1.5465582225771657,
+          "span_regression_percent": 6.8332452204697525
+        },
+        "quad_reducer_sha256": "c0bbe966e849b638f9bc1ccffba8c2e9cfdf7db0f0c899d413e9880debc299d3",
+        "source_file": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip"
+      },
+      "name": "exact DPP peer-exchange staged-wave IQ3",
+      "new_exact_premise": "H6Q's compact loop emits 24 static but 120 dynamic ds_bpermute operations. The existing exact peer reducer proves gfx1100 emits permlanex16 plus DPP row-shift 8/4/2/1 for the same reduction order. H6R tests whether moving only those 120 peer exchanges from DS to DPP helps H6Q's staged eight-accumulator schedule; the prior local64 four-accumulator loss forbids any follow-up tuning if the first binding screen misses.",
+      "operation": "Add one separately named gfx1100 H6Q sibling. In each of the three staged A/B/C publication sites, replace only the offset16/8/4/2/1 __shfl_down peer exchange with the in-tree bit-preserving permlanex16 then DPP row-shift 8/4/2/1 sequence. Preserve all three disjoint acc[8] scopes, 216 FMAs, dynamic peer-exchange/add order as observed by lane 0, lane-0 LDS publication, one publication barrier, serial wave0..3 sums/BF16 stores, one reuse barrier, P256/P64/local128/rowbatch8 traversal, and every ABI/policy/allocation boundary.",
+      "performance_claim": false,
+      "production_changed": false,
+      "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_triple_output_rowbatch8_bf16_bf16_out"
+    },
+    "selection_rule": "Q5 remains numerically first but its exact geometry/plane/ownership/prefetch/wait-split mechanisms are closed. IQ-down is the largest actionable family and H6R changes peer-exchange instructions only, preserving H6Q's admitted liveness/ownership instead of retrying wider output grouping or row batches."
+  }
+}

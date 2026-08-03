@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_post_h5i_exact_residual_attribution",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "production_revision": "b3c38032e",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q6-k-f32-ordered-production.json",
+    "production_artifact_sha256": "b0dc96c3ff67d591c72c5056020f5b0bfaa7245d7748697929910dcb3be03407",
+    "trace_sha256": "705dceea5ed4c6cb712bc8bed799a0dccfd38da6cbf08fd7989606efa3e26a4f",
+    "trace_harness_sha256": "bf1bf97814014ef7703ff78fef904dd3572dab407af3670a322db17699a141e0",
+    "routing_capture_sha256": "526b23358eafe0b24b7f71c88e7002af8a7299ccd8722e7d2b99bb87179eb52a",
+    "routing_harness_sha256": "1e4272efb43a532dbd2da74ec0efd25bc33ba322b8893bacd87d570c66bcb23a",
+    "matched_llamacpp_revision": "c0bc8591e",
+    "source_review": "in-tree grouped exact-IQ implementation plus retained matched llama.cpp HIP attribution; no external device body copied"
+  },
+  "production": {
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "m512_tok_s": 191.71299964893353,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 3.62095424551906,
+    "next_token_id": 2930,
+    "final_position": 511
+  },
+  "request_trace": {
+    "segment": "Q5 embedding through argmax stage 2",
+    "dispatches": 1862,
+    "kernel_sum_ms": 2600.260414,
+    "kernel_span_ms": 2626.337272,
+    "span_minus_sum_ms": 26.076858,
+    "span_minus_sum_percent": 0.9928982952041947,
+    "families": [
+      {
+        "name": "exact_q5_producer_ordered_consumer",
+        "dispatches": 470,
+        "hipengine_ms": 922.619153,
+        "matched_llamacpp_ms": 58.95103,
+        "gap_ms": 863.668123,
+        "ratio": 15.650602763005157,
+        "decision": "closed exact geometry after H5H; changed-association alternatives fail complete quality"
+      },
+      {
+        "name": "exact_attention",
+        "dispatches": 192,
+        "hipengine_ms": 471.149921,
+        "matched_llamacpp_ms": 21.725298,
+        "gap_ms": 449.424623,
+        "ratio": 21.686695436812883,
+        "decision": "exact adjacent-row schedules and changed-association transfers closed"
+      },
+      {
+        "name": "exact_iq3_iq4_selected_down",
+        "dispatches": 47,
+        "hipengine_ms": 556.749171,
+        "matched_llamacpp_ms": 155.495249,
+        "gap_ms": 401.253922,
+        "ratio": 3.5804899158044377,
+        "decision": "selected WPF-H5J exact resident-segment row ownership"
+      },
+      {
+        "name": "exact_q6",
+        "dispatches": 289,
+        "hipengine_ms": 110.169707,
+        "matched_llamacpp_ms": 14.919865,
+        "gap_ms": 95.249842,
+        "ratio": 7.384095432498887,
+        "decision": "H5I retained; three exact raw-coltile fallbacks remain"
+      },
+      {
+        "name": "exact_iq2_special_iq3_gate_up",
+        "dispatches": 47,
+        "hipengine_ms": 469.311349,
+        "matched_llamacpp_ms": 404.977857,
+        "gap_ms": 64.333492,
+        "ratio": 1.1588568137442636,
+        "decision": "defer behind larger exact IQ-down gap"
+      },
+      {
+        "name": "remaining",
+        "dispatches": 817,
+        "hipengine_ms": 70.261113,
+        "matched_llamacpp_ms": null,
+        "gap_ms": null,
+        "ratio": null,
+        "decision": "below current family targets"
+      }
+    ],
+    "reconciled_to_kernel_sum": true
+  },
+  "iq_down_physical_symbols": {
+    "iq3": {
+      "layers": 45,
+      "calls": 45,
+      "kernel": "gguf_iq3_xxs_selected_grouped_prefill_compact_rowbatch_kernel<8>",
+      "shape": "E256/K1024/N3072, BF16 compact rows to BF16 output",
+      "duration_ms": 530.863671,
+      "resources": "local128/VGPR48/SGPR128/LDS512/scratch0"
+    },
+    "iq4": {
+      "layers": 2,
+      "calls": 2,
+      "kernel": "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+      "shape": "E256/K1024/N3072, BF16 compact rows to BF16 output",
+      "duration_ms": 25.8855,
+      "resources": "local128/VGPR64/SGPR128/LDS512/scratch0"
+    }
+  },
+  "routing_distribution": {
+    "rows": 512,
+    "top_k": 10,
+    "expert_count": 256,
+    "selected_lanes": 240640,
+    "active_expert_layer_instances": 10298,
+    "active_count_min": 1,
+    "active_count_median": 12.0,
+    "active_count_mean": 23.367644202757816,
+    "active_count_p90": 51.0,
+    "active_count_p99": 207.0,
+    "active_count_max": 446,
+    "iq3": {
+      "layers": 45,
+      "selected_lanes": 230400,
+      "active_expert_layer_instances": 9844,
+      "rowbatch8_weight_decode_batches": 33547,
+      "resident_segment_weight_decode_instances": 9844,
+      "reconstruction_instances_eliminated_percent": 70.65609443467374
+    },
+    "iq4": {
+      "layers": 2,
+      "selected_lanes": 10240,
+      "active_expert_layer_instances": 454
+    },
+    "capture_next_token_id": 2930,
+    "capture_final_position": 511,
+    "tracked_allocations_recovered": true
+  },
+  "closed_predecessors": {
+    "iq3_rowbatch16": "removed before WPF-2 admission at VGPR256 and 40 bytes scratch/thread",
+    "iq3_iq4_output_tile2": "rejected at approximately +50% fixture duration with VGPR48->72 and VGPR64->104",
+    "source_mmq": "runtime rejected at maximum KL 0.373028; IQ3-only structural followup reaches 0.372917"
+  },
+  "h5j_selection": {
+    "iq3_candidate": "K1024 exact rowbatch8 resident-segment specialization: decode each fixed IQ3 segment once per active (expert, output) block before the complete compact-row loop, while preserving every existing eight-row accumulator, FMA, wave shuffle, wave-0..3 sum, barrier, BF16 store, and tail",
+    "iq4_candidate": "K1024 exact wave32 specialization: preserve the sole populated wave's 32 subblock dots and shuffle tree plus the local128 +0.0 wave-sum association while removing 96 idle lanes and cross-wave storage/barriers",
+    "new_allocation_allowed": false,
+    "new_weight_layout_allowed": false,
+    "runtime_change_allowed_before_leaf_gate": false,
+    "required_screen": "all 45 IQ3 plus two IQ4 actual M512 layers, exact bytes, HIP events and synchronized wall, allocation recovery, cached symbol/resource trace",
+    "fallback": "retained rowbatch8 IQ3 and local128 IQ4 grouped exact kernels",
+    "next_action": "Freeze independent RED for the two strict K1024 candidates, implement the standalone gfx1100 leaf with gfx1151 fail-closed scope, and screen all 47 actual layers before runtime ownership."
+  },
+  "commands": {
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5i-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5i_q6_ordered_trace_integrated.py",
+    "routing_capture": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5j_routing_distribution.py"
+  }
+}

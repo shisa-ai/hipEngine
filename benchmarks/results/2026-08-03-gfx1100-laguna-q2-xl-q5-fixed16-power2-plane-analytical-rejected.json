@@ -1,0 +1,167 @@
+{
+  "builder_sha256": "c5ce2f3941062d52b508d140448e16c220942427cb56ac41d84a991f7abbcd88",
+  "command": "PYTHONPATH=. python3 /tmp/build_laguna_h8p_fixed16_rejection.py",
+  "created_at": "2026-08-03",
+  "decision": {
+    "next_action": "rerank from unchanged H8B production; do not implement signed-int16 times power-of-two Q5 planes at any fixed group size",
+    "reason": "the exact representation invariant is impossible on a real production Q5 value",
+    "runtime_default_changed": false,
+    "source_default_changed": false,
+    "status": "rejected_before_target",
+    "timing_performed": false
+  },
+  "decisive_counterexample": {
+    "block_index": 0,
+    "block_sha256": "b7e012950aca2cd4bdc54d3cc2452222b1b8fc4cfab987e23de7814aa63c6ae9",
+    "canonical_exact_form": "62205 * 2**-20",
+    "canonical_magnitude": 62205,
+    "canonical_magnitude_is_odd": true,
+    "d_f32": 8.7738037109375e-05,
+    "d_fp16_bits_hex": "0x05c0",
+    "dmin_f32": 0.0013132095336914062,
+    "dmin_fp16_bits_hex": "0x1561",
+    "lane": 17,
+    "minimum": 35,
+    "minimum_term_f32": 0.04596233367919922,
+    "positive_term_f32": 0.10528564453125,
+    "proof": "62205 is odd, so no larger power-of-two exponent is exact; 62205 exceeds signed-int16, so even one exponent per value cannot encode this producer bit pattern",
+    "quant": 30,
+    "required_signed_bits": 17,
+    "scale": 40,
+    "signed_int16_positive_max": 32767,
+    "subblock": 0,
+    "tensor": "blk.0.attn_q.weight",
+    "tensor_data_offset": 404769632,
+    "value_f32": 0.05932331085205078,
+    "value_f32_bits_hex": "0x3d72fd00",
+    "whole_subblock_grid_exponent": -20,
+    "whole_subblock_maximum_magnitude": 62205
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "note": "no GPU candidate was built or executed; hardware names the unchanged production target"
+  },
+  "kind": "gfx1100_laguna_q2_xl_q5_fixed16_power2_plane_analytical_rejected",
+  "lineage": {
+    "audit_head": "4b671ea2b05ff21d67a086dac867bc6265f9b54b",
+    "compiler_processes": 0,
+    "gpu_candidate_executed": false,
+    "production": "H8B exact scoped activation-pack reuse",
+    "red_test_added": false,
+    "repository_candidate_implementation_added": false
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "size_bytes": 39684584480
+  },
+  "premise": {
+    "candidate_record": "256 signed-int16 mantissas plus one signed exponent per 32-value Q5_K subblock",
+    "candidate_to_current_ratio": 0.5078125,
+    "candidate_unpadded_bytes_per_block": 520,
+    "current_bytes_per_block": 1024,
+    "current_record": "256 exact F32 values per Q5_K block",
+    "modeled_byte_reduction_fraction": 0.4921875,
+    "name": "WPF-H8P lossless Q5 signed-int16 power-of-two transient plane",
+    "relationship_to_h5o": "distinct lower-ALU representation audit; H5O stored quant+F32 coefficients and was already rejected 0/8 on producer-inclusive both-clock timing",
+    "required_identity": "each current producer F32 bit pattern must equal int16 * 2**exponent exactly"
+  },
+  "probe": {
+    "blocks": 65536,
+    "group_results": [
+      {
+        "failed_fraction": 0.8991546630859375,
+        "failed_groups": 471416,
+        "fit_fraction": 0.1008453369140625,
+        "fit_groups": 52872,
+        "maximum_required_magnitude": 3337582,
+        "total_groups": 524288,
+        "values_per_exponent": 32
+      },
+      {
+        "failed_fraction": 0.8835983276367188,
+        "failed_groups": 926520,
+        "fit_fraction": 0.11640167236328125,
+        "fit_groups": 122056,
+        "maximum_required_magnitude": 3337582,
+        "total_groups": 1048576,
+        "values_per_exponent": 16
+      },
+      {
+        "failed_fraction": 0.8581442832946777,
+        "failed_groups": 1799659,
+        "fit_fraction": 0.14185571670532227,
+        "fit_groups": 297493,
+        "maximum_required_magnitude": 3337582,
+        "total_groups": 2097152,
+        "values_per_exponent": 8
+      },
+      {
+        "failed_fraction": 0.8074336051940918,
+        "failed_groups": 3386622,
+        "fit_fraction": 0.1925663948059082,
+        "fit_groups": 807682,
+        "maximum_required_magnitude": 3314006,
+        "total_groups": 4194304,
+        "values_per_exponent": 4
+      },
+      {
+        "failed_fraction": 0.6889147758483887,
+        "failed_groups": 5779036,
+        "fit_fraction": 0.31108522415161133,
+        "fit_groups": 2609572,
+        "maximum_required_magnitude": 3313280,
+        "total_groups": 8388608,
+        "values_per_exponent": 2
+      },
+      {
+        "failed_fraction": 0.4613170623779297,
+        "failed_groups": 7739616,
+        "fit_fraction": 0.5386829376220703,
+        "fit_groups": 9037600,
+        "maximum_required_magnitude": 2838543,
+        "total_groups": 16777216,
+        "values_per_exponent": 1
+      }
+    ],
+    "interpretation": "splitting the fixed exponent group cannot repair the format; 46.132% of individual values already fail signed-int16 times any power of two",
+    "tensor": "blk.0.attn_q.weight",
+    "tensor_data_offset": 404769632,
+    "tensor_shape": [
+      6144,
+      3072
+    ],
+    "values": 16777216
+  },
+  "q5_model_inventory": {
+    "blocks": 12177696,
+    "raw_bytes": 2143274496,
+    "tensors": 236,
+    "values": 3117490176
+  },
+  "schema": 1,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "hipengine/loading/gguf.py": "cbf01493a91a0c6011313c082b6770b9440c30eea492f41f401ba5c5f12b894e",
+    "hipengine/quant/gguf.py": "20e872b84963730aa6ecc85d335f3c51b1c53197231fa1c18783cd24a6c30f88"
+  },
+  "unchanged_production": {
+    "artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "dispatches": 2155,
+    "kernel_span_ms": 1166.621068,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_current": 1.566800991062275,
+    "matched_component_gaps_ms": {
+      "attention": 93.836642,
+      "gate_up": 3.597655,
+      "iq_down": 119.303442,
+      "q5": 172.11539,
+      "q6": 58.652223
+    },
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "tok_s": 440.8926238498552
+  }
+}

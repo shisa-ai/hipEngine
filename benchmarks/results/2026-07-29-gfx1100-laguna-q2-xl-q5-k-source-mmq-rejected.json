@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_gfx1100_wpfh1_q5_source_mmq_rejection",
+  "created_at": "2026-07-29",
+  "status": "rejected_complete_quality_gate",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "source": "llama.cpp HIP c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "quality_revision": "e228ecccc502ebe9050c2dd05915f5f4f12bcd1c",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "teacher_forced_steps_per_prompt": 32,
+    "teacher_forced_steps": 576,
+    "free_running_horizons": [16, 32],
+    "free_running_repetitions": 3,
+    "timed_order": "alternating exact_q5/source_q5_mmq per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
+    "candidate_scope": "strict K-major DS4 producer plus source Q5 MMQ for M>=16 and N divisible by 128; c=1/small-M and N48/N72 remain exact",
+    "four_k_or_longer_run_performed": false
+  },
+  "performance": {
+    "exact_prefill_tok_s": 151.2515437964327,
+    "source_prefill_tok_s": 203.8616084757826,
+    "prefill_speedup": 1.3478315880871736,
+    "ttft_speedup": 1.3424759141168041,
+    "h16_e2e_speedup": 1.2257558832753497,
+    "h32_e2e_speedup": 1.1632095724303655,
+    "decode_speedup_h16": 1.0011466004074263,
+    "decode_speedup_h32": 1.0006705667142977,
+    "category_prefill_speedup": {
+      "code": 1.3232665518094038,
+      "general_en": 1.3139555844300177,
+      "general_ja": 1.3765363938440138,
+      "mixed_ja_en": 1.3781886381857826
+    },
+    "claim_valid": false,
+    "reason": "The mandatory quality gate failed; speed is diagnostic only."
+  },
+  "complete_quality_gate": {
+    "pass": false,
+    "finite": true,
+    "max_kl_divergence": 4.162013999878684,
+    "kl_threshold": 0.05,
+    "top1_matches": 561,
+    "steps": 576,
+    "top1_agreement": 0.9739583333333334,
+    "top1_threshold": 0.9,
+    "failed_checks": ["max_kl_above_0.05"],
+    "categories": {
+      "code": {"steps": 192, "max_kl_divergence": 0.19279611522047027, "top1_matches": 190, "top1_agreement": 0.9895833333333334},
+      "general_en": {"steps": 128, "max_kl_divergence": 0.07062483532066624, "top1_matches": 123, "top1_agreement": 0.9609375},
+      "general_ja": {"steps": 128, "max_kl_divergence": 4.162013999878684, "top1_matches": 126, "top1_agreement": 0.984375},
+      "mixed_ja_en": {"steps": 128, "max_kl_divergence": 0.7552804925236287, "top1_matches": 122, "top1_agreement": 0.953125}
+    },
+    "poolside_oracle": {
+      "pass": true,
+      "kl_divergence": 0.00010402729323759475,
+      "candidate_top1": 94557,
+      "reference_top1": 94557
+    },
+    "free_running": {
+      "pairs": 54,
+      "complete_exact_pairs": 21,
+      "h16_exact_pairs": 33,
+      "h32_exact_pairs": 21,
+      "same_mode_repeat_deterministic": true
+    }
+  },
+  "deep_state_screen": {
+    "rows": 512,
+    "pass": true,
+    "kl_divergence": 0.00022410510944905962,
+    "top1_agreement": 1.0,
+    "candidate_repeat_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "780c76b895bd980443deeef907688bc48e79b68e4641122d3c55ee989f87e721",
+    "harness_sha256": "55bd74d73eb1cc67423b941effcbb6940f631eb9841877ac7a0c31a81373e21d"
+  },
+  "memory": {
+    "peak_tracked_bytes": 41861720828,
+    "peak_allocations": 1874,
+    "total_allocated_bytes": 147401437776,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "decision": {
+    "pass": false,
+    "reason": "The source-faithful Q5 route is fast and deterministic but maximum KL 4.162014 exceeds the mandatory 0.05 ceiling; high top-1 agreement cannot waive the KL gate.",
+    "runtime_default_changed": false,
+    "production": "retain exact role-qualified Q5/Q6 coltile and the clean 169.253/159.229/123.084 tok/s 512/1K/4K packet",
+    "cleanup": "Remove the default-off runtime owner, activation scopes, bounded DS4 session workspace, constructor switch, and package capability; retain only the separately registered qualified primitive and leaf evidence.",
+    "next_action": "Start WPF-H2 source-faithful full-M512 FlashAttention behind KVLiveSpans."
+  },
+  "source_artifacts": {
+    "raw_quality_sha256": "4f85b56dabae298d7aed24176e64c566f6218446d0361eec16170d3720f778cc",
+    "quality_harness_sha256": "dc41ba9e093eef44a55e710379c9b73c466969d24a39abc5c5985f610854ec2f",
+    "stdout_sha256": "13780d31c13f8924b808962300efbb2283d67843a304c89ed598f6e0612c462c",
+    "candidate_leaf_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-k-source-mmq-candidate.json"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh1_q5_source_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpfh1_q5_source_mmq --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpfh1-q5-source-quality.json"
+}

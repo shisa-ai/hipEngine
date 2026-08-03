@@ -14,6 +14,13 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaGGUFResidentSession,
     LagunaHiddenCaptureTargets,
 )
+from hipengine.runtime.moonshine import (
+    MoonshineCacheView,
+    MoonshineDecoderLibraries,
+    MoonshineResidentRuntime,
+    MoonshineTokenGraph,
+    NoAllocationError,
+)
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFMTPDecodeSession,
@@ -60,6 +67,11 @@ __all__ = [
     "LagunaEagerTokenResult",
     "LagunaGGUFResidentSession",
     "LagunaHiddenCaptureTargets",
+    "MoonshineCacheView",
+    "MoonshineDecoderLibraries",
+    "MoonshineResidentRuntime",
+    "MoonshineTokenGraph",
+    "NoAllocationError",
     "PrefillConfig",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFMTPDecodeSession",

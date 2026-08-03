@@ -1,0 +1,239 @@
+{
+  "commands": {
+    "attention_audit": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_h7z_source_fa_bf16_repair_audit.py",
+    "q5_audit": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_h7z_q5_bf16_sgemm_boundary_audit.py"
+  },
+  "created_at": "2026-08-03",
+  "decision": {
+    "next_action": "rerank outside candidate-distance Q5 repair and source-FlashAttention qrow/head repair; do not reopen H7Y source promotion or frozen no-salvage variants",
+    "production": "retain H6Z/H6W at published 437.189274 tok/s; fresh unprofiled audit boundary is 438.005062 tok/s",
+    "q5_boundary_repair": "rejected",
+    "runtime_default_changed": false,
+    "source_default_changed": false,
+    "source_flash_attention_group_repair": "rejected"
+  },
+  "evidence_sha256": {
+    "/tmp/laguna-h7z-q5-audit-compiler-monitor.json": "5a311d1cb4b9dd29ecfac9ba9bf9ccf4a5096cf2597a4741176b873b6e638ae7",
+    "/tmp/laguna-h7z-q5-bf16-sgemm-boundary-audit.json": "86865b535dab51722ea03a2410beff50300583a94dce05aa00e468edd4adfc88",
+    "/tmp/laguna-h7z-source-fa-audit-compiler-monitor.json": "81dfca74cb3cb5be3b3242d196994f72a3c8e3369cc7bbfa3146cfae1d5bc489",
+    "/tmp/laguna-h7z-source-fa-bf16-repair-audit.json": "accc40cfa9938843fc049035fb255b85c0a4ecca16413b07f10bf6cacdc3917e",
+    "/tmp/laguna-post-h7y-restored-clean-trace-summary.json": "bb0b36fb55107e4bbe5d5d629278a3777bf71c04072dc2ef4ad4e5dd485d3b08",
+    "/tmp/laguna-post-h7y-restored-clean-wall.json": "40b8f2cec15f1a440777ad16d992ed112449407be5cf38b3c0c0169d93ad02e7",
+    "/tmp/laguna_h7z_q5_bf16_sgemm_boundary_audit.py": "b14561a3bfb13345d5d6a216770240927103ace99e5bcba14590977b30da12d4",
+    "/tmp/laguna_h7z_source_fa_bf16_repair_audit.py": "5eab6c7664b085369c41e0e5b89e89fcddd9a9df25169a837fef95db41a50c84",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_flash_attention_prefill.hip": "1e45e1d7b5b9b9388ed44ebeff28895bfef4d3ead549a3db8a9f2dfe7184acf3",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_flash_attention_prefill.py": "f45a8871d9bc40af7b34ac4844e305b8a93ea561ee3d94ceb16d89e999d6c6ba",
+    "hipengine/kernels/hip_gfx1100/fused/laguna_attention.hip": "f12b47013cd290d731f66e72cf18fd8c10cd531f330b16912043032bedddab10",
+    "hipengine/runtime/laguna_gguf_runner.py": "61ff2f193a53eb0c48a55e3616e6c55b7cbc77705b58ac552559cf9b56814688",
+    "hipengine/runtime/laguna_kv.py": "97d168047053f0c57ef1e00b776ccc943f22febeee5f103f2ab7f2cf97ca337c"
+  },
+  "fresh_production_boundary": {
+    "components_ms": {
+      "attention": 115.38517900000004,
+      "gate_up": 401.18698200000006,
+      "iq_down": 273.37991800000003,
+      "q5": 237.023554,
+      "q6": 74.66734999999997,
+      "remaining": 53.100995000000005
+    },
+    "dispatches": 2286,
+    "kernel_span_ms": 1177.281357,
+    "kernel_sum_ms": 1154.743978,
+    "llamacpp_over_fresh": 1.577130173469997,
+    "matched_components_ms": {
+      "attention": 21.512447,
+      "gate_up": 397.804923,
+      "iq_down": 153.859911,
+      "q5": 58.31409,
+      "q6": 14.667598,
+      "remaining": 67.849439
+    },
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "published_retained_tok_s": 437.189274,
+    "unprofiled_median_tok_s": 438.0050623723239,
+    "unprofiled_samples_tok_s": [
+      437.3010269903424,
+      438.742007526112,
+      438.83157071415974,
+      438.0050623723239,
+      437.3671813281849
+    ]
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h7y_q5_attention_repair_audits_rejected",
+  "lineage": {
+    "attention_candidate": "retained H2 source-faithful F16-WMMA FlashAttention leaf",
+    "audit_head": "9547f34f03cec97948efb37974aff647192af814",
+    "production": "H7U/H7I/H7H/H7G/H6T/H6N/H6Z/H6A/H6W exact source; H7Y bounded owner remains default-off",
+    "q5_candidate": "retained H5A exact-value F32 SGEMM leaf on all source-qualified Q5 roles",
+    "repository_candidate_implementation_added": false
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "protocol": {
+    "anti_gaming": "no prompt/layer/token conditioned implementation or candidate runtime owner; one prompt is used only to disprove the proposed complete sparse certificate",
+    "attention_rows": 128,
+    "compiler_cache_required": true,
+    "context_length": 4096,
+    "matrix_rows": 512,
+    "new_compiler_processes": 0,
+    "rows": 512,
+    "timing_performed": false,
+    "token_stream": "fixed matched natural M512 IDs",
+    "trajectory": "each candidate observes exact production state and exact output/state remains the continuation"
+  },
+  "q5_bf16_sgemm_boundary_audit": {
+    "bf16_mismatch_fraction": 0.0009136793678372751,
+    "bf16_mismatches": 123111,
+    "bf16_outputs": 134742016,
+    "calls": {
+      "bf16": 141,
+      "f32": 82,
+      "total": 223
+    },
+    "checks": {
+      "calls_exact": true,
+      "compiler_cache_required": true,
+      "final_position_511": true,
+      "lifecycle_recovered": true,
+      "token_2930": true
+    },
+    "decision": "reject_candidate-distance boundary repair: complete observed BF16 recall selects every BF16 output, while F32 roles disagree almost everywhere",
+    "f32_mismatch_fraction": 0.9673746563587616,
+    "f32_mismatches": 197527937,
+    "f32_outputs": 204189696,
+    "first_complete_boundary_threshold": {
+      "complete_observed_recall": true,
+      "recall": 1.0,
+      "recalled_mismatches": 123111,
+      "risk_fraction": 1.0,
+      "risk_outputs": 134742016,
+      "threshold": 0.5
+    },
+    "max_mismatch_boundary_distance": 0.5
+  },
+  "schema": 1,
+  "source_flash_attention_post_gate_repair_audit": {
+    "checks": {
+      "all_exact_state_unchanged": true,
+      "compiler_cache_required": true,
+      "final_position_511": true,
+      "global_layers_exact": true,
+      "layers_exact": true,
+      "lifecycle_recovered": true,
+      "swa_layers_exact": true,
+      "token_2930": true
+    },
+    "decision": "reject qrow4/head sparse exact repair: an omniscient mask touches 99.908% of exact workgroups and is 18.087% slower than current exact attention before any real guard/queue/merge overhead",
+    "exact_qrow4_head_groups": 405504,
+    "first_complete_direct_boundary_threshold": {
+      "complete_direct_recall": true,
+      "complete_group_repair_recall": true,
+      "direct_recall": 1.0,
+      "direct_recalled_mismatches": 44171810,
+      "group_repair_recall": 1.0,
+      "group_repair_recalled_mismatches": 44171810,
+      "risk_output_fraction": 1.0,
+      "risk_outputs": 207618048,
+      "risk_qrow4_head_group_fraction": 1.0,
+      "risk_qrow4_head_groups": 405504,
+      "threshold": 0.5
+    },
+    "first_complete_group_boundary_threshold": {
+      "complete_direct_recall": false,
+      "complete_group_repair_recall": true,
+      "direct_recall": 0.07319892483464001,
+      "direct_recalled_mismatches": 3233329,
+      "group_repair_recall": 1.0,
+      "group_repair_recalled_mismatches": 44171810,
+      "risk_output_fraction": 0.031243439876671993,
+      "risk_outputs": 6486702,
+      "risk_qrow4_head_group_fraction": 1.0,
+      "risk_qrow4_head_groups": 405504,
+      "threshold": 0.015625
+    },
+    "ideal_cost_model": {
+      "assumptions": [
+        "candidate cost is the retained sustained H2 source whole-tile median",
+        "exact repair cost scales perfectly linearly with touched qrow4/head workgroups",
+        "repair has zero detection, queue, dispatch, readback, merge, and state-restoration overhead",
+        "an omniscient mismatch mask is available"
+      ],
+      "below_break_even": false,
+      "break_even_exact_cost_fraction": 0.818255587467905,
+      "current_exact_attention_ms": 115.38517900000004,
+      "omniscient_candidate_plus_repair_ms": 136.25536059027775,
+      "omniscient_mismatch_group_repair_ms": 115.28474901801212,
+      "omniscient_speedup_vs_current": 0.8468303815727682,
+      "roles": {
+        "global_h6n_starts_0_128": {
+          "calls": 24,
+          "groups": 36864,
+          "ideal_linear_repair_ms": 8.306585657118054,
+          "mismatch_touched_group_fraction": 0.9940321180555556,
+          "mismatch_touched_groups": 36644,
+          "ms": 8.356455999999998,
+          "per_call_ms": 0.34818566666666656
+        },
+        "global_h6z_starts_256_384": {
+          "calls": 24,
+          "groups": 36864,
+          "ideal_linear_repair_ms": 12.211483360894098,
+          "mismatch_touched_group_fraction": 0.9958767361111112,
+          "mismatch_touched_groups": 36712,
+          "ms": 12.262043,
+          "per_call_ms": 0.5109184583333334
+        },
+        "swa_h6a_starts_0_128": {
+          "calls": 72,
+          "groups": 165888,
+          "ideal_linear_repair_ms": 32.209455,
+          "mismatch_touched_group_fraction": 1.0,
+          "mismatch_touched_groups": 165888,
+          "ms": 32.209455,
+          "per_call_ms": 0.44735354166666663
+        },
+        "swa_h6w_starts_256_384": {
+          "calls": 72,
+          "groups": 165888,
+          "ideal_linear_repair_ms": 62.55722499999998,
+          "mismatch_touched_group_fraction": 1.0,
+          "mismatch_touched_groups": 165888,
+          "ms": 62.55722499999998,
+          "per_call_ms": 0.868850347222222
+        }
+      },
+      "source_candidate_attention_ms": 20.970611572265625
+    },
+    "layers": {
+      "global": 12,
+      "swa": 36,
+      "total": 48
+    },
+    "max_mismatch_boundary_distance": 0.5,
+    "mismatch_fraction": 0.2127551550817008,
+    "mismatch_touched_qrow4_head_group_fraction": 0.9990826231060606,
+    "mismatch_touched_qrow4_head_groups": 405132,
+    "mismatches": 44171810,
+    "mode_fractions": {
+      "global": {
+        "mismatch_fraction": 0.22659076584710014,
+        "mismatch_touched_group_fraction": 0.9949544270833334
+      },
+      "swa": {
+        "mismatch_fraction": 0.20968057491161204,
+        "mismatch_touched_group_fraction": 1.0
+      }
+    },
+    "outputs": 207618048
+  },
+  "status": "rejected_before_repository_implementation"
+}

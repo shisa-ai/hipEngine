@@ -36,6 +36,41 @@ The capture was validated in a fresh shared clone: both `git apply --check`
 steps passed, and the resulting base-to-working-tree binary diff matched the
 source checkout byte-for-byte.
 
+## Measurement-only Laguna patches
+
+Two later patches are independent of the MTP patch stack and apply to clean
+llama.cpp `c0bc8591e8815c63cb01dd3f051a8b0df02501c9`:
+
+- [`0003-laguna-content-only-raw-measurement.patch`](0003-laguna-content-only-raw-measurement.patch)
+  bypasses redundant post-generation PEG parsing only for content-only server
+  responses. It changes no timed model work or device code.
+- [`0004-laguna-matched-prefill-token-fixture.patch`](0004-laguna-matched-prefill-token-fixture.patch)
+  gates llama-bench context4096 admission and the exact 512-token Laguna stream
+  behind `LLAMA_BENCH_MATCHED_LAGUNA_M512`, then prints last-row top-1 after the
+  timed decode. It changes no backend graph, kernel selection, arithmetic, or
+  timed boundary.
+
+Apply the prefill fixture to a clean same-revision HIP or Vulkan tree:
+
+```bash
+git checkout c0bc8591e8815c63cb01dd3f051a8b0df02501c9
+git apply /path/to/hipEngine/benchmarks/llama.cpp/0004-laguna-matched-prefill-token-fixture.patch
+```
+
+The canonical direct-M512 command is:
+
+```bash
+LLAMA_BENCH_MATCHED_LAGUNA_M512=1 \
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+./llama-bench \
+  -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf \
+  -p 512 -n 0 -fa 1 -ctk bf16 -ctv bf16 -r 5 -o json
+```
+
+The token fixture, HIP/Vulkan rates, binary/source hashes, trace families, and
+cross-engine caveats are recorded in
+[`2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json`](../results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json).
+
 ## Instrumentation provided
 
 The committed patch adds MTP stage timings, ROCTX ranges, token/proposal

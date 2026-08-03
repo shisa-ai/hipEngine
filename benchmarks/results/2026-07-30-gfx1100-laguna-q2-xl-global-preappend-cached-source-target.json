@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_global_preappend_cached_source_target_selection",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "f55b5326f",
+    "post_h5r_residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json",
+    "post_h5r_residual_artifact_sha256": "78ab0d31b0304e76031e094a368d70b6340aa77c51f8b041dd4b60aadbbed363",
+    "h5t_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-one-wave-k-partitions-rejected.json",
+    "h5t_rejection_artifact_sha256": "13bf712b531fd7911431803aaa8d271dc4887f5d99fa69a37575c23d14f6ca88",
+    "h5r_candidate_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-candidate.json",
+    "h5r_candidate_artifact_sha256": "23554575312f5ac782221e62277155f65b2d96976ef05e89c8273808864dde10",
+    "h5r_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-swa-preappend-cached-exact-production.json",
+    "h5r_production_artifact_sha256": "51914aeeaf2544e80b4c1e4c81dd1291c6bea8b3d34ac6e27759c906361e1df9",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "source": "net-new in-tree compile-time cached-source specialization of the retained exact local256 global prefill body; no external device body copied",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "03bedcdcbbf8dc7e0271e6a1dbb7f032acb0352bfba4817ca946b309a130e8be",
+      "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "6ecddbab956c7780fd86ffcc40bd5891bad089118f19cd1d8681d83725833e0d",
+      "hipengine/kernels/hip_gfx1100/__init__.py": "2a7cf30ee1521b0450b05f907f72f5a44e39089f90bc4a350fbf6014233e1c57",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "f9968f710cc237680bfc97b9701297a4a62d765e946347380eb78ef50fd9c564",
+      "hipengine/runtime/laguna_kv.py": "87afd013ec0ea08454076032d16e6c5bf483bcad07147aad04c19003837ecea0",
+      "tests/test_laguna_h5r_cached_exact.py": "a9279a38cbc43783101e5768adff7be176002f1dd6458050c22a8fbd665eb7f6"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "production": {
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157,
+    "request_kernel_sum_ms": 1851.695368,
+    "request_kernel_span_ms": 1877.998081,
+    "request_dispatches": 1862,
+    "span_minus_sum_ms": 26.30271300000004,
+    "span_minus_sum_percent": 1.400571878433141,
+    "production_policy_changed": false
+  },
+  "attention_attribution": {
+    "current_attention_ms": 217.521301,
+    "matched_llamacpp_flash_attention_ms": 21.725298,
+    "complete_attention_gap_ms": 195.796003,
+    "complete_attention_ratio": 10.01235062460363,
+    "current_routes": {
+      "global_calls": 48,
+      "global_ms": 83.323523,
+      "global_percent_of_attention": 38.30591423319962,
+      "global_percent_of_request_kernel_sum": 4.499850485125802,
+      "h5r_swa_calls": 144,
+      "h5r_swa_ms": 134.19777800000003
+    },
+    "global_resources": "local256/VGPR40/SGPR128/static-LDS0/dynamic-LDS16928/scratch0",
+    "global_grid_per_call": "dim3(num_q_heads=48, rows=128) with local256",
+    "perfect_global_removal_kernel_sum_ceiling": 1.0471187794781929,
+    "matched_flash_attention_is_not_split_by_global_and_swa": true,
+    "trace_sha256": "b07a7fca715e6f8d03ce55bec591287a188e3ae749fcca211b09574157dc6bd3",
+    "analyzer_sha256": "9f8003599bad7c985c560463554a1447909454479b3f8507f2d03f5bba59067a",
+    "summary_sha256": "f474338cfb00d67ccf4532a73ebe9a44a154f503887700881f1488626b6235f7"
+  },
+  "retained_global_source_audit": {
+    "physical_symbol": "laguna_global_attention_prefill_bf16_kernel",
+    "ownership": "one local256 workgroup per query row and query head",
+    "score_pass": "materialized score per visible token; contiguous four-value dot per lane; wave32 shuffle; eight wave maxima",
+    "denominator_pass": "eight token-strided wave sums followed by serial wave-0..7 accumulation",
+    "pv_pass": "normalize each materialized weight before ordered value accumulation for each output dimension",
+    "current_source_logic": "for current-tile tokens, dynamically choose F32 current K/V, round each selected element to BF16 in the attention body, widen it back to F32, and otherwise read BF16 cache",
+    "cache_source_logic": "translate the logical global slot through base_offsets and read BF16 K/V cache",
+    "preappend_fact": "the existing writer already produces the same BF16 current K/V bytes and complete token-position/eviction metadata before a safely qualified candidate call",
+    "triangular_current_query_key_pairs_per_head": 8256,
+    "current_k_bf16_roundtrips_per_global_layer": 50724864,
+    "current_v_bf16_roundtrips_per_global_layer": 50724864,
+    "current_kv_bf16_roundtrips_per_global_layer": 101449728,
+    "current_kv_bf16_roundtrips_across_48_calls": 4869586944,
+    "count_scope": "static source-level current-tile BF16 roundtrip element instances for dense M128 across 48 query heads, 128 dimensions, 12 global layers, and starts 0/128/256/384",
+    "count_is_not_instruction_hbm_or_speed_claim": true
+  },
+  "existing_control_fixture": {
+    "source": "the H5R initial cached-exact screen; its retained global control body is byte-identical to current production",
+    "raw_json_sha256": "2ec75b6dac1e5be2a362b695cd875ac7eec3372e3db0a14e9ca6a181bf1a1d86",
+    "harness_sha256": "e2964d0b4c41cf41fcbefb073ade438f8f51df6284f825d9994a93d10013ce73",
+    "protocol": {
+      "rows": 128,
+      "capacity": 4096,
+      "starts": [0, 128, 256, 384],
+      "global_layer_multiplier_per_start": 12,
+      "warmups": 5,
+      "samples": 15,
+      "launches_per_sample": 5,
+      "counter_rotated_modes": true,
+      "counter_rotated_clocks": true,
+      "append_cost_included_equally": true
+    },
+    "control_attention_event_ms_by_start": [
+      0.4538256168365479,
+      1.5405613899230957,
+      2.650570106506348,
+      3.9053150177001954
+    ],
+    "control_attention_wall_ms_by_start": [
+      0.4665624350309372,
+      1.5878874342888594,
+      2.6751844212412834,
+      3.8836568128317595
+    ],
+    "weighted_48_call_attention_event_ms": 102.60326557159425,
+    "weighted_48_call_attention_wall_ms": 103.35949324071407,
+    "fixture_is_not_current_request_performance_claim": true
+  },
+  "target": {
+    "label": "WPF-H5U exact global preappend cached-source local256",
+    "variant": "global_context_rows_cached_exact_spans",
+    "symbol": "hipengine_laguna_global_attention_prefill_cached_exact_bf16_spans",
+    "strict_shape": "M128/C4096/H48/KV8/D128 at starts 0/128/256/384 after matching global BF16 preappend",
+    "implementation": "add a compile-time cached-source specialization of the retained local256 body; current production instantiates the unchanged mixed-source path and the candidate eliminates only current-vs-cache source/address selection plus in-body F32-to-BF16-to-F32 current K/V conversion",
+    "preserved": "one-row/local256 ownership, score scratch and query staging, contiguous-four dot order, wave32 shuffles, eight-wave maximum tree, materialized scores, eight-wave denominator tree, normalized-weight-before-PV order, F32 accumulation/division/store, causal visibility, complete KVLiveSpans, base-offset translation, and launch count",
+    "new_attention_launches": 0,
+    "new_allocation_bytes": 0,
+    "new_workspace_bytes": 0,
+    "new_sidecar_bytes": 0,
+    "production_policy_changed": false,
+    "runtime_owner_added": false,
+    "gfx1151_policy_changed": false,
+    "fallback": "retained attend-before-write global_context_rows_spans for every partial/ragged/unsafe/explicit/registration-miss/backend case; H5R SWA production remains unchanged"
+  },
+  "closed_predecessors": {
+    "h5r_global_qrow4": "reconstructed local256 arithmetic inside a local32 qrow4 body, reached VGPR248/LDS8192, and lost both clocks at all starts; H5U keeps one-row/local256 ownership and the original reduction body",
+    "whole_context_qrow2": "exact local256 qrow2 doubled score/shared state and regressed 76.99-111.81%; H5U still owns one query row",
+    "online_qrows": "online qrow2/qrow4/qrow6 change softmax association and are quality-rejected or belong to independently qualified gfx1151 routes; H5U preserves two-pass production association",
+    "hipblaslt_and_source_f16": "changed-association transfer paths fail the complete quality lane; H5U changes no arithmetic",
+    "h5n": "dense-first-fill specializes SWA qrow4 metadata and rejects runtime ownership at 4K; it neither changes global source selection nor the local256 body",
+    "single_page_decode": "the c=1 page-zero global specialization targets decode slot translation, not M128 prefill current/cache sourcing"
+  },
+  "distinctness": {
+    "from_h5r_global": "same production local256 block, not qrow4/local32 reconstruction",
+    "from_online_attention": "same materialized-score two-pass association and normalized-weight PV order",
+    "from_metadata_specialization": "retains complete token-position/eviction checks and base-offset translation",
+    "unmeasured_in_current_prefill_path": true
+  },
+  "admission": {
+    "red_first": "add one separate gfx1100-only wrapper/key and require strict shape/start preflight before HIP loading, matching preappend metadata, byte identity to production plus sampled CPU reference at all four starts and explicit prior eviction, unchanged H5R package policy, and gfx1151 absence",
+    "resources": "cached trace must physically name local256, dynamic LDS16928, scratch0, expected grid, no compiler, and no VGPR/LDS/scratch regression versus production VGPR40",
+    "performance": "matching append in both arms; five warmups, 15 counter-rotated samples, five launches/sample; HIP-event plus synchronized-wall medians; candidate must improve both clocks independently at starts 0/128/256/384 and in the 48-call weighted sum",
+    "runtime_gate_if_admitted": "only then add a bounded default-off global preappend role map; require complete natural-M512 state, exactly 48 append-before-candidate calls plus unchanged 144 H5R SWA calls, unchanged dispatch/allocation/workspace, and clean one-queue 512/1K/4K non-regression before source default",
+    "rejection": "remove every H5U surface if exactness, resource, or all-start both-clock performance fails"
+  },
+  "decision": {
+    "selected": true,
+    "production_changed": false,
+    "next_action": "Freeze RED and implement the separate exact H5U cached-source local256 global leaf; screen all four starts before any runtime owner."
+  }
+}

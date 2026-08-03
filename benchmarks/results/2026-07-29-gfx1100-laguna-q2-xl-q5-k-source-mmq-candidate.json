@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_source_mmq_candidate",
+  "date": "2026-07-29",
+  "status": "candidate_admitted_pending_complete_quality_and_runtime_integration",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "compiler": "TheRock HIP 7.2 / AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "lineage": {
+    "source": "llama.cpp HIP c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "base_revision": "42377ad3d",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_mmq_prefill.hip": "beac54fddbd7f4715429cb9fa387e4c3475628ac9895269ed1bd9d516e97d371",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_mmq_prefill.py": "12413e66fc2fcbccdb97b3f99a3ad3201399b851d1f531bbd15bee8c2fb6b2a4",
+      "tests/test_gguf_q5_k_mmq_wmma_prefill.py": "746312b32f5d1cbb1f99290419495a67943cea380ae309c8ad220ab3a7c47c9b"
+    }
+  },
+  "protocol": {
+    "rows": 512,
+    "unique_configurations": 8,
+    "production_invocations": 235,
+    "warmups": 5,
+    "repetitions": 15,
+    "launches_per_sample": 5,
+    "timing": "HIP event median",
+    "candidate_cost": "one strict DS4 producer plus one fast-math aligned Q5 consumer for N divisible by 128; retained exact coltile for N48/N72",
+    "workspace_max_bytes": 5308416,
+    "four_k_or_longer_run_performed": false
+  },
+  "aggregate_ms": {
+    "exact_coltile_weighted": 1562.9316827178002,
+    "source_policy_weighted": 97.11008850336074,
+    "speedup": 16.094431657980735,
+    "reduction_percent": 93.78608844793715,
+    "matched_llamacpp_q5_trace": 58.95079,
+    "remaining_ratio_to_llamacpp": 1.6473076697252191,
+    "matched_gap_closed_fraction": 0.968603281224142,
+    "modeled_complete_kernel_sum_ms": 1832.6048145033606,
+    "modeling_note": "The 97.110-ms event screen and 58.951-ms llama.cpp profiler sum are matched by shape and invocation inventory but are not one paired process; the complete kernel-sum substitution is attribution, not a wall or tok/s forecast."
+  },
+  "roles": [
+    {"output_dtype": "bf16", "shape_n_k": [1024, 3072], "calls": 92, "exact_ms": 1.5169761657714844, "candidate_ms": 0.19813719987869263, "speedup": 7.656190592681418, "source_eligible": true},
+    {"output_dtype": "bf16", "shape_n_k": [12288, 3072], "calls": 2, "exact_ms": 19.501463317871092, "candidate_ms": 1.1077075958251954, "speedup": 17.60524473369105, "source_eligible": true},
+    {"output_dtype": "bf16", "shape_n_k": [3072, 6144], "calls": 12, "exact_ms": 11.397183227539063, "candidate_ms": 0.5558738231658935, "speedup": 20.50318391074465, "source_eligible": true},
+    {"output_dtype": "bf16", "shape_n_k": [3072, 9216], "calls": 35, "exact_ms": 16.794175720214845, "candidate_ms": 0.8184220314025878, "speedup": 20.520190165743067, "source_eligible": true},
+    {"output_dtype": "f32", "shape_n_k": [48, 3072], "calls": 12, "exact_ms": 0.07917659878730773, "candidate_ms": 0.07906439900398254, "speedup": 1.00141909360899, "source_eligible": false},
+    {"output_dtype": "f32", "shape_n_k": [72, 3072], "calls": 35, "exact_ms": 0.1316409945487976, "candidate_ms": 0.131344997882843, "speedup": 1.0022535815655393, "source_eligible": false},
+    {"output_dtype": "f32", "shape_n_k": [6144, 3072], "calls": 12, "exact_ms": 10.461955261230468, "candidate_ms": 0.5730442047119141, "speedup": 18.256803184127822, "source_eligible": true},
+    {"output_dtype": "f32", "shape_n_k": [9216, 3072], "calls": 35, "exact_ms": 15.105816650390626, "candidate_ms": 0.8265261650085449, "speedup": 18.27627156877055, "source_eligible": true}
+  ],
+  "correctness": {
+    "all_finite": true,
+    "all_fixture_quality_passed": true,
+    "max_mean_kl": 6.793462583185567e-06,
+    "max_row_kl": 2.5805867128189325e-05,
+    "min_top1_agreement": 0.982421875,
+    "max_abs": 0.046875,
+    "producer_byte_exact_for_rows": [127, 128, 129],
+    "complete_18_prompt_576_step_gate": "pending"
+  },
+  "resources": {
+    "producer": {"local": [256, 1], "vgpr": 24, "sgpr_reported": 128, "scratch_bytes": 0},
+    "aligned_consumer": {"local": [32, 8], "vgpr": 192, "sgpr_reported": 128, "scratch_bytes": 0, "dynamic_lds_bytes": 57856},
+    "tail_consumer": {"local": [32, 8], "vgpr": 184, "sgpr_reported": 128, "scratch_bytes": 0, "dynamic_lds_bytes": 57856}
+  },
+  "lifecycle": {
+    "peak_tracked_bytes": 62128128,
+    "total_tracked_bytes": 250568192,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "returned_to_baseline": true
+  },
+  "source_artifacts": {
+    "raw_screen_sha256": "e8e3db578e42ac6d42fecdb2749a3511e3cd40c870224e2aec1dbd86026fc12c",
+    "screen_harness_sha256": "f318b5edfbb6434f909bb87e3bd6224ccde61ab9f2094202e7bf3849221e5b30",
+    "rocprof_trace_sha256": "3ba661cbc2ac9f88e54630253d22e7d4ae373a0a0eb9543143d6295fdbc44fbe",
+    "aligned_hsaco_sha256": "a1e40a5c9fada82e099fbd5839c73013b945263588636b01abfe7b5dc3ebcd0f"
+  },
+  "promotion_blockers": [
+    "runtime ownership and one-producer-per-distinct-activation reuse are not integrated",
+    "complete 18-prompt/576-step train+heldout and category-heldout quality gates are pending",
+    "clean counter-ordered 512/1K timing, complete state, and all-family reprofile are pending"
+  ]
+}

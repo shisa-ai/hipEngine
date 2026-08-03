@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 
+import scripts.laguna_matrix_chunk_bench as matrix_bench
 from scripts.laguna_matrix_chunk_bench import (
     LENGTHS,
     MATRIX_ROWS,
@@ -12,6 +14,8 @@ from scripts.laguna_matrix_chunk_bench import (
     _decision,
     _mode_order,
     _relative_quality,
+    _routing_occupancy_summary,
+    _validate_protocol,
 )
 
 
@@ -85,6 +89,17 @@ def test_laguna_matrix_chunk_gate_rejects_regressive_or_inexact_policy() -> None
     assert "matrix_policy_outputs_or_state_not_exact" in failed["failed_checks"]
     assert "tracked_lifecycle_not_recovered" in failed["failed_checks"]
 
+    failed_probes = _decision(
+        _aggregate(_rows()),
+        _correctness(_rows()),
+        recovered=True,
+        full_state_pass=False,
+        routing_prefix_pass=False,
+    )
+    assert failed_probes["pass"] is False
+    assert "all_hidden_boundaries_not_exact" in failed_probes["failed_checks"]
+    assert "shared_prefix_routing_not_exact" in failed_probes["failed_checks"]
+
 
 def test_laguna_wide_matrix_quality_gates_full_logits() -> None:
     matrix_rows = (512, 1024, 2048)
@@ -127,3 +142,93 @@ def test_laguna_wide_matrix_quality_gates_full_logits() -> None:
     assert quality["by_matrix_rows"]["1024"]["top1_agreement"] == 1.0
     assert quality["by_matrix_rows"]["2048"]["pass"] is False
     assert quality["by_matrix_rows"]["2048"]["top1_agreement"] == 0.5
+
+
+def test_laguna_matrix_chunk_protocol_accepts_short_only_gate() -> None:
+    _validate_protocol(
+        lengths=(512, 1024),
+        matrix_rows=MATRIX_ROWS,
+        attention_rows=128,
+        context_length=1024,
+        repetitions=3,
+        warmup_rows=128,
+    )
+
+    with pytest.raises(ValueError, match="ascending"):
+        _validate_protocol(
+            lengths=(512, 1024),
+            matrix_rows=(128, 512, 256),
+            attention_rows=128,
+            context_length=1024,
+            repetitions=3,
+            warmup_rows=128,
+        )
+    with pytest.raises(ValueError, match="attention rows 128"):
+        _validate_protocol(
+            lengths=(512, 1024),
+            matrix_rows=MATRIX_ROWS,
+            attention_rows=256,
+            context_length=1024,
+            repetitions=3,
+            warmup_rows=128,
+        )
+
+
+def test_laguna_matrix_chunk_session_fixes_global_and_swa_attention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+
+    selected_modes: list[tuple[str, str]] = []
+
+    def fake_session(*args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            set_selected_gate_up_mode=lambda mode: selected_modes.append(("gate", mode)),
+            set_selected_down_mode=lambda mode: selected_modes.append(("down", mode)),
+        )
+
+    monkeypatch.setattr(matrix_bench, "LagunaGGUFResidentSession", fake_session)
+    monkeypatch.setattr(matrix_bench, "_compiler_version", lambda _path: "hipcc")
+    owner = SimpleNamespace(weights=object(), runtime=object())
+    args = SimpleNamespace(
+        context_length=1024,
+        backend="hip_gfx1100",
+        compiler_version_file=None,
+        require_cached_build=True,
+        attention_rows=128,
+        grouped_exact_iq=True,
+    )
+
+    matrix_bench._session(owner, args, matrix_rows=512)
+
+    assert captured["prefill_chunk_size"] == 512
+    assert captured["prefill_attention_chunk_size"] == 128
+    assert captured["prefill_global_attention_chunk_size"] == 128
+    assert selected_modes == [
+        ("gate", "grouped_exact"),
+        ("down", "grouped_exact"),
+    ]
+
+
+def test_laguna_matrix_chunk_reports_routing_occupancy_and_tails() -> None:
+    summary = _routing_occupancy_summary(
+        {
+            1: (0, 0, 1, 2, 0, 1, 2, 2),
+            2: (3, 3, 3, 3, 0, 1, 2, 3),
+        },
+        rows=4,
+        top_k=2,
+        expert_count=4,
+    )
+
+    assert summary["layers"]["1"]["active_experts"] == 3
+    assert summary["layers"]["1"]["mean_routes_per_all_expert"] == 2.0
+    assert summary["layers"]["1"]["mean_routes_per_active_expert"] == pytest.approx(
+        8 / 3
+    )
+    assert summary["layers"]["1"]["full_route_slots_by_rowbatch"]["2"] == 6
+    assert summary["layers"]["1"]["tail_route_slots_by_rowbatch"]["2"] == 2
+    assert summary["layers"]["1"]["experts_at_least_rows"]["4"] == 0
+    assert summary["aggregate"]["layer_count"] == 2
+    assert summary["aggregate"]["route_slots_per_layer"] == 8

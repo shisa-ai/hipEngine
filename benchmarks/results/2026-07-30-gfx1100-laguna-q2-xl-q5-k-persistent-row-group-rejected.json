@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_persistent_row_group_rejection",
+  "date": "2026-07-30",
+  "status": "rejected_all_candidate_surfaces_removed",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "d898e4728",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json",
+    "target_artifact_sha256": "78ab0d31b0304e76031e094a368d70b6340aa77c51f8b041dd4b60aadbbed363",
+    "source": "net-new in-tree exact persistent row-group traversal of H5L; no external device body copied",
+    "candidate_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "0362c1fd9ad0a09284dd1a9ab7e292e7011b651220df9383ca23bd6b8f227268",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "8dd66eaf0f42852cc4092c2b3043d960dc1464cc1ade324c8a8161ce4d2acdf3",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "50abd40b72062d479a617f02e3b519ed6c1a565c2c7ec3185dd9d1e91f0cbf2d",
+      "tests/test_laguna_h5s_q5_persistent_row_groups.py": "5e892d6c26d0c310dae848ab1342ef1be27c9dd6498d21028651375a4cd4f342"
+    },
+    "candidate_patch_sha256": "543669a8a94b6ff54fc997568fe912496ba610bd068c2681a59b17a364049c97",
+    "restored_source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "145f124cd8ce367ebf32741f0dd4c42f24d688fbeda525dd8691acd52790feb1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "e2588d7f8b3aacc9b4f6945bc26a857c7aae7414db716d1efc15076a56767baa",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "f9968f710cc237680bfc97b9701297a4a62d765e946347380eb78ef50fd9c564"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "candidate": {
+    "partitions": [1, 2, 4, 8, 16, 32],
+    "geometry_dtype_roles": 6,
+    "primitive_symbols": 36,
+    "composite_registry_keys": 36,
+    "mapping": "one output-tile/partition workgroup loops disjoint H5L row groups",
+    "preserved": "exact F32 producer and plane, H5L geometry, per-thread K ownership, scalar fmaf sequence, wave tree, serial wave-0..3 sum, BF16/F32 store, launch count, workspace, and fallbacks",
+    "additional_launches": 0,
+    "additional_allocations": 0,
+    "additional_workspace_bytes": 0,
+    "persistent_sidecar_bytes": 0,
+    "production_policy_changed": false,
+    "gfx1151_policy_changed": false
+  },
+  "correctness": {
+    "red_failures_before_implementation": 5,
+    "focused_tests_passed": 5,
+    "retained_q5_h5p_gfx1151_tests_passed": 43,
+    "rows_tested": [17, 33, 512],
+    "all_partition_role_outputs_byte_exact": true,
+    "actual_weight_all_partition_role_outputs_byte_exact": true,
+    "preflight_before_hip_loading": true,
+    "expected_registry_scope": true,
+    "production_policy_immutable": true,
+    "tracked_allocations_recovered": true,
+    "quality_gate": true
+  },
+  "cached_resources": {
+    "calls": 36,
+    "all_expected_symbols": true,
+    "all_expected_grids": true,
+    "all_local_size": 128,
+    "all_sgpr": 128,
+    "all_scratch_bytes": 0,
+    "classes": {
+      "bf16_8x4": "VGPR80/LDS512",
+      "bf16_8x12_and_12x8": "VGPR208/LDS1536",
+      "bf16_f32_16x5_and_f32_8x10": "VGPR176/LDS1536"
+    },
+    "delta_from_h5l": "+8 VGPR at unchanged LDS/scratch/workgroup class",
+    "compiler_spawned_under_profiler": false,
+    "trace_sha256": "3aea158351c88e4be294b0b59cd83f00dd253350e0920530526098ca75aaa91d",
+    "summary_sha256": "e4c6bfede3a25ca7b68b782f2ef62ed2b71c6667466ad70464509ce64ec8e7a8",
+    "analyzer_sha256": "4259b4da8d666361b3afe659280c443db642bdb8c64ffa439f54f3002649f7cd",
+    "smoke_sha256": "e10057bb7d57ce8ef8208ccaa8f8789dfd92f6fca61aec34db87279943cc9a99",
+    "stdout_sha256": "f7eadc23f5ce7b81e8b8dd22dd1a1a3d6c35a387194e85d1da9a7f4d99b45933",
+    "stderr_sha256": "fec22ad42a7b74a578dd03215f9fb64b96c79fdaf7247d4cd2191277098d7b9a"
+  },
+  "performance": {
+    "protocol": "actual model weights; rows512; six H5L production shapes/188 calls; all modes include the unchanged producer; deterministic BF16 inputs; five warmups; 15 counter-rotated repetitions; five launches/sample; HIP-event and synchronized-wall medians",
+    "control": {
+      "event_weighted_ms": 459.0184970855713,
+      "wall_weighted_ms": 473.0343951843679
+    },
+    "partitions": {
+      "p1": {
+        "event_weighted_ms": 1420.6776596069335,
+        "wall_weighted_ms": 1373.3826719690114,
+        "event_speedup": 0.3230982721390653,
+        "wall_speedup": 0.3444301467020703,
+        "event_regression_percent": 209.50335740872933,
+        "wall_regression_percent": 190.33463231225025
+      },
+      "p2": {
+        "event_weighted_ms": 983.8270160675049,
+        "wall_weighted_ms": 981.441704230383,
+        "event_speedup": 0.46656423292819593,
+        "wall_speedup": 0.48197910598807003,
+        "event_regression_percent": 114.33276051272014,
+        "wall_regression_percent": 107.47787353768649
+      },
+      "p4": {
+        "event_weighted_ms": 775.9236364364624,
+        "wall_weighted_ms": 781.0221768915653,
+        "event_speedup": 0.5915768969143379,
+        "wall_speedup": 0.6056606447041292,
+        "event_regression_percent": 69.03973181102828,
+        "wall_regression_percent": 65.10896138686859
+      },
+      "p8": {
+        "event_weighted_ms": 683.5006202697754,
+        "wall_weighted_ms": 698.898594873026,
+        "event_speedup": 0.6715699788310335,
+        "wall_speedup": 0.6768283677409703,
+        "event_regression_percent": 48.904809851781536,
+        "wall_regression_percent": 47.74794433301752
+      },
+      "p16": {
+        "event_weighted_ms": 600.4530979156493,
+        "wall_weighted_ms": 602.7381751686335,
+        "event_speedup": 0.7644535412989967,
+        "wall_speedup": 0.7848090840637775,
+        "event_regression_percent": 30.812396826725585,
+        "wall_regression_percent": 27.41952409902726
+      },
+      "p32": {
+        "event_weighted_ms": 565.8637998580932,
+        "wall_weighted_ms": 566.289594117552,
+        "event_speedup": 0.8111819437834397,
+        "wall_speedup": 0.8353224217751987,
+        "event_regression_percent": 23.276905713148977,
+        "wall_regression_percent": 19.714253314885788
+      }
+    },
+    "per_role_best_weaker_clock": {
+      "bf16_k3072_n1024": {"partition": 32, "event_speedup": 0.6268720053837229, "wall_speedup": 0.6510526159807736},
+      "bf16_k3072_n12288": {"partition": 16, "event_speedup": 0.9355873268807989, "wall_speedup": 0.9303498897780025},
+      "bf16_k6144_n3072": {"partition": 32, "event_speedup": 0.753099050211803, "wall_speedup": 0.7726633435953305},
+      "bf16_k9216_n3072": {"partition": 32, "event_speedup": 0.8773869312612864, "wall_speedup": 0.8890229042315841},
+      "f32_k3072_n6144": {"partition": 32, "event_speedup": 0.8160260182313153, "wall_speedup": 0.8320196261733053},
+      "f32_k3072_n9216": {"partition": 16, "event_speedup": 0.8032130201046617, "wall_speedup": 0.8329711151933}
+    },
+    "both_clock_positive_roles": 0,
+    "roles_screened": 6,
+    "all_outputs_byte_exact": true,
+    "lifecycle_recovered": true,
+    "finding": "reducing workgroup prologues does not reduce useful dot work; long persistent blocks, end-of-group barriers, and reduced independent workgroup scheduling overwhelm locality gains on every role"
+  },
+  "production": {
+    "unchanged": true,
+    "q5_owner": "H5L exact F32-plane weight-major policy with H5G small-role fallbacks",
+    "attention_owner": "H5R exact cached-only SWA preappend",
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157
+  },
+  "source_artifacts": {
+    "role_screen_json_sha256": "14893c9596519ec7693ba2f50e20fd1e2a3f779797a5f6db7a2852aa03e24c1b",
+    "role_screen_harness_sha256": "8c28eec281275fbb4dbe8c36cc396c84460628b238a91068928c16170c9eff5c",
+    "role_screen_stdout_sha256": "e14ae5b6d5037759e8e2a32e8427575c61bbc357bacb6ab05642e7f6f2152d0f",
+    "role_screen_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -v tests/test_laguna_h5s_q5_persistent_row_groups.py tests/test_laguna_h5p_q5_weight_major_occupancy.py tests/test_gguf_q5_k_f32_rocblas_prefill.py tests/test_gfx1151_backend.py",
+    "cached_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh5s-persistent-resource-rocprof-final -- uv run python -u /tmp/laguna_wpfh5s_persistent_resource_smoke.py",
+    "actual_roles": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh5s_persistent_actual_role_screen.py"
+  },
+  "decision": {
+    "standalone_leaf_admitted": false,
+    "runtime_qualification_warranted": false,
+    "runtime_owner_added": false,
+    "production_default_changed": false,
+    "candidate_surfaces_removed": true,
+    "rejection_reason": "No actual role wins both clocks; even P32 regresses producer-inclusive weighted event/wall by 23.277%/19.714%.",
+    "next_action": "Keep H5R/H5L production and select a distinct exact target from the unchanged post-H5R residual; do not retry persistent row-group ownership or infer speed from prologue counts."
+  }
+}

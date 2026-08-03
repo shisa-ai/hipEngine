@@ -1,5 +1,12 @@
 """gfx1100 attention and KV-cache kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.attention.moonshine_attention import (
+    build_moonshine_attention,
+    moonshine_cross_attention_fp16,
+    moonshine_self_attention_fp16,
+    plan_moonshine_attention_build,
+    register_moonshine_attention_kernels,
+)
 from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     build_laguna_kv_attention,
     laguna_global_attention_decode_bf16_spans,
@@ -104,6 +111,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 
 __all__ = [
     "build_laguna_kv_attention",
+    "build_moonshine_attention",
     "build_qwen35_paged_attn_decode",
     "aotriton_attn_fwd_compact_varlen",
     "aotriton_attn_fwd_compact_varlen_gqa_per_q_head",
@@ -129,8 +137,11 @@ __all__ = [
     "laguna_swa_f16_projection_head_kv_bf16_spans",
     "laguna_swa_head_rmsnorm_rope_write_kv_f32_spans",
     "laguna_swa_write_kv_f32_spans",
+    "moonshine_cross_attention_fp16",
+    "moonshine_self_attention_fp16",
     "plan_aotriton_wrap_build",
     "plan_laguna_kv_attention_build",
+    "plan_moonshine_attention_build",
     "plan_qwen35_paged_attn_decode_build",
     "plan_qwen35_paged_kv_write_build",
     "qwen35_full_attn_decode_context_bf16",
@@ -194,6 +205,7 @@ __all__ = [
     "qwen35_write_paged_kv_mixed_value_fp16_spans",
     "register_aotriton_wrap_kernels",
     "register_laguna_kv_attention_kernels",
+    "register_moonshine_attention_kernels",
     "register_qwen35_paged_attn_decode_kernels",
     "register_qwen35_paged_kv_write_kernels",
 ]

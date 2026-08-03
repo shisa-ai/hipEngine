@@ -1,0 +1,316 @@
+{
+  "authority_files": {
+    "README.md": "9b4f2cbe44ef6e371fd8d84b5dfd3a01073a1ecc890681c373c1adb601086374",
+    "WORKLOG.md": "ccd53b08cec7b035874d5ce2b7065749bb2746e1f0d49e7fd521b95ff2a8857b",
+    "benchmarks/CHANGELOG.md": "19242d8f5178da0f5ca662f12d6fe43b84bc1b654075474e8579d68c8368baab",
+    "benchmarks/README.md": "3437a1ba70db735056db7919e4259e22442861afe6bd395150cd06708141a7c8",
+    "docs/KERNELS.md": "072d06d0c60308d4eb5231045cd76f591958765e851cc450002b9c3f28d6de81",
+    "docs/LAGUNA-prefill.md": "6c302f0960587e7c52e567586994572fcd27d64ab3f2491a62ab6d70aeac74e7",
+    "docs/PLAN.md": "1034412bba04e4cf0a7a1fe7d7608c59eb3bde31264601ccb4a1a8bd7f79260d"
+  },
+  "builder_sha256": "791ae8172c6f394b4fee331f1cb9acaec1d2d3933ed6225121841774927d4e4c",
+  "closed_controls": {
+    "attention": "H7A scaled-score storage is exactness-closed; wider-qrow, cross-head, online/library changed-association, LDS score replay, and DPP-peer routes remain closed.",
+    "iq_down": "H7E residual-D4 source-MMQ failed complete quality; H6X/H6Y/H7B exact load/publication paths failed frozen physical gates.",
+    "q5": "H7J both-role full-grid bounds failed its frozen all-role screen; H7F forbids rowbatch5 subset salvage; source-MMQ/SGEMM, plane/geometry/persistence/prefetch/reduction routes remain closed.",
+    "q6": "H7I already removes exact-M512 inner row predicates; H7F closes ordered-Q6 rowbatch5 salvage and H6H changed arithmetic failed quality."
+  },
+  "commands": {
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "next_red": "HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python -m pytest -q tests/test_laguna_h7k_swa_weight_publication.py",
+    "target_analysis": "python3 /tmp/analyze_laguna_post_h7j_h7k_swa_weight_publication_target.py"
+  },
+  "created_at": "2026-08-02T12:05:00+09:00",
+  "decision": {
+    "candidate_implemented": false,
+    "correctness_claim": "none_before_red_and_candidate_implementation",
+    "h7k_target_selected": true,
+    "next_action": "Freeze the inseparable two-start H7K RED before implementation, then build one repository object and reject before timing on any correctness or physical miss.",
+    "performance_claim": "target_selection_only",
+    "production_changed": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "implementation_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "9cf784e41d9f77983373f60c543342cfb7659a736ce84cdc762bb2bc93ab6abf",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "3a64be6aaefba6a8b0c074da048cf66d1cd2cda0aea476f02bf6754926671244",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "887bba90443ef009056c87976deed6e057af3024136908cdc441a8fa24e8b5da",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe",
+    "hipengine/runtime/laguna_kv.py": "a9d046bd793aca0a3085d4040a14992d80f2b7261ee16f2721ce3ad2ed8bc31f",
+    "tests/test_laguna_h6w_swa_global_score_replay.py": "850cbf6c7ea4981b525c774db2886ce484c59200bd2f7a7cd0a6106cd485f57b",
+    "tests/test_laguna_h6z_global_score_weight_replay.py": "3e95f7e4d14fc43a0d91bfba1340138594c35d4236e07c9695cec0e47d226d7a"
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h7j_matched_swa_weight_publication_target",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural C4096/direct-M512, matrix512/attention128, selector-unset H7H Q5 and H7I raw-Q6 source"
+  },
+  "prior_artifact_sha256": {
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json": "26008c491b7aafde9636a4c8d57bd1f0dcadc7ad2fa944539fcd632e3c6de5cf",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json": "8bd49a3457d98b76711ef320ca183256e3544d5f42a59282f909b9dd22041263",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json": "34ed7fae280130a440baf0a12dc4a45ce34965868515ee64d8dc0d8869337e9b",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json": "b78267105e2a421e926cc2353365d423f28803553c7523cd419b982da555173a",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json": "afff2e5909b2fde7eddd6a0447cdba22ccbad8b739cc593e56620c8b396d708e"
+  },
+  "production": {
+    "dispatches": 2192,
+    "family_gap_ms": {
+      "attention": 93.80462899999995,
+      "gate_up": 0.7850160000000983,
+      "iq_down": 118.44889399999988,
+      "q5": 176.88518099999993,
+      "q6": 59.74162400000009,
+      "remaining": 8.567487000000071
+    },
+    "family_ms": {
+      "attention": 115.31707599999996,
+      "gate_up": 398.5899390000001,
+      "iq_down": 272.3088049999999,
+      "q5": 235.19927099999992,
+      "q6": 74.40922200000009,
+      "remaining": 76.41692600000007
+    },
+    "h6w": {
+      "calls": 72,
+      "median_ms": {
+        "start_256_ms": 26.467881,
+        "start_384_ms": 36.163843,
+        "total_ms": 62.627239
+      },
+      "physical": {
+        "code_bytes": 4984,
+        "instruction_slots": 871,
+        "instructions": {
+          "ds_bpermute_b32": 32,
+          "ds_load_b32": 0,
+          "ds_store_b32": 0,
+          "global_load_b128": 1,
+          "global_load_b32": 16,
+          "global_load_u16": 8,
+          "global_store_b128": 1,
+          "global_store_b32": 16,
+          "s_barrier": 0,
+          "v_exp_f32_e32": 4,
+          "v_fma_f32": 56,
+          "v_fmac_f32_e32": 41,
+          "v_mov_b32_dpp": 0,
+          "v_permlanex16_b32": 0
+        },
+        "metadata": {
+          "lds_bytes": 0,
+          "max_workgroup_size": 32,
+          "private_bytes": 0,
+          "sgpr": 40,
+          "sgpr_spills": 0,
+          "uses_dynamic_stack": false,
+          "vgpr": 54,
+          "vgpr_spills": 0,
+          "wavefront_size": 32
+        },
+        "name": "_ZN12_GLOBAL__N_186laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_kernelEPKfPKtS3_PfP15HIP_vector_typeIfLj4EEPKiPKlSB_PKhSB_lllllllf"
+      },
+      "request_rows": [
+        {
+          "calls": 72,
+          "request_index": 1,
+          "start_256_calls": 36,
+          "start_256_ms": 26.433396,
+          "start_384_calls": 36,
+          "start_384_ms": 36.10624,
+          "total_ms": 62.539636
+        },
+        {
+          "calls": 72,
+          "request_index": 2,
+          "start_256_calls": 36,
+          "start_256_ms": 26.463396,
+          "start_384_calls": 36,
+          "start_384_ms": 36.163843,
+          "total_ms": 62.627239
+        },
+        {
+          "calls": 72,
+          "request_index": 3,
+          "start_256_calls": 36,
+          "start_256_ms": 26.559676,
+          "start_384_calls": 36,
+          "start_384_ms": 36.223681,
+          "total_ms": 62.783356999999995
+        },
+        {
+          "calls": 72,
+          "request_index": 4,
+          "start_256_calls": 36,
+          "start_256_ms": 26.467881,
+          "start_384_calls": 36,
+          "start_384_ms": 36.155363,
+          "total_ms": 62.623244
+        },
+        {
+          "calls": 72,
+          "request_index": 5,
+          "start_256_calls": 36,
+          "start_256_ms": 26.50188,
+          "start_384_calls": 36,
+          "start_384_ms": 36.212447,
+          "total_ms": 62.714327
+        }
+      ],
+      "resources": {
+        "grid_x": 2304,
+        "grid_y": 32,
+        "kernel": "(anonymous namespace)::laguna_swa_attention_prefill_qrow4_dense_initial_global_score_replay_exact_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, HIP_vector_type<float, 4u>*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, long, float)",
+        "lds_bytes": 0,
+        "local_size": 32,
+        "scratch_bytes": 0,
+        "sgpr": 128,
+        "vgpr": 56
+      },
+      "share_of_attention_percent": 54.30872961086875,
+      "start_calls": {
+        "256": 36,
+        "384": 36
+      }
+    },
+    "kernel_sum_ms": 1172.2412389999988,
+    "llamacpp_over_hipengine": 1.6016107573073315,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "matched_llamacpp_kernel_sum_ms": 714.008408,
+    "revision": "407f5c972",
+    "wall_tok_s": 431.310165
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-global-score-weight-replay-production.json": "26008c491b7aafde9636a4c8d57bd1f0dcadc7ad2fa944539fcd632e3c6de5cf",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-global-score-replay-production.json": "8bd49a3457d98b76711ef320ca183256e3544d5f42a59282f909b9dd22041263",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json": "34ed7fae280130a440baf0a12dc4a45ce34965868515ee64d8dc0d8869337e9b",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-q5-full-grid-bounds-rejected.json": "b78267105e2a421e926cc2353365d423f28803553c7523cd419b982da555173a",
+    "/home/lhl/hipEngine-main/benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-raw-q6-full-group-compute-production.json": "afff2e5909b2fde7eddd6a0447cdba22ccbad8b739cc593e56620c8b396d708e",
+    "/tmp/analyze_laguna_post_h7j_h7k_swa_weight_publication_target.py": "969010d724b637de8d0b304a9901989285485446011d56e1daecea11989ae288",
+    "/tmp/laguna-h6w-physical-summary.json": "3eb04a40032ee5381b3c684a01ebdac55b057542c3c0d271ca0fbe6a67510f19",
+    "/tmp/laguna-h6z-physical-summary.json": "517339f3788ec30ca5a1e685f2337c02760d8b6f3fec626df8445667093f1b1b",
+    "/tmp/laguna-h7k-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7k-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-post-h7i-clean-matched-c4096-m512-trace-summary.json": "2fd0ed027face00bfbe43ebe84262a97fd833e5fd9813c436967f5c6285a3748",
+    "/tmp/laguna-post-h7i-clean-rocprof-0737-1/h7i-clean_kernel_trace.csv": "0d78ad2724f55cbc873fa558bc4b5190c68c2c85e131ffb6e7329b83f6ad737b",
+    "/tmp/laguna-post-h7j-h7k-swa-weight-publication-target-analysis.json": "4e56377c7ff5b1afe4ad078cb74f83a059e262b2f6118171ab80178a08b3596d",
+    "/tmp/laguna-post-h7j-h7k-target-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7j-h7k-target-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h7j-h7k-target-analysis.stdout": "4e56377c7ff5b1afe4ad078cb74f83a059e262b2f6118171ab80178a08b3596d"
+  },
+  "repo": {
+    "h6w_body_sha256": "d025a3c73c499c75b2dc0444ae4fdd479cb72729eaad2b1e1aa6e38491748aee",
+    "h6z_body_sha256": "3a21a68d13eefb1e865d193869e7fe3b4e86f559349620b091eec14594a5f66b",
+    "h7k_names_absent": [
+      "WPF-H7K",
+      "swa_context_rows_qrow4_dense_initial_global_score_weight_publication_exact_spans",
+      "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_weight_publication_exact_bf16_kernel",
+      "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_weight_publication_exact_bf16_spans",
+      "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_global_score_weight_publication_exact_bf16_spans"
+    ],
+    "h7k_repository_surface_before_red": false,
+    "measurement_revision": "e71685db9881d876e183706ed11f14371436e5df",
+    "production_code_changed": false,
+    "production_revision": "407f5c972"
+  },
+  "schema": 1,
+  "status": "accepted_matched_production_rerank_and_exact_h7k_target",
+  "target": {
+    "admission": {
+      "correctness": "complete H6W output bytes and sampled CPU at starts256/384; exact complete finite/nonnegative causal weight-record coverage; all five KVLiveSpans fields immutable; poison overwrite; lifecycle",
+      "no_salvage": "starts256/384 are inseparable; no start/layer/prompt subset, tuning, recompilation, or favorable rerun after any miss",
+      "physical": "first repository object must meet every frozen opcode/resource bound before timing",
+      "preflight": "exact M128/C512/window512/H72/KV8/D128, starts256/384, aligned 18,874,368-byte existing plane; starts0/128 and every miss remain H6W/H6A fallback",
+      "red_first": true,
+      "reject": "remove every H7K source/test/key/export/gfx1151-exclusion surface on any correctness/physical/trace/per-start/aggregate miss",
+      "runtime_and_source_separate": true,
+      "timing": "one immutable 5-warmup/15-counter-rotated/5-launch screen; start256, start384, and weighted 72-call aggregate each win HIP-event and synchronized-wall clocks",
+      "trace": "named cache-only H7K at local32/grid2304x32, positive duration, zero compiler executable"
+    },
+    "dynamic_model": {
+      "aligned_weight_record_logical_bytes_added": 2049048576,
+      "aligned_weight_record_wave_operations_added": 128065536,
+      "context_iterations_per_request": 64032768,
+      "kv_logical_bytes_changed": 0,
+      "net_exchange_wave_operations_removed": 127070208,
+      "visible_score_weight_broadcasts_removed": 255135744,
+      "visible_scores_by_start": {
+        "256": 106334208,
+        "384": 148801536
+      },
+      "warning": "Operation/instruction-form rationale only; not physical traffic or a speed claim.",
+      "workgroups_changed": 0
+    },
+    "id": "WPF-H7K",
+    "implementation_absent": true,
+    "name": "exact late-start SWA score-to-weight publication",
+    "names_absent": [
+      "WPF-H7K",
+      "swa_context_rows_qrow4_dense_initial_global_score_weight_publication_exact_spans",
+      "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_weight_publication_exact_bf16_kernel",
+      "laguna_swa_attention_prefill_qrow4_dense_initial_global_score_weight_publication_exact_bf16_spans",
+      "hipengine_laguna_swa_attention_prefill_qrow4_dense_initial_global_score_weight_publication_exact_bf16_spans"
+    ],
+    "operation": "Keep H6W first-pass unscaled-dot records and max updates byte-identical. In a lane-0 token-order middle pass, load each float4 dot record, compute the same fused exp(dot*scale-max), accumulate each denominator in the same token order, and overwrite the record with four weights. In a separate PV pass, all lanes load the aligned weight record and one BF16 V vector, perform the same token-order unnormalized PV FMAs, then apply H6W's same final divide. This removes only per-visible-score lane-0 weight broadcasts and phase-splits exp/denominator from PV without changing arithmetic association.",
+    "physical_gate": {
+      "block_barriers": 0,
+      "code_bytes_max": 5500,
+      "ds_bpermute_b32": 28,
+      "global_load_b128_records": 2,
+      "global_load_b32_query": 16,
+      "global_load_u16": 8,
+      "global_store_b128_records": 2,
+      "global_store_b32_output": 16,
+      "grid": [
+        2304,
+        32
+      ],
+      "instruction_slots_max": 950,
+      "lds_private_spill_runtime_scratch": 0,
+      "local_size": 32,
+      "metadata_vgpr_max": 54,
+      "runtime_vgpr_max": 56,
+      "v_exp_f32_e32": 4,
+      "v_fma_f32": 56
+    },
+    "scope": "one separately named gfx1100 registry-only H6W sibling at starts256/384; H6W/H6Z/H6A kernels and package/runtime/source maps unchanged"
+  },
+  "transfer_controls": {
+    "h6w_unscaled_score_replay": {
+      "body_sha256": "d025a3c73c499c75b2dc0444ae4fdd479cb72729eaad2b1e1aa6e38491748aee",
+      "metadata_runtime_vgpr": [
+        54,
+        56
+      ],
+      "preserves_fused_score_subtract": true,
+      "record_load_store_sites": [
+        1,
+        1
+      ]
+    },
+    "h6z_global_score_weight_replay": {
+      "body_sha256": "3a21a68d13eefb1e865d193869e7fe3b4e86f559349620b091eec14594a5f66b",
+      "metadata_runtime_vgpr": [
+        47,
+        48
+      ],
+      "record_load_store_sites": [
+        2,
+        2
+      ],
+      "transfer_limit": "H7K borrows only aligned score-to-weight publication; it must not borrow H6Z token-mod-8 denominator or normalized-PV association."
+    },
+    "h7a_rejection": {
+      "artifact": "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-swa-scaled-score-replay-rejected.json",
+      "reason": "storing rounded scaled scores changes H6W fused dot*scale-max bits"
+    }
+  },
+  "validator_sha256": "00512e091d31027f3a372674b3fbfd06e83b16520b7271a4c3ed58e5947b2d0f"
+}

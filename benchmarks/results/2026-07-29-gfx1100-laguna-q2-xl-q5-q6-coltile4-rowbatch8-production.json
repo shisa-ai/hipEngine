@@ -1,0 +1,257 @@
+{
+  "claim_scope": "Exact package-resolved gfx1100 Laguna UD-Q2_K_XL matrix512/attention128 prefill with coltile4_rowbatch8 Q5/Q6 projection, pair16 grouped IQ gate/up, grouped IQ down, and C256-qualified exact qrow4 SWA at 512, 1024, and 4096 tokens; 16K and longer remain closed",
+  "commands": {
+    "cached_profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file /tmp/laguna-wpf1t-coltile-production-rocprof/wpf1t-coltile -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf1t-coltile-production-rocprof-child.json",
+    "complete_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf1t_coltile_default_full_state.py",
+    "restored_4k": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 4096 --lengths 512,4096 --package-matrix-rows --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf1t-coltile-publication-clean-512-4k.json",
+    "same_resident_rb32_ab": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 /tmp/laguna_wpf1t_coltile_default_ab.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpf1t-coltile-default-dirty-ab.json",
+    "selector_unset_short": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf1t-coltile-publication-clean-512-1k.json"
+  },
+  "correctness": {
+    "clean_publication": {
+      "final_positions_exact": true,
+      "finite": true,
+      "next_token_ids": {
+        "1024": 95,
+        "4096": 7772,
+        "512": 2930
+      },
+      "raw_k_prefill_variant_requested": null,
+      "raw_k_prefill_variant_resolved": "coltile4_rowbatch8",
+      "repeat_next_token_deterministic": true,
+      "repo_tracked_clean": true,
+      "revision_matches": true,
+      "tracked_returned_to_baseline": true
+    },
+    "complete_state_m512": {
+      "all_48_hidden_boundaries_exact": true,
+      "candidate_repeat_exact": true,
+      "final_and_post_hidden_exact": true,
+      "full_kv_and_kvlivespans_exact": true,
+      "kl_max": 0.0,
+      "logits_exact": true,
+      "next_token_and_value_exact": true,
+      "top1_agreement": 1.0,
+      "tracked_returned_to_baseline": true
+    },
+    "pass": true,
+    "same_resident_rb32_ab": {
+      "all_six_pairs_exact": true,
+      "complete_logits_hidden_cursor_exact": true,
+      "same_mode_repeat_deterministic": true,
+      "tracked_returned_to_baseline": true
+    }
+  },
+  "created_at": "2026-07-29",
+  "defaults": {
+    "attention_rows": 128,
+    "matrix_rows": 512,
+    "raw_k_prefill_rowbatch_fallback": 32,
+    "raw_k_prefill_variant": "coltile4_rowbatch8",
+    "selected_down_mode": "grouped_exact",
+    "selected_gate_up_mode": "grouped_pair16",
+    "swa_attention_rows": 128,
+    "swa_prefill_variant": "swa_context_rows_qrow4_m128_c256_exact_spans"
+  },
+  "implementation": {
+    "fallback": "Explicit rowbatch, non-full RB32 slabs, output widths not divisible by four, gfx1151, and unsupported backends retain exact RB32 or their established registered path.",
+    "ownership": "One local128 workgroup computes four adjacent output columns across eight rows while reusing each BF16 activation load/conversion.",
+    "preserved_arithmetic": "Each output preserves RB32 K ownership, FMA order, wave32 shuffle tree, serial wave-0..3 accumulation, and BF16/F32 store."
+  },
+  "kind": "hipengine_laguna_wpf1t_q5_q6_coltile_exact_production",
+  "limitations": [
+    "The retained timing claim covers deterministic 512/1024/4096-token prefill on the stated model, device, queue, and runtime.",
+    "The 4096-token row validates eight repeated exact M512 chunks with deterministic ID/position/lifecycle; the deep full-logit/hidden/KV comparison is the natural M512 gate.",
+    "The 16K/64K/128K campaign remains closed because 169.253/123.084 tok/s at 512/4K is far below the 800/700 stretch gate and no replacement roofline has been accepted."
+  ],
+  "memory": {
+    "active_allocations_after": 0,
+    "peak_allocations": 1167,
+    "resident_and_peak_allocated_bytes": 40406037204,
+    "tracked_after_bytes": 0
+  },
+  "model": {
+    "direct_gguf": true,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance": {
+    "clean_selector_unset": {
+      "1024": {
+        "median_seconds": 6.4309943651314825,
+        "median_tok_s": 159.22887532790804,
+        "next_token_id": 95,
+        "percent_change_vs_previous_clean": 26.411973908486885,
+        "samples_seconds": [
+          6.401939764851704,
+          6.4309943651314825,
+          6.479951310902834
+        ]
+      },
+      "4096": {
+        "median_seconds": 33.27818719879724,
+        "median_tok_s": 123.08362758858571,
+        "next_token_id": 7772,
+        "samples_seconds": [
+          32.96739633195102,
+          33.27818719879724,
+          33.33171916217543
+        ]
+      },
+      "512": {
+        "median_seconds": 3.0250494559295475,
+        "median_tok_s": 169.2534312113158,
+        "next_token_id": 2930,
+        "percent_change_vs_previous_clean": 28.30110989972554,
+        "samples_seconds": [
+          2.9908173528965563,
+          3.0273886048235,
+          3.0250494559295475
+        ]
+      }
+    },
+    "previous_clean": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json",
+      "tok_s": {
+        "1024": 125.96027923998578,
+        "512": 131.9189142974654
+      }
+    }
+  },
+  "performance_claim": true,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "gpu_queues": 1,
+    "kv_dtype": "bf16",
+    "rocm_version": "7.2.4 / HIP 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "profile": {
+    "1024": {
+      "attention_seconds": 1.354057103,
+      "dense_shared_change_vs_previous_percent": -38.875128927700764,
+      "dense_shared_seconds": 2.889133867,
+      "dispatches": 2960,
+      "global_attention_seconds": 0.327394816,
+      "kernel_span_change_vs_previous_percent": -20.85220011115957,
+      "kernel_span_seconds": 6.440802873,
+      "kernel_sum_change_vs_previous_percent": -20.934705635102468,
+      "kernel_sum_seconds": 6.408346446,
+      "selected_iq_down_seconds": 1.117691218,
+      "selected_iq_gate_up_seconds": 0.923365968,
+      "span_minus_sum_percent_of_span": 0.5039189622781054,
+      "swa_attention_seconds": 1.026662287
+    },
+    "512": {
+      "attention_seconds": 0.463988198,
+      "dense_shared_change_vs_previous_percent": -38.54610489245154,
+      "dense_shared_seconds": 1.445108909,
+      "dispatches": 1477,
+      "global_attention_seconds": 0.081278219,
+      "kernel_span_change_vs_previous_percent": -21.89279181261452,
+      "kernel_span_seconds": 3.007565542,
+      "kernel_sum_change_vs_previous_percent": -21.97787505725287,
+      "kernel_sum_seconds": 2.992571895,
+      "selected_iq_down_seconds": 0.559241213,
+      "selected_iq_gate_up_seconds": 0.462231736,
+      "span_minus_sum_percent_of_span": 0.4985310142245273,
+      "swa_attention_seconds": 0.382709979
+    },
+    "coltile_calls_including_warmup": 1524,
+    "compiler_spawned_under_profiler": false,
+    "resources": {
+      "compiler_metadata": {
+        "lds_bytes": 512,
+        "local_size": 128,
+        "private_bytes": 0,
+        "sgpr": 50,
+        "sgpr_spills": 0,
+        "vgpr": 72,
+        "vgpr_spills": 0
+      },
+      "production_trace": {
+        "families": 4,
+        "lds_bytes": 512,
+        "scratch_bytes": 0,
+        "vgpr": 72,
+        "workgroup_size_x": 128
+      }
+    }
+  },
+  "revision": "5a0c2fe3791ffed72c8655388b294cb9f84a6bf9",
+  "schema_version": 1,
+  "source_artifacts": [
+    {
+      "path": "/tmp/laguna-wpf1t-coltile-publication-clean-512-1k.json",
+      "sha256": "70afc5c41a0d392d145e5c88f4d46a9d991576dbd1c512d1319ea7f6c5c46b5c"
+    },
+    {
+      "path": "/tmp/laguna-wpf1t-coltile-publication-clean-512-4k.json",
+      "sha256": "931aa786d419da4e491fa8692cf9bb8f31c20b49442546c49d437ef5ced3557e"
+    },
+    {
+      "path": "/tmp/laguna-wpf1t-coltile-default-m512-full-state.json",
+      "sha256": "0e8087cb46dc5306bd813ad67b4f635ed78a41f97366d49051eff945d6bf05a9"
+    },
+    {
+      "path": "/tmp/laguna-wpf1t-coltile-default-dirty-ab.json",
+      "sha256": "fb60ddfda30bb3723f832ac842a7b90af58aa055d12c914a0ee7af8d883e141c"
+    },
+    {
+      "path": "/tmp/laguna-wpf1t-coltile-production-rocprof-child.json",
+      "sha256": "b2e96d9c203f55c83401fd307485bda0c3d8ca729db976734b5b318b7bb09683"
+    },
+    {
+      "path": "/tmp/laguna-wpf1t-coltile-production-rocprof/wpf1t-coltile_kernel_trace.csv",
+      "sha256": "ab91ba3854b8f0e8326ad9977ea75bb0ed442fd4cc5bb1224732fd0f67cd6d20"
+    },
+    {
+      "path": "/tmp/laguna-wpf1t-coltile-production-trace-summary.json",
+      "sha256": "b807fc0c4c92138a56b28125f3bd8d0ed3d1bb32c3ee444c33c7c5ed8253ef42"
+    },
+    {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-candidate.json",
+      "sha256": "61eef8d145356e3d9d7986a9f04e4db475c3b7ab2b110b79fa0d35d78c5b659c"
+    },
+    {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-coltile4-rowbatch8-default-promotion.json",
+      "sha256": "c34182487a2282b8231f892568df774e832fa5cd63b02190feb0026973ba340c"
+    },
+    {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json",
+      "sha256": "f92e86a9c336b8b36a061ed18ba3020923c297cb5baa8b5e49fcc00afef7c174"
+    },
+    {
+      "path": "/tmp/build_laguna_wpf1t_coltile_production.py",
+      "sha256": "2fe5faeb0b9115d135685610d3857b5bf15f974cdeed0331738ca85c12711cfb"
+    }
+  ],
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "bc03ca2a525c81f1457589ce127ba6b5c9e090d7f3185991574cc4daeb253712",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "41586c64e5cdc9c82d7268bfa3429c4102a166c76870e5bf02ff84d5317b572d",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "6ffc245a8be35d4fcc5ba7c9c2649c357f1f5708e885c5a7fe4389acd166f711",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "c11f8cbc6790832fbaa3572afd5d6ff38794194500fcda84e8f9b206f202efba",
+    "hipengine/runtime/gguf_linear.py": "9b854356bbdf7e1e483af16bc4a67aad2311e89d9a14cf38c57ee2881601f421",
+    "hipengine/runtime/laguna_gguf_runner.py": "3e64f1ff2358b6f82876cd901975746ecd93e27d06b8b17901bb2b60c6d5d8b3",
+    "scripts/laguna_long_context_profile.py": "8b243b5c9572007fcd9fe717963dde6047295ae40176c3f437a4f056d92fdfe0",
+    "scripts/laguna_long_context_trace_summary.py": "fb067b5fa0dcbcf25b90a8897eef9b95f00764d8da3f75dc97cd45d29a99f6d3",
+    "tests/test_gfx1151_backend.py": "8c588fc27bfa0352c16d3fb07b9cafa53bed4ee4da319befef831cb699dff31d",
+    "tests/test_gguf_k_rowtile_gemv.py": "bfa733876ab76943d8a75850d9679cd6dba89654057dd0a724aa4094f0b9504d",
+    "tests/test_laguna_gguf_runner.py": "9a2ffb5ea5e596147f9d75b0d92a22e2dcd4de8ad8ce7a7bd84c3962c7e34d4b",
+    "tests/test_laguna_long_context_profile.py": "c0134c3037f120723c163b0f17461dde850ef0a4a597b18a89da768b3e1c3a4a"
+  },
+  "status": "accepted",
+  "threshold": {
+    "both_short_shapes_reach_150": true,
+    "four_k_gate_reopened_and_passed": true,
+    "four_k_tok_s": 123.08362758858571,
+    "next_action": "Keep 16K+ closed; make the bounded coltile2 ownership/cleanup decision, then only start launch/fusion if measured span-minus-sum exceeds the frozen trigger.",
+    "sixteen_k_plus_reopened": false,
+    "stretch_gate_512_4096_tok_s": [
+      800,
+      700
+    ]
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_row_interleaved_vopd_production",
+  "date": "2026-07-31",
+  "status": "retained_exact_package_default",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "rows": 512,
+    "compact_rows": 5120,
+    "top_k": 10,
+    "expert_count": 256,
+    "in_features": 1024,
+    "out_features": 3072
+  },
+  "lineage": {
+    "target_revision": "ce6dd94b42d63f29d8e190d7cc532c9f908586b6",
+    "leaf_red_revision": "5afa103a29b96e8b6dccf36ae30ccf460c20f742",
+    "leaf_revision": "55a26c81fbbf664f64d84753a8709b2772112510",
+    "runtime_red_revision": "5e9428845d69a946d3b556c21b0c4ad160b99fe7",
+    "runtime_qualification_revision": "c6089d6e510457327f311610290991f310846daa",
+    "source_default_red_revision": "9194e9018fc3be027a384bae2b08c5a2d6a3d53c",
+    "candidate_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json",
+    "candidate_artifact_sha256": "bf8f7dc06858dd22b46ff4f178de853a8c7d47e908a47070272c8259bd02d252",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6c-matched-residual.json",
+    "target_artifact_sha256": "54c61f15bf61833dc19c43c6f43b9ad56d6c2403c457a31d8cdd0837a6a7adb4",
+    "preceding_production_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-production.json",
+    "preceding_production_artifact_sha256": "858bde075cc000664e792138116c9f649e9599a548fcecd9e8a77ea1a6a101a7",
+    "source": "Net-new in-tree H5Z sibling derived from the recovered target-selection scheduling probe; no external device body copied.",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "a6e4b7e633a73e9da00062d02af493fdb5a9fdeec61bceaec8c22c1145fc8af9",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "15ee8b425085bfe359e8815b6539343079b26a3b05fe3ac43d5b7af67cfccb0b",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "f28e94fb4c31c903fdb2f4c6ffdd83ce655f6401d29d2e7b10ce972c09993fac",
+      "hipengine/kernels/hip_gfx1100/quant/__init__.py": "b01c6f304a5daaac29fdc213a02fc975fad683d61bc61e8537991cb555a9d126",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "698b2f11a535c1f6c2c346fcc3ad1ee018f8cfa1a36e8af1d298498aaae5e148",
+      "tests/test_laguna_h6d_source_default.py": "5db2389c75509f6b2c9b4f3257c47e9eba46090d3adfa6324319299e07e4bbc6",
+      "tests/test_laguna_h6d_runtime_policy.py": "dc36b5e8a34adc19d7045e3a7b23b2470193edb48951e3eac2ec5bfd5224e582",
+      "tests/test_laguna_h6d_iq3_row_interleaved_vopd.py": "bb64a2fdeb5b93e55b190473ec6eed108c668418005cfa6890e301253fefddf8",
+      "tests/test_laguna_h5z_runtime_policy.py": "8c3c3352c9a6e96caf95a669c68fe38e8d5e2fcc228a9a0df3440df60a7df69d",
+      "tests/test_laguna_h5z_source_default.py": "d6bc539f785b329a7bc1a27c07bdd9d0d4f521c245f767c8f4ae22c195f12b66",
+      "tests/test_laguna_h5q_runtime_policy.py": "1892d730ebf889da53535a5af5cd46addfcb8ccde8806b6544017e039d80dcf2",
+      "tests/test_laguna_h6c_iq3_gate_up_expert_major.py": "e43e8e5f398db873503c21240b61519e37997a7374f2e6ee054611953db07362",
+      "tests/test_laguna_h6c_runtime_policy.py": "edd5e74fdda3fbfedbd0d2ac98b5c6b3c84406e713b52a3430592d4c23590e92",
+      "tests/test_laguna_h6c_source_default.py": "2d7c8b44b9d3cb149d516e9e85ce61252fab5d0310d507fdae9441589b6f3a04"
+    }
+  },
+  "production_policy": {
+    "selected_variants": {
+      "gguf_iq3_xxs": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out",
+      "gguf_iq4_xs": "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
+    },
+    "variant_abis": {
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_resident_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts",
+      "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out": "grouped_raw_iq_active_experts"
+    },
+    "retained_h5z_rollback": true,
+    "retained_h5q_rollback": true,
+    "h5j_iq4_unchanged": true,
+    "h6c_special_gate_up_unchanged": true,
+    "wrong_shape_registration_backend_fallback": "generic exact grouped-IQ rowbatch8 ABI",
+    "gfx1151_fail_closed": true,
+    "public_or_session_selector": false
+  },
+  "ownership": {
+    "new_kernel_bodies": 0,
+    "new_launches_per_request": 0,
+    "new_allocations": 0,
+    "new_workspace_bytes": 0,
+    "q5_ordered_workspace_bytes": 161120256,
+    "total_scratch_bytes": 600141856,
+    "persistent_sidecar_bytes": 0,
+    "existing_active_expert_list_count_reused": true,
+    "existing_six_pointer_abi_reused": true
+  },
+  "correctness": {
+    "leaf_all_45_actual_layers_byte_exact": true,
+    "natural_m512_kl_mean": 0.0,
+    "natural_m512_kl_max": 0.0,
+    "natural_m512_top1_agreement": 1.0,
+    "complete_state_and_repeat_byte_exact": true,
+    "exact_hidden_boundaries": 48,
+    "complete_kv_and_live_spans_exact": true,
+    "selector_unset_all_repetitions_exact": true,
+    "selector_unset_all_finite": true,
+    "matched_all_repetitions_exact": true,
+    "all_lifecycles_recovered": true
+  },
+  "production_identical_cached_trace": {
+    "reuse_rationale": "Source publication changes only the selected IQ3 map to the same H6D key used in candidate trace segments.",
+    "dispatches_per_request": 2050,
+    "q5_dispatches_per_request": 658,
+    "q6_dispatches_per_request": 289,
+    "h6d_iq3_calls": 45,
+    "retained_h5j_iq4_calls": 2,
+    "iq3_median_ms": 463.3544060000001,
+    "kernel_sum_median_ms": 1549.0148985,
+    "span_median_ms": 1570.1431005,
+    "resources": "H6D local128/VGPR104/SGPR128/LDS512/scratch0/grid-x32768/grid-y64",
+    "no_compiler_under_profile": true,
+    "trace_sha256": "294daf2158d7f54973a2bdbb744dac0501ef050d037ca5be0f02dd89b52eb998",
+    "summary_sha256": "795f89e1c751a05e0e5fb08247396d469cc1e0333a9c8aa3a459b55dfd6b640f"
+  },
+  "selector_unset_publication": {
+    "protocol": "selector-unset source H6D versus scoped H5Z rollback; one warmup plus three counter-rotated same-resident/fresh-session samples per mode and length under one HIP queue",
+    "token_stream_sha256": "e56601a354b2fab008fb79107219971aba7a4d3829593ab2925e4969588a42b1",
+    "rollback_h5z_tok_s": {
+      "512": 315.2666260995497,
+      "1024": 264.13641371110344,
+      "4096": 175.27569668350662
+    },
+    "production_h6d_tok_s": {
+      "512": 319.07216902934147,
+      "1024": 265.87201185685615,
+      "4096": 176.1377194598298
+    },
+    "same_session_gain_percent": {
+      "512": 1.2070871493356616,
+      "1024": 0.6570840125250665,
+      "4096": 0.491809641972063
+    },
+    "paired_h6d_wins": {
+      "512": 3,
+      "1024": 3,
+      "4096": 3
+    },
+    "next_token_ids": {
+      "512": 2930,
+      "1024": 95,
+      "4096": 7772
+    },
+    "exact_all_repetitions": true,
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "workspace_bytes": 161120256,
+    "total_scratch_bytes": 600141856
+  },
+  "matched_c4096_m512": {
+    "protocol": "fixed natural 512 IDs; C4096 admission; direct/package M512; attention128; FlashAttention; BF16 K/V; same resident weights; one warmup/arm; five counter-rotated fresh-session pairs; one queue",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "h5z_samples_tok_s": [331.59617161958215, 330.47275597570604, 329.3272612090902, 329.01273721203916, 328.18193457333797],
+    "h6d_samples_tok_s": [333.57886124549896, 333.9041311530435, 332.3081449693939, 332.03779147315583, 330.8418899426752],
+    "h5z_median_tok_s": 329.3272612090902,
+    "h6d_median_tok_s": 332.3081449693939,
+    "same_session_gain_percent": 0.9051433365582007,
+    "paired_h6d_wins": 5,
+    "paired_total": 5,
+    "preceding_published_h6c_h5z_tok_s": 328.8627445238162,
+    "gain_over_preceding_published_percent": 1.0476712558506796,
+    "campaign_start_tok_s": 169.516472,
+    "gain_over_campaign_start_percent": 96.03295246104099,
+    "llamacpp_hip_tok_s": 696.342,
+    "llamacpp_over_h6d": 2.0954707567102644,
+    "complete_state_exact": true,
+    "all_finite": true,
+    "all_sessions_recovered": true,
+    "workspace_bytes": 161120256,
+    "total_scratch_bytes": 600141856
+  },
+  "canonical_dashboard": {
+    "preceding_h6c_h6a_h5y_h5z_tok_s": {
+      "512": 316.10604456288036,
+      "1024": 263.8643762099761,
+      "4096": 174.83973742653467
+    },
+    "current_h6d_h6c_h6a_h5y_tok_s": {
+      "512": 319.07216902934147,
+      "1024": 265.87201185685615,
+      "4096": 176.1377194598298
+    },
+    "gain_percent": {
+      "512": 0.938332093763905,
+      "1024": 0.7608589214340933,
+      "4096": 0.7423838838928276
+    },
+    "matched_c4096_m512_tok_s": 332.3081449693939,
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "matched_llamacpp_over_current": 2.0954707567102644,
+    "shape_note": "Canonical rows use independently allocated source-publication sessions; the fixed C4096/direct-M512 row is separately paired and is the matched comparator authority."
+  },
+  "retained_guards": {
+    "passed": 92,
+    "failed": 0,
+    "scope": "H6D source/runtime/leaf, H5Z/H5Q rollback and ABI, H6C source/runtime/leaf, selected IQ, gfx1151, and registry"
+  },
+  "commands": {
+    "matched": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6d_matched_c4096_m512.py",
+    "source_default_clean": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6d_source_default_clean_512_4k.py",
+    "complete_state_reused": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6d_runtime_m512_full_state.py",
+    "integrated_trace_reused": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6d-runtime-integrated-paired-rocprof --output-file h6d-paired -- uv run python -u /tmp/laguna_wpfh6d_runtime_trace_integrated_paired.py",
+    "guards": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q <92-test H6D/H5Z/H5Q/H6C/IQ/gfx1151/registry bundle>"
+  },
+  "raw_evidence_sha256": {
+    "pinned_token_ids": "2ef439a22cf33800a03d7ea2ef79d28b500bfbc60209bb91c57e5b7d17dfbb99",
+    "matched_harness": "1a681f78afbf418b4e7c74ef7d9c33b9dd9eed606bc64cc8c30173cae86c643c",
+    "matched_json": "65aa7d22697829c604cfc37f17c41277fdd237a3e6b4045dea29cc18b5fbf655",
+    "matched_stdout": "5dc548899a3f2e74f93ce0b0d54e9a6953d7d5d427ff4186cd4918b5e2501d35",
+    "matched_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "source_default_harness": "1b4d298870d49ebf8b8d6e81e7aa55b60990ec3787d90e52bccfdf8d11f7d81c",
+    "source_default_json": "d036df2b25e6baefe49e89b88eb7864da3eea262b6974a78c4fe25417baa54ef",
+    "source_default_stdout": "3f6b145d9c21f5bde4cbe4abcb11bb754bfda1138361d07c558784a83e209848",
+    "source_default_stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "source_default_red_stdout": "11368fef5cc1f0c2a3132732440f28e705e597e37e61430ac9c3fe8a496ec61e",
+    "source_default_red_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "guards_stdout": "c42bc1dcf3d10acea1a8ec00930fb77dd0ec47a79a450a1ffd72e07025d063c8",
+    "guards_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "runtime_candidate_artifact": "bf8f7dc06858dd22b46ff4f178de853a8c7d47e908a47070272c8259bd02d252"
+  },
+  "decision": {
+    "promoted_package_default": true,
+    "runtime_default_changed": true,
+    "retained_h5z_rollback": true,
+    "new_kernel_body_or_allocation": false,
+    "gfx1151_policy_changed": false,
+    "next_action": "Reprofile the promoted comparator-shaped C4096/direct-M512 request, rerank exact family gaps against matched llama.cpp HIP, and select the next distinct exact target."
+  }
+}

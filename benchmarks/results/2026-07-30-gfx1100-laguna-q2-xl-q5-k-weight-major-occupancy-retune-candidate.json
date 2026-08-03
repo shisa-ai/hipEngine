@@ -1,0 +1,261 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_weight_major_occupancy_retune_candidate",
+  "date": "2026-07-30",
+  "status": "standalone_exact_candidate_runtime_ownership_rejected",
+  "performance_claim": true,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "ccd800f02",
+    "target_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-retune-target.json",
+    "target_artifact_sha256": "64743603a9680256309d423989833caa4b30c3a719ca39275894c0df5aa4fa1c",
+    "source": "net-new in-tree combination of the retained exact H5F 16x4 geometry with H5L weight-major workgroup traversal; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "145f124cd8ce367ebf32741f0dd4c42f24d688fbeda525dd8691acd52790feb1",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "e2588d7f8b3aacc9b4f6945bc26a857c7aae7414db716d1efc15076a56767baa",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "910161d7849e2fa33d47bbe506fe385eb58ed54037d1e06811c6fd16657ba35c",
+      "tests/test_laguna_h5p_q5_weight_major_occupancy.py": "7886235a98d1fd9e2aeb8d50ee364c719e5bde6ee68a4c0d84c79e1b9fdb1c81"
+    },
+    "runtime_candidate_implementation_sha256": {
+      "hipengine/runtime/laguna_gguf_runner.py": "7c616e73622d9be5cf1e2c85fb89fc2a29d529ef7a5f024e4681a27ec0961f32",
+      "tests/test_laguna_gguf_runner.py": "6befad0f12c0d15344896eb4d53304323c67fba84935debd0f4ca19103e2ae65"
+    },
+    "restored_runtime_sha256": {
+      "hipengine/runtime/laguna_gguf_runner.py": "6ef0f77222c1cb59370f64f2c4f1bdbe6c636bd0db2cf6f933b5f6aab170d7dc",
+      "tests/test_laguna_gguf_runner.py": "704ac467c2dfd9fd55cd25bc5ad19b66ea9931501c4cf353f1a6ccbfe4df4d0e"
+    }
+  },
+  "candidate": {
+    "label": "WPF-H5P exact weight-major occupancy retune",
+    "producer": "unchanged local64 exact raw-Q5-to-row-major-F32 expansion into the existing caller-owned projection-local plane",
+    "consumer": "local128 ordered BF16-output consumer using coltile16/rowbatch4 with the retained H5L row-group-inside-output-tile traversal",
+    "control": "local128 ordered BF16-output coltile16/rowbatch5 H5L production consumer",
+    "role": {
+      "output_dtype": "bf16",
+      "shape_n_k": [3072, 6144],
+      "production_invocations": 12,
+      "tensor_representative": "blk.0.attn_output.weight"
+    },
+    "preserved": "raw producer, F32 weight plane, row-group mapping, per-thread K ownership, scalar fmaf sequence, wave32 shuffle tree, serial wave-0..3 sum, BF16 store, allocation, workspace, and H5L fallback",
+    "persistent_weight_sidecar_bytes": 0,
+    "max_projection_local_workspace_bytes": 150994944,
+    "unfused_chain_registered": true,
+    "gfx1151_fail_closed": true,
+    "production_policy_changed": false
+  },
+  "protocol": {
+    "claim_scope": "actual-M512 BF16 K6144/N3072 Q5_K producer-plus-consumer role only; not end-to-end throughput or a production-default claim",
+    "rows": 512,
+    "actual_model_weights": true,
+    "deterministic_bf16_input": true,
+    "inclusive_control_and_candidate": "one unchanged exact raw-Q5-to-F32 producer plus one ordered consumer",
+    "warmups_per_arm": 5,
+    "counter_rotated_repetitions": 15,
+    "launches_per_sample": 5,
+    "timing": "HIP-event and synchronized-wall medians",
+    "four_k_or_longer_run_performed": false
+  },
+  "initial_five_role_screen": {
+    "role_count": 5,
+    "production_invocations": 96,
+    "all_outputs_byte_exact": true,
+    "all_candidates_weighted_event_ms": {
+      "control": 422.39415283203124,
+      "candidate": 538.5928188323975,
+      "regression_percent": 27.509534689646543
+    },
+    "all_candidates_weighted_wall_ms": {
+      "control": 427.5015336461365,
+      "candidate": 534.385624807328,
+      "regression_percent": 25.00203689319733
+    },
+    "selected_per_role_policy_event_ms": {
+      "control": 422.39415283203124,
+      "selected": 420.1478355407715,
+      "speedup": 1.005346492594371
+    },
+    "selected_per_role_policy_wall_ms": {
+      "control": 427.5015336461365,
+      "selected": 426.90483881160617,
+      "speedup": 1.0013977232869775
+    },
+    "roles": [
+      {"output_dtype": "bf16", "shape_n_k": [12288, 3072], "calls": 2, "candidate": "4x16", "event_speedup": 0.7549659444541176, "wall_speedup": 0.7617223074297379, "decision": "removed"},
+      {"output_dtype": "bf16", "shape_n_k": [3072, 6144], "calls": 12, "candidate": "16x4", "event_speedup": 1.0767958442976269, "wall_speedup": 1.0197740811867912, "decision": "rerun_from_shrunk_final_source"},
+      {"output_dtype": "bf16", "shape_n_k": [3072, 9216], "calls": 35, "candidate": "8x8", "event_speedup": 0.9539670051811812, "wall_speedup": 0.9507337373506224, "decision": "removed"},
+      {"output_dtype": "f32", "shape_n_k": [6144, 3072], "calls": 12, "candidate": "16x4", "event_speedup": 1.014465958292223, "wall_speedup": 0.9914211392857034, "decision": "removed"},
+      {"output_dtype": "f32", "shape_n_k": [9216, 3072], "calls": 35, "candidate": "4x16", "event_speedup": 0.6067717100196095, "wall_speedup": 0.6444485200273903, "decision": "removed"}
+    ]
+  },
+  "final_source_role_screen": {
+    "control_geometry": "coltile16_rowbatch5",
+    "candidate_geometry": "coltile16_rowbatch4",
+    "production_invocations": 12,
+    "event_ms_per_call": {
+      "control": 2.6088092803955076,
+      "candidate": 2.4440639495849608,
+      "speedup": 1.0674063094128625,
+      "weighted_control": 31.30571136474609,
+      "weighted_candidate": 29.32876739501953,
+      "weighted_reduction_percent": 6.314962617181839
+    },
+    "wall_ms_per_call": {
+      "control": 2.5741439778357744,
+      "candidate": 2.4914967827498913,
+      "speedup": 1.0331717045183837,
+      "weighted_control": 30.889727734029293,
+      "weighted_candidate": 29.897961392998695,
+      "weighted_reduction_percent": 3.2106671498370973
+    },
+    "modeled_post_h5m_q5_event_ms": 463.68283903027344,
+    "modeled_post_h5m_request_kernel_sum_ms": 2058.5084700302737,
+    "modeled_interpretation": "Subtracting only the measured 1.976944-ms role delta from the retained H5M trace is attribution, not an end-to-end throughput forecast."
+  },
+  "correctness": {
+    "rows_17_and_33_candidate_control_outputs_byte_exact": true,
+    "actual_role_output_byte_exact": true,
+    "bf16_output_checked": true,
+    "raw_q5_to_f32_values_unchanged": true,
+    "production_k_fma_wave_and_store_order_preserved": true,
+    "tracked_returned_to_baseline": true,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_after": 0,
+    "complete_model_state_gate_performed": true,
+    "complete_model_kl_mean": 0.0,
+    "complete_model_kl_max": 0.0,
+    "complete_model_top1_agreement": 1.0,
+    "complete_logits_hidden_kv_spans_repeat_exact": true
+  },
+  "cached_trace": {
+    "candidate_symbol": "gguf_q5_k_f32_weight_ordered_weight_major_coltile_kernel<unsigned short, 16, 4>",
+    "candidate_resources": "local128/VGPR136/SGPR128/LDS1024/scratch0",
+    "control_resources": "local128/VGPR168/SGPR128/LDS1536/scratch0",
+    "trace_csv_sha256": "24ed6185185e838afe5d8664912e7e5d8b2c720b79e01846a8a3bc9a73d0e062",
+    "smoke_harness_sha256": "048a20ce960523215f5d79ac974f7d323e53050874da5d69e543ebc78c2310e3",
+    "stdout_sha256": "856edbc141e9f0b91bd0e623187143c03d68a0a1e164e245be1db71d51fd1dc1",
+    "stderr_sha256": "d88d57c4ce64d8a02c8ef0b3503389e0abf3d635dc01b778578b7f71dabba557",
+    "no_compiler_under_profile": true
+  },
+  "source_artifacts": {
+    "initial_five_role_json_sha256": "a5032608b1709afa83c7df859deca19fe29cd822d7b8c828c3806b86380b36b9",
+    "initial_five_role_harness_sha256": "49c7e60d0dd9f307e4a004d218097ad2cfd197b3ac23577a0767b4dc34e37776",
+    "initial_five_role_stdout_sha256": "43ecf19cc1c17f581d261382a175b0756e5e8963a4cd42944465688524f6b0f3",
+    "initial_five_role_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "final_source_json_sha256": "30007dd95b0de2a79c5bba3ae86fff2a55ffa7bbbe1c0f4f14605a30969492b7",
+    "final_source_harness_sha256": "f26c24fda426f7c0d6f71633936e9243235a2be961e9923258c4eaa99b002849",
+    "final_source_stdout_sha256": "035be7793f790a0ae161eea09e428fa0bebbee71a4ca538f830f63f7bca16230",
+    "final_source_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "runtime_qualification": {
+    "same_resident_natural_m512_state": {
+      "next_token_id": 2930,
+      "final_position": 511,
+      "kl_mean": 0.0,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "exact_hidden_boundaries": 48,
+      "complete_state_exact": true,
+      "candidate_repeat_exact": true,
+      "workspace_bytes": 150994944,
+      "lifecycle_recovered": true,
+      "json_sha256": "8832e43f408f3f93f518e582e8e6c3e08f8dca86f1160d7f2b793b503762515f",
+      "harness_sha256": "c8222d26726f197c274dbc9f8b7a0ec488d45b597b7c301200770e6bbf5705e9"
+    },
+    "cached_integrated_trace": {
+      "dispatches_before": 1862,
+      "dispatches_after": 1862,
+      "candidate_calls": 12,
+      "retained_bf16_16x5_calls": 0,
+      "role_ms_before": 26.9534,
+      "role_ms_after": 25.390004000000005,
+      "role_reduction_percent": 5.800366558578862,
+      "q5_ms_before": 465.6597829999998,
+      "q5_ms_after": 462.994027,
+      "q5_reduction_percent": 0.5724685913019334,
+      "request_kernel_sum_ms_before": 2060.485413999999,
+      "request_kernel_sum_ms_after": 2056.6361009999955,
+      "request_kernel_sum_reduction_percent": 0.1868158334851211,
+      "trace_sha256": "979c8b18435dc1a24f9000fde5f869f9797794a40db4fb949fd7071527e8ecd0",
+      "summary_sha256": "fefb97e6db57294f9b5d8138ab589dd8935030c57c42229671fa0f46565fc5ae",
+      "analyzer_sha256": "cece18e9211b2084d9e0aefe0f1c36022a489fe2955b0388c4316c921ed4e6cf",
+      "child_sha256": "5c8f1f251064c8edc0c3c848b27767835d5271eced8c63f059eff7b97bf2ac4e",
+      "no_compiler_under_profile": true
+    },
+    "first_clean_512_1k_4k": {
+      "control_tok_s": [238.78089659049422, 218.55410936964563, 158.1601490938827],
+      "candidate_tok_s": [238.33070515260394, 218.53993505586945, 158.1935097405774],
+      "gain_percent": [-0.1885374602066059, -0.006485494057772989, 0.021092953494195044],
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "decision": "512 conflict requires predeclared seven-repeat adjudication; do not promote from this packet alone",
+      "json_sha256": "5545bb8748533a18c1194d298ac842b874b16ce7227b484bdd5937568aee41a3",
+      "harness_sha256": "3163eca39cca37cbfeff18ea098bfa1ada921e2e70de9e7002e3ef9a0de91507"
+    },
+    "predeclared_512_adjudication": {
+      "repetitions": 7,
+      "control_median_tok_s": 241.98848909685697,
+      "candidate_median_tok_s": 242.41337307595683,
+      "gain_percent": 0.1755802437899412,
+      "paired_candidate_wins": 4,
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "json_sha256": "fea1f487801d26d4b2aede15d248bbc4993e5133c6c44e87199676e7fdaee16b",
+      "harness_sha256": "c65061ef2a0d038d0e897ef84e39ad1b095b33aa309629d80f1b81ad61a789c3"
+    },
+    "source_default_publication_attempt": {
+      "control_tok_s": [238.5993971627226, 218.70859661473705, 158.24818010389805],
+      "candidate_tok_s": [238.82094970351667, 218.6665855217703, 158.16234544193605],
+      "gain_percent": [0.09285544868455897, -0.019208706752738003, -0.054240536545602236],
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "decision": "1K and 4K conflict require one final frozen adjudication; do not retain package default from this packet",
+      "json_sha256": "607279d64c66dcb5fa85c30330bbda2f3963529ce6ee5e1a88351a66238e8cc0",
+      "harness_sha256": "f0c5a1b9e48489ba39ebded1db81d28325f888da5a32a8c8e309ce4ebac8a04d"
+    },
+    "final_1k_4k_adjudication": {
+      "repetitions": 7,
+      "control_median_tok_s": [218.34098165176127, 157.9360450619256],
+      "candidate_median_tok_s": [218.27573962199963, 157.95779389218413],
+      "gain_percent": [-0.02988079895404061, 0.013770656502143375],
+      "paired_candidate_wins": [3, 3],
+      "all_state_exact": true,
+      "all_lifecycle_recovered": true,
+      "decision": "reject runtime ownership because the frozen 1K median remains negative",
+      "json_sha256": "bc0efab3dac108a597527c70b54a47e92549c9a05321e552be4081c195347686",
+      "harness_sha256": "7bd612235f43cb24d71b3b2e5d28475349cc34ce6e192dab4ad2b75d78bdbdc3"
+    }
+  },
+  "validation": {
+    "focused_q5_gfx1151_tests": "38 passed",
+    "runtime_owner_tests": "relevant eager/policy and isolated lifecycle tests 3 passed; H5P file 4 passed",
+    "known_unrelated_runner_bundle_failure": "module-order cached gfx1151 moe_branch_concurrency assertion; isolated lifecycle test passes and H5P changes only eager Q5 library ownership",
+    "ruff": "passed",
+    "pycompile": "passed",
+    "diff_check": "passed"
+  },
+  "commands": {
+    "final_actual_role": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-h5n.txt uv run python -u /tmp/laguna_wpfh5p_final_weight_major_occupancy_role_screen.py",
+    "correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_laguna_h5p_q5_weight_major_occupancy.py tests/test_gguf_q5_k_f32_rocblas_prefill.py tests/test_gfx1151_backend.py"
+  },
+  "decision": {
+    "standalone_candidate_admitted": true,
+    "default_off_runtime_qualified": false,
+    "runtime_ownership_rejected": true,
+    "production_changed": false,
+    "rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-weight-major-occupancy-runtime-rejected.json",
+    "next_action": "Keep the exact standalone 16x4 leaf, restore H5L 16x5 package ownership, and select a distinct exact target from the production residual."
+  }
+}

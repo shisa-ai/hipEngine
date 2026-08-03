@@ -1,0 +1,247 @@
+{
+  "attention_physical_breakdown": {
+    "physical_symbols": {
+      "global_local256": {
+        "dispatches": 48,
+        "duration_ms": 80.82385299999997,
+        "max_call_ms": 3.061024,
+        "median_call_ms": 1.629033,
+        "min_call_ms": 0.332483,
+        "resources": "local256/VGPR40/SGPR128/LDS0/scratch0"
+      },
+      "swa_qrow4_exact": {
+        "dispatches": 72,
+        "duration_ms": 268.720088,
+        "max_call_ms": 4.548037,
+        "median_call_ms": 3.6823295,
+        "min_call_ms": 2.965304,
+        "resources": "local32/VGPR72/SGPR128/LDS0/scratch0"
+      },
+      "swa_wave32_exact": {
+        "dispatches": 72,
+        "duration_ms": 109.90112400000002,
+        "max_call_ms": 2.368939,
+        "median_call_ms": 1.471092,
+        "min_call_ms": 0.795687,
+        "resources": "local32/VGPR32/SGPR128/LDS0/scratch0"
+      }
+    },
+    "position_breakdown": [
+      {
+        "dispatches": 12,
+        "duration_ms": 4.391357,
+        "kernel": "global_local256",
+        "median_call_ms": 0.36662300000000003,
+        "start_position": 0
+      },
+      {
+        "dispatches": 36,
+        "duration_ms": 30.554247,
+        "kernel": "swa_wave32_exact",
+        "median_call_ms": 0.8480865,
+        "start_position": 0
+      },
+      {
+        "dispatches": 12,
+        "duration_ms": 15.073282,
+        "kernel": "global_local256",
+        "median_call_ms": 1.2636905,
+        "start_position": 128
+      },
+      {
+        "dispatches": 36,
+        "duration_ms": 79.34687699999999,
+        "kernel": "swa_wave32_exact",
+        "median_call_ms": 2.1998179999999996,
+        "start_position": 128
+      },
+      {
+        "dispatches": 12,
+        "duration_ms": 25.509407000000003,
+        "kernel": "global_local256",
+        "median_call_ms": 2.1436374999999996,
+        "start_position": 256
+      },
+      {
+        "dispatches": 36,
+        "duration_ms": 115.62961200000002,
+        "kernel": "swa_qrow4_exact",
+        "median_call_ms": 3.2208259999999997,
+        "start_position": 256
+      },
+      {
+        "dispatches": 12,
+        "duration_ms": 35.849807000000006,
+        "kernel": "global_local256",
+        "median_call_ms": 3.017224,
+        "start_position": 384
+      },
+      {
+        "dispatches": 36,
+        "duration_ms": 153.090476,
+        "kernel": "swa_qrow4_exact",
+        "median_call_ms": 4.2519545,
+        "start_position": 384
+      }
+    ],
+    "qrow4_percent_of_attention": 58.48796917646727,
+    "swa_percent_of_attention": 82.40837498167491
+  },
+  "closed_predecessors": {
+    "cross_head_and_key_split": "gfx1151 qhead3 and scalar key-split schedules were slower and removed; no transfer without a distinct premise",
+    "f32_hipblaslt_attention": "runtime removed after maximum KL 0.444675",
+    "online_qrow4": "runtime rejected after maximum KL 0.394600",
+    "source_flash_attention": "runtime removed after maximum KL 1.804860"
+  },
+  "commands": {
+    "attribution": "PYTHONPATH=. uv run python /tmp/laguna_wpfh5m_post_residual.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-wpfh5l-integrated-rocprof -- uv run python -u /tmp/laguna_wpfh5l_weight_major_trace_integrated.py"
+  },
+  "date": "2026-07-30",
+  "h5m_exact_source_qualified_qrow4_premise": {
+    "admission_screen": "separate gfx1100 registry key; exact bytes versus qrow4 across dense starts 256/384 plus 508..515 wrapped/evicted/ragged tails; cached-only symbol/resources; both HIP-event and synchronized-wall wins at every production M512 qrow4 position before any package owner",
+    "arithmetic_change": false,
+    "candidate": "compute the existing per-query from-current/visibility predicates first, then load current and/or cached BF16 K in the max pass and K/V in the denominator/PV pass only when at least one of the four rows requires that source",
+    "control": "two-pass qrow4 exact body loads every has-current row and every cache-valid row before per-query visibility chooses one source",
+    "dense_m512_logical_source_model": [
+      {
+        "logical_candidate_source_bytes": 569769984,
+        "logical_candidate_source_rows_per_q_head": 30912,
+        "logical_control_source_bytes": 905969664,
+        "logical_control_source_rows_per_q_head": 49152,
+        "logical_reduction_percent": 37.109375,
+        "q_heads": 72,
+        "query_groups": 32,
+        "start_position": 256
+      },
+      {
+        "logical_candidate_source_bytes": 796262400,
+        "logical_candidate_source_rows_per_q_head": 43200,
+        "logical_control_source_bytes": 1132462080,
+        "logical_control_source_rows_per_q_head": 61440,
+        "logical_reduction_percent": 29.6875,
+        "q_heads": 72,
+        "query_groups": 32,
+        "start_position": 384
+      }
+    ],
+    "fallback": "retained WPF-3 exact qrow4-C256 policy and wave32 for every miss",
+    "kv_schedule_change": false,
+    "logical_source_bytes_saved_across_36_swa_layers": 24206376960,
+    "logical_source_bytes_saved_per_swa_layer": 672399360,
+    "logical_source_model_is_diagnostic_not_performance_claim": true,
+    "new_allocation_allowed": false,
+    "new_sidecar_allowed": false,
+    "next_action": "Freeze RED for a separately registered source-qualified two-pass exact qrow4 body without changing the production wrapper or package default.",
+    "preserved_association": "same logical-slot order, four-row order, BF16 source rounding, ordered products, reconstructed 128-thread dot tree, two-pass maximum, denominator additions, value accumulation, and F32 stores",
+    "runtime_gate_after_leaf": "bounded default-off package mapping, complete M512 hidden/logit/KV/KVLiveSpans/repeat/lifecycle equality, integrated physical call count, then clean counter-ordered 512/1K/4K non-regression",
+    "target_calls": "the 72 exact qrow4 SWA calls at M128 starts 256/384 in direct M512; generic wrap/eviction semantics remain part of the primitive gate"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h5l_exact_residual_attribution",
+  "lineage": {
+    "attribution_harness_sha256": "dd8a618b75398699719d7c5892787c91422b649ef2bdf9e4e88672e4de6939ff",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "matched_llamacpp_artifact_sha256": "24cfbf21552e8c9a834f9fc4dcc8f43a478f566334b0b63ce5cf73d4e76bdc28",
+    "matched_llamacpp_revision": "c0bc8591e",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json",
+    "production_artifact_sha256": "742c7bb7abc99b11e9a116d8eb73bd40af56ad61ec738bd0394d69981af7a5e4",
+    "production_revision": "a41f425de",
+    "source_review": "retained H5L cached trace plus in-tree exact SWA qrow4/source-qualified implementations; no benchmark rerun and no external body copied",
+    "trace_analyzer_sha256": "e789a87a325d27c60af353ce70f97a48babaffe91f781fef8c253e760ebee2f9",
+    "trace_harness_sha256": "2353218571ef7af339e0079775efce5fd46825297af2bc1c9349935eead9118b",
+    "trace_sha256": "744e62d4806c6e482b4393f664daf9787719c3370d12e1a2bba1851ddd2ca349",
+    "trace_summary_sha256": "f80b2f5041a639c6f30964826ab57271b436899f0473843f62d5ffd954fef117"
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": false,
+  "production": {
+    "attention_rows": 128,
+    "final_position": 511,
+    "m1024_tok_s": 217.88835123369333,
+    "m4096_tok_s": 157.36648542129373,
+    "m512_tok_s": 237.955933714411,
+    "matched_gap": 2.9172796373010095,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matrix_rows": 512,
+    "next_token_id": 2930
+  },
+  "request_trace": {
+    "dispatches": 1862,
+    "families": [
+      {
+        "decision": "select H5M exact source-qualified qrow4 SWA; changed-association FlashAttention/online/BLAS routes remain quality-closed",
+        "dispatches": 192,
+        "gap_ms": 437.71976699999993,
+        "hipengine_ms": 459.44506499999994,
+        "matched_llamacpp_ms": 21.725298,
+        "name": "attention",
+        "ratio": 21.147929248197194
+      },
+      {
+        "decision": "H5L retained; exact constant-accumulator geometry is at the VGPR ceiling and changed association remains quality-closed",
+        "dispatches": 470,
+        "gap_ms": 408.0351340000004,
+        "hipengine_ms": 466.98616400000043,
+        "matched_llamacpp_ms": 58.95103,
+        "name": "q5",
+        "ratio": 7.921594652375037
+      },
+      {
+        "decision": "H5J retained; H5K larger resident rows and exact output tiling remain rejected",
+        "dispatches": 47,
+        "gap_ms": 338.618723,
+        "hipengine_ms": 494.113972,
+        "matched_llamacpp_ms": 155.495249,
+        "name": "iq_down",
+        "ratio": 3.177678901301994
+      },
+      {
+        "decision": "H5I retained; defer behind attention, Q5, and IQ down",
+        "dispatches": 289,
+        "gap_ms": 104.94361500000007,
+        "hipengine_ms": 119.86348000000007,
+        "matched_llamacpp_ms": 14.919865,
+        "name": "q6",
+        "ratio": 8.033818000363949
+      },
+      {
+        "decision": "defer behind the three larger correctness-safe gaps",
+        "dispatches": 47,
+        "gap_ms": 59.844520999999986,
+        "hipengine_ms": 464.82237799999996,
+        "matched_llamacpp_ms": 404.977857,
+        "name": "gate_up",
+        "ratio": 1.1477723286979613
+      },
+      {
+        "decision": "below current family targets",
+        "dispatches": 817,
+        "gap_ms": null,
+        "hipengine_ms": 69.02978900000005,
+        "matched_llamacpp_ms": null,
+        "name": "remaining",
+        "ratio": null
+      }
+    ],
+    "kernel_span_ms": 2100.388976,
+    "kernel_sum_ms": 2074.2608479999994,
+    "reconciled_to_kernel_sum": true,
+    "segment": "Q5 embedding through argmax stage 2, excluding one copy kernel",
+    "span_minus_sum_ms": 26.128128000000743,
+    "span_minus_sum_percent": 1.243966155724136
+  },
+  "schema": 1,
+  "status": "accepted_attribution_only_target_selection"
+}

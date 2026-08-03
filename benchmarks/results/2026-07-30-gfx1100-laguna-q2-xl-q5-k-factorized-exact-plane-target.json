@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_q5_k_factorized_exact_plane_target_selection",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "5e2000ac9f3d1196e7de6f6bec5b4e3829c1f254",
+    "production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-sourcequal-exact-production.json",
+    "production_artifact_sha256": "d28e1b1831fda3c444af217daad12a9508f188819ae0e572224944e00f49886a",
+    "restored_h5n_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-qrow4-dense-first-fill-runtime-rejected.json",
+    "restored_h5n_rejection_artifact_sha256": "75e6c39d581520a7f33b51be909366c64eb493094c6c7aa8acb4b612a7a491b0",
+    "post_h5m_trace_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5m-residual.json",
+    "post_h5m_trace_artifact_sha256": "138bbc0d527d9b41913183c4829c1976d21416c48fd4442a8add94d2e9d3b31c",
+    "h5l_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-f32-weight-major-production.json",
+    "h5l_production_artifact_sha256": "742c7bb7abc99b11e9a116d8eb73bd40af56ad61ec738bd0394d69981af7a5e4",
+    "source": "net-new in-tree exact representation/dataflow premise over the retained H5L ordered body; no external device body copied",
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "91c10513bc436d5dde95d86b9e75fdcda73d2bb1a0ba3621cd8770522c6217a2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "f3e987c5b4ecc7921403ca44e19640d2d3e1512b218811a030c7d38a724111a5",
+      "hipengine/runtime/laguna_gguf_runner.py": "6ef0f77222c1cb59370f64f2c4f1bdbe6c636bd0db2cf6f933b5f6aab170d7dc",
+      "tests/test_gguf_q5_k_f32_rocblas_prefill.py": "71b4d787f1402a0106e8839da4a8601a17b63bf2484f4052fa0cd43ac465c1ad"
+    }
+  },
+  "production": {
+    "m512_tok_s": 238.56489443755876,
+    "m1024_tok_s": 218.1815612145882,
+    "m4096_tok_s": 158.13810004175082,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.909832989621587,
+    "request_kernel_sum_ms": 2060.485414,
+    "request_dispatches": 1862,
+    "q5_family_ms": 465.6597829999998,
+    "matched_llamacpp_q5_ms": 58.95103,
+    "q5_gap_ms": 406.7087529999998,
+    "q5_ratio": 7.899094943718536,
+    "q5_producer_calls": 235,
+    "q5_weight_major_calls": 188,
+    "q5_h5g_fallback_calls": 47
+  },
+  "target": {
+    "label": "WPF-H5O exact factorized-Q5 plane",
+    "control": "H5L expands every Q5_K block to 256 exact F32 weights, then the retained weight-major ordered consumer loads those values",
+    "candidate": "a separate producer stores 256 unsigned quant bytes plus eight exact scale coefficients and eight exact minimum coefficients per Q5_K block; a separate consumer reconstructs each existing F32 weight bit before executing H5L's unchanged per-output fmaf, wave reduction, serial wave sum, and store",
+    "q5_block_bytes": 176,
+    "control_f32_plane_bytes_per_block": 1024,
+    "candidate_factorized_plane_bytes_per_block": 320,
+    "candidate_layout": {
+      "quant_u8_count": 256,
+      "scale_coefficient_f32_count": 8,
+      "minimum_coefficient_f32_count": 8,
+      "alignment_bytes": 64
+    },
+    "plane_size_ratio": 3.2,
+    "plane_byte_reduction_percent": 68.75,
+    "maximum_control_workspace_bytes": 150994944,
+    "maximum_candidate_prefix_bytes": 47185920,
+    "new_allocation_allowed": false,
+    "persistent_weight_sidecar_allowed": false,
+    "existing_shared_workspace_may_be_reused": true,
+    "gfx1151_must_fail_closed": true,
+    "arithmetic_contract": "every candidate reconstructed F32 weight bit must equal the retained raw-Q5-to-F32 producer before the unchanged H5L matrix fmaf/reduction sequence; no Q8_1, WMMA, SGEMM, reassociation, approximate repair, or changed output rounding",
+    "fallback": "retained H5L F32-plane weight-major role, or retained H5G for its existing small roles, on every shape/key/registration/backend miss"
+  },
+  "logical_traffic_model": {
+    "scope": "actual direct-M512 eight-shape/235-call Q5 inventory, rows512; source-level bytes only, not measured HBM/L2 traffic or a performance forecast",
+    "control_producer_raw_read_gib": 1.798692226409912,
+    "control_producer_f32_write_gib": 10.465118408203125,
+    "candidate_producer_raw_read_gib": 1.798692226409912,
+    "candidate_producer_factorized_write_gib": 3.2703495025634766,
+    "producer_total_ratio": 2.4193548387096775,
+    "producer_total_reduction_percent": 58.66666666666667,
+    "control_consumer_f32_weight_read_gib": 756.64453125,
+    "candidate_consumer_factorized_weight_read_gib": 236.451416015625,
+    "unchanged_consumer_input_read_gib": 268.4384765625,
+    "consumer_total_ratio": 2.0303100198304764,
+    "consumer_total_reduction_percent": 50.74643821717943,
+    "producer_plus_consumer_ratio": 2.03417716341532,
+    "producer_plus_consumer_reduction_percent": 50.84007342206953,
+    "caveats": [
+      "The model counts logical workgroup loads and writes; H5L's adjacent row groups intentionally reuse F32 tiles through cache, so it is not a physical bandwidth claim.",
+      "The candidate adds one exact weight-reconstruction operation sequence per weight per workgroup; actual event and synchronized-wall timing decides whether smaller traffic outweighs added ALU.",
+      "No end-to-end throughput, HBM bandwidth, or parity improvement is claimed by this target-selection artifact."
+    ],
+    "roles": [
+      {"name": "bf16_k3072_n1024", "calls": 92, "col_tile": 8, "row_batch": 4, "row_groups": 128, "control_consumer_gib": 172.5, "candidate_consumer_gib": 77.625, "logical_ratio": 2.2222222222222223},
+      {"name": "bf16_k3072_n12288", "calls": 2, "col_tile": 8, "row_batch": 12, "row_groups": 43, "control_consumer_gib": 21.09375, "candidate_consumer_gib": 12.779296875, "logical_ratio": 1.6506189821182944},
+      {"name": "bf16_k6144_n3072", "calls": 12, "col_tile": 16, "row_batch": 5, "row_groups": 103, "control_consumer_gib": 100.40625, "candidate_consumer_gib": 40.658203125, "logical_ratio": 2.469520103761349},
+      {"name": "bf16_k9216_n3072", "calls": 35, "col_tile": 12, "row_batch": 8, "row_groups": 64, "control_consumer_gib": 315.0, "candidate_consumer_gib": 152.578125, "logical_ratio": 2.064516129032258},
+      {"name": "f32_k3072_n48", "calls": 12, "col_tile": 12, "row_batch": 4, "row_groups": 128, "control_consumer_gib": 0.984375, "candidate_consumer_gib": 0.404296875, "logical_ratio": 2.4347826086956523},
+      {"name": "f32_k3072_n72", "calls": 35, "col_tile": 8, "row_batch": 4, "row_groups": 128, "control_consumer_gib": 4.6142578125, "candidate_consumer_gib": 2.076416015625, "logical_ratio": 2.2222222222222223},
+      {"name": "f32_k3072_n6144", "calls": 12, "col_tile": 16, "row_batch": 5, "row_groups": 103, "control_consumer_gib": 100.40625, "candidate_consumer_gib": 40.658203125, "logical_ratio": 2.469520103761349},
+      {"name": "f32_k3072_n9216", "calls": 35, "col_tile": 8, "row_batch": 10, "row_groups": 52, "control_consumer_gib": 310.078125, "candidate_consumer_gib": 178.1103515625, "logical_ratio": 1.7409326424870466}
+    ]
+  },
+  "closed_predecessors": {
+    "h5n_runtime_policy": "rejected after clean 4K -0.217% and seven-repeat -0.202% with all candidate samples below H5M",
+    "q5_source_mmq": "reassociated Q8_1/WMMA runtime removed after maximum KL 4.162014",
+    "q5_sgemm": "exact operand values but reassociated SGEMM runtime removed after maximum KL 1.143627",
+    "q5_output_geometry": "constant-112/128 and wider output tiles were slower or spilled; H5L geometries remain fixed",
+    "q5_weight_major": "already retained by H5L; H5O changes the transient representation and reconstruction, not the workgroup traversal",
+    "approximate_repair": "rejected by measured dense mismatch/touched-row/read envelopes"
+  },
+  "admission": {
+    "red_first": "freeze raw-Q5 block reconstruction bits and rows17/33 output bytes against the retained F32 producer/H5L consumer before implementation",
+    "leaf_scope": "separate gfx1100 producer, primitive/composite keys, and symbols; no production policy change",
+    "correctness": "all reconstructed F32 weight bits and candidate BF16/F32 output bytes must match retained controls on synthetic edges and actual first/last production roles",
+    "resources": "cached-only trace must name candidate symbols with plausible scratch-free resources",
+    "performance": "five warmups, 15 counter-rotated samples, five launches per sample, producer-inclusive HIP-event and synchronized-wall medians across all eight actual roles; retain only roles that win both clocks",
+    "runtime_gate_if_leaf_admitted": "bounded default-off package policy, complete natural-M512 state, exact physical call counts, then clean 512/1K/4K non-regression before promotion",
+    "rejection": "remove every candidate surface if exact F32 reconstruction fails or no material actual role wins both clocks"
+  },
+  "decision": {
+    "selected": true,
+    "production_changed": false,
+    "next_action": "Implement RED for exact factorized Q5 block reconstruction and separately registered H5O producer/consumer candidates; production remains H5M/H5L until all leaf and runtime gates pass."
+  }
+}

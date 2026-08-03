@@ -92,6 +92,8 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     )
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     session.scratch = FakeScratch()
+    session._target_scratch_owner = object()
+    session._reset_current_slot_only = True
     session.runtime = SimpleNamespace(name="runtime")
     session._position = 17
     session._hidden_seed_fp32_populated = True

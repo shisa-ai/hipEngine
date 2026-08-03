@@ -1,0 +1,376 @@
+{
+  "complete_quality_gate": {
+    "categories": {
+      "code": {
+        "finite": true,
+        "max_kl_divergence": 0.26373808202909094,
+        "steps": 192,
+        "top1_agreement": 0.9947916666666666,
+        "top1_matches": 191
+      },
+      "general_en": {
+        "finite": true,
+        "max_kl_divergence": 0.06890778237734325,
+        "steps": 128,
+        "top1_agreement": 0.96875,
+        "top1_matches": 124
+      },
+      "general_ja": {
+        "finite": true,
+        "max_kl_divergence": 0.39459958564057296,
+        "steps": 128,
+        "top1_agreement": 0.9921875,
+        "top1_matches": 127
+      },
+      "mixed_ja_en": {
+        "finite": true,
+        "max_kl_divergence": 0.1925407840035649,
+        "steps": 128,
+        "top1_agreement": 0.953125,
+        "top1_matches": 122
+      }
+    },
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ],
+    "finite": true,
+    "free_running": {
+      "all_pairs_exact": false,
+      "complete_exact_pairs": 33,
+      "h16_exact_pairs": 39,
+      "h32_exact_pairs": 33,
+      "pairs": 54,
+      "same_mode_repeat_deterministic": true
+    },
+    "max_kl_divergence": 0.39459958564057296,
+    "pass": false,
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 7.889134237850193e-05,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+      "oracle_distribution": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "prompts": [
+      {
+        "category": "code",
+        "max_kl_divergence": 0.02421018112045008,
+        "prompt_id": "code_merge_intervals",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.026712194701671774,
+        "prompt_id": "code_topological_sort",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.0665703514386197,
+        "prompt_id": "code_lru_cache",
+        "steps": 32,
+        "steps_above_kl_limit": 1,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.010046340719777547,
+        "prompt_id": "code_markdown_table",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 31
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.02475841281031794,
+        "prompt_id": "general_en_plan",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.06890778237734325,
+        "prompt_id": "general_en_explain",
+        "steps": 32,
+        "steps_above_kl_limit": 1,
+        "top1_matches": 30
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.01919018335627345,
+        "prompt_id": "general_ja_plan",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.03258191117706161,
+        "prompt_id": "general_ja_explain",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.1900438846855864,
+        "prompt_id": "mixed_ja_en_translate",
+        "steps": 32,
+        "steps_above_kl_limit": 1,
+        "top1_matches": 32
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.06427968689018157,
+        "prompt_id": "mixed_ja_en_review",
+        "steps": 32,
+        "steps_above_kl_limit": 3,
+        "top1_matches": 31
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.26373808202909094,
+        "prompt_id": "heldout_code_rate_limiter",
+        "steps": 32,
+        "steps_above_kl_limit": 3,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.012405074712969076,
+        "prompt_id": "heldout_code_interval_schedule",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.021773435046420063,
+        "prompt_id": "heldout_general_en_incident",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.031199283276941846,
+        "prompt_id": "heldout_general_en_quant",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 30
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.39459958564057296,
+        "prompt_id": "heldout_general_ja_migration",
+        "steps": 32,
+        "steps_above_kl_limit": 4,
+        "top1_matches": 31
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.2902044591317352,
+        "prompt_id": "heldout_general_ja_speculative",
+        "steps": 32,
+        "steps_above_kl_limit": 3,
+        "top1_matches": 32
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.17016200726691133,
+        "prompt_id": "heldout_mixed_summary",
+        "steps": 32,
+        "steps_above_kl_limit": 4,
+        "top1_matches": 30
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.1925407840035649,
+        "prompt_id": "heldout_mixed_review",
+        "steps": 32,
+        "steps_above_kl_limit": 7,
+        "top1_matches": 29
+      }
+    ],
+    "steps": 576,
+    "top1_agreement": 0.9791666666666666,
+    "top1_matches": 564,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-29",
+  "decision": {
+    "cleanup": "No online primitive is removed because gfx1151 independently owns the registered online qrow2/qrow4 routes.",
+    "failed_checks": [
+      "complete_18_prompt_teacher_forced_max_kl_above_0.05"
+    ],
+    "next_action": "Screen WPF-1T exact Q5/Q6 output-column tiling.",
+    "pass": false,
+    "production": "retain exact swa_context_rows_qrow4_m128_c256_exact_spans and the clean 131.919/125.960 tok/s 512/1K packet",
+    "reason": "Online qrow4 is faster and remains deterministic, but maximum KL 0.394600 exceeds the mandatory 0.05 ceiling in every category; high top-1 agreement cannot waive the KL gate.",
+    "runtime_default_changed": false
+  },
+  "four_k_or_longer_run_performed": false,
+  "implementation": {
+    "attention_rows": 128,
+    "candidate_scope": "only the 36 sliding-attention bulk-prefill layers change softmax association; all 12 global-attention layers and exact c=1 decode are unchanged",
+    "candidate_swa_prefill_variant": "swa_context_rows_qrow4_m128_online_spans",
+    "control_swa_prefill_variant": "swa_context_rows_qrow4_m128_c256_exact_spans",
+    "isolated_request_sessions": true,
+    "matrix_rows": 512,
+    "production_changed": false,
+    "shared_resident_weights": true
+  },
+  "kind": "hipengine_laguna_q2_xl_gfx1100_wpf3_swa_qrow4_online_rejection",
+  "limitations": [
+    "The online route changes FP32 softmax association and is not bit-exact.",
+    "The measured natural-prompt speedup is diagnostic because the mandatory quality gate failed.",
+    "No 4K or longer prefill ran because retained exact 512/1K remain below 150 tok/s."
+  ],
+  "memory": {
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 41856412412,
+      "peak_allocations": 1873,
+      "total_allocated_bytes": 147008614992,
+      "total_freed_bytes": 147008614992
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "objective": "Adjudicate changed-association online qrow4 SWA prefill against the retained exact qrow4-C256 gfx1100 default on the complete WPF quality lane.",
+  "pass": false,
+  "performance_claim": false,
+  "performance_diagnostic": {
+    "candidate": {
+      "h16_decode_tok_s": 64.50264200508741,
+      "h16_e2e_output_tok_s": 16.54127966185616,
+      "h32_decode_tok_s": 63.7565302213503,
+      "h32_e2e_output_tok_s": 26.20903233319872,
+      "prefill_seconds": 39.67533490690403,
+      "prefill_tok_s": 118.33548503160861
+    },
+    "categories": {
+      "code": {
+        "h16_e2e_speedup": 1.0063035885397076,
+        "h32_e2e_speedup": 1.0049799759712308,
+        "prefill_speedup": 1.0083702765965037
+      },
+      "general_en": {
+        "h16_e2e_speedup": 1.0067001910464333,
+        "h32_e2e_speedup": 1.0053098595968335,
+        "prefill_speedup": 1.008290517010397
+      },
+      "general_ja": {
+        "h16_e2e_speedup": 1.008606004312472,
+        "h32_e2e_speedup": 1.0068195392680936,
+        "prefill_speedup": 1.0113114205929825
+      },
+      "mixed_ja_en": {
+        "h16_e2e_speedup": 1.0091135522121442,
+        "h32_e2e_speedup": 1.0074716272020339,
+        "prefill_speedup": 1.011771322929089
+      }
+    },
+    "control": {
+      "h16_decode_tok_s": 64.4804276621272,
+      "h16_e2e_output_tok_s": 16.41591101499439,
+      "h32_decode_tok_s": 63.73900561338751,
+      "h32_e2e_output_tok_s": 26.05027779545639,
+      "prefill_seconds": 40.06991282245144,
+      "prefill_tok_s": 117.17020750215758
+    },
+    "gate_pass": true,
+    "h16_decode_speedup": 1.0003445129594457,
+    "h16_e2e_speedup": 1.007637020372933,
+    "h32_decode_speedup": 1.000274943228156,
+    "h32_e2e_speedup": 1.0060941591098893,
+    "prefill_speedup": 1.0099451691201415,
+    "role": "complete-suite diagnostic only; the quality failure forbids a retained performance claim or runtime promotion",
+    "ttft_speedup": 1.0105865844149715
+  },
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100",
+    "visible_device": 0
+  },
+  "protocol": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 /tmp/laguna_wpf3_online_swa_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpf3_swa_online --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpf3-online-swa-quality.json",
+    "output_horizons": [
+      16,
+      32
+    ],
+    "prompt_count": 18,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "quality_thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_each_category_top1_agreement": 0.9,
+      "minimum_suite_top1_agreement": 0.9
+    },
+    "repetitions": 3,
+    "teacher_forced_steps": 576,
+    "teacher_forced_steps_per_prompt": 32,
+    "timed_order": "alternating qrow4_exact/qrow4_online per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded"
+  },
+  "revision": "f0948156d771640c3208695998303bdb3adce8fa",
+  "schema_version": 1,
+  "source_artifacts": [
+    {
+      "path": "/tmp/laguna-wpf3-online-swa-quality.json",
+      "role": "complete 18-prompt/576-step quality and performance rejection",
+      "sha256": "85b5180e4d9beb48d4ceb87b7b3fb28c885556e6de4cb1f8a3f27332d1772a69"
+    },
+    {
+      "path": "/tmp/laguna_wpf3_online_swa_quality.py",
+      "role": "temporary M512/attention128 adapter over the retained category harness",
+      "sha256": "bbf46a188f86288ef65d641cf32bd988d092b369f1a801874fdb860a0eb5dfc8"
+    },
+    {
+      "path": "/tmp/laguna-wpf3-online-swa-quality.stderr",
+      "role": "progress log",
+      "sha256": "b081cde5032de3afea8b707c6ea361d52623b9b55592ce722ea32c9f0b298587"
+    },
+    {
+      "path": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-production.json",
+      "role": "retained exact production baseline",
+      "sha256": "f92e86a9c336b8b36a061ed18ba3020923c297cb5baa8b5e49fcc00afef7c174"
+    }
+  ],
+  "status": "rejected_quality",
+  "temporary_harness": {
+    "path": "/tmp/laguna_wpf3_online_swa_quality.py",
+    "sha256": "bbf46a188f86288ef65d641cf32bd988d092b369f1a801874fdb860a0eb5dfc8"
+  }
+}

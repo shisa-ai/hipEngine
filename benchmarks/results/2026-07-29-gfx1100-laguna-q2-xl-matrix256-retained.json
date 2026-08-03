@@ -1,0 +1,968 @@
+{
+  "claim_scope": "Exact gfx1100 Laguna UD-Q2_K_XL matrix256/attention128/RB32 prefill at 512 and 1024 tokens; no 4K or long-context claim below 150 tok/s",
+  "commands": {
+    "cached_profile_child": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --chunk-size 256 --attention-rows 128 --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpfc1-matrix256-runtime-profile-child.json",
+    "cached_profile_rocprof": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file /tmp/laguna-wpfc1-matrix256-runtime-trace/trace -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --chunk-size 256 --attention-rows 128 --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpfc1-matrix256-runtime-profile-child.json",
+    "matrix_screen": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_matrix_chunk_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --matrix-rows 128,256,512 --attention-rows 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpfc1-matrix128-256-512-short.json",
+    "selector_unset_publication": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpfc1-matrix256-selector-unset-512-1k.json"
+  },
+  "correctness": {
+    "exact_by_matrix_rows": {
+      "128": true,
+      "256": true,
+      "512": true
+    },
+    "full_state": {
+      "128": {
+        "checks": {
+          "all_48_hidden_boundaries": true,
+          "attention_rows_fixed": true,
+          "final_hidden_sha256": true,
+          "final_position": true,
+          "kv_sha256": true,
+          "logits_sha256": true,
+          "next_token_id": true,
+          "next_token_logit_hex": true,
+          "post_layer_hidden_sha256": true,
+          "tracked_returned_to_baseline": true
+        },
+        "final_hidden_sha256": "fc75ce0ac332e5210e72be904c7e65ba59e15e5124340363232ac502bb23896b",
+        "final_position": 511,
+        "hidden_boundary_set_sha256": "cfc8e2b7179eaa356569ceb1d7498589c7e0716972049397691920f1b67d17c7",
+        "kv_sha256": "5c6999d5054e33a5684c0a939cbdf8c1c911e06d9cf5e88f5a765e1d9d336a63",
+        "logits_sha256": "e347d89b1be6548975a689383e99b8115d715f61542193b8376c3957ae140f70",
+        "next_token_id": 2930,
+        "pass": true,
+        "post_layer_hidden_sha256": "e41008b4b2ae4f6b734d85cdc3bc18beea70b1f2bebed38b6c570b4b6f201cce",
+        "tracked_returned_to_baseline": true
+      },
+      "256": {
+        "checks": {
+          "all_48_hidden_boundaries": true,
+          "attention_rows_fixed": true,
+          "final_hidden_sha256": true,
+          "final_position": true,
+          "kv_sha256": true,
+          "logits_sha256": true,
+          "next_token_id": true,
+          "next_token_logit_hex": true,
+          "post_layer_hidden_sha256": true,
+          "tracked_returned_to_baseline": true
+        },
+        "final_hidden_sha256": "fc75ce0ac332e5210e72be904c7e65ba59e15e5124340363232ac502bb23896b",
+        "final_position": 511,
+        "hidden_boundary_set_sha256": "cfc8e2b7179eaa356569ceb1d7498589c7e0716972049397691920f1b67d17c7",
+        "kv_sha256": "5c6999d5054e33a5684c0a939cbdf8c1c911e06d9cf5e88f5a765e1d9d336a63",
+        "logits_sha256": "e347d89b1be6548975a689383e99b8115d715f61542193b8376c3957ae140f70",
+        "next_token_id": 2930,
+        "pass": true,
+        "post_layer_hidden_sha256": "e41008b4b2ae4f6b734d85cdc3bc18beea70b1f2bebed38b6c570b4b6f201cce",
+        "tracked_returned_to_baseline": true
+      },
+      "512": {
+        "checks": {
+          "all_48_hidden_boundaries": true,
+          "attention_rows_fixed": true,
+          "final_hidden_sha256": true,
+          "final_position": true,
+          "kv_sha256": true,
+          "logits_sha256": true,
+          "next_token_id": true,
+          "next_token_logit_hex": true,
+          "post_layer_hidden_sha256": true,
+          "tracked_returned_to_baseline": true
+        },
+        "final_hidden_sha256": "fc75ce0ac332e5210e72be904c7e65ba59e15e5124340363232ac502bb23896b",
+        "final_position": 511,
+        "hidden_boundary_set_sha256": "cfc8e2b7179eaa356569ceb1d7498589c7e0716972049397691920f1b67d17c7",
+        "kv_sha256": "5c6999d5054e33a5684c0a939cbdf8c1c911e06d9cf5e88f5a765e1d9d336a63",
+        "logits_sha256": "e347d89b1be6548975a689383e99b8115d715f61542193b8376c3957ae140f70",
+        "next_token_id": 2930,
+        "pass": true,
+        "post_layer_hidden_sha256": "e41008b4b2ae4f6b734d85cdc3bc18beea70b1f2bebed38b6c570b4b6f201cce",
+        "tracked_returned_to_baseline": true
+      }
+    },
+    "matrix_screen_pass": true,
+    "relative_quality": {
+      "128": {
+        "finite": true,
+        "max_kl_divergence": 0.0,
+        "pass": true,
+        "top1_agreement": 1.0
+      },
+      "256": {
+        "finite": true,
+        "max_kl_divergence": 0.0,
+        "pass": true,
+        "top1_agreement": 1.0
+      },
+      "512": {
+        "finite": true,
+        "max_kl_divergence": 0.0,
+        "pass": true,
+        "top1_agreement": 1.0
+      }
+    },
+    "same_mode_repeat_deterministic": true,
+    "selector_publication": {
+      "boundary_fixture_evidence": [
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_handles_final_128k_position",
+        "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
+        "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
+        "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+      ],
+      "control_candidate_generated_ids_match": true,
+      "control_candidate_next_tokens_match": true,
+      "final_positions_exact": true,
+      "pass": true,
+      "repeat_generated_ids_deterministic": true,
+      "repeat_next_token_deterministic": true,
+      "tracked_returned_to_baseline": true
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-28T15:06:20.417553+00:00",
+  "decision": {
+    "attention_rows": 128,
+    "eligible_matrix_rows": [
+      256,
+      512
+    ],
+    "failed_checks": [],
+    "matrix512_role": "explicit WPF-2 capacity comparator; not the package default",
+    "pass": true,
+    "policy": "all logits/48 hidden boundaries/KV/cursor fields and shared-prefix routing exact, deterministic repeats, exact lifecycle, and aggregate plus every-length wall improvement versus M128",
+    "reason": "M256 improves both short shapes, has the lowest aggregate wall, and uses half M512 planned scratch; M512 remains only 0.027% behind and materially improves expert grouping.",
+    "selected_matrix_rows": 256
+  },
+  "gate": {
+    "attention_rows": 128,
+    "both_short_shapes_reach_150_tok_s": false,
+    "four_k_run_performed": false,
+    "headline_1024_tok_s": 80.45186905460976,
+    "headline_512_tok_s": 86.23926438789273,
+    "long_context_reopened": false,
+    "matrix_rows": 256,
+    "next_action": "WPF-2 exact-first IQ reuse must compare M256 and explicit M512 because capacity-dependent grouping outweighs their 0.027% baseline-wall difference.",
+    "raw_k_prefill_rowbatch": 32,
+    "retained_default": true
+  },
+  "kind": "hipengine_laguna_wpf_c1_matrix256_retained",
+  "memory": {
+    "publication_peak_allocated_bytes": 40029305508,
+    "publication_resident_nbytes": 40029305508,
+    "screen_owner_resident_nbytes": 40248812196,
+    "screen_peak_allocated_bytes": 40819662472,
+    "screen_scratch": {
+      "128": {
+        "allocation_observation": {
+          "gpu_free_after_session_allocate": 6943670272,
+          "gpu_free_before": 7201619968,
+          "gpu_free_delta_after_session_allocate": 257949696,
+          "tracked_delta_after_session_allocate": 238702564
+        },
+        "attention_rows": 128,
+        "global_attention_rows": 128,
+        "planned": {
+          "admission_nbytes": 2147483648,
+          "moe_nbytes": 26098720,
+          "rows_nbytes": 83662848,
+          "total_nbytes": 109761568
+        },
+        "raw_k_prefill_rowbatch": 32
+      },
+      "256": {
+        "allocation_observation": {
+          "gpu_free_after_session_allocate": 6840909824,
+          "gpu_free_before": 7201619968,
+          "gpu_free_delta_after_session_allocate": 360710144,
+          "tracked_delta_after_session_allocate": 348455908
+        },
+        "attention_rows": 128,
+        "global_attention_rows": 128,
+        "planned": {
+          "admission_nbytes": 2147483648,
+          "moe_nbytes": 52189216,
+          "rows_nbytes": 167325696,
+          "total_nbytes": 219514912
+        },
+        "raw_k_prefill_rowbatch": 32
+      },
+      "512": {
+        "allocation_observation": {
+          "gpu_free_after_session_allocate": 6622806016,
+          "gpu_free_before": 7201619968,
+          "gpu_free_delta_after_session_allocate": 578813952,
+          "tracked_delta_after_session_allocate": 567962596
+        },
+        "attention_rows": 128,
+        "global_attention_rows": 128,
+        "planned": {
+          "admission_nbytes": 2147483648,
+          "moe_nbytes": 104370208,
+          "rows_nbytes": 334651392,
+          "total_nbytes": 439021600
+        },
+        "raw_k_prefill_rowbatch": 32
+      }
+    }
+  },
+  "model": {
+    "direct_gguf": true,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "repacked_cache": null,
+    "repacked_cache_manifest_sha256": null,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "pass": true,
+  "performance": {
+    "matrix_screen": {
+      "128": {
+        "attention_rows": 128,
+        "lengths": {
+          "1024": {
+            "median_seconds": 13.016142691019922,
+            "median_tok_s": 78.67154074044352,
+            "samples_seconds": [
+              13.00520547805354,
+              13.016142691019922,
+              13.024835991906002
+            ],
+            "speedup_vs_128": 1.0
+          },
+          "512": {
+            "median_seconds": 6.021549340104684,
+            "median_tok_s": 85.02795062891553,
+            "samples_seconds": [
+              5.96453956910409,
+              6.021549340104684,
+              6.038468654034659
+            ],
+            "speedup_vs_128": 1.0
+          }
+        },
+        "matrix_rows": 128,
+        "median_sum_seconds": 19.037692031124607,
+        "speedup_vs_128": 1.0,
+        "weighted_tok_s": 80.68204893160384
+      },
+      "256": {
+        "attention_rows": 128,
+        "lengths": {
+          "1024": {
+            "median_seconds": 12.876345393946394,
+            "median_tok_s": 79.52567041898527,
+            "samples_seconds": [
+              12.822575067868456,
+              12.876345393946394,
+              12.903928926913068
+            ],
+            "speedup_vs_128": 1.0108569079809906
+          },
+          "512": {
+            "median_seconds": 5.963517264928669,
+            "median_tok_s": 85.85537313877873,
+            "samples_seconds": [
+              5.925775432959199,
+              5.963517264928669,
+              5.974743525963277
+            ],
+            "speedup_vs_128": 1.0097311825551845
+          }
+        },
+        "matrix_rows": 256,
+        "median_sum_seconds": 18.839862658875063,
+        "speedup_vs_128": 1.0105005740132798,
+        "weighted_tok_s": 81.5292567579532
+      },
+      "512": {
+        "attention_rows": 128,
+        "lengths": {
+          "1024": {
+            "median_seconds": 12.879409816116095,
+            "median_tok_s": 79.50674872684475,
+            "samples_seconds": [
+              12.86069810995832,
+              12.879409816116095,
+              12.89544641901739
+            ],
+            "speedup_vs_128": 1.0106163928981229
+          },
+          "512": {
+            "median_seconds": 5.965545023791492,
+            "median_tok_s": 85.82618988844554,
+            "samples_seconds": [
+              5.943503991002217,
+              5.965545023791492,
+              5.9748059960547835
+            ],
+            "speedup_vs_128": 1.009387963059509
+          }
+        },
+        "matrix_rows": 512,
+        "median_sum_seconds": 18.844954839907587,
+        "speedup_vs_128": 1.0102275220532162,
+        "weighted_tok_s": 81.5072263663505
+      }
+    },
+    "selector_unset_publication": {
+      "1024": {
+        "length": 1024,
+        "median_seconds": 12.728107028873637,
+        "median_tok_s": 80.45186905460976,
+        "next_token_ids": [
+          95,
+          95,
+          95
+        ],
+        "output_tokens": 1,
+        "percent_change_vs_previous_headline": 1.127502996952301,
+        "previous_matrix128_rowbatch32_tok_s": 79.5548853381996,
+        "repeat_deterministic": true,
+        "samples_seconds": [
+          12.628926860168576,
+          12.728107028873637,
+          12.822638652054593
+        ],
+        "speedup_vs_previous_headline": 1.011275029969523
+      },
+      "512": {
+        "length": 512,
+        "median_seconds": 5.936970863956958,
+        "median_tok_s": 86.23926438789273,
+        "next_token_ids": [
+          2930,
+          2930,
+          2930
+        ],
+        "output_tokens": 1,
+        "percent_change_vs_previous_headline": 0.8869130955798443,
+        "previous_matrix128_rowbatch32_tok_s": 85.48112113033928,
+        "repeat_deterministic": true,
+        "samples_seconds": [
+          5.795888202963397,
+          5.936970863956958,
+          5.940904240123928
+        ],
+        "speedup_vs_previous_headline": 1.0088691309557984
+      }
+    }
+  },
+  "performance_claim": true,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "hip_total_bytes": 48301604864,
+    "machine": "x86_64",
+    "target_arch": "gfx1100"
+  },
+  "profile": {
+    "compiler_spawned_under_profiler": false,
+    "lengths": {
+      "1024": {
+        "dispatches_per_pass": [
+          4595
+        ],
+        "families": {
+          "activation_reduce_residual": {
+            "calls_per_pass": [
+              757
+            ],
+            "median_duration_ns": 11836245,
+            "median_share_of_kernel_sum": 0.0009403683580081141
+          },
+          "dense_shared_quant_projection": {
+            "calls_per_pass": [
+              1532
+            ],
+            "median_duration_ns": 4761769655,
+            "median_share_of_kernel_sum": 0.3783140270994064
+          },
+          "embedding": {
+            "calls_per_pass": [
+              4
+            ],
+            "median_duration_ns": 50441,
+            "median_share_of_kernel_sum": 4.007446647673082e-06
+          },
+          "global_attention": {
+            "calls_per_pass": [
+              96
+            ],
+            "median_duration_ns": 313412582,
+            "median_share_of_kernel_sum": 0.02490006544427083
+          },
+          "lm_head_argmax": {
+            "calls_per_pass": [
+              1
+            ],
+            "median_duration_ns": 3160,
+            "median_share_of_kernel_sum": 2.5105631146581035e-07
+          },
+          "norm_rope_gate": {
+            "calls_per_pass": [
+              768
+            ],
+            "median_duration_ns": 24667364,
+            "median_share_of_kernel_sum": 0.0019597776643748475
+          },
+          "other": {
+            "calls_per_pass": [
+              13
+            ],
+            "median_duration_ns": 1407417,
+            "median_share_of_kernel_sum": 0.00011181674706147989
+          },
+          "prefill_kv_write": {
+            "calls_per_pass": [
+              384
+            ],
+            "median_duration_ns": 1498171,
+            "median_share_of_kernel_sum": 0.00011902698898893816
+          },
+          "router": {
+            "calls_per_pass": [
+              376
+            ],
+            "median_duration_ns": 24816670,
+            "median_share_of_kernel_sum": 0.0019716397572988077
+          },
+          "selected_iq_down": {
+            "calls_per_pass": [
+              188
+            ],
+            "median_duration_ns": 2514215388,
+            "median_share_of_kernel_sum": 0.19974988656388015
+          },
+          "selected_iq_gate_up": {
+            "calls_per_pass": [
+              188
+            ],
+            "median_duration_ns": 2486501297,
+            "median_share_of_kernel_sum": 0.19754805192397892
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              288
+            ],
+            "median_duration_ns": 2446639211,
+            "median_share_of_kernel_sum": 0.19438108094977233
+          }
+        },
+        "median_attention_duration_ns": 2760051793,
+        "median_kernel_span_ns": 12640568130,
+        "median_kernel_sum_ns": 12586817601,
+        "threshold_analysis": {
+          "attention_fraction_of_target_wall": 0.4043044618652344,
+          "selected_iq_perfect_removal_ceiling_tok_s": 134.034019819871,
+          "selected_iq_perfect_removal_floor_seconds": 7.639851445,
+          "target_tok_s": 150,
+          "target_wall_seconds": 6.826666666666667
+        }
+      },
+      "512": {
+        "dispatches_per_pass": [
+          2294
+        ],
+        "families": {
+          "activation_reduce_residual": {
+            "calls_per_pass": [
+              376
+            ],
+            "median_duration_ns": 5823274,
+            "median_share_of_kernel_sum": 0.0010079547937008884
+          },
+          "dense_shared_quant_projection": {
+            "calls_per_pass": [
+              766
+            ],
+            "median_duration_ns": 2372138992,
+            "median_share_of_kernel_sum": 0.4105952885457894
+          },
+          "embedding": {
+            "calls_per_pass": [
+              2
+            ],
+            "median_duration_ns": 25081,
+            "median_share_of_kernel_sum": 4.341288797472346e-06
+          },
+          "global_attention": {
+            "calls_per_pass": [
+              48
+            ],
+            "median_duration_ns": 75783028,
+            "median_share_of_kernel_sum": 0.01311734023742806
+          },
+          "lm_head_argmax": {
+            "calls_per_pass": [
+              1
+            ],
+            "median_duration_ns": 2920,
+            "median_share_of_kernel_sum": 5.054249546915694e-07
+          },
+          "norm_rope_gate": {
+            "calls_per_pass": [
+              384
+            ],
+            "median_duration_ns": 12279236,
+            "median_share_of_kernel_sum": 0.002125422020187359
+          },
+          "other": {
+            "calls_per_pass": [
+              5
+            ],
+            "median_duration_ns": 691487,
+            "median_share_of_kernel_sum": 0.00011968999508383879
+          },
+          "prefill_kv_write": {
+            "calls_per_pass": [
+              192
+            ],
+            "median_duration_ns": 751606,
+            "median_share_of_kernel_sum": 0.00013009603715613414
+          },
+          "router": {
+            "calls_per_pass": [
+              188
+            ],
+            "median_duration_ns": 12419967,
+            "median_share_of_kernel_sum": 0.0021497812528238998
+          },
+          "selected_iq_down": {
+            "calls_per_pass": [
+              94
+            ],
+            "median_duration_ns": 1245996667,
+            "median_share_of_kernel_sum": 0.2156704825220279
+          },
+          "selected_iq_gate_up": {
+            "calls_per_pass": [
+              94
+            ],
+            "median_duration_ns": 1234493112,
+            "median_share_of_kernel_sum": 0.2136793236985118
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              144
+            ],
+            "median_duration_ns": 816911268,
+            "median_share_of_kernel_sum": 0.14139977418353852
+          }
+        },
+        "median_attention_duration_ns": 892694296,
+        "median_kernel_span_ns": 5804026646,
+        "median_kernel_sum_ns": 5777316638,
+        "threshold_analysis": {
+          "attention_fraction_of_target_wall": 0.26153153203125,
+          "selected_iq_perfect_removal_ceiling_tok_s": 154.05275177890783,
+          "selected_iq_perfect_removal_floor_seconds": 3.323536867,
+          "target_tok_s": 150,
+          "target_wall_seconds": 3.4133333333333336
+        }
+      }
+    },
+    "resources": [
+      {
+        "Kernel_Name": "void (anonymous namespace)::gguf_k_prefill_out_rowbatch_kernel<unsigned short, unsigned short, 5, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "80",
+        "Workgroup_Size_X": "128",
+        "calls": 987,
+        "duration_ns": 3965301837,
+        "family": "dense_shared_quant_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "131072",
+            "y": "4"
+          },
+          {
+            "x": "131072",
+            "y": "8"
+          },
+          {
+            "x": "1572864",
+            "y": "4"
+          },
+          {
+            "x": "1572864",
+            "y": "8"
+          },
+          {
+            "x": "393216",
+            "y": "4"
+          },
+          {
+            "x": "393216",
+            "y": "8"
+          }
+        ]
+      },
+      {
+        "Kernel_Name": "void (anonymous namespace)::gguf_k_prefill_out_rowbatch_kernel<unsigned short, float, 5, 32>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "80",
+        "Workgroup_Size_X": "128",
+        "calls": 658,
+        "duration_ns": 2506880632,
+        "family": "dense_shared_quant_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "1179648",
+            "y": "4"
+          },
+          {
+            "x": "1179648",
+            "y": "8"
+          },
+          {
+            "x": "6144",
+            "y": "4"
+          },
+          {
+            "x": "6144",
+            "y": "8"
+          },
+          {
+            "x": "786432",
+            "y": "4"
+          },
+          {
+            "x": "786432",
+            "y": "8"
+          },
+          {
+            "x": "9216",
+            "y": "4"
+          },
+          {
+            "x": "9216",
+            "y": "8"
+          }
+        ]
+      },
+      {
+        "Kernel_Name": "void (anonymous namespace)::gguf_k_prefill_out_rowbatch_kernel<unsigned short, float, 6, 32>(unsigned short const*, unsigned char const*, float*, int, int, int)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "80",
+        "Workgroup_Size_X": "128",
+        "calls": 672,
+        "duration_ns": 812687339,
+        "family": "dense_shared_quant_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "1179648",
+            "y": "4"
+          },
+          {
+            "x": "1179648",
+            "y": "8"
+          },
+          {
+            "x": "131072",
+            "y": "4"
+          },
+          {
+            "x": "131072",
+            "y": "8"
+          },
+          {
+            "x": "9216",
+            "y": "4"
+          },
+          {
+            "x": "9216",
+            "y": "8"
+          }
+        ]
+      },
+      {
+        "Kernel_Name": "void (anonymous namespace)::gguf_k_prefill_out_rowbatch_kernel<unsigned short, unsigned short, 6, 32>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "80",
+        "Workgroup_Size_X": "128",
+        "calls": 350,
+        "duration_ns": 460050986,
+        "family": "dense_shared_quant_projection",
+        "observed_grid_sizes": [
+          {
+            "x": "131072",
+            "y": "4"
+          },
+          {
+            "x": "131072",
+            "y": "8"
+          },
+          {
+            "x": "393216",
+            "y": "4"
+          },
+          {
+            "x": "393216",
+            "y": "8"
+          }
+        ]
+      },
+      {
+        "Kernel_Name": "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "32",
+        "Workgroup_Size_X": "128",
+        "calls": 315,
+        "duration_ns": 3881101636,
+        "family": "selected_iq_down",
+        "observed_grid_sizes": [
+          {
+            "x": "393216",
+            "y": "1280"
+          },
+          {
+            "x": "393216",
+            "y": "2560"
+          }
+        ]
+      },
+      {
+        "Kernel_Name": "(anonymous namespace)::gguf_iq4_xs_selected_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "72",
+        "Workgroup_Size_X": "128",
+        "calls": 14,
+        "duration_ns": 193627745,
+        "family": "selected_iq_down",
+        "observed_grid_sizes": [
+          {
+            "x": "393216",
+            "y": "1280"
+          },
+          {
+            "x": "393216",
+            "y": "2560"
+          }
+        ]
+      },
+      {
+        "Kernel_Name": "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "136",
+        "Workgroup_Size_X": "64",
+        "calls": 322,
+        "duration_ns": 3921698976,
+        "family": "selected_iq_gate_up",
+        "observed_grid_sizes": [
+          {
+            "x": "32768",
+            "y": "1280"
+          },
+          {
+            "x": "32768",
+            "y": "2560"
+          }
+        ]
+      },
+      {
+        "Kernel_Name": "(anonymous namespace)::gguf_iq3_xxs_selected_dual_silu_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+        "LDS_Block_Size": "512",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "40",
+        "Workgroup_Size_X": "256",
+        "calls": 7,
+        "duration_ns": 97618466,
+        "family": "selected_iq_gate_up",
+        "observed_grid_sizes": [
+          {
+            "x": "262144",
+            "y": "1280"
+          },
+          {
+            "x": "262144",
+            "y": "2560"
+          }
+        ]
+      }
+    ]
+  },
+  "protocol": {
+    "all_hidden_boundary_gate_rows": 512,
+    "attention_rows": 128,
+    "boundary_gate": "tests/test_laguna_kv_attention.py::test_laguna_swa_resident_attention_slices_match_chunks_across_ring_wrap",
+    "direct_gguf": true,
+    "four_k_run_performed": false,
+    "global_attention_rows": 128,
+    "lengths": [
+      512,
+      1024
+    ],
+    "matrix_rows": [
+      128,
+      256,
+      512
+    ],
+    "mode_order": "rotating Latin order by length and repetition",
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "quant_label": "UD-Q2_K_XL",
+    "repetitions": 3,
+    "routing_occupancy_rows": [
+      128,
+      256,
+      512
+    ],
+    "safety_reserve_gib": 4.0,
+    "selector_unset_package_matrix_rows": true,
+    "selector_unset_raw_k_rowbatch": true,
+    "timing_scope": "borrowed session construction excluded; synchronized prefill and final projection included; hashing excluded",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 1024,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "3b476463f38cee6efb284f95d02d07102f2123fa7e2c560db6a8d863b778797d",
+    "warmup_rows_per_mode": 128
+  },
+  "repo": {
+    "default_revision": "a80a4cfbfeb84594c366deb4cf142332acd0c619",
+    "publication_revision": "b2dea14c999d304c79c58575c01f8d99e2c3a00c",
+    "publication_tracked_clean": true,
+    "screen_revision": "9e226015942bd588f7e011376d61a78ce5b46d3f",
+    "screen_tracked_clean": true
+  },
+  "routing": {
+    "modes": {
+      "128": {
+        "occupancy_aggregate": {
+          "full_route_utilization_by_rowbatch": {
+            "16": 0.3473404255319149,
+            "2": 0.9159906914893617,
+            "32": 0.17287234042553193,
+            "4": 0.7716090425531915,
+            "8": 0.5634308510638297
+          },
+          "layer_count": 47,
+          "max_routes_per_expert": 102,
+          "mean_active_experts": 191.7872340425532,
+          "mean_routes_per_active_expert": 6.70052643553394,
+          "mean_routes_per_all_expert": 5.0,
+          "route_slots_per_layer": 1280,
+          "tail_route_slots_by_rowbatch": {
+            "16": 39264,
+            "2": 5054,
+            "32": 49760,
+            "4": 13740,
+            "8": 26264
+          }
+        },
+        "routing_weights_sha256": "b570c2797611a224cd5ed812a7d0b110a049ae2f5a9f3b92412ad75860725f66",
+        "selected_experts_sha256": "2c15c66d008314f99931e86e482a334f17fd743e7857e886433bd88b32b5add5",
+        "tracked_returned_to_baseline": true
+      },
+      "256": {
+        "occupancy_aggregate": {
+          "full_route_utilization_by_rowbatch": {
+            "16": 0.5288563829787234,
+            "2": 0.9572639627659575,
+            "32": 0.3316489361702128,
+            "4": 0.875,
+            "8": 0.7339095744680851
+          },
+          "layer_count": 47,
+          "max_routes_per_expert": 205,
+          "mean_active_experts": 209.68085106382978,
+          "mean_routes_per_active_expert": 12.253044826960847,
+          "mean_routes_per_all_expert": 10.0,
+          "route_slots_per_layer": 2560,
+          "tail_route_slots_by_rowbatch": {
+            "16": 56688,
+            "2": 5142,
+            "32": 80416,
+            "4": 15040,
+            "8": 32016
+          }
+        },
+        "routing_weights_sha256": "8aaeb4425e99dc322389c4147cb201b1b95f4f988e193bb40681b616d3663836",
+        "selected_experts_sha256": "ff7eee6eb46916b129c8f1211989ff74328847ee48f8228dbcfabe07db49b3a9",
+        "tracked_returned_to_baseline": true
+      },
+      "512": {
+        "occupancy_aggregate": {
+          "full_route_utilization_by_rowbatch": {
+            "16": 0.7212765957446808,
+            "2": 0.9776180186170212,
+            "32": 0.5204787234042553,
+            "4": 0.9355718085106383,
+            "8": 0.8554188829787234
+          },
+          "layer_count": 47,
+          "max_routes_per_expert": 446,
+          "mean_active_experts": 219.10638297872342,
+          "mean_routes_per_active_expert": 23.425924071177544,
+          "mean_routes_per_all_expert": 20.0,
+          "route_slots_per_layer": 5120,
+          "tail_route_slots_by_rowbatch": {
+            "16": 67072,
+            "2": 5386,
+            "32": 115392,
+            "4": 15504,
+            "8": 34792
+          }
+        },
+        "routing_weights_sha256": "08f06bea4e9010f1695e9b243397624608ab7cfc80a2fff38743678cde9956a8",
+        "selected_experts_sha256": "2a5598b3ac8c1949e4936fad1e59a378d894482aac8ecd19d792c8b8aa6e94e4",
+        "tracked_returned_to_baseline": true
+      }
+    },
+    "pass": true,
+    "shared_prefix": {
+      "128": {
+        "pass": true,
+        "routing_weights_exact": true,
+        "selected_experts_exact": true
+      },
+      "256": {
+        "pass": true,
+        "routing_weights_exact": true,
+        "selected_experts_exact": true
+      },
+      "512": {
+        "pass": true,
+        "routing_weights_exact": true,
+        "selected_experts_exact": true
+      }
+    },
+    "shared_prefix_lanes_per_layer": 1280
+  },
+  "schema": 1,
+  "source_hashes": {
+    "matrix_screen_sha256": "d358b91311d82788b8558455d9b7dbf27d4ca76c26453a1afc91f60fdff4d64b",
+    "matrix_screen_stderr_sha256": "cac1e011ec8483127ac477c6a93ef7222273226986153fca6d6b3280a1662d83",
+    "matrix_screen_stdout_sha256": "d358b91311d82788b8558455d9b7dbf27d4ca76c26453a1afc91f60fdff4d64b",
+    "previous_rowbatch32_artifact_sha256": "888a6597f850e0d58e4f94b34de96dcb76b8ff0516c51845534b9ce996bdabe0",
+    "profile_child_sha256": "1f70c9e0b066afa736972fa9318e71972a4968bb13817185e4aae301795f8644",
+    "profile_summary_sha256": "93da25b4a5a53a25d1d1d23e41b901833be5fcc10b2b4b32ad7c462b4ab0b66f",
+    "raw_trace_sha256": "0d4c22b58d8e4c26b64fd2da8cab3fb768bfc25c235fd4a073311070a970a840",
+    "selector_publication_sha256": "b13094ae203be4564aa9be09c33dbc3ac836f51bc3674df6455e436e706e5df4",
+    "selector_stderr_sha256": "51315e54ef825a1ea58b74f9bb6d0b2ea92cddd8bbaecdc4584b6a4a7883c94a",
+    "selector_stdout_sha256": "b13094ae203be4564aa9be09c33dbc3ac836f51bc3674df6455e436e706e5df4"
+  },
+  "status": "retained_default"
+}

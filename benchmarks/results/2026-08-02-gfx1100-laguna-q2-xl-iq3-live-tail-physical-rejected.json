@@ -1,0 +1,247 @@
+{
+  "authority_files": {
+    "README.md": "52f90504841a386a5cac34af8a150428722cc6fdc5cfbc342a7c98c46411812c",
+    "WORKLOG.md": "b11f2ec846d5e79963ec211af7992c32593922f819e8f598e9ae99f26c9be24a",
+    "benchmarks/CHANGELOG.md": "e945d8dfa0e2f42e136c5c8239763ba6ef182dcafeff7bfb90b29b4f3c21ddeb",
+    "benchmarks/README.md": "bf9151e5533877b61cc4f924f0d6de32d128e0be8a2e6c3de21c19e7b2711b60",
+    "docs/KERNELS.md": "5ccdbab825af7d1f34ecc529aeae05e0a6ead943bbdb22eb85e25207402ed762",
+    "docs/LAGUNA-prefill.md": "71c7794573ea991d00fa2bc2b8c7e2093f272ebc817c0cb1caf5ab8ba7fbe2b5",
+    "docs/PLAN.md": "4b485f58f472bc694a6ceca3ae00dcd4b35267a0f646f0d3d0228b9cb83a5452"
+  },
+  "builder_sha256": "e02803de70e5426808ca1e41a7929478a3005f12fd9bbd612c61e82d91021518",
+  "created_at": "2026-08-02T13:42:00+09:00",
+  "decision": {
+    "all_h7l_repository_surfaces_removed": true,
+    "candidate_admitted": false,
+    "candidate_correctness_consumed": false,
+    "named_trace_consumed": false,
+    "next_action": "Rerank a materially different exact operation without reopening H7L source form or tail/layer/prompt subsets.",
+    "production_changed": false,
+    "recompile_or_tuning_allowed": false,
+    "red_test_removed": true,
+    "rejection_reason": "first object exceeds code, instruction-slot, metadata-VGPR, and zero-SGPR-spill bounds",
+    "subset_salvage_allowed": false,
+    "timing_consumed": false
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_iq3_live_tail_physical_rejection",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "natural C4096/direct-M512, matrix512/attention128, selector-unset H7H Q5 and H7I raw-Q6 source"
+  },
+  "physical": {
+    "binding_failures": [
+      "code_bytes_le_14000",
+      "instruction_slots_le_2400",
+      "metadata_vgpr_le_101",
+      "sgpr_spills_eq_0"
+    ],
+    "candidate_h7l": {
+      "code_bytes": 49592,
+      "instruction_slots": 9082,
+      "isa": {
+        "barriers_static": 4,
+        "branch_instructions": 48,
+        "dpp_instructions": 108,
+        "ds_opcodes": {
+          "ds_load_b128": 27,
+          "ds_store_2addr_b32": 12,
+          "ds_store_b32": 3
+        },
+        "fma_operations": 206,
+        "global_load_instructions": 39,
+        "global_store_instructions": 27,
+        "permlanex16": 27,
+        "scratch_instructions": 0,
+        "vopd_slots": 123
+      },
+      "metadata": {
+        "lds_bytes": 384,
+        "max_workgroup_size": 128,
+        "private_bytes": 0,
+        "sgpr": 107,
+        "sgpr_spills": 270,
+        "uses_dynamic_stack": false,
+        "vgpr": 133,
+        "vgpr_spills": 0,
+        "wavefront_size": 32
+      },
+      "name": "_ZN12_GLOBAL__N_1221gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_full_batch_live_tail_triple_output_rowbatch8_kernelILi256EEEvPKtPKlS4_S4_PKhPtiii"
+    },
+    "checks": {
+      "code_bytes_le_14000": false,
+      "dynamic_stack_false": true,
+      "instruction_slots_le_2400": false,
+      "max_workgroup_size_eq_128": true,
+      "metadata_lds_eq_384": true,
+      "metadata_vgpr_le_101": false,
+      "private_bytes_eq_0": true,
+      "scratch_instructions_eq_0": true,
+      "sgpr_spills_eq_0": false,
+      "vgpr_spills_eq_0": true,
+      "wavefront_size_eq_32": true
+    },
+    "control_h6t": {
+      "code_bytes": 7920,
+      "instruction_slots": 1384,
+      "isa": {
+        "barriers_static": 2,
+        "branch_instructions": 37,
+        "dpp_instructions": 96,
+        "ds_opcodes": {
+          "ds_load_b128": 24,
+          "ds_store_2addr_b32": 12
+        },
+        "fma_operations": 182,
+        "global_load_instructions": 23,
+        "global_store_instructions": 24,
+        "permlanex16": 24,
+        "scratch_instructions": 0,
+        "vopd_slots": 106
+      },
+      "metadata": {
+        "lds_bytes": 384,
+        "max_workgroup_size": 128,
+        "private_bytes": 0,
+        "sgpr": 78,
+        "sgpr_spills": 0,
+        "uses_dynamic_stack": false,
+        "vgpr": 101,
+        "vgpr_spills": 0,
+        "wavefront_size": 32
+      },
+      "name": "_ZN12_GLOBAL__N_1200gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_staged_wave_publication_dpp_peer_exchange_fused_add_triple_output_rowbatch8_kernelILi256EEEvPKtPKlS4_S4_PKhPtiii"
+    },
+    "first_repository_object": {
+      "cache_dir": "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-587a2a1adb520cb3",
+      "cache_key": "587a2a1adb520cb3dfc92112aa9e88fd53c2983ca4e25bc2b16263846c0fad5a",
+      "command": [
+        "hipcc",
+        "-shared",
+        "-fPIC",
+        "-O3",
+        "-mllvm",
+        "-amdgpu-unroll-threshold-local=600",
+        "-mcumode",
+        "-DHIPENGINE_IQ_GEMV_SOURCE_TAG=3078723803",
+        "/home/lhl/hipEngine-main/hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip",
+        "-o",
+        "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-587a2a1adb520cb3/gguf_iq_selected_prefill.so"
+      ],
+      "compiler_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+      "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+      "compiler_version_file_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+      "dirty_files": [
+        "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip",
+        "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py",
+        "hipengine/kernels/hip_gfx1151/__init__.py"
+      ],
+      "harness_sha256": "61a49e1925d778ffe16f3a6176b74d4096ee0dc9ddb625329cba1ef3c6f95e22",
+      "implementation_sha256": {
+        "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "ffd87f86a508dc5bcbe6f4e7f57695518ef1604b7294dac017af828526952fc7",
+        "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "d7337b7058b396a02b3c898532955540874cc3f44c926c57230b4dbe562900a2",
+        "hipengine/kernels/hip_gfx1151/__init__.py": "3fb93e42d7a75f2d88fc1954e2d939157b6d859b4820735ad91c781eafa7f8a9"
+      },
+      "kind": "laguna_h7l_first_repository_object_build",
+      "output_nbytes": 511008,
+      "output_path": "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-587a2a1adb520cb3/gguf_iq_selected_prefill.so",
+      "output_sha256": "a0887fdbcb43b411541fc6784ccbe9e77135db5cc72ed6ec7d39fff1f6545ee7",
+      "revision": "69f0986bb9978a7d0674790ef279a9beaf7cd2b5",
+      "schema": 1
+    },
+    "limits": {
+      "code_bytes_max": 14000,
+      "instruction_slots_max": 2400,
+      "metadata_lds_bytes": 384,
+      "metadata_vgpr_max": 101,
+      "private_spill_scratch_bytes": 0
+    },
+    "runtime_trace_skipped": true
+  },
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json": "fb6d1d64ffd335dc0649478eec12bd0d9809b435ec0b4da66ec1abc016ec51a5"
+  },
+  "production": {
+    "dispatches": 2192,
+    "kernel_sum_ms": 1172.2412389999988,
+    "llamacpp_over_hipengine": 1.6016107591271218,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "production_changed": false,
+    "revision": "407f5c972",
+    "wall_tok_s": 431.31016450993457
+  },
+  "raw_evidence_sha256": {
+    "/home/lhl/.cache/hipengine/build/gguf_iq_selected_prefill-587a2a1adb520cb3/gguf_iq_selected_prefill.so": "a0887fdbcb43b411541fc6784ccbe9e77135db5cc72ed6ec7d39fff1f6545ee7",
+    "/tmp/analyze_laguna_h7l_first_physical.py": "eb010891ae91a6ac22c601b1ee28ea3265465b7f3b09343268f355ca421a3ff9",
+    "/tmp/build_laguna_h7l_first_object.py": "61a49e1925d778ffe16f3a6176b74d4096ee0dc9ddb625329cba1ef3c6f95e22",
+    "/tmp/laguna-h7l-first-codeobj/container-copy.so": "1ec88aed8a97442e8e6c52306ec41020cea3aa93934779577e16f2fafde38279",
+    "/tmp/laguna-h7l-first-codeobj/device.isa": "ffcf395284fa63dd11bf3ed0dca5b64a0ac8fcc330bf48a9fba4de5a5867163d",
+    "/tmp/laguna-h7l-first-codeobj/fatbin.bin": "12cf03c3b4cd2d2e69f194de3c2ccc41119268bd883d22f530330e76f5f2cf52",
+    "/tmp/laguna-h7l-first-codeobj/gfx1100.hsaco": "1f1f5390a71ec853245c7835fd6bd1e7a5d1787241b5c7e17365c6bfb0a361da",
+    "/tmp/laguna-h7l-first-codeobj/h6t-function.isa": "c56b84063188e991689e587d5be47a01ab8ab8f9fd30695200dea6be37d26123",
+    "/tmp/laguna-h7l-first-codeobj/h7l-function.isa": "f44c6fe4cac02a3f8acb14b821268bb5429811a4948d5ffddab92a9192c7f217",
+    "/tmp/laguna-h7l-first-codeobj/notes.txt": "4dfb97072f3dfaa650aa44359e2816c4d56c04977bd374824a97ace26d7f39a6",
+    "/tmp/laguna-h7l-first-codeobj/symbols.txt": "3361be1099ae686d26c56b9b9d3a21c12be37b742e1c874a73954709edd7bc79",
+    "/tmp/laguna-h7l-first-object-build.json": "b2c8b893e14d817fef4392b67338bebb80b6945d29edca7b082e1d422347f0e6",
+    "/tmp/laguna-h7l-first-object-build.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7l-first-object-build.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7l-first-object-build.stdout": "b2c8b893e14d817fef4392b67338bebb80b6945d29edca7b082e1d422347f0e6",
+    "/tmp/laguna-h7l-first-physical.json": "42dd0ad69e3f3bc0683f2589d9afe2c94f0272ad8c92c4e48533b36743ac14e0",
+    "/tmp/laguna-h7l-first-physical.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h7l-first-physical.stderr": "5ae11dc856964516e58ba30c80449d285e72afa27975737b35f648ea5b22ab74",
+    "/tmp/laguna-h7l-first-physical.stdout": "42dd0ad69e3f3bc0683f2589d9afe2c94f0272ad8c92c4e48533b36743ac14e0",
+    "/tmp/laguna-h7l-red-compiler-monitor.json": "0e8ca0081706d8c207bc1781995befa6e1b2632d968d83589c102ef4e15a1f31",
+    "/tmp/laguna-h7l-red-final.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h7l-red-final.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7l-red-final.stdout": "3383d228c7034ed8a28fb4ce4ef0d9c6880ccffa0e4982a131e90cef6229811d",
+    "/tmp/laguna-h7l-rejection-hip-health.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7l-rejection-hip-health.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7l-rejection-hip-health.stdout": "25e8b4aeab2132ef660c7925876b0e1679b6816abdb261faa7937fde4236bf87",
+    "/tmp/laguna-h7l-rejection-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7l-rejection-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7l-rejection-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna-h7l-rejection-retained.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7l-rejection-retained.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h7l-rejection-retained.stdout": "08faea39fd19189f6544839f505d91d76ecb1367e219f5db362cdf22916ef869",
+    "/tmp/laguna-h7l-repository-candidate.patch": "d9da62b1edc964d44102cfc93df822d3c29124b76f600ab9fb73936b27a056fb",
+    "/tmp/laguna-h7l-retained-compiler-monitor.json": "f8c0687550792d8bef27fc55be8a02d7cb8c38e78ff54d2a3a27fa9ca013dc73",
+    "/tmp/monitor_h7l_red_compiler_execs.py": "42c4c5d02b55c4f66132591fc0c82e29f7e7b5fae2e1e08604a48f80ad3abefe"
+  },
+  "red": {
+    "assertion_failures": 0,
+    "compiler_baseline": 0,
+    "compiler_new": 0,
+    "expected_attribute_error_failures": 14,
+    "passed": 1,
+    "retained_h6t_passed": 11,
+    "revision": "69f0986bb9978a7d0674790ef279a9beaf7cd2b5",
+    "test_sha256_before_deletion": "c0f65b08ab194fb054e33f3db2fd26fee73efef4576df991b1ae94c1b9261cf9"
+  },
+  "repo": {
+    "all_candidate_and_red_surfaces_removed": true,
+    "base_revision": "69f0986bb9978a7d0674790ef279a9beaf7cd2b5",
+    "candidate_patch_sha256": "d9da62b1edc964d44102cfc93df822d3c29124b76f600ab9fb73936b27a056fb",
+    "h7l_names_absent": [
+      "full_batch_live_tail",
+      "dot_iq3_segment_live_tail",
+      "publish_local128_wave_sums_live_tail_dpp_peer_fused_add_no_barrier"
+    ],
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "baad47e40cb28a3dd88899e2a50f39f116aae0940fbaa9d266b7798a8393e8fe"
+    }
+  },
+  "schema": 1,
+  "status": "rejected_at_frozen_first_object_physical_gate",
+  "validator_sha256": "0e9d007e2754cd91cef6ad9ec14c72d70547e2be953d136cacf2bef263aa2da2"
+}

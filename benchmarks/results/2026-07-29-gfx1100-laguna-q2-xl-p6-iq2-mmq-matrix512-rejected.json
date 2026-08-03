@@ -1,0 +1,417 @@
+{
+  "actual_m512_leaf": {
+    "all_layers_faster": true,
+    "all_leaf_quality_gates": true,
+    "candidate_sum_ms": 388.90147590637207,
+    "control_sum_ms": 1297.4358158111572,
+    "layers": 46,
+    "max_bf16_mismatch_fraction": 0.8594587326049805,
+    "max_leaf_kl_divergence": 0.010303599679867501,
+    "max_touched_active_expert_output_row_fraction": 0.9949596774193549,
+    "minimum_leaf_top1_agreement": 0.985546875,
+    "scope": "actual 46 IQ2 gate/up layers, one natural M512 chunk; family leaf ceiling only",
+    "speedup": 3.336155546304778,
+    "tracked_returned_to_baseline": true
+  },
+  "complete_quality_gate": {
+    "categories": {
+      "code": {
+        "finite": true,
+        "max_kl_divergence": 0.16463093176052346,
+        "steps": 192,
+        "top1_agreement": 1.0,
+        "top1_matches": 192
+      },
+      "general_en": {
+        "finite": true,
+        "max_kl_divergence": 0.16641162795484887,
+        "steps": 128,
+        "top1_agreement": 0.9765625,
+        "top1_matches": 125
+      },
+      "general_ja": {
+        "finite": true,
+        "max_kl_divergence": 0.6832392348941371,
+        "steps": 128,
+        "top1_agreement": 0.9765625,
+        "top1_matches": 125
+      },
+      "mixed_ja_en": {
+        "finite": true,
+        "max_kl_divergence": 0.2842049410048767,
+        "steps": 128,
+        "top1_agreement": 0.9609375,
+        "top1_matches": 123
+      }
+    },
+    "command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 /tmp/run_laguna_p6_teacher_quality.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --comparison wpf2_p6_iq2_mmq --prompts benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 3 --warmup-output-tokens 2 --teacher-forced-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --repacked-cache /tmp/laguna-q2-xl-direct-placeholder --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpf2-p6-teacher-quality.json",
+    "failed_checks": [
+      "max_kl_above_0.05"
+    ],
+    "finite": true,
+    "free_running_exact_pairs": 33,
+    "free_running_pairs": 54,
+    "max_kl_divergence": 0.6832392348941371,
+    "natural_prompt_aggregate": {
+      "grouped_exact_prefill_tok_s": 99.68180243996234,
+      "h16_decode_speedup": 1.0006411705906513,
+      "h16_e2e_speedup": 1.0490585604068643,
+      "h32_decode_speedup": 1.000471120088048,
+      "h32_e2e_speedup": 1.0395786315391806,
+      "p6_iq2_mmq_prefill_tok_s": 105.94430036681008,
+      "prefill_speedup": 1.0628248865244947
+    },
+    "pass": false,
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 0.00015682291693663912,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+      "oracle_distribution": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "prompts": [
+      {
+        "category": "code",
+        "max_kl_divergence": 0.031059128822325338,
+        "prompt_id": "code_merge_intervals",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.024819120056174065,
+        "prompt_id": "code_topological_sort",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.08831037400045283,
+        "prompt_id": "code_lru_cache",
+        "steps": 32,
+        "steps_above_kl_limit": 2,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.04255240125104665,
+        "prompt_id": "code_markdown_table",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.017840024331713358,
+        "prompt_id": "general_en_plan",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.12142903320896199,
+        "prompt_id": "general_en_explain",
+        "steps": 32,
+        "steps_above_kl_limit": 1,
+        "top1_matches": 31
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.026047497552679055,
+        "prompt_id": "general_ja_plan",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 31
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.03845782838171156,
+        "prompt_id": "general_ja_explain",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.09978010370908161,
+        "prompt_id": "mixed_ja_en_translate",
+        "steps": 32,
+        "steps_above_kl_limit": 1,
+        "top1_matches": 32
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.09708913113993785,
+        "prompt_id": "mixed_ja_en_review",
+        "steps": 32,
+        "steps_above_kl_limit": 4,
+        "top1_matches": 31
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.16463093176052346,
+        "prompt_id": "heldout_code_rate_limiter",
+        "steps": 32,
+        "steps_above_kl_limit": 1,
+        "top1_matches": 32
+      },
+      {
+        "category": "code",
+        "max_kl_divergence": 0.04585805977658966,
+        "prompt_id": "heldout_code_interval_schedule",
+        "steps": 32,
+        "steps_above_kl_limit": 0,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.08581002204181347,
+        "prompt_id": "heldout_general_en_incident",
+        "steps": 32,
+        "steps_above_kl_limit": 1,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_en",
+        "max_kl_divergence": 0.16641162795484887,
+        "prompt_id": "heldout_general_en_quant",
+        "steps": 32,
+        "steps_above_kl_limit": 2,
+        "top1_matches": 30
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.2169571842236905,
+        "prompt_id": "heldout_general_ja_migration",
+        "steps": 32,
+        "steps_above_kl_limit": 2,
+        "top1_matches": 32
+      },
+      {
+        "category": "general_ja",
+        "max_kl_divergence": 0.6832392348941371,
+        "prompt_id": "heldout_general_ja_speculative",
+        "steps": 32,
+        "steps_above_kl_limit": 5,
+        "top1_matches": 30
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.2842049410048767,
+        "prompt_id": "heldout_mixed_summary",
+        "steps": 32,
+        "steps_above_kl_limit": 3,
+        "top1_matches": 31
+      },
+      {
+        "category": "mixed_ja_en",
+        "max_kl_divergence": 0.15651610141399455,
+        "prompt_id": "heldout_mixed_review",
+        "steps": 32,
+        "steps_above_kl_limit": 7,
+        "top1_matches": 29
+      }
+    ],
+    "same_mode_repeat_deterministic": true,
+    "steps": 576,
+    "top1_agreement": 0.9809027777777778,
+    "top1_matches": 565,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-29",
+  "decision": {
+    "failed_checks": [
+      "complete_18_prompt_teacher_forced_max_kl_above_0.05",
+      "sparse_repair_uncertain_coordinate_fraction_above_0.05",
+      "sparse_repair_touched_output_row_fraction_above_0.20"
+    ],
+    "next_action": "Run WPF-1R's separate bounded raw-Q5/Q6 density/traffic screen, then prioritize the already-triggered WPF-3 short-attention lane under the existing 512/1K-only gate.",
+    "pass": false,
+    "production": "retain exact matrix512/attention128/rowbatch32/grouped-exact at 99.230/91.559 tok/s",
+    "reason": "P6 is materially faster but fails the mandatory full-model KL gate and its frozen sparse-repair density gates; no approximate P6 or P6-repaired runtime is admissible.",
+    "runtime_default_changed": false
+  },
+  "four_k_or_longer_run_performed": false,
+  "full_state_m512_diagnostic": {
+    "candidate_repeat_exact": true,
+    "exact_hidden_boundaries": 1,
+    "finite": true,
+    "hidden_boundaries": 48,
+    "max_kl_divergence": 0.0003436116596340848,
+    "next_token_match": true,
+    "role": "one-sample diagnostic admitted the complete quality lane; it did not authorize promotion",
+    "scope": "temporary diagnostic monkeypatch of existing P6 on all 46 IQ2 layers for one M512 chunk; no runtime/default claim",
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true
+  },
+  "implementation": {
+    "attention_rows": 128,
+    "candidate_dataflow": "stable grouped metadata -> source-hidden gather -> compact D4-Q8_1 pack -> existing raw-IQ2 signed-byte MMQ32 dual gate/up -> existing BF16 SiLU boundary",
+    "candidate_scope": "temporary session subclass replacing only the 46 IQ2_XS selected gate/up layers during rows>1 prefill; exact c=1 decode and every non-IQ2 route remain unchanged",
+    "common_grouped_metadata_excluded_from_leaf_timing": true,
+    "control_dataflow": "retained route-major exact IQ2 dual gate/up plus existing BF16 SiLU boundary",
+    "matrix_rows": 512,
+    "production_changed": false,
+    "raw_k_prefill_rowbatch": 32,
+    "runtime_scratch_nbytes": 17694720,
+    "source_files": [
+      {
+        "path": "/home/lhl/hipEngine-main/hipengine/kernels/hip_gfx1100/quant/gguf_iq2_xs_mmq_prefill.hip",
+        "sha256": "c34a802350df2ec284a081f035e12381ce9287b2b963f018260f108651dcb6c4"
+      },
+      {
+        "path": "/home/lhl/hipEngine-main/hipengine/kernels/hip_gfx1100/quant/gguf_iq2_xs_mmq_prefill.py",
+        "sha256": "45a678614cd99a12334e09f468488e8957a3b92d909e14b25c05d7afc373bc31"
+      },
+      {
+        "path": "/home/lhl/hipEngine-main/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip",
+        "sha256": "e648f8f1977aa959c1ba310e6f0d13e74142a2e05cef4b9bf194eecb0d5da56e"
+      },
+      {
+        "path": "/home/lhl/hipEngine-main/hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
+        "sha256": "61f8220fe9cb159175e755c3c8dec8c206007014cfeb9276fafa76d143373cae"
+      }
+    ],
+    "temporary_harnesses": [
+      {
+        "path": "/tmp/laguna_p6_runtime_patch.py",
+        "sha256": "327a9db5823a6e95fa3375751dedb95548cb4697d8b9f5cfb4300c2dd3103f8d"
+      },
+      {
+        "path": "/tmp/laguna_p6_actual_leaf.py",
+        "sha256": "d6f46b3722688d8732fe918addeda7f9e00f7ab072f8a4d039a4cfa199c077fa"
+      },
+      {
+        "path": "/tmp/laguna_p6_full_state.py",
+        "sha256": "2122f685f0e6d89232b09d83213a990df6efcc8fc8957b4a56cc46d10ad7da3a"
+      },
+      {
+        "path": "/tmp/run_laguna_p6_long_profile.py",
+        "sha256": "b7d2b23653632f16de454d7ca50a6161630622e27d635c9d8ce6425bbbce0a4e"
+      },
+      {
+        "path": "/tmp/run_laguna_p6_teacher_quality.py",
+        "sha256": "11564cbee2ec0757da73b3f65542128e6e6524ec373d3f6fdabaf110627ca08e"
+      }
+    ]
+  },
+  "kind": "hipengine_laguna_q2_xl_gfx1100_p6_iq2_mmq_matrix512_rejection",
+  "limitations": [
+    "The P6 path was injected only through temporary diagnostic harnesses; no runtime owner, package selector, or default was added.",
+    "The 512/1K P6 rates are diagnostic independent-run comparisons, not a retainable performance claim.",
+    "No P6 repair kernel was implemented because two frozen density stop rules failed by large margins; this does not adjudicate WPF-1R's separate raw-Q5/Q6 screen.",
+    "No 4K or longer prefill ran because both exact retained short shapes remain below 150 tok/s."
+  ],
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "objective": "Reprice the existing explicit P6 signed-byte IQ2 MMQ comparator at the retained M512/attention128/RB32/grouped-exact W7900 baseline without adding a runtime mode or changing production.",
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100",
+    "visible_device": 0
+  },
+  "revision": "d246ab2709ab1739c1eeffc8d5991ed297e826f4",
+  "schema_version": 1,
+  "short_shape_diagnostic": {
+    "next_token_ids": {
+      "1024": [
+        95,
+        95,
+        95
+      ],
+      "512": [
+        2930,
+        2930,
+        2930
+      ]
+    },
+    "p6_change_percent": {
+      "1024": 20.972154931144793,
+      "512": 23.081871296920255
+    },
+    "p6_iq2_mmq_tok_s": {
+      "1024": 110.760615644852,
+      "512": 122.13456121742301
+    },
+    "p6_samples_seconds": {
+      "1024": [
+        9.188535085879266,
+        9.245163490995765,
+        9.338896166998893
+      ],
+      "512": [
+        4.122263710945845,
+        4.192097592167556,
+        4.203900919063017
+      ]
+    },
+    "protocol": "independent clean retained publication versus temporary P6 candidate at the same revision/model/M512/attention128/RB32, three repetitions, cached builds, lengths 512/1024 only; diagnostic rather than a paired retained performance claim",
+    "repeat_deterministic": true,
+    "retained_grouped_exact_tok_s": {
+      "1024": 91.55876879922903,
+      "512": 99.23034150397993
+    },
+    "tracked_returned_to_baseline": true
+  },
+  "source_artifacts": [
+    {
+      "path": "/tmp/laguna-wpf2-p6-actual-m512-leaf.json",
+      "role": "actual 46-layer M512 leaf economics and repair density",
+      "sha256": "c6c1a28d27a2a037389b75a5e71590cfaa5d297c2fdfe59db8833483a536fde8"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-p6-m512-full-state.json",
+      "role": "one-sample M512 state/repeat diagnostic",
+      "sha256": "4fe8b5b47894af48196b06be58250acc05e0f5f9a53eb9b9e07788f226328076"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-p6-m512-diagnostic-512-1k.json",
+      "role": "temporary P6 512/1K diagnostic",
+      "sha256": "230b71b0d84b9f5d8e9b391958aceba57f17dfbe91bb8cb11575fae890091e8f"
+    },
+    {
+      "path": "/tmp/laguna-wpf2-p6-teacher-quality.json",
+      "role": "complete 18-prompt/576-step quality rejection",
+      "sha256": "601e56cc06137b6d01b8f4a56253c60c2385d18d483a81d169c953fd205442cf"
+    },
+    {
+      "path": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json",
+      "role": "retained exact production baseline",
+      "sha256": "c7b5fcf0837e10fb725798edf82f9b4d62c636a2e366c2d0ef7717809776d817"
+    }
+  ],
+  "sparse_exact_repair_gate": {
+    "decision": "Stop before implementing a repair queue: dense mismatch and near-complete touched-row coverage make sparse exact correction non-viable; the modeled-read gate need not be run.",
+    "failed_checks": [
+      "uncertain_coordinate_fraction_above_0.05",
+      "touched_output_weight_row_fraction_above_0.20"
+    ],
+    "observed": {
+      "maximum_touched_active_expert_output_row_fraction": 0.9949596774193549,
+      "maximum_uncertain_coordinate_fraction": 0.8594587326049805,
+      "modeled_exact_family_read_fraction": null
+    },
+    "pass": false,
+    "thresholds": {
+      "maximum_modeled_exact_family_read_fraction": 0.25,
+      "maximum_touched_output_weight_row_fraction": 0.2,
+      "maximum_uncertain_coordinate_fraction": 0.05
+    }
+  },
+  "status": "rejected_quality_and_sparse_repair_density"
+}

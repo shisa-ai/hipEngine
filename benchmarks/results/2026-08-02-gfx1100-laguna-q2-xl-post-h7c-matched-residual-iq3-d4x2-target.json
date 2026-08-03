@@ -1,0 +1,339 @@
+{
+  "authority_files": {
+    "README.md": "99448c4fda9697348201d4f6061ec36a339891c4c40f4f0670ab8b4807bbff89",
+    "WORKLOG.md": "64d9c74b3b38fd395a8a515ac8e4d85643da98199fd93f676ecd1506995561e0",
+    "benchmarks/CHANGELOG.md": "805ca78fc97396db0678ee95d970fefb66018c632978750b6d2e9b3ae55be6f0",
+    "benchmarks/README.md": "270d18dcac0a428b1e07cfc09289af4cddbc7f15c0ddffbe169b7d782c278330",
+    "docs/KERNELS.md": "bdaa4c6ef9f576745a5efae22ed7331fcc8c98fbeb3d715c1d09d63e3efecf5e",
+    "docs/LAGUNA-prefill.md": "f4cb86502bf1103c3453827361b4f708d73d14755cc4c9e294b3978bffa11077",
+    "docs/PLAN.md": "161f3e59ae257768f2860bf8869595c6112a01c2174ad67a60efdf8cf819df54"
+  },
+  "builder_sha256": "bcb0fff8020c67f8b8fda2961af3b33e90c10a73fffaef100a4e4c5ea70f0efd",
+  "closed_controls": {
+    "attention": "H7A exact scaled-score replay and prior changed-association/wider-qrow paths remain closed.",
+    "iq_down": "H6X/H6Y/H7B exact physical paths remain closed; D4x3 is speed-closed; H7E is the sole new residual-plane premise.",
+    "q5": "H7D adds no VOPD and forced pairing is bank-illegal; prior changed-association and exact Q5 premises remain closed.",
+    "q6": "H7C is current source; H6H source-F16 changed arithmetic remains complete-quality closed."
+  },
+  "correctness_claim": true,
+  "created_at": "2026-08-02",
+  "decision": {
+    "candidate_implemented": false,
+    "h7d_closed": true,
+    "h7e_target_selected": true,
+    "next_action": "Commit this synchronized target packet, then freeze H7E RED separately before production code.",
+    "pass": true,
+    "production_changed": false,
+    "production_reprofile_accepted": true
+  },
+  "h7d_q5_closure": {
+    "decision": "Do not reopen Q5 exact row scheduling without a materially different data-layout or codegen premise.",
+    "explicit_pairing": {
+      "bank_error_count": 16,
+      "binding_error": "src0 operands must use different VGPR banks",
+      "compile_status": 1,
+      "conclusion": "Forced pair allocation is illegal on gfx1100; no executable candidate exists."
+    },
+    "id": "WPF-H7D",
+    "naive_reorder": {
+      "candidate_metadata_vgpr": 122,
+      "candidate_v_dual_fmac_f32": 52,
+      "conclusion": "No additional VOPD sites; the compiler already emits the same 52 paired FMAs.",
+      "control_metadata_vgpr": 122,
+      "control_v_dual_fmac_f32": 52
+    },
+    "premise": "Interleave mathematically independent Q5 output rows to increase compiler VOPD FMA pairing.",
+    "status": "closed_selection_probe_no_production_surface"
+  },
+  "h7e_selection": {
+    "admission": {
+      "binding_quality": "Before any source promotion, run all 18 train+heldout/category-heldout prompts and 576 teacher-forced steps with counterbalanced exact/H7E order. Require finite output, max KL<=0.05, top-1>=90%, Poolside oracle, same-mode determinism, free-running h16/h32 diagnostics, and allocation recovery. Any failure removes the runtime owner and skips promotion timing.",
+      "leaf_correctness": "Freeze the existing D4 consumer bytes and producer; empty/uneven/127/128/129 expert tails, rows1/7/8/9/M512, complete output overwrite, independent CPU-reference KL<=0.05 and top-1>=90%, finiteness, metadata immutability, lifecycle, strict IQ3/K1024/N3072/backend/registry preflight, IQ4/exact fallback, and gfx1151 exclusion.",
+      "leaf_timing": "Only after physical admission, one immutable producer-inclusive 5-warmup/15-counter-rotated/5-launch screen over all actual IQ3 layers 1..45; every layer and aggregate must win HIP-event and synchronized-wall. No favorable rerun or layer subset.",
+      "physical": "First production object must be local(32,8), grid(24,mmq_total_rows/128), dynamic LDS57,856, metadata VGPR<=148/SGPR<=44, private0/spill0/dynamic-stack false, runtime scratch0, exact 128 static integer WMMAs, five barriers, 64 BF16 stores, and code<=31,564 bytes.",
+      "promotion_timing": "Only after complete quality passes, run matched counter-ordered fixed C4096/M512 and 512/1K/4K gates against exact H6T; source promotion remains a separate decision.",
+      "red_first": true,
+      "reject": "Any leaf correctness/physical/timing miss removes every H7E consumer/test/key/export/gfx1151 surface without tuning/rerun. A complete-quality miss removes the temporary owner and keeps only a qualified standalone leaf if its earlier gates passed.",
+      "runtime_owner": "Separate default-off commit, exact-shape M512/IQ3-only owner, caller-owned expert_gate_up reuse, no new allocation/workspace, exact fallback elsewhere, complete state/repeat/KVLiveSpans/lifecycle."
+    },
+    "d4x2_selection_probe": {
+      "active_expert_layer_instances": 9844,
+      "all_45_layers_faster": true,
+      "all_finite": true,
+      "all_primitive_quality_gates": true,
+      "bf16_mismatch_fraction": {
+        "max": 0.025007883707682293,
+        "median": 0.022680918375651043,
+        "min": 0.02187004089355469
+      },
+      "candidate_change_percent": -30.418775213129344,
+      "candidate_sum_ms": 172.8543701171875,
+      "exact_sum_ms": 248.42099380493164,
+      "layers": 45,
+      "lifecycle_recovered": true,
+      "max_leaf_kl": 0.0004865060822764507,
+      "max_leaf_kl_mean": 2.117415250058321e-07,
+      "min_leaf_top1": 0.9994140625,
+      "padded_mmq_rows": 1297024,
+      "performance_claim": false,
+      "rows": 512,
+      "speedup": 1.43716929827411,
+      "warning": "One-prompt nonstateful leaf screen only. Complete 18-prompt/576-step quality remains binding."
+    },
+    "d4x3_rejected_control": {
+      "bf16_mismatch_fraction": {
+        "max": 0.00025011698404947915,
+        "median": 0.0002307891845703125,
+        "min": 0.00022004445393880207
+      },
+      "candidate_sum_ms": 247.90887641906738,
+      "decision": "Reject as the target: only 27/45 layers win and the producer-inclusive aggregate gain is 0.626%.",
+      "exact_sum_ms": 249.47145652770996,
+      "layers": 45,
+      "layers_faster": 27,
+      "speedup": 1.0063030421952346
+    },
+    "functions": {
+      "candidate_consumer": "gguf_iq3_xxs_selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out",
+      "existing_producer": "gguf_q8_0_mmq128_quantize_bf16_d4x2"
+    },
+    "id": "WPF-H7E",
+    "implementation_absent": true,
+    "isolated_probe_physical": {
+      "block": [
+        32,
+        8
+      ],
+      "code_bytes": 31564,
+      "dynamic_lds_bytes": 57856,
+      "dynamic_stack": "false",
+      "grid_x": 24,
+      "grid_y": "mmq_total_rows / 128",
+      "local_size": 256,
+      "metadata_private_bytes": 0,
+      "metadata_sgpr": 44,
+      "metadata_sgpr_spills": 0,
+      "metadata_vgpr": 148,
+      "metadata_vgpr_spills": 0,
+      "static_barriers": 5,
+      "static_bf16_stores": 64,
+      "static_wmma_i32_iu8": 128,
+      "warning": "Diagnostic object only; production candidate must independently satisfy the frozen gate."
+    },
+    "name": "IQ3-only two-plane residual D4 source-MMQ",
+    "operation": "Reuse the qualified D4x2 BF16 activation producer to quantize the compact post-SiLU IQ3 down input as a primary D4 plane plus one residual D4 plane. A separately named IQ3-only I128/J128/K256 consumer reuses each staged raw-IQ3 weight tile while accumulating both planes. Keep both IQ4 layers and every unsupported row/shape/backend on exact grouped production.",
+    "reason_not_blind_h3_reopen": "H3 used one D4 plane and failed complete quality at max KL 0.372917 for IQ3-only. H7E changes the activation representation to a measured two-plane residual reconstruction; no prompt, token, candidate-id, or layer-conditioned policy is allowed.",
+    "status": "selected_target_only_changed_arithmetic",
+    "variants": {
+      "candidate_consumer": "selected_mmq_i128_j128_k256_q8_1_ds4x2_prefill_compact_bf16_bf16_out"
+    },
+    "workspace": {
+      "activation_q8_not_used": "The existing 5,898,240-byte activation_q8 plane is too small for compact D4x2.",
+      "d4x2_required_bytes_m512": 11796480,
+      "new_allocation_bytes": 0,
+      "reuse_buffer": "LagunaMoEScratch.expert_gate_up after gate/up and SiLU complete",
+      "reuse_buffer_bytes_m512": 20971520,
+      "workspace_growth_bytes": 0
+    }
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "implementation_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "6e8cbf7b7332005c5d142911dea04f09aac444b9e1253b5fda92e14a8b015310",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.hip": "4f708de22e0306b4b77562a1974ac1d19a1156933d36ab3e473888fd203f9b0d",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_source_mmq_prefill.py": "dd719d271c00bed653802ace5f9e5b740fed1c82b82d5bc2e0d97ae6a5fbad73",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip": "e648f8f1977aa959c1ba310e6f0d13e74142a2e05cef4b9bf194eecb0d5da56e",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py": "61f8220fe9cb159175e755c3c8dec8c206007014cfeb9276fafa76d143373cae",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "96b726402f6f795bfeeba07f2e8ec8c659fa72fec42b8e328c36f5cd15e453a7",
+    "hipengine/runtime/laguna_gguf_runner.py": "61ff2f193a53eb0c48a55e3616e6c55b7cbc77705b58ac552559cf9b56814688",
+    "hipengine/runtime/laguna_moe.py": "295890f46bf198cbc7e8c99de80dd1d17b6c62a18f8fe244e3e172d5c9c59eb6",
+    "tests/test_gguf_iq_source_mmq_prefill.py": "639f4569c01db7bb076ecb2ed9ae0b4fdd23187e2a560fd7a52b199dc39a9d3f"
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h7c_matched_residual_h7e_iq3_d4x2_target",
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "performance_claim": "Measured production only: 422.786 tok/s and representative 1,197.499-ms kernel sum. H7E is a selection-only leaf probe, not a production, full-quality, or retained speed claim.",
+  "prior_artifact_sha256": {
+    "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-candidate.json": "51092c54f39f4c8e4090a87a5ef655789071d9f17cdc93c34f94bec528bd8c48",
+    "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-iq3-iq4-source-mmq-rejected.json": "1b8a06a8fc030899c95a19ecf5db0811740169fc76719b1af5bd4aead5e6c104",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-lane-parallel-final-rows-rejected.json": "cfd8d83d52cdfcf5d1e090f57edb8b45c29e51f68685dfa1d7feb32ec2d62484",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-post-h7b-rejection-matched-residual.json": "418e04dbe6f9f35afefadb17c37230feefa1143e276c329cba11feea04c804eb",
+    "benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-raw-q6-dpp-wave-reduction-production.json": "21c5f3a456db0ca0d8a7e98ec63d0b8953332fb2cd3516091cef2349b1c90a76"
+  },
+  "production": {
+    "component_history_ms": {
+      "campaign_start": {
+        "attention": 488.304,
+        "gate_up": 460.143,
+        "iq_down": 557.091,
+        "kernel_sum": 3001.692,
+        "q5": 1270.458,
+        "q6": 157.073,
+        "remaining": 68.623
+      },
+      "matched_llamacpp_hip": {
+        "attention": 21.512447,
+        "gate_up": 397.804923,
+        "iq_down": 153.859911,
+        "kernel_sum": 714.008408,
+        "q5": 58.31409,
+        "q6": 14.667598,
+        "remaining": 67.849439
+      },
+      "post_h7c_current": {
+        "attention": 115.20545500000006,
+        "gate_up": 398.0268659999999,
+        "iq_down": 271.48008200000004,
+        "kernel_sum": 1197.498626,
+        "q5": 255.22907800000002,
+        "q6": 81.320777,
+        "remaining": 76.23636800000004
+      },
+      "warning": "Kernel-family sums from matched natural M512 traces; not synthetic llama-bench pp512."
+    },
+    "source": "H5Y Q5 + H6U/H7C Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H6L/H6C gate-up",
+    "trace": {
+      "compiler_processes": 0,
+      "dispatches": 2192,
+      "families": {
+        "attention": 115.20545500000006,
+        "gate_up": 398.0268659999999,
+        "iq_down": 271.48008200000004,
+        "kernel_sum": 1197.498626,
+        "q5": 255.22907800000002,
+        "q6": 81.320777,
+        "remaining": 76.23636800000004
+      },
+      "gaps": {
+        "attention": 93.69300800000005,
+        "gate_up": 0.22194299999995337,
+        "iq_down": 117.62017100000003,
+        "q5": 196.91498800000002,
+        "q6": 66.65317900000001,
+        "remaining": 8.386929000000038
+      },
+      "kernel_span_ms": 1219.043003,
+      "kernel_sum_ms": 1197.498626,
+      "matched_llamacpp": {
+        "attention": 21.512447,
+        "gate_up": 397.804923,
+        "iq_down": 153.859911,
+        "kernel_sum": 714.008408,
+        "q5": 58.31409,
+        "q6": 14.667598,
+        "remaining": 67.849439
+      },
+      "ranked": [
+        "q5",
+        "iq_down",
+        "attention",
+        "q6",
+        "remaining",
+        "gate_up"
+      ],
+      "representative_request": 3,
+      "top_four_explain_percent": 98.21943202168366,
+      "topology": {
+        "H6A": 72,
+        "H6N": 24,
+        "H6T": 45,
+        "H6W": 72,
+        "H6Z": 24,
+        "H7C_BF16": 2,
+        "H7C_F32": 1
+      }
+    },
+    "wall": {
+      "exact_finite_lifecycle": true,
+      "gain_vs_campaign_start_percent": 149.40745154320462,
+      "llamacpp_over_hipengine": 1.6339040527683057,
+      "matched_llamacpp_hip_tok_s": 690.791,
+      "median_tok_s": 422.78553555797873,
+      "samples_tok_s": [
+        422.08876056168157,
+        423.4849441972636,
+        423.1334277942135,
+        422.78553555797873,
+        422.3482772971823
+      ],
+      "total_scratch_bytes": 600141856,
+      "workspace_bytes": 161120256
+    }
+  },
+  "protocol": {
+    "comparison": "matched patched llama.cpp HIP natural token stream, C4096, direct M512, BF16 K/V",
+    "fresh_request_session_per_sample": true,
+    "model_load_excluded": true,
+    "profile_child_path": "/usr/bin:/bin",
+    "profiling_prebuilt_outside_rocprof": true,
+    "require_cached_build": true,
+    "same_resident_weights": true,
+    "shape": "one M128 warmup plus five M512 source-default requests, matrix512/attention128, one queue",
+    "synthetic_user_pp512_is_not_comparator": true
+  },
+  "raw_evidence_sha256": {
+    "/tmp/h7d-q5-probe.isa": "bab5cc0de770b4e888d927716e10a16b8a8aea5499e4c89a6036f026c8de5d83",
+    "/tmp/h7d_q5_row_interleaved_vopd_explicit.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/h7d_q5_row_interleaved_vopd_explicit.stderr": "6ab6d3f633cff3523eb7c6e4e9fd337658b880caf65ece8654c9610cf58bd98a",
+    "/tmp/h7d_q5_row_interleaved_vopd_explicit.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h7d_q5_row_interleaved_vopd_probe.co": "76ef4f89a42933b5e3cccdbca4be66550cc3b33ef4e1bd23b2ea7cbf0ee22f8d",
+    "/tmp/h7d_q5_row_interleaved_vopd_probe.hip": "9d63d0a09eb5e8c7d7587b6c104f0579b19be7d8f3edc3a03aca85d5022d7f8b",
+    "/tmp/h7d_q5_row_interleaved_vopd_probe.notes": "25115341c621a333c1768738a3ea76bc3861ae3f259e73a2a7ed8ccdad8fabc7",
+    "/tmp/h7e-d4x2-code-readobj.txt": "84c634a92f5ea296322c992bb04b416167ceda4427a47209aef053698a119e2a",
+    "/tmp/h7e-d4x2-code.isa": "b1b9ce5fb5453b8ffaae089a0b55f757c14fa2c23e579baa025fbb951f722e96",
+    "/tmp/h7e_iq3_source_mmq_d4x2_probe.hip": "ea36c9684bc9d91c10978ba82163f0e6e5776d68e10ff4fd1e3873509058a967",
+    "/tmp/h7e_iq3_source_mmq_d4x2_probe.so": "67e5280cc36f232d9af8b5f414115b28b1d9632940012a99e53d9daaa54b076c",
+    "/tmp/h7e_iq3_source_mmq_d4x2_probe.so.0.hipv4-amdgcn-amd-amdhsa--gfx1100": "863a8494e6d7500519df0d9f9dd66942a3d7f6e0eed7af0c4164901f5e36095b",
+    "/tmp/h7e_iq3_source_mmq_d4x3_probe.hip": "023db3439a37c7cded850111d14b7158e8f790e08b927e99b6c9001fdd1406b4",
+    "/tmp/h7e_iq3_source_mmq_d4x3_probe.so": "d0d4f5d6986acf584a9ce772625a237b3ec8a0680285b18f978633645c742085",
+    "/tmp/laguna-h7e-iq3-d4x2-source-mmq-density.json": "6f30a65af390186e6fd6908b5ff0638cd59cdd0fc072b9c6428c54169731f45b",
+    "/tmp/laguna-h7e-iq3-d4x2-source-mmq-density.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7e-iq3-d4x2-source-mmq-density.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h7e-iq3-d4x2-source-mmq-density.stdout": "f1fb5dfef31fe4357404b60df19f91d99a89546701cd77d428dbc3a984d2bf24",
+    "/tmp/laguna-h7e-iq3-d4x3-source-mmq-density.json": "789e57b3fff5117018ac7d2823ddb9daccaaaaf3b3d0104e2ea5a8417e7a9e31",
+    "/tmp/laguna-h7e-iq3-d4x3-source-mmq-density.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h7e-iq3-d4x3-source-mmq-density.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h7e-iq3-d4x3-source-mmq-density.stdout": "f482225988c26d72f39ebd4996a394d45232a55424732b0d02d829ea89fcb54f",
+    "/tmp/laguna-post-h7c-clean-compiler-monitor.json": "a6c99d8162972213da2947cce3da9426a501dcfd3630bf46a7b77909f051686c",
+    "/tmp/laguna-post-h7c-clean-matched-c4096-m512-trace-summary.json": "0e2f4c52fba2b929a693b3aa043bdb256b063ea77f65bcea1c54d9ece75a8316",
+    "/tmp/laguna-post-h7c-clean-matched-c4096-m512.json": "bca8440f7d84ebd5fc576f6f4e752372f12efc47a2a9c7641aa444752c254cd7",
+    "/tmp/laguna-post-h7c-clean-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7c-clean-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-post-h7c-clean-matched-c4096-m512.stdout": "7343351322ef0c2dffc8ffe9c053baddfe4c57a8462b1cf4fb1f912180d9ec0d",
+    "/tmp/laguna-post-h7c-clean-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7c-clean-rocprof.stderr": "47d05ee0c6318eff3794c4138400aa3145c8cef97d4a350b34c36602f8b2f3c9",
+    "/tmp/laguna-post-h7c-clean-rocprof.stdout": "489f41e8ad010885a6178338ed7342768d42cbbf71f69b4c84d371c86b1b0397",
+    "/tmp/laguna-post-h7c-clean-rocprof/h7c_clean_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-post-h7c-clean-rocprof/h7c_clean_kernel_trace.csv": "71d9a7dd936b7c6a123079436c1cb3cc3ef3d7ba37c6a5f87fdbf0d60173d415",
+    "/tmp/laguna-post-h7c-clean-trace-analysis.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7c-clean-trace-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h7c-clean-trace-analysis.stdout": "0e2f4c52fba2b929a693b3aa043bdb256b063ea77f65bcea1c54d9ece75a8316",
+    "/tmp/laguna-post-h7c-h7e-hip-health.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7c-h7e-hip-health.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h7c-h7e-hip-health.stdout": "25e8b4aeab2132ef660c7925876b0e1679b6816abdb261faa7937fde4236bf87",
+    "/tmp/laguna-post-h7c-h7e-lineage.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-post-h7c-h7e-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-post-h7c-h7e-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/laguna_h7e_iq3_d4x2_source_mmq_density.py": "a2957e9213912e72c682d7d069a8efb0e2d28ed574b92ce5e38fb919b3452979",
+    "/tmp/laguna_h7e_iq3_d4x3_source_mmq_density.py": "2b948a60ce7238f9e5cdcd6d15b9e2a0639d68002b9a519141156425e4dc661d",
+    "/tmp/laguna_post_h7c_clean_matched_c4096_m512.py": "349cb21429a40a9327b93771b32291fe2af5d15af4ef4813d27a06053190787c"
+  },
+  "repo": {
+    "h7e_implementation_absent": true,
+    "measurement_revision": "2861efdf147286134915ced0e60ca8fd864bb3e1",
+    "measurement_tracked_clean": true,
+    "production_code_changed": false,
+    "selection_revision": "2861efdf147286134915ced0e60ca8fd864bb3e1"
+  },
+  "schema": 1,
+  "scope": "Clean committed post-H7C C4096/direct-M512 wall and cache-only trace; H7D exact Q5 VOPD scheduling closure; D4x3/D4x2 IQ3 residual-plane selection probes; and target-only WPF-H7E selection on W7900.",
+  "status": "accepted_clean_production_reprofile_and_changed_arithmetic_h7e_target",
+  "validator_sha256": "48ed5946317b676d0ec482e9cd10c8207c9bd19b0bfc88125630e8028cc04e38"
+}

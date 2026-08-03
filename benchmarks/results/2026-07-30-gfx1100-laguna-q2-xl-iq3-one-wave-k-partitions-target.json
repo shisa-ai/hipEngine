@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_one_wave_k_partitions_target_selection",
+  "date": "2026-07-30",
+  "status": "accepted_attribution_only_target_selection",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "queues": 1,
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "kv_dtype": "bf16"
+  },
+  "lineage": {
+    "base_revision": "9410d9982",
+    "post_h5r_residual_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-post-h5r-residual.json",
+    "post_h5r_residual_artifact_sha256": "78ab0d31b0304e76031e094a368d70b6340aa77c51f8b041dd4b60aadbbed363",
+    "h5s_rejection_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-q5-k-persistent-row-group-rejected.json",
+    "h5s_rejection_artifact_sha256": "d358caa4e49e2e224f5d4511ae2110d8b80f565b52a3d0b6ccd842bf42652dcc",
+    "h5q_production_artifact": "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-iq3-active-expert-persistent-production.json",
+    "h5q_production_artifact_sha256": "a7c3131d06fb55e5eafb22d4d90385380447560b40b1705a99f11135720324a9",
+    "matched_llamacpp_artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-llamacpp-prefill-matched-attribution.json",
+    "source": "net-new in-tree exact wave32 reconstruction of H5Q's four logical K256 wave partitions; the existing c=1 wave4 leaf is arithmetic precedent only and no device body is copied",
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "466f6f3d2bacb9e76f16d45b0890a6b3b6375ee2376798707f0abab549b31c94",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "c7505678d3abde98a625bf57cc09a0eb48f378bae934ecdd5b880dcee96a115b",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip": "b78198db6edee39099378d0adce3629dce020edddc67378b93716be90db6c87a",
+      "hipengine/runtime/laguna_moe.py": "5fcd28dc20615d187fe640a7525cff2d219da71fc7d4bf588b921ed8a10b9a08",
+      "tests/test_gguf_iq3_active_expert_persistent.py": "bc1ddbd07006d09289b4c7f899e4ad8a4c42253743a69b2142e6053c9b0a4e8c"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only"
+  },
+  "production": {
+    "m512_tok_s": 267.20469684712515,
+    "m1024_tok_s": 230.44109107265857,
+    "m4096_tok_s": 160.22098893064256,
+    "matched_llamacpp_hip_m512_tok_s": 694.184,
+    "matched_gap": 2.5979483451863157,
+    "request_kernel_sum_ms": 1851.695368,
+    "request_kernel_span_ms": 1877.998081,
+    "request_dispatches": 1862,
+    "span_minus_sum_ms": 26.30271300000004,
+    "span_minus_sum_percent": 1.400571878433141
+  },
+  "attribution": {
+    "iq3_iq4_selected_down_ms": 487.77354699999995,
+    "matched_iq3_iq4_ms": 155.495249,
+    "family_gap_ms": 332.27829799999995,
+    "family_ratio": 3.136903218181283,
+    "iq3": {
+      "calls": 45,
+      "hipengine_ms": 479.190404,
+      "matched_llamacpp_ms": 152.379859,
+      "gap_ms": 326.810545,
+      "ratio": 3.1447095905240334,
+      "percent_of_current_family": 98.24034266458487,
+      "duration_min_median_max_ms": [10.069161, 10.641568, 11.271176],
+      "resources": "local128/VGPR48/SGPR128/LDS512/scratch0/grid(3072,64)"
+    },
+    "iq4": {
+      "calls": 2,
+      "hipengine_ms": 8.583143,
+      "matched_llamacpp_ms": 3.11539,
+      "gap_ms": 5.467753,
+      "ratio": 2.75507817640809,
+      "duration_min_median_max_ms": [4.195731, 4.2915715, 4.387412],
+      "resources": "local32/VGPR64/SGPR128/LDS512/scratch0"
+    },
+    "trace_sha256": "b07a7fca715e6f8d03ce55bec591287a188e3ae749fcca211b09574157dc6bd3",
+    "analyzer_sha256": "9f8003599bad7c985c560463554a1447909454479b3f8507f2d03f5bba59067a",
+    "summary_sha256": "f474338cfb00d67ccf4532a73ebe9a44a154f503887700881f1488626b6235f7"
+  },
+  "current_h5q_ownership": {
+    "shape": {
+      "experts": 256,
+      "in_features": 1024,
+      "out_features": 3072,
+      "compact_rows": 5120,
+      "rowbatch": 8,
+      "expert_partitions": 64
+    },
+    "natural_m512_active_expert_layer_instances": 9844,
+    "decoded_segment_sets": 30240768,
+    "rowbatch_reconstruction_batches": 33547,
+    "physical_workgroups_across_45_layers": 8847360,
+    "rowbatch_output_column_phases": 103056384,
+    "whole_block_barriers": 206112768,
+    "logical_output_values": 707788800,
+    "new_allocation_required": false,
+    "new_metadata_producer_required": false
+  },
+  "target": {
+    "label": "WPF-H5T exact IQ3 one-wave K-partition collapse",
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_wave32x4_resident_rowbatch8_bf16_bf16_out",
+    "abi": "grouped_raw_iq_active_experts",
+    "grid": "dim3(out_features=3072, expert_partitions=64)",
+    "local_size": 32,
+    "mapping": "lane i reconstructs H5Q logical lanes i, i+32, i+64, and i+96 as four independent K256 partitions; each partition retains eight rowbatch accumulators and its own wave32 shuffle tree; lane zero adds partition totals 0 through 3 and stores the unchanged BF16 value",
+    "preserved": "H5Q active-expert P64 traversal, expert order, one output column per block, four K256 boundaries, IQ3 magnitude/sign/scale decode, scalar FMA order within each partition, shuffle offsets 16/8/4/2/1, serial partition 0..3 addition, rowbatch8 order/tails, BF16 store, compact layout, metadata, allocation, workspace, and H5Q/H5J fallbacks",
+    "removed_from_candidate": "cross-wave LDS partial stores and two whole-workgroup barriers per rowbatch phase",
+    "unchanged_useful_dot_work": true,
+    "unchanged_weight_and_activation_bytes": true,
+    "workgroup_count_unchanged": true,
+    "thread_count_per_workgroup": "128 -> 32",
+    "physical_thread_count_is_performance_claim": false,
+    "production_policy_changed": false,
+    "gfx1151_policy_changed": false
+  },
+  "closed_predecessors": {
+    "source_mmq": "changed arithmetic is runtime-quality rejected at max KL 0.373028; IQ3-only followup still reaches 0.372917",
+    "larger_resident_rows": "H5K rowbatch12/16 lost both clocks on all 45 layers and was removed",
+    "output_column_tile2": "prior grouped IQ3/IQ4 tile2 raised VGPR48->72/VGPR64->104 and regressed fixture duration by approximately 50%",
+    "active_expert_partitions": "H5Q already screens P1..P128 and retains P64; do not retune expert partition count",
+    "signbit_decode": "prior c=1 sign-bit substitution did not retain runtime ownership; H5T leaves decode values and operations unchanged",
+    "persistent_row_groups": "H5S is a rejected Q5 ownership strategy and does not alter the IQ3 residual"
+  },
+  "distinctness": {
+    "from_h5k": "fixed rowbatch8 and unchanged row order; H5T changes only physical K-partition ownership",
+    "from_output_tiling": "one output column remains owned by each block; no adjacent-column accumulator growth",
+    "from_h3": "all scalar F32 and BF16 boundaries remain exact; no Q8_1 producer, WMMA, or changed association",
+    "from_c1_wave4": "the arithmetic reconstruction is proven precedent, but H5T retains four decoded IQ3 segments across a complete active expert row range under the grouped P64 ABI rather than computing one route row",
+    "unmeasured_in_current_prefill_path": true
+  },
+  "admission": {
+    "red_first": "add a separate gfx1100-only symbol/key; require strict K1024/N3072/E256/P64 preflight before HIP loading, exact H5Q bytes and CPU agreement across empty/uneven/boundary/tail active lists, unchanged package policy, and gfx1151 absence",
+    "resources": "cached trace must physically name local32, LDS0, scratch0, expected grid, and allocated VGPR <=128; any spill or scratch rejects before timing",
+    "performance": "actual weights and natural M512 routing for all 45 IQ3 layers; H5Q P64 versus H5T; five warmups, 15 counter-rotated repetitions, five launches/sample; HIP-event plus synchronized-wall medians; every layer and both aggregate clocks must improve",
+    "runtime_gate_if_admitted": "bounded default-off role map with H5Q/H5J fallbacks, complete M512 state, exact integrated call counts, unchanged metadata/allocation/workspace, and clean one-queue 512/1K/4K non-regression before source default",
+    "rejection": "remove every H5T surface if exactness, resource, or all-layer both-clock performance fails"
+  },
+  "source_artifacts": {
+    "h5q_actual_role_json_sha256": "d8e8fff1ac159cf50b88e90330c48d38c13c7a8d5569ad1fa632ece8e98e2e6d",
+    "h5q_actual_role_harness_sha256": "53774dea23c6466d25298500841e3434d61661a3500e695ca424c94ec0b64146",
+    "c1_wave4_precedent_artifact_sha256": "3414624a209f8d8765813165994b525e843a91105f6cffe556192bc7f6d1191b"
+  },
+  "decision": {
+    "selected": true,
+    "production_changed": false,
+    "next_action": "Freeze RED and implement the separate exact H5T local32 four-K-partition P64 leaf; screen every actual IQ3 layer before any runtime owner."
+  }
+}

@@ -1,0 +1,470 @@
+{
+  "candidate": {
+    "additional_runtime_allocations": 0,
+    "additional_workspace_bytes": 0,
+    "backend": "hip_gfx1100",
+    "geometry": "expert P64 / output P256 / local128 / rowbatch8 / two strided outputs per reduction epoch",
+    "gfx1151_fail_closed": true,
+    "id": "WPF-H6F",
+    "layer": "moe_linear",
+    "name": "exact IQ3 paired-output reduction amortization",
+    "operation": "Carry two independent H6D row-interleaved VOPD outputs through one local128 wave0..3 reduction and one reuse barrier while preserving every per-output IQ3 decode, FMA, reduction, and BF16 store operation.",
+    "package_policy_changed": false,
+    "persistent_sidecar_bytes": 0,
+    "quant": "gguf_iq3_xxs",
+    "runtime_abi": "grouped_raw_iq_active_experts",
+    "runtime_abi_new": false,
+    "runtime_owner_added": true,
+    "runtime_owner_default_off": true,
+    "separate_h6d_sibling": true,
+    "source_default": false,
+    "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out"
+  },
+  "commands": {
+    "actual_layer_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6f_iq3_paired_output_final_screen.py",
+    "broader_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q <98-test H6F/H6D/H5Z/H5Q/H6C/IQ/gfx1151/registry guard bundle>",
+    "focused_correctness": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_laguna_h6f_iq3_paired_output_reduction.py",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "prebuild": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python -c '<build_gguf_iq_selected_prefill(load=False, compiler_version=...)>'",
+    "resource_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-h6f-leaf-rocprof --output-file h6f-leaf -- uv run pytest -q tests/test_laguna_h6f_iq3_paired_output_reduction.py::test_h6f_complete_outputs_match_h6d_and_cpu_at_pair_boundaries[rows512]",
+    "runtime_clean": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6f_paired_output_default_off_clean_512_4k.py",
+    "runtime_complete_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpfh6f_runtime_m512_full_state.py",
+    "runtime_guards": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q <155-test retained runtime guard bundle>",
+    "runtime_integrated_trace": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpfh6f-runtime-integrated-paired-rocprof --output-file h6f-paired -- uv run python -u /tmp/laguna_wpfh6f_runtime_trace_integrated_paired.py"
+  },
+  "correctness": {
+    "active_count_p64_p65_checked": true,
+    "all_45_actual_weight_outputs_byte_exact": true,
+    "all_45_layers_both_clock_positive": true,
+    "broader_green": "98/98",
+    "complete_h6d_output_byte_identity": true,
+    "focused_green": "9/9",
+    "gfx1151_absent": true,
+    "moe_scratch_bytes_unchanged": 104370208,
+    "output_pair_boundaries_and_tails_checked": true,
+    "package_h6d_h5z_h5q_h5j_maps_unchanged": true,
+    "red_failures": "9/9 solely absent H6F wrapper",
+    "red_revision": "607f505df9a9d27280c12cb650adad466826ff42",
+    "rows_1_7_8_9_512_checked": true,
+    "runtime_contract_green": "1/1",
+    "runtime_retained_guards": "155/155",
+    "sampled_cpu_outputs_finite": true,
+    "sampled_independent_cpu_oracle_byte_identity": true,
+    "strict_k1024_n3072_e256_preflight_before_hip_load": true,
+    "tracked_allocations_recovered": true
+  },
+  "correctness_claim": true,
+  "date": "2026-07-31",
+  "decision": {
+    "leaf_admitted": true,
+    "next_action": "Freeze and run a separate H6F source-default contract plus fixed C4096/M512 and selector-unset 512/1K/4K gates before changing the H6D selected map.",
+    "production_default_changed": false,
+    "runtime_owner_added": true,
+    "runtime_owner_default_off": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_exact_iq3_paired_output_reduction_candidate",
+  "leaf_admission_snapshot": {
+    "artifact_sha256": "c60e783545cff900f7c965a5fc740024a7a65f63a0ed96f10ad0fe2ae92f3786",
+    "both_clock_positive_layers": 45,
+    "event_speedup": 1.2641846233775433,
+    "runtime_candidate": {
+      "End_Timestamp": 1632541167555580,
+      "Grid_Size_X": 32768,
+      "Grid_Size_Y": 64,
+      "LDS_Block_Size": 512,
+      "SGPR_Count": 128,
+      "Scratch_Size": 0,
+      "Start_Timestamp": 1632541166832654,
+      "VGPR_Count": 152,
+      "Workgroup_Size_X": 128,
+      "duration_ns": 722926,
+      "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_paired_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+    },
+    "status": "retained_exact_leaf_runtime_qualification_pending",
+    "wall_speedup": 1.2102504922587867
+  },
+  "lineage": {
+    "h6d_control_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-candidate.json",
+    "h6d_control_artifact_sha256": "bf8f7dc06858dd22b46ff4f178de853a8c7d47e908a47070272c8259bd02d252",
+    "implementation_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "234d6221af03c1feffbf3fd2213be09082ee4da450a2a86900cae7083c5b7c2d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "c6580604a7cc43b5d75de65c8ad6a986e4ac52b1c4a17bfa9892174dd19370d2",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "26e2bd503edf22c9e50aa2dd87c460dabd3933762834d8ed73a92d4a41d919cc",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "3fa37c57fcb7beeb1a7d9caa4a77d30c8c587d36eef783bfee9e5ceb4e794117",
+      "tests/test_laguna_h5q_runtime_policy.py": "2c82c5ef68b89b06d9c5d35b0f446f7052bb4aa2348d3aef70b5a4daf02abba9",
+      "tests/test_laguna_h5z_runtime_policy.py": "55666b353c4058e291b8207b127e26063654aa00d57824338dc10c301ee11daa",
+      "tests/test_laguna_h5z_source_default.py": "b51f2b1c11ab8aa647e8dbefe8d32774977b8e21c76c77cbc3363d052876a39b",
+      "tests/test_laguna_h6c_iq3_gate_up_expert_major.py": "4e90e04de68731a775e2f7a648f0a19d0c32d94c27400d81fa4eefd7c01f1c73",
+      "tests/test_laguna_h6d_iq3_row_interleaved_vopd.py": "e4125e5e819d45acfe5a4a7dfe1f7ad59dd20ad0ded592b2355fb5b9a6477400",
+      "tests/test_laguna_h6d_runtime_policy.py": "45b178a77ccaf02b622862d561ed3b5b0a2a0c8bf21fca5086591fd153cf57f4",
+      "tests/test_laguna_h6d_source_default.py": "c0d7c664f9b27ec4fbe7bfe448cab458f8120c2d934609d9aa4bec0ee81989c4",
+      "tests/test_laguna_h6f_iq3_paired_output_reduction.py": "bff1fbd985ddb3b1cf46e2394ef171c4635c37bf140cb78b0d039e459db0aadb",
+      "tests/test_laguna_h6f_runtime_policy.py": "420ec39d8dbe9779056eb5d952d75c80e9da431cde013868cc51683a7cb1fb7d"
+    },
+    "kernel_lineage_audit": "four pre-existing documented Qwen/PARO drifts only",
+    "leaf_artifact_sha256": "c60e783545cff900f7c965a5fc740024a7a65f63a0ed96f10ad0fe2ae92f3786",
+    "red_revision": "607f505df9a9d27280c12cb650adad466826ff42",
+    "runtime_red_revision": "deead768748fa12e2767ed093f80d12ccd5c036e",
+    "source": "Net-new in-tree H6D sibling; no external device body copied.",
+    "target_artifact": "benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-post-h6e-matched-residual.json",
+    "target_artifact_sha256": "509f695167ef02709f525b43fe7f2ac54ced57dead3a7ed94d8c73257aa2301f",
+    "target_revision": "832ef26a6d13e281dffcede5e42527d39e8b3cd0"
+  },
+  "model": {
+    "compact_rows": 5120,
+    "expert_count": 256,
+    "final_position": 511,
+    "in_features": 1024,
+    "next_token_id": 2930,
+    "out_features": 3072,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "rows": 512,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+    "top_k": 10
+  },
+  "performance": {
+    "all_layers_both_clock_positive": true,
+    "all_outputs_byte_exact": true,
+    "both_clock_positive_layers": 45,
+    "candidate_event_sum_ms": 352.2553382873536,
+    "candidate_wall_sum_ms": 360.91752294451,
+    "elapsed_s": 128.3990064370446,
+    "event_reduction_percent": 20.897629862932277,
+    "event_speedup": 1.2641846233775433,
+    "h6d_event_sum_ms": 445.31578216552725,
+    "h6d_wall_sum_ms": 436.8006098084152,
+    "minimum_layer_event_speedup": 1.2528407256887653,
+    "minimum_layer_wall_speedup": 1.2021982802383864,
+    "protocol": {
+      "actual_iq3_layers": 45,
+      "actual_natural_m512_routing": true,
+      "actual_weights": true,
+      "counter_rotated_repetitions": 15,
+      "deterministic_bf16_compact_input": true,
+      "event_and_synchronized_wall": true,
+      "launches_per_sample": 5,
+      "selection_rule": "admit only if complete bytes match and every one of 45 layers improves both HIP-event and synchronized-wall medians",
+      "warmups": 5
+    },
+    "tracked_returned_to_baseline": true,
+    "wall_reduction_percent": 17.372477318012038,
+    "wall_speedup": 1.2102504922587867
+  },
+  "performance_claim": true,
+  "production": {
+    "current_iq3_owner": "WPF-H6D exact row-interleaved IQ3 VOPD",
+    "current_matched_tok_s": 334.5121292713421,
+    "current_q6_owner": "WPF-H6E exact activation-tile-K-row transfer",
+    "matched_llamacpp_hip_tok_s": 696.342,
+    "runtime_qualification_pending": false,
+    "source_default_adjudication_pending": true,
+    "unchanged": true
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze-laguna-h6f-physical.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/analyze-laguna-h6f-physical.stdout": "8eaeb3fc713cadd9338281e9e67c66d6564ad722d56baf64d83c3cc20f82b3cf",
+    "/tmp/analyze_laguna_h6f_physical.py": "e3f5d3ec4c2f59ced1330ba9424ac1b60fc0e6106d4caf20450c36e7e26746f2",
+    "/tmp/analyze_laguna_wpfh6f_runtime_integrated_paired_trace.py": "f365cd176e159ad0785f8bd37aa4380aede66ca3c1260ff0d9cb9b6eb08f5bdd",
+    "/tmp/h6f-candidate.isa": "b1e7e001312f6a8b5d1d6d40edce42440b809e3aa1dd0059b934d4fe2f3a89ff",
+    "/tmp/h6f-control.isa": "37c903ed0a9df6b378a341dc522f2451076934b8d824976bf47e1e5a62e57f6f",
+    "/tmp/h6f-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6f-green.stdout": "585ba42829657b9e2d56f8614be6c3365a8405474eed008559511ab50f2ffcfb",
+    "/tmp/h6f-guard-collect.stdout": "4dae0e9d8448478084951cca4e9aed46b9d7dc2d9753e6791826def2fde7ae58",
+    "/tmp/h6f-lineage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6f-lineage.stdout": "237e7414738119b3009cf2bc56599988ff34efcdb18195ef64a8f43d7fa9b41b",
+    "/tmp/h6f-readobj-notes.txt": "1964f5c164e3b1d9841010712cf2be0472c353f6cb8684ca00390593a038c524",
+    "/tmp/h6f-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6f-red.stdout": "578beb4b727ece976e3f50d0613bc878aa65512090fb1f031b6ded0a72abfae5",
+    "/tmp/h6f-runtime-guard-collect.stdout": "5e8ddf390b07a9b0926d572f4e9312fe88d8e27bf4e94217e6184cd13c85bb14",
+    "/tmp/h6f-runtime-red.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/h6f-runtime-red.stdout": "7a48512de6ff3df2aefa380d6fee2fcf0c10e1c9e91475697d70e4df7193d539",
+    "/tmp/laguna-h6f-broader-green-rerun.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6f-broader-green-rerun.stdout": "3465dfdabcd2a6655674fd82ca948c9c444aa28eae2b9f9be50a59480d529f2f",
+    "/tmp/laguna-h6f-leaf-rocprof.stderr": "2cc2342811c2e166ed7ae80b6aa0734d7a0460e44528236c619073d559ce27c9",
+    "/tmp/laguna-h6f-leaf-rocprof.stdout": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "/tmp/laguna-h6f-leaf-rocprof/h6f-leaf_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h6f-leaf-rocprof/h6f-leaf_kernel_trace.csv": "75cda253f68061c1381feb59bdac30737d23803ab7670e77235ded48960a0d9c",
+    "/tmp/laguna-h6f-physical-summary.json": "8eaeb3fc713cadd9338281e9e67c66d6564ad722d56baf64d83c3cc20f82b3cf",
+    "/tmp/laguna-h6f-runtime-retained-guards.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h6f-runtime-retained-guards.stdout": "34bedcad274eb2e53aedd768178d377bd5668daad57ba657ebb91b4adec3292d",
+    "/tmp/laguna-wpfh6f-iq3-paired-output-final-m512.json": "5dacd1b01b13d4fa3d826dc53b1805d3cfc56f151af2877d3f31c5ca6e048937",
+    "/tmp/laguna-wpfh6f-iq3-paired-output-final-screen.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6f-iq3-paired-output-final-screen.stdout": "a0b494df7f70dfbc80166880188b2fd402a3b354d27b1ec5a772b57324173e03",
+    "/tmp/laguna-wpfh6f-paired-output-default-off-clean-512-4k.json": "7155f45c064b4e48a766e0b1b71a7112fdbfeff361cb15b64605f83475751277",
+    "/tmp/laguna-wpfh6f-paired-output-default-off-clean-512-4k.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6f-paired-output-default-off-clean-512-4k.stdout": "da63f6915c8113b3a29f750c4d78ddf1a3d4d4862b1f1a4fd5a979e0b9682ddb",
+    "/tmp/laguna-wpfh6f-runtime-integrated-paired-analysis.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-wpfh6f-runtime-integrated-paired-analysis.stdout": "0f71bd508ec466fe6e1befaa5ab658cea655d3ba8f4a470322f6608485d00b09",
+    "/tmp/laguna-wpfh6f-runtime-integrated-paired-rocprof.stderr": "0137eef53d9eb1b2c68e4204e5d845a3469661a8f97e04abfad256f313b57957",
+    "/tmp/laguna-wpfh6f-runtime-integrated-paired-rocprof.stdout": "6220f614dc4b3cb77674113d78159d0a62c93852c5894f80afad5b132b84685f",
+    "/tmp/laguna-wpfh6f-runtime-integrated-paired-rocprof/h6f-paired_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-wpfh6f-runtime-integrated-paired-rocprof/h6f-paired_kernel_trace.csv": "a5e6b1169ebaf0b67bc84ebbae558adbad0a2809e8d62163c3f9c7de8fe106f4",
+    "/tmp/laguna-wpfh6f-runtime-integrated-paired-trace-summary.json": "0f71bd508ec466fe6e1befaa5ab658cea655d3ba8f4a470322f6608485d00b09",
+    "/tmp/laguna-wpfh6f-runtime-m512-full-state.json": "2bb8a75eb6e069f441bd242b6aef76225d078c47ddb3061e92509095e83c9680",
+    "/tmp/laguna-wpfh6f-runtime-m512-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-wpfh6f-runtime-m512-full-state.stdout": "636f9bd39d395d5c5f2be1432a52a5221a0d6021539c1726a2b90d51130442dc",
+    "/tmp/laguna_wpfh6f_iq3_paired_output_final_screen.py": "01f72238aa9cf95836a1b2deeea23ded39e51ec3f0fa3ae82477b3e4e7c9aa48",
+    "/tmp/laguna_wpfh6f_paired_output_default_off_clean_512_4k.py": "5df7294d582678d9e890a35850f47a7082462d44ce6dc510a855eb7bf3359fa1",
+    "/tmp/laguna_wpfh6f_runtime_m512_full_state.py": "3d81da8ac1985383576da0dacbe4a57c3d875935341da18be8e7302612f2d78d",
+    "/tmp/laguna_wpfh6f_runtime_trace_integrated_paired.py": "029e58c4e0923ef0f8cedb43a0df13fb94f821970fe2206745d3aa60ca81a765"
+  },
+  "resource_and_isa": {
+    "build_cache_key": "gguf_iq_selected_prefill-d0acdecaae8f6f3b",
+    "cached_rocprof_trace": {
+      "candidate": {
+        "End_Timestamp": 1632541167555580,
+        "Grid_Size_X": 32768,
+        "Grid_Size_Y": 64,
+        "LDS_Block_Size": 512,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "Start_Timestamp": 1632541166832654,
+        "VGPR_Count": 152,
+        "Workgroup_Size_X": 128,
+        "duration_ns": 722926,
+        "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_paired_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+      },
+      "control": {
+        "End_Timestamp": 1632541157646588,
+        "Grid_Size_X": 32768,
+        "Grid_Size_Y": 64,
+        "LDS_Block_Size": 512,
+        "SGPR_Count": 128,
+        "Scratch_Size": 0,
+        "Start_Timestamp": 1632541156429580,
+        "VGPR_Count": 104,
+        "Workgroup_Size_X": 128,
+        "duration_ns": 1217008,
+        "kernel_name": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)"
+      }
+    },
+    "candidate_metadata": {
+      "group_segment_fixed_size": 256,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 76,
+      "sgpr_spill_count": 0,
+      "vgpr_count": 146,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "candidate_symbol": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_paired_output_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+    "control_metadata": {
+      "group_segment_fixed_size": 256,
+      "max_flat_workgroup_size": 128,
+      "private_segment_fixed_size": 0,
+      "sgpr_count": 58,
+      "sgpr_spill_count": 0,
+      "vgpr_count": 99,
+      "vgpr_spill_count": 0,
+      "wavefront_size": 32
+    },
+    "control_symbol": "void (anonymous namespace)::gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_output_row_interleaved_vopd_rowbatch8_kernel<256>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int)",
+    "instruction_contract": {
+      "candidate": {
+        "barriers_per_loop_body": 2,
+        "code_bytes": 6292,
+        "ds_instructions": 104,
+        "fma_fma_vopd_pairs": 29,
+        "fma_issue_slots": 115,
+        "fma_operations": 144,
+        "function_instruction_slots": 1134,
+        "global_load_b128": 8,
+        "global_load_instructions": 18,
+        "out_stride_0x100": 0,
+        "out_stride_0x200": 1,
+        "vopd_slots_all_classes": 83
+      },
+      "control": {
+        "barriers_per_loop_body": 2,
+        "code_bytes": 4232,
+        "ds_instructions": 52,
+        "fma_fma_vopd_pairs": 17,
+        "fma_issue_slots": 55,
+        "fma_operations": 72,
+        "function_instruction_slots": 775,
+        "global_load_b128": 8,
+        "global_load_instructions": 13,
+        "out_stride_0x100": 1,
+        "out_stride_0x200": 0,
+        "vopd_slots_all_classes": 52
+      }
+    },
+    "no_compiler_under_profile": true,
+    "physical_barrier_contract": {
+      "candidate_dynamic_barriers_per_rowbatch": 12,
+      "candidate_output_pair_loop_iterations": 6,
+      "control_dynamic_barriers_per_rowbatch": 24,
+      "control_output_loop_iterations": 12,
+      "dynamic_barrier_reduction_percent": 50.0
+    }
+  },
+  "runtime_qualification": {
+    "cached_integrated_paired_trace": {
+      "candidate_down_topology": {
+        "h5j_iq4": 2,
+        "h6f_iq3_p256_paired_output": 45
+      },
+      "candidate_iq3_median_ms": 366.60955549999994,
+      "candidate_kernel_span_median_ms": 1479.6696035,
+      "candidate_kernel_sum_median_ms": 1458.0718145,
+      "candidate_resources": "local128/VGPR152/SGPR128/LDS512/scratch0/grid32768x64",
+      "control_down_topology": {
+        "h5j_iq4": 2,
+        "h6d_iq3_p256": 45
+      },
+      "control_iq3_median_ms": 464.484106,
+      "control_kernel_span_median_ms": 1567.4203255,
+      "control_kernel_sum_median_ms": 1540.3063695,
+      "control_resources": "local128/VGPR104/SGPR128/LDS512/scratch0/grid32768x64",
+      "dispatches_per_request": 2192,
+      "family_dispatches_each_request": {
+        "attention": 192,
+        "gate_up": 47,
+        "iq_down": 47,
+        "q5": 658,
+        "q6": 431,
+        "remaining": 817
+      },
+      "iq3_delta_ms": -97.87455050000005,
+      "iq3_reduction_percent": 21.071668381264274,
+      "kernel_span_delta_ms": -87.750722,
+      "kernel_span_reduction_percent": 5.598416747084601,
+      "kernel_sum_delta_ms": -82.234555,
+      "kernel_sum_reduction_percent": 5.33884405260846,
+      "mode_order": [
+        "control",
+        "candidate",
+        "candidate",
+        "control"
+      ],
+      "no_compiler_under_profile": true,
+      "q6_topology_unchanged_and_exact": true,
+      "requests": 4
+    },
+    "capability": {
+      "abi": "grouped_raw_iq_active_experts",
+      "allocation": "raw",
+      "gfx1151_fail_closed": true,
+      "library": "grouped_iq_prefill",
+      "new_allocation_bytes": 0,
+      "new_dispatches_per_request": 0,
+      "new_sidecar_bytes": 0,
+      "new_workspace_bytes": 0,
+      "q5_ordered_workspace_bytes": 161120256,
+      "source_selected_iq3_variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_rowbatch8_bf16_bf16_out",
+      "strict_shape": "K1024/N3072/E256",
+      "total_scratch_bytes": 600141856,
+      "variant": "selected_grouped_prefill_compact_k1024_active_expert_p64_activation_resident_out_p256_row_interleaved_vopd_paired_output_rowbatch8_bf16_bf16_out",
+      "wrong_shape_registration_backend_fallback_exact": true
+    },
+    "complete_natural_m512_state": {
+      "candidate_repeat_exact": true,
+      "complete_kv_and_live_spans_exact": true,
+      "complete_logits_exact": true,
+      "final_hidden_exact": true,
+      "hidden_boundaries_exact": 48,
+      "hidden_boundaries_total": 48,
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "next_token_id": 2930,
+      "owner_lifecycle_recovered": true,
+      "post_layer_hidden_exact": true,
+      "prompt_tokens": 512,
+      "quality_gate": true,
+      "scratch_unchanged": true,
+      "token_stream_sha256": "512cbfe87d3e7cef4af9c935b907a5d24e3a73d4234f1d0d7fcc902f2562527a",
+      "top1_agreement": 1.0,
+      "tracked_allocations_recovered": true
+    },
+    "default_off_clean_512_1k_4k": {
+      "all_finite": true,
+      "all_outputs_exact": true,
+      "all_sessions_recovered": true,
+      "all_total_scratch_bytes": [
+        600141856
+      ],
+      "all_workspace_bytes": [
+        161120256
+      ],
+      "initial_lifecycle_recovered": true,
+      "protocol": "same resident weights; model load excluded; fresh request session/sample; one warmup/mode/length; three counter-rotated measured repetitions; matrix512; attention128; one queue",
+      "rows": {
+        "1024": {
+          "all_finite": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 3.673044241964817,
+          "candidate_median_tok_s": 278.78782082195477,
+          "control_median_seconds": 3.835850568022579,
+          "control_median_tok_s": 266.95513337681524,
+          "exact_all_repetitions": true,
+          "gain_percent": 4.432462974382045,
+          "paired_candidate_wins": 3,
+          "speedup": 1.0443246297438205
+        },
+        "4096": {
+          "all_finite": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 22.561888810945675,
+          "candidate_median_tok_s": 181.54508402740052,
+          "control_median_seconds": 23.204938543960452,
+          "control_median_tok_s": 176.51414987548267,
+          "exact_all_repetitions": true,
+          "gain_percent": 2.8501591263175197,
+          "paired_candidate_wins": 3,
+          "speedup": 1.0285015912631752
+        },
+        "512": {
+          "all_finite": true,
+          "all_sessions_recovered": true,
+          "all_total_scratch_bytes": [
+            600141856
+          ],
+          "all_workspace_bytes": [
+            161120256
+          ],
+          "candidate_median_seconds": 1.522581412922591,
+          "candidate_median_tok_s": 336.27101687601544,
+          "control_median_seconds": 1.6010301990900189,
+          "control_median_tok_s": 319.79409276040303,
+          "exact_all_repetitions": true,
+          "gain_percent": 5.152354120548841,
+          "paired_candidate_wins": 3,
+          "speedup": 1.0515235412054884
+        }
+      },
+      "token_stream_sha256": "e56601a354b2fab008fb79107219971aba7a4d3829593ab2925e4969588a42b1"
+    },
+    "retained_guards": {
+      "failed": 0,
+      "passed": 155,
+      "scope": "H6F/H6D/H5Z/H5Q/H6C/H6E runtime and leaves, selected IQ, Laguna runner, gfx1151, and registry"
+    },
+    "runtime_red_revision": "deead768748fa12e2767ed093f80d12ccd5c036e",
+    "status": "qualified_default_off"
+  },
+  "schema": 1,
+  "scope": "WPF-H6F exact H6D-derived paired-output IQ3 selected-down leaf plus bounded default-off runtime owner on one Radeon Pro W7900 queue",
+  "status": "retained_exact_default_off_runtime_owner"
+}

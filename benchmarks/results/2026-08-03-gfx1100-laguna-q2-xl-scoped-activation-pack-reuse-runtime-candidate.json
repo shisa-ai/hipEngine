@@ -1,0 +1,259 @@
+{
+  "authority_links": {
+    "README.md": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-runtime-candidate.json"
+  },
+  "authority_sha256": {
+    "README.md": "c5760801cadb180b09836b22c9daa7508a05b4db1f74efd2b622a5eb90e2e0cd",
+    "benchmarks/CHANGELOG.md": "692191dae4d33d65518928859452f76314d8c4e4a650e0010796147893637105",
+    "benchmarks/README.md": "6eea9ff02dcbc3a956c1d455a0d5ff1895dc6d449602278c4bb18cdd06e77ccd",
+    "docs/KERNELS.md": "42363a1cf3010f8fa70a7152e0bbf8d3d5a5a6117dc80c87f28c2a80d4b3dd60",
+    "docs/LAGUNA-prefill.md": "11de5e949dab5ae432683a39fcf0758bee8edc286863e1df59b1a0df3a70cb48",
+    "docs/PLAN.md": "17454ea29dc1dd004fea94843a8b53d2ae3e20226cb800fd07efecaf8f276723"
+  },
+  "candidate": {
+    "cache_key": [
+      "input_ptr",
+      "activation_ptr",
+      "rows",
+      "in_features",
+      "row_batch",
+      "stream"
+    ],
+    "complete_recurrence_groups": 95,
+    "fallback": "retained producer on disabled, serial, changed-key/stream, nested scope transition, producer failure, non-M512, registry miss, or backend miss",
+    "hip_source_changed": false,
+    "id": "WPF-H8B",
+    "jit_object_changed": false,
+    "name": "exact scoped tile-K-row activation-pack reuse",
+    "new_allocation_bytes": 0,
+    "new_device_body": false,
+    "new_workspace_bytes": 0,
+    "publication": "only after successful retained producer completion",
+    "removed_pack_calls": 107,
+    "runtime_owner_added": true,
+    "runtime_owner_default_off": true,
+    "scope_owners": [
+      "attention Q/K/V",
+      "dense FFN gate/up",
+      "shared-expert FFN gate/up"
+    ],
+    "source_default_changed": false
+  },
+  "clean_length_gate": {
+    "1024": {
+      "candidate_median_tok_s": 322.18880344746987,
+      "control_median_tok_s": 321.62524290762906,
+      "gain_percent": 0.17522273275132338,
+      "paired_candidate_wins": 3,
+      "speedup": 1.0017522273275132
+    },
+    "4096": {
+      "candidate_median_tok_s": 198.88790887717767,
+      "control_median_tok_s": 198.586320929395,
+      "gain_percent": 0.15186743294866023,
+      "paired_candidate_wins": 3,
+      "speedup": 1.0015186743294866
+    },
+    "512": {
+      "candidate_median_tok_s": 407.37387412564664,
+      "control_median_tok_s": 406.77008004665873,
+      "gain_percent": 0.14843620723496986,
+      "paired_candidate_wins": 2,
+      "speedup": 1.0014843620723497
+    },
+    "compiler_processes": 0,
+    "every_length_median_positive": true,
+    "exact_all_samples": true,
+    "finite_all_samples": true,
+    "lifecycle_recovered_all_samples": true,
+    "protocol": "one warmup per arm and three counter-rotated pairs per length; same resident weights/H8A sidecar, fresh request sessions, setup excluded"
+  },
+  "commands": {
+    "complete_state": "GPU_MAX_HW_QUEUES=1 .venv/bin/python /tmp/laguna_h8b_runtime_m512_topology.py",
+    "fixed_timing": "GPU_MAX_HW_QUEUES=1 .venv/bin/python /tmp/laguna_h8b_runtime_matched_c4096_m512.py",
+    "focused_green": "GPU_MAX_HW_QUEUES=2 .venv/bin/python -m pytest -q tests/test_laguna_h8b_scoped_activation_pack_reuse.py ... tests/test_laguna_moe_gpu.py",
+    "length_timing": "GPU_MAX_HW_QUEUES=1 .venv/bin/python /tmp/laguna_h8b_runtime_clean_512_4k.py",
+    "trace": "rocprofv3 --kernel-trace --output-format csv -- .venv/bin/python -u /tmp/laguna_h8b_runtime_trace_child.py",
+    "trace_analysis": "python3 /tmp/analyze_laguna_h8b_runtime_trace.py"
+  },
+  "complete_state": {
+    "activation_packs": 223,
+    "compiler_processes": 0,
+    "context_length": 4096,
+    "final_position": 511,
+    "finite": true,
+    "lifecycle_recovered": true,
+    "next_token_id": 2930,
+    "pack_geometry_inventory": {
+      "(10, 'f32', 'tile_k_col', 'transient')": 35,
+      "(12, 'bf16', 'row_major', 'transient')": 1,
+      "(4, 'bf16', 'tile_k_col', 'transient')": 92,
+      "(5, 'bf16', 'tile_k_col', 'resident')": 12,
+      "(5, 'bf16', 'tile_k_col', 'transient')": 1,
+      "(5, 'f32', 'tile_k_col', 'resident')": 12,
+      "(5, 'f32', 'tile_k_col', 'transient')": 35,
+      "(8, 'bf16', 'row_major', 'transient')": 35
+    },
+    "resident_packs": 24,
+    "rows": 512,
+    "state_exact": true,
+    "transient_packs": 199
+  },
+  "current_production": {
+    "application_dispatches": 2262,
+    "kernel_sum_ms": 1151.214912,
+    "llamacpp_over_current": 1.5687196778001444,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "production_changed": false,
+    "retained_wall_tok_s": 440.35337210068906,
+    "source": "H8A resident global-Q5 cache with H8B disabled"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_admitted": true,
+    "next_action": "Commit bounded default-off evidence, then freeze a separate source-default RED before changing package ownership.",
+    "no_subset_or_favorable_rerun": true,
+    "runtime_owner_retained": true,
+    "source_default_changed": false
+  },
+  "fixed_c4096_m512": {
+    "candidate_median_tok_s": 438.9194870966704,
+    "compiler_processes": 0,
+    "control_median_tok_s": 438.412387784036,
+    "exact_all_samples": true,
+    "finite_all_samples": true,
+    "gain_percent": 0.1156671952627919,
+    "lifecycle_recovered_all_samples": true,
+    "llamacpp_over_candidate": 1.57384445281614,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "paired_candidate_wins": 4,
+    "samples_per_arm": 5,
+    "setup_excluded": true,
+    "speedup": 1.001156671952628,
+    "warmups_per_arm": 1
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22 / HIP 7.2",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1,
+    "total_vram_bytes": 48301604864
+  },
+  "implementation_screen": {
+    "compiler_processes": 0,
+    "frozen_red_to_green": {
+      "passed": 5,
+      "total": 5
+    },
+    "h8b_plus_retained_gpu": {
+      "passed": 103,
+      "total": 103
+    },
+    "hip_source_sha256": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110"
+  },
+  "kind": "gfx1100_laguna_q2_xl_wpf_h8b_scoped_activation_pack_reuse_runtime_candidate",
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "named_trace": {
+    "compiler_processes": 0,
+    "nonpack_kernel_names_and_counts_unchanged": true,
+    "pack_counts_by_row_batch": {
+      "10": 35,
+      "12": 1,
+      "4": 92,
+      "5": 60,
+      "8": 35
+    },
+    "positive_durations": true,
+    "queues": 1,
+    "removed_pack_counts_by_row_batch": {
+      "12": 1,
+      "4": 46,
+      "5": 60
+    },
+    "request_activation_packs_after": 223,
+    "request_activation_packs_before": 330,
+    "request_dispatches_after": 2155,
+    "request_dispatches_before": 2262,
+    "request_q5_plane_producers": 0,
+    "setup_q5_plane_producers": 24,
+    "streams": 1
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h8b_runtime_trace.py": "743528ca62441e64af24c2106b2d6b892231d3a013c0ba9a984171e09cebffd3",
+    "/tmp/laguna-h8b-implementation-green-compiler-monitor.json": "72ac8d7d51c1644fcbf939bb7187fc9fd7811542ecd6562f629a8f23ff594d95",
+    "/tmp/laguna-h8b-implementation-green.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8b-implementation-green.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8b-implementation-green.stdout": "51e313688c5e7bfd380316362ed54e7261ec924e6081d9f79446a3f8b94c6120",
+    "/tmp/laguna-h8b-runtime-clean-512-4k-compiler-monitor.json": "913a1c1dc2d722d462174e32ccec5342bd9a9702f7b4c7084fb699f99e5ebd6e",
+    "/tmp/laguna-h8b-runtime-clean-512-4k.json": "372130f04be6583efd1f5e34445cc6ec4346dd42bf597e4f7ea9afa536d102c2",
+    "/tmp/laguna-h8b-runtime-clean-512-4k.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8b-runtime-clean-512-4k.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8b-runtime-clean-512-4k.stdout": "ce6a631fb59b8233fd5aaf3e9f2c357973f6024a6f21d0b4f6ef2cc8e54c6bd7",
+    "/tmp/laguna-h8b-runtime-m512-topology-compiler-monitor.json": "131ca090202e1bef0b9d7ae439b649de9de9fcd5c24231edb5c5034a30adeabb",
+    "/tmp/laguna-h8b-runtime-m512-topology.json": "fe073101ed58c5d9d27dfcedba0ad7975884422f9be78ce5b0eb8e0b50e93348",
+    "/tmp/laguna-h8b-runtime-m512-topology.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8b-runtime-m512-topology.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8b-runtime-m512-topology.stdout": "a23a48ac4b0cfde62e091b89258fe022e14bf8823128aebfa00ab09dd7acf0e2",
+    "/tmp/laguna-h8b-runtime-matched-c4096-m512-compiler-monitor.json": "6eb30b241a33ec875c00b1045e8fe56c1cb10e1f285370009ead3e013889536a",
+    "/tmp/laguna-h8b-runtime-matched-c4096-m512.json": "c7f4204276d5ed8d511c11fdc6c4d2e63c55f5e0b709eae5e42102e14df176a9",
+    "/tmp/laguna-h8b-runtime-matched-c4096-m512.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8b-runtime-matched-c4096-m512.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8b-runtime-matched-c4096-m512.stdout": "3da58f035de75c804a28832301bf4312ccf6dc6f5907f655b031fa1390a3bb67",
+    "/tmp/laguna-h8b-runtime-rocprof.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8b-runtime-rocprof.stderr": "8b6d940971c6566d8fdd26b2762f9debac9b966ac8d9479278671026f49fad85",
+    "/tmp/laguna-h8b-runtime-rocprof.stdout": "1389e449692e3635201c5efb02209bbc8b21ee4f71dc50d5afb2cc9fa896c754",
+    "/tmp/laguna-h8b-runtime-rocprof/h8b-runtime_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/laguna-h8b-runtime-rocprof/h8b-runtime_kernel_trace.csv": "58df6179bca173ab33dfdbfcbf4709d0767fc439674af769fd987e087b7b2f72",
+    "/tmp/laguna-h8b-runtime-trace-analyzer.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8b-runtime-trace-analyzer.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8b-runtime-trace-analyzer.stdout": "adb2e34c1b5b0ed3c8cd7d3d30b311261575139df7f441ca24fd80485e2b9deb",
+    "/tmp/laguna-h8b-runtime-trace-child.json": "c1598f8dc90e898e65ac7c64faeaf740d451c38f97d6ce97ee5e65176d4cb4d7",
+    "/tmp/laguna-h8b-runtime-trace-compiler-monitor.json": "829c52887db5d80118fa1bd444edbd04efc07ccd2e507bdccc721a6e980925e5",
+    "/tmp/laguna-h8b-runtime-trace-prewarm-compiler-monitor.json": "901609760d26bff2be3cf444fa3dbf0b3af8aac1d0da67b62c1ee94c721e08dd",
+    "/tmp/laguna-h8b-runtime-trace-prewarm.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8b-runtime-trace-prewarm.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8b-runtime-trace-prewarm.stdout": "1389e449692e3635201c5efb02209bbc8b21ee4f71dc50d5afb2cc9fa896c754",
+    "/tmp/laguna-h8b-runtime-trace-summary.json": "adb2e34c1b5b0ed3c8cd7d3d30b311261575139df7f441ca24fd80485e2b9deb",
+    "/tmp/laguna_h8b_runtime_clean_512_4k.py": "dcd2fb86373eca20038a1244eb77c9846a392b230fa9a77dab1c50f4a17ff99c",
+    "/tmp/laguna_h8b_runtime_m512_topology.py": "26c75885b1171e151ef09af529182c2a0f02fcfeca2e0d6b16b6a4b21327ade7",
+    "/tmp/laguna_h8b_runtime_matched_c4096_m512.py": "868d52d9683b7d5544fb52a0e5f88325ae0971aef9f54cfc78993b549001f9ea",
+    "/tmp/laguna_h8b_runtime_trace_child.py": "3dd4494c2b903b81f432a150a3ed0eaea41986770d30f63fca85155e6e00de2d",
+    "/tmp/run_laguna_h8b_runtime_lengths_with_compiler_monitor.py": "0993aa3a97636ea333c65428664a1239ccbb3340ff6af6ec1fa2657fab3ad2cd",
+    "/tmp/run_laguna_h8b_runtime_m512_topology_with_monitor.py": "b1e39a702fb6a9622909b6053d6bc9b494e27279c969dbf635de3ed30df0d1d7",
+    "/tmp/run_laguna_h8b_runtime_matched_with_compiler_monitor.py": "a59c0476d96be5cb168d340ba0f7ba45278781b60a73e7870cc8e81f401f9eeb",
+    "/tmp/run_laguna_h8b_runtime_rocprof_with_compiler_monitor.py": "b7660b300f0f5b95664f5b64b94f87095fbaa3715f70ec1eddfe796abbd6b292",
+    "/tmp/run_laguna_h8b_runtime_trace_prewarm_with_compiler_monitor.py": "fdc9f1badeb6f4122329502710c33b398b346986e3b27a34ba6906f916c66db4"
+  },
+  "revision": {
+    "implementation": "e5ebfceb9dd20400be6d3476e74fde8603387484",
+    "red": "1530a70e9",
+    "target": "71336f471"
+  },
+  "schema": "hipengine.laguna.wpfh8b_runtime_candidate.v1",
+  "source_sha256": {
+    "docs/REFACTOR.md": "3de213a389e980e7b84393acdae64e81eed0c93356ab10fac63605fbd2fcee71",
+    "hipengine/kernels/activation_pack.py": "2b10234b49ee19417e439fa598b0b069ae4b832eebb3751357c7819891072f67",
+    "hipengine/kernels/hip_gfx1100/__init__.py": "71ad7e99bb9aaf8593aae5514517175d67ed53431fe0845135bfdafe8a13c4ca",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+    "hipengine/runtime/laguna_gguf_runner.py": "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf",
+    "hipengine/runtime/laguna_moe.py": "0507c0ab9bcabddfda9d0390c66d46f80aaaf7c42357a58dfa24c692d43414fd",
+    "tests/test_laguna_h8b_scoped_activation_pack_reuse.py": "710bcdc740ac691c2ac4f0fa5e9fa81f55be939b1582be78a9d62c6218ff06ff"
+  },
+  "status": "qualified_bounded_default_off",
+  "target_artifact_sha256": "e0cf5d4bd92539435020b8c1c6269d33b5719295851197ca50700be07153856a"
+}

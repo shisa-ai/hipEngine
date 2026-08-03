@@ -1,0 +1,102 @@
+{
+  "created_at": "2026-07-29",
+  "decision": "Promote the exact C256-qualified qrow4 SWA policy as the gfx1100 package default. Keep explicit local128 rollback and defer the canonical topline to a clean selector-unset publication.",
+  "full_state_m512": {
+    "candidate_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf3_qrow4_default_full_state.py",
+    "exact_hidden_boundaries": 48,
+    "harness_sha256": "49904de58cad89f10b8fcdebd814641e5c9b836bad1ba1876dc40e59ae1134a4",
+    "kl_max": 0.0,
+    "next_token_id": 2930,
+    "package_default_no_override": true,
+    "raw_sha256": "26d8e51f6c3e8a397113db53a2c72a52b2cf22f8fd6101a36b70a936a4794612",
+    "repeat_exact": true,
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_count": 1,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "kind": "hipengine_laguna_wpf3_swa_qrow4_exact_default_promotion",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "package": {
+    "backend": "hip_gfx1100",
+    "capability": "LAGUNA_SWA_PREFILL_VARIANT",
+    "explicit_rollback": "swa_context_rows_spans",
+    "selected_variant": "swa_context_rows_qrow4_m128_c256_exact_spans"
+  },
+  "performance_claim": false,
+  "performance_claim_note": "Dirty same-weight promotion gate only; clean selector-unset publication and cached all-family tracing remain required before updating the canonical topline.",
+  "prior_primitive_evidence": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-swa-qrow4-exact-candidate.json",
+  "red_green": {
+    "green_command": "uv run pytest -q tests/test_gfx1151_backend.py tests/test_laguna_kv_attention.py --tb=short",
+    "green_passed": 45,
+    "red_evidence": "ImportError: cannot import name LAGUNA_SWA_PREFILL_VARIANT from hipengine.kernels.hip_gfx1100"
+  },
+  "repo": {
+    "base_revision": "ded24864e51aa5589e5d688d5b438f1b4bc211d5",
+    "candidate_worktree": true
+  },
+  "same_weight_short_ab": {
+    "all_pairs_exact": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf3_qrow4_default_ab.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --chunk-size 128 --repetitions 3 --warmup-rows 128 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-wpf3-qrow4-default-dirty-ab.json",
+    "control_variant": "swa_context_rows_spans",
+    "harness_sha256": "e36a8846dca05ae42b001b8d18b381f570cf7a47524bda1476fd2ab3adbcc502",
+    "package_default_no_override": true,
+    "promotion_gate_passed": true,
+    "raw_sha256": "b79e662bdb99f946906e99a318692e62b86b3444786869bd86fb89ffdbc9967c",
+    "repetitions": 3,
+    "rows": {
+      "1024": {
+        "control_seconds": [
+          9.573586852988228,
+          9.616265508113429,
+          9.64043885981664
+        ],
+        "control_tok_s": 106.48624449231684,
+        "default_seconds": [
+          8.142933271825314,
+          8.234940820839256,
+          8.23711485392414
+        ],
+        "default_tok_s": 124.34819172090177,
+        "seconds_saved": 1.381324687274173,
+        "speedup": 1.167739479533187
+      },
+      "512": {
+        "control_seconds": [
+          4.267766747856513,
+          4.345851817168295,
+          4.353800534037873
+        ],
+        "control_tok_s": 117.8134969943851,
+        "default_seconds": [
+          3.86097464710474,
+          3.9070941999088973,
+          3.912929395912215
+        ],
+        "default_tok_s": 131.0436794720584,
+        "seconds_saved": 0.4387576172593981,
+        "speedup": 1.1122976807852825
+      }
+    },
+    "same_mode_repeat_deterministic": true,
+    "tracked_returned_to_baseline": true
+  },
+  "schema_version": 1,
+  "scope": "gfx1100 W7900 package-default promotion for exact SWA prefill at M128 attention tiles inside matrix512 short prefill",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "ff93ee1541a91999e05a704349aafb106e8f4e4222ca1101f4d037f3a2feb209",
+    "tests/test_gfx1151_backend.py": "5cbaf33e7b01f1326ae7936323b3fc5b8cfa8267b8e4f6e86bc945ec78567ba9",
+    "tests/test_laguna_kv_attention.py": "f4c58c2178d1d5bf71dfdc11d57a46660a9d2f487dc6a32d75fea1e721403016"
+  },
+  "status": "retained_default_pending_clean_publication"
+}

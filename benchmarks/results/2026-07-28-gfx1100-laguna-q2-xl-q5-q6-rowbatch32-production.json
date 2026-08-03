@@ -1,0 +1,569 @@
+{
+  "claim_scope": "Exact raw-Q5/Q6 bulk-prefill rowbatch32 on W7900 at 512 and 1024 tokens; no 4K or long-context claim while either short shape is below 150 tok/s",
+  "commands": {
+    "rowbatch16_vs_rowbatch8": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --chunk-size 128 --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --compare-raw-k-prefill-rowbatch --raw-k-prefill-rowbatch-control 8 --raw-k-prefill-rowbatch 16 --output /tmp/laguna-wpf1w-rb16-vs-rb8-clean-512-1k.json",
+    "rowbatch32_vs_rowbatch8": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --chunk-size 128 --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --compare-raw-k-prefill-rowbatch --raw-k-prefill-rowbatch-control 8 --raw-k-prefill-rowbatch 32 --output /tmp/laguna-wpf1w-rb32-vs-rb8-clean-512-1k.json",
+    "selector_unset": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --chunk-size 128 --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf1w-rowbatch32-selector-unset-512-1k.json"
+  },
+  "correctness": {
+    "actual_role_count": 10,
+    "actual_roles_bit_exact": true,
+    "full_state": {
+      "checks": {
+        "all_48_hidden_boundaries_exact": true,
+        "final_hidden_exact": true,
+        "kv_and_live_spans_exact": true,
+        "logits_exact": true,
+        "next_token_exact": true,
+        "next_token_logit_exact": true,
+        "position_exact": true,
+        "post_hidden_exact": true
+      },
+      "final_hidden_sha256": "0daaffb4ab05df52cabbcd323bd72130bd9ea6905883f7beb5658382da20b2ba",
+      "hidden_boundaries_exact": 48,
+      "hidden_boundaries_total": 48,
+      "kv_and_live_spans_sha256": "efcd482cf9fb3b985409e904c36b0605fca9625bef5cd5fa3efc86fa7e3480a7",
+      "logits_sha256": "2d272e3c2e30a64df4b60e72fb20a1dbb5bf7cd732c83fdf7a49ad4f1670696b",
+      "post_hidden_sha256": "435a2210b29a69aa174b06206bf1fecce9f753cd64dc110665a4cbbd8d556bbc",
+      "raw_json_sha256": "6ea6b7e6c557b702af669bb079b893bfbab8d59fb314cb635eec99ef2f2f9b7d",
+      "rowbatch32_repeat_seconds": 1.304624221054837,
+      "rowbatch32_seconds": 1.302024417091161,
+      "rowbatch8_seconds": 1.4096306818537414,
+      "rows": 128,
+      "tracked_returned_to_baseline": true
+    },
+    "paired_short_gate_pass": {
+      "boundary_fixture_evidence": [
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_handles_final_128k_position",
+        "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
+        "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
+        "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+      ],
+      "control_candidate_generated_ids_match": true,
+      "control_candidate_next_tokens_match": true,
+      "final_positions_exact": true,
+      "pass": true,
+      "repeat_generated_ids_deterministic": true,
+      "repeat_next_token_deterministic": true,
+      "tracked_returned_to_baseline": true
+    },
+    "partial_tail_rows_tested": [
+      9,
+      17,
+      33
+    ],
+    "primitive_artifact": "benchmarks/results/2026-07-28-gfx1100-laguna-q2-xl-q5-q6-rowbatch16-32-primitive.json",
+    "primitive_artifact_sha256": "255341c7b180f1889dbd939f8a600721f6871329cc93fc86b4dd4217d9c99d10",
+    "selector_unset_pass": {
+      "boundary_fixture_evidence": [
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_matches_dense_at_boundaries_and_tails",
+        "tests/test_laguna_cpu_reference.py::test_laguna_block_streaming_oracle_handles_final_128k_position",
+        "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
+        "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps",
+        "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+      ],
+      "control_candidate_generated_ids_match": true,
+      "control_candidate_next_tokens_match": true,
+      "final_positions_exact": true,
+      "pass": true,
+      "repeat_generated_ids_deterministic": true,
+      "repeat_next_token_deterministic": true,
+      "tracked_returned_to_baseline": true
+    },
+    "validation_command": "uv run pytest -q tests/test_laguna_gguf_runner.py tests/test_gfx1151_backend.py tests/test_gguf_k_rowtile_gemv.py tests/test_gguf_linear_dispatch.py",
+    "validation_result": "148 passed"
+  },
+  "created_at": "2026-07-28T14:08:43.273851+00:00",
+  "gate": {
+    "both_short_shapes_reach_150_tok_s": false,
+    "four_k_run_performed": false,
+    "headline_1024_tok_s": 79.5548853381996,
+    "headline_512_tok_s": 85.48112113033928,
+    "long_context_reopened": false,
+    "next_action": "WPF-C1 isolated M256/M512 matrix capacity with all attention rows fixed at 128 and fresh RB32 resource tracing; continue 512/1K only until both reach 150 tok/s.",
+    "retained_default": true
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "compiler": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "visible_device": 0
+  },
+  "kind": "hipengine_laguna_q2_xl_gfx1100_q5_q6_rowbatch32_production",
+  "model": {
+    "kv_dtype": "bf16",
+    "model_sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "name": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        19841767952,
+        39683535904
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 39684584480,
+      "value": "df888623f998292ac71205832949069be4151323f2b6a293625764fcf9cac3c9"
+    }
+  },
+  "pass": true,
+  "performance": {
+    "rowbatch16_vs_rowbatch8": {
+      "1024": {
+        "candidate_median_seconds": 13.199405590072274,
+        "candidate_median_tok_s": 77.57925105128867,
+        "candidate_samples_seconds": [
+          13.029633331112564,
+          13.199405590072274,
+          13.250733570894226
+        ],
+        "control_median_seconds": 13.888381894910708,
+        "control_median_tok_s": 73.73069143319259,
+        "control_samples_seconds": [
+          13.775874589104205,
+          13.888381894910708,
+          13.917844036128372
+        ],
+        "delta_percent": 5.219752511860354,
+        "every_candidate_sample_faster": true,
+        "next_token_ids": [
+          95,
+          95,
+          95
+        ],
+        "speedup": 1.0521975251186035
+      },
+      "512": {
+        "candidate_median_seconds": 6.13262206595391,
+        "candidate_median_tok_s": 83.48794275819441,
+        "candidate_samples_seconds": [
+          6.0044299371074885,
+          6.13262206595391,
+          6.137667861999944
+        ],
+        "control_median_seconds": 6.466522492934018,
+        "control_median_tok_s": 79.17702297633132,
+        "control_samples_seconds": [
+          6.290306468959898,
+          6.47520508011803,
+          6.466522492934018
+        ],
+        "delta_percent": 5.444660104424193,
+        "every_candidate_sample_faster": true,
+        "next_token_ids": [
+          2930,
+          2930,
+          2930
+        ],
+        "speedup": 1.054446601044242
+      }
+    },
+    "rowbatch32_vs_rowbatch8": {
+      "1024": {
+        "candidate_median_seconds": 12.970934077864513,
+        "candidate_median_tok_s": 78.94574082737051,
+        "candidate_samples_seconds": [
+          12.929271535016596,
+          12.970934077864513,
+          12.999797789147124
+        ],
+        "control_median_seconds": 13.911225185962394,
+        "control_median_tok_s": 73.60962002349748,
+        "control_samples_seconds": [
+          13.88464542105794,
+          13.911225185962394,
+          13.936520220013335
+        ],
+        "delta_percent": 7.249216613493781,
+        "every_candidate_sample_faster": true,
+        "next_token_ids": [
+          95,
+          95,
+          95
+        ],
+        "speedup": 1.0724921661349378
+      },
+      "512": {
+        "candidate_median_seconds": 6.011245358036831,
+        "candidate_median_tok_s": 85.17369854409176,
+        "candidate_samples_seconds": [
+          5.968822533963248,
+          6.011245358036831,
+          6.0142591879703104
+        ],
+        "control_median_seconds": 6.479092885041609,
+        "control_median_tok_s": 79.0234079190411,
+        "control_samples_seconds": [
+          6.417981639038771,
+          6.479092885041609,
+          6.481019678059965
+        ],
+        "delta_percent": 7.782871919864021,
+        "every_candidate_sample_faster": true,
+        "next_token_ids": [
+          2930,
+          2930,
+          2930
+        ],
+        "speedup": 1.0778287191986402
+      }
+    },
+    "selector_unset_publication": {
+      "1024": {
+        "delta_percent": 6.76799310763212,
+        "next_token_ids": [
+          95,
+          95,
+          95
+        ],
+        "previous_rowbatch8_tok_s": 74.51192349190345,
+        "rowbatch32_median_seconds": 12.871616817079484,
+        "rowbatch32_median_tok_s": 79.5548853381996,
+        "rowbatch32_samples_seconds": [
+          12.7623933670111,
+          12.871616817079484,
+          12.961470616050065
+        ]
+      },
+      "512": {
+        "delta_percent": 7.408094862829895,
+        "next_token_ids": [
+          2930,
+          2930,
+          2930
+        ],
+        "previous_rowbatch8_tok_s": 79.58536201531793,
+        "rowbatch32_median_seconds": 5.989626636030152,
+        "rowbatch32_median_tok_s": 85.48112113033928,
+        "rowbatch32_samples_seconds": [
+          5.862998933997005,
+          5.989626636030152,
+          5.992475567152724
+        ]
+      }
+    }
+  },
+  "performance_claim": true,
+  "post_promotion_profile": {
+    "child_sha256": "6413e75d6dfac77f80478453ff058783dfc73eed6735f998355e06f4ba3d49c6",
+    "command": "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10 scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --chunk-size 128 --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf1w-rowbatch32-runtime-profile-child.json",
+    "compiler_spawned_under_profiler": false,
+    "lengths": {
+      "1024": {
+        "chunks_per_pass": [
+          8
+        ],
+        "dispatches_per_pass": [
+          8426
+        ],
+        "families": {
+          "activation_reduce_residual": {
+            "calls_per_pass": [
+              1516
+            ],
+            "median_duration_ns": 14503962,
+            "median_share_of_kernel_sum": 0.001145440700648314
+          },
+          "dense_shared_quant_projection": {
+            "calls_per_pass": [
+              3064
+            ],
+            "median_duration_ns": 4844460153,
+            "median_share_of_kernel_sum": 0.38258800125890835
+          },
+          "embedding": {
+            "calls_per_pass": [
+              8
+            ],
+            "median_duration_ns": 69801,
+            "median_share_of_kernel_sum": 5.512487301466521e-06
+          },
+          "global_attention": {
+            "calls_per_pass": [
+              96
+            ],
+            "median_duration_ns": 314649433,
+            "median_share_of_kernel_sum": 0.02484922857589635
+          },
+          "lm_head_argmax": {
+            "calls_per_pass": [
+              1
+            ],
+            "median_duration_ns": 2880,
+            "median_share_of_kernel_sum": 2.274460742428272e-07
+          },
+          "norm_rope_gate": {
+            "calls_per_pass": [
+              1536
+            ],
+            "median_duration_ns": 28892736,
+            "median_share_of_kernel_sum": 0.002281784506018891
+          },
+          "other": {
+            "calls_per_pass": [
+              29
+            ],
+            "median_duration_ns": 1476093,
+            "median_share_of_kernel_sum": 0.00011657345766226302
+          },
+          "prefill_kv_write": {
+            "calls_per_pass": [
+              384
+            ],
+            "median_duration_ns": 1709969,
+            "median_share_of_kernel_sum": 0.00013504365837740728
+          },
+          "router": {
+            "calls_per_pass": [
+              752
+            ],
+            "median_duration_ns": 27596134,
+            "median_share_of_kernel_sum": 0.0021793862300621557
+          },
+          "selected_iq_down": {
+            "calls_per_pass": [
+              376
+            ],
+            "median_duration_ns": 2531321502,
+            "median_share_of_kernel_sum": 0.1999094230126239
+          },
+          "selected_iq_gate_up": {
+            "calls_per_pass": [
+              376
+            ],
+            "median_duration_ns": 2394633304,
+            "median_share_of_kernel_sum": 0.18911456397428145
+          },
+          "selected_q4_gate_up": {
+            "calls_per_pass": [
+              0
+            ],
+            "median_duration_ns": 0,
+            "median_share_of_kernel_sum": 0.0
+          },
+          "selected_q4_q6_down": {
+            "calls_per_pass": [
+              0
+            ],
+            "median_duration_ns": 0,
+            "median_share_of_kernel_sum": 0.0
+          },
+          "source_f16_projection": {
+            "calls_per_pass": [
+              0
+            ],
+            "median_duration_ns": 0,
+            "median_share_of_kernel_sum": 0.0
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              288
+            ],
+            "median_duration_ns": 2503026127,
+            "median_share_of_kernel_sum": 0.1976748146921452
+          }
+        },
+        "median_attention_duration_ns": 2817675560,
+        "median_attention_share_of_kernel_sum": 0.22252404326804157,
+        "median_kernel_span_ns": 12756806571,
+        "median_kernel_sum_ns": 12662342094,
+        "passes": 1
+      },
+      "512": {
+        "chunks_per_pass": [
+          4
+        ],
+        "dispatches_per_pass": [
+          4210
+        ],
+        "families": {
+          "activation_reduce_residual": {
+            "calls_per_pass": [
+              756
+            ],
+            "median_duration_ns": 7217581,
+            "median_share_of_kernel_sum": 0.001241826455168362
+          },
+          "dense_shared_quant_projection": {
+            "calls_per_pass": [
+              1532
+            ],
+            "median_duration_ns": 2417919053,
+            "median_share_of_kernel_sum": 0.4160169240180377
+          },
+          "embedding": {
+            "calls_per_pass": [
+              4
+            ],
+            "median_duration_ns": 35400,
+            "median_share_of_kernel_sum": 6.0907742515061505e-06
+          },
+          "global_attention": {
+            "calls_per_pass": [
+              48
+            ],
+            "median_duration_ns": 76252461,
+            "median_share_of_kernel_sum": 0.01311967587776206
+          },
+          "lm_head_argmax": {
+            "calls_per_pass": [
+              1
+            ],
+            "median_duration_ns": 3120,
+            "median_share_of_kernel_sum": 5.368140018276607e-07
+          },
+          "norm_rope_gate": {
+            "calls_per_pass": [
+              768
+            ],
+            "median_duration_ns": 14423940,
+            "median_share_of_kernel_sum": 0.0024817221004878424
+          },
+          "other": {
+            "calls_per_pass": [
+              13
+            ],
+            "median_duration_ns": 729565,
+            "median_share_of_kernel_sum": 0.00012552586770621707
+          },
+          "prefill_kv_write": {
+            "calls_per_pass": [
+              192
+            ],
+            "median_duration_ns": 855085,
+            "median_share_of_kernel_sum": 0.00014712230793359143
+          },
+          "router": {
+            "calls_per_pass": [
+              376
+            ],
+            "median_duration_ns": 13813624,
+            "median_share_of_kernel_sum": 0.00237671371127648
+          },
+          "selected_iq_down": {
+            "calls_per_pass": [
+              188
+            ],
+            "median_duration_ns": 1259263094,
+            "median_share_of_kernel_sum": 0.21666348103975053
+          },
+          "selected_iq_gate_up": {
+            "calls_per_pass": [
+              188
+            ],
+            "median_duration_ns": 1187983910,
+            "median_share_of_kernel_sum": 0.20439948616473447
+          },
+          "selected_q4_gate_up": {
+            "calls_per_pass": [
+              0
+            ],
+            "median_duration_ns": 0,
+            "median_share_of_kernel_sum": 0.0
+          },
+          "selected_q4_q6_down": {
+            "calls_per_pass": [
+              0
+            ],
+            "median_duration_ns": 0,
+            "median_share_of_kernel_sum": 0.0
+          },
+          "source_f16_projection": {
+            "calls_per_pass": [
+              0
+            ],
+            "median_duration_ns": 0,
+            "median_share_of_kernel_sum": 0.0
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              144
+            ],
+            "median_duration_ns": 833572132,
+            "median_share_of_kernel_sum": 0.14342089486888943
+          }
+        },
+        "median_attention_duration_ns": 909824593,
+        "median_attention_share_of_kernel_sum": 0.15654057074665148,
+        "median_kernel_span_ns": 5859422899,
+        "median_kernel_sum_ns": 5812068965,
+        "passes": 1
+      }
+    },
+    "raw_trace_sha256": "9bf9d8db25a13d16ef834c69df69df197f997aaefe4e08b81e40f7d836a2d6df",
+    "summary_sha256": "d8052938b939471f46d7b43b1a369be947fde58b27f1ea491ea0dfefc4dd186f",
+    "threshold_analysis": {
+      "1024": {
+        "attention_fraction_of_target_wall": 0.41274544335937496,
+        "selected_iq_perfect_removal_ceiling_tok_s": 130.76483002484724,
+        "selected_iq_perfect_removal_floor_seconds": 7.830851765,
+        "target_tok_s": 150,
+        "target_wall_seconds": 6.826666666666667
+      },
+      "512": {
+        "attention_fraction_of_target_wall": 0.26655017373046874,
+        "selected_iq_perfect_removal_ceiling_tok_s": 150.0508812427444,
+        "selected_iq_perfect_removal_floor_seconds": 3.412175895,
+        "target_tok_s": 150,
+        "target_wall_seconds": 3.4133333333333336
+      }
+    }
+  },
+  "production_change": {
+    "default_capability": "GGUF_RAW_K_PREFILL_ROWBATCH=32",
+    "mechanism": "One local128 workgroup owns a fixed 32-row slab, reconstructs each exact Q5_K/Q6_K value once, and preserves every row accumulator, K traversal, wave shuffle, and serial wave reduction.",
+    "persistent_scratch_delta_bytes": 0,
+    "qualified_scope": "rows > 8; raw GGUF Q5_K/Q6_K; K divisible by 256; BF16 input; BF16 or F32 output; hip_gfx1100 bulk-row owner only",
+    "resident_weight_delta_bytes": 0,
+    "rollback": "Explicit rowbatch 0/4/8/16/32 remain; small-B, unsupported shapes/layouts/dtypes/quants, gfx1151, and other backends retain registered fallbacks."
+  },
+  "raw_evidence_sha256": {
+    "rowbatch16_json": "659228d86eac0e430d51aed1c7bc246e94a5a031d6716b2aa997faedede7a574",
+    "rowbatch16_stderr": "5723a9b9d2b434a5870b29beef835e098dd4f85553ab3f5105d04e29009f7f6b",
+    "rowbatch16_stdout": "659228d86eac0e430d51aed1c7bc246e94a5a031d6716b2aa997faedede7a574",
+    "rowbatch32_json": "740627aa9a3125e9dd7834da98db1835a1c9a61758aae7a998bf35f6aab02400",
+    "rowbatch32_stderr": "c4b80d7b8425a77514fd6d193f3655a6be000d1bb2a3e1fecff213516defe551",
+    "rowbatch32_stdout": "740627aa9a3125e9dd7834da98db1835a1c9a61758aae7a998bf35f6aab02400",
+    "selector_unset_json": "3fa37506ab43a4d1477163431e60ca3bfbf79cc282fbaf1750dcda0628e225ff",
+    "selector_unset_stderr": "7d537ff1ef2f3b49be95f6cb3cd5b7001b9622832cb40eb47097d143efb9b23a",
+    "selector_unset_stdout": "3fa37506ab43a4d1477163431e60ca3bfbf79cc282fbaf1750dcda0628e225ff"
+  },
+  "repo": {
+    "comparison_harness_revision": "4cd421129",
+    "comparison_revision": "94153361677533bfd1566c9071823bb77c43bc44",
+    "default_revision": "39427ec15326698498433c33dcd84f7ce6e8f785",
+    "primitive_revision": "f3b50d044",
+    "selector_unset_measurement_tracked_clean": true
+  },
+  "resources": {
+    "code_object_private_nbytes": 0,
+    "code_object_q5_q6_sgpr_spills": [
+      14,
+      5
+    ],
+    "code_object_sgpr": 107,
+    "code_object_vgpr": 73,
+    "code_object_vgpr_spills": 0,
+    "grid_y_at_m128": 4,
+    "lds_nbytes": 1024,
+    "raw_trace_sha256": "8549d93ab0ca6b0cf32ca5780b17f3ed0e0f73c819102dd843236e28096ba0e9",
+    "rocprof_sgpr": 128,
+    "rocprof_vgpr": 80,
+    "runtime_occupancy_note": "SQ_WAVE_CYCLES reports zero on this stack, so derived runtime occupancy counters are unavailable; theoretical HIP occupancy and launch-wave counts are reported instead.",
+    "scratch_nbytes": 0,
+    "theoretical_occupancy_percent": 100.0,
+    "theoretical_waves_per_cu": 32,
+    "theoretical_workgroups_per_cu": 8,
+    "workgroup_size": 128
+  },
+  "schema": 1,
+  "status": "accepted_retained_production"
+}

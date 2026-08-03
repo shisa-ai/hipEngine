@@ -1,0 +1,250 @@
+{
+  "schema_version": 2,
+  "kind": "hipengine_laguna_wpf2b_pair16_grouped_gate_up_production",
+  "status": "accepted",
+  "performance_claim": true,
+  "claim_scope": "Exact gfx1100 Laguna UD-Q2_K_XL matrix512/attention128/RB32 prefill with local64/pair16 expert-major IQ2 gate/up plus retained grouped IQ3/IQ4 down at 512 and 1024 tokens; no 4K or long-context claim below 150 tok/s",
+  "created_at": "2026-07-29",
+  "revision": "e1379005c3cf5eacddeb7c8748c2baf26f5e0746",
+  "platform": {
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "rocm_version": "7.2.4 / HIP 7.2.53211-3d9ef42",
+    "gpu_queues": 1,
+    "kv_dtype": "bf16"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "direct_gguf": true
+  },
+  "defaults": {
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "swa_attention_rows": 128,
+    "raw_k_prefill_rowbatch": 32,
+    "selected_gate_up_mode": "grouped_pair16",
+    "selected_down_mode": "grouped_exact",
+    "raw_k_prefill_mmq": false
+  },
+  "implementation": {
+    "metadata": "one stable expert compaction per sparse layer",
+    "gate_up": "source-hidden gather plus exact local64/pair16 IQ2 fused-SiLU rowbatch8 with one output-column/expert block",
+    "down": {
+      "gguf_iq3_xxs": "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+      "gguf_iq4_xs": "selected_grouped_prefill_compact_auto_bf16_bf16_out"
+    },
+    "restore": "registered exact sorted-lane weighted reducer",
+    "decode": "tokens=1 preserves the independently registered route-major gate/up route",
+    "fallbacks": [
+      "selected_gate_up_mode=grouped_exact with selected_down_mode=grouped_exact",
+      "paired selected_gate_up_mode=direct and selected_down_mode=direct",
+      "prefill_chunk_size=128",
+      "prefill_chunk_size=256",
+      "unsupported gate/up quant/key misses use route-major exact gate/up plus grouped exact down"
+    ]
+  },
+  "commands": {
+    "selector_unset_publication": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 3 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf2b-pair16-selector-unset-clean-512-1k.json",
+    "cached_profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-wpf2b-pair16-clean-runtime-trace --output-file trace -- uv run python -u scripts/laguna_long_context_profile.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --backend hip_gfx1100 --context-length 1024 --lengths 512,1024 --package-matrix-rows --repetitions 1 --warmup-rows 128 --decode-output-tokens 1 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-wpf2b-pair16-clean-runtime-profile-child.json",
+    "full_state": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_wpf2b_full_state.py"
+  },
+  "correctness": {
+    "pass": true,
+    "clean_publication": {
+      "repo_tracked_clean": true,
+      "revision_matches": true,
+      "next_token_ids": {
+        "512": 2930,
+        "1024": 95
+      },
+      "final_positions_exact": true,
+      "repeat_next_token_deterministic": true,
+      "tracked_returned_to_baseline": true,
+      "finite": true
+    },
+    "complete_state": {
+      "matrix_rows": 512,
+      "all_48_hidden_boundaries": true,
+      "logits_exact": true,
+      "final_and_post_hidden_exact": true,
+      "kv_and_kv_live_spans_exact": true,
+      "next_token_and_value_exact": true,
+      "same_mode_repeat_deterministic": true,
+      "lifecycle_exact": true,
+      "max_kl_divergence": 0.0,
+      "top1_agreement": 1.0
+    },
+    "actual_role_gate": {
+      "iq2_gate_up_layers": 46,
+      "all_layers_bf16_bit_exact": true,
+      "all_layers_faster": true,
+      "candidate_outputs_checked_per_mode": 241172480,
+      "leaf_control_ms": 1343.9151878356934,
+      "leaf_rowbatch8_ms": 482.03958797454834,
+      "leaf_speedup": 2.7879767997533267
+    }
+  },
+  "performance": {
+    "previous_clean_grouped_down": {
+      "artifact": "benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json",
+      "tok_s": {
+        "512": 99.23034150397993,
+        "1024": 91.55876879922903
+      }
+    },
+    "clean_selector_unset": {
+      "512": {
+        "samples_seconds": [
+          4.24443670315668,
+          4.313202986959368,
+          4.323568868916482
+        ],
+        "median_seconds": 4.313202986959368,
+        "median_tok_s": 118.70528735790826,
+        "percent_change_vs_previous_clean": 19.625999022836417
+      },
+      "1024": {
+        "samples_seconds": [
+          9.439412686042488,
+          9.498740450013429,
+          9.60010378388688
+        ],
+        "median_seconds": 9.498740450013429,
+        "median_tok_s": 107.80376676136596,
+        "percent_change_vs_previous_clean": 17.742700317169113
+      }
+    },
+    "dirty_counterbalanced_admission": {
+      "512": {
+        "control_tok_s": 98.64406252820422,
+        "candidate_tok_s": 118.02721874893409,
+        "improvement_percent": 19.649592407234717
+      },
+      "1024": {
+        "control_tok_s": 90.57718055170497,
+        "candidate_tok_s": 106.89459086669846,
+        "improvement_percent": 18.01492408529859
+      }
+    }
+  },
+  "profile": {
+    "compiler_spawned_under_profiler": false,
+    "clean_provenance": true,
+    "dispatch_count_unchanged": true,
+    "512": {
+      "dispatches": 1479,
+      "kernel_sum_seconds": 4.245775184,
+      "kernel_span_seconds": 4.261497504,
+      "dense_shared_seconds": 2.326022711,
+      "selected_iq_gate_up_seconds": 0.465182308,
+      "selected_iq_down_seconds": 0.528173964,
+      "selected_iq_total_seconds": 0.993356272,
+      "global_attention_seconds": 0.074097737,
+      "swa_attention_seconds": 0.795231359,
+      "attention_seconds": 0.869329096,
+      "change_vs_previous_percent": {
+        "kernel_sum": -16.357958677782413,
+        "kernel_span": -16.309224283455382,
+        "selected_iq_gate_up": -62.54922600173487,
+        "selected_iq_total": -45.02052421210784,
+        "dense_shared": -0.9885346945137763,
+        "attention": 0.3968551505008744
+      }
+    },
+    "1024": {
+      "dispatches": 2962,
+      "kernel_sum_seconds": 9.454265012,
+      "kernel_span_seconds": 9.487592604,
+      "dense_shared_seconds": 4.676829451,
+      "selected_iq_gate_up_seconds": 0.93324619,
+      "selected_iq_down_seconds": 1.058687764,
+      "selected_iq_total_seconds": 1.991933954,
+      "global_attention_seconds": 0.307536897,
+      "swa_attention_seconds": 2.362892002,
+      "attention_seconds": 2.670428899,
+      "change_vs_previous_percent": {
+        "kernel_sum": -15.178764826185354,
+        "kernel_span": -15.132954082518324,
+        "selected_iq_gate_up": -62.84998949340073,
+        "selected_iq_total": -45.34302962941752,
+        "dense_shared": -1.0865052349336102,
+        "attention": 0.22755183809508583
+      }
+    },
+    "target_resources": [
+      {
+        "kernel": "gguf_iq2_xs_selected_dual_silu_grouped_prefill_compact_pair16_kernel<8>",
+        "calls_including_warmup": 184,
+        "workgroup_size_x": 64,
+        "grid_size_x": 65536,
+        "grid_size_y": 256,
+        "vgpr": 104,
+        "sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "gguf_iq3_xxs_selected_dual_silu_gemv_kernel",
+        "calls_including_warmup": 4,
+        "role": "exact route-major fallback for non-IQ2 gate/up"
+      }
+    ]
+  },
+  "memory": {
+    "resident_and_peak_allocated_bytes": 40248812196,
+    "peak_allocations": 1167,
+    "tracked_after_bytes": 0,
+    "active_allocations_after": 0
+  },
+  "threshold": {
+    "target_tok_s": 150,
+    "both_short_shapes_reach_target": false,
+    "four_k_run_performed": false,
+    "long_context_reopened": false,
+    "selected_iq_perfect_removal": {
+      "512": {
+        "floor_seconds": 3.268141232,
+        "ceiling_tok_s": 156.6639761423872
+      },
+      "1024": {
+        "floor_seconds": 7.49565865,
+        "ceiling_tok_s": 136.61241097204982
+      }
+    },
+    "next_action": "Remove rejected MMQ and obsolete grouped-gate diagnostics, then optimize SWA attention; dense output-column tiling follows."
+  },
+  "source_artifacts": [
+    {
+      "path": "/tmp/laguna-wpf2b-pair16-selector-unset-clean-512-1k.json",
+      "sha256": "84fe4b03d3c70ab9343f28bec50be3adbd7cc5844542d21448cccf12294da095"
+    },
+    {
+      "path": "/tmp/laguna-wpf2b-pair16-m512-full-state.json",
+      "sha256": "9c45ce4301486c88ba732ab1f23c196f93e634d348bb600a9ea5c9a7d8dc4fbd"
+    },
+    {
+      "path": "/tmp/laguna-wpf2b-pair16-dirty-512-1k.json",
+      "sha256": "95e895bbaa7ad0f26ea7b8e4a0263bb95bdb0b57714bf521039884b7d75f52b5"
+    },
+    {
+      "path": "/tmp/laguna-wpf2b-pair16-clean-runtime-profile-child.json",
+      "sha256": "25f0ecb81b0bfd9eec63578d950be3a26ceab54401a8f585c7877a224be24196"
+    },
+    {
+      "path": "/tmp/laguna-wpf2b-pair16-clean-runtime-trace/trace_kernel_trace.csv",
+      "sha256": "7dbd860c585a22994ee51488eecf35b4464b34b4931f3448a04d69149aba4205"
+    },
+    {
+      "path": "/tmp/laguna-wpf2b-pair16-clean-runtime-profile-summary.json",
+      "sha256": "33f7cf7d5f117ec63558becfe3400768e1ca2cc1a0966e9980e91e46d39425e3"
+    }
+  ],
+  "limitations": [
+    "The clean retained claim covers only deterministic 512/1024-token prefill on the stated model, device, queue, and runtime.",
+    "No 4K or longer run was performed because both short shapes remain below 150 tok/s.",
+    "The local64/pair16 grouped owner is registered only for IQ2_XS gate/up; c=1 and non-IQ2 roles preserve exact route-major fallback arithmetic."
+  ]
+}
