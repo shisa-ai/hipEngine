@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: active, hipEngine AR/MTP profiling bring-up (2026-08-04); dense mapping, one-step oracle, and exact transactional MTP cycle complete.
+Status: active, measured optimization (2026-08-04); clean exact hipEngine AR/MTP baseline and reconciled profiles complete.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -371,10 +371,34 @@ The matched dense natural-suite leaf is now available as
 Qwen chat rendering with reasoning off, one true scalar-AR denominator, B1-B3
 transactional MTP, the fixed train/heldout/category split, 24 timed transitions
 for 25 visible outputs, complete proposal/verify/commit/residual accounting, and
-optional nested ROCTX markers. A source-dirty one-prompt smoke is AR-exact and
-fully reconciled; it is functional evidence only. The next hard gate remains
-the clean full suite plus reconciled GPU0 AR/MTP profiles and primary 512/128
-and 4K/128 measurements.
+optional nested ROCTX markers.
+
+The final clean `da6865f74` W7900 baseline closes D27-F0 and D27-M1. At
+512/128 and 4096/128, median hipEngine prefill is **50.515 / 50.473 tok/s**
+and graph AR decode is **19.556 / 18.649 tok/s** over three measured resets.
+Every final ID is `9707`; measured graph windows reuse the one 49-ms capture,
+and tracked peaks are 26.123 / 28.947 GiB. Against the matched stateful Vulkan
+rows, hipEngine prefill is **36.70% / 38.29% slower**, while decode is **55.52% /
+49.34% faster**. This is therefore a retained exact baseline, not parity.
+
+On the full natural25 suite, true AR is **20.361 tok/s**. Exact B1/B2/B3 MTP is
+**17.128 / 16.005 / 14.858 tok/s**, or **0.8412x / 0.7861x / 0.7297x** own AR.
+All 250 visible IDs at every budget and every GPU/CPU accept summary match, but
+no MTP budget is speed-eligible. B1 is merely the least-slow control; Vulkan B3
+remains **68.082 tok/s**, leaving hipEngine exact MTP 74.84% behind.
+
+The profiles select the first optimization without ambiguity. The 512 prefill
+trace reconciles 9,911.076 ms of kernels to 9,944.618 ms host wall (0.34%
+residual): Q4_K pack8 projections consume **78.86%** and dense BF16 GEMM
+**20.05%**. The 16-step AR graph trace records 752.607 ms kernels in 843.238 ms
+host wall; its explained 10.75% submission/queue-gap residual spans 15,968
+dispatches, while Q4_K row kernels plus dense BF16 GEMV consume **85.36%** of
+kernel time. Most importantly, the natural B3 marker trace reconciles its
+1,590.971-ms host wall to a 1,590.457-ms device-activity span. Target verify is
+**92.58%** of host wall; Q4_K row kernels and dense BF16 GEMV are **82.73%** of
+kernel time. D27-O3 target row batching/projection routing is therefore first,
+followed by D27-O1 bulk Q4_K/BF16 prefill. Full evidence is retained in
+`benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json`.
 
 ---
 
@@ -383,13 +407,13 @@ and 4K/128 measurements.
 | Priority | ID | Work | Exit gate / impact rule | Status |
 | ---: | --- | --- | --- | --- |
 | 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, natural25, B1-B4 sweep, and query-profile artifacts. | complete; B3 selected |
-| 0 | D27-F0 | Add untied dense root/embedding/layout support, then prove dense GGUF AR load/prefill/decode on GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | 8/1 eager green; primary gates pending |
+| 0 | D27-F0 | Add untied dense root/embedding/layout support, then prove dense GGUF AR load/prefill/decode on GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | complete; clean 512/128 + 4K/128 graph gates green |
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
-| 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | llama side green; hipEngine next |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | blocked by M1 |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | blocked by M1 |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | blocked by M1 |
+| 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | next; target verify 92.58% of profiled wall |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
@@ -539,7 +563,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | Date | Revision / route | GPU | Shape | Prefill tok/s | AR decode tok/s | MTP decode tok/s | MTP/AR | Correctness | Artifact |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | 2026-08-04 | llama.cpp Vulkan `ee0445c99` | W7900 | stateful 512/128, 4K/128; natural25 B3 | 79.805 / 81.792 | 12.574 / 12.488; natural AR 12.546 | 68.082 engine / 36.122 client | 5.4265x engine / 3.7600x client | `[9707]*128` captured exact; all categories improve; 6/10 natural content hashes match AR | `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json` |
-| 2026-08-04 | hipEngine dense bring-up (current campaign) | W7900 + GPU1 component gate | 8/1 AR diagnostic; MTP functional smoke; primary gates pending | 33.70 diagnostic | 20.38 diagnostic | functional; full-suite timing pending | — | NextN KL 0.001566/top-1 exact; B1-B3 logits and reject/partial/full/rollback state+KV exact; natural8 AR IDs exact | `/tmp/hipengine-qwen36-27b/` (not retained) |
+| 2026-08-04 | hipEngine `da6865f74`, exact/default dense GGUF | W7900 | 512/128, 4K/128; natural25 B1-B3 | 50.515 / 50.473 | 19.556 / 18.649; natural AR 20.361 | B1 17.128 (best), B2 16.005, B3 14.858 | 0.8412x / 0.7861x / 0.7297x | all repeated IDs deterministic; all 750 MTP-visible IDs exact vs AR; GPU/CPU accept exact; state transaction oracle green | `benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json` |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

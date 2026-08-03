@@ -203115,3 +203115,95 @@ Vulkan local sizes verbatim will close the measured gap.
   harness gate only, not retainable economics. It already shows why D27-M1 must
   profile target verification: the exact serial B1 verifier executes four target
   rows for four visible transitions and consumes 93.04% of cycle wall.
+
+## 2026-08-04 — Qwen3.6-27B clean hipEngine baseline + reconciled profiles
+
+### Clean same-revision AR gates
+
+- Freeze source at clean commit `da6865f74c5f164445897987ff03fc818df2d5e6`
+  after the dense suite landed. Use GPU0 W7900, TheRock HIP 7.15, cached-only
+  JIT, BF16 K/V, raw token `9707`, one complete discarded warmup, three measured
+  resets, bulk/WMMA prefill, and the resident one-step GEMV decode graph. The
+  graph is captured once in roughly 49 ms during the discarded run and rearmed
+  only after exact session reset/prefill reconstruction; capture is excluded
+  from all three steady decode samples.
+- Exact 512/128 command:
+  `scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-27b/final-da6865f74/ar-512x128.json`.
+  Prefill samples are **51.2792 / 50.5146 / 50.0067 tok/s** (median 50.5146,
+  1.27% stdev/median); decode is **19.5900 / 19.5562 / 19.5109 tok/s** (median
+  19.5562, 0.20% stdev/median). Every final ID is `9707`; tracked/sample peaks
+  are 26.1228/27.3394 GiB. Raw SHA-256 is `a05f6b...ee2b`.
+- The corresponding 4096/128 command changes only `--prompt-length 4096` and
+  output path. It activates the established 1024-row linear/post chunking with
+  a 4096-row full-attention query chunk. Prefill samples are **50.8194 / 50.4734
+  / 50.3051 tok/s** (median 50.4734, 0.52%); decode is **18.6854 / 18.6490 /
+  18.6404 tok/s** (median 18.6490, 0.13%). Every final ID remains `9707`;
+  tracked/sampled peaks are 28.9471/30.1836 GiB. Raw SHA-256 is
+  `1152ff...d66a`.
+- Against the same-file stateful llama.cpp Vulkan rows, hipEngine is **36.70% /
+  38.29% slower** in 512/4K prefill but **55.52% / 49.34% faster** in matched AR
+  decode. This closes the AR functional/state gate but not the campaign parity
+  gate.
+
+### Clean natural25 exact MTP economics
+
+- Run one resident clean process over all ten committed prompts, one warmup per
+  route, true scalar AR, and B1-B3 exact transactional MTP:
+  `/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-da6865f74/natural25-b1-b3.json`.
+  The exact artifact is clean/claim-eligible, loads in 172.535 s, peaks at
+  28.3920 GiB tracked, and returns allocations to zero; SHA-256 is
+  `958667...195a`.
+- True AR completes 240 timed transitions in 11.7875 s, **20.3606 tok/s**.
+  Exact B1 is the least-slow MTP route at 14.0125 s / **17.1276 tok/s /
+  0.8412x**; B2 is 14.9956 s / **16.0047 tok/s / 0.7861x**; B3 is 16.1529 s /
+  **14.8580 tok/s / 0.7297x**. All full, train, heldout, and category ratios are
+  below 1.0. B1/B2/B3 draft acceptance is 89.84%/82.07%/75.68%, while accepted
+  per visible output rises 46.00%/60.40%/67.20%; extra verified rows cost more
+  than the accepted tokens save.
+- Every budget emits the exact same 250 visible IDs as true AR, every GPU accept
+  summary matches CPU, and every independently timed stage ledger reconciles to
+  complete decode wall. No route is promoted. Against clean Vulkan's selected
+  B3 68.082 tok/s, the least-slow hipEngine B1 is **74.84% slower** despite
+  hipEngine true AR being 62.28% faster than Vulkan true AR.
+- Unprofiled B1/B2/B3 target verification consumes **92.07% / 92.41% / 92.72%**
+  of complete MTP wall. Proposal remains approximately 6.7-6.8%, while commit
+  and scheduler residual are each below 1%.
+
+### Reconciled hipEngine profiles and Amdahl ranking
+
+- Profile a cache-only 512-token prefill selected region under rocprofv3. Host
+  wall is 9,944.618 ms and 1,203 kernels sum to 9,911.076 ms, leaving only
+  33.542 ms / 0.34%. Q4_K pack8 single/dual projection kernels consume
+  **7,815.869 ms / 78.86%**; 112 dense BF16 prefill GEMMs consume **1,987.461 ms
+  / 20.05%**. The remaining model is 1.09%. The wrapper task exits 1 only after
+  the valid trace and compact summary are written because its final print helper
+  asks the summary for obsolete key `total_duration_ms`; no profile execution
+  or data is missing. Trace SHA-256 is `2b8711...ed48`, compact-summary hash
+  `cde578...1752`.
+- Profile 16 graph decode transitions at 512 context. Host wall is 843.238 ms;
+  15,968 kernels sum to 752.607 ms. The 90.631-ms / 10.75% residual is explicitly
+  graph submission and queue-gap time across 998 launches/token, not an untraced
+  model phase. Q4_K pack8 row kernels are **373.862 ms / 49.68%**, dense BF16
+  GEMV **268.566 ms / 35.68%**, full attention 5.15%, RMSNorm 3.60%, and the
+  Q6_K head 3.23%. Trace/summary SHA-256s are `6f4a9c...69b5` and
+  `4ab81b...dce2`.
+- Profile one natural `code_merge_intervals` B3 leaf with nested ROCTX markers.
+  The suite reports 1,590.971 ms complete decode wall over seven cycles / 28
+  target rows. Marker span is 1,590.967 ms and device-activity span is 1,590.457
+  ms, leaving just 0.514 ms outside device activity. Kernel sum is 1,373.888 ms;
+  the 216.568-ms difference is in-queue spacing/copy overlap. Target verify is
+  **1,472.970 ms / 92.58%**, proposal 106.568 ms / 6.70%, commit+finish 8.251 ms,
+  and scheduler residual 3.182 ms. Q4_K row kernels plus dense BF16 GEMV consume
+  **82.73%** of kernel time. Trace/marker/summary hashes are
+  `751f91...f8f6`, `9c7dab...3df8`, and `636a2a...fd37`.
+- Rank optimization by measured complete-wall ceiling: (1) dense target row
+  batching/projection routing, whose full B3 target-verify ceiling is 14.977 s;
+  (2) bulk Q4_K/BF16 prefill, whose profiled 512 ceiling is 9.803 s; (3) one-row
+  AR projection kernels, lower urgency because the current route already beats
+  Vulkan decode. Historical MoE router/expert work is irrelevant to this dense
+  target.
+- Retain compact evidence at
+  `benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json`, update the
+  campaign scoreboard and benchmark rollup/changelog, mark D27-F0/D27-M1
+  complete, and open D27-O3 first. This is an exact losing baseline where
+  applicable, not a performance win.

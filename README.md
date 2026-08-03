@@ -1976,6 +1976,47 @@ This is the external floor for the new dense campaign, not a hipEngine result.
 Artifact:
 [`2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json`](results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json).
 
+#### Qwen3.6-27B Q4_K_M hipEngine dense baseline, W7900/gfx1100
+
+Clean hipEngine `da6865f74`, TheRock HIP 7.15, BF16 K/V, resident bulk
+prefill, and one-step state-bound graph decode on the same GGUF:
+
+| Context-matched shape | Prefill | AR decode | Vulkan delta | Samples / correctness |
+| --- | ---: | ---: | ---: | --- |
+| `512/128` | **50.515 tok/s** | **19.556 tok/s** | -36.70% prefill / **+55.52% decode** | 3 measured resets; all final IDs `9707` |
+| `4096/128` | **50.473 tok/s** | **18.649 tok/s** | -38.29% prefill / **+49.34% decode** | 3 measured resets; all final IDs `9707` |
+
+The graph capture is about 49 ms and excluded only from the steady-state decode
+windows on both shapes; subsequent measured resets rearm the same graph after
+restoring state. Tracked resident peaks are 26.123/28.947 GiB and sampled HIP
+peaks are 27.339/30.184 GiB. hipEngine already beats the stateful Vulkan AR
+decode floor, but misses both matched prefill gates, so this is an optimization
+baseline rather than a parity row.
+
+The true-AR plus exact transactional-MTP gate uses all ten committed natural25
+prompts, 24 timed transitions per request, a fixed six/four train/heldout split,
+and complete proposal/verify/commit/residual wall:
+
+| Route | Decode | MTP / true AR | Draft acceptance | Accepted/output | Heldout ratio |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | **20.361 tok/s** | 1.0000x | n/a | 0% | 1.0000x |
+| Exact B1 | **17.128 tok/s** | **0.8412x** | 89.84% | 46.00% | 0.8143x |
+| Exact B2 | 16.005 tok/s | 0.7861x | 82.07% | 60.40% | 0.7433x |
+| Exact B3 | 14.858 tok/s | 0.7297x | 75.68% | 67.20% | 0.6580x |
+
+All 250 visible IDs at every budget match true AR, all GPU accept summaries
+match CPU, and every stage ledger reconciles exactly. B1 is only the least-slow
+control: no exact MTP row is promoted, and Vulkan B3 remains 68.082 tok/s.
+
+Cached-only rocprofv3 traces rank the work. The 512 prefill profile reconciles
+9,911.076 ms kernels to 9,944.618 ms host wall: Q4_K pack8 projections are
+78.86% and dense BF16 GEMM is 20.05%. One natural B3 leaf reconciles a
+1,590.971-ms host wall to a 1,590.457-ms device-activity span; target verify is
+92.58% of host wall, while Q4_K row kernels plus dense BF16 GEMV consume 82.73%
+of kernel time. Target row batching/projection routing is therefore the first
+optimization target. Artifact:
+[`2026-08-04-qwen36-27b-hipengine-baseline.json`](results/2026-08-04-qwen36-27b-hipengine-baseline.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
