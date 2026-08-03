@@ -2337,6 +2337,27 @@ salvage any layer/expert/routing/prompt/token/length/body/recompile/favorable-
 rerun subset
 ([H8M target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
 
+Reject **WPF-H8M** at its first and only object under the frozen metadata-VGPR
+contract. One build emits a **502,112-byte** host object; complete RED→GREEN is
+**4/4** with zero further compiler process. All 4,096 table records, rows1/7/8/
+9/M512, P64/P65, uneven/reordered/empty routing, H6T and sampled CPU bytes,
+poison, finiteness, repeat, and lifecycle pass.
+
+The object realizes every intended physical change. Static loads move **8 b128
++ 9 b32 + 6 d16_b16 → 8 b128 + 3 b32 + 6 b64 + 6 d16_b16**. The **24
+`v_cmp_eq_u32` + 24 `v_cndmask_b32`** sign sites and 24 table-magnitude byte
+conversions disappear. The candidate keeps **216 FMAs / 24 permlanex16 / 96
+DPP adds / 24 LDS b128 loads / 12 stores / two barriers**, LDS384, SGPR78, and
+private/spill/scratch0; code/slots fall **7,920/1,384→7,768/1,321**.
+
+Metadata VGPR nevertheless grows **101→102**, the sole failed gate and one above
+the predeclared non-growing **≤101** ceiling. Honor the no-table-dtype/layout/
+cache-placement/body/resource-gate/recompile/rerun rule. Skip named trace,
+all-45 timing, bounded runtime, state/topology, fixed/length, and source gates;
+remove all H8M HIP/Python/registry/gfx1151 and RED-test surfaces, restore H6T
+byte-for-byte, and retain H8B **440.893 tok/s**
+([H8M rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

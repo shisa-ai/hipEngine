@@ -1412,6 +1412,16 @@ VGPR/resources, exact H6T/CPU/all-45 bytes, and every layer plus aggregate to
 win both clocks without dtype/layout/cache/layer/rerun salvage
 ([H8M target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
 
+**WPF-H8M is rejected at its frozen first-object metadata-VGPR gate.** The
+complete four-node matrix is exact and the sole object realizes the prescribed
+**8 b128 + 3 b32 + 6 b64 + 6 d16_b16** loads, eliminates all **24 compare +
+24 select** sign sites, and preserves 216 FMAs, reductions, LDS, barriers, and
+stores. Code/slots improve **7,920/1,384→7,768/1,321**, but metadata VGPR grows
+**101→102**, violating the non-growing **≤101** contract. Honor the no-rewrite/
+recompile/resource-relaxation rule: skip trace and timing, remove candidate plus
+RED, and retain H8B **440.893 tok/s**, **1.5668×** behind matched llama.cpp HIP
+([H8M rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-signed-bf16-codebook-physical-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
