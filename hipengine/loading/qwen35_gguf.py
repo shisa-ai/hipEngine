@@ -367,9 +367,14 @@ class Qwen35GGUFMTPDraftTensorPlan:
     rope_freq_base: float
     rope_dimension_sections: tuple[int, ...]
     attention_scale: float
+    ffn_kind: str
     cpu_reference_kernel: tuple[str, str, str, str]
     slots: tuple[Qwen35GGUFMTPDraftTensorSlot, ...]
     fallback_slots: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        if self.ffn_kind not in {"dense", "moe"}:
+            raise ValueError("ffn_kind must be 'dense' or 'moe'")
 
     def slot(self, slot: str) -> Qwen35GGUFMTPDraftTensorSlot:
         for item in self.slots:
@@ -386,7 +391,12 @@ class Qwen35GGUFMTPDraftTensorPlan:
     @property
     def tensor_bindings(self) -> tuple[Qwen35GGUFMTPDraftTensorBinding, ...]:
         bindings: list[Qwen35GGUFMTPDraftTensorBinding] = []
-        for argument, slot, qtype_argument in _MTP_NEXTN_LAYER_CPU_ORACLE_ARGUMENT_SLOTS:
+        argument_slots = (
+            _MTP_NEXTN_MOE_LAYER_CPU_ORACLE_ARGUMENT_SLOTS
+            if self.ffn_kind == "moe"
+            else _MTP_NEXTN_DENSE_LAYER_CPU_ORACLE_ARGUMENT_SLOTS
+        )
+        for argument, slot, qtype_argument in argument_slots:
             tensor = self.slot(slot)
             bindings.append(
                 Qwen35GGUFMTPDraftTensorBinding(
@@ -456,17 +466,19 @@ class Qwen35GGUFMTPDraftTensorPlan:
     def kernel_kwargs(self) -> Mapping[str, object]:
         """Scalar kwargs for ``qwen35_gguf_mtp_nextn_layer_logits``."""
 
-        return MappingProxyType(
-            {
-                "num_heads": self.num_heads,
-                "num_kv_heads": self.num_kv_heads,
-                "experts_used": self.experts_used,
-                "rotary_dim": self.rotary_dim,
-                "scale": self.attention_scale,
-                "expert_weights_scale": self.expert_weights_scale,
-                "eps": self.rms_norm_eps,
-            }
-        )
+        kwargs: dict[str, object] = {
+            "num_heads": self.num_heads,
+            "num_kv_heads": self.num_kv_heads,
+            "rotary_dim": self.rotary_dim,
+            "scale": self.attention_scale,
+            "eps": self.rms_norm_eps,
+        }
+        if self.ffn_kind == "moe":
+            kwargs.update(
+                experts_used=self.experts_used,
+                expert_weights_scale=self.expert_weights_scale,
+            )
+        return MappingProxyType(kwargs)
 
     @property
     def dynamic_inputs(self) -> tuple[Qwen35GGUFMTPDraftDynamicInput, ...]:
@@ -589,6 +601,7 @@ class Qwen35GGUFMTPDraftTensorPlan:
             "rope_freq_base": self.rope_freq_base,
             "rope_dimension_sections": list(self.rope_dimension_sections),
             "attention_scale": self.attention_scale,
+            "ffn_kind": self.ffn_kind,
             "kernel_kwargs": dict(self.kernel_kwargs),
             "dynamic_inputs": [item.as_dict() for item in self.dynamic_inputs],
             "cpu_reference_call_spec": self.cpu_reference_call_spec.as_dict(),
@@ -906,10 +919,21 @@ def build_qwen35_gguf_mtp_draft_tensor_plans(
     block_maps = build_qwen35_gguf_mtp_block_maps(info, strict=strict)
     spec_by_layer = {spec.layer_id: spec for spec in specs}
     plans: list[Qwen35GGUFMTPDraftTensorPlan] = []
+    ffn_kind = "moe" if config.is_moe else "dense"
+    tensor_slots = (
+        _MTP_NEXTN_MOE_LAYER_CPU_ORACLE_TENSOR_SLOTS
+        if config.is_moe
+        else _MTP_NEXTN_DENSE_LAYER_CPU_ORACLE_TENSOR_SLOTS
+    )
+    cpu_reference_kernel = (
+        _MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL
+        if config.is_moe
+        else _MTP_NEXTN_DENSE_LAYER_CPU_REFERENCE_KERNEL
+    )
     for block_map in block_maps:
         spec = spec_by_layer[block_map.layer_id]
         slots: list[Qwen35GGUFMTPDraftTensorSlot] = []
-        for slot in _MTP_NEXTN_LAYER_CPU_ORACLE_TENSOR_SLOTS:
+        for slot in tensor_slots:
             tensor = block_map.tensor(slot)
             slots.append(
                 Qwen35GGUFMTPDraftTensorSlot(
@@ -937,7 +961,8 @@ def build_qwen35_gguf_mtp_draft_tensor_plans(
                 rope_freq_base=config.rope_freq_base,
                 rope_dimension_sections=config.rope_dimension_sections,
                 attention_scale=_effective_attention_scale(config),
-                cpu_reference_kernel=_MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL,
+                ffn_kind=ffn_kind,
+                cpu_reference_kernel=cpu_reference_kernel,
                 slots=tuple(slots),
                 fallback_slots=block_map.fallback_slots,
             )
@@ -1028,6 +1053,12 @@ _MTP_NEXTN_LAYER_CPU_REFERENCE_KERNEL = (
     "w4_gguf",
     "qwen35_dense_logits",
 )
+_MTP_NEXTN_DENSE_LAYER_CPU_REFERENCE_KERNEL = (
+    "cpu_reference",
+    "mtp_nextn_layer",
+    "w4_gguf",
+    "qwen35_dense_ffn_logits",
+)
 
 _MTP_DRAFT_TOPK_FALLBACK_KERNEL = (
     "cpu_reference",
@@ -1038,7 +1069,7 @@ _MTP_DRAFT_TOPK_FALLBACK_KERNEL = (
 _MTP_DRAFT_TOPK_K = 10
 _MTP_DRAFT_TOPK_SELECTION = "greedy_top1_from_topk"
 
-_MTP_NEXTN_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
+_MTP_NEXTN_COMMON_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
     ("token_embedding", "nextn.embed_tokens", None),
     ("eh_proj_weight", "nextn.eh_proj", None),
     ("hnorm_weight", "nextn.hnorm", None),
@@ -1051,6 +1082,9 @@ _MTP_NEXTN_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
     ("q_norm_weight", "attn_q_norm", None),
     ("k_norm_weight", "attn_k_norm", None),
     ("attn_post_norm_weight", "post_attention_norm", None),
+)
+_MTP_NEXTN_MOE_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
+    *_MTP_NEXTN_COMMON_LAYER_CPU_ORACLE_ARGUMENT_SLOTS,
     ("router_weight", "ffn_gate_inp", None),
     ("gate_qweight", "ffn_gate_exps", "gate_qtype"),
     ("up_qweight", "ffn_up_exps", "up_qtype"),
@@ -1062,8 +1096,16 @@ _MTP_NEXTN_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
     ("shared_head_norm_weight", "nextn.shared_head_norm", None),
     ("shared_head_weight", "nextn.shared_head_head", None),
 )
+_MTP_NEXTN_DENSE_LAYER_CPU_ORACLE_ARGUMENT_SLOTS = (
+    *_MTP_NEXTN_COMMON_LAYER_CPU_ORACLE_ARGUMENT_SLOTS,
+    ("gate_qweight", "ffn_gate", "gate_qtype"),
+    ("up_qweight", "ffn_up", "up_qtype"),
+    ("down_qweight", "ffn_down", "down_qtype"),
+    ("shared_head_norm_weight", "nextn.shared_head_norm", None),
+    ("shared_head_weight", "nextn.shared_head_head", None),
+)
 
-_MTP_NEXTN_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
+_MTP_NEXTN_COMMON_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
     "nextn.embed_tokens",
     "nextn.eh_proj",
     "nextn.hnorm",
@@ -1076,6 +1118,9 @@ _MTP_NEXTN_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
     "attn_q_norm",
     "attn_k_norm",
     "post_attention_norm",
+)
+_MTP_NEXTN_MOE_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
+    *_MTP_NEXTN_COMMON_LAYER_CPU_ORACLE_TENSOR_SLOTS,
     "ffn_gate_inp",
     "ffn_gate_exps",
     "ffn_up_exps",
@@ -1084,6 +1129,14 @@ _MTP_NEXTN_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
     "ffn_gate_shexp",
     "ffn_up_shexp",
     "ffn_down_shexp",
+    "nextn.shared_head_norm",
+    "nextn.shared_head_head",
+)
+_MTP_NEXTN_DENSE_LAYER_CPU_ORACLE_TENSOR_SLOTS = (
+    *_MTP_NEXTN_COMMON_LAYER_CPU_ORACLE_TENSOR_SLOTS,
+    "ffn_gate",
+    "ffn_up",
+    "ffn_down",
     "nextn.shared_head_norm",
     "nextn.shared_head_head",
 )

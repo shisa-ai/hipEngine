@@ -15,7 +15,7 @@ from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo, MissingGGUFTen
 from hipengine.loading.qwen35_gguf import Qwen35GGUFConfig, qwen35_gguf_config_from_metadata
 from hipengine.quant.gguf import GGMLQuantizationType
 
-_NEXTN_LAYER_SLOTS: Mapping[str, str] = MappingProxyType(
+_NEXTN_COMMON_LAYER_SLOTS: Mapping[str, str] = MappingProxyType(
     {
         "attn_norm": "attn_norm.weight",
         "post_attention_norm": "post_attention_norm.weight",
@@ -25,6 +25,11 @@ _NEXTN_LAYER_SLOTS: Mapping[str, str] = MappingProxyType(
         "attn_output": "attn_output.weight",
         "attn_q_norm": "attn_q_norm.weight",
         "attn_k_norm": "attn_k_norm.weight",
+    }
+)
+
+_NEXTN_MOE_LAYER_SLOTS: Mapping[str, str] = MappingProxyType(
+    {
         "ffn_gate_inp": "ffn_gate_inp.weight",
         "ffn_gate_inp_shexp": "ffn_gate_inp_shexp.weight",
         "ffn_gate_exps": "ffn_gate_exps.weight",
@@ -33,6 +38,14 @@ _NEXTN_LAYER_SLOTS: Mapping[str, str] = MappingProxyType(
         "ffn_gate_shexp": "ffn_gate_shexp.weight",
         "ffn_up_shexp": "ffn_up_shexp.weight",
         "ffn_down_shexp": "ffn_down_shexp.weight",
+    }
+)
+
+_NEXTN_DENSE_LAYER_SLOTS: Mapping[str, str] = MappingProxyType(
+    {
+        "ffn_gate": "ffn_gate.weight",
+        "ffn_up": "ffn_up.weight",
+        "ffn_down": "ffn_down.weight",
     }
 )
 
@@ -52,16 +65,25 @@ _OPTIONAL_NEXTN_SLOTS: Mapping[str, str] = MappingProxyType(
     }
 )
 
-_EXPECTED_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
+_EXPECTED_COMMON_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
     {
         "attn_norm": GGMLQuantizationType.F32,
         "post_attention_norm": GGMLQuantizationType.F32,
+        "attn_q_norm": GGMLQuantizationType.F32,
+        "attn_k_norm": GGMLQuantizationType.F32,
+        "eh_proj": GGMLQuantizationType.Q8_0,
+        "enorm": GGMLQuantizationType.F32,
+        "hnorm": GGMLQuantizationType.F32,
+        "shared_head_norm": GGMLQuantizationType.F32,
+    }
+)
+
+_EXPECTED_MOE_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
+    {
         "attn_q": GGMLQuantizationType.Q8_0,
         "attn_k": GGMLQuantizationType.Q8_0,
         "attn_v": GGMLQuantizationType.Q8_0,
         "attn_output": GGMLQuantizationType.Q8_0,
-        "attn_q_norm": GGMLQuantizationType.F32,
-        "attn_k_norm": GGMLQuantizationType.F32,
         "ffn_gate_inp": GGMLQuantizationType.BF16,
         "ffn_gate_inp_shexp": GGMLQuantizationType.BF16,
         "ffn_gate_exps": GGMLQuantizationType.Q3_K,
@@ -70,10 +92,18 @@ _EXPECTED_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
         "ffn_gate_shexp": GGMLQuantizationType.Q8_0,
         "ffn_up_shexp": GGMLQuantizationType.Q8_0,
         "ffn_down_shexp": GGMLQuantizationType.Q8_0,
-        "eh_proj": GGMLQuantizationType.Q8_0,
-        "enorm": GGMLQuantizationType.F32,
-        "hnorm": GGMLQuantizationType.F32,
-        "shared_head_norm": GGMLQuantizationType.F32,
+    }
+)
+
+_EXPECTED_DENSE_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
+    {
+        "attn_q": GGMLQuantizationType.Q4_K,
+        "attn_k": GGMLQuantizationType.Q4_K,
+        "attn_v": GGMLQuantizationType.Q6_K,
+        "attn_output": GGMLQuantizationType.Q4_K,
+        "ffn_gate": GGMLQuantizationType.Q4_K,
+        "ffn_up": GGMLQuantizationType.Q4_K,
+        "ffn_down": GGMLQuantizationType.Q6_K,
     }
 )
 
@@ -144,11 +174,21 @@ class Qwen35GGUFNextNMap:
         return tuple(tensor.name for tensor in (*self.layer_tensors.values(), *self.nextn_tensors.values()))
 
 
-def required_qwen35_gguf_nextn_tensor_names(block_id: int) -> tuple[str, ...]:
-    """Return the twenty required tensor names for one NextN block."""
+def required_qwen35_gguf_nextn_tensor_names(
+    block_id: int,
+    *,
+    config: Qwen35GGUFConfig | None = None,
+) -> tuple[str, ...]:
+    """Return architecture-shaped required tensor names for one NextN block.
+
+    ``config=None`` preserves the historical twenty-tensor MoE contract for
+    callers that only have a block id. Dense callers pass the decoded config
+    and receive the real fifteen-tensor gate/up/down contract.
+    """
 
     prefix = f"blk.{int(block_id)}."
-    return tuple(prefix + suffix for suffix in (*_NEXTN_LAYER_SLOTS.values(), *_NEXTN_SLOTS.values()))
+    layer_slots = _nextn_layer_slots(config)
+    return tuple(prefix + suffix for suffix in (*layer_slots.values(), *_NEXTN_SLOTS.values()))
 
 
 def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNextNValidation:
@@ -169,7 +209,7 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
         )
     block_id = int(config.ignored_block_ids[0])
     actual = {tensor.name: tensor for tensor in info.tensors}
-    required = set(required_qwen35_gguf_nextn_tensor_names(block_id))
+    required = set(required_qwen35_gguf_nextn_tensor_names(block_id, config=config))
     prefix = f"blk.{block_id}."
     optional = {prefix + suffix for suffix in _OPTIONAL_NEXTN_SLOTS.values()}
     block_names = {name for name in actual if name.startswith(prefix)}
@@ -177,9 +217,9 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
     missing = tuple(sorted(required - block_names))
     unexpected = tuple(sorted(block_names - required - optional))
 
-    slot_names = _slot_names(block_id)
+    slot_names = _slot_names(block_id, config=config)
     dtype_errors: list[str] = []
-    for slot, expected in _EXPECTED_QTYPES.items():
+    for slot, expected in _expected_qtypes(config).items():
         tensor = actual.get(slot_names[slot])
         if tensor is not None and int(tensor.ggml_type) != int(expected):
             dtype_errors.append(
@@ -196,7 +236,7 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
     head_name = prefix + _OPTIONAL_NEXTN_SLOTS["shared_head_head"]
     norm_name = prefix + _NEXTN_SLOTS["shared_head_norm"]
     embedding_fallback = embed_name if embed_name in actual else "token_embd.weight"
-    target_head = "output.weight" if config.is_moe else "token_embd.weight"
+    target_head = config.lm_head_tensor_name
     head_fallback = head_name if head_name in actual else target_head
     head_norm_source = norm_name if norm_name in actual else "output_norm.weight"
     for fallback in (embedding_fallback, head_fallback, head_norm_source):
@@ -229,7 +269,7 @@ def build_qwen35_gguf_nextn_tensor_map(
     prefix = f"blk.{validation.block_id}."
     layer = {
         slot: actual[prefix + suffix]
-        for slot, suffix in _NEXTN_LAYER_SLOTS.items()
+        for slot, suffix in _nextn_layer_slots(validation.config).items()
         if prefix + suffix in actual
     }
     nextn = {
@@ -252,11 +292,35 @@ def build_qwen35_gguf_nextn_tensor_map(
     )
 
 
-def _slot_names(block_id: int) -> dict[str, str]:
+def _nextn_layer_slots(
+    config: Qwen35GGUFConfig | None,
+) -> dict[str, str]:
+    ffn_slots = (
+        _NEXTN_MOE_LAYER_SLOTS
+        if config is None or config.is_moe
+        else _NEXTN_DENSE_LAYER_SLOTS
+    )
+    return {**_NEXTN_COMMON_LAYER_SLOTS, **ffn_slots}
+
+
+def _expected_qtypes(
+    config: Qwen35GGUFConfig,
+) -> dict[str, GGMLQuantizationType]:
+    architecture_qtypes = (
+        _EXPECTED_MOE_QTYPES if config.is_moe else _EXPECTED_DENSE_QTYPES
+    )
+    return {**_EXPECTED_COMMON_QTYPES, **architecture_qtypes}
+
+
+def _slot_names(
+    block_id: int,
+    *,
+    config: Qwen35GGUFConfig,
+) -> dict[str, str]:
     prefix = f"blk.{block_id}."
     return {
         slot: prefix + suffix
-        for slot, suffix in {**_NEXTN_LAYER_SLOTS, **_NEXTN_SLOTS}.items()
+        for slot, suffix in {**_nextn_layer_slots(config), **_NEXTN_SLOTS}.items()
     }
 
 
@@ -264,10 +328,7 @@ def _expected_shapes(config: Qwen35GGUFConfig) -> dict[str, tuple[int, ...]]:
     hidden = int(config.hidden_size)
     q_width = int(config.head_count) * int(config.key_length)
     kv_width = int(config.head_count_kv) * int(config.key_length)
-    experts = int(config.expert_count)
-    expert_ffn = int(config.expert_feed_forward_length)
-    shared_ffn = int(config.expert_shared_feed_forward_length)
-    return {
+    shapes: dict[str, tuple[int, ...]] = {
         "attn_norm": (hidden,),
         "post_attention_norm": (hidden,),
         "attn_q": (2 * q_width, hidden),
@@ -276,19 +337,33 @@ def _expected_shapes(config: Qwen35GGUFConfig) -> dict[str, tuple[int, ...]]:
         "attn_output": (hidden, q_width),
         "attn_q_norm": (int(config.key_length),),
         "attn_k_norm": (int(config.key_length),),
-        "ffn_gate_inp": (experts, hidden),
-        "ffn_gate_inp_shexp": (hidden,),
-        "ffn_gate_exps": (experts, expert_ffn, hidden),
-        "ffn_up_exps": (experts, expert_ffn, hidden),
-        "ffn_down_exps": (experts, hidden, expert_ffn),
-        "ffn_gate_shexp": (shared_ffn, hidden),
-        "ffn_up_shexp": (shared_ffn, hidden),
-        "ffn_down_shexp": (hidden, shared_ffn),
         "eh_proj": (hidden, 2 * hidden),
         "enorm": (hidden,),
         "hnorm": (hidden,),
         "shared_head_norm": (hidden,),
     }
+    if config.is_moe:
+        experts = int(config.expert_count)
+        expert_ffn = int(config.expert_feed_forward_length)
+        shared_ffn = int(config.expert_shared_feed_forward_length)
+        shapes.update(
+            ffn_gate_inp=(experts, hidden),
+            ffn_gate_inp_shexp=(hidden,),
+            ffn_gate_exps=(experts, expert_ffn, hidden),
+            ffn_up_exps=(experts, expert_ffn, hidden),
+            ffn_down_exps=(experts, hidden, expert_ffn),
+            ffn_gate_shexp=(shared_ffn, hidden),
+            ffn_up_shexp=(shared_ffn, hidden),
+            ffn_down_shexp=(hidden, shared_ffn),
+        )
+    else:
+        dense_ffn = int(config.feed_forward_length)
+        shapes.update(
+            ffn_gate=(dense_ffn, hidden),
+            ffn_up=(dense_ffn, hidden),
+            ffn_down=(hidden, dense_ffn),
+        )
+    return shapes
 
 
 __all__ = [

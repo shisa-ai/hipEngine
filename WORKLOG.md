@@ -202893,3 +202893,46 @@ Vulkan local sizes verbatim will close the measured gap.
   initially attempted nonexistent `tests/test_benchmark_rollup.py` path exited
   at collection with no tests run; the actual rollup suite is the passing sync
   file above.
+
+### Dense 27B NextN mapping/materialization plan — GREEN
+
+- Add synthetic dense `qwen35` RED fixtures before implementation, plus a
+  guarded strict scan of the real 27B file. The four focused tests fail exactly
+  as intended: the separate NextN validator requests MoE slots/Q8 attention and
+  chooses tied `token_embd.weight`, while generic draft-plan construction raises
+  `MTP block 2 has no GGUF tensor slot 'ffn_gate_inp'`. The real `blk.64` fails
+  on the same architecture mismatch.
+- Split the separate NextN contract into shared full-attention slots plus
+  architecture-selected dense or MoE FFN slots. Dense requires 15 block tensors:
+  Q4_K `attn_q/attn_k/attn_output`, Q6_K `attn_v`, Q4_K `ffn_gate/ffn_up`,
+  Q6_K `ffn_down`, Q8_0 `nextn.eh_proj`, and F32 norms. Preserve the historical
+  20-tensor MoE default for block-id-only callers and all existing MoE qtype/
+  shape checks. Dense fallback now follows inventory-aware
+  `config.lm_head_tensor_name`, selecting the file's untied Q6_K
+  `output.weight` rather than assuming tied embeddings.
+- Make generic MTP draft plans architecture-shaped as well. `ffn_kind` selects
+  22-slot MoE or 17-slot dense bindings; dense binds gate/up/down directly,
+  drops router/shared-expert arguments and expert scalar kwargs, and advertises
+  the separate `qwen35_dense_ffn_logits` CPU-reference registry variant. The
+  unchanged materializer automatically produces Q4_K pack8 gate/up and raw Q6_K
+  down records for the existing dense full-stack executor adapter; no backend
+  or quant branch is added to runtime dispatch.
+- Add a second RED for the newly declared CPU variant: call-spec signature and
+  manual dense SwiGLU composition both fail on absent functions. Implement
+  `qwen35_gguf_mtp_dense_ffn_sublayer` as post-attention RMSNorm -> raw GGUF
+  gate/up -> SiLU multiply -> raw GGUF down -> residual, then compose it with
+  the existing exact eh-projection, attention, and shared-head references.
+  Register both the dense FFN primitive and full layer under four-axis CPU keys;
+  the call spec resolves to that exact function and has no MoE-only arguments.
+- The real 17,106,773,120-byte file now passes strict block-64 validation and
+  call-spec construction: 15 block tensors, 17 effective slots after
+  embedding/head fallbacks, dense FFN shapes `(17408,5120)/(5120,17408)`, and
+  Q4_K/Q4_K/Q6_K qtypes. Missing dense gate, wrong dense-down qtype, unexpected
+  MoE router, fallback, and synthetic shape contracts are explicitly covered.
+- GREEN validation: `tests/test_qwen35_gguf_mtp_mapping.py` passes **27/27**,
+  including every prior MoE contract, dense CPU checks, and the real dense
+  scan. The targeted GGUF CPU-reference + generic CPU-reference + mapping bundle
+  passes **61/61**; the mapping/provider bundle also passes with only expected
+  local/GPU skips. Ruff, pycompile, and `git diff --check` pass all changed
+  Python paths. Real full-layer oracle comparison and resident one-step
+  execution remain D27-F2; no MTP correctness or performance number is claimed.

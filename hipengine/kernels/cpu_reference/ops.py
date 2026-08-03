@@ -801,6 +801,42 @@ def qwen35_gguf_mtp_ffn_sublayer(
     )
 
 
+def qwen35_gguf_mtp_dense_ffn_sublayer(
+    hidden: ArrayLike,
+    attn_post_norm_weight: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+    *,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for a dense Qwen35 GGUF NextN SwiGLU sublayer.
+
+    The dense trailing block saves the post-attention residual, applies
+    ``post_attention_norm``, computes ``silu(gate) * up``, projects through
+    ``down``, and adds the saved residual. Weights remain in their raw GGUF
+    Q4_K/Q6_K representation and are dequantized through the common oracle.
+    """
+
+    residual = np.asarray(hidden, dtype=np.float32)
+    norm_weight = np.asarray(attn_post_norm_weight, dtype=np.float32)
+    if residual.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    if norm_weight.shape != (residual.shape[1],):
+        raise ValueError("attn_post_norm_weight must have shape [hidden]")
+    normed = rmsnorm(residual, norm_weight, eps=eps)
+    gate = gguf_quant_gemv(normed, np.asarray(gate_qweight), gate_qtype)
+    up = gguf_quant_gemv(normed, np.asarray(up_qweight), up_qtype)
+    activated = (_silu(gate) * up).astype(np.float32)
+    down = gguf_quant_gemv(activated, np.asarray(down_qweight), down_qtype)
+    if down.shape != residual.shape:
+        raise ValueError("dense down projection must restore the hidden shape")
+    return (residual + down).astype(np.float32)
+
+
 def qwen35_gguf_mtp_nextn_layer_logits(
     hidden_seed: ArrayLike,
     token_embedding: ArrayLike,
@@ -909,6 +945,101 @@ def qwen35_gguf_mtp_nextn_layer_logits(
         shared_qtype,
         experts_used=experts_used,
         expert_weights_scale=expert_weights_scale,
+        eps=eps,
+    )
+    return qwen35_gguf_mtp_shared_head_logits(
+        ffn_out,
+        shared_head_norm_weight,
+        shared_head_weight,
+        eps=eps,
+    )
+
+
+def qwen35_gguf_mtp_dense_nextn_layer_logits(
+    hidden_seed: ArrayLike,
+    token_embedding: ArrayLike,
+    eh_proj_weight: ArrayLike,
+    hnorm_weight: ArrayLike,
+    enorm_weight: ArrayLike,
+    attn_norm_weight: ArrayLike,
+    wq_weight: ArrayLike,
+    wk_weight: ArrayLike,
+    wv_weight: ArrayLike,
+    wo_weight: ArrayLike,
+    q_norm_weight: ArrayLike,
+    k_norm_weight: ArrayLike,
+    attn_post_norm_weight: ArrayLike,
+    gate_qweight: ArrayLike,
+    up_qweight: ArrayLike,
+    down_qweight: ArrayLike,
+    gate_qtype: GGMLQuantizationType,
+    up_qtype: GGMLQuantizationType,
+    down_qtype: GGMLQuantizationType,
+    shared_head_norm_weight: ArrayLike,
+    shared_head_weight: ArrayLike,
+    *,
+    num_heads: int,
+    num_kv_heads: int,
+    positions: ArrayLike | None = None,
+    context_counts: ArrayLike | None = None,
+    key_cache: ArrayLike | None = None,
+    value_cache: ArrayLike | None = None,
+    kv_base_offsets: ArrayLike | None = None,
+    kv_live_counts: ArrayLike | None = None,
+    kv_token_positions: ArrayLike | None = None,
+    kv_evict_mask: ArrayLike | None = None,
+    block_size: int | None = None,
+    rope_cos: ArrayLike | None = None,
+    rope_sin: ArrayLike | None = None,
+    rotary_dim: int | None = None,
+    scale: float | None = None,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    """CPU reference for one dense-FFN Qwen35 GGUF NextN draft layer."""
+
+    projected = qwen35_gguf_mtp_eh_proj(
+        hidden_seed,
+        token_embedding,
+        eh_proj_weight,
+        hnorm_weight,
+        enorm_weight,
+        eps=eps,
+    )
+    attended = qwen35_gguf_mtp_attention_sublayer(
+        projected,
+        attn_norm_weight,
+        wq_weight,
+        wk_weight,
+        wv_weight,
+        wo_weight,
+        q_norm_weight,
+        k_norm_weight,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        positions=positions,
+        context_counts=context_counts,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        kv_base_offsets=kv_base_offsets,
+        kv_live_counts=kv_live_counts,
+        kv_token_positions=kv_token_positions,
+        kv_evict_mask=kv_evict_mask,
+        block_size=block_size,
+        rope_cos=rope_cos,
+        rope_sin=rope_sin,
+        rotary_dim=rotary_dim,
+        scale=scale,
+        eps=eps,
+    )
+    ffn_out = qwen35_gguf_mtp_dense_ffn_sublayer(
+        attended,
+        attn_post_norm_weight,
+        gate_qweight,
+        up_qweight,
+        down_qweight,
+        gate_qtype,
+        up_qtype,
+        down_qtype,
         eps=eps,
     )
     return qwen35_gguf_mtp_shared_head_logits(
@@ -2243,7 +2374,9 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         "qwen35_gguf_mtp_attention_sublayer": qwen35_gguf_mtp_attention_sublayer,
         "qwen35_gguf_mtp_moe_routing": qwen35_gguf_mtp_moe_routing,
         "qwen35_gguf_mtp_ffn_sublayer": qwen35_gguf_mtp_ffn_sublayer,
+        "qwen35_gguf_mtp_dense_ffn_sublayer": qwen35_gguf_mtp_dense_ffn_sublayer,
         "qwen35_gguf_mtp_nextn_layer_logits": qwen35_gguf_mtp_nextn_layer_logits,
+        "qwen35_gguf_mtp_dense_nextn_layer_logits": qwen35_gguf_mtp_dense_nextn_layer_logits,
         "gguf_q8_0_gemv": gguf_q8_0_gemv,
         "gguf_q4_k_gemv": gguf_q4_k_gemv,
         "gguf_q5_k_gemv": gguf_q5_k_gemv,
@@ -2344,12 +2477,27 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
         qwen35_gguf_mtp_ffn_sublayer,
         replace=replace,
     )
+    register(
+        KernelKey("cpu_reference", "mtp_nextn_ffn", "gguf_dense", "qwen35_swiglu"),
+        qwen35_gguf_mtp_dense_ffn_sublayer,
+        replace=replace,
+    )
     for quant in ("w4_gguf", "gguf_moe"):
         register(
             KernelKey("cpu_reference", "mtp_nextn_layer", quant, "qwen35_dense_logits"),
             qwen35_gguf_mtp_nextn_layer_logits,
             replace=replace,
         )
+    register(
+        KernelKey(
+            "cpu_reference",
+            "mtp_nextn_layer",
+            "w4_gguf",
+            "qwen35_dense_ffn_logits",
+        ),
+        qwen35_gguf_mtp_dense_nextn_layer_logits,
+        replace=replace,
+    )
     register(
         KernelKey("cpu_reference", "linear", "gguf_q8_0", "gemv_f32_f32_out"),
         gguf_q8_0_gemv,
