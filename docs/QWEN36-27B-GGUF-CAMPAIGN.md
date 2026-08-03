@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: active, dense NextN bring-up (2026-08-04); external Vulkan baseline complete.
+Status: active, dense NextN execution bring-up (2026-08-04); mapping and external Vulkan baseline complete.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -329,19 +329,19 @@ profiles reconcile within 3%; dense FFN leads base 512/8 and sampled B3 at
 49.04% and 46.52% of query time. Full evidence is in
 `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json`.
 
-Dense hipEngine MTP is still **not yet functional**. Strict call-spec construction fails
-independently:
+Architecture-shaped dense NextN mapping is now green. Both GGUF MTP map
+surfaces select the real 15-tensor `blk.64` contract, bind dense
+`ffn_gate/ffn_up/ffn_down` instead of router/expert slots, preserve the untied
+Q6_K `output.weight` fallback, validate the target's Q4_K/Q6_K/Q8_0 mix, and
+emit a 17-slot call spec including embedding/head fallbacks. The existing
+20-tensor MoE fixtures remain unchanged.
 
-```text
-MissingGGUFTensorError:
-MTP block 64 has no GGUF tensor slot 'ffn_gate_inp'
-```
-
-`build_qwen35_gguf_mtp_draft_tensor_plans()` and the separate
-`qwen35_gguf_nextn` map currently enumerate the 20-tensor MoE NextN contract.
-Architecture-shaped dense NextN mapping is now the first hard blocker. No MTP
-number is valid until a dense synthetic RED fixture, the real 15-tensor
-inventory, and one-step dense NextN correctness are green.
+The independent dense CPU SwiGLU sublayer and full NextN composition are also
+registered behind the dense call-spec key; the manual F32 chain and signature
+binding are green. Dense hipEngine MTP is still **not yet functional**: resident
+one-step execution and a real full-layer CPU/llama logit oracle are the next
+hard gate. No MTP number is valid until full layer logits, state/KV lifecycle,
+and transaction correctness are green.
 
 ---
 
@@ -351,8 +351,8 @@ inventory, and one-step dense NextN correctness are green.
 | ---: | --- | --- | --- | --- |
 | 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, natural25, B1-B4 sweep, and query-profile artifacts. | complete; B3 selected |
 | 0 | D27-F0 | Add untied dense root/embedding/layout support, then prove dense GGUF AR load/prefill/decode on GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | 8/1 eager green; primary gates pending |
-| 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | blocked on RED |
-| 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | blocked by F1 |
+| 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
+| 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | next |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | llama side green; hipEngine blocked by F0/F2 |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | blocked by M1 |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | blocked by M1 |

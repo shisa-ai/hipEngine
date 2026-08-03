@@ -4,13 +4,17 @@ import inspect
 from math import prod
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from hipengine.kernels.cpu_reference import ops as cpu_ops
 from hipengine.kernels.cpu_reference.ops import qwen35_gguf_mtp_nextn_layer_logits
+from hipengine.kernels.registry import resolve
 from hipengine.loading.gguf import (
     GGUFModelInfo,
     GGUFTensorInfo,
     MissingGGUFTensorError,
+    scan_gguf,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.loading.qwen35_gguf import (
@@ -31,6 +35,9 @@ from hipengine.loading.qwen35_gguf_nextn import (
     validate_qwen35_gguf_nextn_tensor_map,
 )
 from hipengine.loading.qwen35_gguf_nextn_materialize import plan_qwen35_gguf_nextn_materialization
+
+
+_DENSE_QWEN36_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
 
 
 def test_qwen35moe_gguf_map_ignores_trailing_mtp_nextn_block() -> None:
@@ -612,6 +619,367 @@ def test_qwen35moe_gguf_mtp_block_validation_fails_unexpected_trailing_tensor() 
         match="MTP block 2 unexpected tensors: blk\\.2\\.nextn\\.surprise\\.weight",
     ):
         validate_qwen35_gguf_mtp_blocks(info)
+
+
+def test_qwen35_dense_gguf_mtp_maps_architecture_shaped_blk2() -> None:
+    info = _synthetic_qwen35_dense_mtp_info()
+
+    ar_validation = validate_qwen35_gguf_tensor_map(info)
+    assert ar_validation.passed
+    assert ar_validation.config.architecture == "qwen35"
+    assert not ar_validation.config.is_moe
+    assert ar_validation.config.block_count == 2
+    assert ar_validation.config.ignored_block_ids == (2,)
+    assert ar_validation.config.lm_head_tensor_name == "output.weight"
+
+    (inventory,) = validate_qwen35_gguf_mtp_blocks(info)
+    assert inventory.passed
+    assert len(inventory.tensor_names) == 15
+    assert "blk.2.ffn_gate.weight" in inventory.required_tensor_names
+    assert "blk.2.ffn_gate_inp.weight" not in inventory.required_tensor_names
+    assert dict(inventory.optional_fallback_tensor_names) == {
+        "nextn.embed_tokens": "token_embd.weight",
+        "nextn.shared_head_head": "output.weight",
+    }
+
+    (block_map,) = build_qwen35_gguf_mtp_block_maps(info)
+    assert block_map.tensor("ffn_gate").name == "blk.2.ffn_gate.weight"
+    assert block_map.tensor("ffn_up").name == "blk.2.ffn_up.weight"
+    assert block_map.tensor("ffn_down").name == "blk.2.ffn_down.weight"
+    assert block_map.tensor("nextn.embed_tokens").name == "token_embd.weight"
+    assert block_map.tensor("nextn.shared_head_head").name == "output.weight"
+    with pytest.raises(MissingGGUFTensorError, match="ffn_gate_inp"):
+        block_map.tensor("ffn_gate_inp")
+
+    nextn_validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    assert nextn_validation.passed
+    assert len(nextn_validation.present) == 15
+    assert nextn_validation.head_fallback == "output.weight"
+    assert nextn_validation.embedding_fallback == "token_embd.weight"
+    assert nextn_validation.head_norm_source == "blk.2.nextn.shared_head_norm.weight"
+    assert set(nextn_validation.present) == set(
+        required_qwen35_gguf_nextn_tensor_names(
+            2,
+            config=nextn_validation.config,
+        )
+    )
+
+    nextn_map = build_qwen35_gguf_nextn_tensor_map(info)
+    assert len(nextn_map.tensor_names) == 15
+    assert set(nextn_map.layer_tensors) == {
+        "attn_norm",
+        "post_attention_norm",
+        "attn_q",
+        "attn_k",
+        "attn_v",
+        "attn_output",
+        "attn_q_norm",
+        "attn_k_norm",
+        "ffn_gate",
+        "ffn_up",
+        "ffn_down",
+    }
+    assert nextn_map.tensor("ffn_gate").ggml_type_name == "Q4_K"
+    assert nextn_map.tensor("ffn_up").ggml_type_name == "Q4_K"
+    assert nextn_map.tensor("ffn_down").ggml_type_name == "Q6_K"
+    assert nextn_map.fallback("lm_head").name == "output.weight"
+    assert nextn_map.fallback("lm_head").ggml_type_name == "Q6_K"
+
+
+def test_qwen35_dense_gguf_mtp_plans_dense_ffn_slots_and_materialization() -> None:
+    info = _synthetic_qwen35_dense_mtp_info()
+
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+    expected_slots = [
+        "nextn.embed_tokens",
+        "nextn.eh_proj",
+        "nextn.hnorm",
+        "nextn.enorm",
+        "attn_norm",
+        "attn_q",
+        "attn_k",
+        "attn_v",
+        "attn_output",
+        "attn_q_norm",
+        "attn_k_norm",
+        "post_attention_norm",
+        "ffn_gate",
+        "ffn_up",
+        "ffn_down",
+        "nextn.shared_head_norm",
+        "nextn.shared_head_head",
+    ]
+    assert plan.ffn_kind == "dense"
+    assert [slot.slot for slot in plan.slots] == expected_slots
+    assert plan.cpu_reference_kernel == (
+        "cpu_reference",
+        "mtp_nextn_layer",
+        "w4_gguf",
+        "qwen35_dense_ffn_logits",
+    )
+    assert dict(plan.kernel_kwargs) == {
+        "num_heads": 2,
+        "num_kv_heads": 1,
+        "rotary_dim": 4,
+        "scale": 0.5,
+        "eps": 1.0e-6,
+    }
+    assert [binding.argument for binding in plan.tensor_bindings][-5:] == [
+        "gate_qweight",
+        "up_qweight",
+        "down_qweight",
+        "shared_head_norm_weight",
+        "shared_head_weight",
+    ]
+    assert dict(plan.qtype_argument_map) == {
+        "gate_qtype": "Q4_K",
+        "up_qtype": "Q4_K",
+        "down_qtype": "Q6_K",
+    }
+    assert dict(plan.cpu_reference_call_spec.tensor_arguments)["gate_qweight"] == (
+        "blk.2.ffn_gate.weight"
+    )
+    assert "router_weight" not in plan.cpu_reference_call_spec.tensor_arguments
+    assert plan.as_dict()["ffn_kind"] == "dense"
+
+    nextn_map = build_qwen35_gguf_nextn_tensor_map(info)
+    materialization = plan_qwen35_gguf_nextn_materialization(nextn_map)
+    assert len(materialization.draft_specs) == 15
+    assert materialization.layer_specs["ffn_gate"].quant_key == "gguf_q4_k"
+    assert materialization.layer_specs["ffn_gate"].layout == "q4_k_pack8"
+    assert materialization.layer_specs["ffn_up"].quant_key == "gguf_q4_k"
+    assert materialization.layer_specs["ffn_down"].quant_key == "gguf_q6_k"
+    assert materialization.nextn_specs["eh_proj"].quant_key == "gguf_q8_0"
+    assert materialization.fallback_specs["lm_head"].source.name == "output.weight"
+
+
+def test_qwen35_dense_gguf_mtp_cpu_call_spec_matches_dense_reference_signature() -> None:
+    info = _synthetic_qwen35_dense_mtp_info()
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+    call_spec = plan.cpu_reference_call_spec
+    dense_reference = cpu_ops.qwen35_gguf_mtp_dense_nextn_layer_logits
+    parameters = inspect.signature(dense_reference).parameters
+    assert resolve(
+        backend=plan.cpu_reference_kernel[0],
+        layer=plan.cpu_reference_kernel[1],
+        quant=plan.cpu_reference_kernel[2],
+        variant=plan.cpu_reference_kernel[3],
+    ) is dense_reference
+    parameter_names = tuple(parameters)
+    tensor_args = tuple(call_spec.tensor_arguments)
+    direct_tensor_args = tuple(call_spec.direct_tensor_arguments)
+    qtype_args = tuple(call_spec.qtype_arguments)
+    keyword_args = tuple(call_spec.keyword_arguments)
+    dynamic_args = tuple(item.argument for item in call_spec.dynamic_inputs)
+
+    assert tuple(name for name in parameter_names if name in tensor_args) == tensor_args
+    assert tuple(name for name in parameter_names if name in direct_tensor_args) == direct_tensor_args
+    assert tuple(name for name in parameter_names if name in qtype_args) == qtype_args
+    assert set(keyword_args).issubset(parameters)
+    assert set(dynamic_args).issubset(parameters)
+    bound_args = {*dynamic_args, *tensor_args, *qtype_args, *keyword_args}
+    missing_required = [
+        name
+        for name, parameter in parameters.items()
+        if parameter.default is inspect.Signature.empty
+        and parameter.kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        and name not in bound_args
+    ]
+    assert missing_required == []
+
+
+def test_qwen35_dense_gguf_mtp_ffn_cpu_reference_matches_manual_chain() -> None:
+    hidden = np.asarray([[0.25, -0.5, 0.75, 1.0]], dtype=np.float32)
+    norm_weight = np.asarray([1.0, 0.5, 1.5, 0.75], dtype=np.float32)
+    gate = np.asarray(
+        [[0.5, -0.25, 0.75, 0.0], [0.1, 0.2, -0.3, 0.4], [-0.2, 0.6, 0.1, 0.3]],
+        dtype=np.float32,
+    )
+    up = np.asarray(
+        [[0.2, 0.4, -0.1, 0.3], [-0.5, 0.25, 0.5, 0.1], [0.7, -0.2, 0.3, 0.6]],
+        dtype=np.float32,
+    )
+    down = np.asarray(
+        [[0.3, -0.2, 0.5], [0.1, 0.4, -0.3], [-0.6, 0.2, 0.7], [0.5, 0.1, 0.2]],
+        dtype=np.float32,
+    )
+    normed = cpu_ops.rmsnorm(hidden, norm_weight, eps=1.0e-6)
+    gate_out = normed @ gate.T
+    up_out = normed @ up.T
+    silu = gate_out / (1.0 + np.exp(-gate_out))
+    expected = hidden + (silu * up_out) @ down.T
+
+    actual = cpu_ops.qwen35_gguf_mtp_dense_ffn_sublayer(
+        hidden,
+        norm_weight,
+        gate,
+        up,
+        down,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        GGMLQuantizationType.F32,
+        eps=1.0e-6,
+    )
+
+    np.testing.assert_allclose(actual, expected.astype(np.float32), rtol=1.0e-6, atol=1.0e-6)
+
+
+def test_qwen35_dense_gguf_nextn_validation_rejects_dense_contract_errors() -> None:
+    missing = _synthetic_qwen35_dense_mtp_info(
+        drop_tensors={"blk.2.ffn_gate.weight"},
+    )
+    with pytest.raises(
+        MissingGGUFTensorError,
+        match="MTP block 2 missing required tensors: blk\\.2\\.ffn_gate\\.weight",
+    ):
+        validate_qwen35_gguf_mtp_blocks(missing)
+
+    wrong_qtype = _synthetic_qwen35_dense_mtp_info(
+        extra_tensors=[
+            _tensor("blk.2.ffn_down.weight", (8, 5), GGMLQuantizationType.Q4_K),
+        ],
+    )
+    validation = validate_qwen35_gguf_nextn_tensor_map(wrong_qtype)
+    assert not validation.passed
+    assert validation.dtype_errors == (
+        "blk.2.ffn_down.weight: expected Q6_K, got Q4_K",
+    )
+
+    unexpected = _synthetic_qwen35_dense_mtp_info(
+        extra_tensors=[_tensor("blk.2.ffn_gate_inp.weight", (3, 8))],
+    )
+    validation = validate_qwen35_gguf_nextn_tensor_map(unexpected)
+    assert not validation.passed
+    assert validation.unexpected == ("blk.2.ffn_gate_inp.weight",)
+
+
+@pytest.mark.skipif(
+    not _DENSE_QWEN36_MODEL.exists(),
+    reason=f"local GGUF fixture not found: {_DENSE_QWEN36_MODEL}",
+)
+def test_real_qwen36_27b_dense_blk64_strict_maps_and_call_spec() -> None:
+    info = scan_gguf(_DENSE_QWEN36_MODEL)
+
+    nextn_validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    assert nextn_validation.passed
+    assert nextn_validation.block_id == 64
+    assert len(nextn_validation.present) == 15
+    assert nextn_validation.embedding_fallback == "token_embd.weight"
+    assert nextn_validation.head_fallback == "output.weight"
+
+    nextn_map = build_qwen35_gguf_nextn_tensor_map(info)
+    assert len(nextn_map.tensor_names) == 15
+    assert nextn_map.tensor("ffn_gate").shape == (17408, 5120)
+    assert nextn_map.tensor("ffn_down").shape == (5120, 17408)
+
+    (plan,) = build_qwen35_gguf_mtp_draft_tensor_plans(info)
+    assert plan.layer_id == 64
+    assert plan.ffn_kind == "dense"
+    assert len(plan.slots) == 17
+    assert plan.slot("ffn_gate").ggml_type_name == "Q4_K"
+    assert plan.slot("ffn_up").ggml_type_name == "Q4_K"
+    assert plan.slot("ffn_down").ggml_type_name == "Q6_K"
+    assert plan.slot("nextn.shared_head_head").tensor_name == "output.weight"
+    assert "router_weight" not in plan.cpu_reference_call_spec.tensor_arguments
+
+
+def _synthetic_qwen35_dense_mtp_info(
+    *,
+    drop_tensors: set[str] | None = None,
+    extra_tensors: list[GGUFTensorInfo] | None = None,
+) -> GGUFModelInfo:
+    metadata = {
+        "general.architecture": "qwen35",
+        "qwen35.block_count": 3,
+        "qwen35.embedding_length": 8,
+        "qwen35.feed_forward_length": 5,
+        "qwen35.context_length": 128,
+        "qwen35.attention.head_count": 2,
+        "qwen35.attention.head_count_kv": 1,
+        "qwen35.attention.key_length": 4,
+        "qwen35.attention.value_length": 4,
+        "qwen35.full_attention_interval": 2,
+        "qwen35.rope.dimension_count": 4,
+        "qwen35.rope.dimension_sections": (),
+        "qwen35.ssm.inner_size": 16,
+        "qwen35.ssm.group_count": 2,
+        "qwen35.ssm.state_size": 3,
+        "qwen35.ssm.conv_kernel": 4,
+        "qwen35.ssm.time_step_rank": 2,
+    }
+    tensors = [
+        _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q4_K),
+        _tensor("output_norm.weight", (8,)),
+        _tensor("output.weight", (11, 8), GGMLQuantizationType.Q6_K),
+    ]
+    tensors.extend(_dense_mlp_tensors(0))
+    tensors.extend(
+        [
+            _tensor("blk.0.attn_gate.weight", (16, 8)),
+            _tensor("blk.0.attn_qkv.weight", (28, 8)),
+            _tensor("blk.0.ssm_a", (2,)),
+            _tensor("blk.0.ssm_alpha.weight", (2, 8)),
+            _tensor("blk.0.ssm_beta.weight", (2, 8)),
+            _tensor("blk.0.ssm_conv1d.weight", (28, 4)),
+            _tensor("blk.0.ssm_dt.bias", (2,)),
+            _tensor("blk.0.ssm_norm.weight", (3,)),
+            _tensor("blk.0.ssm_out.weight", (8, 16)),
+        ]
+    )
+    tensors.extend(_dense_mlp_tensors(1))
+    tensors.extend(_full_attention_tensors(1))
+    tensors.extend(_dense_mlp_tensors(2, nextn=True))
+    tensors.extend(_dense_nextn_full_attention_tensors(2))
+    tensors.extend(
+        [
+            _tensor("blk.2.nextn.eh_proj.weight", (8, 16), GGMLQuantizationType.Q8_0),
+            _tensor("blk.2.nextn.enorm.weight", (8,)),
+            _tensor("blk.2.nextn.hnorm.weight", (8,)),
+            _tensor("blk.2.nextn.shared_head_norm.weight", (8,)),
+        ]
+    )
+    if extra_tensors:
+        tensors.extend(extra_tensors)
+    if drop_tensors:
+        tensors = [tensor for tensor in tensors if tensor.name not in drop_tensors]
+    return GGUFModelInfo(
+        path=Path("synthetic-qwen35-dense-mtp.gguf"),
+        version=3,
+        alignment=32,
+        metadata=metadata,
+        tensors=tuple(tensors),
+        tensor_data_offset=0,
+    )
+
+
+def _dense_mlp_tensors(
+    layer_id: int,
+    *,
+    nextn: bool = False,
+) -> list[GGUFTensorInfo]:
+    prefix = f"blk.{layer_id}"
+    gate_up_qtype = GGMLQuantizationType.Q4_K if nextn else GGMLQuantizationType.F32
+    down_qtype = GGMLQuantizationType.Q6_K if nextn else GGMLQuantizationType.F32
+    return [
+        _tensor(f"{prefix}.attn_norm.weight", (8,)),
+        _tensor(f"{prefix}.post_attention_norm.weight", (8,)),
+        _tensor(f"{prefix}.ffn_gate.weight", (5, 8), gate_up_qtype),
+        _tensor(f"{prefix}.ffn_up.weight", (5, 8), gate_up_qtype),
+        _tensor(f"{prefix}.ffn_down.weight", (8, 5), down_qtype),
+    ]
+
+
+def _dense_nextn_full_attention_tensors(layer_id: int) -> list[GGUFTensorInfo]:
+    prefix = f"blk.{layer_id}"
+    return [
+        _tensor(f"{prefix}.attn_q.weight", (16, 8), GGMLQuantizationType.Q4_K),
+        _tensor(f"{prefix}.attn_k.weight", (4, 8), GGMLQuantizationType.Q4_K),
+        _tensor(f"{prefix}.attn_v.weight", (4, 8), GGMLQuantizationType.Q6_K),
+        _tensor(f"{prefix}.attn_output.weight", (8, 8), GGMLQuantizationType.Q4_K),
+        _tensor(f"{prefix}.attn_q_norm.weight", (4,)),
+        _tensor(f"{prefix}.attn_k_norm.weight", (4,)),
+    ]
 
 
 def _synthetic_qwen35moe_mtp_info(
