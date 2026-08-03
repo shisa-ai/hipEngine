@@ -41,8 +41,8 @@ _PRE_IMPLEMENTATION_SHA256 = {
         "295890f46bf198cbc7e8c99de80dd1d17b6c62a18f8fe244e3e172d5c9c59eb6"
     ),
 }
-_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
+_REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 _SESSION_PARAMETER = "use_activation_pack_reuse"
 _EXPECTED_CLASSES = {
     "full_attention_qkv": (12, 3, 24),
@@ -178,20 +178,21 @@ def test_h8b_package_and_runtime_owner_follow_source_default() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime import laguna_gguf_runner as runner
 
-    assert getattr(hip_gfx1100, _SUPPORTED_CAPABILITY) is True
     assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
-    assert _SUPPORTED_CAPABILITY in hip_gfx1100.__all__
+    assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert _SOURCE_CAPABILITY in hip_gfx1100.__all__
-    assert not hasattr(hip_gfx1151, _SUPPORTED_CAPABILITY)
+    assert _REMOVED_SUPPORTED_CAPABILITY not in hip_gfx1100.__all__
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
+    assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
 
     resolver = getattr(runner, "resolve_laguna_activation_pack_reuse")
     assert resolver("hip_gfx1100", None) is True
     assert resolver("hip_gfx1100", False) is False
-    assert resolver("hip_gfx1100", True) is True
     assert resolver("hip_gfx1151", None) is False
     assert resolver("hip_gfx1151", False) is False
-    with pytest.raises(ValueError, match="not supported"):
+    with pytest.raises(ValueError, match="positive selector was removed"):
+        resolver("hip_gfx1100", True)
+    with pytest.raises(ValueError, match="positive selector was removed"):
         resolver("hip_gfx1151", True)
 
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters

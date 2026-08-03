@@ -74,21 +74,23 @@ should be removed or collapsed.
   explicit transient-H7G rollback. Remove that false opt-out after one later Q5
   family checkpoint if no rollback is needed.
 
-## Laguna H8B bounded scoped activation-pack reuse owner
+## Laguna H8B scoped activation-pack reuse production cleanup
 
-- Added 2026-08-03 for complete all-class qualification. The temporary gfx1100
-  `LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED` capability admits an explicit
-  positive selector while `LAGUNA_ACTIVATION_PACK_REUSE=False` keeps source
-  production on H8A. One generic one-entry context-local cache is valid only
-  inside attention Q/K/V, dense gate/up, or shared-expert gate/up scopes and
-  publishes the exact pointer/geometry/stream key only after a successful pack.
+- Added 2026-08-03 for complete all-class qualification. The gfx1100 source
+  `LAGUNA_ACTIVATION_PACK_REUSE` capability owns one generic one-entry
+  context-local cache valid only inside attention Q/K/V, dense gate/up, or
+  shared-expert gate/up scopes. It publishes the exact
+  pointer/geometry/stream key only after a successful pack.
 - Bounded qualification passes: complete state and exact **330→223 pack /
   2,262→2,155 dispatch** topology are preserved, fixed C4096/M512 improves
   **+0.116%**, and clean 512/1K/4K improves **+0.148%/+0.175%/+0.152%**.
-  Source promotion and clean committed production now pass at **440.893 tok/s /
-  2,155 dispatches**. Remove the duplicate `_SUPPORTED` capability and explicit
-  positive selector in the next separate RED/cleanup unit; retain explicit
-  false only while H8A complete-pack rollback remains useful.
+  Source promotion and clean committed production pass at **440.893 tok/s /
+  2,155 dispatches**.
+- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`
+  capability and explicit positive selector are removed. Source ownership is
+  the sole positive route; `use_activation_pack_reuse=False` remains the
+  explicit complete-pack H8A rollback. Remove that false opt-out after one
+  later Q5/IQ-down checkpoint if no rollback is needed.
 
 ## Laguna H6Z bounded default-off global-attention capability
 
