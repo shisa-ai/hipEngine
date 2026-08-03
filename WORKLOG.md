@@ -202748,3 +202748,47 @@ Vulkan local sizes verbatim will close the measured gap.
   prefill-publication/native-batch tests. Python compile-all, staged whitespace,
   conflict-marker, and WORKLOG union checks are clean. Untracked benchmark
   artifacts remain untouched.
+
+## 2026-08-04 — Start Qwen3.6-27B Q4_K_M GGUF campaign
+
+- Open a new same-file campaign for
+  `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`, with GPU0 Radeon Pro W7900 as the
+  only canonical cross-engine denominator. GPU1 Radeon RX 7900 XTX may run
+  parallel functional/correctness/micro-screen work because both are gfx1100,
+  but no absolute or cross-GPU performance ratio transfers.
+- Audit the current benchmark, MTP, Vulkan, dense, roofline, kernel-lineage,
+  refactor, and lessons ledgers before defining work. Freeze complete-wall
+  Amdahl ranking: normally admit a candidate only with a credible >=5% wall or
+  >=0.20 ms/token ceiling, except for exact low-risk additive wins or blockers.
+  Historical MoE/PARO data seeds hypotheses only; it does not populate this
+  same-GGUF scoreboard.
+- Refresh `/home/lhl/llama.cpp/llama.cpp-vulkan` with `git pull --ff-only`,
+  fast-forwarding `67d5978bb1ba490070ddbd2a7c59c7ec5a60b7cc` to upstream
+  `ee0445c99cffbe8d920b05cad28cb055d7049c0a` (llama.cpp build 10250). Configure
+  Release with `GGML_VULKAN=ON`, `GGML_HIP=OFF`; the full build completes.
+  `llama-bench` SHA-256 is
+  `0d466d22faf045c7bfd8c03bac28fd8f581a3a82edafacf99e51202ab5988759` and
+  `llama-server` is
+  `e83a9d8d26d9de3e7b8d0b836614dccf21de3e85ec331f4e2dd53482d5a5a1e3`.
+  The external tree has no tracked diff; its existing untracked `.pi/tasks/`
+  metadata is untouched.
+- Fingerprint the 17,106,773,120-byte target as SHA-256
+  `a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f`.
+  Scanner inventory is architecture `qwen35`, `MOSTLY_Q4_K_M`, 866 tensors,
+  64 executable blocks from declared 65, 48 linear-attention plus 16
+  full-attention layers, hidden 5120, dense FFN 17408, vocab 248320, and one
+  dense 15-tensor trailing NextN block at `blk.64`.
+- Preflights expose two real functional blockers before any performance claim.
+  The GPU1 AR resident smoke fails before allocation because the dense root map
+  hardcodes a tied head and rejects the file's distinct Q6_K `output.weight` as
+  unexpected. Separately, strict MTP call-spec construction assumes the MoE
+  20-tensor contract and fails because dense `blk.64` has no `ffn_gate_inp`.
+  These outrank all optimization work; add architecture-shaped RED fixtures,
+  then reuse the existing dense FFN chain rather than emulating an expert.
+- Add `docs/QWEN36-27B-GGUF-CAMPAIGN.md`: exact model/device/software identity,
+  matched llama-bench and context-aware AR gates, natural25 true-AR/MTP
+  protocol, GPU0/GPU1 policy, clean-vs-profile timing boundaries, llama Vulkan
+  query-timestamp profiling, hipEngine rocprof leaf profiling, <=10% wall
+  reconciliation, transfer/rejection lessons, RED/GREEN order, impact admission,
+  prioritized phase gates, commands, and an initially blocked scoreboard. No
+  fresh speed result is claimed yet.
