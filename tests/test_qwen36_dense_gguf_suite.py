@@ -11,6 +11,7 @@ from scripts.qwen36_dense_gguf_suite import (
     _TimedDraftProvider,
     _TimedVerifier,
     aggregate_scopes,
+    build_parser,
     parse_candidate_budgets,
     suite_speed_claim_eligible,
     timed_transition_count,
@@ -53,6 +54,17 @@ def test_candidate_budget_parser_accepts_unique_b1_b2_b3_subset() -> None:
         parse_candidate_budgets("1,4")
     with pytest.raises(ValueError, match="duplicates"):
         parse_candidate_budgets("2,2")
+
+
+def test_dense_suite_defaults_to_native_target_verify_with_serial_rollback() -> None:
+    parser = build_parser()
+    assert parser.parse_args(["--output", "/tmp/out.json"]).target_verify_mode == "native"
+    assert (
+        parser.parse_args(
+            ["--target-verify-mode", "serial-exact", "--output", "/tmp/out.json"]
+        ).target_verify_mode
+        == "serial-exact"
+    )
 
 
 def test_speed_claim_eligibility_requires_the_exact_committed_full_suite(tmp_path) -> None:

@@ -263,7 +263,7 @@ def test_launch_q6_raw_wmma_prefill_uses_resident_raw_abi() -> None:
         (
             _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1"),
             GGUF_OUTPUT_BF16,
-            KernelKey("hip_gfx1100", "dense_gemv", "bf16", "prefill_out"),
+            KernelKey("hip_gfx1100", "dense_gemv", "bf16", "rowtile_out"),
             (100, 10, 200, 2, 1024, 2048),
         ),
         (

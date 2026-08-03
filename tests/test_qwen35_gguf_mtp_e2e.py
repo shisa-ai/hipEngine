@@ -371,6 +371,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar() -> None:
             target,
             max_candidate_budget=3,
             quant="gguf_q4_k_m",
+            target_verify_mode="native",
         ) as verifier:
             for budget in (1, 2, 3):
                 target.reset()
@@ -400,6 +401,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar() -> None:
                     return_logits=True,
                 )
                 assert prepared.gpu_accept_match_cpu
+                assert prepared.target_verify_mode == "native"
                 assert prepared.summary.accepted_counts == (budget,)
                 assert prepared.summary.full_accept == (True,)
                 np.testing.assert_array_equal(
@@ -514,6 +516,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar() -> None:
                 provider,
                 candidate_budget=1,
                 quant="gguf_q4_k_m",
+                target_verify_mode="native",
             ) as decoder:
                 actual = decoder.generate(
                     natural_prompt,
@@ -531,6 +534,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar() -> None:
     assert actual.graph_stats["hits"] >= 1
     assert all(record["quant"] == "gguf_q4_k_m" for record in actual.cycle_records)
     assert all(record["experts_per_token"] == 0 for record in actual.cycle_records)
+    assert all(record["target_verify_mode"] == "native" for record in actual.cycle_records)
     assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
 
 

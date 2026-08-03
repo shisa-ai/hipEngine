@@ -166,6 +166,91 @@ __global__ void dense_gemv_out_kernel(
 }
 
 
+template <typename scalar_t, int ROW_TILE>
+__global__ void dense_gemv_rowtile_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ weight,
+    scalar_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t w_base = out_col * in_features;
+
+  float acc[ROW_TILE];
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+    acc[row] = 0.0f;
+  }
+
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const scalar_t* w_ptr = weight + w_base + k_base;
+    const float w0 = scalar_to_float(w_ptr[0]);
+    const float w1 = scalar_to_float(w_ptr[1]);
+    const float w2 = scalar_to_float(w_ptr[2]);
+    const float w3 = scalar_to_float(w_ptr[3]);
+    const float w4 = scalar_to_float(w_ptr[4]);
+    const float w5 = scalar_to_float(w_ptr[5]);
+    const float w6 = scalar_to_float(w_ptr[6]);
+    const float w7 = scalar_to_float(w_ptr[7]);
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      if (row < rows) {
+        const scalar_t* x_ptr = x + static_cast<int64_t>(row) * in_features + k_base;
+        acc[row] = fmaf(scalar_to_float(x_ptr[0]), w0, acc[row]);
+        acc[row] = fmaf(scalar_to_float(x_ptr[1]), w1, acc[row]);
+        acc[row] = fmaf(scalar_to_float(x_ptr[2]), w2, acc[row]);
+        acc[row] = fmaf(scalar_to_float(x_ptr[3]), w3, acc[row]);
+        acc[row] = fmaf(scalar_to_float(x_ptr[4]), w4, acc[row]);
+        acc[row] = fmaf(scalar_to_float(x_ptr[5]), w5, acc[row]);
+        acc[row] = fmaf(scalar_to_float(x_ptr[6]), w6, acc[row]);
+        acc[row] = fmaf(scalar_to_float(x_ptr[7]), w7, acc[row]);
+      }
+    }
+  }
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    const float w = scalar_to_float(weight[w_base + in_col]);
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      if (row < rows) {
+        acc[row] = fmaf(
+            scalar_to_float(x[static_cast<int64_t>(row) * in_features + in_col]),
+            w,
+            acc[row]);
+      }
+    }
+  }
+
+  __shared__ float sdata[ROW_TILE][256];
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+    sdata[row][tid] = acc[row];
+  }
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+#pragma unroll
+      for (int row = 0; row < ROW_TILE; ++row) {
+        sdata[row][tid] += sdata[row][tid + s];
+      }
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      if (row < rows) {
+        out[static_cast<int64_t>(row) * out_features + out_col] =
+            float_to_scalar<scalar_t>(sdata[row][0]);
+      }
+    }
+  }
+}
+
+
 __global__ void dense_gemv_bf16_f32w_bf16_out_kernel(
     const uint16_t* __restrict__ x,
     const float* __restrict__ weight,
@@ -569,6 +654,33 @@ extern "C" int hipengine_dense_gemv_out_bf16(
   hipLaunchKernelGGL(
       (dense_gemv_out_kernel<uint16_t>),
       dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_rowtile_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows < 2 || rows > 4 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_rowtile_out_kernel<uint16_t, 4>),
+      dim3(static_cast<unsigned int>(out_features)),
       dim3(static_cast<unsigned int>(threads)),
       0,
       stream,

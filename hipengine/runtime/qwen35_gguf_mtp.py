@@ -24,6 +24,7 @@ from hipengine.generation.batch_scheduler import ResidentBatchScheduler
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import build_dflash_accept
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import FixedPagedKVPolicy
+from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.runtime.workspace import RuntimeWorkspace
@@ -39,6 +40,7 @@ from hipengine.speculative import (
 )
 
 _GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3)
+_GGUF_MTP_TARGET_VERIFY_MODES = ("serial_exact", "native")
 
 
 @dataclass
@@ -82,6 +84,7 @@ class Qwen35GGUFPreparedVerify:
     initial_position: int
     kv_journal_positions: tuple[int, ...]
     gpu_accept_match_cpu: bool
+    target_verify_mode: str
 
 
 @dataclass(frozen=True)
@@ -198,6 +201,24 @@ class _StateJournal:
         )
         self._capture_state_index(row + 1, stream=stream)
 
+    def capture_hidden_rows(self, hidden_rows: np.ndarray, *, stream: int = 0) -> None:
+        """Stage exact BF16 trunk rows emitted by a native block forward."""
+
+        if self.target.runner is None:
+            raise RuntimeError("GGUF target session is closed")
+        rows = np.ascontiguousarray(hidden_rows, dtype=np.float32)
+        if rows.ndim != 2 or rows.shape[1] != int(self.target.runner.hidden_size):
+            raise ValueError("native verifier trunk rows must have shape [rows, hidden_size]")
+        if rows.shape[0] <= 0 or rows.shape[0] > self.max_rows:
+            raise ValueError("native verifier trunk rows exceed journal capacity")
+        hidden_bits = np.ascontiguousarray(float_array_to_bf16_bits(rows), dtype=np.uint16)
+        copy_host_to_device(
+            DeviceBuffer(self.row_hidden.ptr, hidden_bits.nbytes),
+            host_array_ptr(hidden_bits),
+            hidden_bits.nbytes,
+            runtime=self.target.runtime,
+        )
+
     def restore_initial(self, *, stream: int = 0) -> None:
         self._restore_state_index(0, stream=stream)
         self._restore_hidden(self.initial_hidden.ptr, stream=stream)
@@ -207,6 +228,19 @@ class _StateJournal:
         if row < 0 or row >= self.max_rows:
             raise ValueError("verify commit row outside journal capacity")
         self._restore_state_index(row + 1, stream=stream)
+        self._restore_hidden(self.row_hidden.ptr + row * self.hidden_nbytes, stream=stream)
+
+    def restore_native_row(self, row: int, *, position: int, stream: int = 0) -> None:
+        """Commit a session-captured native state row and its exact trunk row."""
+
+        row = int(row)
+        if row < 0 or row >= self.max_rows:
+            raise ValueError("verify commit row outside journal capacity")
+        self.target._commit_verify_linear_state_row(
+            row,
+            position=int(position),
+            stream=int(stream),
+        )
         self._restore_hidden(self.row_hidden.ptr + row * self.hidden_nbytes, stream=stream)
 
     def hidden_rows_tensor(self, rows: int) -> Tensor:
@@ -265,7 +299,8 @@ class _StateJournal:
 class Qwen35GGUFTransactionalVerifier:
     """Shared-ABI chain verifier with journaled GGUF state/KV commit.
 
-    Target rows execute with the retained exact c=1 arithmetic. Linear-attention
+    Target rows execute either with retained exact c=1 arithmetic or the
+    explicitly selected native row-attention/block-FFN path. Linear-attention
     state and the target-hidden tap are snapshotted per verify row. Full-attention
     K/V writes form an append journal in monotonically increasing positions;
     commit publishes only the selected prefix by resetting resident span
@@ -280,15 +315,20 @@ class Qwen35GGUFTransactionalVerifier:
         max_candidate_budget: int = 3,
         backend: str = "hip_gfx1100",
         quant: str = "gguf_ud_q3_k_m",
+        target_verify_mode: str = "serial_exact",
     ) -> None:
         if int(max_candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
             raise ValueError("max_candidate_budget must be 1, 2, or 3")
         if target.runner is None or target.runtime is None:
             raise RuntimeError("GGUF target session is closed")
+        selected_verify_mode = str(target_verify_mode).strip().lower().replace("-", "_")
+        if selected_verify_mode not in _GGUF_MTP_TARGET_VERIFY_MODES:
+            raise ValueError("target_verify_mode must be 'serial_exact' or 'native'")
         self.target = target
         self.max_candidate_budget = int(max_candidate_budget)
         self.backend = str(backend)
         self.quant = str(quant)
+        self.target_verify_mode = selected_verify_mode
         self.workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=target.runtime)
         self.journal = _StateJournal.allocate(target, max_rows=self.max_candidate_budget + 1)
         self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
@@ -358,17 +398,41 @@ class Qwen35GGUFTransactionalVerifier:
         logits: list[np.ndarray] = []
         top1: list[int] = []
         try:
-            for row, (token, position) in enumerate(zip(batch.tokens, batch.positions, strict=True)):
-                result = self.target.step(
-                    int(token),
-                    position=int(position),
-                    return_logits=return_logits,
-                    span_role=batch.mode,
+            if self.target_verify_mode == "native":
+                block = self.target.verify_target_block(
+                    batch.tokens,
+                    bulk_attention_mode="native",
+                    use_wmma_prefill=False,
+                    stream=stream,
+                    capture_linear_state_rows=True,
+                    capture_pre_output_norm_hidden=True,
+                    capture_lm_head_logits=return_logits,
+                    defer_linear_state_commit=True,
                 )
-                top1.append(int(result.token_id))
+                if block is None:
+                    raise RuntimeError("native GGUF target verifier produced no host result")
+                if int(block.start_position) != initial_position:
+                    raise RuntimeError("native GGUF target verifier changed the declared root position")
+                if block.pre_output_norm_hidden is None:
+                    raise RuntimeError("native GGUF target verifier did not capture trunk hidden rows")
+                top1.extend(int(token) for token in block.token_ids)
+                self.journal.capture_hidden_rows(block.pre_output_norm_hidden, stream=stream)
                 if return_logits:
-                    logits.append(result.logits)
-                self.journal.capture_row(row, stream=stream)
+                    if block.lm_head_logits_f32 is None:
+                        raise RuntimeError("native GGUF target verifier did not capture requested logits")
+                    logits.append(block.lm_head_logits_f32)
+            else:
+                for row, (token, position) in enumerate(zip(batch.tokens, batch.positions, strict=True)):
+                    result = self.target.step(
+                        int(token),
+                        position=int(position),
+                        return_logits=return_logits,
+                        span_role=batch.mode,
+                    )
+                    top1.append(int(result.token_id))
+                    if return_logits:
+                        logits.append(result.logits)
+                    self.journal.capture_row(row, stream=stream)
 
             buffers = graph_bucket.owner.bind(batch, transaction_id=int(transaction_id))
             self._write_verify_inputs(buffers, batch, top1, graph_bucket.remaining_decode, budgets)
@@ -425,6 +489,7 @@ class Qwen35GGUFTransactionalVerifier:
                 initial_position=initial_position,
                 kv_journal_positions=tuple(int(position) for position in batch.positions),
                 gpu_accept_match_cpu=gpu_match,
+                target_verify_mode=self.target_verify_mode,
             )
             self._prepared = prepared
             return prepared
@@ -454,8 +519,16 @@ class Qwen35GGUFTransactionalVerifier:
         ):
             raise ValueError("GGUF commit plan must match GPU target accept summary")
         selected_row = int(plan.commit_rows[0])
-        self.journal.restore_row(selected_row, stream=stream)
-        self._publish_position(int(plan.commit_positions[0]) + 1, stream=stream)
+        next_position = int(plan.commit_positions[0]) + 1
+        if prepared.target_verify_mode == "native":
+            self.journal.restore_native_row(
+                selected_row,
+                position=next_position,
+                stream=stream,
+            )
+        else:
+            self.journal.restore_row(selected_row, stream=stream)
+        self._publish_position(next_position, stream=stream)
         self._synchronize(stream)
         target_hidden = self.target.last_target_hidden
         hidden_dst = Tensor.from_handle(
@@ -583,6 +656,7 @@ class Qwen35GGUFMTPDecodeSession:
         *,
         candidate_budget: int = 1,
         quant: str = "gguf_ud_q3_k_m",
+        target_verify_mode: str = "serial_exact",
         verifier: Qwen35GGUFTransactionalVerifier | None = None,
         owns_verifier: bool = True,
     ) -> None:
@@ -599,6 +673,7 @@ class Qwen35GGUFMTPDecodeSession:
             target,
             max_candidate_budget=max(_GGUF_MTP_CANDIDATE_BUDGETS),
             quant=self.quant,
+            target_verify_mode=target_verify_mode,
         )
         self.owns_verifier = bool(owns_verifier if verifier is not None else True)
 
@@ -699,6 +774,7 @@ class Qwen35GGUFMTPDecodeSession:
             prepared_top1: tuple[int, ...] = ()
             prepared_logits = np.empty((0, 0), dtype=np.float32)
             prepared_gpu_match = False
+            prepared_verify_mode = ""
             draft_tail_advanced = False
             try:
                 verify_started = time.perf_counter()
@@ -714,6 +790,7 @@ class Qwen35GGUFMTPDecodeSession:
                 prepared_top1 = prepared.target_top1
                 prepared_logits = prepared.target_logits
                 prepared_gpu_match = prepared.gpu_accept_match_cpu
+                prepared_verify_mode = prepared.target_verify_mode
                 buffer_plan = scheduler.bind_speculative_verify_buffers(plan, prepared.buffers)
                 commit = scheduler.plan_speculative_commit(buffer_plan, prepared.summary)
                 state_buffers = self.verifier.commit(prepared, commit.commit_plan)
@@ -761,6 +838,7 @@ class Qwen35GGUFMTPDecodeSession:
                 "graph_replay_count": int(bucket.replay_count),
                 "quant": self.quant,
                 "experts_per_token": experts_per_token,
+                "target_verify_mode": prepared_verify_mode,
                 "draft_tail_advanced": draft_tail_advanced,
             }
             # ``prepared`` is cleared only after the transaction is fully

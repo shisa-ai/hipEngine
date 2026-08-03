@@ -203207,3 +203207,89 @@ Vulkan local sizes verbatim will close the measured gap.
   campaign scoreboard and benchmark rollup/changelog, mark D27-F0/D27-M1
   complete, and open D27-O3 first. This is an exact losing baseline where
   applicable, not a performance win.
+
+## 2026-08-04 — Admit exact small-B dense-BF16 target row tiling
+
+### D27-O3 audit and impact admission
+
+- The production transactional verifier is still explicitly token-serial: it
+  calls `Qwen35GGUFResidentSession.step()` once for every root/draft row and
+  snapshots all Conv/GDN state after each row. The profiled B3 target window is
+  **1,472.970 / 1,590.971 ms (92.58%)** and its dense-BF16 GEMVs consume
+  **472.333 / 1,373.888 ms (34.38%)** of kernel sum. On the full natural25 B3
+  suite the corresponding target ceiling is **14.977 / 16.153 s**.
+- The dormant rows>1 verifier is not directly promotable. A real shared-resident
+  B1/B2/B3 comparison kept every top-1 and KL below `1.1e-4`, but bulk was only
+  **0.756x / 0.953x / 1.153x** scalar speed and its captured state diverged.
+  Native row-serial attention plus bulk FFN was **0.785x / 0.867x / 0.970x** and
+  also diverged. These are diagnostics, not retained rows.
+- A 64-layer native-vs-serial ladder localizes the first discrepancy to layer 0:
+  only row 0 differs, by one BF16 quantum (`max_abs=6.103515625e-05`), while rows
+  1-3 are byte-exact. Layer 1 then diverges on all rows because the recurrent
+  attention state consumes that changed row. The dense model has 112 layer
+  Q5_K/Q6_K matrices materialized as BF16; rows>1 dispatches them to the
+  reassociated `dense_prefill_gemm_out_kernel`, whereas c1 uses the 256-thread
+  `dense_gemv_out_kernel` reduction.
+- Admitted candidate: a rows 2-4 dense-BF16 row-tile kernel that loads each
+  weight once, maintains independent row accumulators, and preserves the c1
+  per-thread FMA order plus the same 256-thread LDS reduction tree. Expected
+  saving is at least 20% of complete B3 target wall if the measured 34.38%
+  dense family approaches 2x; engineering/risk is **medium**. RED requires
+  BF16 byte identity to c1 and a CPU-reference gate before model integration.
+- Lineage audit before implementation:
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` reports the known
+  parent DRIFT, including `paroquant_kernels.py` through `59195ed`; this is a
+  net-new in-tree verifier specialization, not a parent port. The retained
+  `dense_gemv_out_kernel` body remains the arithmetic oracle.
+
+### D27-O3 exact rowtile + native transactional verifier — GREEN
+
+- Add registered dense-BF16 `rowtile_out` for exactly 2-4 rows. One local256
+  block owns an output column, loads each BF16 weight once, maintains four
+  independent FP32 accumulators, and reproduces the c1 pack8 FMA sequence plus
+  stride-128..1 LDS reduction for each live row. The existing c1 GEMV and
+  reassociated prefill GEMM remain registered fallbacks; non-WMMA rows 2-4
+  select the exact rowtile through the four-axis key rather than a quant/model
+  branch.
+- RED/GREEN covers rows 2/3/4 against both NumPy and the established c1 device
+  oracle. Exact command on RX 7900 XTX/GPU1:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_dense_gemv_plan.py tests/test_gguf_linear_dispatch.py`
+  reports **75 passed**. Focused suite/parser tests report **8 passed**; Ruff,
+  py_compile, and `git diff --check` pass.
+- Direct cached timing command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/bench_dense_bf16_rowtile.py > /tmp/bench_dense_bf16_rowtile.jsonl`.
+  Across Qwen3.6-27B production shapes `17408x5120`, `5120x10240`,
+  `6144x5120`, and `5120x1024`, rows 2/3/4 improve over the old small-row
+  prefill GEMM by **3.440-7.854x** and over a multi-row c1 grid by
+  **1.091-3.077x**. Raw SHA-256 is `28de22d7...9f5633`; this same-GPU leaf
+  diagnostic is not a W7900 topline.
+- Cache-only GPU1 command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen36-dense-rowtile-trace-1785793785 -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q 'tests/test_dense_gemv_plan.py::test_dense_gemv_rowtile_is_bit_exact_to_c1_reduction_and_matches_cpu[4]'`
+  names `dense_gemv_rowtile_out_kernel<unsigned short, 4>` at local256,
+  VGPR24, LDS4096 B, scratch0, with plausible 7.760 us duration. Trace SHA-256
+  is `2472650b...786c`.
+- Wire an explicit transactional target mode: `serial_exact` remains the generic
+  default/control, while the dense campaign suite defaults to `native` and
+  exposes `--target-verify-mode serial-exact` for rollback. Native verification
+  captures per-row Conv/GDN state in the existing session buffers, stages exact
+  BF16 pre-output-norm target-hidden rows, commits the selected state/hidden/KV
+  prefix without replay, and records the route in every cycle. No backend or
+  quant conditional is added.
+- Real shared-resident GPU1 command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/qwen36_dense_bulk_compare.py`
+  makes B1/B2/B3 full logits, hidden rows, positions, and all **129/129**
+  Conv/GDN/KV/hidden buffers byte-exact to scalar execution. Target block wall
+  is `97.658 -> 93.814 ms` (**1.041x**), `146.625 -> 141.870 ms`
+  (**1.034x**), and `195.629 -> 171.820 ms` (**1.139x**). Raw SHA-256 is
+  `64c0bda4...cc363`.
+- The first complete W7900 transaction node reached the final natural provider
+  loop after all B1-B3/logit and reject/partial/full checks, then exposed a host
+  record-only bug: the new mode string was read after `prepared` had been
+  cleared on successful finish. Retain it beside the existing top1/logit scalar
+  summaries before finish. Per the focused-repair rule, rerun only the same
+  node; exact command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1**. It proves native B1-B3 full logits, rollback, reject/partial/full
+  state/KV/target-hidden commits, correction logits, and the real provider loop
+  remain byte-exact. Clean W7900 natural25 economics are next; no complete-suite
+  speed claim is made from the GPU1 component screen.
