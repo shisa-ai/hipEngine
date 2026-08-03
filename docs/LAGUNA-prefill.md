@@ -2421,6 +2421,45 @@ byte, and retain H8B **440.893 tok/s / 2,155 dispatches**, **1.566801×** behind
 matched llama.cpp HIP
 ([H8N rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
 
+Select target-only **WPF-H8O exact gfx1100 after-router least-priority
+shared/routed MoE branch concurrency**. Production remains H8B **440.893 tok/s
+/ 1,146.420-ms kernel sum / 1,166.621-ms span / 2,155 dispatches**, **1.566801×**
+behind matched llama.cpp HIP. This is not another arithmetic or kernel-body
+premise: the shared expert is dependency-independent after its normalized input
+and before the final routed/shared BF16 combine.
+
+Independently sort the committed trace by dispatch ID and bound each shared
+window after routed `weighted_lanes_sum_out` through before the first
+`gguf_bf16_add`. The **47** serial segments contain exactly **421 kernels /
+49.799391-ms sum / 51.119578-ms span**. Their complete multiset is 92 row4
+packs, 92 Q5 dequantizers, 92 H7H Q5 gate/up consumers, 48 Q6 dequantizers, 46
+regular H6U Q6 down consumers, 47 SiLU calls, and one special row5/Q8/two-Q6
+path. The one-queue trace therefore gives an exact cross-family schedule window
+without reclassifying component times.
+
+The existing runtime event protocol is sufficient and source-unchanged: record
+input-ready on the caller after router logits plus exact correction top-k; make
+a nonblocking secondary stream wait; launch the unchanged shared sequence;
+record output-ready; make the caller wait immediately before combine. W7900
+reports least/greatest priorities **(+1, −1)**. Keep gfx1100 package capability
+false at this boundary and freeze one candidate only: two process queues in
+both arms, after-router release, shared priority +1, caller default priority,
+and disable-timing events. gfx1151's retained policy is reference evidence, not
+a shared default or transferred result.
+
+Freeze RED before explicit candidate execution. Fixed C4096/M512 uses one
+warmup/arm and seven counter-rotated queue-matched pairs, requiring exact token,
+logits, hidden, KV, position, finite state, lifecycle, candidate-positive median,
+and ≥5/7 wins. The named trace must retain **2,155 total = 421 secondary + 1,734
+caller dispatches**, two queues/streams, identical kernel multiset, 24 resident
+planes, 223 packs, positive overlap, and zero compiler. Then require clean
+512/1K/4K positive medians before separate source-default RED. No eager/normal-
+priority/queue-count/layer/length/event-boundary/rewrite/recompile/favorable-
+rerun salvage. Perfectly hiding the measured serial span yields only a
+**461.194 tok/s (+4.605%)** zero-contention ceiling, explicitly not a result or
+parity solution
+([H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
