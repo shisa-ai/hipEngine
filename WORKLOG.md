@@ -203065,3 +203065,53 @@ Vulkan local sizes verbatim will close the measured gap.
   both focused tests pass; the complete decode-graph plus benchmark-metadata
   bundle passes **12/12**. Focused Ruff, py_compile, and `git diff --check` pass.
   The clean canonical W7900 rerun is the next validation and measurement.
+
+### Dense 27B graph validation + matched natural-suite harness — GREEN
+
+- The clean post-fix W7900 rerun at `a972ef820` completes all four persistent
+  graph windows. Exact route: repeated token `9707`, 512 prompt tokens, one
+  untimed decode warmup, 128 timed graph transitions, one warmup run, three
+  measured resets, bulk/WMMA prefill, GEMV one-step graph decode, cached-only
+  TheRock `gfx1100`. The retained graph is first captured in **49.44 ms**, then
+  reused after three exact state reconstructions. All final IDs are `9707`, all
+  final logits are finite, and memory returns to zero after close.
+- Validation samples are prefill **51.3322 / 50.5979 / 49.9142 tok/s** (median
+  **50.5979**) and decode **19.5750 / 19.5654 / 19.5271 tok/s** (median
+  **19.5654**, 0.13% stdev), with 26.12280 GiB tracked peak and 27.33936 GiB
+  sampled HIP use. Artifact `/tmp/hipengine-qwen36-27b/hipengine-w7900-ar-512x128.json`
+  has SHA-256 `885135...a25`. This validates the graph rearm fix, but it will be
+  rerun after the benchmark-only natural-suite commit so final AR and MTP rows
+  share one clean revision; it is not yet promoted to the rollup.
+- Add `scripts/qwen36_dense_gguf_suite.py`, a campaign-specific true-AR plus
+  transactional-MTP harness over the committed 10-prompt category fixture. It
+  loads target/provider once, mirrors the Qwen chat template with reasoning off,
+  warms AR and each selected B1-B3 route, records full/train/fixed-heldout and
+  category aggregates, and requires every MTP token stream plus GPU/CPU accept
+  summary to match true scalar AR.
+- Correct the comparison numerator at the harness boundary without changing the
+  existing runtime result schema: the first visible output comes from prefill,
+  so natural25 reports **24 timed transitions**, not 25 outputs divided by the
+  decode wall. The artifact retains the old visible-output numerator only as an
+  explicitly labeled legacy diagnostic. It separately reports proposed/accepted
+  drafts, accepted/output, accepted/transition, target passes/rows, engine decode
+  wall, request wall, transition-normalized engine/client throughput, and exact
+  token hashes.
+- Stage accounting is complete by construction and independently timed around
+  real provider/verifier calls:
+  `decode = proposal + target_verify + target_commit_finish + scheduler/accept/replay/host residual`.
+  Optional nested ROCTX markers expose generation, proposal/update,
+  target-verify, commit, finish, and rollback windows for a cache-only leaf
+  `rocprofv3` trace; no parent process is profiled.
+- RED: the suite module was absent. GREEN: parser, first-output transition
+  contract, fixed train/heldout/category aggregation, weighted engine/client
+  walls, acceptance denominators, strict committed-suite claim eligibility,
+  stage reconciliation, and marker wrappers pass **5/5** focused tests. Ruff,
+  py_compile, CLI help, and `git diff --check` pass.
+- Source-dirty W7900 one-prompt/B1/5-output smoke is exact for
+  `[71093,12305,198,727,10562]`, GPU/CPU accept exact, and reconciles all four
+  timed transitions. It measures **20.617 AR / 18.484 MTP tok/s (0.8966x)** with
+  perfect 2/2 draft acceptance; MTP's 216.40 ms decode wall is 12.10 ms proposal,
+  201.35 ms target verify, 1.95 ms commit/finish, and 1.00 ms residual. This is a
+  harness gate only, not retainable economics. It already shows why D27-M1 must
+  profile target verification: the exact serial B1 verifier executes four target
+  rows for four visible transitions and consumes 93.04% of cycle wall.
