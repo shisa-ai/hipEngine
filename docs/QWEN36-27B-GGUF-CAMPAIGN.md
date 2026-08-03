@@ -419,6 +419,26 @@ zero after close). B1/B2 remain effectively tied at ~0.921x AR, so D27-O3
 continues from a refreshed profile rather than declaring budget victory.
 Artifact: `benchmarks/results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json`.
 
+The second D27-O3 projection win is also retained. An exact local32 resident-
+Q4_K pack8 rowtile loads each gate/up weight once across verifier rows 2-4
+while preserving the original per-row FMA/shuffle/BF16 boundary. The first clean
+screen at `2fadf425c` was correctly blocked: the kernel was dormant because the
+native target verifier had not entered its small-row dispatch session. The
+routed `4181b85fb` transaction gate observes all `{2,3,4}` rows and remains
+byte-exact for logits, Conv/GDN/KV/hidden state, commits, and provider output.
+
+Clean W7900 natural25 improves the prior native B1/B2/B3
+**18.751/18.752/17.983 -> 20.634/21.752/21.467 tok/s**
+(**+10.04%/+16.00%/+19.38%**), with target verify down
+10.16%/15.14%/17.91%. Every full/train/heldout/category row improves
+(**+9.78% to +19.94%**); IDs and acceptance remain exact, true AR is flat at
+20.372 tok/s, and peak remains 28.995 GiB. All three budgets now beat own AR;
+B2 is the clear exact winner at **1.0678x**. The retained B3 re-profile still
+assigns 89.57% of complete wall to target verify and promotes the serial exact
+dense-BF16 GEMV (**238.766 ms / 19.63%** of wall) as the next single-kernel
+audit. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -432,7 +452,7 @@ Artifact: `benchmarks/results/2026-08-04-qwen36-27b-native-target-rowtile-retain
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | first win retained; B1/B2 ~0.921x AR, refreshed profile next |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | two wins retained; exact B2 1.0678x AR, serial dense-BF16 GEMV next |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

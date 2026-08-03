@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "status": "retained_exact_mtp_speedup_over_own_ar_still_below_vulkan",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_resident_q4_pack8_rowtile_w7900",
+  "timestamp": "2026-08-03T22:58:55.320127+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "hipengine_commit": "4181b85fb9ebd909d26fef4434ae89d9d799f0de",
+    "baseline_commit": "14bcea43b14d7fba33c57eb67d3906cd2edadeea",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "max_tokens_visible": 25,
+    "timed_transitions": 240,
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "reasoning": "off"
+    },
+    "warmups": 1,
+    "repetitions": 1,
+    "target_verify_mode": "native",
+    "rollback_control": "serial-exact",
+    "timing": "first output from prefill; 24 timed decode transitions per prompt; complete proposal/verify/commit/residual wall"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-4181b85fb/natural25-native-q4-rowtile-b1-b3.json",
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json",
+    "route": "native exact dense-BF16 rowtile before resident Q4 row reuse",
+    "true_ar_tok_s": 20.362319108682243,
+    "budgets": {
+      "1": {"decode_seconds": 12.799231415148824, "decode_tok_s": 18.751125924322494, "mtp_vs_true_ar": 0.9208737877173944, "target_verify_seconds": 11.704838204896078},
+      "2": {"decode_seconds": 12.798442585859448, "decode_tok_s": 18.752281645984617, "mtp_vs_true_ar": 0.9209305455776339, "target_verify_seconds": 11.67068435717374},
+      "3": {"decode_seconds": 13.346011083107442, "decode_tok_s": 17.982901295786963, "mtp_vs_true_ar": 0.8831460306561679, "target_verify_seconds": 12.17549460218288}
+    },
+    "tracked_peak_gib": 28.995120968669653
+  },
+  "integration_red": {
+    "commit": "2fadf425c6735f48200ee521d2fc73384c5d7423",
+    "reason": "native target verification did not enter native_batch_decode_session, so the exact resident-pack8 rowtile remained dormant",
+    "true_ar_tok_s": 20.36150048979918,
+    "budget_tok_s": {"1": 18.784873006211264, "2": 18.820614474245268, "3": 18.04809474788219},
+    "delta_percent_vs_baseline": {"1": 0.1799736294501475, "2": 0.3643974080097312, "3": 0.36253022258705414},
+    "decision": "blocked integration screen; route and assert execution before promotion"
+  },
+  "candidate": {
+    "load_seconds_excluded": 171.36628103395924,
+    "true_ar_tok_s": 20.371926035302575,
+    "true_ar_delta_percent": 0.04717992370641966,
+    "budgets": {
+      "1": {
+        "decode_seconds": 11.6310739654582,
+        "decode_wall_delta_percent": -9.126778099410139,
+        "decode_tok_s": 20.63437999902233,
+        "decode_tok_s_delta_percent": 10.043418631502155,
+        "mtp_vs_true_ar": 1.0128831198024648,
+        "ratio_delta_percent": 9.991524714058553,
+        "target_verify_seconds": 10.515746798133478,
+        "target_verify_delta_percent": -10.158973459925392
+      },
+      "2": {
+        "decode_seconds": 11.033332282677293,
+        "decode_wall_delta_percent": -13.791602308958772,
+        "decode_tok_s": 21.752267932400457,
+        "decode_tok_s_delta_percent": 15.997980102107846,
+        "mtp_vs_true_ar": 1.0677570640451906,
+        "ratio_delta_percent": 15.943278151933038,
+        "target_verify_seconds": 9.903234863188118,
+        "target_verify_delta_percent": -15.144351778301724
+      },
+      "3": {
+        "decode_seconds": 11.179839609423652,
+        "decode_wall_delta_percent": -16.230853250418743,
+        "decode_tok_s": 21.467213160884747,
+        "decode_tok_s_delta_percent": 19.375693653582402,
+        "mtp_vs_true_ar": 1.053764534766332,
+        "ratio_delta_percent": 19.31939885223697,
+        "target_verify_seconds": 9.994505045702681,
+        "target_verify_delta_percent": -17.912944219031402
+      }
+    },
+    "numerically_best_budget": 2,
+    "best_decode_tok_s": 21.752267932400457,
+    "best_mtp_vs_true_ar": 1.0677570640451906,
+    "tracked_peak_gib": 28.995120968669653,
+    "tracked_peak_delta_gib": 0.0,
+    "allocations_after_close": 0
+  },
+  "cross_scope_retention": {
+    "all_full_train_heldout_rows_improve": true,
+    "all_four_category_rows_improve_at_every_budget": true,
+    "all_scope_decode_improvement_percent_range": [9.77572298902738, 19.938869730616982],
+    "by_budget": {
+      "1": {"full_percent": 10.043418631502155, "train_percent": 10.15383719218843, "heldout_percent": 9.886953439312096, "category_percent_range": [9.77572298902738, 10.63573783887839]},
+      "2": {"full_percent": 15.997980102107846, "train_percent": 16.217921029295358, "heldout_percent": 15.699958817118898, "category_percent_range": [15.725540109882097, 16.344737769319863]},
+      "3": {"full_percent": 19.375693653582402, "train_percent": 19.323609752631388, "heldout_percent": 19.44114131583674, "category_percent_range": [18.988657204295613, 19.938869730616982]}
+    }
+  },
+  "correctness": {
+    "all_250_visible_ids_match_true_ar_at_each_budget": true,
+    "all_candidate_ids_match_prior_native_route": true,
+    "all_acceptance_ledgers_match_prior_native_route": true,
+    "all_gpu_accept_summaries_match_cpu": true,
+    "stage_reconciliation_exact_by_construction": true,
+    "native_b1_b2_b3_transaction_state_kv_hidden_provider_oracle_passed": true,
+    "production_route_observed_rows": [2, 3, 4],
+    "rowtile_bf16_outputs_bit_exact_to_pack8_device_oracle": true,
+    "kernel_cpu_reference_passed": true
+  },
+  "kernel_evidence": {
+    "variant": "linear/gguf_q4_k/pack8_rowtile_bf16_bf16_out",
+    "symbol": "gguf_q4_k_pack8_rowtile_out_kernel<unsigned short,unsigned short,4>",
+    "resource": {"workgroup": 32, "vgpr": 96, "sgpr": 128, "lds_bytes": 512, "scratch_bytes": 0},
+    "production_shape_gpu1_pair_speedup_rows_2_3_4": [1.715, 2.353, 3.114],
+    "production_shape_gpu1_single_speedup_rows_2_3_4": [1.219, 1.236, 1.296],
+    "note": "GPU1 is an RX 7900 XTX; component ratios are same-GPU diagnostics, while promotion uses the complete W7900 suite"
+  },
+  "memory_tradeoff": {
+    "new_incremental_bytes": 0,
+    "tracked_peak_gib": 28.995120968669653,
+    "allocations_after_close": 0,
+    "note": "the Q4 rowtile reuses existing weights and scratch; the retained +0.603 GiB belongs to native per-row transaction state from the prior optimization"
+  },
+  "refreshed_profile": {
+    "commit": "4181b85fb9ebd909d26fef4434ae89d9d799f0de",
+    "protocol": "one natural code_merge_intervals B3 leaf; no warmup; hermetic TheRock rocprofv3 kernel/marker/copy trace; profiler timings are diagnostic only",
+    "host_wall_ms": 1216.0799119155854,
+    "device_activity_span_ms": 1215.568685,
+    "kernel_sum_ms": 794.523002,
+    "queue_gaps_and_copy_overlap_ms": 421.045683,
+    "host_outside_device_span_ms": 0.5112269155854392,
+    "target_verify_ms": 1089.2155223991722,
+    "target_verify_share_percent": 89.56775880652657,
+    "largest_next_kernel": {
+      "symbol": "dense_gemv_out_kernel<unsigned short>",
+      "duration_ms": 238.766002,
+      "dispatches": 2240,
+      "complete_wall_share_percent": 19.63402878932479,
+      "kernel_sum_share_percent": 30.0514901895817
+    },
+    "q4_target_family_ms": 274.233978,
+    "q4_rowtile_symbol_ms": 136.538551,
+    "serial_q4_symbol_ms": 147.212184,
+    "next_admission": "audit an exact virtual-256 local32 dense-BF16 owner or structural attention projection batching; do not repeat rejected simple thread-count/shuffle substitutions"
+  },
+  "decision": {
+    "action": "keep_and_promote_resident_q4_pack8_rowtile_in_native_dense_target_verification",
+    "reason": "complete wall, target verify, and MTP/AR improve at every budget; every full/train/heldout/category row improves; all exactness and lifecycle gates pass; memory is unchanged",
+    "selected_budget": 2,
+    "limitations": [
+      "best exact B2 is 1.0678x own AR but remains far below llama.cpp Vulkan B3 at 68.082 tok/s",
+      "the next optimization must be selected from the refreshed post-rowtile profile"
+    ]
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/final-4181b85fb/natural25-native-q4-rowtile-b1-b3.json": "c8d6b0235b0aefa09d822527e9a2cf98d48644bf64a2b649289132fd56cdc208",
+    "/tmp/hipengine-qwen36-27b/final-2fadf425c/natural25-native-q4-rowtile-b1-b3.json": "ee3c349a7adbdf414aed915fef19bcfd85f3c4b6ab1cdff011355733fa480766",
+    "/tmp/qwen36-routed-q4-rowtile-compare.json": "8d2d789c4239f165f19dc5d31d2c94de376c210b2d55b0d0b5e17095f30a9c84",
+    "/tmp/bench_qwen36_q4_pack8_rowtile.jsonl": "b73681807e7901b1c53e1d7fe7ae3274ed9e71b0608074410f252a1a6e10b1ba",
+    "/tmp/qwen36-q4-pack8-rowtile-trace/rowtile_kernel_trace.csv": "6ff618f60a74c6c51195772f131bed36705f459a95c8e8ad52e87ce0a27673e4",
+    "/tmp/hipengine-qwen36-27b/final-4181b85fb/profile-native-q4-rowtile-mtp-b3-hermetic/mtp-b3_kernel_trace.csv": "eedc0b63d627cc333dfbed5ee467e71a7d69e627f9a17563ef96507f7b8a9786",
+    "/tmp/hipengine-qwen36-27b/final-4181b85fb/profile-native-q4-rowtile-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv": "5a801289bc9897ecc0c6125a6a8823786e9ed076b0e144b8a80e5de2285526c7",
+    "/tmp/hipengine-qwen36-27b/final-4181b85fb/profile-native-q4-rowtile-mtp-b3-hermetic/summary.json": "0c961438cf1911fc7e5256cf0144e3b5ac4fb1e2de566b82d26099d884ccc6d2",
+    "/tmp/hipengine-qwen36-27b/final-4181b85fb/profile-native-q4-rowtile-mtp-b3-hermetic/suite.json": "03414e830464de8aa5f160bf216ab93a64778ace6ea3d57cfa022429d2b997bf"
+  }
+}

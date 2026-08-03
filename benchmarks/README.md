@@ -4642,6 +4642,36 @@ returns to zero. hipEngine MTP remains below own AR and Vulkan B3, so D27-O3
 continues from a refreshed profile. Artifact:
 [`2026-08-04-qwen36-27b-native-target-rowtile-retained.json`](results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json).
 
+#### Qwen3.6-27B exact resident-Q4 verifier rowtile, W7900/gfx1100
+
+Clean hipEngine `4181b85fb` keeps the prior native transaction/state route and
+reuses each resident Q4_K pack8 gate/up weight across exactly 2-4 verifier rows.
+The local32 kernel preserves every pack8 FMA, shuffle, and BF16 output bit;
+serial-exact, row-one, rows above four, registry misses, and the explicit
+rowtile opt-out remain exact fallbacks.
+
+| Route | Prior native rowtile | Native + resident Q4 rowtile | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.362 tok/s | **20.372 tok/s** | +0.047% | 1.0000x | n/a |
+| B1 | 18.751 tok/s | **20.634 tok/s** | **+10.04%** | **1.0129x** | **-10.16%** |
+| B2 | 18.752 tok/s | **21.752 tok/s** | **+16.00%** | **1.0678x** | **-15.14%** |
+| B3 | 17.983 tok/s | **21.467 tok/s** | **+19.38%** | **1.0538x** | **-17.91%** |
+
+Every full/train/heldout row improves, as does every category at every budget
+(**+9.78% to +19.94%**). All 250 IDs per budget, acceptance ledgers, GPU/CPU
+accept summaries, and state/KV/hidden/provider oracles remain exact. The real
+transaction gate observes rowtile rows `{2,3,4}`. Peak stays **28.995 GiB**
+with zero allocations after close, so this optimization adds no memory beyond
+the prior native-state tradeoff. B2 is now a clear exact winner at **1.0678x**
+own AR, although it remains far below Vulkan B3 at 68.082 tok/s.
+
+The refreshed retained B3 profile assigns **89.57%** of wall to target verify.
+The next largest single kernel is the still-serial exact dense-BF16 GEMV at
+**238.766 ms / 19.63%** of complete wall; a new candidate must preserve its
+virtual 256-thread FMA/reduction tree rather than repeat rejected thread-count
+or naive shuffle substitutions. Artifact:
+[`2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`](results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
@@ -4768,6 +4798,7 @@ and was not the gfx1100 topline. Artifact:
 Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json),
 [Qwen3.6-27B hipEngine dense baseline](results/2026-08-04-qwen36-27b-hipengine-baseline.json),
 [Qwen3.6-27B exact native target rowtile](results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json),
+[Qwen3.6-27B exact resident-Q4 verifier rowtile](results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
 [current W7900 hipEngine `llama-compat` baseline](results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json),
