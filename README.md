@@ -1247,6 +1247,21 @@ rule forbids a post-screen 143-call subset, so no H8D target, RED, runtime, or
 dispatches**
 ([H8D rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
 
+**WPF-H8E quality-selected F32 hipBLASLt attention algorithms are rejected at
+the complete quality gate.** A source-unchanged synthetic screen enumerates all
+**4×4 QK/PV heuristics** over eight global/SWA shapes: all **128** combinations
+are finite and each shape has four numerical classes. A fixed closest-output
+rule changes five of six H5B mappings and models exact→candidate
+**109.065→85.822 ms** by HIP events. Matched C4096/M512 then reaches token2930,
+KL **0.000231**, deterministic repeat, and warmed **440.193→445.968 tok/s**.
+The binding 18-prompt/**576-step** gate executes all **10,512** expected
+candidate stacks but reaches maximum KL **0.391103 > 0.05** at **563/576**
+top-1. Diagnostic suite prefill improves **328.443→429.801 tok/s (1.3086×)**,
+but is not retainable. Add no target, RED, runtime map, or source policy; do not
+favorably rerun another numerical class. Production remains H8B **440.893
+tok/s / 2,155 dispatches**
+([H8E rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target

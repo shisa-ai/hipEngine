@@ -3363,6 +3363,23 @@ skip the 576-step quality lane, and retain H8B **440.893 tok/s / 2,155
 dispatches**
 ([H8D rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
 
+Reject **WPF-H8E synthetic-quality-selected F32 hipBLASLt attention** without
+restoring the old H5B runtime map. Enumerate all **128 = 8 shapes × 4 QK × 4
+PV** zero-workspace combinations on fixed synthetic operands. Every combination
+is finite/primitive-green and each shape exposes four numerical classes. The
+prospective closest-output-then-fastest-wall rule changes five of six H5B
+indices and models **109.065→85.822 ms event / 86.427-ms wall-proxy**. Matched
+C4096/M512 is deterministic at token2930, top-1 100%, and KL **0.000231**.
+
+The binding 18-prompt/**576-step** lane observes exactly **10,512** candidate
+stacks and clean lifecycle, but fails every category's KL ceiling: code/general
+en/general ja/mixed maxima are **0.101711/0.201151/0.391103/0.178258**. Suite
+top-1 is **563/576 (97.743%)**. Diagnostic prefill improves
+**328.443→429.801 tok/s (1.3086×)**, but quality failure forbids a target, RED,
+algorithm map, owner, or source promotion. Do not try another numerical class
+post-result; retain H8B **440.893 tok/s / 2,155 dispatches**
+([H8E rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
