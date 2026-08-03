@@ -1275,6 +1275,19 @@ is target/ceiling evidence only, not a speed claim: freeze the complete
 prompt, token, route, length, or favorable-rerun salvage
 ([H8F target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8e-resident-shared-q5-f32-cache-target.json)).
 
+**WPF-H8F is rejected by its immutable clean-length gate.** The Python-only
+owner passes all **116/116** complete-plane comparisons, KL0 and exact
+logits/**48/48** hidden boundaries/KV/repeat, and named tracing proves **24+92**
+setup producers followed by **0** shared request producers, unchanged **46**
+shared packs/**92** H7H consumers, and **2,155→2,063** dispatches. Fixed
+C4096/M512 improves **439.301→439.811 tok/s (+0.1162%, 5/5)**. The binding
+first 512/1K/4K run improves 512 **406.734→408.125 (+0.3421%)** but regresses
+1K **322.929→322.700 (-0.0710%)** and 4K **198.6149→198.6115 tok/s
+(-0.00171%)**. The no-length-subset/no-rerun rule removes the owner, registry,
+capabilities, backend exclusion, and RED test; H8B remains production at
+**440.893 tok/s / 2,155 dispatches**, **1.56680×** behind matched llama.cpp HIP
+([H8F rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-resident-shared-q5-f32-cache-rejected.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
