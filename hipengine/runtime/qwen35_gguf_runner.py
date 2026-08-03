@@ -13023,7 +13023,11 @@ class Qwen35GGUFResidentSession:
             block_wmma_prefill = gguf_wmma_prefill_enabled(
                 self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
             )
-            with wmma_prefill_session(block_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+            with (
+                wmma_prefill_session(block_wmma_prefill),
+                gemv_decode_session(self.use_gemv_decode),
+                native_batch_decode_session(bulk_attention_mode == "native"),
+            ):
                 for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                     if sync_stages:
                         runtime.device_synchronize()
