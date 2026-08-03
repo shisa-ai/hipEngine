@@ -2132,6 +2132,22 @@ length, partition, resource-rewrite, threshold, recompile, or favorable-rerun
 subset is admissible
 ([H8I target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json)).
 
+Reject H8I at the first binding all-role timing gate. Cache-only GREEN passes
+**5/5** across every role and rows1/7/8/9/17/33/M512: partition accumulations
+match an independent `fmaf`/wave32 oracle bit-for-bit, final F32/BF16 bytes and
+activation planes are exact, poison/finiteness/lifecycle pass, and no compiler
+process executes. Metadata/runtime tracing names all **24** stages on one
+queue/stream at local32, zero LDS/private/scratch/spills, and VGPR maxima
+**80/200/168/200/168/168**, within every frozen ceiling.
+
+Actual-weight H7G/H7H→H8I timing loses both clocks for all six roles. The
+weighted **188-call** aggregate is **222.555→289.013 ms event (+29.861%,
+0.770052×)** and **225.438→286.922 ms wall (+27.273%, 0.785712×)**. Honor the
+no-role/dtype/shape/partition/rewrite/recompile/rerun rule: skip runtime,
+state/topology, length, and source gates; remove all candidate and RED surfaces;
+retain H8B **440.893 tok/s / 2,155 dispatches**
+([H8I rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

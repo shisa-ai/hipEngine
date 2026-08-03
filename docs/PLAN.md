@@ -3459,6 +3459,15 @@ and bind all six roles plus the weighted aggregate to exactness, first-object
 resources, and both-clock wins without subset/rewrite/recompile/rerun salvage
 ([H8I target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8h-streamed-q5-partitions-target.json)).
 
+Reject H8I after exactness and physical admission. All **24** local32 stages
+are partition/final-bit exact, LDS/private/scratch/spill-free, and within their
+VGPR ceilings, but every actual-weight role loses both clocks. The weighted
+188-call aggregate regresses **222.555→289.013 ms event (+29.861%)** and
+**225.438→286.922 ms wall (+27.273%)**. Apply the no-subset/no-rerun rule,
+remove all candidate/RED surfaces, skip owner/state/length/source work, and
+retain unchanged H8B **440.893 tok/s / 2,155 dispatches**
+([H8I rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-stream-ordered-q5-partitions-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
