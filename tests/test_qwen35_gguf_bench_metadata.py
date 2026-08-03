@@ -71,6 +71,41 @@ def test_decode_graph_disabled_reason_tracks_production_graph_capability() -> No
     assert bench._decode_graph_disabled_reason(HostEmbeddingGraphSession(), requested=True) == "host_token_embedding"
 
 
+def test_rearm_reused_decode_graph_resets_window_and_device_position() -> None:
+    calls: list[object] = []
+
+    class Graph:
+        def rearm_replay_window(self) -> None:
+            calls.append("rearm")
+
+    class Runtime:
+        def stream_create(self) -> int:
+            calls.append("create")
+            return 17
+
+        def stream_synchronize(self, stream: int) -> None:
+            calls.append(("sync", stream))
+
+        def stream_destroy(self, stream: int) -> None:
+            calls.append(("destroy", stream))
+
+    class Session:
+        position = 641
+
+        def _set_full_attention_position_device(self, position: int, *, stream: int) -> None:
+            calls.append(("position", position, stream))
+
+    bench._rearm_reused_decode_graph(Session(), Graph(), Runtime())
+
+    assert calls == [
+        "rearm",
+        "create",
+        ("position", 641, 17),
+        ("sync", 17),
+        ("destroy", 17),
+    ]
+
+
 def test_gguf_tensor_inventory_hash_is_stable_and_metadata_sensitive() -> None:
     first = _model_info(
         _tensor("token_embd.weight", offset=0, data_offset=4096),

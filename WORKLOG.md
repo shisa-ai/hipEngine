@@ -203042,3 +203042,26 @@ Vulkan local sizes verbatim will close the measured gap.
   tests, WORKLOG conflict check, and `git diff --check` pass. Update the kernel
   catalog and campaign; D27-F2 is complete, while D27-F0 primary AR gates and
   D27-M1 reconciled hipEngine profiles remain next.
+
+### Dense 27B canonical AR gate: persistent graph rearm blocker — FIXED
+
+- The first clean W7900 512/128 attempt at commit `28392229a` intentionally used
+  one persistent resident session, one warmup, three measured resets, and a
+  retained one-step decode graph. It stopped before emitting an artifact on the
+  second replay with `ValueError: cumulative graph replay exceeds the declared
+  transition window`; therefore it produced **no performance result**.
+- Root cause: `qwen35_gguf_bench.py` correctly reconstructed the same target
+  state with `session.reset()` plus identical prefill/warmup and reset the device
+  position scalar, but it did not reset the retained graph's host-side
+  `replayed_steps`. The graph remained capped at the first run's 128 transitions.
+- Add an explicit `Qwen35GGUFDecodeGraph.rearm_replay_window()` contract for
+  non-recording graphs only. It requires the restored session cursor to equal the
+  capture cursor, rejects recording graphs whose device output index remains
+  stateful, and resets only host replay accounting. The persistent benchmark
+  calls a focused helper that rearms before republishing the device position.
+  Arbitrary rollback/reset reuse remains forbidden: the caller must reconstruct
+  recurrent, KV, hidden, and token state exactly before rearming.
+- RED: the graph and benchmark-helper tests failed on the missing APIs. GREEN:
+  both focused tests pass; the complete decode-graph plus benchmark-metadata
+  bundle passes **12/12**. Focused Ruff, py_compile, and `git diff --check` pass.
+  The clean canonical W7900 rerun is the next validation and measurement.
