@@ -3504,6 +3504,16 @@ Forbid alternate rowbatch compilation, subsets, rewrites, recompiles, and
 favorable reruns
 ([H8K target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json)).
 
+Reject **WPF-H8K** at the named-trace resource gate. Exact edge/CPU/state gates
+and first-object physical bounds pass: metadata **VGPR70 / SGPR58 / LDS192 /
+spill0**, **4,916 B / 882 slots**, and the frozen halved instruction counts.
+The natural-M512 trace has exact **45 H8K + 2 IQ4 / 2,155 dispatches**, one
+queue/stream, runtime-VGPR72, and scratch0, but runtime LDS is **512 > frozen
+256 B**. Honor the no-resource-gate-rewrite rule: skip all-layer timing and
+runtime/source work, remove candidate plus RED, and retain H6T/H8B production
+**440.893 tok/s**
+([H8K rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-rowbatch4-triple-output-runtime-lds-rejected.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
