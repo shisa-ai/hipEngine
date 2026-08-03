@@ -152,7 +152,9 @@ superseded by its zero-of-six both-clock timing rejection in
 [`2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json).
 The clean post-H8N rerank and target-only H8O exact gfx1100 after-router,
 least-priority shared/routed MoE concurrency contract is recorded in
-[`2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json`](results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json).
+[`2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json`](results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json),
+superseded by its queue-matched fixed-M512 **-0.4765%, 0/7-win** rejection in
+[`2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json`](results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json).
 The standalone H7E IQ3 two-plane leaf and its complete-quality runtime
 rejection are also summarized below; the rejection packet is
 [`2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json`](results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json),

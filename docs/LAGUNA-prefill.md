@@ -2421,44 +2421,34 @@ byte, and retain H8B **440.893 tok/s / 2,155 dispatches**, **1.566801×** behind
 matched llama.cpp HIP
 ([H8N rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
 
-Select target-only **WPF-H8O exact gfx1100 after-router least-priority
-shared/routed MoE branch concurrency**. Production remains H8B **440.893 tok/s
-/ 1,146.420-ms kernel sum / 1,166.621-ms span / 2,155 dispatches**, **1.566801×**
-behind matched llama.cpp HIP. This is not another arithmetic or kernel-body
-premise: the shared expert is dependency-independent after its normalized input
-and before the final routed/shared BF16 combine.
+Reject **WPF-H8O exact gfx1100 after-router least-priority shared/routed MoE
+branch concurrency** at its first binding full-model gate. The executed schedule
+is exactly the frozen candidate: `GPU_MAX_HW_QUEUES=2` in both arms, serial
+control versus after-router concurrent candidate, least-priority +1 shared
+stream, default caller priority, and two disable-timing events. Model load and
+H8A setup are excluded; both arms share the same resident weights and exact
+24-plane sidecar, and every request uses a fresh session.
 
-Independently sort the committed trace by dispatch ID and bound each shared
-window after routed `weighted_lanes_sum_out` through before the first
-`gguf_bf16_add`. The **47** serial segments contain exactly **421 kernels /
-49.799391-ms sum / 51.119578-ms span**. Their complete multiset is 92 row4
-packs, 92 Q5 dequantizers, 92 H7H Q5 gate/up consumers, 48 Q6 dequantizers, 46
-regular H6U Q6 down consumers, 47 SiLU calls, and one special row5/Q8/two-Q6
-path. The one-queue trace therefore gives an exact cross-family schedule window
-without reclassifying component times.
+Correctness is complete. One all-48-boundary warmup per arm and all 14 timed
+requests preserve next-token/logit bits, complete logits, final/post hidden,
+all hidden boundaries, complete K/V plus every `KVLiveSpans` field, position511,
+token2930, finiteness, **161,120,256-byte** workspace, **600,141,856-byte** total
+scratch, and session/owner lifecycle. No compiler process appears.
 
-The existing runtime event protocol is sufficient and source-unchanged: record
-input-ready on the caller after router logits plus exact correction top-k; make
-a nonblocking secondary stream wait; launch the unchanged shared sequence;
-record output-ready; make the caller wait immediately before combine. W7900
-reports least/greatest priorities **(+1, −1)**. Keep gfx1100 package capability
-false at this boundary and freeze one candidate only: two process queues in
-both arms, after-router release, shared priority +1, caller default priority,
-and disable-timing events. gfx1151's retained policy is reference evidence, not
-a shared default or transferred result.
+Performance fails both immutable admission checks. Control samples are
+**441.818/439.866/440.516/438.604/437.824/436.732/436.462 tok/s**; candidate
+samples are **438.701/438.148/437.629/436.514/435.445/436.097/434.196**. Median
+serial control→candidate is **438.603566→436.513735 tok/s (-0.476474%,
+0.995235×)** with **0/7** wins versus required positive median and ≥5/7.
 
-Freeze RED before explicit candidate execution. Fixed C4096/M512 uses one
-warmup/arm and seven counter-rotated queue-matched pairs, requiring exact token,
-logits, hidden, KV, position, finite state, lifecycle, candidate-positive median,
-and ≥5/7 wins. The named trace must retain **2,155 total = 421 secondary + 1,734
-caller dispatches**, two queues/streams, identical kernel multiset, 24 resident
-planes, 223 packs, positive overlap, and zero compiler. Then require clean
-512/1K/4K positive medians before separate source-default RED. No eager/normal-
-priority/queue-count/layer/length/event-boundary/rewrite/recompile/favorable-
-rerun salvage. Perfectly hiding the measured serial span yields only a
-**461.194 tok/s (+4.605%)** zero-contention ceiling, explicitly not a result or
-parity solution
-([H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
+Honor the no eager/normal-priority/queue-count/layer/length/event-boundary/
+schedule/rewrite/recompile/favorable-rerun rule. Skip the named trace, clean
+512/1K/4K transfer, and source-default RED; delete the candidate descriptor and
+RED, restore package/refactor bytes exactly, keep all gfx1100 concurrency
+capabilities false, and retain H8B production **440.893 tok/s / 1,146.420-ms /
+2,155 dispatches**, **1.566801×** behind matched llama.cpp HIP
+([H8O rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json) ·
+[H8O target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
 
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned

@@ -1450,18 +1450,18 @@ rewrite/recompile/rerun rule, remove candidate plus RED, and retain H8B
 ([H8N rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q5-twin-team-weight-staging-rejected.json)).
 
 **WPF-H8O exact gfx1100 after-router least-priority MoE branch concurrency is
-the next target-only schedule.** A source-unchanged replay of the clean H8B
-trace isolates the 47 serial shared-expert windows exactly: **421 dispatches /
-49.799-ms kernel sum / 51.120-ms span**, chiefly 92 Q5 gate/up and 46 Q6 down
-consumers plus their exact producers, packs, SiLU, and one special layer. W7900
-exposes HIP priorities **(+1, −1)** and the generic runtime already has the
-input/output event protocol, but all three gfx1100 package capabilities remain
-false. Perfectly hiding the serial span would model only **440.893→461.194
-tok/s (+4.605%)**; that is a zero-contention ceiling, not a speed result. Freeze
-RED before any explicit execution or policy change, then require queue-matched
-complete-state exact A/B, a same-2,155-dispatch two-queue trace, fixed M512 and
-512/1K/4K wins without schedule/priority/queue/length/rerun salvage
-([H8O target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
+rejected at its binding fixed gate.** The exact two-queue schedule remains
+byte-identical across all 48 hidden boundaries, complete logits, final/post
+hidden, K/V plus `KVLiveSpans`, token 2930, and lifecycle, with zero compiler
+activity. It nevertheless loses every matched pair: serial control→candidate is
+**438.604→436.514 tok/s (-0.4765%, 0/7 wins)** versus the required positive
+median and ≥5/7. Honor the frozen no-schedule/priority/queue/boundary/length/
+rerun salvage rule: skip trace and 512/1K/4K gates, remove the temporary
+descriptor and RED, leave all three gfx1100 production capabilities false, and
+retain one-queue H8B **440.893 tok/s / 2,155 dispatches**, **1.5668×** behind
+matched llama.cpp HIP
+([H8O rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-after-router-low-priority-moe-concurrency-rejected.json) ·
+[H8O target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8n-moe-shared-after-router-low-priority-target.json)).
 
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
