@@ -57,8 +57,10 @@ _H6E_KERNEL_SHA256 = (
 _H6E_PRIMITIVE_WRAPPER_SHA256 = (
     "6188e5d4b253013712c1f2974d2291f1cde104d1baa6c2e45cc723221b493162"
 )
+# H8B intentionally routed this shared composite factory through scoped
+# activation-pack ownership; pin that retained production wrapper source.
 _H6E_COMPOSITE_WRAPPER_SHA256 = (
-    "d799437ebc6f0fc43c21c251d0e342440fce492b1722ced9965ec38701ae8196"
+    "f320fe2db79f40cda0fa8f8558c441a639381fca4bc36e41568cb29916046393"
 )
 _H6U_EXPECTED_ISA = {
     (16, 4, "bf16"): {

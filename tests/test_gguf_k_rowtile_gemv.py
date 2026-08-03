@@ -430,26 +430,33 @@ def test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped(
         activation_bf16_nbytes=10_125_312,
         library="ordered-library",
     )
+    # Pin the retained H7G padded-compute / H7H full-group source policy.
     q5_qualified = {
         ("bf16", 3072, 1024): (
-            "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch4"
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "full_group_compute_coltile8_rowbatch4"
         ),
         ("bf16", 3072, 12288): (
-            "weight_major_row_major_activation_tile_k_row_coltile8_rowbatch12"
+            "weight_major_row_major_activation_tile_k_row_"
+            "padded_compute_coltile8_rowbatch12"
         ),
         ("bf16", 6144, 3072): (
-            "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5"
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "padded_compute_coltile16_rowbatch5"
         ),
         ("bf16", 9216, 3072): (
-            "weight_major_row_major_activation_tile_k_row_coltile12_rowbatch8"
+            "weight_major_row_major_activation_tile_k_row_"
+            "full_group_compute_coltile12_rowbatch8"
         ),
         ("f32", 3072, 48): "coltile12_rowbatch4",
         ("f32", 3072, 72): "coltile8_rowbatch4",
         ("f32", 3072, 6144): (
-            "weight_major_tile_k_col_activation_tile_k_row_coltile16_rowbatch5"
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "padded_compute_coltile16_rowbatch5"
         ),
         ("f32", 3072, 9216): (
-            "weight_major_tile_k_col_activation_tile_k_row_coltile8_rowbatch10"
+            "weight_major_tile_k_col_activation_tile_k_row_"
+            "padded_compute_coltile8_rowbatch10"
         ),
     }
     q6_qualified = {
