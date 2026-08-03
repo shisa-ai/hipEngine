@@ -1,0 +1,281 @@
+{
+  "authority_links": [
+    "README.md",
+    "WORKLOG.md",
+    "benchmarks/README.md",
+    "benchmarks/CHANGELOG.md",
+    "docs/KERNELS.md",
+    "docs/PLAN.md",
+    "docs/LAGUNA-prefill.md"
+  ],
+  "complete_quality": {
+    "all_expected_launches_observed": true,
+    "candidate_launches": 10512,
+    "categories": {
+      "code": {
+        "finite": true,
+        "max_kl_divergence": 0.10171148080061003,
+        "steps": 192,
+        "top1_agreement": 0.9895833333333334,
+        "top1_matches": 190
+      },
+      "general_en": {
+        "finite": true,
+        "max_kl_divergence": 0.20115144359626266,
+        "steps": 128,
+        "top1_agreement": 0.96875,
+        "top1_matches": 124
+      },
+      "general_ja": {
+        "finite": true,
+        "max_kl_divergence": 0.39110252673308943,
+        "steps": 128,
+        "top1_agreement": 0.96875,
+        "top1_matches": 124
+      },
+      "mixed_ja_en": {
+        "finite": true,
+        "max_kl_divergence": 0.17825767933663358,
+        "steps": 128,
+        "top1_agreement": 0.9765625,
+        "top1_matches": 125
+      }
+    },
+    "compiler_or_linker_processes": 0,
+    "compiler_version_queries": 1,
+    "finite": true,
+    "kl_threshold": 0.05,
+    "max_kl_divergence": 0.39110252673308943,
+    "minimum_top1_agreement": 0.9,
+    "pass": false,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_suite_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+    "prompts": 18,
+    "same_mode_repeat_deterministic": true,
+    "teacher_forced_steps": 576,
+    "top1_agreement": 0.9774305555555556,
+    "top1_matches": 563,
+    "tracked_lifecycle_clean": true
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_admitted": false,
+    "next_action": "retain H8B production and rerank outside hipBLASLt algorithm selection and closed changed-association attention",
+    "no_favorable_class_rerun": true,
+    "production_changed": false,
+    "reason": "synthetic quality selection lowers natural-M512 KL but complete quality reaches 0.391103 above 0.05",
+    "red_test_added": false,
+    "runtime_owner_implemented": false,
+    "source_default_changed": false,
+    "target_artifact_published": false
+  },
+  "diagnostic_performance": {
+    "candidate_prefill_tok_s": 429.80087807322303,
+    "claim_valid": false,
+    "exact_prefill_tok_s": 328.44348899324194,
+    "h16_e2e_speedup": 1.2352022745852012,
+    "h32_e2e_speedup": 1.1868621098059613,
+    "prefill_speedup": 1.3085991729982707,
+    "reason": "diagnostic speed cannot survive the mandatory KL failure"
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "TheRock HIP 7.2 / AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "queues": 1
+  },
+  "kind": "gfx1100_laguna_q2_xl_quality_selected_f32_attention_algorithms_rejected",
+  "model": {
+    "attention_rows": 128,
+    "context_length": 4096,
+    "kv_dtype": "bf16",
+    "matrix_rows": 512,
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "natural_m512": {
+    "attention_scratch_nbytes": 27787264,
+    "candidate_repeat_exact": true,
+    "compiler_processes_new": 0,
+    "control_tok_s": 440.19311440273196,
+    "finite": true,
+    "first_candidate_tok_s_with_lazy_descriptors": 389.32050987431273,
+    "kl": 0.00023101848448646615,
+    "next_token_id": 2930,
+    "top1_agreement": 1.0,
+    "tracked_lifecycle_clean": true,
+    "warmed_candidate_repeat_tok_s": 445.96782449669973
+  },
+  "performance_claim": false,
+  "prior_artifacts_sha256": {
+    "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-candidate.json": "1f3198209a8e85f89cd1d90dc49e4216d3823509578de9452d9f3e8190daed1c",
+    "benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-f32-hipblaslt-attention-rejected.json": "e5e1100883ecb9e91ba837dade6f98139c8d6652e4a89494728ad3f768d51a23",
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7s-qk-only-score-replay-target.json": "9fb06a29c0d4e78566b3d8dde981723cd6d52654e8175978455fbbd9a114aae9",
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-qk-only-score-replay-quality-rejected.json": "eb20dc8d4c51ae70e116160e39d742237ee33ff73db6279f31aab507db9bfefb",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json": "6b2d759f077b5f32c5208a0063c08d9ca59669d9b6de529944519e8242a096a6",
+    "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91"
+  },
+  "raw_evidence_sha256": {
+    "/tmp/analyze_laguna_h8e_algorithm_screen.py": "52e18c160670bbb13d755691df9de96270458c1f9dfb33e8781fd5a8f010fb4a",
+    "/tmp/laguna-h8e-attention-algorithm-quality-screen.json": "abb2225f11014a520f5bb231741c13e9a5daf3ef9b1bc26558ce58a39251f298",
+    "/tmp/laguna-h8e-attention-algorithm-quality-screen.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8e-attention-algorithm-quality-screen.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8e-attention-algorithm-quality-screen.stdout": "d429aab96e0cb9e4711e95e294e6e5715dadf3d6eb4b0b5d71e450250606b702",
+    "/tmp/laguna-h8e-attention-algorithm-quality-selection.json": "eb686938277f3ba6abd495bfee4954ebd49079dc8e317d21b2a8698fd7e3b591",
+    "/tmp/laguna-h8e-attention-algorithm-screen-compiler-monitor.json": "a0fba75c22c5c4129f6998a38dc819905464c5753ea8530917dd222a069c789c",
+    "/tmp/laguna-h8e-attention-full-state-compiler-monitor-first.json": "cedc48627fbe1eb94ff00bcae2b9347bec48dd8b0f9bb524ab2bce3faa2f9864",
+    "/tmp/laguna-h8e-attention-full-state-compiler-monitor-second.json": "88f52131e590bb9f3a6c44f450056214ec5f1354298a97ec7e876f001bb11603",
+    "/tmp/laguna-h8e-attention-full-state-compiler-monitor.json": "b3ca3b279a971ac326f2c34ff3a04d59f6b46166bb1ee131e0b484700c5b0986",
+    "/tmp/laguna-h8e-attention-quality-576-compiler-monitor.json": "be841f5434f8e842d5ff86dc9b6e3996fba355a4dc48851bb7b0d9066b808156",
+    "/tmp/laguna-h8e-attention-quality-selected-576.json": "ea69e2be55d09b571233c90a8687973a47e2f50f34dde4a795af26d894d56f41",
+    "/tmp/laguna-h8e-attention-quality-selected-576.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h8e-attention-quality-selected-576.stderr": "3e3c6a5f17d6d9d1d44e199e381891c68e5cd2ea5256a83d3311e66bccb1d2a5",
+    "/tmp/laguna-h8e-attention-quality-selected-576.stdout": "ea69e2be55d09b571233c90a8687973a47e2f50f34dde4a795af26d894d56f41",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state-first.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state-first.stderr": "dba5ce8ad1a101132e90651a3d07a1aa40e447f787e3f856faa5a83ec2d1a7f0",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state-second.status": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state-second.stderr": "1e344c779c9f1321755026f97bc26bd4be5a3ac304b06f4710ea4481d4c03b72",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state.json": "984681b2ab2d011e91a963592783efba92da2ed1fef3a6c9df77bbf1cc2eae6f",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state.stderr": "19e948894aa97a1631b9207e119c8ed2ae7b3899dbfa05c0693a80e9582e6f48",
+    "/tmp/laguna-h8e-attention-quality-selected-m512-full-state.stdout": "5eb9a93483d8ef0cfa490dfd3ad885906cd476cb8aceb80938beaa27974d3a63",
+    "/tmp/laguna_h8e_attention_algorithm_quality_screen.py": "8803d9797208bd77bcdadf38d9d1c9305081069ee5e84414ba7c17ebb5958602",
+    "/tmp/laguna_h8e_attention_quality_selected_576.py": "0e06561845af71ecc6ec98ff862c34b347659bd95c13240e9b378ec072b45c37",
+    "/tmp/laguna_h8e_attention_quality_selected_full_state.py": "b978877cd361dcd980a13d528d33295983c4d14eefa00e79435af138c090a311",
+    "/tmp/monitor_h8e_attention_algorithm_screen_compiler_execs.py": "3fbc9f20aeecc76dced0054cead62c9ff5d971d8211455d9f10e45648576ebb5",
+    "/tmp/monitor_h8e_attention_full_state_compiler_execs.py": "4043a4041617cf24987fbd50d71125e2c7bf162bbc77ac6b5291f1c1e51a05c7",
+    "/tmp/monitor_h8e_attention_quality_576_compiler_execs.py": "a3e9a2899ff25f5f9348f967d5f2af2ff69851ecc62ab7e523d1f8994e197012",
+    "/tmp/run_h8e_attention_algorithm_screen.py": "0b89adaf405900177b84bf525bdd5716f564c261d3bf0c4dbb60bf45f95343cc",
+    "/tmp/run_h8e_attention_full_state.py": "36f05c303728416eb95740befc54de6b754fbdd318167a223bb73cc998f3f924",
+    "/tmp/run_h8e_attention_quality_576.py": "535728dc51bd489f1cae156ba6ce420c39c026a9610fd1daa60e359bff8d9613"
+  },
+  "repo": {
+    "measurement_revision": "03248a1dff61753aabcdf04721995ba41101473b",
+    "tracked_production_unchanged": true
+  },
+  "restored_production": {
+    "commit": "f0069b89a",
+    "dispatches": 2155,
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_over_hipengine": 1.566800991062275,
+    "matched_llamacpp_hip_kernel_sum_ms": 714.008408,
+    "matched_llamacpp_hip_tok_s": 690.791,
+    "median_tok_s": 440.8926238498552,
+    "remaining_matched_gaps_ms": {
+      "attention": 93.83664200000001,
+      "iq_down": 119.30344199999996,
+      "q5": 172.11539000000002,
+      "q6": 58.65222299999999
+    }
+  },
+  "schema": 1,
+  "screen": {
+    "all_finite": true,
+    "all_primitive_gates_passed": true,
+    "changed_shapes_vs_h5b_speed_policy": 5,
+    "combinations": 128,
+    "compiler_processes_new": 0,
+    "numerical_classes_per_shape": 4,
+    "prompt_layer_token_conditioning": false,
+    "scope": "all four zero-workspace QK x all four PV hipBLASLt heuristics over global/SWA contexts 128/256/384/512",
+    "selected_policy": {
+      "h48_c256": {
+        "conservative_wall_speedup_vs_control_event": 1.1381186768241818,
+        "control_event_ms": 0.30338867505391437,
+        "event_ms": 0.2619083325068156,
+        "event_speedup": 1.1583773305342215,
+        "max_abs": 4.0978193283081055e-08,
+        "minimum_mismatch_count": 731116,
+        "mismatch_fraction": 0.9296620686848959,
+        "pv": 3,
+        "qk": 2,
+        "wall_ms": 0.2665703333333333
+      },
+      "h48_c384": {
+        "conservative_wall_speedup_vs_control_event": 1.3110974552103596,
+        "control_event_ms": 0.4857900142669678,
+        "event_ms": 0.37854933738708496,
+        "event_speedup": 1.283293791028946,
+        "max_abs": 3.725290298461914e-08,
+        "minimum_mismatch_count": 743690,
+        "mismatch_fraction": 0.9456507364908854,
+        "pv": 3,
+        "qk": 1,
+        "wall_ms": 0.37052166666666664
+      },
+      "h48_c512": {
+        "conservative_wall_speedup_vs_control_event": 1.119591559342706,
+        "control_event_ms": 0.6691780090332031,
+        "event_ms": 0.597133994102478,
+        "event_speedup": 1.1206496626255733,
+        "max_abs": 4.6566128730773926e-08,
+        "minimum_mismatch_count": 750616,
+        "mismatch_fraction": 0.9544576009114584,
+        "pv": 1,
+        "qk": 0,
+        "wall_ms": 0.5976983333333333
+      },
+      "h72_c256": {
+        "conservative_wall_speedup_vs_control_event": 1.075673978270269,
+        "control_event_ms": 0.48036301136016846,
+        "event_ms": 0.44768301645914715,
+        "event_speedup": 1.0729980671580903,
+        "max_abs": 4.470348358154297e-08,
+        "minimum_mismatch_count": 1097216,
+        "mismatch_fraction": 0.9301215277777778,
+        "pv": 3,
+        "qk": 3,
+        "wall_ms": 0.4465693333333333
+      },
+      "h72_c384": {
+        "conservative_wall_speedup_vs_control_event": 1.864042993653856,
+        "control_event_ms": 0.7810383637746176,
+        "event_ms": 0.42916301886240643,
+        "event_speedup": 1.8199106853263738,
+        "max_abs": 3.725290298461914e-08,
+        "minimum_mismatch_count": 1115772,
+        "mismatch_fraction": 0.9458516438802084,
+        "pv": 2,
+        "qk": 1,
+        "wall_ms": 0.4190023333333333
+      },
+      "h72_c512": {
+        "conservative_wall_speedup_vs_control_event": 1.1786176110789162,
+        "control_event_ms": 1.0457936922709148,
+        "event_ms": 0.8582859834035238,
+        "event_speedup": 1.2184676349062946,
+        "max_abs": 4.0978193283081055e-08,
+        "minimum_mismatch_count": 1125485,
+        "mismatch_fraction": 0.954085456000434,
+        "pv": 1,
+        "qk": 0,
+        "wall_ms": 0.8873053333333334
+      }
+    },
+    "selected_runtime_shapes": 6,
+    "shapes": 8,
+    "synthetic_rng_only": true,
+    "tracked_lifecycle_clean": true,
+    "weighted_48_layer_ms": {
+      "candidate_event": 85.82166051864624,
+      "candidate_wall_with_exact_start0_event_proxy": 86.42686387658692,
+      "exact_event": 109.06511068344116
+    },
+    "weighted_speedup": {
+      "conservative_wall_vs_exact_event": 1.2619353033471223,
+      "event": 1.2708343094776742
+    }
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py": "77398def2dca3430a544e390d8f8f588adcfb69b82940536b3b13f3306c773a8",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv_attention.hip": "e5ac3c0825de4ccdc1f22eea25a9bc2e541bb76402bf73c348c643446a43fe83",
+    "hipengine/kernels/hip_gfx1100/fused/laguna_attention.hip": "f12b47013cd290d731f66e72cf18fd8c10cd531f330b16912043032bedddab10",
+    "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3",
+    "hipengine/runtime/laguna_attention_hipblaslt.py": "1d3f6ff6feccd941ed9dbfce4e7d9a7575fa07afcc0d9c7c7b31ac188c7eecea",
+    "hipengine/runtime/laguna_gguf_runner.py": "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654",
+    "hipengine/runtime/laguna_kv.py": "97d168047053f0c57ef1e00b776ccc943f22febeee5f103f2ab7f2cf97ca337c"
+  },
+  "status": "rejected_complete_18_prompt_576_step_quality_gate"
+}

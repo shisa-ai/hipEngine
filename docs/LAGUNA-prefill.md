@@ -2016,6 +2016,27 @@ is binding: do not salvage a favorable 143-call subset, add no target/RED/owner,
 and skip full-model quality. H8B remains production
 ([H8D rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
 
+Reject **WPF-H8E quality-selected F32 hipBLASLt attention algorithms** before
+repository implementation. The fixed synthetic screen enumerates all four
+zero-workspace QK × four PV heuristics at global/SWA contexts128/256/384/512:
+all **128** combinations are finite and primitive-green, with four deterministic
+numerical classes per shape. Select one complete six-shape policy by minimum
+F32 mismatch count and then minimum synchronized wall within that class. It
+changes five of six H5B speed-selected mappings and models the 48-layer leaf
+**109.065→85.822 ms event (1.271×)**; no prompt, layer, or token chooses it.
+
+Matched C4096/M512 passes its preliminary gate at token2930, top-1 100%, KL
+**0.000231**, deterministic candidate repeat, clean lifecycle, and warmed
+**440.193→445.968 tok/s**. The complete 18-prompt/four-category
+**576-step** gate is binding and fails. All **10,512** expected stacks run;
+maximum KL is **0.391103 > 0.05** at **563/576 (97.743%)** top-1, with category
+maxima **0.101711/0.201151/0.391103/0.178258**. Diagnostic prefill improves
+**328.443→429.801 tok/s (1.3086×)**, but carries no valid claim. Add no target,
+RED, package algorithm map, owner, or source policy, and do not rerun another
+numerical class after observing quality. H8B and exact H6N/H6Z/H6A/H6W remain
+production
+([H8E rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

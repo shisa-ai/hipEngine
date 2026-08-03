@@ -2581,6 +2581,23 @@ registry key, owner, capability, or test; skip the 576-step gate and forbid
 post-screen 143-call salvage
 ([H8D rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-q6-k-f32-sgemm-complete-class-rejected.json)).
 
+Do **not** restore gfx1100's removed packed-F32 attention package map as
+**WPF-H8E**. The existing backend-neutral hipBLASLt owner and four heuristics
+per QK/PV contraction remain valid standalone machinery, but a source-unchanged
+all-**128-combination** screen finds four numerical classes per global/SWA
+shape. A fixed synthetic closest-output rule selects six complete shape keys,
+changes five H5B mappings, and remains faster at every selected shape; matched
+C4096/M512 is finite/deterministic at KL **0.000231** and token2930.
+
+That primitive evidence cannot waive full-model quality. All **10,512** expected
+changed-association stacks run across 18 prompts/**576 teacher-forced steps**,
+but maximum KL is **0.391103** versus **0.05**, despite **563/576** top-1 and
+diagnostic **1.3086×** prefill. Keep gfx1100 without
+`LAGUNA_PREFILL_ATTENTION_HIPBLASLT*` capability/map ownership, add no RED or
+registry/runtime surface, and prohibit a post-result alternate-class rerun.
+H6N/H6Z/H6A/H6W exact attention remains production
+([H8E rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-quality-selected-f32-attention-algorithms-rejected.json)).
+
 WPF-1B now adds a separately registered raw-resident Q5_K/Q6_K MMQ32
 primitive in `quant/gguf_k_mmq_prefill.{hip,py}`. One local128 workgroup stages
 one K32 interval for 32 raw output columns and 32 producer rows, then reuses
