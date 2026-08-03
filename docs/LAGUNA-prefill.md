@@ -2242,6 +2242,36 @@ byte-for-byte, and retain H8B **440.893 tok/s / 2,155 dispatches**, **1.566801×
 behind matched llama.cpp HIP
 ([H8K rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-rowbatch4-triple-output-runtime-lds-rejected.json)).
 
+Select target-only **WPF-H8L exact IQ3 lossless 12-bit codebook packing**. H6X
+already rejected copying the uint32 table into workgroup LDS; H8L keeps read-
+only device storage and instead changes only its lossless value representation.
+H6T's 256-entry `iq3xxs_grid` stores four magnitudes per uint32. Every coordinate
+belongs to **4/12/20/28/36/44/52/62**, so encode four 3-bit indices into one
+uint16 and reconstruct each exact integer as
+`4 + 8*code + 2*(code == 7)`. Independent enumeration proves **256/256** raw
+entries reconstruct exactly and all 256 packed words remain unique. Static
+storage falls **1,024→512 bytes**.
+
+Frozen natural-M512 routing covers **45 calls / 103,056,384 segment decodes**.
+At unchanged **824,451,072 wave loads**, the address-width model moves
+**105,529,737,216→52,764,868,608 logical codebook bytes (−50%)**. It changes
+static load shape **8 b128 + 9 b32 + 6 d16 → 8 b128 + 3 b32 + 12 d16** and adds
+24 code extracts. These are source-operation and logical-byte counts, not cache
+traffic or a speed result.
+
+Freeze RED before executable work and compile exactly one uint16/formula body.
+Preserve H6T's raw weights/active-expert ABI, P64/P256 traversal, local128/
+rowbatch8/four-wave/triple-output ownership, all signs/scales, **216 ordered
+FMAs / 24 permlanex16 / 96 DPP adds**, serial wave sums, LDS publication/store
+order, two barriers, and BF16 bytes. Require all table entries, rows1/7/8/9/
+M512, P64/P65, empty/uneven/reordered routing, sampled CPU, complete **45/45**
+actual outputs, metadata/runtime VGPR≤128, LDS384/512, code≤10,000 B,
+slots≤1,800, and private/spill/scratch0. Then consume one 5/15/5 all-layer
+screen where every layer and aggregate win event and synchronized wall. Do not
+compile alternate widths/formulas/LDS/table pairs or salvage any layer/expert/
+routing/prompt/token/length/load-source/body/recompile/favorable-rerun subset
+([H8L target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8k-iq3-codebook12-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all
