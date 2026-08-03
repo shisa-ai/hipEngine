@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: active, dense transactional MTP bring-up (2026-08-04); mapping, external Vulkan baseline, and independent NextN one-step oracle complete.
+Status: active, hipEngine AR/MTP profiling bring-up (2026-08-04); dense mapping, one-step oracle, and exact transactional MTP cycle complete.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -348,12 +348,22 @@ absolute difference is **0.2541**. Direct execution and provider replay are
 FP32 array-exact. The committed compact oracle is
 `tests/fixtures/gguf/qwen36_27b_q4km_nextn_one_step_oracle.json`.
 
-Dense hipEngine MTP is still **not yet end-to-end functional**: multi-step
-state/KV transaction, rollback/reseed, and a target-attached cycle are the next
-hard gate. No MTP performance number is valid until those lifecycle checks are
-green. A cached GPU1 trace confirms the expected dense Q4_K gate/up and Q6_K
-down/head symbols; its two one-step executions total 63 launches / 12.544 ms
-of kernels, with the Q6_K full-vocabulary head accounting for 9.803 ms.
+Dense hipEngine MTP is now end-to-end functional through the shared transaction
+ABI. The `gguf_q4_k_m` accept key resolves explicitly; dense graph keys publish
+zero experts rather than the inherited MoE top-8 shape. B1/B2/B3 target logits
+are FP32 array-exact to scalar target execution. Reject, partial, full, and
+rollback restore the selected Conv/GDN state, live full-attention K/V prefix,
+hidden tap, cursor, and next correction logits byte-for-byte. A natural B1
+8-output smoke matches all AR IDs, accepts three draft tokens over five cycles,
+and exercises full-accept draft-tail advancement. It is a single-prompt
+functional gate, not a performance result; the full category suite remains
+mandatory before any MTP economics claim.
+
+A cached GPU1 one-step trace confirms the expected dense Q4_K gate/up and Q6_K
+down/head symbols; its two executions total 63 launches / 12.544 ms of kernels,
+with the Q6_K full-vocabulary head accounting for 9.803 ms. The next hard gate
+is the reconciled GPU0 AR/MTP profile and primary 512/128, 4K/128, and natural
+category measurements.
 
 ---
 
@@ -364,8 +374,8 @@ of kernels, with the Q6_K full-vocabulary head accounting for 9.803 ms.
 | 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, natural25, B1-B4 sweep, and query-profile artifacts. | complete; B3 selected |
 | 0 | D27-F0 | Add untied dense root/embedding/layout support, then prove dense GGUF AR load/prefill/decode on GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | 8/1 eager green; primary gates pending |
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
-| 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | one-step green; transaction next |
-| 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | llama side green; hipEngine blocked by F0/F2 |
+| 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
+| 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% explained residual. | llama side green; hipEngine next |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | blocked by M1 |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | blocked by M1 |
 | 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | blocked by M1 |
@@ -496,7 +506,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | Date | Revision / route | GPU | Shape | Prefill tok/s | AR decode tok/s | MTP decode tok/s | MTP/AR | Correctness | Artifact |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | 2026-08-04 | llama.cpp Vulkan `ee0445c99` | W7900 | stateful 512/128, 4K/128; natural25 B3 | 79.805 / 81.792 | 12.574 / 12.488; natural AR 12.546 | 68.082 engine / 36.122 client | 5.4265x engine / 3.7600x client | `[9707]*128` captured exact; all categories improve; 6/10 natural content hashes match AR | `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json` |
-| 2026-08-04 | hipEngine AR bring-up after `4b0d8450d` | W7900 | 8/1 diagnostic; primary gates pending | 33.70 diagnostic | 20.38 diagnostic | blocked: dense transaction cycle | — | finite 8/1 eager; NextN one-step KL 0.001566/top-1 exact on GPU1; primary AR/MTP pending | `/tmp/hipengine-qwen36-27b/hipengine-gpu0-ar-smoke.json` (not retained) |
+| 2026-08-04 | hipEngine dense bring-up (current campaign) | W7900 + GPU1 component gate | 8/1 AR diagnostic; MTP functional smoke; primary gates pending | 33.70 diagnostic | 20.38 diagnostic | functional; full-suite timing pending | — | NextN KL 0.001566/top-1 exact; B1-B3 logits and reject/partial/full/rollback state+KV exact; natural8 AR IDs exact | `/tmp/hipengine-qwen36-27b/` (not retained) |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

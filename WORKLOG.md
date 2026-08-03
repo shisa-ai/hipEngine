@@ -202985,3 +202985,60 @@ Vulkan local sizes verbatim will close the measured gap.
   green**: target-attached multi-step state/KV transaction, reject/partial/full
   commit, rollback/reseed, and natural-suite economics remain next. No dense
   MTP performance number is claimed from this one-step gate.
+
+### Dense 27B transactional GGUF MTP cycle — GREEN
+
+- RED extends the shared accept-route registry gate from UD-Q3_K_M to the real
+  dense `gguf_q4_k_m` quant key. It fails with `MissingKernelError` while the
+  existing Q3 key remains green. Register the same quant-independent raw-pointer
+  `dflash_accept_chain_i32` primitive under the Q4 key; no device body or math
+  changes. `uv run pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k registered_shared_gpu_accept_route`
+  moves from **1 pass / 1 fail** to **2/2 pass**.
+- Make the transactional decode session's quant axis explicit instead of
+  silently constructing every verifier as `gguf_ud_q3_k_m`. The e2e driver now
+  accepts/records `--quant`, selects the same target prefill plugin, and passes
+  it to verifier resolution. Speculative graph shape metadata derives
+  `expert_used_count` from the loaded config: Q3 MoE retains `8`, while dense
+  Q4 correctly records `top_k=0, experts_per_token=0`; there is no backend or
+  quant branch.
+- Add one guarded W7900 gate that keeps a single dense target resident while
+  checking all lifecycle modes. B1/B2/B3 target rows and all 248,320 FP32 logits
+  are array-exact to scalar target execution; the GPU and CPU accept summaries
+  agree. Reject/partial/full commits with accepted counts `0/1/3`, plus every
+  rollback, reproduce the scalar target's Conv/GDN state, live full-attention
+  K/V prefix, hidden tap, cursor, correction token, and next full logits byte-
+  for-byte. This closes the D27-F2 transaction requirement rather than inferring
+  it from output text.
+- The same resident gate then runs the real dense provider on the natural
+  20-token Fibonacci prompt for eight outputs. MTP and disabled AR both emit
+  `[271,248068,198,8160,579,264,7047,1817]`; B1 accepts `3` drafts over `5`
+  cycles, exercises reject and full-accept paths, and advances the provider's
+  accepted tail on two non-final cycles. Every cycle carries
+  `span_role=verify_chain`, quant `gguf_q4_k_m`, and zero experts. Exact command
+  under the hermetic TheRock env from `scripts/run_w7900_readme_refresh.sh`:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1**.
+- The first CLI attempt correctly stops before verification because
+  `require_cached` finds no current-compiler `dflash_accept.so`. Prebuild it
+  outside any profiler with `build_dflash_accept(load=False,
+  compiler_version=Path('/tmp/hipengine-qwen36-27b-hipcc-version.txt').read_text())`,
+  producing cache key `dflash_accept-e3b4dd00314de5bb`; the unchanged rerun
+  then succeeds. No cache failure is hidden as a model/runtime failure.
+- Inside that same hermetic TheRock environment, the explicit CLI invocation is:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_gguf_mtp_e2e.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-tokens 9707,9707,9707,9707 --max-new-tokens 4 --candidate-budgets 1 --runs 1 --max-sequence-length 32 --require-cached-build --return-cycle-logits --json /tmp/hipengine-qwen36-27b/dense-mtp-smoke-q4-explicit-b1-d4.json`.
+  It is AR-exact and GPU/CPU-accept exact, records the correct quant/zero-expert
+  metadata, peaks at **28.39197 GiB** tracked, and returns to zero allocations.
+  Its one-sample repeated-token **27.678 AR / 12.596 MTP tok/s**, zero accepted
+  drafts, and `0.4551x` are bring-up diagnostics only.
+- A separate one-prompt natural8 diagnostic records **23.594 AR / 14.895 MTP
+  tok/s**, three accepted drafts, five cycles, `1.6` visible tokens/cycle, and
+  `0.6313x`. This is useful lifecycle coverage but **not** retainable MTP
+  economics: it is one prompt, eight outputs, one run, and a source-dirty
+  development tree. The full 10-prompt train/heldout/category suite and true-AR
+  denominator remain mandatory.
+- Compatibility gate: cached GPU1 Q3
+  `test_ud_q3_k_m_real_nextn_chain_matches_mtp_disabled_greedy_output` remains
+  green with the default quant and MoE shape. Focused Ruff, py_compile, registry
+  tests, WORKLOG conflict check, and `git diff --check` pass. Update the kernel
+  catalog and campaign; D27-F2 is complete, while D27-F0 primary AR gates and
+  D27-M1 reconciled hipEngine profiles remain next.

@@ -26,6 +26,7 @@ from hipengine.speculative import (
 )
 
 _MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf")
+_DENSE_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
 
 
 def _hip_available() -> bool:
@@ -116,12 +117,13 @@ def _assert_committed_state_matches(
     )
 
 
-def test_gguf_q3_mtp_uses_registered_shared_gpu_accept_route() -> None:
+@pytest.mark.parametrize("quant", ("gguf_ud_q3_k_m", "gguf_q4_k_m"))
+def test_gguf_mtp_uses_registered_shared_gpu_accept_route(quant: str) -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
             layer="dflash_accept_chain",
-            quant="gguf_ud_q3_k_m",
+            quant=quant,
             variant="i32",
         )
         is dflash_accept_chain_i32
@@ -343,6 +345,193 @@ def test_ud_q3_k_m_real_nextn_chain_matches_mtp_disabled_greedy_output() -> None
     assert actual.graph_stats["hits"] >= 1
     assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
     assert all(int(record["transaction_id"]) >= 0 for record in actual.cycle_records)
+
+
+@pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar() -> None:
+    """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
+
+    _require_free_vram(32.0)
+    prompt = (9707, 9707, 9707, 9707)
+    require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
+    with Qwen35GGUFResidentSession(
+        _DENSE_MODEL,
+        max_sequence_length=64,
+        require_cached_build=require_cached,
+    ) as target:
+        target.select_prefill_quant("gguf_q4_k_m")
+        assert target.runner is not None
+        with Qwen35GGUFResidentSession(
+            _DENSE_MODEL,
+            max_sequence_length=64,
+            shared_runner=target.runner,
+            require_cached_build=require_cached,
+        ) as reference, Qwen35GGUFTransactionalVerifier(
+            target,
+            max_candidate_budget=3,
+            quant="gguf_q4_k_m",
+        ) as verifier:
+            for budget in (1, 2, 3):
+                target.reset()
+                reference.reset()
+                root = int(target.prefill(prompt, use_bulk=False, return_logits=False).token_id)
+                assert root == int(
+                    reference.prefill(prompt, use_bulk=False, return_logits=False).token_id
+                )
+                oracle_tokens: list[int] = []
+                scalar_logits: list[np.ndarray] = []
+                current = root
+                scalar_step = reference.step(current, return_logits=True)
+                scalar_logits.append(scalar_step.logits)
+                for _ in range(budget):
+                    current = int(scalar_step.token_id)
+                    oracle_tokens.append(current)
+                    scalar_step = reference.step(current, return_logits=True)
+                    scalar_logits.append(scalar_step.logits)
+
+                batch = _target_batch(root, len(prompt), tuple(oracle_tokens))
+                bucket = verifier.graph_bucket(("dense-logits", budget), batch)
+                prepared = verifier.prepare(
+                    batch,
+                    transaction_id=budget,
+                    graph_bucket=bucket,
+                    remaining_decode=(budget + 1,),
+                    return_logits=True,
+                )
+                assert prepared.gpu_accept_match_cpu
+                assert prepared.summary.accepted_counts == (budget,)
+                assert prepared.summary.full_accept == (True,)
+                np.testing.assert_array_equal(
+                    prepared.target_logits,
+                    np.concatenate(scalar_logits, axis=0),
+                )
+                verifier.rollback(prepared)
+                assert target.position == len(prompt)
+                reference.reset()
+                reference.prefill(prompt, use_bulk=False, return_logits=False)
+                _assert_committed_state_matches(target, reference)
+
+            for case, accepted_count in (("reject", 0), ("partial", 1), ("full", 3)):
+                target.reset()
+                reference.reset()
+                root = int(target.prefill(prompt, use_bulk=False, return_logits=False).token_id)
+                assert root == int(
+                    reference.prefill(prompt, use_bulk=False, return_logits=False).token_id
+                )
+                oracle: list[int] = []
+                current = root
+                for _ in range(3):
+                    current = int(reference.step(current, return_logits=False).token_id)
+                    oracle.append(current)
+                candidates = list(oracle)
+                if accepted_count < 3:
+                    candidates[accepted_count] = _wrong_token(
+                        oracle[accepted_count],
+                        target.runner.vocab_size,
+                    )
+                batch = _target_batch(root, len(prompt), tuple(candidates))
+                transaction_id = 100 + accepted_count
+                bucket = verifier.graph_bucket(("dense-commit", case), batch)
+                prepared = verifier.prepare(
+                    batch,
+                    transaction_id=transaction_id,
+                    graph_bucket=bucket,
+                    remaining_decode=(4,),
+                    return_logits=False,
+                )
+                assert prepared.summary.accepted_counts == (accepted_count,)
+                assert prepared.summary.full_accept == (accepted_count == 3,)
+                plan = TargetCommitPlan(
+                    transaction_id=transaction_id,
+                    request_ids=batch.request_ids,
+                    accepted_counts=prepared.summary.accepted_counts,
+                    commit_rows=prepared.summary.commit_rows,
+                    commit_tokens=prepared.summary.commit_tokens,
+                    commit_positions=prepared.summary.commit_positions,
+                    next_tokens=prepared.summary.next_tokens,
+                    candidate_counts=batch.candidate_counts,
+                    draft_depth=batch.draft_depth,
+                    tree_shape=batch.tree_shape,
+                    mode=batch.mode,
+                )
+                state_buffers = verifier.commit(prepared, plan)
+                assert state_buffers.has_hidden_taps
+                verifier.finish(prepared)
+
+                reference.reset()
+                reference.prefill(prompt, use_bulk=False, return_logits=False)
+                reference.step(root, return_logits=False)
+                for token in candidates[:accepted_count]:
+                    reference.step(token, return_logits=False)
+                _assert_committed_state_matches(target, reference)
+                assert target.position == len(prompt) + 1 + accepted_count
+
+                correction = prepared.summary.next_tokens[0]
+                assert correction is not None
+                actual_next = target.step(int(correction), return_logits=True)
+                expected_next = reference.step(int(correction), return_logits=True)
+                assert actual_next.token_id == expected_next.token_id
+                np.testing.assert_array_equal(actual_next.logits, expected_next.logits)
+
+        natural_prompt = (
+            7734,
+            264,
+            12654,
+            709,
+            421,
+            4523,
+            279,
+            307,
+            7324,
+            76938,
+            1324,
+            1608,
+            20781,
+            1954,
+            13,
+            28763,
+            264,
+            4479,
+            889,
+            13,
+        )
+        target.reset()
+        root = int(target.prefill(natural_prompt, use_bulk=False, return_logits=False).token_id)
+        expected = [root]
+        while len(expected) < 8:
+            expected.append(int(target.step(expected[-1], return_logits=False).token_id))
+        provider = Qwen35GGUFNextNDraftProvider.from_model(
+            _DENSE_MODEL,
+            max_positions=64,
+            max_requests=1,
+            runtime=target.runtime,
+            require_cached_build=require_cached,
+        )
+        try:
+            with Qwen35GGUFMTPDecodeSession(
+                target,
+                provider,
+                candidate_budget=1,
+                quant="gguf_q4_k_m",
+            ) as decoder:
+                actual = decoder.generate(
+                    natural_prompt,
+                    max_new_tokens=8,
+                    use_bulk_prefill=False,
+                )
+        finally:
+            provider.close()
+
+    assert actual.token_ids == tuple(expected)
+    assert actual.gpu_accept_match_cpu
+    assert actual.accepted_draft_tokens >= 1
+    assert any(record["draft_tail_advanced"] for record in actual.cycle_records)
+    assert actual.graph_stats["entries"] == 1
+    assert actual.graph_stats["hits"] >= 1
+    assert all(record["quant"] == "gguf_q4_k_m" for record in actual.cycle_records)
+    assert all(record["experts_per_token"] == 0 for record in actual.cycle_records)
+    assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:
