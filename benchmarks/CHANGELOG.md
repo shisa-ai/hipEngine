@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact target batching] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: serial-exact **17.128/16.005/14.858 -> 18.751/18.752/17.983 tok/s (+9.48%/+17.17%/+21.03%)** via native row-attention/block-FFN plus c1-association-preserving dense-BF16 rowtile; every full/train/heldout/category row improves with exact IDs/state/acceptance, while tracked peak rises 28.392 -> 28.995 GiB; `benchmarks/results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json`.
+
 - [hipEngine baseline] Qwen3.6-27B Q4_K_M / exact dense GGUF `da6865f74` / W7900: establish clean 512/4K prefill at **50.515/50.473 tok/s** and AR at **19.556/18.649 tok/s** (Vulkan **-36.70%/-38.29% prefill, +55.52%/+49.34% decode**), while natural25 true AR -> best exact B1 MTP is **20.361 -> 17.128 tok/s (-15.88%)**; all IDs/accept semantics are exact and reconciled profiles rank target verification plus Q4_K/BF16 projections first; `benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json`.
 
 - [external floor] Qwen3.6-27B Q4_K_M / llama.cpp Vulkan `ee0445c99` / W7900: establish a new same-GGUF baseline at **792.308/754.093 pp512/pp4096**, context-matched **79.805/81.792 prefill** and **12.574/12.488 AR tok/s**, plus natural25 B3 **12.546 -> 68.082 tok/s (5.4265x)** engine time and **9.607 -> 36.122 tok/s (3.7600x)** client time; query profiles reconcile within 3% and rank dense FFN first; `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json`.

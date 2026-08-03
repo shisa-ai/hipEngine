@@ -203293,3 +203293,34 @@ Vulkan local sizes verbatim will close the measured gap.
   state/KV/target-hidden commits, correction logits, and the real provider loop
   remain byte-exact. Clean W7900 natural25 economics are next; no complete-suite
   speed claim is made from the GPU1 component screen.
+
+### D27-O3 clean native natural25 promotion — RETAINED
+
+- Measure clean commit `14bcea43b14d7fba33c57eb67d3906cd2edadeea` on GPU0
+  Radeon Pro W7900/gfx1100, TheRock HIP 7.15, BF16 K/V, cached-only kernels, one
+  warmup, one complete run, and the same 10-prompt/24-transition true-AR+B1-B3
+  protocol as frozen baseline `da6865f74`. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-14bcea43b/natural25-native-b1-b3.json`.
+- True AR is unchanged **20.3606 -> 20.3623 tok/s (+0.009%)**. Serial-exact
+  baseline -> native B1/B2/B3 is **17.1276/16.0047/14.8580 ->
+  18.7511/18.7523/17.9829 tok/s**, or **+9.479%/+17.167%/+21.032%**.
+  Complete decode wall falls **8.658%/14.652%/17.377%** and target verify falls
+  **9.278%/15.783%/18.705%**. Own-AR ratios rise **0.8412/0.7861/0.7297 ->
+  0.9209/0.9209/0.8831**.
+- Every train and heldout row improves; heldout decode gains are
+  **9.635-21.245%**. Every one of the 12 budget/category rows improves
+  (**9.141-21.208%**). All 250 visible IDs at each budget match true AR, all GPU
+  accept summaries match CPU, every stage ledger reconciles, and ownership
+  returns exactly to zero. B2 is numerically only 0.006% above B1, so this
+  promotes the native target path, not a robust budget winner.
+- Exact per-row Conv/GDN and target-hidden capture raises tracked peak
+  **28.392 -> 28.995 GiB (+0.603 GiB / +2.124%)**. Explicitly accept this
+  bounded tradeoff for the 9-21% complete-path gain: the W7900 retains roughly
+  19 GiB capacity headroom and all allocations free after close. Model load
+  172.417 s is excluded. Raw SHA-256 is `3951ed10...20a52`.
+- Retain compact artifact
+  `benchmarks/results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json`
+  (SHA-256 `25528c29...8fb2a`) and update the benchmark rollup/changelog/campaign.
+  B1/B2 remain about 7.9% slower than true AR and far below Vulkan B3 68.082
+  tok/s; re-profile the clean
+  native B3 target before admitting the next D27-O3 candidate.

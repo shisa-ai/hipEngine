@@ -4617,6 +4617,31 @@ of kernel time. Target row batching/projection routing is therefore the first
 optimization target. Artifact:
 [`2026-08-04-qwen36-27b-hipengine-baseline.json`](results/2026-08-04-qwen36-27b-hipengine-baseline.json).
 
+#### Qwen3.6-27B exact native target rowtile, W7900/gfx1100
+
+Clean hipEngine `14bcea43b` keeps the same GGUF, BF16 K/V, ten natural25
+prompts, 24-transition denominator, true-AR control, candidate streams, and
+acceptance semantics as `da6865f74`. Native row-serial attention plus block FFN
+uses the exact 2-4-row dense-BF16 rowtile; `serial-exact` remains the rollback
+control.
+
+| Route | Serial-exact baseline | Native rowtile | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.361 tok/s | **20.362 tok/s** | +0.009% | 1.0000x | n/a |
+| B1 | 17.128 tok/s | **18.751 tok/s** | **+9.48%** | 0.9209x | **-9.28%** |
+| B2 | 16.005 tok/s | **18.752 tok/s** | **+17.17%** | **0.9209x** | **-15.78%** |
+| B3 | 14.858 tok/s | **17.983 tok/s** | **+21.03%** | 0.8831x | **-18.70%** |
+
+Every full/train/heldout row improves. All four categories improve at every
+budget (decode range **+9.14% to +21.21%**), all 250 visible IDs per budget
+match true AR, GPU accept summaries match CPU, and stage ledgers reconcile.
+B1/B2 are numerically tied, so this promotes the native target path rather than
+a budget winner. Exact per-row state capture raises tracked peak **28.392 ->
+28.995 GiB (+0.603 GiB)**, accepted for the 9-21% complete-wall gain; ownership
+returns to zero. hipEngine MTP remains below own AR and Vulkan B3, so D27-O3
+continues from a refreshed profile. Artifact:
+[`2026-08-04-qwen36-27b-native-target-rowtile-retained.json`](results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
@@ -4742,6 +4767,7 @@ and was not the gfx1100 topline. Artifact:
 
 Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json),
 [Qwen3.6-27B hipEngine dense baseline](results/2026-08-04-qwen36-27b-hipengine-baseline.json),
+[Qwen3.6-27B exact native target rowtile](results/2026-08-04-qwen36-27b-native-target-rowtile-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
 [current W7900 hipEngine `llama-compat` baseline](results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json),
