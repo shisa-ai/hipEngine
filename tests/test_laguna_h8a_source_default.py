@@ -58,7 +58,7 @@ _SOURCE_ADMISSION = {
     "no_subset_or_favorable_rerun": True,
 }
 _NORMALIZED_PACKAGE_SHA256 = (
-    "e5d9f2ba7dae8504900a153d7349df14fc3f0fcbd227786365fc45c8530ba312"
+    "ae558902f64d13d67c77ae257d4dcd26ea7e60b8930cae196f870ab234ddac9f"
 )
 _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
