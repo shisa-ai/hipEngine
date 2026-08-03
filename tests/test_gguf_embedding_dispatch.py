@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+from math import prod
 from types import SimpleNamespace
 
 # Import built-ins so registry keys exist before tests override them.
 import hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding  # noqa: F401
 import hipengine.kernels.hip_gfx1100.runtime.state  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
-from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_BF16, LAYOUT_RAW_GGUF
+from hipengine.loading.gguf import GGUFTensorInfo
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_DENSE_BF16,
+    LAYOUT_Q4_K_PACK8,
+    LAYOUT_RAW_GGUF,
+    plan_qwen35_gguf_weight_spec,
+)
+from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding, resolve_gguf_embedding_dispatch
 
 
@@ -21,6 +29,35 @@ def _fake_weight(*, layout: str, quant_key: str):
             return allocations[name]
 
     return Weight()
+
+
+def test_q4_k_token_embedding_plan_keeps_dispatchable_raw_gguf() -> None:
+    shape = (248320, 5120)
+    n_elements = prod(shape)
+    tensor = GGUFTensorInfo(
+        name="token_embd.weight",
+        shape=shape,
+        ggml_shape=tuple(reversed(shape)),
+        ggml_type=int(GGMLQuantizationType.Q4_K),
+        ggml_type_name="Q4_K",
+        n_elements=n_elements,
+        nbytes=715161600,
+        offset=0,
+        data_offset=0,
+        byte_shape=shape,
+    )
+
+    embedding = plan_qwen35_gguf_weight_spec(
+        "root.token_embedding", tensor, decode_repack=True
+    )
+    dense_linear = plan_qwen35_gguf_weight_spec(
+        "layers.0.ffn_gate", tensor, decode_repack=True
+    )
+
+    assert embedding.layout == LAYOUT_RAW_GGUF
+    assert embedding.quant_key == "gguf_q4_k"
+    assert embedding.allocation_names == ("raw",)
+    assert dense_linear.layout == LAYOUT_Q4_K_PACK8
 
 
 def test_resolve_gguf_embedding_dispatch_uses_raw_quant_or_dense_fallback() -> None:

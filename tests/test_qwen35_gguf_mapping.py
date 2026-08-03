@@ -16,10 +16,12 @@ from hipengine.loading.qwen35_gguf import (
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
-pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
+DENSE_UNTIED_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
 
 
 def _info() -> GGUFModelInfo:
+    if not MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MODEL}")
     return GGUFReader(MODEL).info
 
 
@@ -34,6 +36,7 @@ def test_qwen35_gguf_tensor_map_covers_local_inventory() -> None:
     assert model_map.config.vocab_size == 248320
     assert model_map.config.layer_types.count(FULL_ATTENTION) == 6
     assert model_map.config.layer_types.count(LINEAR_ATTENTION) == 18
+    assert model_map.config.lm_head_tensor_name == "token_embd.weight"
     assert len(model_map.layers) == 24
     assert set(model_map.tensor_names) == {tensor.name for tensor in info.tensors}
     assert len(model_map.tensor_names) == len(info.tensors)
@@ -78,9 +81,14 @@ def test_qwen35moe_gguf_tensor_map_covers_local_inventory() -> None:
     assert model_map.config.expert_shared_feed_forward_length == 512
     assert model_map.config.layer_types.count(FULL_ATTENTION) == 10
     assert model_map.config.layer_types.count(LINEAR_ATTENTION) == 30
+    assert model_map.config.lm_head_tensor_name == "output.weight"
     assert len(model_map.layers) == 40
-    assert set(model_map.tensor_names) == {tensor.name for tensor in info.tensors}
-    assert len(model_map.tensor_names) == len(info.tensors)
+    assert model_map.config.ignored_block_ids == (40,)
+    ar_tensor_names = {
+        tensor.name for tensor in info.tensors if not tensor.name.startswith("blk.40.")
+    }
+    assert set(model_map.tensor_names) == ar_tensor_names
+    assert len(model_map.tensor_names) == len(ar_tensor_names)
     assert set(required_qwen35_gguf_tensor_names(model_map.config)) == set(model_map.tensor_names)
 
     assert model_map.root("token_embedding").name == "token_embd.weight"
@@ -93,6 +101,27 @@ def test_qwen35moe_gguf_tensor_map_covers_local_inventory() -> None:
     assert layer0.tensor("ffn_gate_exps").shape == (256, 512, 2048)
     assert layer0.tensor("ffn_down_exps").shape == (256, 2048, 512)
     assert layer0.tensor("ffn_gate_shexp").shape == (512, 2048)
+
+
+def test_qwen36_dense_untied_gguf_tensor_map_uses_output_weight() -> None:
+    if not DENSE_UNTIED_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {DENSE_UNTIED_MODEL}")
+    info = GGUFReader(DENSE_UNTIED_MODEL).info
+
+    model_map = build_qwen35_gguf_tensor_map(info)
+
+    assert model_map.validation.passed
+    assert model_map.config.architecture == "qwen35"
+    assert not model_map.config.is_moe
+    assert model_map.config.block_count == 64
+    assert model_map.config.ignored_block_ids == (64,)
+    assert model_map.config.lm_head_tensor_name == "output.weight"
+    assert model_map.root("token_embedding").name == "token_embd.weight"
+    assert model_map.root("lm_head").name == "output.weight"
+    assert model_map.root("lm_head").ggml_type_name == "Q6_K"
+    assert set(model_map.tensor_names) == {
+        tensor.name for tensor in info.tensors if not tensor.name.startswith("blk.64.")
+    }
 
 
 def test_qwen35_gguf_tensor_map_reports_missing_tensor() -> None:

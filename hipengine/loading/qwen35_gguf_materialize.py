@@ -488,6 +488,19 @@ def _spec_for_tensor(
             layout=LAYOUT_DENSE_BF16 if bf16_linear_weight else LAYOUT_DENSE_F32,
             allocation_names=("raw",),
         )
+    if _is_token_embedding_slot(slot_path) and qtype in (
+        GGMLQuantizationType.Q4_K,
+        GGMLQuantizationType.Q5_K,
+        GGMLQuantizationType.Q6_K,
+        GGMLQuantizationType.Q8_0,
+    ):
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
+        )
     if qtype == GGMLQuantizationType.Q4_K:
         if len(tensor.shape) != 2:
             if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
@@ -698,6 +711,10 @@ def _gguf_ssm_a_to_kernel_a_log(raw: object):
     if np.any(coeff >= 0.0):
         raise ValueError("GGUF qwen35 ssm_a must contain negative decay coefficients")
     return np.ascontiguousarray(np.log(-coeff), dtype=np.float32)
+
+
+def _is_token_embedding_slot(slot_path: str) -> bool:
+    return slot_path == "root.token_embedding" or slot_path.endswith(".embed_tokens")
 
 
 def _is_selected_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:

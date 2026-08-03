@@ -21,6 +21,10 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q8_0_T16,
+)
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
@@ -61,6 +65,37 @@ from hipengine.runtime import qwen35_gguf_runner as qgr
 def _reset_segment_threshold(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
+
+
+def test_default_q4_prefill_native_resolver_skips_cpu_reference_fallback() -> None:
+    runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1100"
+    runner._gguf_prefill_quant = "gguf_q4_k_m"
+
+    assert (
+        runner._full_attn_prefill_native_fn()
+        is qgr.qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans
+    )
+
+
+def test_gdn_output_cast_falls_back_for_bf16_resident_ssm_out() -> None:
+    runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1100"
+    runner._gguf_prefill_quant = "gguf_q4_k_m"
+    dense_bf16 = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q5_k"),
+    )
+    q8_t16 = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(
+            layout=LAYOUT_GGUF_Q8_0_T16,
+            quant_key="gguf_q8_0_t16_v1",
+        ),
+    )
+
+    assert runner._gdn_decode_output_cast_for_weight(dense_bf16) is f32_to_bf16
+    assert runner._gdn_decode_output_cast_for_weight(q8_t16) is None
 
 
 def test_q3_decode_output_width_policy_is_registry_selected() -> None:

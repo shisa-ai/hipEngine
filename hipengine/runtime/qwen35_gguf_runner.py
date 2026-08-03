@@ -1975,6 +1975,23 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_gdn_decode_output_cast_fn_cache = fn
         return fn
 
+    def _gdn_decode_output_cast_for_weight(self, weight, *, rows: int = 1):
+        """Return the plugin cast or the unfused cast required by weight layout."""
+
+        output_cast = self._gdn_decode_output_cast_fn()
+        if output_cast is not None:
+            return output_cast
+        try:
+            resolve_gguf_linear_dispatch(
+                weight,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                backend=self.backend,
+                rows=rows,
+            )
+        except ValueError:
+            return f32_to_bf16
+        return None
+
     def _full_attn_decode_batch_native_fn(self):
         """Return the exact compact-row attention leaf on the quant axis."""
 
@@ -2000,12 +2017,21 @@ class Qwen35GGUFFullStackRunner:
         fn = getattr(self, "_gguf_full_attn_prefill_native_fn_cache", None)
         if fn is None:
             quant = getattr(self, "_gguf_prefill_quant", "gguf_qwen35")
-            fn = resolve(
-                backend=self.backend,
-                layer="full_attn_prefill",
-                quant=quant,
-                variant="causal_gqa_gate_bf16",
-                missing="none",
+            key = KernelKey(
+                self.backend,
+                "full_attn_prefill",
+                quant,
+                "causal_gqa_gate_bf16",
+            )
+            fn = (
+                resolve(
+                    backend=key.backend,
+                    layer=key.layer,
+                    quant=key.quant,
+                    variant=key.variant,
+                )
+                if is_registered(key)
+                else None
             )
             if fn is None:
                 fn = qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans
@@ -4095,9 +4121,10 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        ssm_out_weight = layer.weight("ssm_out")
         ssm_out_input_ptr = scratch.recurrent_out.ptr
         ssm_out_activation_dtype = GGUF_ACTIVATION_F32
-        output_cast = self._gdn_decode_output_cast_fn()
+        output_cast = self._gdn_decode_output_cast_for_weight(ssm_out_weight)
         if output_cast is not None:
             output_cast(
                 scratch.recurrent_out.ptr,
@@ -4110,7 +4137,7 @@ class Qwen35GGUFFullStackRunner:
             ssm_out_input_ptr = scratch.recurrent_bf16.ptr
             ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
         launch_gguf_linear(
-            layer.weight("ssm_out"),
+            ssm_out_weight,
             ssm_out_input_ptr,
             attn_out_ptr,
             rows=1,
@@ -4274,9 +4301,13 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
+        ssm_out_weight = layer.weight("ssm_out")
         ssm_out_input_ptr = scratch.recurrent_out.ptr
         ssm_out_activation_dtype = GGUF_ACTIVATION_F32
-        output_cast = self._gdn_decode_output_cast_fn()
+        output_cast = self._gdn_decode_output_cast_for_weight(
+            ssm_out_weight,
+            rows=rows,
+        )
         if output_cast is not None:
             output_cast(
                 scratch.recurrent_out.ptr,
@@ -4289,7 +4320,7 @@ class Qwen35GGUFFullStackRunner:
             ssm_out_input_ptr = scratch.recurrent_bf16.ptr
             ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
         launch_gguf_linear(
-            layer.weight("ssm_out"),
+            ssm_out_weight,
             ssm_out_input_ptr,
             attn_out_ptr,
             rows=rows,
