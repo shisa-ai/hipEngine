@@ -3539,6 +3539,22 @@ salvage, remove candidate plus RED, add no runtime/source owner, and retain
 H6T/H8B production **440.893 tok/s**
 ([H8L rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-codebook12-all45-timing-rejected.json)).
 
+Select target-only **WPF-H8M exact IQ3 sign-folded BF16 codebook** as the
+materially opposite representation operation after H8L: spend read-only table
+bytes to remove dynamic sign ALU rather than compressing magnitudes and adding
+extracts. All **4,096** `(sign_nibble, grid_index)` records are exact and unique
+uint64 packs of four signed BF16 values. The model expands storage
+**1,024→32,768 bytes** and all-45 logical table bytes
+**105,529,737,216→211,059,474,432 (+100%)** at unchanged wave-load count, while
+targeting H6T's **24 compare + 24 select** sign sites. This is not cache-traffic
+or speed evidence. Freeze one six-b64 body under RED; preserve all H6T
+arithmetic/ownership/output bytes, require code≤8,500 B, slots≤1,500,
+metadata/runtime VGPR≤101/104, exact edge/CPU/all-45 results, then every layer
+and aggregate on one immutable both-clock screen. Forbid alternate table dtypes,
+widths, indexing/layout, cache placement, subsets, rewrites, recompiles, and
+favorable reruns
+([H8M target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8l-iq3-signed-bf16-codebook-target.json)).
+
 The old wider-qrow, cross-head/key-split, attention-rowbatch16,
 attention output-tile/source-MMQ, combined QK+PV changed-association attention, H5O representation, H5P geometry, H5S persistent
 ownership, H5T one-wave IQ3 ownership, H6B segment-plane representation, and
