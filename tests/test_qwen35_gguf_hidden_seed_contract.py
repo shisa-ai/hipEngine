@@ -434,6 +434,10 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
 def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[object, ...]] = []
 
+    class Runtime:
+        def stream_synchronize(self, stream: int) -> None:
+            calls.append(("stream_synchronize", int(stream)))
+
     class BulkScratch:
         def for_chunk(self, start, rows, total_tokens, *, runtime, stream=0):
             calls.append(("scratch", int(start), int(rows), int(total_tokens), runtime, int(stream)))
@@ -452,7 +456,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     monkeypatch.setattr(gguf_runner, "launch_gguf_embedding", fake_embedding)
     monkeypatch.setattr(gguf_runner, "set_decode_position_i64", fake_set_decode_position_i64)
 
-    runtime = object()
+    runtime = Runtime()
     weights = SimpleNamespace(
         config=SimpleNamespace(
             layer_types=(gguf_runner.LINEAR_ATTENTION, gguf_runner.LINEAR_ATTENTION),
@@ -504,6 +508,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     session._hidden_seed_fp32_populated = True
     session._int8_prefill_oracle_buffers = {}
     session.use_expert_sidecar = False
+    session.prefill_queue_drain = "layer"
     session._linear_prefill_layer_chunk_size = lambda rows: int(rows)
 
     def fake_run_output_norm_hidden(
@@ -543,6 +548,10 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     assert ("last_row_output_norm", last_src_ptr, 0x7000, 0, False) in calls
     assert result.hidden_ptr == 0x7000
     assert result.return_logits is False
+    assert [call for call in calls if call[0] == "stream_synchronize"] == [
+        ("stream_synchronize", 0),
+        ("stream_synchronize", 0),
+    ]
     assert session._verify_hidden_seed_rows_populated == 0
     assert not session._hidden_seed_fp32_populated
     assert session._position == 3

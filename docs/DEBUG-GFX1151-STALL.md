@@ -1,7 +1,7 @@
 # Debugging the gfx1151 128K prefill stall
 
-**Status:** open, reproducible, intermittent, no production-safe workaround<br>
-**Last updated:** 2026-07-16<br>
+**Status:** open, reproducible, intermittent; host-drain containment unverified<br>
+**Last updated:** 2026-08-04<br>
 **Primary platform:** Framework Desktop, Ryzen AI MAX+ 395 / Radeon 8060S
 (`gfx1151`)<br>
 **Current publication decision:** hipEngine GGUF rows through 64K are retained;
@@ -74,6 +74,24 @@ result is posted to ROCm/ROCm#6437. The machine has been restored and verified
 on `sched_policy=0`. A legacy-interposition or streaming rocprofiler retry
 remains lower priority.
 
+The strongest new stack lead is upstream Linux commit
+[`1fb710793ce2`](https://github.com/torvalds/linux/commit/1fb710793ce2619223adffaf981b1ff13cd48f17),
+which enables the MES `lr_compute_wa` resource bit specifically to prevent hangs
+on long compute jobs. The exact CachyOS source used by the captured
+`7.1.3-2-cachyos` kernel sets the oversubscription timer but does **not** set
+`enable_lr_compute_wa`; MES `0x88` satisfies upstream's gfx11 minimum firmware
+check. This is a concrete kernel/configuration mismatch and the leading fixed-
+stack A/B candidate, not proof that it caused the captured stall.
+
+hipEngine now has an explicit default-off `layer`/`chunk` host-drain diagnostic.
+`layer` synchronizes the caller stream after each completed model layer and is
+the only current application containment strong enough to bound the observed
+two-layer submission lead. Unit coverage proves placement and default-off
+behavior. A matched gfx1151 Q4_K_M 512/1 smoke preserves the exact final token
+and logit while prefill changes `1297.739 -> 1211.852 tok/s` (`-6.62%`); no 128K
+lifecycle run has yet established safety. It is not a production workaround
+until it meets the closure gate below.
+
 ## User-visible impact and scope
 
 ### Affected contract
@@ -141,6 +159,7 @@ The main evidence set uses:
 | Queue policy | `GPU_MAX_HW_QUEUES=1` unless a row explicitly says default/four; this does not mean only one KFD queue object |
 | Primary stalled-HQD scheduler policy | `sched_policy=0` (hardware scheduling enabled); the rejected non-HWS follow-up used `2` |
 | CWSR | `cwsr_enable=1` |
+| MES long-running-compute workaround | Exact kernel source does not submit `enable_lr_compute_wa`; MES `0x88` is new enough for the upstream gfx11 check |
 
 Relevant values on the primary stalled-HQD MES-debug boot were:
 
@@ -257,6 +276,27 @@ Escalate from `chunk` to `layer` only when the chunk capture is insufficient.
 Layer mode adds 1,315 same-stream system-fence marker kernels per prefill and can
 change incidence.
 
+### Experimental host-drain containment
+
+To test whether bounding outstanding work avoids the queue-retirement state,
+add the following to the canonical command:
+
+```bash
+--prefill-queue-drain layer
+```
+
+This performs a real host-side `hipStreamSynchronize` after each model layer;
+unlike flight-recorder markers, the host cannot submit the next layer until the
+current one retires. `--prefill-queue-drain chunk` is a cheaper comparison, but
+it still allows a complete chunk's layer DAG to accumulate and is not expected
+to bound the observed two-layer lag. Both modes are diagnostic and deliberately
+slower. A hung synchronization would localize the first non-retiring layer
+boundary but would not recover the process.
+
+The predeclared gate is the normal exact 512/4K/64K screen followed by at least
+three independent 128K warmup+3 processes, with finite logits, exact IDs, normal
+telemetry, and clean kernel logs. A single passing process is insufficient.
+
 ## Evidence chronology
 
 | Date | Probe | Result | Interpretation |
@@ -343,6 +383,9 @@ the tested protocol.” It does not mean the component can never affect incidenc
 Evidence supporting this interpretation:
 
 - queue count materially changes initial incidence;
+- upstream Linux added `enable_lr_compute_wa` specifically for long-compute MES
+  hangs, while the exact captured-kernel source omits that resource bit despite
+  MES `0x88` meeting the upstream firmware-version check;
 - AMD has publicly described the gfx11 fix as still under development in
   [ROCm#5107](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4800268515),
   with a [nearby follow-up](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4847244516)
@@ -712,6 +755,7 @@ it explicitly does not answer whether non-HWS changes the original stall.
 | --- | --- | --- |
 | [ROCm/ROCm#5107](https://github.com/ROCm/ROCm/issues/5107) | Queue-count sensitivity, 100% state, AMD says gfx11 MES/CP fix is under development | Primarily multi-model/idle utilization; our direct symptom is one-process long-prefill no-progress |
 | [ROCm/ROCm#6165](https://github.com/ROCm/ROCm/issues/6165) | Same Framework gfx1151 platform, sustained long prefill, silent hang, no hangcheck/reset | Their MES is 0x86 and the whole host later freezes; ours uses MES 0x88, host remains responsive, and killing one process immediately recovers |
+| [ROCm/ROCm#5590](https://github.com/ROCm/ROCm/issues/5590) | Strix Halo long-compute MES hangs; historical CWSR workaround and later kernel/firmware resolution reports | Different failure signature and older firmware; `cwsr_enable=0` is a broad system workaround, while the linked upstream long-compute resource bit is the narrower lead for our stack |
 | [ROCm/ROCm#2625](https://github.com/ROCm/ROCm/issues/2625) / [ROCm/amdgpu#153](https://github.com/ROCm/amdgpu/issues/153) | RDNA hardware queues/MES, 100% activity, `sched_policy=2` workaround | Their minimal stream/memory reproducer does not trigger our symptom; our policy-2 128K process faults before prefill, and their primary issue is persistent idle power |
 
 The existing links support a scheduler-family relationship. They do not prove

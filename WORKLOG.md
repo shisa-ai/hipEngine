@@ -202789,3 +202789,46 @@ Vulkan local sizes verbatim will close the measured gap.
   repair rule, the original complete broad baseline plus repaired failing-node
   evidence is retained; a second full-suite-green claim remains intentionally
   unmade pending explicit approval.
+
+## 2026-08-04 — Add a bounded gfx1151 Q4_K_M prefill-drain diagnostic
+
+- Online/GitHub triage finds the dedicated report
+  [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437) still open in
+  `status: triage` with no AMD response. Related CWSR/MES reports do not provide
+  a directly transferable application workaround: `amdgpu.cwsr_enable=0` is a
+  broad historical mitigation, while the captured 0x88 failure is a silent
+  active/non-empty AQL queue with 32 unread packets and no fault/reset.
+- The strongest new fixed-stack lead is upstream Linux
+  `1fb710793ce2619223adffaf981b1ff13cd48f17`, whose stated purpose is enabling
+  MES `lr_compute_wa` to prevent hangs on long compute jobs. The exact CachyOS
+  source commit `0e558f948dfe28b50d2eb9ddda58900d7de01aac` used by installed
+  `7.1.3-2-cachyos` sets `oversubscription_timer=50` but has no
+  `enable_lr_compute_wa` assignment. MES 0x88 exceeds the patch's gfx11 minimum
+  0x7f check. Treat this as the leading kernel A/B candidate, not root-cause
+  proof.
+- Add default-off `Qwen35GGUFResidentSession.prefill_queue_drain` and
+  `qwen35_readme_sweep.py --prefill-queue-drain none|chunk|layer`. `layer`
+  performs a real `hipStreamSynchronize` after each model layer, bounding the
+  observed two-layer host-submission lead; `chunk` provides a cheaper outer-
+  chunk comparison. The default path remains byte-for-byte scheduling-equivalent
+  with no added synchronization.
+- RED/GREEN coverage validates mode normalization/rejection, selected-boundary
+  calls, two actual layer-loop drains, CLI forwarding, and artifact provenance.
+  A real smoke first exposed a separate stale harness contract: the README sweep
+  omitted newly required `roctx` and `rocprof_selected_region` keywords when
+  calling `_run_existing_session_once`. Add disabled-region forwarding and an
+  AST/signature guard so future helper changes fail in the suite. The focused
+  queue-drain/bulk-prefill/flight-recorder/signature bundle passes **38/38**;
+  the runner/readme bundle passes with **14 passed / 9 local-model skips**.
+- Matched real gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M `512/1` processes on HIP
+  7.15, BF16 KV, `GPU_MAX_HW_QUEUES=1`, eager decode, and cached builds both
+  exit 0 with finite logits and exact final token/logit `9707` /
+  `28.245166778564453`. Layer drain changes prefill
+  **1297.739 -> 1211.852 tok/s (-6.62%)**; decode is
+  **52.664 -> 52.467 tok/s**. This is diagnostic-only plumbing/cost evidence,
+  not a performance claim and not 128K stability evidence. Artifact:
+  `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-smoke.json`.
+- The predeclared containment gate remains exact 512/4K/64K controls plus at
+  least three independent 128K warmup+3 processes. It exceeds five minutes and
+  is not started without explicit approval. Prefer an updated-kernel
+  `enable_lr_compute_wa` A/B before treating host drains as production policy.

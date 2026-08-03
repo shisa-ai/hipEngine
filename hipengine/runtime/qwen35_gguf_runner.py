@@ -7849,6 +7849,15 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     return raw.lower() not in {"0", "false", "off", "no"}
 
 
+def _normalize_prefill_queue_drain(value: str) -> str:
+    mode = str(value).strip().lower()
+    if mode not in {"none", "chunk", "layer"}:
+        raise ValueError(
+            f"prefill_queue_drain must be one of none, chunk, layer; got {value!r}"
+        )
+    return mode
+
+
 def _iq_grouped_prefill_enabled() -> bool:
     return _env_flag(_GGUF_IQ_GROUPED_PREFILL_ENV, True)
 
@@ -9836,6 +9845,7 @@ class Qwen35GGUFResidentSession:
     prefill_config: PrefillConfig | None = None
     prefill_flight_recorder_path: str | Path | None = None
     prefill_flight_recorder_granularity: str = "chunk"
+    prefill_queue_drain: str = "none"
     kv_policy: FixedPagedKVPolicy | None = None
     kv_scale_dtype: str | DType = DType.FP16
     kv_scale_granularity: str = "per_token_head"
@@ -9974,6 +9984,9 @@ class Qwen35GGUFResidentSession:
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.prefill_queue_drain = _normalize_prefill_queue_drain(
+            self.prefill_queue_drain
+        )
         self.runtime = self.runtime or get_hip_runtime()
         if self.shared_runner is None:
             self.runner = Qwen35GGUFFullStackRunner(
@@ -11861,6 +11874,20 @@ class Qwen35GGUFResidentSession:
             library=getattr(self, "_q8_mmq_prefill_library", None),
         )
 
+    def _drain_prefill_queue(
+        self,
+        boundary: str,
+        *,
+        runtime: HipRuntime,
+        stream: int,
+    ) -> None:
+        """Optionally bound outstanding prefill work at a host boundary."""
+
+        if boundary not in {"chunk", "layer"}:
+            raise ValueError(f"unsupported prefill queue-drain boundary {boundary!r}")
+        if getattr(self, "prefill_queue_drain", "none") == boundary:
+            runtime.stream_synchronize(stream)
+
     def prefill(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -12175,6 +12202,11 @@ class Qwen35GGUFResidentSession:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                         if recorder is not None and recorder.should_complete_layers:
                             recorder.complete(layer_sequence, stream=stream)
+                        self._drain_prefill_queue(
+                            "layer",
+                            runtime=runtime,
+                            stream=stream,
+                        )
                         src, dst = dst, src
                         if layer_id in capture_layer_ids and chunk_end == rows:
                             final_row_ptr = (
@@ -12193,6 +12225,11 @@ class Qwen35GGUFResidentSession:
                             )
                     if recorder is not None and not recorder.should_complete_layers:
                         recorder.complete(chunk_sequence, stream=stream)
+                    self._drain_prefill_queue(
+                        "chunk",
+                        runtime=runtime,
+                        stream=stream,
+                    )
                     last_bulk_scratch = bulk_scratch
                     last_src_ptr = src.ptr + (chunk_rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
                 if last_bulk_scratch is None:
@@ -12323,6 +12360,11 @@ class Qwen35GGUFResidentSession:
                                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                             if recorder is not None and recorder.should_complete_layers:
                                 recorder.complete(layer_sequence, stream=stream)
+                        self._drain_prefill_queue(
+                            "layer",
+                            runtime=runtime,
+                            stream=stream,
+                        )
                     finally:
                         if expert_sidecar is not None:
                             expert_sidecar.free(runtime=runtime)
@@ -12344,6 +12386,11 @@ class Qwen35GGUFResidentSession:
                         )
                 if recorder is not None and not recorder.should_complete_layers:
                     recorder.complete(chunk_sequence, stream=stream)
+                self._drain_prefill_queue(
+                    "chunk",
+                    runtime=runtime,
+                    stream=stream,
+                )
                 last_bulk_scratch = active_bulk_scratch
                 if last_bulk_scratch is None:
                     # Empty synthetic layer stacks still need the shared norm
