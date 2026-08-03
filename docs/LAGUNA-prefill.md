@@ -2186,6 +2186,37 @@ candidate correctness, runtime trace, or all-layer timing. Remove all H8J
 source/RED surfaces and retain H6T plus H8B **440.893 tok/s / 2,155 dispatches**
 ([H8J rejection](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
 
+Select target-only **WPF-H8K exact IQ3 uniform-rowbatch4 triple-output
+ownership**. H8J changed only launch bounds and could not alter VGPR; H8K
+changes the complete all-layer body ownership without a tail branch. Replay the
+frozen natural-M512 routing for all **45** IQ3 layers: **9,844 active-expert
+assignments / 230,400 useful rows**. H6T rowbatch8 has **24,650 full + 8,897
+tail = 33,547 epochs**, **268,376 compute slots**, and **37,976 padded slots
+(14.150%)**. Fixed rowbatch4 has **53,907 full + 7,639 tail = 61,546 epochs**,
+**246,184 slots**, and **15,784 padded slots (6.411%)**.
+
+The candidate removes **22,192 compute slots (−8.269%)**, modeling
+**2,454,257,664** fewer FMA-wave and **1,363,476,480** fewer exchange-wave
+operations. It also explicitly increases row epochs **83.462%**, output-triple
+epochs **34,352,128→63,023,104**, and barrier epochs
+**68,704,256→126,046,208**. Treat every count as rationale/tradeoff, not a
+speed result. Four activation rows plus four accumulators model **20** explicit
+long-lived dwords versus H6T's **40**, but only compiled metadata/runtime
+**≤96 VGPR** admits the physical premise.
+
+Freeze RED before executable work. One separately named local128/P256/
+rowbatch4 body must preserve H6T's raw active-expert ABI, three-output grouping,
+each row's exact IQ3 decode/eight FMA order/permlanex16+DPP tree/serial
+wave0→1→2→3 sum/BF16 store, allocation/workspace/request dispatches, and H6T
+plus older rollback chain. Require rows1/3/4/5/7/8/9/M512, P64/P65,
+empty/uneven/reordered routing, sampled CPU, all **45/45** actual bytes,
+metadata/runtime VGPR≤96, LDS≤192/256, code≤7,920 B, slots≤1,384, and zero
+private/spill/scratch. Then consume one 5/15/5 all-layer screen where every
+layer and aggregate win event and synchronized wall. Do not compile alternate
+row batches or salvage any layer/expert/routing/prompt/token/length/output-
+partition/rewrite/recompile/favorable-rerun subset
+([H8K target](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json)).
+
 Historical **WPF-H6B exact active-IQ3 signed-magnitude segment plane** screening
 used a materially new operation. Complete 16-byte records match the pinned
 scale/magnitude bytes; P64/P65/tail/empty outputs match H5Z and CPU; all

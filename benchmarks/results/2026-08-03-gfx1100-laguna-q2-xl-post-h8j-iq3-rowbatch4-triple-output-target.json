@@ -1,0 +1,220 @@
+{
+  "admission": {
+    "all_45_layers_inseparable": true,
+    "correctness": "complete BF16-byte equality to H6T at rows1/3/4/5/7/8/9/M512, P64/P65, empty/uneven/reordered routing, and all 45 actual layers; sampled CPU, poison overwrite, finite, repeat, lifecycle",
+    "fallback": "registered H6T grouped_raw_iq_active_experts primitive and complete H6R/H6Q/H6P/H6I/H6F/H6D/H5Z chain",
+    "first_object": "one separately named local128/P256 H6T-derived uniform-rowbatch4 triple-output body; metadata/runtime VGPR<=96, metadata/runtime LDS<=192/256 bytes, private/spill/scratch0, code<=7920 bytes, slots<=1384",
+    "forbidden_salvage": "no layer/expert/routing/prompt/token/length/rowbatch/output-partition/body-rewrite/resource-spill/recompile/favorable-rerun subset",
+    "named_trace": "exactly 45 candidate launches at the retained grid/local128 with runtime-VGPR<=96/LDS<=256/scratch0, positive durations, one queue/stream, zero compiler",
+    "no_sweep": "rowbatch4 is fixed before executable work; do not compile or time rowbatch2/3/5/6/7 or choose a crossover after results",
+    "post_leaf_if_admitted": "bounded complete-class owner, complete M512 state/topology, fixed C4096/M512, clean 512/1K/4K, then separate source RED and promotion gate",
+    "preflight_before_hip_load": true,
+    "red_first": true,
+    "timing": "one immutable all-45 actual-routing screen: five warmups, 15 counter-rotated repetitions, five launches/sample; every layer and aggregate must win HIP-event and synchronized-wall medians"
+  },
+  "authority_links": {
+    "README.md": "2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json",
+    "benchmarks/CHANGELOG.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json",
+    "benchmarks/README.md": "results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json",
+    "docs/KERNELS.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json",
+    "docs/LAGUNA-prefill.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json",
+    "docs/PLAN.md": "../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json"
+  },
+  "date": "2026-08-03",
+  "decision": {
+    "candidate_implemented": false,
+    "next_action": "Commit this target-only packet, then freeze RED before any executable source change.",
+    "performance_measured": false,
+    "production_changed": false,
+    "target_selected": true
+  },
+  "hardware": {
+    "architecture": "gfx1100",
+    "compiler": "AMD clang 22",
+    "device": "AMD Radeon Pro W7900",
+    "hip_runtime": "HIP 7.2.53211-3d9ef42",
+    "queues": 1,
+    "vgpr_file_per_simd": 1536,
+    "wavefront_size": 32,
+    "waves_per_simd_max": 16
+  },
+  "kind": "gfx1100_laguna_q2_xl_post_h8j_iq3_rowbatch4_triple_output_target",
+  "lineage": {
+    "base_revision": "24382b2ba3",
+    "candidate_present": false,
+    "h6t_source_block_sha256": "c932d679f3b19e5126ae86b1fd6860ef55316b107c2749652c7ac84e2bd9fbf9",
+    "kernel_lineage_audit": "same four pre-existing documented external Qwen/PARO drifts; Laguna/llama.cpp references unchanged",
+    "package_policy_changed": false,
+    "prior_h8j_rejection_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json",
+    "prior_h8j_rejection_artifact_sha256": "09002d754bf0807909ac939ffc5f5840bd4bb9da1393f39cfb6789059704bc21",
+    "production_artifact": "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-scoped-activation-pack-reuse-production.json",
+    "production_artifact_sha256": "d7f62709a66d255caf8e7a8a4ec2eaf9ce713916c7b78ffaecd7e68d2ff69d91",
+    "red_present": false,
+    "runtime_owner_present": false,
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/__init__.py": "3638a8fb56d7f87b928bd4f9c8f533f3923381db4d7d7a6e1929ae283b37968d",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip": "e7b616995c6381a0db6868349c5e407c985de7176e4abb297592fccd19849e8f",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.py": "ec05d2a7da321dcedfc996d3b09da61eb6c02d45fd9f5f1f85f048d6f9aa3be2",
+      "hipengine/kernels/hip_gfx1151/__init__.py": "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
+    }
+  },
+  "matched_status": {
+    "application_dispatches": 2155,
+    "campaign_start_kernel_sum_ms": 3001.692,
+    "campaign_start_tok_s": 169.516,
+    "current_component_ms": {
+      "attention": 115.349089,
+      "gate_up": 401.402578,
+      "iq_down": 273.163353,
+      "q5": 230.42948,
+      "q6": 73.319821,
+      "remaining": 52.755423
+    },
+    "kernel_sum_ms": 1146.419744,
+    "llamacpp_component_ms": {
+      "attention": 21.512447,
+      "gate_up": 397.804923,
+      "iq_down": 153.859911,
+      "q5": 58.31409,
+      "q6": 14.667598,
+      "remaining": 67.849439
+    },
+    "llamacpp_kernel_sum_ms": 714.008408,
+    "llamacpp_wall_tok_s": 690.791,
+    "remaining_gap_ms": {
+      "attention": 93.836642,
+      "gate_up": 3.597655,
+      "iq_down": 119.303442,
+      "kernel_sum": 432.411336,
+      "q5": 172.11539,
+      "q6": 58.652223,
+      "remaining": -15.094016
+    },
+    "wall_tok_s": 440.8926238498552
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "workload": "fixed natural 512 IDs, context4096 admission, direct M512, attention M128, one queue"
+  },
+  "operation_contract": {
+    "candidate_name_suffix": "triple_output_rowbatch4",
+    "candidate_row_batch": 4,
+    "control_row_batch": 8,
+    "gfx1151_fail_closed": true,
+    "no_allocation_workspace_or_request_dispatch_change": true,
+    "operation": "uniformly process four compact rows per H6T output-triple epoch instead of eight, retaining exact per-row IQ3 decode/FMA/reduction/publication while reducing resident activation and accumulator liveness and natural-routing padding",
+    "preserved": [
+      "raw IQ3 bytes, active-expert metadata, P64/P256 traversal, four-wave local128 ownership, and three-output grouping",
+      "each row's exact IQ3 scale/selector/grid/sign/magnitude reconstruction and eight ordered magnitude FMAs",
+      "each row's permlanex16 plus DPP 8/4/2/1 tree, serial wave0->1->2->3 sum, and BF16 publication bits",
+      "output layout, raw ABI, allocation/workspace, request dispatch count, lifecycle, and registered H6T fallback"
+    ],
+    "raw_pointer_abi": true,
+    "unfused_fallback": "registered H6T source owner; H6R/H6Q/H6P/H6I/H6F/H6D/H5Z remain rollback"
+  },
+  "operation_model": {
+    "active_experts": 9844,
+    "actual_iq3_layers": 45,
+    "candidate": {
+      "barrier_epochs": 126046208,
+      "compute_slots": 246184,
+      "full_batches": 53907,
+      "output_triple_epochs": 63023104,
+      "padded_rows": 15784,
+      "row_batch": 4,
+      "tail_batches": 7639,
+      "total_batches": 61546,
+      "wasted_compute_percent": 6.411464595587041
+    },
+    "control": {
+      "barrier_epochs": 68704256,
+      "compute_slots": 268376,
+      "full_batches": 24650,
+      "output_triple_epochs": 34352128,
+      "padded_rows": 37976,
+      "row_batch": 8,
+      "tail_batches": 8897,
+      "total_batches": 33547,
+      "wasted_compute_percent": 14.150296598801681
+    },
+    "delta": {
+      "barrier_epochs": 57341952,
+      "batch_epochs_percent": 83.46200852535249,
+      "compute_slots": -22192,
+      "compute_slots_percent": -8.26899573732376,
+      "modeled_removed_exchange_wave_operations": 1363476480,
+      "modeled_removed_fma_wave_operations": 2454257664,
+      "output_triple_epochs": 28670976,
+      "padded_rows": -22192,
+      "padded_rows_percent": -58.43690752053929
+    },
+    "h6t_calls": 45,
+    "h6t_excess_over_complete_llamacpp_iq_down_ms": 110.51705299999998,
+    "h6t_ms": 264.376964,
+    "h6t_share_of_iq_down_percent": 96.78346714392542,
+    "not_a_speed_claim": true,
+    "register_liveness": {
+      "candidate_accumulator_dwords_per_scope": 4,
+      "candidate_activation_vector_dwords": 16,
+      "candidate_metadata_vgpr_ceiling": 96,
+      "candidate_runtime_vgpr_ceiling": 96,
+      "control_accumulator_dwords_per_scope": 8,
+      "control_activation_vector_dwords": 32,
+      "explicit_long_lived_dword_reduction": 20,
+      "not_a_compiler_or_speed_claim": true,
+      "physical_measurement_required": true
+    },
+    "useful_rows": 230400
+  },
+  "performance_claim": false,
+  "prior_exact_iq3_boundaries": {
+    "closed": [
+      "H5K larger rowbatch12/16",
+      "H6X workgroup-resident grid table",
+      "H6Y packed prefix loads",
+      "H7B lane-parallel final publication",
+      "H7L branched full-batch/live-tail split",
+      "H7M two-wave K partitions with LDS activation",
+      "H7W output P128 crossover",
+      "H8J launch-bounds-only occupancy"
+    ],
+    "distinct_premise": "H8K changes uniform row ownership and compiler liveness together, not launch bounds alone or a branched tail path; rowbatch4 is fixed from natural-routing arithmetic before compilation and applies to all 45 IQ3 layers.",
+    "historical_precedent_only": "A different Qwen3.6 UD-Q3_K_M gfx1100 gate/up kernel previously admitted exact rowbatch4; its timing is not a Laguna down-projection forecast or admission substitute."
+  },
+  "production": {
+    "h6t": {
+      "calls": 45,
+      "excess_over_complete_llamacpp_iq_down_ms": 110.51705299999998,
+      "grid": [
+        32768,
+        64
+      ],
+      "local_size": 128,
+      "median_ms": 264.376964,
+      "metadata_lds_bytes": 384,
+      "metadata_vgpr": 101,
+      "runtime_lds_bytes": 512,
+      "runtime_vgpr": 104,
+      "scratch_bytes": 0,
+      "share_of_current_iq_down_percent": 96.78346714392542,
+      "source_block_sha256": "c932d679f3b19e5126ae86b1fd6860ef55316b107c2749652c7ac84e2bd9fbf9"
+    },
+    "source": "H8B/H8A/H7H-H7G Q5 + H7I/H6U Q6 + H6T IQ3 + H6N/H6Z global + H6A/H6W SWA + H7U compaction"
+  },
+  "raw_evidence_sha256": {
+    "/tmp/audit_laguna_h8k_iq3_rowbatch4.py": "56553326d5680f23668256164f7981e1f9b4100084effa99e79db2a4c3b5b059",
+    "/tmp/laguna-h8b-post-commit-trace-summary.json": "443f8fc9992150acd6a6c4f066401628aba1d2d0b0b7d4d65b2f25f3f507106c",
+    "/tmp/laguna-h8k-iq3-rowbatch4-audit.json": "ae9222da34353276900d687d964d1f212324734fabde5dbea6472d58b011e4ba",
+    "/tmp/laguna-h8k-iq3-rowbatch4-audit.status": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+    "/tmp/laguna-h8k-iq3-rowbatch4-audit.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/tmp/laguna-h8k-iq3-rowbatch4-audit.stdout": "4283950ad0d755b6535f9fe9759fe75598530a579e4ace9a0ea701464728f26f",
+    "/tmp/laguna-post-h7k-iq3-full-batch-routing.json": "273c99eb98add635f6843b8442118e251232bb5e739072d32d74a52ab7c0b796",
+    "benchmarks/results/2026-07-20-gpu1-q3-exact-iq3-rowbatch4-prefill.json": "1682fb7110325e64412ed64971591d18a77b91fad5acc4ee1c59a1f42e1816a0",
+    "benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7k-matched-iq3-live-tail-target.json": "fb6d1d64ffd335dc0649478eec12bd0d9809b435ec0b4da66ec1abc016ec51a5"
+  },
+  "schema": 1,
+  "status": "target_selected_no_candidate_no_speed_result"
+}

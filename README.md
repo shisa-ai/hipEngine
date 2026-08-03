@@ -1348,6 +1348,19 @@ source/RED surface is removed and H8B production remains **440.893 tok/s / 2,155
 dispatches**, **1.5668×** behind matched llama.cpp HIP
 ([H8J rejection](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-iq3-four-workgroup-occupancy-physical-rejected.json)).
 
+**WPF-H8K exact IQ3 uniform-rowbatch4 triple-output ownership is the next
+target-only leaf.** Frozen natural-M512 routing across all **45** IQ3 layers has
+**230,400 useful rows**. H6T rowbatch8 executes **33,547 epochs / 268,376 row
+slots**, including **37,976 padded slots (14.150%)**; fixed rowbatch4 executes
+**61,546 epochs / 246,184 slots**, including **15,784 padded slots (6.411%)**.
+Thus the exact operation removes **22,192 compute slots (−8.269%)** and halves
+the explicit activation-plus-accumulator liveness model **40→20 dwords**, while
+openly adding **83.462% row epochs** and **57,341,952 modeled barrier epochs**.
+This is not a speed result. Freeze RED before source changes; require ≤96 VGPR,
+complete H6T/CPU bytes, and every **45/45** layer plus aggregate to win both
+clocks with no rowbatch/layer/routing/rerun salvage
+([H8K target](benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-post-h8j-iq3-rowbatch4-triple-output-target.json)).
+
 Both short
   rows exceed 150 tok/s and H6E production 4K remains positive; 16K+ stays closed below
   the 800/700 stretch target
