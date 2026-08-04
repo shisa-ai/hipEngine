@@ -1,7 +1,7 @@
 // Host-only target/proposal graph launcher for NativeSpecCycle ABI v1.
 //
 // The provider owns the graph executable and resolves backend runtime entry
-// points once. This launcher validates either the strict GGUF B1/B2 contract
+// points once. This launcher validates either the strict GGUF N1 B1/B2/B3 contract
 // or the shared PARO MTP/DFlash B1/B2/B3/B4/B5/B8 target+accept contract,
 // submits exactly one graph, synchronizes its selected stream, and
 // writes a bounded terminal result.  It contains no device math and owns none
@@ -115,11 +115,12 @@ bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
   const bool n2 = control->stage_mask == kN2Stages;
   const uint32_t rows = control->row_count;
   const uint32_t candidates = rows >= 1 ? rows - 1 : 0;
+  const bool supported_rows = rows == 2 || rows == 3 || (verify_only && rows == 4);
   return (verify_only || n2) &&
          control->mode == HIPENGINE_NATIVE_SPEC_MODE_CHAIN &&
          control->request_count == 1 &&
          control->request_capacity >= 1 &&
-         (rows == 2 || rows == 3) &&
+         supported_rows &&
          control->active_row_count == rows &&
          control->row_capacity >= rows &&
          control->candidate_count == candidates &&

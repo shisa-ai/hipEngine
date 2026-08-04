@@ -470,6 +470,15 @@ wall saving. The existing bulk-only B1/B2 N1 graph guards cannot simply be
 relaxed because its captured host positions are invalid for native row-serial
 full attention; unsupported configurations must keep the eager native fallback.
 
+The exact dense extension is now correctness-green before timing. Independent
+B1-B3 N1 executables bind native row attention to live device positions,
+contexts, resident-page `KVLiveSpans`, and a graph-owned FP32 trunk-row journal;
+N2 remains B1/B2. The real W7900 transaction oracle passes B3 reject, partial,
+and full acceptance plus reuse at positions 6, 7, and 9, with exact target rows,
+selected Conv/GDN/KV/hidden state, correction logits, and natural B1 output.
+Per-cycle records expose first capture, submit, readback, and fallback without
+changing execution. The clean natural25 suite remains the promotion gate.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -483,7 +492,7 @@ full attention; unsupported configurations must keep the eager native fallback.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | three wins retained; exact B2 1.0854x AR; reusable native graph admitted |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | three wins retained; exact B2 1.0854x AR; reusable native graph correctness green, timing pending |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

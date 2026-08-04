@@ -447,6 +447,13 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 assert prepared.target_verify_mode == "native"
                 assert prepared.summary.accepted_counts == (budget,)
                 assert prepared.summary.full_accept == (True,)
+                assert not prepared.native_graph_submitted
+                assert prepared.native_graph_capture_ms == 0.0
+                assert prepared.native_graph_submit_ms == 0.0
+                assert prepared.native_graph_readback_ms == 0.0
+                assert "does not support logits readback" in str(
+                    prepared.native_graph_fallback_reason
+                )
                 np.testing.assert_array_equal(
                     prepared.target_logits,
                     np.concatenate(scalar_logits, axis=0),
@@ -487,6 +494,16 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 )
                 assert prepared.summary.accepted_counts == (accepted_count,)
                 assert prepared.summary.full_accept == (accepted_count == 3,)
+                assert target.last_native_spec_target_submitted
+                assert target.last_native_spec_target_fallback_reason is None
+                assert prepared.native_graph_submitted
+                if case == "reject":
+                    assert prepared.native_graph_capture_ms > 0.0
+                else:
+                    assert prepared.native_graph_capture_ms == 0.0
+                assert prepared.native_graph_submit_ms > 0.0
+                assert prepared.native_graph_readback_ms > 0.0
+                assert prepared.native_graph_fallback_reason is None
                 plan = TargetCommitPlan(
                     transaction_id=transaction_id,
                     request_ids=batch.request_ids,
@@ -518,6 +535,48 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 expected_next = reference.step(int(correction), return_logits=True)
                 assert actual_next.token_id == expected_next.token_id
                 np.testing.assert_array_equal(actual_next.logits, expected_next.logits)
+
+                # Reuse the same B3 executable after the committed correction,
+                # at three distinct later cursors across reject/partial/full
+                # cases. This is the real-device guard against captured host
+                # positions or stale per-row KVLiveSpans metadata.
+                dynamic_start = int(target.position)
+                dynamic_root = int(actual_next.token_id)
+                dynamic_candidates: list[int] = []
+                dynamic_top1: list[int] = []
+                dynamic_input = dynamic_root
+                for row in range(4):
+                    dynamic_step = reference.step(dynamic_input, return_logits=False)
+                    dynamic_token = int(dynamic_step.token_id)
+                    dynamic_top1.append(dynamic_token)
+                    if row < 3:
+                        dynamic_candidates.append(dynamic_token)
+                        dynamic_input = dynamic_token
+                dynamic_batch = _target_batch(
+                    dynamic_root,
+                    dynamic_start,
+                    tuple(dynamic_candidates),
+                )
+                dynamic_bucket = verifier.graph_bucket(
+                    ("dense-dynamic-position", case),
+                    dynamic_batch,
+                )
+                dynamic_prepared = verifier.prepare(
+                    dynamic_batch,
+                    transaction_id=200 + accepted_count,
+                    graph_bucket=dynamic_bucket,
+                    remaining_decode=(4,),
+                    return_logits=False,
+                )
+                assert dynamic_prepared.target_top1 == tuple(dynamic_top1)
+                assert dynamic_prepared.summary.accepted_counts == (3,)
+                assert dynamic_prepared.native_graph_submitted
+                assert dynamic_prepared.native_graph_capture_ms == 0.0
+                assert dynamic_prepared.native_graph_submit_ms > 0.0
+                assert dynamic_prepared.native_graph_readback_ms > 0.0
+                assert dynamic_prepared.native_graph_fallback_reason is None
+                verifier.rollback(dynamic_prepared)
+                assert target.position == dynamic_start
 
         natural_prompt = (
             7734,
@@ -578,6 +637,17 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert all(record["quant"] == "gguf_q4_k_m" for record in actual.cycle_records)
     assert all(record["experts_per_token"] == 0 for record in actual.cycle_records)
     assert all(record["target_verify_mode"] == "native" for record in actual.cycle_records)
+    assert all(record["target_native_graph_submitted"] for record in actual.cycle_records)
+    assert sum(
+        record["target_native_graph_capture_ms"] > 0.0
+        for record in actual.cycle_records
+    ) == 1
+    assert all(record["target_native_graph_submit_ms"] > 0.0 for record in actual.cycle_records)
+    assert all(record["target_native_graph_readback_ms"] > 0.0 for record in actual.cycle_records)
+    assert all(
+        record["target_native_graph_fallback_reason"] is None
+        for record in actual.cycle_records
+    )
     assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
     assert rowtile_rows == {2, 3, 4}
     assert dense_virtual256_calls

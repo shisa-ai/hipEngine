@@ -548,8 +548,11 @@ Current blockers that keep project-wide c>N incomplete:
   glossary, ownership distinctions, and qualified scorecard are in
   [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The provider-neutral
   `NativeSpecCycleLauncher` N0 ABI plus gfx1100 reusable B1/B2 N1 target graphs
-  are landed. N1 is byte-exact across dynamic positions and cached-session
-  resets; the retained accuracy-traded llama-compat suite reaches 122.667 tok/s
+  are landed. The exact dense Qwen3.6 native verifier now extends N1 VERIFY to
+  an independent B3 bucket with dynamic row positions/`KVLiveSpans` and exact
+  pre-output-norm trunk-row capture; N2 device accept/commit remains B1/B2.
+  N1 is byte-exact across dynamic positions and cached-session resets; the
+  retained accuracy-traded llama-compat suite reaches 122.667 tok/s
   versus llama.cpp's 115.444 tok/s W7900 floor. N2 device acceptance, selected
   hidden/Conv/GDN commit, cursor update, and bounded summary readback are also
   landed behind the explicit llama-compat native-cycle route. N2 keeps verifier
