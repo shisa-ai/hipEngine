@@ -203203,3 +203203,35 @@ Vulkan local sizes verbatim will close the measured gap.
   passes **9/9**, and its source-default trace/owner guard passes **3/3**. The
   earlier combined run already established every other node green, so no
   redundant broad rerun is needed under the focused-repair rule.
+
+## 2026-08-04 — Retain the quantized-KV BF16 prefill bridge
+
+- Current-source audit confirms the speed/capacity split is still correctly
+  enforced. PARO `auto` selects `oracle_bf16` below 224 Ki prompt rows and on
+  larger-memory systems even above that threshold; `streaming_direct` requires
+  both a very-long prompt and memory pressure, or an explicit diagnostic env
+  override. GGUF retained INT8 prefill separately writes layer-local BF16
+  attention-oracle K/V and retained INT8 K/V; pure/no-mirror GGUF INT8 remains
+  quality-gated and non-default.
+- Extend the existing GGUF INT8 scratch-policy regression test to carry an
+  admitted head-major K/V pair through
+  `_full_attention_prefill_scratch_for_layer()`, then resolve it through
+  `_gguf_aotriton_head_major_buffers()`. This freezes that the layer-local BF16
+  oracle consumes the bounded gfx1151 head-major AOTriton path promoted earlier,
+  rather than silently dropping back to strided K/V. RED-first is inapplicable:
+  this is a structural guard for already-correct retained behavior, not new
+  math or a route change.
+- Fresh gfx1151 validation passes the direct streaming INT8 primitive against
+  its NumPy quantized-attention oracle and all dedicated head-major gates. The
+  retained GPU1 performance artifact remains decisive: direct streaming moved
+  128K/128 prefill **1020.723 -> 23.425 tok/s (-97.7%)** and required
+  **5595.289 s** for that one prefill. No >5-minute rerun is warranted without a
+  direct-kernel implementation change; no performance claim or benchmark
+  rollup changes.
+- Validation: host INT8 route/policy/artifact helpers **38 passed**; gfx1151
+  direct-INT8 plus head-major primitive bundle **14 passed**; runtime
+  KV-dispatch/plan/layout bundle **178 passed**; GGUF full-attention/INT8/head-
+  major bundle **34 passed, 2 fixture skips**; `py_compile` and
+  `git diff --check` pass. `scripts/check_lineage.py --kind kernel --diff stat`
+  cannot complete because the configured external Atlas reference directory is
+  absent; no kernel was added or ported in this unit.
