@@ -205445,3 +205445,81 @@ Vulkan local sizes verbatim will close the measured gap.
   **33.456/40.067/44.886 B1/B2/B3 tok/s**. The new sidecar has a projected
   B3 fused-FFN leaf recovery of **29.289 ms / 5.215% complete marker wall**, but
   no complete-path speed claim is made before the clean W7900 gates.
+
+## 2026-08-05 — Retain compact-Q4T16 dense FFN sidecars
+
+- Correctness route `0439ecc3c97c016f9934fb777f78923cff42d1b3` is tracked
+  clean for every performance process. The retained comparison is clean
+  `c44e32ff6452140f0cce365b1a21e60bc80b0562`; both use W7900/gfx1100,
+  TheRock HIP 7.15, BF16 K/V, cached-only JIT, and the frozen Qwen3.6-27B GGUF.
+- Hermetic one-prompt B3 command wraps
+  `scripts/qwen36_dense_gguf_suite.py --candidate-budgets 3 --limit 1
+  --no-warmup --roctx-markers` with `rocprofv3 --kernel-trace --marker-trace
+  --memory-copy-trace` under the campaign `env -i` TheRock/ROCTX environment.
+  Root:
+  `/tmp/hipengine-qwen36-27b/final-0439ecc3c/profile-native-q4t16-ffn-mtp-b3-hermetic`.
+- Physical ownership is exact: **448** retained pack8 fused-FFN calls at
+  **106.201100 ms** become **448** compact-T16 row-reuse calls at
+  **76.440443 ms (-28.0229%, 1.3893x)**. Target-verify kernel sum falls
+  **371.447099 -> 342.579971 ms (-7.7715%)**, total kernel sum
+  **436.017552 -> 407.084853 ms (-6.6357%)**, target wall
+  **469.670789 -> 452.948151 ms (-3.5605%)**, and marker wall
+  **561.643713 -> 548.049697 ms (-2.4204%)**. Dispatches/copies remain
+  **8,055/21**; queue-gap/copy-overlap rises **125.183 -> 140.270 ms**, so the
+  attributed claim is the exact owner plus complete net wall, not kernel sum
+  alone. IDs, GPU/CPU acceptance, and ledger `[3,3,2,3,3,0,3]` remain exact.
+- Canonical natural25 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-0439ecc3c/natural25-native-q4t16-ffn-b1-b3.json`.
+- B1/B2/B3 improve **33.456087/40.067196/44.886492 ->
+  36.077942/42.878884/47.496234 tok/s (+7.8367%/+7.0174%/+5.8141%)**;
+  complete walls fall **7.173582/5.989937/5.346820 ->
+  6.652264/5.597161/5.053032 s**, and target verify falls
+  **8.4190%/7.8788%/6.6303%**. Selected B3 own-AR improves
+  **2.065154x -> 2.188740x (+5.9844%)**.
+- Every one of 30 prompt-budget rows improves **+5.3329% to +8.2613%** and
+  every full/train/heldout/category scope improves **+5.6677% to +8.0007%**.
+  Visible IDs, accepted counts, proposal totals, cycle ledgers, exact-greedy
+  checks, GPU/CPU acceptance, and stage reconciliation all match. True AR is
+  byte-identical and moves **21.735184 -> 21.700261 tok/s (-0.1607%)** within
+  one-run noise.
+- Populated 512/4096 gates use the canonical one-warmup/three-reset
+  `scripts/qwen35_gguf_bench.py` protocol. Prefill is noise-flat
+  **202.011491/188.765108 -> 201.698049/188.580025 tok/s
+  (-0.1552%/-0.0980%)** while graph decode improves
+  **20.896282/19.784138 -> 20.909799/19.804052 tok/s
+  (+0.0647%/+0.1007%)**. All six final IDs remain `9707`; maximum candidate
+  prefill/decode stdev is **1.0173%/0.2795%**.
+- The exact speed win adds **6,595,543,040 bytes / 6.142578 GiB** because pack8
+  remains required for prefill and fallback. Natural peak becomes
+  **31,122,689,576 bytes / 28.985 GiB**; 512/4096 peaks become
+  **27.749/30.574 GiB**. All allocations free on close. Retain for the 48-GiB
+  W7900 target, do not claim 24-GiB fit, and track sole-resident T16 prefill as
+  explicit debt in `docs/REFACTOR.md`.
+- Selected B3 is now **30.2372%** below llama.cpp Vulkan 68.082480 tok/s.
+  Hashes: profile kernel/marker/copy/summary/comparison
+  `8bc9ef71...be0a8 / b9a942d7...bba9 / 802123ad...e8bbd /
+  608734b9...5e04 / 322a7225...cee9`; natural/comparison
+  `b280cb1b...4a1d / 486dd640...6899`; 512/4096
+  `60785d26...ca22 / 0b0e2410...84c8`. Compact artifact:
+  `benchmarks/results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json`
+  (SHA-256 `23dcc10c...9b61`).
+- Re-rank only `0439ecc3c`: single-Q4 pack8 rowtiles are **81.460979 ms**,
+  Q6T16 rowtiles **80.372 ms**, retained compact FFN **76.440443 ms**, and
+  dense Q5 `ssm_out` **36.981614 ms / 336 calls**. The next admitted hypothesis
+  is a new exact Q5T16 rows-2-4 weight-reuse body: its family ceiling is
+  **6.748%** of marker wall, and Q4 proves that replacing per-row reload with
+  row reuse can reverse the old multirow result. First gate is actual-weight
+  GPU1 leaf exactness/speed; no runtime or sidecar route before it wins. The
+  already-screened broad single-Q4 sidecars project only **12.413 ms / 2.265%**
+  and another **3.907 GiB**, so they remain subordinate.
