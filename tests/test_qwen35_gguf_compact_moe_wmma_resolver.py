@@ -115,7 +115,7 @@ def test_t16_q4_explicit_shared_x_mode_resolves_candidate(
     assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
 
 
-def test_t16_q4_gfx1151_auto_resolves_promoted_shared_x(
+def test_t16_q4_gfx1151_auto_resolves_baseline_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", raising=False)
@@ -134,7 +134,8 @@ def test_t16_q4_gfx1151_auto_resolves_promoted_shared_x(
     plan = qgr._resolve_compact_moe_wmma_kernels(gate, up, down)
 
     assert plan is not None
-    assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
+    assert "selected_dual_wmma_prefill_compact_bf16_bf16_out" in resolved_variants
+    assert not any("shared_x" in variant for variant in resolved_variants)
 
 
 def test_t16_q4_invalid_explicit_mode_fails_closed(

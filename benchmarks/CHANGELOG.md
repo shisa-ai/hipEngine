@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-05
+
+- [accepted gfx1151 safety fallback, no performance claim] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / repeated 128K/128: controlled conservative and exact-GDN arms pass **12/12**, restoring only Q4T16 shared-X reproduces the no-progress state on prefill 4, and changing only that route to baseline passes **12/12** at measured **575.180-580.626 tok/s** with stable decode/tokens and full cleanup; gfx1151 `auto` **shared_x -> baseline**, gfx1100 unchanged; `benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json`.
+
 ## 2026-08-04
 
 - [diagnostic retained local Nathan fork comparison, no strict cross-engine claim] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/4K/32K/64K split pp/tg128: hipEngine BF16 leads fork F16/Q8 full-prompt prefill by **0.273%-6.536% / 0.505%-8.226%**, while fork F16/Q8 leads decode by **13.528%-22.666% / 14.361%-33.474%**; fork whole-device GTT is descriptively **0.648-2.153 GiB** below hipEngine tracked peak under non-comparable memory scopes, and the exact-model Q8 claim-protocol rerun exceeds the published different-model d0/d32K/d64K pp512/tg32 rows; `benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json`.

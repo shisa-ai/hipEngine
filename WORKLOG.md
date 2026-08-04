@@ -203496,3 +203496,41 @@ Vulkan local sizes verbatim will close the measured gap.
   current gfx1151 package defaults. RED is one expected focused failure before
   support; GREEN profile plus queue-drain coverage passes **16/16**. Run its
   same three-process 128K gate before changing the gfx1151 automatic route.
+
+## 2026-08-05 — Retain gfx1151 Q4 baseline fallback
+
+- Pass the production-shaped `q4_baseline` control at 512 warmup+3 with exactly
+  one selector recorded; measured prefill is **1356.808-1360.856 tok/s**,
+  decode is stable, final IDs are 9707, and tracked allocation returns to zero.
+- Run three independent cache-only `128K/128` warmup+3 processes with one
+  hardware queue, chunk flight recording, no host drain, current package
+  defaults except Q4 baseline, and a 1,800-second process bound. All **12/12**
+  prefills complete. Across nine measured runs, prefill is
+  **575.180-580.626 tok/s** (median **578.883**), decode is
+  **29.623-29.686 tok/s** (median **29.650**), every final token is 9707, every
+  final logit is `30.117918014526367`, and each session frees all tracked
+  allocations. The 295 telemetry samples contain 277 active samples and zero
+  historical failure-signature samples; kernel journals contain no matching
+  amdgpu/KFD fault, timeout, or reset.
+- Treat this as a controlled route-level cause, not an overclaim about the
+  internal defect: shared-X is the only changed registry function in the
+  reproducing arm, mapping the BF16 model to
+  `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`.
+  Compared with baseline, that body moves the two-output-half loop inside the K
+  loop, keeps two WMMA accumulator arrays live, and shares one activation
+  fragment. The matrix cannot distinguish device-code, compiler, firmware, or
+  runtime handling of that body.
+- RED: change the automatic resolver and architecture-policy assertions to
+  require gfx1151 baseline; both fail against the shared-X package constant.
+  GREEN: set only `hip_gfx1151.GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE` to
+  `baseline`; the focused resolver/backend/profile/Q4T16 primitive bundle
+  passes **56/56**. A selector-unset 512 warmup+1 integration smoke then passes
+  at **1357.667 prefill / 52.927 decode tok/s**, token 9707, and zero tracked
+  bytes after close. Do not repeat the equivalent 45-minute 128K gate merely to
+  replace the explicit selector with the tested package constant.
+- Keep gfx1100 automatic shared-X and the explicit gfx1151 `shared_x`
+  diagnostic unchanged. Record the retained fallback and complete causal/raw
+  hashes in
+  `benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json`;
+  update the benchmark rollup, changelog, kernel catalog, stall runbook, and
+  refactor ledger in the same logical unit.

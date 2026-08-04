@@ -876,7 +876,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is False
     assert GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
-    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
+    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 4096
     assert (
@@ -1280,7 +1280,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
         )
-        == "shared_x"
+        == "baseline"
     )
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (
