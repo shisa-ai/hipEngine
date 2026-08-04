@@ -205901,3 +205901,46 @@ Vulkan local sizes verbatim will close the measured gap.
   `2b156e94...631a`, physical split `f4d52f9f...5cd3`, candidate suite
   `ea0eee8a...91d5`, candidate kernel trace `7d3a4a4d...a6d`, marker trace
   `f2142ba3...2e91`.
+
+## 2026-08-05 — Reject Q5T16/Q8_1 integer-dot `ssm_out` row reuse
+
+- Close the one Q5 compute/layout combination left open by the raw-Q5 DP4A
+  rejection: coalesced Q5T16 weights, Q8_1 activations, RDNA3 `sudot4`, and
+  cross-row weight reuse. Scope is GPU1 component admission only; do not add a
+  materializer, sidecar, runtime selector, or W7900 suite until the leaf beats
+  retained dense BF16 at every production row.
+- RED adds a four-axis `linear/gguf_q5_k_t16_v1/
+  dense_q8_1_dp4a_rowtile_bf16_bf16_out` contract and fails on the absent
+  wrapper. The temporary body supports rows 2-4, local32/64/128, and 4/8/16
+  columns. Its focused GPU1 fixture passes **3/3** rows and is BF16-bit exact
+  to the existing selected Q5T16/Q8_1 producer at matching local64; the actual
+  weight screen later proves zero mismatches at every launch width and geometry.
+- Screen all **27** `(rows, threads, columns)` cases on actual
+  `blk.0.ssm_out.weight` (K6,144/N5,120), with seven counterbalanced samples,
+  30 warmups, and 30-launch HIP-event bursts. Every output is exact to the
+  same-width selected control and passes maximum KL **0.000489**, top-1
+  **100%**, and maximum absolute delta **0.09375** versus dense. Row reuse
+  makes the integer dot materially faster than the row-separated control, but
+  all 27 complete quantize+dot paths lose. Best rows 2/3/4 are only
+  **0.834x/0.838x/0.865x** dense, with no qualifying row policy.
+- Bind the rejection with local64/local128 col8, 11 counterbalanced samples,
+  50 warmups, and 50-launch bursts. The best totals by row are local128
+  **33.834 -> 42.852 us (0.790x, 0/11)**, local64 **39.910 -> 49.960 us
+  (0.799x, 0/11)**, and local128 **51.668 -> 58.251 us (0.887x, 0/11)**.
+  Local64 row 2 records one noisy paired win but a **0.769x** median; every
+  other final cell has zero wins. Even the best prequantized row-4 dot is only
+  **0.934x** dense. The rowtile improves the selected direct dot by as much as
+  **1.87x**, proving reuse worked but cannot reverse the owner economics.
+- Remove the temporary HIP body, wrapper, registry key, export, and focused
+  test. `git diff` confirms all production/test source is exactly back to
+  clean `064219ec6`; no resident bytes, flag, fallback, or refactor debt
+  remains. This closes Q5 `ssm_out` compressed ownership unless a materially
+  new representation or hardware primitive appears. Canonical status stays
+  **52.652 tok/s / 2.4291x own AR / 22.66% below Vulkan**; no W7900 suite or
+  scoreboard update is warranted for a rejected GPU1 leaf.
+- Compact evidence:
+  `benchmarks/results/2026-08-05-qwen36-27b-q5t16-q8-1-dp4a-rowreuse-rejected.json`
+  (SHA-256 `b1353b83...c121936`). Candidate patch/harness/screen/final SHA-256s are
+  `814cdee5...58c0e8`, `349a07cd...c1d499`, `0315614b...dbf9a`, and
+  `dbfcf003...c9e85`; temporary cached build key is
+  `2d97abe82b583c8b`.

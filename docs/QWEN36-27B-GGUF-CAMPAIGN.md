@@ -1150,6 +1150,19 @@ but that control does not adjudicate a new T16 integer-dot row-reuse body.
 Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-raw-q5-q8-1-dp4a-rowreuse-rejected.json`.
 
+That final Q5 combination is now adjudicated and rejected as well. A temporary
+Q5T16/Q8_1 `sudot4` rowtile is BF16-bit exact to its same-width selected
+control in all **27** actual-weight geometry cases and passes maximum KL
+**0.000489** / top-1 **100%** versus dense. Cross-row reuse makes the integer
+dot up to **1.87x** faster than the row-separated control, but the best screen
+totals still reach only **0.834x/0.838x/0.865x** dense at rows 2/3/4. Binding
+11-sample local64/local128 col8 runs remain negative; the best complete row is
+only **0.887x**, and even its prequantized dot is **0.934x** dense. Remove the
+kernel, wrapper, key, and test; no sidecar or runtime route was added. Q5
+`ssm_out` compressed ownership is closed unless a new representation or
+hardware primitive changes the economics. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q5t16-q8-1-dp4a-rowreuse-rejected.json`.
+
 A final exact Q4T16 pressure split retains only its architecture-common narrow
 shape. The four-column body lowers row-4 VGPR **144 -> 96** without changing
 T16 bytes or arithmetic. GPU1 initially qualified both K5,120/N1,024 and
