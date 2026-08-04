@@ -2227,6 +2227,95 @@ zero. B3 remains selected at **1.9511x** own AR, but is still 41.67% below
 Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`](results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json).
 
+#### Qwen3.6-27B exact Q4 dual-rowtile SiLU cycle wall, W7900/gfx1100
+
+Clean hipEngine `98114138e` replaces two native-verifier K5,120/N17,408
+resident-pack8 rowtiles plus separate SiLU with one registered local64 leaf at
+rows 2-4. Separate waves reproduce the gate and up FMA/shuffle trees, publish
+the same BF16 projection values through 128 B LDS, and execute the unchanged
+BF16 SiLU expression. Every other row, shape, session, opt-out, or registry miss
+retains the unfused chain.
+
+A balanced production-shape W7900 leaf screen is byte-exact and improves
+chain -> fused event time by **1.1060x/1.1093x/1.1128x** at rows 2/3/4. The
+production B3 trace observes 448 fused launches, no legacy N17,408 rowtiles,
+and exactly **896 fewer graph dispatches**. Versus the pre-`ssm_out` compact
+profile, complete cycle wall falls **676.596 -> 662.705 ms (-2.053%)** and the
+queue-gap/copy-overlap bucket falls **192.822 -> 174.794 ms (-9.350%)**. The
+complete-window delta is explicitly compounded with the separately retained
+`ssm_out` specialization; the -896 dispatch delta is uniquely attributable to
+this fusion.
+
+The one-run natural25 packet is mixed: B1/B2/B3 measure
+**29.282/35.850/39.614 tok/s** (**+1.046%/+0.066%/-0.250%** versus the clean
+`ssm_out` baseline). Every selected-B3 aggregate scope is noise-negative by
+only **0.060-0.368%**, while IDs, acceptance, state, tracked peak
+(**28.996 GiB**), and teardown remain exact. Retain the exact default for its
+same-device leaf, launch-count, queue-gap, and cycle-wall evidence, but do not
+advance the canonical **39.714 tok/s / 1.9511x own-AR** headline. Artifact:
+[`2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`](results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json).
+
+#### Qwen3.6-27B exact dense verifier chain journals, W7900/gfx1100
+
+Clean hipEngine `d4616f120` reuses the registered exact Conv and c1-association
+GDN t-loops for dense native rows 2-4. One launch per family writes every
+post-row journal directly while leaving resident initial state immutable;
+deferred verification performs no resident write. Missing either registry key,
+c1, MoE, absent journals, and ordinary prefill retain the complete scalar
+producer/copy chain.
+
+| Route | Immediate predecessor | Exact chain journals | Decode delta | MTP / true AR | Complete-wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR (c1 route unchanged) | 20.363 tok/s | 20.366 tok/s | +0.013% noise | 1.0000x | -0.013% |
+| B1 | 29.282 tok/s | **30.130 tok/s** | **+2.895%** | **1.4794x** | **-2.813%** |
+| B2 | 35.850 tok/s | **37.357 tok/s** | **+4.205%** | **1.8343x** | **-4.035%** |
+| B3 | 39.614 tok/s | **41.440 tok/s** | **+4.608%** | **2.0348x** | **-4.405%** |
+
+The hermetic one-prompt B3 trace confirms the predeclared ownership exactly:
+**13,767 -> 9,063 dispatches (-4,704 / -34.17%)**. State-sized copy kernels
+fall **3,360 -> 672**, scalar Conv/GDN producers are replaced by **672** chain
+launches, and complete cycle wall falls **662.664 -> 635.545 ms (-4.09%)**;
+target-verify host wall falls **5.52%** and queue-gap/copy-overlap wall falls
+**8.94%** with an unchanged acceptance ledger.
+
+All 30 prompt/budget rows improve against the immediate predecessor
+(**+2.53% to +5.75%**), and every full/train/heldout/category rollup improves
+(**+2.71% to +4.79%**). IDs, acceptance/cycle ledgers, transaction state,
+tracked peak (**28.996 GiB**), and teardown remain exact. Versus the prior
+canonical row, B3 advances **39.714 -> 41.440 tok/s (+4.346%)** and crosses
+2x own AR; it remains **39.13%** below llama.cpp Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-chain-journals-retained.json`](results/2026-08-04-qwen36-27b-chain-journals-retained.json).
+
+#### Qwen3.6-27B exact shared-page full-attention batch, W7900/gfx1100
+
+Clean hipEngine `9c2f33b99` batches only dense N1 native full-attention rows
+whose BF16 K/V cache and physical page table are shared. All row K/V writes
+retire first; per-row device live counts preserve causality; then one registered
+exact 256-thread attention owner and one whole-batch gate replace four scalar
+attention/gate pairs. Metadata mismatch or registry absence retains the complete
+scalar chain, and B2 rows=3 remains with the separate N2 bulk graph.
+
+| Route | Exact chain journals | Shared-page attention batch | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR (unchanged c1 route) | 20.366 tok/s | 20.370 tok/s | +0.024% noise | 1.0000x | n/a |
+| B1 | 30.130 tok/s | 30.116 tok/s | -0.045% noise | 1.4784x | -0.001% |
+| B2 (N2 owner; diagnostic) | 37.357 tok/s | 37.447 tok/s | +0.241% | 1.8383x | -0.562% |
+| **B3 (retained)** | 41.440 tok/s | **41.705 tok/s** | **+0.641%** | **2.0474x** | **-0.967%** |
+
+The hermetic one-prompt B3 trace confirms **9,063 -> 8,391 dispatches
+(-672 / -7.41%)**. Target scalar attention falls **448 -> 0** and is replaced
+by 112 shared-table batches; 448 row gates become 112 whole-batch gates.
+Attention+gate kernel sum falls **7.930 -> 4.478 ms**. Complete marker wall
+measures **635.545 -> 608.946 ms (-4.19%)**, but unchanged phases also moved
+about 4%, so the full profiled ratio is not uniquely attributed to this route.
+
+All ten selected-B3 prompt rows improve (**+0.097% to +0.839%**), as does every
+B3 full/train/heldout/category rollup (**+0.490% to +0.761%**). B1 and B2 are
+reported only as diagnostics; there is no all-budget speed claim. IDs,
+acceptance/cycle ledgers, transaction state, tracked peak (**28.996 GiB**), and
+teardown remain exact. B3 is now **38.74%** below llama.cpp Vulkan. Artifact:
+[`2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json`](results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight

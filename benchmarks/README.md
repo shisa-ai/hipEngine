@@ -4886,6 +4886,36 @@ canonical row, B3 advances **39.714 -> 41.440 tok/s (+4.346%)** and crosses
 2x own AR; it remains **39.13%** below llama.cpp Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-chain-journals-retained.json`](results/2026-08-04-qwen36-27b-chain-journals-retained.json).
 
+#### Qwen3.6-27B exact shared-page full-attention batch, W7900/gfx1100
+
+Clean hipEngine `9c2f33b99` batches only dense N1 native full-attention rows
+whose BF16 K/V cache and physical page table are shared. All row K/V writes
+retire first; per-row device live counts preserve causality; then one registered
+exact 256-thread attention owner and one whole-batch gate replace four scalar
+attention/gate pairs. Metadata mismatch or registry absence retains the complete
+scalar chain, and B2 rows=3 remains with the separate N2 bulk graph.
+
+| Route | Exact chain journals | Shared-page attention batch | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR (unchanged c1 route) | 20.366 tok/s | 20.370 tok/s | +0.024% noise | 1.0000x | n/a |
+| B1 | 30.130 tok/s | 30.116 tok/s | -0.045% noise | 1.4784x | -0.001% |
+| B2 (N2 owner; diagnostic) | 37.357 tok/s | 37.447 tok/s | +0.241% | 1.8383x | -0.562% |
+| **B3 (retained)** | 41.440 tok/s | **41.705 tok/s** | **+0.641%** | **2.0474x** | **-0.967%** |
+
+The hermetic one-prompt B3 trace confirms **9,063 -> 8,391 dispatches
+(-672 / -7.41%)**. Target scalar attention falls **448 -> 0** and is replaced
+by 112 shared-table batches; 448 row gates become 112 whole-batch gates.
+Attention+gate kernel sum falls **7.930 -> 4.478 ms**. Complete marker wall
+measures **635.545 -> 608.946 ms (-4.19%)**, but unchanged phases also moved
+about 4%, so the full profiled ratio is not uniquely attributed to this route.
+
+All ten selected-B3 prompt rows improve (**+0.097% to +0.839%**), as does every
+B3 full/train/heldout/category rollup (**+0.490% to +0.761%**). B1 and B2 are
+reported only as diagnostics; there is no all-budget speed claim. IDs,
+acceptance/cycle ledgers, transaction state, tracked peak (**28.996 GiB**), and
+teardown remain exact. B3 is now **38.74%** below llama.cpp Vulkan. Artifact:
+[`2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json`](results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5052,6 +5082,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact dense `ssm_out` local128 rowtile](results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json),
 [Qwen3.6-27B exact Q4 dual-rowtile SiLU cycle wall](results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json),
 [Qwen3.6-27B exact dense verifier chain journals](results/2026-08-04-qwen36-27b-chain-journals-retained.json),
+[Qwen3.6-27B exact shared-page full-attention batch](results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
