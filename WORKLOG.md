@@ -203235,3 +203235,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `git diff --check` pass. `scripts/check_lineage.py --kind kernel --diff stat`
   cannot complete because the configured external Atlas reference directory is
   absent; no kernel was added or ported in this unit.
+
+## 2026-08-04 — Defer DeepSeek V4 at the model-admission gate
+
+- Repository and local-asset audit finds no approved bounded implementation unit:
+  `registered_models()` contains only Laguna, Moonshine, Qwen3.5/3.6, and toy
+  plugins; `hipengine/models/`, tests, and `pyproject.toml` contain no DeepSeek
+  plugin/dependency; `/home/lhl/models` and the Hugging Face cache contain no
+  DeepSeek V4 checkpoint/config. Old DeepSeek vocab/conversion helpers under
+  llama.cpp source snapshots are not model weights or an oracle. `PLAN.md` uses
+  antirez `ds4` only as a host-design reference and does not list DeepSeek V4 in
+  the phase model table.
+- Existing `q8_1_ds4*` registry/kernel names are llama.cpp DS4 activation-record
+  geometry, not evidence of a DeepSeek V4 model implementation. Reusing those
+  strings as a model route would conflate independent concepts and violate the
+  four-axis plugin boundary.
+- Preserve Nathan's source commits, but defer code. The documented first approved
+  unit is CPU-first: pin checkpoint/config/tokenizer and authoritative semantics;
+  register a metadata-only model plugin; add CPU oracles for indexer/top-k,
+  indexed attention, gather/padding, and hyper-connections; separate main KV
+  from mandatory F16 indexer-key cache roles under `KVLiveSpans`; then add sparse
+  and fused registered kernels beside dense/unfused fallbacks. Small-B copies
+  require a copy-inclusive B2/B4 trace.
+- Update priority 5 to completed/deferred. No production code, dependency,
+  checkpoint download, GPU run, or performance claim is justified. Validation is
+  the clean registry/asset/source audit plus an end-to-end reread of the review
+  document and `git diff --check`.
