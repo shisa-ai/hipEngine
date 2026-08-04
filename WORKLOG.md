@@ -205753,3 +205753,11 @@ Vulkan local sizes verbatim will close the measured gap.
   Re-rank only this profile: compact Q4 dual+SiLU leads at **76.444 ms**, the
   now-col8 Q6 rowtiles are **75.244 ms**, compact single-Q4 is **52.287 ms**,
   proposal Q6 top-1 is **40.466 ms**, and dense `ssm_out` is **37.316 ms**.
+- Commit the validated kernel unit as `a821d571b` and publish
+  `benchmarks/results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json`
+  (`sha256 95bfc2e959e215a835fcb19e76f319afad0f5a4ad1fb08418efbe0814096e4c1`).
+  Update the canonical benchmark README/changelog and dense campaign status to
+  **52.652 tok/s / 2.4291x own AR / 22.66% below Vulkan**. Measurement
+  provenance explicitly records that profiling/natural25 used the exact
+  five-file patch subsequently committed unchanged; no expensive equivalent
+  suite is rerun after the atomic source commit.
