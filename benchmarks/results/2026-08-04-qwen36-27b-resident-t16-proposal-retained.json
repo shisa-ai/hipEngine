@@ -1,0 +1,285 @@
+{
+  "schema": 1,
+  "status": "retained_exact_borrowed_resident_t16_proposal",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical ten-prompt W7900 natural25 B1-B3 complete decode wall; all 30 prompt-budget rows and every full/train/heldout/category aggregate improve. A hermetic one-prompt B3 trace supplies physical-kernel evidence.",
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_resident_t16_proposal_w7900",
+  "timestamp": "2026-08-04T11:02:58.164111+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "retained_vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "routing_commit": "b888de6052836a759b7d0da59d1fc157b608c537",
+    "measured_baseline_commit": "d0cee5efa3f248699e7d3dee57a1f7bc183de671",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "change": {
+    "registry_keys": [
+      [
+        "hip_gfx1100",
+        "linear+argmax",
+        "gguf_q6_k",
+        "proposal_top1_exact_bf16"
+      ],
+      [
+        "hip_gfx1100",
+        "linear+argmax",
+        "gguf_q6_k_t16_v1",
+        "proposal_top1_exact_bf16"
+      ]
+    ],
+    "summary": "The target-attached NextN provider borrows source-compatible target token-embedding and lm-head records without taking ownership. Its exact proposal scorer resolves by resident quant: raw Q6 retains the prior compact scorer, while Q6T16 composes the existing exact full-logit/tile-winner producer with the existing final reducer.",
+    "ownership": "The provider lifetime is nested inside the target session. Borrowed records are excluded from owned_weights and are never freed by provider close.",
+    "shared_head_norm_boundary": "blk.64.nextn.shared_head_norm.weight remains independently materialized and draft-owned; target output_norm.weight is source-incompatible and is rejected before allocation.",
+    "removed_duplicate_resident_bytes": {
+      "token_embedding": 715161600,
+      "lm_head": 1042944000,
+      "total": 1758105600
+    },
+    "new_device_body": false,
+    "new_environment_flag": false,
+    "approximation": false,
+    "fallback": "Standalone providers retain their own mapped fallback residents. Missing proposal registry keys retain full-logit scoring; raw-Q6 residents retain the prior exact compact scorer."
+  },
+  "correctness": {
+    "focused_red_green": "7/7 original RED cases plus borrowed-source rejection and six dense-suite harness tests",
+    "w7900_transaction_test": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+    "w7900_transaction_passed": true,
+    "transaction_scope": "B1-B3 full logits; reject/partial/full/rollback Conv/GDN/KV/hidden state; dynamic positions 6/7/9; graph reuse; correction logits; natural provider output; ownership and teardown",
+    "borrowed_lm_head_quant": "gguf_q6_k_t16_v1",
+    "mapped_shared_head_norm": "blk.64.nextn.shared_head_norm.weight",
+    "gpu1_component": {
+      "shape": {
+        "rows": 1,
+        "in_features": 5120,
+        "out_features": 248320
+      },
+      "tensor": "output.weight",
+      "full_logits_byte_exact": true,
+      "top1_id_exact": true,
+      "top1_value_bits_exact": true,
+      "raw_top1_id": 2082,
+      "t16_top1_id": 2082,
+      "raw_resident_bytes": 1042944000,
+      "t16_resident_bytes": 1042944000,
+      "event_us": {
+        "raw": 2218.3408737182617,
+        "t16": 1489.4253730773926,
+        "speedup": 1.4893937714615486,
+        "delta_percent": -32.85858856394333
+      },
+      "synchronized_wall_us": {
+        "raw": 2219.1912,
+        "t16": 1490.8934,
+        "speedup": 1.488497567968307,
+        "delta_percent": -32.81816366250913
+      },
+      "claim": "same-GPU component evidence only"
+    },
+    "natural_ids_exact": true,
+    "natural_acceptance_exact": true,
+    "natural_gpu_accept_match_cpu": true,
+    "natural_stage_reconciled": true,
+    "all_prompt_budget_rows_improve": true,
+    "candidate_active_allocations_after_close": 0
+  },
+  "protocol": {
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-b888de605/natural25-native-proposal-t16-b1-b3.json",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "visible_outputs": 250,
+    "timed_transitions": 240,
+    "warmups": 1,
+    "repetitions": 1,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "target_verify_mode": "native",
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "timing": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual"
+  },
+  "natural25": {
+    "true_ar": {
+      "baseline_tok_s": 20.35027949176312,
+      "candidate_tok_s": 20.31031348027712,
+      "delta_percent": -0.19639047956160338,
+      "claim": "noise diagnostic; c1 route unchanged"
+    },
+    "budgets": {
+      "1": {
+        "baseline_decode_seconds": 7.959118977189064,
+        "candidate_decode_seconds": 7.812780526699498,
+        "baseline_tok_s": 30.154091261588505,
+        "candidate_tok_s": 30.718896963740484,
+        "tok_s_delta_percent": 1.87306490934267,
+        "decode_wall_delta_percent": -1.838626246309094,
+        "proposal_delta_percent": -15.375316073698265,
+        "target_verify_delta_percent": -0.2907108666638014,
+        "candidate_mtp_vs_true_ar": 1.5124777366716127
+      },
+      "2": {
+        "baseline_decode_seconds": 6.372244945494458,
+        "candidate_decode_seconds": 6.213193484814838,
+        "baseline_tok_s": 37.66333561450643,
+        "candidate_tok_s": 38.62747886196761,
+        "tok_s_delta_percent": 2.5598987230696313,
+        "decode_wall_delta_percent": -2.496003559814175,
+        "proposal_delta_percent": -16.546438103621398,
+        "target_verify_delta_percent": -0.3128893377116304,
+        "candidate_mtp_vs_true_ar": 1.9018652222910233
+      },
+      "3": {
+        "baseline_decode_seconds": 5.7293159023392946,
+        "candidate_decode_seconds": 5.550352915422991,
+        "baseline_tok_s": 41.889817927827536,
+        "candidate_tok_s": 43.24049365097168,
+        "tok_s_delta_percent": 3.2243532914639106,
+        "decode_wall_delta_percent": -3.1236362240600557,
+        "proposal_delta_percent": -17.467765912822063,
+        "target_verify_delta_percent": -0.4075681612563331,
+        "baseline_mtp_vs_true_ar": 2.0584394403419695,
+        "candidate_mtp_vs_true_ar": 2.1289919376656363,
+        "ratio_delta_percent": 3.427475005625902,
+        "accepted_draft_tokens": 168,
+        "proposed_draft_tokens": 222,
+        "cycles": 77,
+        "claim": "retained selected budget"
+      }
+    },
+    "scope_delta_percent_range_all_budgets": [
+      1.509953758187721,
+      3.300492646305919
+    ],
+    "per_prompt_delta_percent_range_all_budgets": [
+      1.357460018815182,
+      3.800562299055543
+    ],
+    "all_full_train_heldout_category_scopes_improve": true,
+    "all_prompt_budget_rows_improve": true,
+    "baseline_peak_bytes": 31134260776,
+    "candidate_peak_bytes": 29376155176,
+    "peak_delta_bytes": -1758105600,
+    "candidate_peak_gib": 27.358676470816135
+  },
+  "profile": {
+    "command_scope": "Hermetic cached W7900 rocprofv3 kernel+marker+memory-copy trace, natural25 prompt limit=1, B3, no warmup",
+    "correctness": {
+      "exact_greedy": true,
+      "gpu_accept_match_cpu": true,
+      "accepted_counts": [
+        3,
+        3,
+        2,
+        3,
+        3,
+        0,
+        3
+      ],
+      "cycles": 7,
+      "target_rows": 28
+    },
+    "window": {
+      "baseline_marker_span_ms": 611.399258,
+      "candidate_marker_span_ms": 585.481208,
+      "marker_span_delta_percent": -4.239136646122654,
+      "baseline_kernel_sum_ms": 470.907766,
+      "candidate_kernel_sum_ms": 457.428578,
+      "kernel_sum_delta_percent": -2.8623838834715642,
+      "baseline_dispatches": 8055,
+      "candidate_dispatches": 8055,
+      "baseline_proposal_stage_ms": 92.25550666451454,
+      "candidate_proposal_stage_ms": 78.28645454719663,
+      "proposal_stage_delta_percent": -15.141700070128195,
+      "baseline_peak_bytes": 31133840110,
+      "candidate_peak_bytes": 29375734510
+    },
+    "physical_top1_chain": {
+      "baseline_raw_q6_stage1": {
+        "dispatches": 25,
+        "duration_ms": 49.459813,
+        "local": [128, 1, 1],
+        "grid": [3973120, 1, 1]
+      },
+      "candidate_q6_t16_stage1": {
+        "dispatches": 25,
+        "duration_ms": 37.924705,
+        "local": [128, 1, 1],
+        "grid": [1986560, 1, 1]
+      },
+      "baseline_reducer_ms": 0.979649,
+      "candidate_reducer_ms": 0.520004,
+      "baseline_chain_ms": 50.439462,
+      "candidate_chain_ms": 38.444709,
+      "chain_delta_percent": -23.78049353500241,
+      "chain_speedup": 1.3120000986351592
+    }
+  },
+  "comparison": {
+    "llamacpp_vulkan_natural25_b3_tok_s": 68.08247965468567,
+    "candidate_b3_tok_s": 43.24049365097168,
+    "candidate_below_vulkan_percent": 36.488074655495126,
+    "vulkan_over_candidate_ratio": 1.5745074560025463,
+    "candidate_vs_own_true_ar": 2.1289919376656363
+  },
+  "sources": {
+    "natural_baseline": "/tmp/hipengine-qwen36-27b/final-d0cee5efa/natural25-native-full-k-gridy-b1-b3.json",
+    "natural_candidate": "/tmp/hipengine-qwen36-27b/final-b888de605/natural25-native-proposal-t16-b1-b3.json",
+    "natural_comparison": "/tmp/hipengine-qwen36-27b/final-b888de605/natural25-vs-d0cee5efa.json",
+    "profile_root": "/tmp/hipengine-qwen36-27b/final-b888de605/profile-native-proposal-t16-mtp-b3-hermetic",
+    "sha256": {
+      "natural_candidate": "8d9ed503c6ffd30a7d65b9a45b3b0b5af4fe3a06bbe359262d3562fe24a71b79",
+      "natural_comparison": "d926ab826215b3e8e17eb8ebc358adf4a0ac1855bbb64c96a0c5ca921bbac8cb",
+      "profile_kernel_csv": "8ff5948e78b3d7d75b59d6a5299ba43ca6c69f830f43ed34a607cc3b590f85ad",
+      "profile_marker_csv": "f8119aae6ea793ffb13fa517d3ebae10c9097d0ba300b7243f63e8ec3381d2d9",
+      "profile_copy_csv": "500387ce06d1acf4ffc6d1edd1ed7dbf6b78026112c6ea254cb5d711b29e6edb",
+      "profile_suite": "468df9c91479261770250bc551cd91b360061a2a4f5aff6be8a08da16ccb2c8c",
+      "profile_summary": "60276f1d475f3280c93ecb1d4e2746849cd4d6ee12b72ebd7f14d9f707513de9",
+      "profile_comparison": "63b2471aee2a42caa020b33c1d97f49ff17a810df22c9ef1e124222aa38408cd"
+    }
+  },
+  "decision": "Retain and promote the borrowed target-resident Q6T16 proposal route. Re-rank only the b888de605 profile for the next D27-O3 candidate; the remaining parity gap is target projection traffic, not proposal ownership."
+}

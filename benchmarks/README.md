@@ -4949,6 +4949,38 @@ transaction state, tracked peak (**28.996 GiB**), and teardown remain exact.
 B3 is now **38.47%** below llama.cpp Vulkan. Artifact:
 [`2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json`](results/2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json).
 
+#### Qwen3.6-27B exact target-resident Q6T16 proposal scoring, W7900/gfx1100
+
+Clean hipEngine `b888de605` keeps the target-attached NextN provider inside the
+live target session and borrows its source-compatible token embedding and
+Q6T16 lm-head without taking ownership. The NextN-specific shared-head norm
+remains independently materialized. A quant-neutral four-axis
+`linear+argmax/.../proposal_top1_exact_bf16` contract retains the prior exact
+raw-Q6 scorer and composes the existing exact T16 producer/reducer when the
+borrowed head is Q6T16; standalone/full-logit fallbacks remain intact.
+
+| Route | K grid-y baseline | Resident Q6T16 proposal | Decode delta | MTP / true AR | Proposal delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR (unchanged c1 route) | 20.350 tok/s | 20.310 tok/s | -0.196% noise | 1.0000x | n/a |
+| B1 | 30.154 tok/s | **30.719 tok/s** | **+1.873%** | **1.5125x** | **-15.375%** |
+| B2 | 37.663 tok/s | **38.627 tok/s** | **+2.560%** | **1.9019x** | **-16.546%** |
+| **B3 (retained)** | 41.890 tok/s | **43.240 tok/s** | **+3.224%** | **2.1290x** | **-17.468%** |
+
+The hermetic one-prompt B3 trace replaces exactly **25 raw-Q6 stage1 calls /
+49.460 ms** with **25 half-vocabulary T16 calls / 37.925 ms**. Including the
+unchanged reducer contract, exact proposal scoring falls **50.439 -> 38.445 ms
+(-23.78%, 1.312x)**; proposal stage wall falls **15.14%**, complete marker wall
+falls **611.399 -> 585.481 ms (-4.24%)**, and kernel sum falls **2.86%** with
+unchanged 8,055 dispatches. IDs and acceptance ledger `[3,3,2,3,3,0,3]` match.
+
+Every one of the 30 prompt-budget rows and every full/train/heldout/category
+aggregate improves (**+1.357% to +3.801%** prompts; **+1.510% to +3.300%**
+scopes). IDs, acceptance, transaction state, and stage reconciliation remain
+exact. Borrowing removes exactly **1,758,105,600 bytes** of duplicate residents;
+tracked peak falls **28.996 -> 27.359 GiB** and teardown returns to zero. B3 is
+now **36.49%** below llama.cpp Vulkan. Artifact:
+[`2026-08-04-qwen36-27b-resident-t16-proposal-retained.json`](results/2026-08-04-qwen36-27b-resident-t16-proposal-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5117,6 +5149,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact dense verifier chain journals](results/2026-08-04-qwen36-27b-chain-journals-retained.json),
 [Qwen3.6-27B exact shared-page full-attention batch](results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json),
 [Qwen3.6-27B exact full-attention K grid-y batch](results/2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json),
+[Qwen3.6-27B exact target-resident Q6T16 proposal scoring](results/2026-08-04-qwen36-27b-resident-t16-proposal-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
