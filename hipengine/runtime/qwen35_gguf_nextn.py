@@ -17,6 +17,10 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q3_k_gemv import register_gguf_q3_k_gemv_kernels
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+    build_gguf_q6_k_pack8_gemv,
+)
+from hipengine.kernels.registry import KernelKey, MissingKernelError, is_registered, resolve
 from hipengine.loading.qwen35_gguf_nextn_materialize import (
     Qwen35GGUFNextNResidentWeights,
     materialize_qwen35_gguf_nextn_weights,
@@ -126,15 +130,154 @@ class Qwen35GGUFNextNExecutor:
         self._layer_out_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._final_hidden_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._logits_buf = malloc(self._logits_host.nbytes, runtime=self.runtime)
-        self._buffers = (
-            self._token_buf,
-            self._embedding_buf,
-            self._fusion_buf,
-            self._fused_buf,
-            self._layer_out_buf,
-            self._final_hidden_buf,
-            self._logits_buf,
+        self._lm_head_top1_kernel = None
+        self._lm_head_top1_weight_ptr = 0
+        self._lm_head_top1_block_values: DeviceBuffer | None = None
+        self._lm_head_top1_block_indices: DeviceBuffer | None = None
+        self._lm_head_top1_result: DeviceBuffer | None = None
+        self._q6_pack8_library = None
+        self.last_lm_head_path = "unobserved"
+        self._prepare_exact_lm_head_top1()
+        self._buffers = tuple(
+            buffer
+            for buffer in (
+                self._token_buf,
+                self._embedding_buf,
+                self._fusion_buf,
+                self._fused_buf,
+                self._layer_out_buf,
+                self._final_hidden_buf,
+                self._logits_buf,
+                self._lm_head_top1_block_values,
+                self._lm_head_top1_block_indices,
+                self._lm_head_top1_result,
+            )
+            if buffer is not None
         )
+
+    def _prepare_exact_lm_head_top1(self) -> None:
+        """Bind compact exact top-1 scoring when the resident head supports it."""
+
+        if self.weights is None or self.hidden_size % 256 != 0 or self.vocab_size % 8 != 0:
+            return
+        weight = self.weights.fallback("lm_head")
+        key = KernelKey(
+            self.weights.backend,
+            "linear",
+            weight.spec.quant_key,
+            "pack8_gemv_decode_bf16_top1_gather_f32",
+        )
+        if not is_registered(key):
+            return
+        try:
+            weight_ptr = int(weight.allocation("raw").tensor.ptr)
+            kernel = resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            )
+        except (KeyError, MissingKernelError):
+            return
+        self._q6_pack8_library = build_gguf_q6_k_pack8_gemv(
+            load=True,
+            compiler_version=self.compiler_version,
+            require_cached=self.require_cached_build,
+        )
+        block_nbytes = (self.vocab_size // 8) * DType.FP32.itemsize
+        self._lm_head_top1_block_values = malloc(block_nbytes, runtime=self.runtime)
+        self._lm_head_top1_block_indices = malloc(block_nbytes, runtime=self.runtime)
+        self._lm_head_top1_result = malloc(DType.INT32.itemsize + DType.FP32.itemsize, runtime=self.runtime)
+        self._lm_head_top1_kernel = kernel
+        self._lm_head_top1_weight_ptr = weight_ptr
+
+    def _run_exact_lm_head_top1(
+        self,
+        hidden_ptr: int,
+        *,
+        stream: int = 0,
+    ) -> tuple[int, float] | None:
+        """Return the exact token/value pair without materializing vocab logits."""
+
+        if (
+            self._lm_head_top1_kernel is None
+            or self._lm_head_top1_weight_ptr <= 0
+            or self._lm_head_top1_block_values is None
+            or self._lm_head_top1_block_indices is None
+            or self._lm_head_top1_result is None
+            or self._q6_pack8_library is None
+        ):
+            return None
+        result_ptr = int(self._lm_head_top1_result.ptr)
+        self._lm_head_top1_kernel(
+            int(hidden_ptr),
+            self._lm_head_top1_weight_ptr,
+            self._lm_head_top1_block_values.ptr,
+            self._lm_head_top1_block_indices.ptr,
+            result_ptr,
+            result_ptr + DType.INT32.itemsize,
+            None,
+            None,
+            1,
+            self.hidden_size,
+            self.vocab_size,
+            0,
+            stream=int(stream),
+            library=self._q6_pack8_library,
+            runtime=self.runtime,
+        )
+        self.runtime.device_synchronize()
+        result_host = np.empty(
+            (1,),
+            dtype=np.dtype([("token", np.int32), ("value", np.float32)]),
+        )
+        copy_device_to_host(
+            host_array_ptr(result_host),
+            self._lm_head_top1_result,
+            self._lm_head_top1_result.nbytes,
+            runtime=self.runtime,
+        )
+        return int(result_host["token"][0]), float(result_host["value"][0])
+
+    def _sample_lm_head(
+        self,
+        hidden_ptr: int,
+        *,
+        return_logits: bool,
+        stream: int = 0,
+    ) -> tuple[int, float, np.ndarray | None]:
+        if not return_logits:
+            compact = self._run_exact_lm_head_top1(hidden_ptr, stream=stream)
+            if compact is not None:
+                self.last_lm_head_path = "exact_q6_top1"
+                return compact[0], compact[1], None
+
+        if self.weights is None:
+            raise RuntimeError("GGUF NextN executor is closed")
+        launch_gguf_linear(
+            self.weights.fallback("lm_head"),
+            hidden_ptr,
+            self._logits_buf.ptr,
+            rows=1,
+            in_features=self.hidden_size,
+            out_features=self.vocab_size,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=int(stream),
+            runtime=self.runtime,
+        )
+        self.runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(self._logits_host),
+            self._logits_buf,
+            self._logits_host.nbytes,
+            runtime=self.runtime,
+        )
+        if not np.all(np.isfinite(self._logits_host)):
+            raise FloatingPointError("GGUF NextN logits contain NaN or Inf")
+        token = int(np.argmax(self._logits_host[0]))
+        self.last_lm_head_path = "full_logits"
+        logits = self._logits_host.copy() if return_logits else None
+        return token, float(self._logits_host[0, token]), logits
 
     def _slot(self, request_id: int) -> int:
         request_id = int(request_id)
@@ -233,27 +376,10 @@ class Qwen35GGUFNextNExecutor:
             eps=self.weights.config.rms_norm_eps,
             runtime=self.runtime,
         )
-        launch_gguf_linear(
-            self.weights.fallback("lm_head"),
+        token, logit, logits = self._sample_lm_head(
             final_hidden_ptr,
-            self._logits_buf.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=self.vocab_size,
-            output_dtype=GGUF_OUTPUT_F32,
-            runtime=self.runtime,
+            return_logits=bool(return_logits),
         )
-        self.runtime.device_synchronize()
-        copy_device_to_host(
-            host_array_ptr(self._logits_host),
-            self._logits_buf,
-            self._logits_host.nbytes,
-            runtime=self.runtime,
-        )
-        if not np.all(np.isfinite(self._logits_host)):
-            raise FloatingPointError("GGUF NextN logits contain NaN or Inf")
-        token = int(np.argmax(self._logits_host[0]))
-        logits = self._logits_host.copy() if return_logits else None
         hidden = Tensor.from_handle(
             final_hidden_ptr,
             (1, self.hidden_size),
@@ -265,7 +391,7 @@ class Qwen35GGUFNextNExecutor:
             input_token=int(token_id),
             position=int(position),
             token_id=token,
-            logit=float(self._logits_host[0, token]),
+            logit=logit,
             hidden=hidden,
             logits=logits,
         )

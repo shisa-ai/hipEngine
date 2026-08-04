@@ -203963,3 +203963,40 @@ Vulkan local sizes verbatim will close the measured gap.
 - Kernel/marker/copy/summary/suite SHA-256s are `1c3f59e5...a445`,
   `3ac34206...e60`, `52596e14...5b0`, `8c324ed9...17b`, and
   `d232df4a...080`.
+
+### D27-O3 compact exact proposal scoring — GREEN
+
+- RED adds three CPU scheduler/ABI tests. They require the NextN executor to
+  enqueue one exact BF16/raw-Q6 pack-winner/final-top1 chain, copy only the
+  8-byte token/value result, prefer it when logits are not requested, and
+  preserve full-vocabulary scoring for explicit diagnostics. The intended RED
+  failed **3/3** because `_run_exact_lm_head_top1()` and `_sample_lm_head()` did
+  not exist. A fourth GREEN structural guard binds selection to the exact
+  four-axis registry key.
+- The executor now resolves
+  `(backend, linear, resident_quant, pack8_gemv_decode_bf16_top1_gather_f32)`
+  after materialization. Supported heads allocate two `vocab/8` compact winner
+  arrays plus one 8-byte result. Production `return_logits=False` reads back
+  only exact token/value; registry misses, incompatible layouts/shapes, and
+  `return_logits=True` retain the prior full-logit route. No kernel body,
+  approximation, env flag, or prompt/token branch is added.
+- CPU/fake GREEN: `tests/test_qwen35_gguf_nextn_provider.py -k 'not real'`
+  **6/6**; Q6 wrapper validation **1/1**; ruff, py_compile, and diff checks pass.
+  GPU1 exact one-step gates pass for both the Qwen3.6-27B dense `blk.64` and the
+  existing 35B-A3B `blk.40`: compact and full routes have identical token and
+  FP32 winner value, while diagnostics still return the full logits row.
+- GPU1 7900 XTX same-GPU component screen, 3 warmups plus 15 alternating pairs,
+  real dense `(rows=1, K=5120, N=248320)` step:
+  `control full logits 3.743250 ms -> compact exact top1 3.035300 ms`
+  (**1.2332x, -0.707950 ms/step**), exact token `46424` and value
+  `12.931821823120117`. This is a component screen, not a W7900 speed claim.
+  Script/result SHA-256s are `4cb3a680...e32` and `99a7fc24...4f0`.
+- Complete W7900 command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1**. B1-B3 full-logit controls, graph target execution,
+  reject/partial/full selected Conv/GDN/KV/trunk-hidden commits, correction
+  logits, positions 6/7/9 reuse, candidate IDs, acceptance, and the compact
+  natural-provider path remain exact.
+- Freeze the correctness unit before the clean natural25 promotion run. The
+  component screen establishes plausibility only; retention still requires
+  every prompt/category/heldout row to improve on the W7900.

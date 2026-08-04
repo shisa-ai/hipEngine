@@ -6,6 +6,7 @@ import ctypes
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -15,6 +16,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import free, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNDraftProvider,
     Qwen35GGUFNextNStepResult,
@@ -128,6 +130,191 @@ def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
         provider.advance_full_accept_tail(41, accepted_count=3)
 
 
+def test_nextn_executor_prepares_compact_top1_through_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(quant_key="gguf_q6_k"),
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000))
+        if name == "raw"
+        else (_ for _ in ()).throw(KeyError(name)),
+    )
+    executor.weights = SimpleNamespace(
+        backend="hip_gfx1100",
+        fallback=lambda slot: weight
+        if slot == "lm_head"
+        else (_ for _ in ()).throw(KeyError(slot)),
+    )
+    executor.hidden_size = 512
+    executor.vocab_size = 1024
+    executor.compiler_version = "compiler"
+    executor.require_cached_build = True
+    executor.runtime = object()
+    executor._lm_head_top1_kernel = None
+    executor._lm_head_top1_weight_ptr = 0
+    executor._lm_head_top1_block_values = None
+    executor._lm_head_top1_block_indices = None
+    executor._lm_head_top1_result = None
+    executor._q6_pack8_library = None
+    kernel = object()
+    library = object()
+    registered_keys: list[object] = []
+    resolve_calls: list[dict[str, object]] = []
+    malloc_calls: list[int] = []
+
+    def fake_is_registered(key) -> bool:
+        registered_keys.append(key)
+        return True
+
+    def fake_resolve(**kwargs):
+        resolve_calls.append(kwargs)
+        return kernel
+
+    def fake_malloc(nbytes, *, runtime):
+        assert runtime is executor.runtime
+        malloc_calls.append(nbytes)
+        return SimpleNamespace(ptr=0x3000 + len(malloc_calls) * 0x1000, nbytes=nbytes)
+
+    monkeypatch.setattr(nextn_mod, "is_registered", fake_is_registered)
+    monkeypatch.setattr(nextn_mod, "resolve", fake_resolve)
+    monkeypatch.setattr(nextn_mod, "build_gguf_q6_k_pack8_gemv", lambda **kwargs: library)
+    monkeypatch.setattr(nextn_mod, "malloc", fake_malloc)
+
+    executor._prepare_exact_lm_head_top1()
+
+    assert [(key.backend, key.layer, key.quant, key.variant) for key in registered_keys] == [
+        (
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k",
+            "pack8_gemv_decode_bf16_top1_gather_f32",
+        )
+    ]
+    assert resolve_calls == [
+        {
+            "backend": "hip_gfx1100",
+            "layer": "linear",
+            "quant": "gguf_q6_k",
+            "variant": "pack8_gemv_decode_bf16_top1_gather_f32",
+        }
+    ]
+    assert malloc_calls == [512, 512, 8]
+    assert executor._lm_head_top1_kernel is kernel
+    assert executor._lm_head_top1_weight_ptr == 0x2000
+    assert executor._q6_pack8_library is library
+
+
+def test_nextn_executor_compact_top1_reads_only_token_and_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    kernel_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    sync_calls: list[str] = []
+    library = object()
+    runtime = SimpleNamespace(device_synchronize=lambda: sync_calls.append("sync"))
+    executor.runtime = runtime
+    executor.hidden_size = 512
+    executor.vocab_size = 1024
+    executor._lm_head_top1_kernel = lambda *args, **kwargs: kernel_calls.append((args, kwargs))
+    executor._lm_head_top1_weight_ptr = 0x2000
+    executor._lm_head_top1_block_values = SimpleNamespace(ptr=0x3000)
+    executor._lm_head_top1_block_indices = SimpleNamespace(ptr=0x4000)
+    executor._lm_head_top1_result = SimpleNamespace(ptr=0x5000, nbytes=8)
+    executor._q6_pack8_library = library
+
+    def fake_copy(host_ptr, _device, nbytes, *, runtime) -> None:
+        assert nbytes == 8
+        assert runtime is executor.runtime
+        result = (ctypes.c_uint32 * 2).from_address(host_ptr)
+        result[0] = 731
+        result[1] = int(np.asarray([4.25], dtype=np.float32).view(np.uint32)[0])
+
+    monkeypatch.setattr(nextn_mod, "copy_device_to_host", fake_copy)
+
+    compact = executor._run_exact_lm_head_top1(0x1000, stream=7)
+
+    assert compact == (731, 4.25)
+    assert sync_calls == ["sync"]
+    assert len(kernel_calls) == 1
+    args, kwargs = kernel_calls[0]
+    assert args == (
+        0x1000,
+        0x2000,
+        0x3000,
+        0x4000,
+        0x5000,
+        0x5004,
+        None,
+        None,
+        1,
+        512,
+        1024,
+        0,
+    )
+    assert kwargs == {"stream": 7, "library": library, "runtime": runtime}
+
+
+def test_nextn_executor_sample_prefers_compact_top1_without_logits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    compact_calls: list[tuple[int, int]] = []
+    executor._run_exact_lm_head_top1 = lambda hidden_ptr, stream=0: (
+        compact_calls.append((hidden_ptr, stream)) or (17, 3.5)
+    )
+    monkeypatch.setattr(
+        nextn_mod,
+        "launch_gguf_linear",
+        lambda *args, **kwargs: pytest.fail("compact scoring must not launch full logits"),
+    )
+
+    token, logit, logits = executor._sample_lm_head(0x1234, return_logits=False, stream=9)
+
+    assert (token, logit, logits) == (17, 3.5, None)
+    assert compact_calls == [(0x1234, 9)]
+
+
+def test_nextn_executor_logits_diagnostic_keeps_full_scoring_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.hidden_size = 8
+    executor.vocab_size = 4
+    executor.weights = SimpleNamespace(fallback=lambda slot: f"weight:{slot}")
+    executor._logits_buf = SimpleNamespace(ptr=0x6000, nbytes=16)
+    executor._logits_host = np.empty((1, 4), dtype=np.float32)
+    sync_calls: list[str] = []
+    executor.runtime = SimpleNamespace(device_synchronize=lambda: sync_calls.append("sync"))
+    executor._run_exact_lm_head_top1 = lambda *_args, **_kwargs: pytest.fail(
+        "diagnostic logits must bypass compact scoring"
+    )
+    launch_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    monkeypatch.setattr(
+        nextn_mod,
+        "launch_gguf_linear",
+        lambda *args, **kwargs: launch_calls.append((args, kwargs)),
+    )
+
+    def fake_copy(host_ptr, _device, nbytes, *, runtime) -> None:
+        assert nbytes == 16
+        assert runtime is executor.runtime
+        out = np.ctypeslib.as_array((ctypes.c_float * 4).from_address(host_ptr))
+        out[:] = (1.0, 5.0, 3.0, 2.0)
+
+    monkeypatch.setattr(nextn_mod, "copy_device_to_host", fake_copy)
+
+    token, logit, logits = executor._sample_lm_head(0x7000, return_logits=True, stream=11)
+
+    assert token == 1
+    assert logit == 5.0
+    np.testing.assert_array_equal(logits, np.asarray([[1.0, 5.0, 3.0, 2.0]], dtype=np.float32))
+    assert sync_calls == ["sync"]
+    assert len(launch_calls) == 1
+    assert launch_calls[0][0][0:3] == ("weight:lm_head", 0x7000, 0x6000)
+    assert launch_calls[0][1]["stream"] == 11
+
+
 def _require_real_nextn(model: Path) -> None:
     if not model.exists():
         pytest.skip(f"local GGUF fixture not found: {model}")
@@ -171,6 +358,13 @@ def test_real_blk40_one_step_logits_match_direct_executor_and_provider() -> None
             rtol=tolerance["top10_logits_rtol"],
         )
         assert direct.token_id == oracle["token_id"]
+        executor.reset_request(7)
+
+        compact = executor.run_step(7, 11, 0, hidden, return_logits=False)
+        assert compact.logits is None
+        assert compact.token_id == direct.token_id
+        assert compact.logit == direct.logit
+        assert executor.last_lm_head_path == "exact_q6_top1"
         executor.reset_request(7)
 
         provider = Qwen35GGUFNextNDraftProvider(executor)
@@ -233,6 +427,13 @@ def test_real_dense_blk64_one_step_logits_match_llamacpp_oracle() -> None:
             rtol=tolerance["top10_logits_rtol"],
         )
         assert direct.token_id == oracle["token_id"]
+        executor.reset_request(7)
+
+        compact = executor.run_step(7, 9707, 0, hidden, return_logits=False)
+        assert compact.logits is None
+        assert compact.token_id == direct.token_id
+        assert compact.logit == direct.logit
+        assert executor.last_lm_head_path == "exact_q6_top1"
         executor.reset_request(7)
 
         provider = Qwen35GGUFNextNDraftProvider(executor)
