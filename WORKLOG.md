@@ -205944,3 +205944,85 @@ Vulkan local sizes verbatim will close the measured gap.
   `814cdee5...58c0e8`, `349a07cd...c1d499`, `0315614b...dbf9a`, and
   `dbfcf003...c9e85`; temporary cached build key is
   `2d97abe82b583c8b`.
+
+## 2026-08-05 — Re-rank the post-Q5 Vulkan gap and admit Q6 qmicro screening
+
+- Reconcile the retained `a821d571b` no-warmup B3 trace before treating its
+  **134.642-ms** device-span-minus-kernel bucket as launch overhead. The first
+  target marker is **111.588 ms**, while the next six are only
+  **46.468-48.755 ms**; their graph-device spans are **44.147-46.331 ms**.
+  About **63 ms** is first-use graph capture/instantiation in the profiler leaf,
+  and the graph intentionally overlaps independent kernels. Therefore the
+  residual label is not a 134-ms reducible queue-tax ceiling and does not
+  justify another launch-only fusion.
+- The matched row-four arithmetic ledger becomes binding. Q4 FFN and the other
+  wide Q4 projections are at or ahead of Vulkan; target head scoring is parity.
+  The largest still-open compressed family is wide Q6T16: `ffn_down` plus
+  `attn_qkv` consume **60.252972 ms** in hipEngine versus **41.4862 ms** in
+  Vulkan, a measured **18.767-ms** physical gap. Q5 `ssm_out` is larger but all
+  materially distinct current representations are now closed.
+- Admit one bounded GPU1 actual-weight screen of the already-proven byte-neutral
+  planar-Q6 qmicro representation, adapted to the exact dense rows-2/3/4 col8
+  rowtile. The layout improved gfx1151 selected-Q6 direct decode by another
+  **1.7%** over interleaved qmicro and about **8.6%** over legacy T16, but no
+  gfx1100 dense-rowtile claim transfers automatically. RED must require BF16-bit
+  equality to the retained legacy-T16 col8 producer. Do not add sidecars,
+  materializer/runtime ownership, or a W7900 suite unless both actual wide
+  shapes win with a credible multi-ms projection.
+- The bounded GPU1 rowtile screen qualifies both shapes at every production
+  verifier width. On actual `blk.0.ffn_down.weight`, legacy col8 versus planar
+  qmicro at rows 2/3/4 is **137.899 -> 114.327 us (1.2062x)**,
+  **145.343 -> 126.816 us (1.1461x)**, and **169.950 -> 133.660 us
+  (1.2715x)**. Actual `blk.0.attn_qkv.weight` is **82.255 -> 65.064 us
+  (1.2642x)**, **83.114 -> 70.349 us (1.1815x)**, and **98.853 -> 78.753
+  us (1.2552x)**. All six cells win **11/11** counterbalanced pairs and have
+  zero BF16 mismatches. Weighting row 4 by the retained profile's 224 FFN-down
+  and 168 QKV calls projects about **12.67 ms / 2.57%** complete-wall recovery.
+- Complete replacement screening avoids a 3.14-GiB sidecar. The first scalar
+  planar-WMMA lookup loses **2.1-8.7%** and is superseded. Decoding each aligned
+  12-byte record with two dword loads instead preserves every FP16 fragment and
+  makes all six c1/M64/M512 replacement cases exact and **11/11** positive:
+  FFN-down **1.4243x/1.1434x/1.1633x**, QKV
+  **1.5984x/1.1784x/1.1715x**. The final representation is byte-neutral and
+  keeps legacy T16 as the explicit peer-backend/fallback layout; rows 5-6 use
+  the exact planar per-row fallback rather than an unmeasured high-pressure
+  rowtile.
+- Add the four-axis planar-qmicro quant/layout key, gfx1100 package capability,
+  c1/col8-rowtile/WMMA consumers, backend-driven materialization, generic T16
+  dispatch rewrites, and explicit gfx1151 alias exclusion. No prompt/token
+  condition, allocation, environment flag, or model-code backend/quant branch
+  is added. Focused RED failed on the absent layout/import; the quant/planner/
+  dispatch/backend set now passes **9 tests**, and the integrated GPU1 c1,
+  rows2-6, WMMA, and registry set passes **8 tests**. Binding adjacent bundle
+  and W7900 transaction remain before the correctness commit.
+- Evidence SHA-256s: row harness `4cd0b573...10642`, row result
+  `327c311e...02dcf9`; full harness `dd1d82b0...697d8`, rejected scalar-WMMA
+  screen `31bf559a...da5a`, aligned-record screen `610e24ad...53d9`.
+- The adjacent GPU1 quant/mapping/dispatch/backend/kernel bundle collects
+  **149 tests** and exits green with **145 passed / 4 environment skips**.
+  Actual backend-driven materialization selects the qmicro layout and frees
+  cleanly for both sample residents, preserving exact byte counts
+  **73,113,600 + 43,008,000**. The first diagnostic smoke failed only after
+  its layout assertion on an invalid `allocation.nbytes` print; the corrected
+  focused rerun uses tensor shape/dtype and passes both owners.
+- Cache-only GPU1 `rocprofv3 --kernel-trace` passes the three focused tests and
+  names `q6_k_t16_qmicro_planar_{gemv_bf16,
+  gemv_rowtile_col8<4>,wmma_prefill_bf16}_kernel` at local **128/128/32**,
+  VGPR **96/80/64**, SGPR128, LDS **512/512/0**, scratch0, and plausible
+  **9.640/25.281/44.521 us** fixture durations. The profiler task's shell exit
+  was nonzero only because its final SHA glob did not descend into rocprof's
+  `epyc/` directory; parsing and hashing the already-complete CSV gives
+  SHA-256 `02a6d45a...6a440`, so no expensive trace rerun is needed.
+- The binding cached W7900 transaction command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -m pytest -q
+  tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes **1/1**,
+  covering exact B1-B3 logits, reject/partial/full/rollback state, graph reuse,
+  natural provider output, physical ownership, lifecycle, and teardown.
+- This closes the correctness/admission unit. Next commit it atomically, then
+  run the hermetic one-prompt W7900 B3 profile against clean `064219ec6`.
+  Natural25 and populated 512/4K remain mandatory because qmicro changes c1 and
+  prefill as well as verifier rows; no canonical performance row changes yet.

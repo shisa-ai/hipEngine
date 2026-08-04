@@ -16,6 +16,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q6_K_T16,
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
@@ -196,28 +197,41 @@ def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:
     ]
 
 
-def test_q6_t16_routes_decode_native_rowtile_and_dense_wmma() -> None:
+@pytest.mark.parametrize(
+    ("layout", "quant_key"),
+    [
+        (LAYOUT_GGUF_Q6_K_T16, "gguf_q6_k_t16_v1"),
+        (
+            LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+            "gguf_q6_k_t16_qmicro_planar_v1",
+        ),
+    ],
+)
+def test_q6_t16_routes_decode_native_rowtile_and_dense_wmma(
+    layout: str,
+    quant_key: str,
+) -> None:
     weight = _fake_weight(
-        layout=LAYOUT_GGUF_Q6_K_T16,
-        quant_key="gguf_q6_k_t16_v1",
+        layout=layout,
+        quant_key=quant_key,
     )
     keys = {
         "decode": KernelKey(
             "hip_gfx1100",
             "linear",
-            "gguf_q6_k_t16_v1",
+            quant_key,
             "t16_gemv_decode_bf16_bf16_out",
         ),
         "rowtile": KernelKey(
             "hip_gfx1100",
             "linear",
-            "gguf_q6_k_t16_v1",
+            quant_key,
             "t16_gemv_rowtile_bf16_bf16_out",
         ),
         "wmma": KernelKey(
             "hip_gfx1100",
             "linear",
-            "gguf_q6_k_t16_v1",
+            quant_key,
             "t16_wmma_prefill_bf16_bf16_out",
         ),
     }

@@ -646,6 +646,9 @@ GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # Three Q6T16 down layers use the independently gated exact sibling at C8.
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
+# Dense Qwen3.6 planar-qmicro ownership is W7900-only until gfx1151 receives
+# independent c1/small-row/prefill and complete-model gates.
+GGUF_DENSE_Q6_T16_QMICRO_PLANAR = False
 # Physical-C8 Q6T16 lm-head uses the exact 5+3 rowtile partition.
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 5
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
@@ -733,6 +736,20 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "linear",
             "gguf_q4_k_t16_v1",
             "dense_rowtile_col4_bf16_bf16_out",
+        ),
+        # Dense planar-qmicro Q6 is W7900-only pending a separate gfx1151 gate.
+        *(
+            (
+                "linear",
+                "gguf_q6_k_t16_qmicro_planar_v1",
+                variant,
+            )
+            for variant in (
+                "t16_gemv_decode_bf16_bf16_out",
+                "t16_gemv_rowtile_bf16_bf16_out",
+                "t16_gemv_rowtile_col8_bf16_bf16_out",
+                "t16_wmma_prefill_bf16_bf16_out",
+            )
         ),
         # Exact single-page and P2 split attention are W7900-only until gfx1151
         # receives independent crossover, full-state, and performance gates.
@@ -1578,6 +1595,7 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

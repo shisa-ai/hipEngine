@@ -74,6 +74,19 @@ class GGUFQ6KT16Quant:
 
 
 @dataclass(frozen=True)
+class GGUFQ6KT16QMicroPlanarQuant:
+    """Planar-qmicro replacement-layout key for dense Q6T16 weights."""
+
+    name: str = "gguf_q6_k_t16_qmicro_planar_v1"
+    weight_storage: str = "gguf_block_q6_k_t16_qmicro_planar_v1"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block256_subblock16_scale"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_t16_gemv"
+
+
+@dataclass(frozen=True)
 class GGUFQ80T16Quant:
     """T16 replacement-layout plugin key for GGUF block_q8_0 weights."""
 
@@ -150,6 +163,9 @@ class GGUFQ80Tile16:
 
 GGUF_Q5_K_T16_V1 = register_quant(GGUFQ5KT16Quant())
 GGUF_Q6_K_T16_V1 = register_quant(GGUFQ6KT16Quant())
+GGUF_Q6_K_T16_QMICRO_PLANAR_V1 = register_quant(
+    GGUFQ6KT16QMicroPlanarQuant()
+)
 GGUF_Q8_0_T16_V1 = register_quant(GGUFQ80T16Quant())
 
 
@@ -720,6 +736,7 @@ __all__ = [
     "GGUF_Q6_K_BLOCK_BYTES",
     "GGUF_Q6_K_T16_BLOCK_BYTES",
     "GGUF_Q6_K_T16_QMICRO_OFFSET",
+    "GGUF_Q6_K_T16_QMICRO_PLANAR_V1",
     "GGUF_Q6_K_T16_QMICRO_RECORD_BYTES",
     "GGUF_Q6_K_T16_V1",
     "GGUF_Q8_0_BLOCK_BYTES",
@@ -729,6 +746,7 @@ __all__ = [
     "GGUFQ5KTile16",
     "GGUFQ5KT16Quant",
     "GGUFQ6KTile16",
+    "GGUFQ6KT16QMicroPlanarQuant",
     "GGUFQ6KT16Quant",
     "GGUFQ80Tile16",
     "GGUFQ80T16Quant",

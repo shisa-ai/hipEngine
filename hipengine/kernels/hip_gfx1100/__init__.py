@@ -171,6 +171,10 @@ GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # Q5T16 selected-down pair reuse also requires an independent W7900 gate.
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
+# Byte-neutral planar qmicro is the W7900 owner for Qwen3.6 wide rank-2 Q6.
+# Exact actual-weight c1, rows2-4, and M64/M512 gates all improve; peer
+# backends keep legacy T16 until independently admitted.
+GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
@@ -610,6 +614,7 @@ __all__ = [
     "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
