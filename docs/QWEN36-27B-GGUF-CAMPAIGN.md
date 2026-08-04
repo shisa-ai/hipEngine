@@ -691,6 +691,14 @@ every other shape or registry miss. The row-four subfamily projection is
 **2.397 ms / 0.354%** of current complete B3 wall. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-admitted.json`.
 
+The qualified runtime route is now correctness-green. Only the native-batch
+K6,144/N5,120 dense-BF16 projection selects the exact-key candidate; every
+other shape/session and registry miss retains local256. The complete W7900
+oracle observes candidate rows exactly `{2,3,4}` at only that shape and remains
+byte-exact for B1-B3 logits, reject/partial/full/rollback state, dynamic graph
+reuse, correction logits, and natural provider output. Clean natural25 timing
+remains required before this route is promoted as a performance win.
+
 ---
 
 ## 7. Prioritized execution plan

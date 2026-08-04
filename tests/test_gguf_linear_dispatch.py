@@ -10,7 +10,7 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
 import hipengine.runtime.gguf_linear as gguf_linear_module
-from hipengine.kernels.registry import KernelKey, register, resolve
+from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
@@ -386,6 +386,115 @@ def test_native_batch_decode_routes_dense_bf16_c1_to_exact_virtual256() -> None:
             expected_kwargs,
         ),
     ]
+
+
+def test_native_batch_decode_routes_only_dense_bf16_ssm_out_rowtile_to_virtual256() -> None:
+    weight = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
+    baseline_key = KernelKey("hip_gfx1100", "dense_gemv", "bf16", "rowtile_out")
+    candidate_key = KernelKey(
+        "hip_gfx1100", "dense_gemv", "bf16", "virtual256_rowtile_out"
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (baseline_key, candidate_key)
+    }
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def capture(label: str):
+        def fake_kernel(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake_kernel
+
+    register(baseline_key, capture("local256_rowtile"), replace=True)
+    register(candidate_key, capture("virtual256_local128_rowtile"), replace=True)
+    try:
+        # Ordinary prefill retains the established local256 rowtile.
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=4,
+            in_features=6144,
+            out_features=5120,
+            stream=7,
+            runtime="runtime-sentinel",
+        )
+        with native_batch_decode_session(True):
+            for rows in (2, 3, 4):
+                launch_gguf_linear(
+                    weight,
+                    x_ptr=100,
+                    out_ptr=200,
+                    rows=rows,
+                    in_features=6144,
+                    out_features=5120,
+                    stream=7,
+                    runtime="runtime-sentinel",
+                )
+            for in_features, out_features in (
+                (5120, 10240),
+                (17408, 5120),
+                (5120, 1024),
+            ):
+                launch_gguf_linear(
+                    weight,
+                    x_ptr=100,
+                    out_ptr=200,
+                    rows=4,
+                    in_features=in_features,
+                    out_features=out_features,
+                    stream=7,
+                    runtime="runtime-sentinel",
+                )
+
+        # A missing exact candidate key must fail closed to the local256 owner.
+        unregister(candidate_key)
+        with native_batch_decode_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=200,
+                rows=4,
+                in_features=6144,
+                out_features=5120,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert [label for label, _, _ in calls] == [
+        "local256_rowtile",
+        "virtual256_local128_rowtile",
+        "virtual256_local128_rowtile",
+        "virtual256_local128_rowtile",
+        "local256_rowtile",
+        "local256_rowtile",
+        "local256_rowtile",
+        "local256_rowtile",
+    ]
+    assert [args[3:] for _, args, _ in calls] == [
+        (4, 6144, 5120),
+        (2, 6144, 5120),
+        (3, 6144, 5120),
+        (4, 6144, 5120),
+        (4, 5120, 10240),
+        (4, 17408, 5120),
+        (4, 5120, 1024),
+        (4, 6144, 5120),
+    ]
+    assert all(
+        kwargs == {"stream": 7, "runtime": "runtime-sentinel"}
+        for _, _, kwargs in calls
+    )
 
 
 def test_launch_gguf_linear_dense_f32_activation_f32_output_calls_registry_kernel() -> None:

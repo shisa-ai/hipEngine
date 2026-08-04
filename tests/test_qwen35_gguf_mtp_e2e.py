@@ -375,11 +375,40 @@ def dense_virtual256_calls() -> Iterator[list[tuple[int, int, int]]]:
         gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
 
+@pytest.fixture
+def dense_virtual256_rowtile_calls() -> Iterator[list[tuple[int, int, int]]]:
+    """Count the shape-qualified small-row local128 launches."""
+
+    key = KernelKey(
+        "hip_gfx1100", "dense_gemv", "bf16", "virtual256_rowtile_out"
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, int, int]] = []
+
+    def counted(*args, **kwargs):
+        calls.append((int(args[3]), int(args[4]), int(args[5])))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     monkeypatch: pytest.MonkeyPatch,
     dense_virtual256_calls: list[tuple[int, int, int]],
+    dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
@@ -652,6 +681,12 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert rowtile_rows == {2, 3, 4}
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
+    assert dense_virtual256_rowtile_calls
+    assert {rows for rows, _, _ in dense_virtual256_rowtile_calls} == {2, 3, 4}
+    assert {
+        (in_features, out_features)
+        for _, in_features, out_features in dense_virtual256_rowtile_calls
+    } == {(6144, 5120)}
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:
