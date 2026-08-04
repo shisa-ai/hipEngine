@@ -4916,6 +4916,39 @@ acceptance/cycle ledgers, transaction state, tracked peak (**28.996 GiB**), and
 teardown remain exact. B3 is now **38.74%** below llama.cpp Vulkan. Artifact:
 [`2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json`](results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json).
 
+#### Qwen3.6-27B exact full-attention K grid-y batch, W7900/gfx1100
+
+Clean hipEngine `d0cee5efa` resolves a quant-specific alias of the existing
+exact generic pack8 wrapper for dense N1 full-attention K at K5,120/N1,024.
+Each row retains its scalar K traversal, FP32 FMA/shuffle tree, and BF16 store;
+one grid-y launch merely exposes the independent verifier rows. A missing key
+keeps the complete scalar loop. Production ownership is N1 rows `{2,4}`; B2
+rows=3 remains in the separate N2 bulk graph.
+
+| Route | Shared-page attention batch | K grid-y batch | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR (unchanged c1 route) | 20.370 tok/s | 20.350 tok/s | -0.099% noise | 1.0000x | n/a |
+| B1 | 30.116 tok/s | **30.154 tok/s** | **+0.126%** | **1.4818x** | **-0.234%** |
+| B2 (N2 owner; diagnostic) | 37.447 tok/s | 37.663 tok/s | +0.577% | 1.8508x | -0.559% |
+| **B3 (retained)** | 41.705 tok/s | **41.890 tok/s** | **+0.442%** | **2.0584x** | **-0.595%** |
+
+The hermetic one-prompt B3 trace confirms **8,391 -> 8,055 dispatches
+(-336 / -4.00%)**. Target K changes exactly from **448 scalar launches / 4.919
+ms** to **112 grid-y launches / 2.252 ms (-54.23%, 2.185x)**; target-verify
+kernel sum falls **399.277 -> 395.971 ms (-0.828%)**. The profiled complete
+marker wall is noise-negative at **608.946 -> 611.399 ms (+0.403%)** because
+queue-gap/copy-overlap grows 5.708 ms, so that single-prompt profile wall is not
+a speed claim. Physical ownership, selected-family time, and the unprofiled
+full-suite gate are the binding evidence.
+
+Every B1-B3 full/train/heldout/category aggregate improves (**+0.016% to
++0.992%**); all selected-B3 scopes improve **+0.379% to +0.479%**. One B3
+prompt and several other individual rows move slightly negative within noise,
+so there is no 30/30-row claim. IDs, acceptance/cycle ledgers, complete
+transaction state, tracked peak (**28.996 GiB**), and teardown remain exact.
+B3 is now **38.47%** below llama.cpp Vulkan. Artifact:
+[`2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json`](results/2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5083,6 +5116,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact Q4 dual-rowtile SiLU cycle wall](results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json),
 [Qwen3.6-27B exact dense verifier chain journals](results/2026-08-04-qwen36-27b-chain-journals-retained.json),
 [Qwen3.6-27B exact shared-page full-attention batch](results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json),
+[Qwen3.6-27B exact full-attention K grid-y batch](results/2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

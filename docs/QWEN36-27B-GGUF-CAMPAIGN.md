@@ -837,24 +837,38 @@ noise-flat at **-0.045%** and the separately owned N2 B2 row is diagnostic at
 state, 28.996-GiB peak, and teardown remain exact. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json`.
 
-The post-shared-attention trace exposes one more exact launch boundary inside
-that same staged full-attention owner: target K still issues **448** scalar
-K5120/N1024 resident-pack8 calls totaling **4.919 ms**. The existing generic
-local32 kernel already maps grid Y to independent rows without changing any
-row's K traversal, FP32 FMA/shuffle tree, or BF16 store. A dedicated
-`linear/gguf_q4_k_m/pack8_full_k_grid_y_native_exact_bf16_bf16_out` alias may
-therefore replace rows scalar calls with one rows-wide launch; a missing key
+The post-shared-attention trace exposes and retains one more exact launch
+boundary inside that same staged full-attention owner. Target K issued **448**
+scalar K5,120/N1,024 resident-pack8 calls totaling **4.919 ms**. The existing
+generic local32 kernel already maps grid Y to independent rows without changing
+any row's K traversal, FP32 FMA/shuffle tree, or BF16 store. The dedicated
+`linear/gguf_q4_k_m/pack8_full_k_grid_y_native_exact_bf16_bf16_out` alias now
+replaces each rows-long scalar loop with one rows-wide launch; a missing key
 retains the complete scalar loop.
 
 A production-shape GPU1 screen is BF16-byte exact at rows 2/3/4 and improves
 synchronized event time **1.849x/2.374x/2.620x** (wall
-**1.824x/2.338x/2.587x**). The routed W7900 B1-B3 transaction gate preserves
-full logits, reject/partial/full/rollback Conv/GDN/KV/hidden state, dynamic
-position reuse, correction logits, and natural provider output. Its registry
-census observes N1 owner rows exactly `{2,4}`; B2/rows3 remains with the
-separate N2 bulk graph. This admits the route for clean profiling and natural25
-qualification; the canonical **41.705 tok/s / 2.0474x** headline is unchanged
-until that gate completes.
+**1.824x/2.338x/2.587x**). The W7900 B1-B3 transaction gate preserves full
+logits, reject/partial/full/rollback Conv/GDN/KV/hidden state, dynamic position
+reuse, correction logits, and natural provider output. Its registry census
+observes N1 owner rows exactly `{2,4}`; B2/rows3 remains with the separate N2
+bulk graph.
+
+The hermetic W7900 B3 trace confirms **8,391 -> 8,055 dispatches (-336 /
+-4.00%)** and exactly **448 scalar K -> 112 grid-y K** target launches. The
+selected K family falls **4.919 -> 2.252 ms (-54.23%, 2.185x)**, target-verify
+kernel sum falls **0.828%**, and target host wall falls **0.184%**. Complete
+profile marker wall is noise-negative at **608.946 -> 611.399 ms (+0.403%)**
+because queue-gap/copy-overlap grows **5.708 ms**; the profile wall is disclosed
+rather than attributed as a win.
+
+Clean natural25 retains selected B3 at **41.705 -> 41.890 tok/s (+0.442%)**,
+target verify **-0.595%**, and **2.0584x own AR**. Every B1-B3
+full/train/heldout/category aggregate improves (**+0.016% to +0.992%**); all B3
+scopes improve **+0.379% to +0.479%**. Individual prompt timing includes small
+noise-negative rows, so no 30/30-row claim is made. IDs, acceptance, complete
+transaction state, the **28.996-GiB** peak, and teardown remain exact. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json`.
 
 ---
 
@@ -869,7 +883,7 @@ until that gate completes.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 reaches 152.910/144.308 tok/s and beats matched Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; eleven wins retained, exact B3 reaches 41.705 tok/s / 2.0474x AR |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; twelve wins retained, exact B3 reaches 41.890 tok/s / 2.0584x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O2-O3; dense BF16 prefill is queued AR target |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
