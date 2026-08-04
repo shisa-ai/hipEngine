@@ -15,15 +15,19 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
+    gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out,
     gguf_q4_k_pack8_gemv_bf16_bf16_out,
+    gguf_q4_k_pack8_rowtile_bf16_bf16_out,
     gguf_q4_k_quantize_bf16_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
-    gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+    gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out,
@@ -543,23 +547,25 @@ def _run_dense_dual_silu(
     out_features,
     out_dtype,
     library,
+    *,
+    fn=gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
 ) -> np.ndarray:
-    in_features = x_dev.shape[1]
+    rows, in_features = x_dev.shape
     x_buf = malloc(x_dev.nbytes)
     copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
     ta_buf = malloc(ta.nbytes)
     copy_host_to_device(ta_buf, host_array_ptr(ta), ta.nbytes)
     tb_buf = malloc(tb.nbytes)
     copy_host_to_device(tb_buf, host_array_ptr(tb), tb.nbytes)
-    out_arr = np.zeros((1, out_features), dtype=out_dtype)
+    out_arr = np.zeros((rows, out_features), dtype=out_dtype)
     out_buf = malloc(out_arr.nbytes)
     try:
-        gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
+        fn(
             x_buf.ptr,
             ta_buf.ptr,
             tb_buf.ptr,
             out_buf.ptr,
-            1,
+            rows,
             in_features,
             out_features,
             library=library,
@@ -615,19 +621,19 @@ def _run_dense_single(
     out_dtype,
     library,
 ) -> np.ndarray:
-    in_features = x_dev.shape[1]
+    rows, in_features = x_dev.shape
     x_buf = malloc(x_dev.nbytes)
     copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
     tiles_buf = malloc(tiles.nbytes)
     copy_host_to_device(tiles_buf, host_array_ptr(tiles), tiles.nbytes)
-    out_arr = np.zeros((1, out_features), dtype=out_dtype)
+    out_arr = np.zeros((rows, out_features), dtype=out_dtype)
     out_buf = malloc(out_arr.nbytes)
     try:
         fn(
             x_buf.ptr,
             tiles_buf.ptr,
             out_buf.ptr,
-            1,
+            rows,
             in_features,
             out_features,
             library=library,
@@ -645,7 +651,7 @@ def _run_pack8_single(
     out_features,
     q4_library,
 ) -> np.ndarray:
-    in_features = x_dev.shape[1]
+    rows, in_features = x_dev.shape
     buffers = []
     try:
         x_buf = malloc(x_dev.nbytes)
@@ -657,16 +663,21 @@ def _run_pack8_single(
             buffers.append(buffer)
             packed_buffers.append(buffer)
             copy_host_to_device(buffer, host_array_ptr(value), value.nbytes)
-        out_arr = np.zeros((1, out_features), dtype=np.uint16)
+        out_arr = np.zeros((rows, out_features), dtype=np.uint16)
         out_buf = malloc(out_arr.nbytes)
         buffers.append(out_buf)
-        gguf_q4_k_pack8_gemv_bf16_bf16_out(
+        fn = (
+            gguf_q4_k_pack8_gemv_bf16_bf16_out
+            if rows == 1
+            else gguf_q4_k_pack8_rowtile_bf16_bf16_out
+        )
+        fn(
             x_buf.ptr,
             packed_buffers[0].ptr,
             packed_buffers[1].ptr,
             packed_buffers[2].ptr,
             out_buf.ptr,
-            1,
+            rows,
             in_features,
             out_features,
             threads=32,
@@ -717,6 +728,121 @@ def test_q4_t16_dense_single_matches_pack8_production_bits(
     np.testing.assert_allclose(
         _bf16_u16_to_f32(actual),
         expected,
+        **_TOL,
+    )
+
+
+def _run_pack8_dual_rowtile_silu(
+    x_dev,
+    packed_a,
+    packed_b,
+    out_features,
+    q4_library,
+) -> np.ndarray:
+    rows, in_features = x_dev.shape
+    buffers = []
+    try:
+        x_buf = malloc(x_dev.nbytes)
+        buffers.append(x_buf)
+        copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+        packed_buffers = []
+        for value in (
+            packed_a.qweight,
+            packed_a.scales,
+            packed_a.mins,
+            packed_b.qweight,
+            packed_b.scales,
+            packed_b.mins,
+        ):
+            buffer = malloc(value.nbytes)
+            buffers.append(buffer)
+            packed_buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(value), value.nbytes)
+        out_arr = np.zeros((rows, out_features), dtype=np.uint16)
+        out_buf = malloc(out_arr.nbytes)
+        buffers.append(out_buf)
+        gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out(
+            x_buf.ptr,
+            packed_buffers[0].ptr,
+            packed_buffers[1].ptr,
+            packed_buffers[2].ptr,
+            packed_buffers[3].ptr,
+            packed_buffers[4].ptr,
+            packed_buffers[5].ptr,
+            out_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=64,
+            library=q4_library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4])
+def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
+    rows: int,
+    t16_selected_library,
+    q4_library,
+) -> None:
+    rng = np.random.default_rng(20260804 + rows)
+    in_features = 512
+    out_features = 32
+    raw_a = make_q4_k_weight(out_features, in_features)
+    raw_b = np.roll(raw_a, shift=7, axis=0).copy()
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    packed_a = repack_gguf_q4_k_pack8(raw_a)
+    packed_b = repack_gguf_q4_k_pack8(raw_b)
+    tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+
+    single_control = _run_pack8_single(
+        x_bf16,
+        packed_a,
+        out_features,
+        q4_library,
+    )
+    single_actual = _run_dense_single(
+        gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+        x_bf16,
+        tiles_a,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    dual_control = _run_pack8_dual_rowtile_silu(
+        x_bf16,
+        packed_a,
+        packed_b,
+        out_features,
+        q4_library,
+    )
+    dual_actual = _run_dense_dual_silu(
+        x_bf16,
+        tiles_a,
+        tiles_b,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
+    )
+
+    np.testing.assert_array_equal(single_actual, single_control)
+    np.testing.assert_array_equal(dual_actual, dual_control)
+    expected_single = gguf_quant_gemv(
+        _bf16_u16_to_f32(x_bf16),
+        raw_a,
+        GGMLQuantizationType.Q4_K,
+    )
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(single_actual),
+        expected_single,
         **_TOL,
     )
 
@@ -1034,6 +1160,18 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             assert resolve(backend="hip_gfx1100", layer="moe_linear", quant=quant, variant=variant) is not None
     assert resolve(
         backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_rowtile_bf16_bf16_out",
+    ) is gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear_pair_silu",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_dual_rowtile_bf16_bf16_out",
+    ) is gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
         layer="moe_linear",
         quant="gguf_q4_k_t16_dual_interleaved_v1",
         variant=(
@@ -1063,6 +1201,12 @@ def test_p9_h3d_build_plan_is_dry_run_safe() -> None:
 
 
 def test_p9_h3d_wrappers_validate_args() -> None:
+    with pytest.raises(ValueError, match="rows in 2..4"):
+        gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
+    with pytest.raises(ValueError, match="rows in 2..4"):
+        gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
+            0, 0, 0, 0, 5, 256, 16
+        )
     with pytest.raises(ValueError, match="compact_rows must be positive"):
         gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(0, 0, 0, 0, 0, 0, 256, 16, 16, 1)
     with pytest.raises(ValueError, match="block size 256"):

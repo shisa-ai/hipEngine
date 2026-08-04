@@ -2288,6 +2288,210 @@ void q4_k_t16_dense_single_local32_gemv_kernel(
   }
 }
 
+// Exact compact-T16 small-B rowtile. The local32 arithmetic stays identical
+// to q4_k_t16_dense_single_local32_gemv_kernel, but each decoded weight is
+// reused across verifier rows 2-4 while every row retains its own ordered FMA
+// stream and wave32 reduction tree.
+template <typename scalar_t, int ROW_TILE>
+__device__ __forceinline__ void q4_k_t16_dense_rowtile_accumulate(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    int lane,
+    int64_t in_features,
+    int64_t out_group,
+    float (&acc)[ROW_TILE][8]) {
+  constexpr int kTileCols = 8;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      acc[row][local_col] = 0.0f;
+    }
+  }
+
+  const int k_lane_base = lane * 8;
+  const int sb = k_lane_base >> 5;
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (out_tile * blocks_per_row + blk) *
+                    Q4_T16_BLOCK_BYTES;
+
+    float scale[kTileCols];
+    float min_value[kTileCols];
+#pragma unroll
+    for (int local_pair = 0;
+         local_pair < kTileCols / 2;
+         ++local_pair) {
+      const int local_col0 = local_pair * 2;
+      const int local_col1 = local_col0 + 1;
+      const int col0 = col_base + local_col0;
+      const uint32_t d = *reinterpret_cast<const uint32_t*>(
+          tile + Q4_T16_D_OFFSET + col0 * 2);
+      const uint32_t dmin = *reinterpret_cast<const uint32_t*>(
+          tile + Q4_T16_DMIN_OFFSET + col0 * 2);
+      const uint16_t coeff_scale =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + col0);
+      const uint16_t coeff_min =
+          *reinterpret_cast<const uint16_t*>(
+              tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + col0);
+      scale[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(d)) *
+          static_cast<float>(coeff_scale & 0xFFu);
+      scale[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(d >> 16)) *
+          static_cast<float>(coeff_scale >> 8);
+      min_value[local_col0] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin)) *
+          static_cast<float>(coeff_min & 0xFFu);
+      min_value[local_col1] =
+          fp16_bits_to_float(static_cast<uint16_t>(dmin >> 16)) *
+          static_cast<float>(coeff_min >> 8);
+    }
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int k_in_block = k_lane_base + j;
+      const int lane32 = k_in_block & 31;
+      float weight[kTileCols];
+#pragma unroll
+      for (int local_pair = 0;
+           local_pair < kTileCols / 2;
+           ++local_pair) {
+        const int local_col0 = local_pair * 2;
+        const int local_col1 = local_col0 + 1;
+        const int col0 = col_base + local_col0;
+        const int q_index =
+            Q4_T16_Q_OFFSET +
+            (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
+            (col0 >> 1);
+        const uint8_t packed = tile[q_index];
+        weight[local_col0] =
+            static_cast<float>(packed & 0x0Fu) *
+                    scale[local_col0] -
+                min_value[local_col0];
+        weight[local_col1] =
+            static_cast<float>(packed >> 4) *
+                    scale[local_col1] -
+                min_value[local_col1];
+      }
+#pragma unroll
+      for (int row = 0; row < ROW_TILE; ++row) {
+        const float xv = scalar_to_float<scalar_t>(
+            x[static_cast<int64_t>(row) * in_features +
+              blk * QK_K + k_in_block]);
+#pragma unroll
+        for (int local_col = 0;
+             local_col < kTileCols;
+             ++local_col) {
+          acc[row][local_col] = fmaf(
+              xv, weight[local_col], acc[row][local_col]);
+        }
+      }
+    }
+  }
+}
+
+template <typename scalar_t, int ROW_TILE>
+__global__ __launch_bounds__(32, 1)
+void q4_k_t16_dense_rowtile_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int lane = threadIdx.x;
+  float acc[ROW_TILE][kTileCols];
+  q4_k_t16_dense_rowtile_accumulate<scalar_t, ROW_TILE>(
+      x, tiles, lane, in_features, out_group, acc);
+
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      GGUF_T16_WAVE_REDUCE(acc[row][local_col]);
+    }
+  }
+  if (lane == 0) {
+    const int64_t out_base = out_group * kTileCols;
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        out[static_cast<int64_t>(row) * out_features +
+            out_base + local_col] =
+            float_to_scalar<scalar_t>(
+                0.0f + acc[row][local_col]);
+      }
+    }
+  }
+}
+
+// Two-wave compact-T16 FFN sibling. Each wave owns one matrix, reuses its
+// decoded weights across rows, and rounds gate/up independently to BF16 in LDS
+// before the unchanged SiLU product. This is the compact-layout analogue of
+// the retained pack8 dual rowtile.
+template <typename scalar_t, int ROW_TILE>
+__global__ __launch_bounds__(64, 1)
+void q4_k_t16_dense_dual_rowtile_silu_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int kTileCols = 8;
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t out_group = blockIdx.x;
+  const uint8_t* __restrict__ tiles = wave == 0 ? tiles_a : tiles_b;
+  float acc[ROW_TILE][kTileCols];
+  q4_k_t16_dense_rowtile_accumulate<scalar_t, ROW_TILE>(
+      x, tiles, lane, in_features, out_group, acc);
+
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      GGUF_T16_WAVE_REDUCE(acc[row][local_col]);
+    }
+  }
+
+  __shared__ uint16_t projected[2][4][kTileCols];
+  if (lane == 0) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        projected[wave][row][local_col] =
+            float_to_scalar<scalar_t>(
+                0.0f + acc[row][local_col]);
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < ROW_TILE * kTileCols) {
+    const int row = tid / kTileCols;
+    const int local_col = tid % kTileCols;
+    const float gate = scalar_to_float<scalar_t>(
+        projected[0][row][local_col]);
+    const float up = scalar_to_float<scalar_t>(
+        projected[1][row][local_col]);
+    const float sig = 1.0f / (1.0f + expf(-gate));
+    out[static_cast<int64_t>(row) * out_features +
+        out_group * kTileCols + local_col] =
+        float_to_scalar<scalar_t>(gate * sig * up);
+  }
+}
+
 // Decode-only dense/shared dual-interleaved Q4T16 owner. This preserves the
 // retained local32 arithmetic exactly while replacing the two same-size T16
 // streams with one byte-neutral paired stream.
@@ -4206,6 +4410,80 @@ int launch_q4_dense_single_local32(
   return hipGetLastError();
 }
 
+template <typename scalar_t>
+int launch_q4_dense_rowtile(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows < 2 || rows > 4 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+#define Q4_T16_DENSE_ROWTILE_CASE(N)                                        \
+  case N:                                                                    \
+    hipLaunchKernelGGL(                                                       \
+        (q4_k_t16_dense_rowtile_gemv_kernel<scalar_t, N>),                   \
+        grid, block, 0, stream,                                               \
+        reinterpret_cast<const scalar_t*>(x),                                \
+        reinterpret_cast<const uint8_t*>(tiles),                             \
+        reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
+    break
+  switch (rows) {
+    Q4_T16_DENSE_ROWTILE_CASE(2);
+    Q4_T16_DENSE_ROWTILE_CASE(3);
+    Q4_T16_DENSE_ROWTILE_CASE(4);
+    default:
+      return hipErrorInvalidValue;
+  }
+#undef Q4_T16_DENSE_ROWTILE_CASE
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
+int launch_q4_dense_dual_rowtile_silu(
+    const void* x,
+    const void* tiles_a,
+    const void* tiles_b,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles_a || !tiles_b || !out || rows < 2 || rows > 4 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(64);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+#define Q4_T16_DENSE_DUAL_ROWTILE_CASE(N)                                   \
+  case N:                                                                    \
+    hipLaunchKernelGGL(                                                       \
+        (q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<scalar_t, N>),         \
+        grid, block, 0, stream,                                               \
+        reinterpret_cast<const scalar_t*>(x),                                \
+        reinterpret_cast<const uint8_t*>(tiles_a),                           \
+        reinterpret_cast<const uint8_t*>(tiles_b),                           \
+        reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
+    break
+  switch (rows) {
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(2);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(3);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(4);
+    default:
+      return hipErrorInvalidValue;
+  }
+#undef Q4_T16_DENSE_DUAL_ROWTILE_CASE
+  return hipGetLastError();
+}
+
 template <typename scalar_t, int kTileCols>
 int launch_q4_dense_dual_interleaved_local32_silu(
     const void* x,
@@ -4659,6 +4937,24 @@ hipengine_gguf_q4_k_t16_dense_single_local32_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_dense_single_local32<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_rowtile_gemv_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_rowtile<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_dual_rowtile_silu_gemv_bf16_bf16_out(
+    const void* x, const void* tiles_a, const void* tiles_b, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_dual_rowtile_silu<uint16_t>(
+      x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int

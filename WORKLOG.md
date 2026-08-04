@@ -205340,3 +205340,59 @@ Vulkan local sizes verbatim will close the measured gap.
   Continue MTP optimization from the larger exact Q4 rowtile family; first
   screen the already-landed compact-Q4T16 controls before implementing a new
   compact rowtile.
+
+## 2026-08-04 — Admit exact compact-Q4T16 verifier rowtiles
+
+- RED extends `tests/test_gguf_t16_selected_gemv_decode.py` with rows 2/3/4
+  single and fused-FFN comparisons against the retained pack8 production
+  owners. The focused node fails collection on the two absent wrappers before
+  implementation.
+- Add registered `linear/gguf_q4_k_t16_v1/dense_rowtile_bf16_bf16_out` and
+  `linear_pair_silu/gguf_q4_k_t16_v1/dense_dual_rowtile_bf16_bf16_out`
+  primitives. Both reuse one decoded compact-T16 Q4 weight across verifier rows
+  while preserving each row's contiguous-eight K traversal, FP32 `fmaf`
+  sequence, wave32 shuffle tree, zero-seeded BF16 projection boundary, and
+  unchanged SiLU expression. The single owner is local32; the fused FFN assigns
+  gate/up to independent waves in one local64 block.
+- GREEN command on GPU1:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_gguf_t16_selected_gemv_decode.py --tb=short` passes **106/106**.
+  The six new rows-2/3/4 single/dual cases are BF16-bit exact to retained pack8;
+  the single path also passes the independent Q4 CPU oracle.
+- Actual-weight screen command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -u
+  /tmp/screen_qwen36_q4_ffn_t16.py --rows 1,2,3,4 --samples 11 --warmup 50
+  --burst 50 --compiler-version-file
+  /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output
+  /tmp/qwen36-q4-ffn-t16-rowtile-gpu1.json`.
+- On actual layer-0 K5,120/N17,408 gate/up, every candidate is BF16-bit exact.
+  Single pack8 -> T16 event medians improve **52.076 -> 50.124 us (1.039x)**,
+  **75.214 -> 57.480 us (1.309x)**, and **81.677 -> 72.631 us (1.125x)** at
+  rows 2/3/4. Fused FFN improves **188.213 -> 94.292 us (1.996x)**,
+  **189.004 -> 108.631 us (1.740x)**, and **187.199 -> 135.572 us (1.381x)**.
+  Existing c1 compact T16 remains exact and improves single **1.030x** and fused
+  FFN **2.169x**. T16 uses **51,527,680** bytes/weight versus pack8
+  **66,846,720**.
+- Cache-only production-shape tracing names row-four single and fused symbols.
+  Stable profiled medians are **140,201/252,122 ns** at grids
+  **69,632/139,264** workitems; both use VGPR144/SGPR128/scratch0, with
+  local32/LDS0 for single and local64/LDS512 for fused FFN. Trace SHA-256 is
+  `a787ed23...08b52`; screen/result hashes are `b463a843...7666` /
+  `4636568b...56d2`.
+- The clean `c44e32ff6` profile assigns **106.201 ms** to the qualified fused-
+  FFN owner. Its row-four ratio projects **29.289 ms / 5.215%** complete-wall
+  recovery. The separate **81.033-ms** single-Q4 bucket remains unqualified
+  until every actual shape is screened. Runtime remains unwired during this
+  correctness unit.
+- Compact evidence:
+  `benchmarks/results/2026-08-04-qwen36-27b-q4t16-rowtiles-admitted.json`.
+  Next route only qualified dense FFN gate/up rows 2-4 through compact T16 with
+  exact pack8 fallback; screen all actual single-Q4 shapes independently before
+  broad ownership, then run W7900 transaction/profile/natural25 and populated-
+  prefill gates.
