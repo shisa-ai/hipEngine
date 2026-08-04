@@ -284,6 +284,37 @@ Escalate from `chunk` to `layer` only when the chunk capture is insufficient.
 Layer mode adds 1,315 same-stream system-fence marker kernels per prefill and can
 change incidence.
 
+### Conservative device-kernel isolation
+
+To remove the application-kernel changes that bracket the first repeated-128K
+failure without changing host submission cadence, add:
+
+```bash
+--prefill-kernel-profile conservative
+```
+
+The profile is fail-closed: it rejects conflicting environment overrides and
+records the complete selector map in the result JSON. It selects the unfused
+exact GDN chain, baseline Q4 selected-prefill kernel, and baseline linear-
+attention convolution, while freezing the already-eliminated router and
+metadata controls:
+
+```text
+HIPENGINE_GGUF_GDN_PREFILL_MODE=chain
+HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=baseline
+HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline
+HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS=512
+HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=0
+```
+
+This is an elimination profile, not a historical-build reproduction: no
+repeated-128K application revision was proven lifecycle-safe before the first
+intermittent failure. It deliberately leaves `--prefill-queue-drain none`, so a
+passing three-process warmup+3 gate supports split re-enablement of GDN and Q4;
+a reproduced stall rules out all disabled routes as individually necessary
+causes. Expect lower prefill throughput and do not use profile runs for
+performance claims.
+
 ### Experimental host-drain containment
 
 To test whether bounding outstanding work avoids the queue-retirement state,

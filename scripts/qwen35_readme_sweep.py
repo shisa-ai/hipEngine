@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import statistics
 import sys
 import time
@@ -50,6 +51,40 @@ DEFAULT_PARO_MODEL = Path(
     "snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 )
 DEFAULT_GGUF_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf")
+
+_CONSERVATIVE_PREFILL_KERNEL_SELECTORS = {
+    # Restore the unfused/baseline device routes that predate the first
+    # repeated-128K failure. Keep the already-eliminated host/dispatch knobs
+    # fixed as part of the diagnostic contract rather than inheriting package
+    # defaults that may move independently.
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": "chain",
+    "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "baseline",
+    "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE": "baseline",
+    "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS": "512",
+    "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA": "0",
+}
+
+
+def _apply_prefill_kernel_profile(profile: str) -> dict[str, str]:
+    """Apply one fail-closed GGUF prefill kernel-isolation profile."""
+
+    normalized = str(profile).strip().lower()
+    if normalized == "default":
+        return {}
+    if normalized != "conservative":
+        raise ValueError(
+            f"unsupported prefill kernel profile {profile!r}; expected default or conservative"
+        )
+
+    for name, expected in _CONSERVATIVE_PREFILL_KERNEL_SELECTORS.items():
+        existing = os.environ.get(name)
+        if existing is not None and existing.strip().lower() != expected:
+            raise ValueError(
+                f"--prefill-kernel-profile conservative conflicts with {name}={existing!r}; "
+                f"unset it or use the required value {expected!r}"
+            )
+    os.environ.update(_CONSERVATIVE_PREFILL_KERNEL_SELECTORS)
+    return dict(_CONSERVATIVE_PREFILL_KERNEL_SELECTORS)
 
 
 def main() -> int:
@@ -99,6 +134,15 @@ def main() -> int:
         default="none",
         help="GGUF: synchronously drain the prefill stream at selected boundaries",
     )
+    parser.add_argument(
+        "--prefill-kernel-profile",
+        choices=("default", "conservative"),
+        default="default",
+        help=(
+            "GGUF: default package routes or the pre-GPF unfused/baseline "
+            "kernel-isolation profile"
+        ),
+    )
     parser.add_argument("--use-expert-sidecar", action="store_true")
     parser.add_argument("--expert-sidecar-cache-dir", type=Path, default=None)
     parser.add_argument("--require-expert-sidecar", action="store_true")
@@ -144,6 +188,11 @@ def main() -> int:
         raise ValueError("--prefill-flight-recorder is GGUF-only")
     if args.engine != "gguf" and args.prefill_queue_drain != "none":
         raise ValueError("--prefill-queue-drain is GGUF-only")
+    if args.engine != "gguf" and args.prefill_kernel_profile != "default":
+        raise ValueError("--prefill-kernel-profile is GGUF-only")
+    args.prefill_kernel_selectors = _apply_prefill_kernel_profile(
+        args.prefill_kernel_profile
+    )
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
     model = args.model or (DEFAULT_PARO_MODEL if args.engine == "paro" else DEFAULT_GGUF_MODEL)
@@ -548,6 +597,8 @@ def _run_gguf_sweep(
                 }
             ),
             "prefill_queue_drain": args.prefill_queue_drain,
+            "prefill_kernel_profile": args.prefill_kernel_profile,
+            "prefill_kernel_selectors": dict(args.prefill_kernel_selectors),
             "host_token_embedding_enabled": host_token_embedding_enabled,
             "host_token_embedding_reason": host_token_embedding_reason,
         },
