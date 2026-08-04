@@ -204241,3 +204241,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `scripts/check_lineage.py --kind kernel --diff stat` reports only the known
   parent DRIFT through nano-vllm-amd `59195ed`. This specialization reuses the
   in-tree exact kernel template and copies no parent code.
+
+### D27-O3 Q4 output-pack-pair screen — REJECTED
+
+- RED failed collection only on the missing
+  `gguf_q4_k_pack8_rowtile_col2_bf16_bf16_out` leaf. A registry-only GREEN
+  exported the existing exact `<COL_PACKS=2, ROW_TILE={2,4}>` template,
+  selected tile2 for rows=2 and tile4 for rows=3/4, required local32 and
+  16-column alignment, and left production dispatch unchanged. GPU1 focused
+  validation passed **27/27**, including rows 2/3/4 BF16 bit identity and the
+  CPU KL/top-1 gate.
+- Balanced GPU1 screen command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/bench_qwen36_q4_pack8_rowtile_col2.py`.
+  It uses 11 alternating synchronized samples, nonuniform deterministic random
+  BF16/Q4/scale/min data, rows 2/3/4, and all six Qwen3.6 projection roles.
+- All **18/18** candidate outputs are bit-exact to the retained small-row
+  rowtile. Performance rejects the candidate: rows-2/3/4 geometric mean time
+  regresses **6.86% / 19.10% / 6.37%**, and only 3/18 cells win. Those three
+  are row-four QKV/full-Q/KV singletons at just **1.86% / 1.44% / 2.43%**.
+  The dominant row-four FFN pair regresses **5.83%**; linear gate regresses
+  **21.12%** and attention output **19.70%**.
+- Interpretation: the prior M=512 tile16x4 evidence compared against the generic
+  exact-prefill tile8x4 body, not the dedicated low-VGPR small-row kernel. Its
+  apparent output-pair benefit does not transfer to verifier-sized rows. The
+  candidate C export, Python wrapper/key, and RED tests were removed; `git diff`
+  confirms all production/test source returned to the admission commit.
+  Script/result SHA-256s are `5b425b4c...e367` and `cb3d1fe6...1abe`.

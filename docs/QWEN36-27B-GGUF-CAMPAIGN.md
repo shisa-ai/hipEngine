@@ -656,6 +656,16 @@ family. GPU1 must screen rows 2/3/4 against the retained small-row device oracle
 before any runtime route changes; unsupported rows and a losing shape retain
 the current 8-column owner.
 
+That candidate is **rejected**. Its registry-only RED/GREEN passed 27 focused
+checks, and all 18 GPU1 row/shape comparisons were BF16 bit-exact, but the
+small-row result invalidates the large-row extrapolation. Two output packs
+regress geometric mean time by **6.86% / 19.10% / 6.37%** at rows 2/3/4 and
+win only three row-four singleton cases by **1.44-2.43%**. At the dominant
+row-four shapes, FFN gate/up regresses **5.83%**, linear gate **21.12%**, and
+attention output **19.70%**. The candidate wrapper, registry key, tests, and
+export were removed completely; the dedicated eight-column verifier rowtile
+remains the sole owner.
+
 ---
 
 ## 7. Prioritized execution plan
