@@ -609,11 +609,24 @@ gfx1100 tile policy were reverted before natural25 or profiler promotion.
 Script/result SHA-256s are `f475e433...8252` and `74482f89...985`; the earlier
 synthetic screen hashes remain `229bc18b...6d25` and `728c349b...0528`.
 
-The next D27-O1 candidate must preserve the existing FP32 FMA order, arithmetic
-partitions, reduction tree, and BF16 boundary while amortizing resident pack8
-weights across token rows. A chunked scalar row-tile is the next screen; it is
-not admitted until realistic-input component equality and a positive complete-
-wall ceiling are measured.
+The replacement exact primitive is now admitted. It preserves the existing
+contiguous-8 K traversal, FP32 `fmaf` order, wave32 reduction tree, zero-seeded
+final sum, and BF16 boundary while reusing each resident output-pack8 weight
+stream across eight token rows. A balanced GPU1 screen covers all six real
+projection roles at M=512 and M=1024 with nonuniform random BF16 activations,
+Q4 nibbles, and scale/min planes. All **60/60** candidate comparisons are
+BF16-bit exact. Tile8x8 wins **12/12** rows: singles improve **2.434-2.722x**
+and replacing dual gate/up with two exact singletons improves **5.454x/4.973x**
+at M=512/1024. Four uniformly slower 8x2/8x4/16x2/16x4 candidates were removed.
+
+Cached GPU1 tracing names the tile8x8 body at local32, VGPR144, SGPR128,
+LDS256 B, and scratch0. A conservative 50% recovery of the measured Q4 bucket
+is **3,907.935 ms / 39.30%** of complete p512 wall. Admit runtime wiring only
+for resident pack8 rows >=512 under `use_wmma_prefill`; smaller rows, opt-out,
+registry misses, c1, and the existing exact native rows 2-4 owner fail closed.
+Retention still requires exact same-W7900 512/128 and 4096/128 IDs/state,
+non-regressive decode, and a production trace. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-admitted.json`.
 
 ---
 
@@ -626,7 +639,7 @@ wall ceiling are measured.
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | in progress; approximate WMMA rejected, exact row-tile screen next |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | in progress; exact tile8x8 primitive admitted, runtime wiring next |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
 | 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | seven wins retained; compact exact B3 selected at 1.9422x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |

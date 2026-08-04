@@ -204102,3 +204102,42 @@ Vulkan local sizes verbatim will close the measured gap.
   the existing FMA/reduction tree (next screen: chunked resident-pack8 row
   tiling). Real-gate script/result SHA-256s are `f475e433...8252` and
   `74482f89...985`; all candidate code and RED tests were removed.
+
+### D27-O1 exact chunked resident-pack8 prefill row reuse — RED
+
+- The retained scalar Q4 pack8 body still owns one `(row, output-pack8)` block.
+  Extend the proven exact verifier rowtile to a grid-Y chunk while preserving
+  each row's contiguous-8 K traversal, FP32 `fmaf`, wave32 tree, zero-seeded
+  final sum, and BF16 store. Screen bounded 8x{2,4,8} and 16x{2,4} output/row
+  tiles before choosing any runtime policy; this is an in-tree specialization,
+  not an external port. The ceiling remains the measured **7,815.869 ms /
+  78.86%** p512 Q4 family, with no new weights or workspace.
+- Required lineage check reports only the already-known nano-vllm-amd DRIFT
+  through `59195ed`; ROCm sees both gfx1100 devices. RED command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_q4_k_pack8_rowtile.py`
+  fails collection only because the five exact-prefill wrappers do not yet
+  exist. Existing native rows 2-4 behavior remains untouched.
+- GREEN initially passes **23/23** focused tests across all five candidates,
+  including random nonuniform rows 5/7 tails; all outputs are BF16-bit exact
+  to the retained pack8 device oracle. The balanced GPU1 screen uses seven
+  samples per route over all six real projection roles at M512 and M1024.
+  Every one of **60/60** candidate comparisons is bit-exact.
+- Tile8x8 wins **12/12** shape/row cases. Singles improve **2.434-2.722x**;
+  dual gate/up replaced by two tile8x8 singletons improves **5.454x** at M512
+  and **4.973x** at M1024. Its geometric speedup is **2.861x**, ahead of
+  tile8x2 **1.825x**, tile8x4 **2.310x**, tile16x2 **1.848x**, and tile16x4
+  **2.524x**, so all four losers are removed. Script/result SHA-256s are
+  `48852cd6...50a` and `9b9a9607...f14`.
+- The pruned tile8x8 primitive passes **15/15** focused tests. Cached GPU1
+  `rocprofv3 --kernel-trace` names
+  `gguf_q4_k_pack8_exact_prefill_tiled_out_kernel<unsigned short,unsigned short,1,8>`
+  at local32, VGPR144, SGPR128, LDS256 B, scratch0, with plausible
+  **10.139284 ms** profiled duration for M512/K5120/N17408. Profile-script/DB
+  SHA-256s are `8a17c45b...0138` and `2c59ce7c...9162`.
+- Admit the primitive only, with production dispatch still unchanged. A
+  conservative 50% recovery of the 7,815.869-ms Q4 bucket is **3,907.935 ms /
+  39.30%** of complete p512 wall. Runtime RED will require rows>=512 under
+  `use_wmma_prefill` to select tile8x8 and wide pairs to emit two exact
+  singletons; rows<512, WMMA-off, registry misses, c1, and native rows 2-4 keep
+  their existing owners. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-admitted.json`.
