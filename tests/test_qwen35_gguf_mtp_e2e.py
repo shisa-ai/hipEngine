@@ -588,6 +588,12 @@ def q4_single_rowtile_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]
             "gguf_q4_k_t16_v1",
             "dense_rowtile_bf16_bf16_out",
         ),
+        "col4": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_col4_bf16_bf16_out",
+        ),
         "pack8": KernelKey(
             "hip_gfx1100",
             "linear",
@@ -606,6 +612,7 @@ def q4_single_rowtile_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]
     }
     calls: dict[str, list[tuple[int, int, int]]] = {
         "t16": [],
+        "col4": [],
         "pack8": [],
     }
 
@@ -613,11 +620,16 @@ def q4_single_rowtile_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]
         calls["t16"].append((int(args[3]), int(args[4]), int(args[5])))
         return originals["t16"](*args, **kwargs)
 
+    def counted_col4(*args, **kwargs):
+        calls["col4"].append((int(args[3]), int(args[4]), int(args[5])))
+        return originals["col4"](*args, **kwargs)
+
     def counted_pack8(*args, **kwargs):
         calls["pack8"].append((int(args[5]), int(args[6]), int(args[7])))
         return originals["pack8"](*args, **kwargs)
 
     register(keys["t16"], counted_t16, replace=True)
+    register(keys["col4"], counted_col4, replace=True)
     register(keys["pack8"], counted_pack8, replace=True)
     try:
         yield calls
@@ -913,21 +925,28 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (in_features, out_features)
         for _, in_features, out_features in q4_single_rowtile_calls["t16"]
     } == {
-        (5_120, 1_024),
         (5_120, 6_144),
         (5_120, 10_240),
         (5_120, 12_288),
         (6_144, 5_120),
         (17_408, 5_120),
     }
-    assert q4_single_rowtile_calls["pack8"]
+    assert q4_single_rowtile_calls["col4"]
     assert {
-        (rows, in_features, out_features)
-        for rows, in_features, out_features in q4_single_rowtile_calls["pack8"]
-    } == {
-        (2, 5_120, 1_024),
-        (2, 5_120, 10_240),
-    }
+        (in_features, out_features)
+        for _, in_features, out_features in q4_single_rowtile_calls["col4"]
+    } == {(5_120, 1_024), (5_120, 10_240)}
+    assert {
+        rows
+        for rows, in_features, out_features in q4_single_rowtile_calls["col4"]
+        if (in_features, out_features) == (5_120, 1_024)
+    } == {2, 4}
+    assert {
+        rows
+        for rows, in_features, out_features in q4_single_rowtile_calls["col4"]
+        if (in_features, out_features) == (5_120, 10_240)
+    } == {2, 4}
+    assert not q4_single_rowtile_calls["pack8"]
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
     assert dense_virtual256_rowtile_calls

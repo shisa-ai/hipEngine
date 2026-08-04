@@ -1243,6 +1243,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == frozenset()
     )
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_col4_bf16_bf16_out",
+        )
+    )
     for quant in ("gguf_q5_k", "gguf_q6_k"):
         for row_batch in (4, 8):
             for output_dtype in ("bf16", "f32"):

@@ -64,6 +64,9 @@ _Q4_DENSE_ROWTILE_BF16 = (
 _Q4_DENSE_DUAL_ROWTILE_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_rowtile_silu_gemv_bf16_bf16_out"
 )
+_Q4_DENSE_ROWTILE_COL4_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_rowtile_col4_gemv_bf16_bf16_out"
+)
 _Q4_DENSE_DUAL_INTERLEAVED_TILE2_LOCAL32_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_"
     "gemv_bf16_bf16_out"
@@ -911,6 +914,50 @@ def gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
     if status != HIP_SUCCESS:
         raise RuntimeError(
             f"{_Q4_DENSE_DUAL_ROWTILE_SILU_BF16} failed with HIP status "
+            f"{status}: {rt.error_string(status)}"
+        )
+
+
+def gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact four-column compact-T16 row-reuse control."""
+
+    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    lib = library or build_gguf_t16_selected_gemv()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q4_DENSE_ROWTILE_COL4_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_Q4_DENSE_ROWTILE_COL4_BF16} failed with HIP status "
             f"{status}: {rt.error_string(status)}"
         )
 
@@ -2814,7 +2861,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
         replace=replace,
     )
-
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_col4_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
+        replace=replace,
+    )
     for variant, fn in (
         (
             "selected_dual_t16_gemv_decode_compact_bf16_bf16_out",
@@ -3113,6 +3169,7 @@ __all__ = [
     "gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out",
     "gguf_q4_k_t16_dense_single_local32_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out",

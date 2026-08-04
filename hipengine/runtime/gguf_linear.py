@@ -139,6 +139,8 @@ _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
 _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
+_Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
+_Q4_T16_COL4_SELECTIVE_ROWS = {(5_120, 10_240): frozenset({2, 4})}
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
@@ -1580,6 +1582,7 @@ def _q4_t16_sidecar_allocation(
     weight: GGUFDeviceWeight,
     *,
     rows: int,
+    allow_r3plus_at_row2: bool = False,
 ):
     """Resolve the resident sidecar whose measured row floor is satisfied."""
 
@@ -1587,13 +1590,44 @@ def _q4_t16_sidecar_allocation(
         (Q4_T16_DECODE_TILES, 1),
         (Q4_T16_DECODE_TILES_R3PLUS, 3),
     ):
-        if rows < min_rows:
+        if (
+            rows < min_rows
+            and not (
+                allow_r3plus_at_row2
+                and rows == 2
+                and allocation_name == Q4_T16_DECODE_TILES_R3PLUS
+            )
+        ):
             continue
         try:
             return weight.allocation(allocation_name)
         except KeyError:
             pass
     return None
+
+
+def _q4_t16_sidecar_decode_variants(
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> tuple[str, ...]:
+    """Rank exact rowtile variants by measured gfx1100 shape policy."""
+
+    if rows == 1:
+        return ("dense_single_local32_bf16_bf16_out",)
+    if not 2 <= rows <= 4:
+        return ()
+    shape = (in_features, out_features)
+    if (
+        shape in _Q4_T16_COL4_ALL_ROWS_SHAPES
+        or rows in _Q4_T16_COL4_SELECTIVE_ROWS.get(shape, ())
+    ):
+        return (
+            "dense_rowtile_col4_bf16_bf16_out",
+            "dense_rowtile_bf16_bf16_out",
+        )
+    return ("dense_rowtile_bf16_bf16_out",)
 
 
 def launch_gguf_q4_t16_sidecar_decode(
@@ -1614,49 +1648,58 @@ def launch_gguf_q4_t16_sidecar_decode(
 
     if not enabled or weight.spec.quant_key != "gguf_q4_k":
         return False
-    sidecar = _q4_t16_sidecar_allocation(weight, rows=rows)
-    if sidecar is None:
-        return False
-    if rows == 1:
-        variant = "dense_single_local32_bf16_bf16_out"
-    elif 2 <= rows <= 4:
-        variant = "dense_rowtile_bf16_bf16_out"
-    else:
+    variants = _q4_t16_sidecar_decode_variants(
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    if not variants:
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
-    key = KernelKey(
-        resolved_backend,
-        "linear",
-        "gguf_q4_k_t16_v1",
-        variant,
-    )
-    _ensure_linear_kernel_registered(key)
-    if not is_registered(key):
-        return False
-    fn = resolve(
-        backend=key.backend,
-        layer=key.layer,
-        quant=key.quant,
-        variant=key.variant,
-    )
-    kwargs = {"stream": stream, "runtime": runtime}
-    if libraries is not None:
-        library = libraries.get(
-            f"{key.quant}:{key.variant}",
-            libraries.get(key.quant),
+    for variant in variants:
+        key = KernelKey(
+            resolved_backend,
+            "linear",
+            "gguf_q4_k_t16_v1",
+            variant,
         )
-        if library is not None:
-            kwargs["library"] = library
-    fn(
-        x_ptr,
-        sidecar.tensor.ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        **kwargs,
-    )
-    return True
+        _ensure_linear_kernel_registered(key)
+        if not is_registered(key):
+            continue
+        sidecar = _q4_t16_sidecar_allocation(
+            weight,
+            rows=rows,
+            allow_r3plus_at_row2=(
+                variant == "dense_rowtile_col4_bf16_bf16_out"
+            ),
+        )
+        if sidecar is None:
+            continue
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        if libraries is not None:
+            library = libraries.get(
+                f"{key.quant}:{key.variant}",
+                libraries.get(key.quant),
+            )
+            if library is not None:
+                kwargs["library"] = library
+        fn(
+            x_ptr,
+            sidecar.tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    return False
 
 
 def launch_gguf_linear_moe_tail_host_batch(

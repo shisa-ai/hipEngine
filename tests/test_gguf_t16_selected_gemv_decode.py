@@ -27,6 +27,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+    gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
     gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out,
@@ -832,9 +833,17 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         t16_selected_library,
         fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     )
-
+    single_col4 = _run_dense_single(
+        gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
+        x_bf16,
+        tiles_a,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
     np.testing.assert_array_equal(single_actual, single_control)
     np.testing.assert_array_equal(dual_actual, dual_control)
+    np.testing.assert_array_equal(single_col4, single_control)
     expected_single = gguf_quant_gemv(
         _bf16_u16_to_f32(x_bf16),
         raw_a,
@@ -1170,6 +1179,12 @@ def test_p9_h3d_registry_keys_resolve() -> None:
         quant="gguf_q4_k_t16_v1",
         variant="dense_dual_rowtile_bf16_bf16_out",
     ) is gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_rowtile_col4_bf16_bf16_out",
+    ) is gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="moe_linear",
