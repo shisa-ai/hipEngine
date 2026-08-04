@@ -204175,3 +204175,37 @@ Vulkan local sizes verbatim will close the measured gap.
   three-sample 512/128 and 4096/128 runs plus a selected-region production trace
   remain required before the route is called retained or benchmark rollups are
   updated.
+
+### D27-O1 exact populated-prefill tile8x8 — retained
+
+- Clean commit `68e8c10c5` passes the campaign-standard W7900 512/128 and
+  4096/128 runs: one discarded warmup plus three measured same-session resets,
+  bulk prefill, 128 graph decode transitions, cached builds, and exact model/
+  environment identity. Median prefill improves canonical scalar pack8
+  **50.514642 -> 152.909556 tok/s (+202.703%, 3.0270x)** at 512 and
+  **50.473406 -> 144.308232 tok/s (+185.909%, 2.8591x)** at 4096. Samples are
+  `{154.479,152.910,151.534}` and `{144.756,144.308,144.083}` tok/s.
+- Decode is non-regressive: **19.556155 -> 19.565375 tok/s (+0.047%)** and
+  **18.648978 -> 18.701158 tok/s (+0.280%)**. All six measured final IDs remain
+  `9707`; tracked peaks are byte-identical at **26.122795/28.947097 GiB** and
+  the route adds no weights, workspace, or persistent bytes. Against matched
+  stateful Vulkan prefill, hipEngine is now **+91.60%/+76.43%**.
+- The first selected-region trace attempt was stopped before model execution:
+  this environment's `libroctx64.so` lacks `roctxProfilerResume/Pause`. A
+  no-GPU probe verified those symbols in the profiler SDK's
+  `librocprofiler-sdk-roctx.so`; a temporary `/tmp` library-name shim plus the
+  direct TheRock `rocprofv3` binary produced a clean cached-only selected-region
+  trace. No repository/runtime code was changed for the workaround.
+- Production tracing names
+  `gguf_q4_k_pack8_exact_prefill_tiled_out_kernel<unsigned short,unsigned short,1,8>`
+  for **288** launches at local32/VGPR144/SGPR128/LDS512/scratch0. The Q4 bucket
+  falls **7,815.868685 -> 1,496.172597 ms (-80.857%, 5.2239x)**; complete kernel
+  sum falls **9,911.076203 -> 3,241.170736 ms (-67.297%)**, and profiled host
+  wall falls **9,944.618 -> 3,273.555 ms (-67.082%)**. Dispatches rise only
+  1,203 -> 1,275 because 72 dual projections become 144 exact singletons.
+- D27-O1 is complete. The refreshed AR leader is
+  `dense_prefill_gemm_out_kernel<unsigned short,32,8,16>` at **1,654.462 ms /
+  51.05%**, queued for D27-L1 after D27-O3. All natural25 prompts are 39-71
+  rows, so the >=512 dispatch cannot alter the retained exact compact-proposal
+  B3 path and that suite is not redundantly rerun. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json`.

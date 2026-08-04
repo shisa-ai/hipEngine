@@ -2198,6 +2198,37 @@ The compact workspace raises tracked peak by exactly **248,328 bytes** to
 but is still 41.82% below Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`](results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json).
 
+#### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
+
+Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
+stream across eight populated token rows while preserving every scalar FP32
+FMA, wave32 reduction, zero-seeded final sum, and BF16 boundary. The existing
+`use_wmma_prefill` contract selects tile8x8 only from 512 rows; smaller rows,
+opt-out, c1, native verifier rows 2-4, and registry misses retain their exact
+owners. Wide gate/up pairs become two exact singleton leaves.
+
+| Shape | Scalar pack8 prefill | Exact tile8x8 prefill | Prefill delta | Graph AR decode | Matched stateful Vulkan | Tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 50.515 tok/s | **152.910 tok/s** | **+202.70% / 3.027x** | 19.556 -> **19.565 tok/s (+0.05%)** | **+91.60%** vs 79.805 | 26.123 GiB (unchanged) |
+| 4096/128 | 50.473 tok/s | **144.308 tok/s** | **+185.91% / 2.859x** | 18.649 -> **18.701 tok/s (+0.28%)** | **+76.43%** vs 81.792 | 28.947 GiB (unchanged) |
+
+Each row has three measured resets after warmup; all six final IDs are `9707`.
+A separate same-session W7900 oracle compares scalar and tile routes at both
+contexts: first/next full logits have zero mismatches and KL zero, and all live
+Conv/GDN/full-attention KV state hashes match after prefill and the next c1
+step. The full GPU1 exact-pack8 file passes 21/21 and adds no weights or
+workspace.
+
+Cached selected-region production tracing executes tile8x8 **288** times at
+local32/VGPR144/SGPR128/LDS512/scratch0. The Q4 family falls
+**7,815.869 -> 1,496.173 ms (-80.86%, 5.224x)** and complete kernel sum falls
+**9,911.076 -> 3,241.171 ms (-67.30%)**. Dense BF16 prefill GEMM is now the
+largest p512 family at **1,654.462 ms / 51.05%** and is queued for D27-L1 after
+D27-O3. All natural-suite prompts are only 39-71 rows, so this >=512 policy
+cannot alter the retained exact B3 MTP route and that suite was not rerun.
+Artifact:
+[`2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json`](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |

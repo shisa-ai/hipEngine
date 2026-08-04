@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact populated pack8 prefill tile8x8] Qwen3.6-27B Q4_K_M / 512/128 and 4096/128 / W7900: scalar pack8 **50.515/50.473 -> 152.910/144.308 tok/s (+202.70%/+185.91%)** by reusing each resident output pack across eight rows while preserving the FP32-FMA/wave32/BF16 boundary; graph decode is non-regressive, logits/state/IDs and memory remain exact, matched stateful Vulkan is exceeded by **91.60%/76.43%**, and the traced Q4 bucket falls **80.86%**; `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json`.
+
 - [accepted exact compact proposal scoring] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: full-logit proposal **28.348/34.818/38.322 -> 28.878/35.712/39.610 tok/s (+1.87%/+2.57%/+3.36%)** by reusing the registered exact raw-Q6 pack-winner/final-top1 path and reading back only token/value; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, and B3 reaches **1.9422x** own AR for +248,328 bytes; `benchmarks/results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`.
 
 - [accepted exact staged full attention] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: staged-linear **27.734/33.544/36.652 -> 28.348/34.818/38.322 tok/s (+2.21%/+3.80%/+4.56%)** by bulking full-attention Q/V/O support around scalar K and unchanged serial KV/attention/gate; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, memory is unchanged, and B3 reaches **1.8821x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-staged-full-attention-retained.json`.
