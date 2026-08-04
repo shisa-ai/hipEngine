@@ -204297,3 +204297,37 @@ Vulkan local sizes verbatim will close the measured gap.
   `scripts/check_lineage.py --kind kernel --diff stat` reports only the known
   nano-vllm-amd DRIFT through `59195ed`; this is an in-tree schedule extension
   and copies no parent device code.
+- RED command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_dense_gemv_plan.py`
+  fails collection only because the new
+  `dense_gemv_virtual256_rowtile_out_bf16` package export does not yet exist.
+  The test contract covers rows 2/3/4 and K=1,024/5,120/6,144/10,240/17,408,
+  including both 2,048-aligned and tail-heavy virtual-partition traversals.
+- GREEN passes **27/27** focused tests on GPU1. All 15 candidate comparisons
+  are BF16-bit identical to the retained local256 rowtile; the same module's
+  CPU tolerance and KL<=0.05/top-1>=90% gates remain green. The registry leaf
+  is exposed without changing production dispatch.
+- The final balanced GPU1 screen uses 2,000 warmup launch pairs, 11 alternating
+  synchronized HIP-event samples, 50 launches/sample, deterministic nonuniform
+  finite BF16 data, rows 2/3/4, and all four real shapes. Every one of **12/12**
+  output comparisons is bit-exact. Broad selection is rejected: rowwise
+  geometric speedups are **1.0697x / 0.9922x / 0.9508x**, and only 5/12 cells
+  win.
+- The stable exception is `ssm_out` K6,144/N5,120, which improves
+  **1.2095x / 1.1654x / 1.0761x** at rows 2/3/4. FFN-down is mixed and loses
+  rows 3/4; linear QKV loses rows 3/4; full V loses all rows. Retain the exact
+  primitive but qualify runtime RED to `ssm_out` only. Applied to the current
+  **33.899401-ms** B3 `ssm_out` subfamily, the row-four result projects
+  **2.396591 ms / 0.354%** complete-wall recovery; all other shapes keep
+  local256.
+- Cached GPU1 `rocprofv3 --kernel-trace` names
+  `dense_gemv_virtual256_local128_rowtile_out_kernel<unsigned short,4>` at
+  local128, VGPR32, SGPR128, LDS2,048 B, scratch0, with a plausible profiled
+  **211.438 us** K6,144/N5,120 launch. Screen script/result SHA-256s are
+  `3b0576e5...1129` / `73e37c53...0864`; profile script/trace hashes are
+  `a4081a7d...27e` / `0829a24c...49f`.
+- Admit the primitive with production routing still unchanged. Runtime RED must
+  select it only for native dense-BF16 rows 2-4 at K6,144/N5,120, retain
+  local256 for every other shape/session, and fail closed on a missing registry
+  key. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-admitted.json`.
