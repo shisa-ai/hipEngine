@@ -2122,6 +2122,31 @@ B3 becomes the selected exact route at **1.2362x** own AR, but remains 63.00%
 below Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-native-verifier-graph-retained.json`](results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json).
 
+#### Qwen3.6-27B exact staged linear projections, W7900/gfx1100
+
+Clean hipEngine `b94810438` keeps each linear-attention Conv/GDN transition and
+post-row state journal token-serial, but stages independent norm/QKV/gate/
+alpha/beta projections across the verifier rows and runs one exact row-bulk
+`ssm_out`. MoE and c1 retain the prior scalar fallback; no new kernel or buffer
+is introduced.
+
+| Route | Reusable native graph | + staged linear projections | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.379 tok/s | **20.309 tok/s** | -0.342% | 1.0000x | n/a |
+| B1 | 23.225 tok/s | **27.734 tok/s** | **+19.42%** | **1.3656x** | **-18.22%** |
+| B2 | 24.820 tok/s | **33.544 tok/s** | **+35.15%** | **1.6517x** | **-29.49%** |
+| B3 | 25.193 tok/s | **36.652 tok/s** | **+45.49%** | **1.8047x** | **-35.64%** |
+
+All 30 prompt/budget rows improve (**+19.08% to +47.62%**), and every full,
+train, heldout, and category rollup improves (**+19.23% to +45.90%**). All 250
+IDs per budget, acceptance/cycle ledgers, GPU/CPU summaries, graph submissions,
+stage reconciliations, and reject/partial/full plus changing-position state/KV/
+hidden oracles remain exact. The six Q4 QKV/gate rows2-4 component checks are
+also bit-exact on GPU1 and improve 1.17-1.67x same-GPU. Tracked peak is
+byte-identical at **28.996 GiB** and returns to zero. B3 remains selected at
+**1.8047x** own AR, but is still 46.17% below Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-staged-linear-projections-retained.json`](results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |

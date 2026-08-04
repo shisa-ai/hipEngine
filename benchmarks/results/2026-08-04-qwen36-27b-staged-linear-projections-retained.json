@@ -1,0 +1,274 @@
+{
+  "schema": 1,
+  "status": "retained_exact_staged_linear_projections_b3_selected_still_below_vulkan",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_staged_linear_projections_w7900",
+  "timestamp": "2026-08-04T01:36:20.093183+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "hipengine_commit": "b94810438d492b8be720cbf30f73c380a585a498",
+    "baseline_commit": "ea33e64050b56c0a43d1c73d91f90a1d468553dd",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "max_tokens_visible": 25,
+    "timed_transitions": 240,
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "reasoning": "off"
+    },
+    "warmups": 1,
+    "repetitions": 1,
+    "target_verify_mode": "native",
+    "timing": "first output from prefill; 24 timed decode transitions per prompt; complete proposal/verify/commit/residual wall"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-b94810438/natural25-native-staged-linear-b1-b3.json",
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json",
+    "route": "exact reusable B1-B3 native-verifier graph with row-serial attention projections",
+    "true_ar_tok_s": 20.378958734042214,
+    "budgets": {
+      "1": {
+        "decode_seconds": 10.333903509425,
+        "decode_tok_s": 23.224524961076796,
+        "mtp_vs_true_ar": 1.139632562397861,
+        "target_verify_seconds": 9.245262641692534
+      },
+      "2": {
+        "decode_seconds": 9.669507910497487,
+        "decode_tok_s": 24.8202909828999,
+        "mtp_vs_true_ar": 1.217937153061634,
+        "target_verify_seconds": 8.546992098446935
+      },
+      "3": {
+        "decode_seconds": 9.526631487999111,
+        "decode_tok_s": 25.192535294593142,
+        "mtp_vs_true_ar": 1.2362032635411369,
+        "target_verify_seconds": 8.361895581241697
+      }
+    },
+    "tracked_peak_gib": 28.995808631181717
+  },
+  "candidate": {
+    "load_seconds_excluded": 175.80156127898954,
+    "true_ar_tok_s": 20.309332601947585,
+    "true_ar_delta_percent": -0.341656965909265,
+    "budgets": {
+      "1": {
+        "decode_seconds": 8.653497266350314,
+        "decode_wall_delta_percent": -16.261098640432216,
+        "decode_tok_s": 27.734451472383956,
+        "decode_tok_s_delta_percent": 19.418810584352464,
+        "mtp_vs_true_ar": 1.365601323094405,
+        "ratio_delta_percent": 19.828212017835934,
+        "target_verify_seconds": 7.560709931189194,
+        "target_verify_delta_percent": -18.220712334408574
+      },
+      "2": {
+        "decode_seconds": 7.154776049777865,
+        "decode_wall_delta_percent": -26.00682355292929,
+        "decode_tok_s": 33.54402686125323,
+        "decode_tok_s_delta_percent": 35.147597118678455,
+        "mtp_vs_true_ar": 1.6516557938509753,
+        "ratio_delta_percent": 35.61092127775765,
+        "target_verify_seconds": 6.026435598032549,
+        "target_verify_delta_percent": -29.490567808906643
+      },
+      "3": {
+        "decode_seconds": 6.548124346649274,
+        "decode_wall_delta_percent": -31.265060951522294,
+        "decode_tok_s": 36.65171693369107,
+        "decode_tok_s_delta_percent": 45.48641692905482,
+        "mtp_vs_true_ar": 1.8046736272454524,
+        "ratio_delta_percent": 45.98518548445804,
+        "target_verify_seconds": 5.381729979533702,
+        "target_verify_delta_percent": -35.63983277181101
+      }
+    },
+    "numerically_best_budget": 3,
+    "best_decode_tok_s": 36.65171693369107,
+    "best_mtp_vs_true_ar": 1.8046736272454524,
+    "best_vs_llamacpp_vulkan_b3": 0.5383466545297005,
+    "best_percent_behind_llamacpp_vulkan_b3": 46.16533454702994,
+    "tracked_peak_gib": 28.995808631181717,
+    "tracked_peak_delta_gib": 0.0,
+    "allocations_after_close": 0
+  },
+  "cross_scope_retention": {
+    "all_prompt_budget_rows_improve": true,
+    "all_full_train_heldout_category_rows_improve": true,
+    "per_prompt_decode_improvement_percent_range": [
+      19.078284353213128,
+      47.622466890493406
+    ],
+    "scope_decode_improvement_percent_range": [
+      19.231864158047053,
+      45.90187191722228
+    ],
+    "by_budget": {
+      "1": {
+        "full_percent": 19.418810584352464,
+        "train_percent": 19.53900008381837,
+        "heldout_percent": 19.246574299317707,
+        "category_percent_range": [
+          19.231864158047053,
+          19.62068566135635
+        ],
+        "prompt_percent_range": [
+          19.078284353213128,
+          20.19861736304467
+        ]
+      },
+      "2": {
+        "full_percent": 35.147597118678455,
+        "train_percent": 35.22771511355059,
+        "heldout_percent": 35.036782152151844,
+        "category_percent_range": [
+          34.683466258360895,
+          35.362660177490326
+        ],
+        "prompt_percent_range": [
+          34.41737038536772,
+          37.0855332015057
+        ]
+      },
+      "3": {
+        "full_percent": 45.48641692905482,
+        "train_percent": 45.15773012199229,
+        "heldout_percent": 45.90187191722228,
+        "category_percent_range": [
+          45.03917540309978,
+          45.80045216414472
+        ],
+        "prompt_percent_range": [
+          43.34854720254844,
+          47.622466890493406
+        ]
+      }
+    }
+  },
+  "correctness": {
+    "all_250_visible_ids_match_true_ar_at_each_budget": true,
+    "all_candidate_ids_match_prior_native_graph_route": true,
+    "all_acceptance_ledgers_match_prior_native_graph_route": true,
+    "all_gpu_accept_summaries_match_cpu": true,
+    "all_stage_ledgers_reconcile": true,
+    "native_b1_b2_b3_reject_partial_full_state_kv_hidden_oracle_passed": true,
+    "native_b3_dynamic_positions_checked": [
+      6,
+      7,
+      9
+    ],
+    "all_measured_cycles_submitted_without_fallback": true,
+    "moe_and_c1_scalar_fallback_cpu_tested": true
+  },
+  "projection_evidence": {
+    "correctness_commit": "b94810438d492b8be720cbf30f73c380a585a498",
+    "schedule": "row-bulk independent norm/QKV/gate/alpha/beta; serial decode Conv/GDN plus each state-row journal; row-bulk ssm_out",
+    "unfused_fallback": "MoE c>1 and dense c1 retain the prior scalar attention helper",
+    "no_new_kernel": true,
+    "gpu1_q4_component": {
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "comparison_rule": "same-GPU component diagnostic only; W7900 complete suite owns promotion",
+      "all_six_cases_bit_exact": true,
+      "linear_qkv_speedup_rows_2_3_4": [
+        1.481594848902977,
+        1.66788901211681,
+        1.5413042728920792
+      ],
+      "linear_gate_speedup_rows_2_3_4": [
+        1.2441743719675982,
+        1.1919152754001034,
+        1.17063204690639
+      ]
+    },
+    "graph_telemetry_by_budget": {
+      "1": {
+        "cycles": 128,
+        "positive_capture_count": 1,
+        "capture_ms_sum": 53.30862104892731,
+        "submit_ms_sum": 7288.763191085309,
+        "readback_ms_sum": 17.030061222612858
+      },
+      "2": {
+        "cycles": 92,
+        "positive_capture_count": 1,
+        "capture_ms_sum": 64.36506216414273,
+        "submit_ms_sum": 5802.817201241851,
+        "readback_ms_sum": 13.042880222201347
+      },
+      "3": {
+        "cycles": 77,
+        "positive_capture_count": 0,
+        "capture_ms_sum": 0.0,
+        "submit_ms_sum": 5250.935800606385,
+        "readback_ms_sum": 10.659881634637713
+      }
+    }
+  },
+  "memory_tradeoff": {
+    "new_incremental_peak_bytes": 0,
+    "tracked_peak_gib": 28.995808631181717,
+    "allocations_after_close": 0,
+    "note": "The schedule reuses existing row-capacity scratch and graph workspaces; tracked allocation counters are byte-identical to baseline."
+  },
+  "decision": {
+    "action": "keep_and_promote_exact_staged_dense_linear_projections_in_native_verifier",
+    "reason": "complete wall, target verify, and MTP/AR improve at every budget; every prompt/full/train/heldout/category row improves; all exactness, acceptance, transaction, graph-submission, fallback, and lifecycle gates pass with no memory increase",
+    "selected_budget": 3,
+    "limitations": [
+      "best exact B3 is 1.8047x own AR but remains 46.17% below llama.cpp Vulkan B3",
+      "full-attention projections remain row-serial and require a separate correctness gate before staging",
+      "graph admission remains bounded to supported below-1024, non-caller-stream contexts"
+    ]
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/final-ea33e6405/natural25-native-graph-b1-b3.json": "185e93f670f7cf6fa81d04a0ff1be2bafaac8da68348ed41a7ab5c29cf5ec25c",
+    "/tmp/hipengine-qwen36-27b/final-b94810438/natural25-native-staged-linear-b1-b3.json": "3a7d8ea77ccaebb93a29c425c07bb7b225c291cd96bf699a2feff8d1960d2b37",
+    "/tmp/qwen36-staged-linear-compare.json": "10201f18ccfd78a628aee64ff14215d928175c8b8433d5107a38bd6f65cd25e5",
+    "/tmp/bench_qwen36_q4_staged_linear.jsonl": "69884f1f676d0948a4b750a6ffb223a4d68bf2ad75f9e17e690934e0e5549dc4"
+  }
+}
