@@ -205538,3 +205538,60 @@ Vulkan local sizes verbatim will close the measured gap.
 - Next RED remains a new Q5T16 dense rows-2-4 weight-reuse wrapper/body tested
   against the existing direct T16 producer and retained dense-BF16 `ssm_out`
   owner. Do not copy a parent kernel or reopen prior Q5 schedule/layout branches.
+
+## 2026-08-05 — Reject exact Q5T16 dense `ssm_out` row reuse
+
+- Re-rank only clean `0439ecc3c`: dense-BF16 K6,144/N5,120 `ssm_out` owns
+  **36.981614 ms / 336 calls / 6.748%** of the current B3 marker wall. Compact
+  Q4's successful cross-row reuse admits one materially different successor to
+  the earlier per-row Q5T16 rejection: decode each Q5 weight once across all
+  verifier rows before considering a resident sidecar.
+- RED extends `tests/test_gguf_t16_selected_gemv_decode.py` with rows 2/3/4
+  direct-producer bit equality, CPU-reference quality, registry, and wrapper
+  contracts. The focused command fails collection only because
+  `gguf_q5_k_t16_dense_rowtile_bf16_bf16_out` does not exist.
+- The temporary exact body maps the direct producer's same 128 arithmetic
+  partitions onto each row, preserves every thread's K sequence, wave32 tree,
+  ordered wave-0..3 sum, and BF16 store, and splits a T16 slab into bounded
+  column groups. Packed FP16 metadata/coefficient pairs, four QL bytes, and one
+  QH byte replace redundant per-column loads. The complete selected-T16 module
+  passes **109/109** before that load refinement; focused rows 2/3/4 remain
+  exact for every 4/8/16-column geometry afterward.
+- GPU1 actual-weight screening covers the complete 3x3
+  `{local32,local64,local128} x {col4,col8,col16}` geometry. Exact local128
+  variants have zero BF16 mismatches to direct Q5T16. Changed-association
+  local32/local64 variants differ by at most six BF16 outputs while retaining
+  maximum KL **1.325e-7** and top-1 **100%** versus dense; their best cell is
+  still only **0.899x** dense. Local128 smoke peaks at **0.891x/0.855x/0.989x**
+  by row, so no geometry clears all binding rows.
+- Final command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_Q5_T16_DENSE_ROWTILE_THREADS=128
+  HIPENGINE_GGUF_Q5_T16_DENSE_ROWTILE_COLS=4
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -u
+  /tmp/screen_qwen36_q5_ssm_out_t16_rowreuse.py --decode-rows 2,3,4
+  --prefill-rows 64 --samples 11 --decode-warmup 50 --prefill-warmup 5
+  --decode-burst 50 --prefill-burst 3 --compiler-version-file
+  /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output
+  /tmp/qwen36-q5-ssm-out-t16-rowreuse-final-gpu1.json`.
+- Counterbalanced event medians are dense -> exact row reuse
+  **34.363 -> 48.254 us (0.712x)** at rows 2,
+  **39.596 -> 53.584 us (0.739x)** at rows 3, and
+  **50.628 -> 57.413 us (0.882x)** at rows 4. Wall medians agree. Outputs have
+  zero mismatches to direct Q5T16, maximum KL **1.325e-7**, top-1 **100%**, and
+  maximum absolute delta **0.015625** versus dense. This is a pure kernel-
+  economics rejection, not a correctness failure.
+- Remove the candidate HIP body, Python wrapper, registry key, tests, and both
+  temporary geometry selectors. `git diff` confirms all production/test source
+  returned exactly to `d59d9f5b0`; no allocation, runtime route, flag, or
+  refactor debt remains. Dense BF16 stays the sole `ssm_out` owner. Candidate
+  source/harness/final-result hashes are `2c63ac15...133ab`,
+  `cec914bf...2bc11`, and `64f7f769...f4d62`.
+- Compact rejection evidence:
+  `benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-rowreuse-rejected.json`.
+  No W7900 E2E or profiler promotion is warranted after every actual-weight
+  geometry loses. Re-rank the same profile; broad exact single-Q4 compact
+  sidecars now become the next admitted MTP discriminator at projected
+  **12.413 ms / 2.265%** wall recovery for **3.907 GiB**.
