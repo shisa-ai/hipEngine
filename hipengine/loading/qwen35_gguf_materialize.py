@@ -46,6 +46,8 @@ LAYOUT_GGUF_Q5_K_X8 = "gguf_q5_k_x8_v1"
 LAYOUT_GGUF_Q6_K_X8 = "gguf_q6_k_x8_v1"
 HIPENGINE_GGUF_DECODE_REPACK_ENV = "HIPENGINE_GGUF_DECODE_REPACK"
 HIPENGINE_GGUF_SELECTED_X8_REPACK_ENV = "HIPENGINE_GGUF_SELECTED_X8_REPACK"
+Q4_T16_DECODE_TILES = "decode_tiles"
+Q4_T16_DECODE_TILES_R3PLUS = "decode_tiles_r3plus"
 HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV = "HIPENGINE_GGUF_SELECTED_DOWN_RAW"
 HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"
 HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_X8"
@@ -536,11 +538,13 @@ def _spec_for_tensor(
                 sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
             )
         allocation_names = ("qweight", "scales", "mins")
-        if decode_repack and _is_dense_q4_ffn_t16_sidecar_tensor(
-            slot_path,
-            tensor,
-        ):
-            allocation_names += ("decode_tiles",)
+        q4_t16_sidecar = (
+            _dense_q4_t16_sidecar_allocation_name(slot_path, tensor)
+            if decode_repack
+            else None
+        )
+        if q4_t16_sidecar is not None:
+            allocation_names += (q4_t16_sidecar,)
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
@@ -731,17 +735,32 @@ def _is_token_embedding_slot(slot_path: str) -> bool:
     return slot_path == "root.token_embedding" or slot_path.endswith(".embed_tokens")
 
 
-def _is_dense_q4_ffn_t16_sidecar_tensor(
+_DENSE_Q4_T16_SIDECAR_POLICY = (
+    ("attn_gate", (6_144, 5_120), Q4_T16_DECODE_TILES),
+    ("attn_k", (1_024, 5_120), Q4_T16_DECODE_TILES),
+    ("attn_output", (5_120, 6_144), Q4_T16_DECODE_TILES),
+    ("attn_q", (12_288, 5_120), Q4_T16_DECODE_TILES),
+    ("attn_qkv", (10_240, 5_120), Q4_T16_DECODE_TILES_R3PLUS),
+    ("attn_v", (1_024, 5_120), Q4_T16_DECODE_TILES_R3PLUS),
+    ("ffn_down", (5_120, 17_408), Q4_T16_DECODE_TILES),
+    ("ffn_gate", (17_408, 5_120), Q4_T16_DECODE_TILES),
+    ("ffn_up", (17_408, 5_120), Q4_T16_DECODE_TILES),
+)
+
+
+def _dense_q4_t16_sidecar_allocation_name(
     slot_path: str,
     tensor: GGUFTensorInfo,
-) -> bool:
-    """Select only the measured Qwen3.6-27B dense FFN gate/up shape."""
+) -> str | None:
+    """Return the measured Qwen3.6-27B compact-T16 verifier policy."""
 
-    return (
-        len(tensor.shape) == 2
-        and tuple(map(int, tensor.shape)) == (17_408, 5_120)
-        and slot_path.endswith((".ffn_gate", ".ffn_up"))
-    )
+    if len(tensor.shape) != 2:
+        return None
+    shape = tuple(map(int, tensor.shape))
+    for role, expected_shape, allocation_name in _DENSE_Q4_T16_SIDECAR_POLICY:
+        if shape == expected_shape and slot_path.endswith(f".{role}"):
+            return allocation_name
+    return None
 
 
 def _is_wide_rank2_q6_t16_tensor(
@@ -869,18 +888,27 @@ def _materialize_spec(
                 runtime=runtime,
             ),
         }
-        if "decode_tiles" in spec.allocation_names:
+        q4_t16_sidecar_names = tuple(
+            name
+            for name in (
+                Q4_T16_DECODE_TILES,
+                Q4_T16_DECODE_TILES_R3PLUS,
+            )
+            if name in spec.allocation_names
+        )
+        if q4_t16_sidecar_names:
             decode_tiles = repack_gguf_q4_k_tile16(
                 raw if raw.ndim == 3 else raw[None, ...]
             ).tiles
-            allocations["decode_tiles"] = load_host_array_to_device_as_dtype(
-                f"{spec.source.name}.t16_decode_sidecar",
-                decode_tiles,
-                DType.INT8,
-                source_dtype="I8",
-                device=device,
-                runtime=runtime,
-            )
+            for sidecar_name in q4_t16_sidecar_names:
+                allocations[sidecar_name] = load_host_array_to_device_as_dtype(
+                    f"{spec.source.name}.t16_decode_sidecar",
+                    decode_tiles,
+                    DType.INT8,
+                    source_dtype="I8",
+                    device=device,
+                    runtime=runtime,
+                )
     elif spec.layout in {
         LAYOUT_GGUF_Q4_K_T16,
         LAYOUT_GGUF_Q4_K_X8,

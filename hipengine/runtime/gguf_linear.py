@@ -88,6 +88,8 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
+    Q4_T16_DECODE_TILES,
+    Q4_T16_DECODE_TILES_R3PLUS,
 )
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
@@ -1387,6 +1389,29 @@ def launch_gguf_linear(
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
+    if (
+        _native_batch_decode_session_enabled
+        and 2 <= rows <= 4
+        and not use_wmma
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        and threads == 0
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and launch_gguf_q4_t16_sidecar_decode(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            backend=resolved_backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+        )
+    ):
+        return
     raw_k_rowbatch = raw_k_prefill_rowbatch()
     raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
@@ -1551,6 +1576,26 @@ def launch_gguf_linear(
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
+def _q4_t16_sidecar_allocation(
+    weight: GGUFDeviceWeight,
+    *,
+    rows: int,
+):
+    """Resolve the resident sidecar whose measured row floor is satisfied."""
+
+    for allocation_name, min_rows in (
+        (Q4_T16_DECODE_TILES, 1),
+        (Q4_T16_DECODE_TILES_R3PLUS, 3),
+    ):
+        if rows < min_rows:
+            continue
+        try:
+            return weight.allocation(allocation_name)
+        except KeyError:
+            pass
+    return None
+
+
 def launch_gguf_q4_t16_sidecar_decode(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -1565,23 +1610,29 @@ def launch_gguf_q4_t16_sidecar_decode(
     runtime=None,
     enabled: bool = True,
 ) -> bool:
-    """Launch an exact Q4T16 decode sidecar when one is resident."""
+    """Launch an exact Q4T16 c1 or measured rows-2-4 sidecar owner."""
 
-    if (
-        not enabled
-        or rows != 1
-        or weight.spec.quant_key != "gguf_q4_k"
-        or "decode_tiles" not in weight.allocations
-    ):
+    if not enabled or weight.spec.quant_key != "gguf_q4_k":
+        return False
+    sidecar = _q4_t16_sidecar_allocation(weight, rows=rows)
+    if sidecar is None:
+        return False
+    if rows == 1:
+        variant = "dense_single_local32_bf16_bf16_out"
+    elif 2 <= rows <= 4:
+        variant = "dense_rowtile_bf16_bf16_out"
+    else:
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
     key = KernelKey(
         resolved_backend,
         "linear",
         "gguf_q4_k_t16_v1",
-        "dense_single_local32_bf16_bf16_out",
+        variant,
     )
     _ensure_linear_kernel_registered(key)
+    if not is_registered(key):
+        return False
     fn = resolve(
         backend=key.backend,
         layer=key.layer,
@@ -1598,7 +1649,7 @@ def launch_gguf_q4_t16_sidecar_decode(
             kwargs["library"] = library
     fn(
         x_ptr,
-        weight.allocation("decode_tiles").tensor.ptr,
+        sidecar.tensor.ptr,
         out_ptr,
         rows,
         in_features,

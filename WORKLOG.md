@@ -205595,3 +205595,46 @@ Vulkan local sizes verbatim will close the measured gap.
   geometry loses. Re-rank the same profile; broad exact single-Q4 compact
   sidecars now become the next admitted MTP discriminator at projected
   **12.413 ms / 2.265%** wall recovery for **3.907 GiB**.
+
+## 2026-08-05 — Route row-selective compact-Q4T16 verifier projections
+
+- Promote the already-screened exact single-Q4 primitive to a correctness-only
+  candidate route. RED first requires all **288** measured rank-2 Q4 weights to
+  carry a sidecar under decode repacking, versus the prior 128 FFN gate/up
+  weights, and requires native single projections to select compact T16 rather
+  than pack8. The two focused nodes fail as expected at **128 != 288** and
+  `pack8 != t16` before implementation.
+- Materialization now adds sidecars to 48 `attn_gate`, 16 `attn_k`, 16
+  `attn_output`, 16 `attn_q`, 24 `attn_qkv`, 8 `attn_v`, 32 `ffn_down`, and the
+  retained 64+64 FFN gate/up weights. This unit adds exactly
+  **4,194,959,360 bytes / 3.9069 GiB** beyond the retained FFN sidecars. Pack8
+  remains resident for populated prefill and fallback; the token embedding is
+  unchanged.
+- Preserve the actual-weight screen's per-row policy rather than promoting a
+  geometric mean: `attn_qkv` and `attn_v` use a `decode_tiles_r3plus`
+  allocation and stay on pack8 at row 2, where their measured speedups were
+  only **0.9977x/0.9969x**. All other screened shapes use compact T16 at rows
+  2-4. Missing sidecars, legacy/no-repack plans, non-native sessions, explicit
+  WMMA/variant/thread overrides, unsupported rows, and missing backend keys
+  fail closed to the existing registry route. No new environment flag or
+  prompt/token condition is introduced.
+- Validation:
+  - planner plus dispatch RED/GREEN nodes pass;
+  - `tests/test_qwen35_gguf_mapping.py`,
+    `tests/test_qwen35_gguf_materialize.py`, and
+    `tests/test_gguf_linear_dispatch.py` pass with fixture-availability skips;
+  - GPU1 exact primitive/fallback bundle
+    (`test_gguf_q4_k_pack8_rowtile.py`,
+    `test_gguf_q4_k_pack8_dual_rowtile_silu.py`, and
+    `test_gguf_t16_selected_gemv_decode.py`) passes completely under cached
+    gfx1100 builds;
+  - binding W7900
+    `test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes
+    B1-B3 logits, reject/partial/full/rollback state, dynamic positions and
+    graph reuse, provider output, ownership, and teardown. Physical counters
+    show compact-T16 rows `{2,3,4}` across all six distinct production shapes,
+    with pack8 retained only for row-2 K5,120/N1,024 and N10,240 calls.
+  - changed-file Ruff, `py_compile`, and `git diff --check` pass.
+- This is not yet a performance claim. Next gate is the hermetic cached W7900
+  one-prompt B3 profile against clean `0439ecc3c`; only a physical-family and
+  complete-wall win advances to natural25 and populated-prefill adjudication.
