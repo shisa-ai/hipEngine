@@ -3095,6 +3095,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "gdn_chain_recurrent_rmsnorm_gate",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop",
+        ),
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "gdn_recurrent_rmsnorm_gate",
             "gguf_qwen35",
             "bf16_indexed_singleton",

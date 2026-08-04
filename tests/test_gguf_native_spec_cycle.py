@@ -415,6 +415,7 @@ def test_native_linear_chain_scheduler_stages_all_rows_once(monkeypatch) -> None
         rows=4,
         decode_scratch=decode_scratch,
         start_position=11,
+        commit_final_linear_state=False,
         hidden_f32_ptr=0x3000,
         out_f32_ptr=0x4000,
     )
@@ -424,6 +425,7 @@ def test_native_linear_chain_scheduler_stages_all_rows_once(monkeypatch) -> None
     assert staged_call[1:5] == (7, 0x1000, 0x5000, scratch)
     assert staged_call[-1]["rows"] == 4
     assert staged_call[-1]["decode_scratch"] is decode_scratch
+    assert staged_call[-1]["commit_final_linear_state"] is False
     assert staged_call[-1]["hidden_f32_ptr"] == 0x3000
 
     calls.clear()
