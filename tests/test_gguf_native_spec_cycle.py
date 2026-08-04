@@ -50,6 +50,13 @@ def test_build_native_b2_target_batch_uses_root_prefixed_chain_layout() -> None:
     assert b1.draft_depths == (0, 1)
     assert b1.row_to_request == (9, 9)
 
+    b3 = build_native_b2_target_batch([101, 202, 303, 404], start_position=17, request_id=9)
+    assert b3.tokens == (101, 202, 303, 404)
+    assert b3.positions == (17, 18, 19, 20)
+    assert b3.parent_rows == (-1, 0, 1, 2)
+    assert b3.draft_depths == (0, 1, 2, 3)
+    assert b3.row_to_request == (9, 9, 9, 9)
+
 
 class _FallbackSession:
     def __init__(self) -> None:
@@ -87,7 +94,7 @@ def test_native_b2_target_uses_exact_python_fallback_for_unsupported_shape() -> 
 
 
 def test_native_b2_target_can_make_unsupported_shape_a_hard_error() -> None:
-    with pytest.raises(NativeSpecTargetGraphUnsupportedError, match="three rows"):
+    with pytest.raises(NativeSpecTargetGraphUnsupportedError, match="two to four rows"):
         verify_qwen35_gguf_native_b2_target(
             _FallbackSession(),
             [1],
@@ -308,6 +315,64 @@ def test_native_b2_target_reuses_one_dynamic_graph_across_cycles(monkeypatch) ->
     ]
     assert session._native_spec_b2_target_graph is graph
     assert graph.closed is False
+
+
+def test_native_b3_target_reuses_one_dynamic_native_graph_across_positions(monkeypatch) -> None:
+    session = _FallbackSession()
+    session.position = 17
+    launches: list[tuple[tuple[int, ...], int]] = []
+    captures: list[tuple[int, ...]] = []
+
+    class FakeReusableGraph:
+        closed = False
+
+        def compatible_with(self, _session, **kwargs) -> bool:
+            return (
+                kwargs["bulk_attention_mode"] == "native"
+                and kwargs["capture_pre_output_norm_hidden"] is True
+            )
+
+        def launch(self, input_token_ids, **_kwargs):
+            tokens = tuple(int(token) for token in input_token_ids)
+            launches.append((tokens, int(session.position)))
+            session.position += len(tokens)
+            return SimpleNamespace(token_ids=[7, 8, 9, 10])
+
+    graph = FakeReusableGraph()
+
+    def fake_capture(_session, input_token_ids, **kwargs):
+        assert kwargs["bulk_attention_mode"] == "native"
+        assert kwargs["capture_pre_output_norm_hidden"] is True
+        captures.append(tuple(int(token) for token in input_token_ids))
+        return graph
+
+    monkeypatch.setattr(
+        "hipengine.runtime.gguf_native_spec_cycle.capture_qwen35_gguf_native_b2_target_graph",
+        fake_capture,
+    )
+
+    first = verify_qwen35_gguf_native_b2_target(
+        session,
+        [1, 2, 3, 4],
+        bulk_attention_mode="native",
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+    )
+    second = verify_qwen35_gguf_native_b2_target(
+        session,
+        [5, 6, 7, 8],
+        bulk_attention_mode="native",
+        capture_linear_state_rows=True,
+        capture_pre_output_norm_hidden=True,
+        defer_linear_state_commit=True,
+    )
+
+    assert first.token_ids == second.token_ids == [7, 8, 9, 10]
+    assert captures == [(1, 2, 3, 4)]
+    assert launches == [((1, 2, 3, 4), 17), ((5, 6, 7, 8), 21)]
+    assert session.calls == []
+    assert session._native_spec_b3_target_graph is graph
 
 
 def test_native_b2_target_falls_back_before_capture_when_provider_key_is_missing(

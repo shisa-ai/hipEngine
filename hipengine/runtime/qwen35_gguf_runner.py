@@ -4850,6 +4850,8 @@ class Qwen35GGUFFullStackRunner:
         linear_state_rows: tuple[object, object] | None = None,
         hidden_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
+        decode_row_scratches: tuple[object, ...] | None = None,
+        attention_context_limit: int | None = None,
         stream: int = 0,
     ) -> None:
         """Run row-serial attention followed by the row-bulk GGUF FFN/MoE path.
@@ -4868,8 +4870,15 @@ class Qwen35GGUFFullStackRunner:
         row_nbytes = self.hidden_size * DType.BF16.itemsize
         row_f32_nbytes = self.hidden_size * DType.FP32.itemsize
         runtime = self.runtime or get_hip_runtime()
+        if decode_row_scratches is not None and len(decode_row_scratches) != rows:
+            raise ValueError("native decode row scratch count must match verifier rows")
         for row in range(rows):
             position = start_position + row
+            row_decode_scratch = (
+                decode_scratch
+                if decode_row_scratches is None
+                else decode_row_scratches[row]
+            )
             hidden_row = hidden_ptr + row * row_nbytes
             hidden_f32_row = None if hidden_f32_ptr is None else int(hidden_f32_ptr) + row * row_f32_nbytes
             attn_row = scratch.attn_out.ptr + row * row_nbytes
@@ -4878,13 +4887,13 @@ class Qwen35GGUFFullStackRunner:
                     layer_id,
                     hidden_row,
                     attn_row,
-                    decode_scratch,
+                    row_decode_scratch,
                     hidden_f32_ptr=hidden_f32_row,
                     stream=stream,
                 )
                 if linear_state_rows is not None:
-                    conv_state = decode_scratch.layer_conv_states[layer_id]
-                    recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
+                    conv_state = row_decode_scratch.layer_conv_states[layer_id]
+                    recurrent_state = row_decode_scratch.layer_recurrent_states[layer_id]
                     if conv_state is None or recurrent_state is None:
                         raise ValueError(f"layer {layer_id} has no linear-attention state")
                     conv_state_rows, recurrent_state_rows = linear_state_rows
@@ -4903,15 +4912,17 @@ class Qwen35GGUFFullStackRunner:
                         stream,
                     )
             elif layer_type == FULL_ATTENTION:
-                decode_scratch.set_full_attention_position(position, runtime)
+                if decode_row_scratches is None:
+                    row_decode_scratch.set_full_attention_position(position, runtime)
                 self._run_full_attention_attn_only(
                     layer_id,
                     hidden_row,
                     attn_row,
-                    decode_scratch,
+                    row_decode_scratch,
                     position=position,
                     hidden_f32_ptr=hidden_f32_row,
                     stream=stream,
+                    attention_max_context_len=attention_context_limit,
                 )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -9997,6 +10008,7 @@ class Qwen35GGUFResidentSession:
     _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
     _native_spec_b1_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b3_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b1_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
@@ -12824,6 +12836,9 @@ class Qwen35GGUFResidentSession:
         _graph_hidden_seed_buf: object | None = None,
         _graph_hidden_f32_a: object | None = None,
         _graph_hidden_f32_b: object | None = None,
+        _graph_pre_output_norm_hidden_buf: object | None = None,
+        _native_decode_row_scratches: tuple[object, ...] | None = None,
+        _native_attention_context_limit: int | None = None,
     ) -> Qwen35GGUFBlockVerifyResult | None:
         """Consume a continuation block and return greedy target rows.
 
@@ -12885,10 +12900,14 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     "enqueue-only target verification requires exactly one int32/int64 target-top1 destination"
                 )
-            if rows not in {2, 3}:
-                raise ValueError("enqueue-only native target verification supports B1/B2 rows=2-3")
-            if advance_state_only or capture_pre_output_norm_hidden or capture_lm_head_logits:
+            if rows not in {2, 3, 4}:
+                raise ValueError("enqueue-only native target verification supports B1-B3 rows=2-4")
+            if advance_state_only or capture_lm_head_logits:
                 raise ValueError("enqueue-only target verification does not support host diagnostic outputs")
+            if capture_pre_output_norm_hidden and _graph_pre_output_norm_hidden_buf is None:
+                raise ValueError(
+                    "enqueue-only pre-output-norm capture requires a graph-owned destination"
+                )
             if capture_layer_output_hidden or capture_layer_boundary_hidden:
                 raise ValueError("enqueue-only target verification does not support layer host captures")
             if record_stage_timings or sync_stage_timings:
@@ -12907,6 +12926,20 @@ class Qwen35GGUFResidentSession:
                     raise ValueError("reusable target graph scratch requires device-driven cursor advance")
                 if any(buffer is None for buffer in graph_hidden):
                     raise ValueError("reusable target graph requires graph-owned hidden buffers")
+                if bulk_attention_mode == "native":
+                    if (
+                        _native_decode_row_scratches is None
+                        or len(_native_decode_row_scratches) != rows
+                        or _native_attention_context_limit is None
+                    ):
+                        raise ValueError(
+                            "reusable native attention requires dynamic row scratch and context"
+                        )
+                elif (
+                    _native_decode_row_scratches is not None
+                    or _native_attention_context_limit is not None
+                ):
+                    raise ValueError("dynamic native attention controls require native mode")
             elif _dynamic_cursor_advance or any(buffer is not None for buffer in graph_hidden):
                 raise ValueError("device-driven graph state requires reusable target graph scratch")
         elif (
@@ -12918,6 +12951,9 @@ class Qwen35GGUFResidentSession:
             or _graph_hidden_seed_buf is not None
             or _graph_hidden_f32_a is not None
             or _graph_hidden_f32_b is not None
+            or _graph_pre_output_norm_hidden_buf is not None
+            or _native_decode_row_scratches is not None
+            or _native_attention_context_limit is not None
         ):
             raise ValueError("private target graph controls require enqueue-only mode")
         if rows > int(self._bulk_prefill_scratch.rows):
@@ -13074,6 +13110,8 @@ class Qwen35GGUFResidentSession:
                                 ),
                                 hidden_f32_ptr=src_f32_chunk_ptr,
                                 out_f32_ptr=dst_f32_chunk_ptr,
+                                decode_row_scratches=_native_decode_row_scratches,
+                                attention_context_limit=_native_attention_context_limit,
                             )
                         elif layer_type == LINEAR_ATTENTION:
                             self.runner._run_linear_attention_prefill_layer_rows(
@@ -13191,7 +13229,27 @@ class Qwen35GGUFResidentSession:
                 )
                 output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
                 if capture_pre_output_norm_hidden:
-                    if use_f32_residual:
+                    if _enqueue_only:
+                        if _graph_pre_output_norm_hidden_buf is None:
+                            raise RuntimeError("graph pre-output-norm destination is missing")
+                        if use_f32_residual:
+                            runtime.memcpy_async(
+                                _graph_pre_output_norm_hidden_buf.ptr,
+                                int(src_f32.ptr),
+                                rows * self.runner.hidden_size * DType.FP32.itemsize,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                        else:
+                            bf16_to_f32(
+                                src.ptr + scratch_row_start * row_nbytes,
+                                _graph_pre_output_norm_hidden_buf.ptr,
+                                rows * self.runner.hidden_size,
+                                stream=stream,
+                                library=self.runner._cast_library(),
+                                runtime=runtime,
+                            )
+                    elif use_f32_residual:
                         pre_output_norm_hidden_host = _copy_f32_ptr_to_host(
                             int(src_f32.ptr),
                             rows * self.runner.hidden_size,
@@ -18233,10 +18291,11 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         use_wmma_prefill: bool = False,
         capture_linear_state_rows: bool = False,
+        capture_pre_output_norm_hidden: bool = False,
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
     ):
-        """Capture a reusable B1/B2 N1 or N2 native target graph."""
+        """Capture a reusable B1-B3 N1 or B1/B2 N2 native target graph."""
 
         from hipengine.runtime.gguf_native_spec_cycle import (
             capture_qwen35_gguf_native_b2_target_graph,
@@ -18251,6 +18310,7 @@ class Qwen35GGUFResidentSession:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=bool(use_wmma_prefill),
             capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             defer_linear_state_commit=bool(defer_linear_state_commit),
             device_accept_commit=bool(device_accept_commit),
         )
@@ -18266,6 +18326,7 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         use_wmma_prefill: bool = False,
         capture_linear_state_rows: bool = False,
+        capture_pre_output_norm_hidden: bool = False,
         capture_lm_head_logits: bool = False,
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
@@ -18273,7 +18334,7 @@ class Qwen35GGUFResidentSession:
         device_accept_commit: bool = False,
         remaining_decode: int | None = None,
     ):
-        """Run reusable B1/B2 N1/N2 submission or preserve the eager fallback."""
+        """Run reusable B1-B3 N1 or B1/B2 N2, else preserve eager fallback."""
 
         from hipengine.runtime.gguf_native_spec_cycle import (
             verify_qwen35_gguf_native_b2_target,
@@ -18289,6 +18350,7 @@ class Qwen35GGUFResidentSession:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=bool(use_wmma_prefill),
             capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             capture_lm_head_logits=bool(capture_lm_head_logits),
             record_stage_timings=bool(record_stage_timings),
             sync_stage_timings=bool(sync_stage_timings),

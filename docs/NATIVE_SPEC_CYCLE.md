@@ -87,7 +87,7 @@ single-native-submission boundary.
 | --- | --- | --- | --- | --- |
 | `N0` | Versioned ABI and oracle | Host/device control/result layouts, lifecycle, validation, CPU/fake launcher | Real model submission | Landed; no performance claim |
 | `N1` | Initial fixed-B2 native target graph | One native `VERIFY` submission | Reusable positions; proposal, accept, commit, cursors | Exact but rejected because recapture regressed wall |
-| `N1R` | Reusable B1/B2 target graphs | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 performance topline**; usually called N1 |
+| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; dense B3 correctness green, timing pending |
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
@@ -121,7 +121,10 @@ body was exact, but recapture made the path slower, so it was rejected.
 `N1R` corrected the ownership model:
 
 - independent reusable B1/two-row and B2/three-row executables;
-- graph-owned fixed-address scratch;
+- an independently gated B3/four-row N1 VERIFY bucket for exact dense native
+  verification; N2 device accept/commit remains B1/B2;
+- graph-owned fixed-address scratch, including exact dense pre-output-norm trunk
+  rows for the existing BF16 transaction journal;
 - live device token IDs, positions, context counts, and cursor metadata;
 - eager fallback for unsupported tails before graph mutation;
 - no silent replay after a post-launch failure.
@@ -135,7 +138,12 @@ Python/device-chain proposal
 ```
 
 The benchmark rollup calls retained `N1R` simply **N1** because the rejected
-one-shot experiment is no longer a candidate route.
+one-shot experiment is no longer a candidate route. The dense B3 extension
+preserves token-serial attention/Conv/GDN arithmetic and binds each captured row
+to dynamic position/context/`KVLiveSpans` views over the resident request page
+table; it does not broaden the accuracy-traded llama-compat policy or N2. Exact
+dense cycle records expose graph submission, first-capture wall, submit wall,
+readback wall, and pre-launch fallback reason without changing execution.
 
 ### N2 — device acceptance and selected-state commit
 

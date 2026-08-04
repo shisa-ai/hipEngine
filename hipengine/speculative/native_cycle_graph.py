@@ -472,15 +472,27 @@ def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
     if control.stages not in {NativeSpecCycleStage.VERIFY, n2_stages}:
         raise ValueError("native target graph supports VERIFY or N2 accept/commit stages")
     candidate_rows = int(shape.row_count) - 1
+    supported_rows = (
+        {2, 3, 4}
+        if control.stages == NativeSpecCycleStage.VERIFY
+        else {2, 3}
+    )
     if (
         shape.request_count != 1
-        or shape.row_count not in {2, 3}
+        or shape.row_count not in supported_rows
         or shape.active_row_count != shape.row_count
         or shape.candidate_count != candidate_rows
         or shape.active_candidate_count != candidate_rows
         or shape.candidate_budget != candidate_rows
     ):
-        raise ValueError("native target graph supports one B1/B2 chain bucket (1 request, 2-3 rows)")
+        if control.stages == n2_stages:
+            raise ValueError(
+                "native target graph N2 B1/B2 accepts one request with 2-3 rows"
+            )
+        raise ValueError(
+            "native target graph supports one B1/B2/B3 chain bucket "
+            "(1 request, 2-4 rows)"
+        )
     expected_metadata_dtype = (
         NativeSpecCycleDType.INT64
         if control.stages == NativeSpecCycleStage.VERIFY

@@ -101,6 +101,27 @@ def _b1_control(*, cycle_id: int = 9) -> NativeSpecCycleControl:
     )
 
 
+def _b3_control(*, cycle_id: int = 10) -> NativeSpecCycleControl:
+    control = _b2_control(cycle_id=cycle_id)
+    return replace(
+        control,
+        shape=replace(
+            control.shape,
+            row_count=4,
+            active_row_count=4,
+            row_capacity=4,
+            candidate_count=3,
+            active_candidate_count=3,
+            candidate_capacity=3,
+            candidate_budget=3,
+            span_count=4,
+            span_capacity=4,
+            hidden_row_capacity=4,
+            output_stride=4,
+        ),
+    )
+
+
 def _proposal_control(*, cycle_id: int = 10) -> NativeSpecCycleControl:
     control = _b2_control(cycle_id=cycle_id)
     return replace(
@@ -478,7 +499,7 @@ def test_provider_target_graph_has_registered_w4_paro_plugin_boundary() -> None:
     )
 
 
-def test_gguf_target_graph_keeps_strict_b1_b2_contract() -> None:
+def test_gguf_target_graph_keeps_strict_b1_b2_b3_contract() -> None:
     launcher = NativeSpecTargetGraphLauncher(
         graph_exec=0x6000,
         graph_launch_fn=0x7000,
@@ -486,7 +507,7 @@ def test_gguf_target_graph_keeps_strict_b1_b2_contract() -> None:
         library=_FakeNativeLibrary(),
     )
 
-    with pytest.raises(ValueError, match="B1/B2"):
+    with pytest.raises(ValueError, match="B1/B2/B3"):
         launcher.launch(
             replace(_provider_b4_control(), stages=NativeSpecCycleStage.VERIFY)
         )
@@ -513,7 +534,7 @@ def test_native_target_graph_launcher_accepts_n2_device_accept_commit_control() 
     assert launcher.launch_count == 1
 
 
-def test_native_target_graph_launcher_accepts_b1_and_b2_shape_buckets() -> None:
+def test_native_target_graph_launcher_accepts_b1_b2_and_b3_shape_buckets() -> None:
     library = _FakeNativeLibrary()
     launcher = NativeSpecTargetGraphLauncher(
         graph_exec=0x6000,
@@ -524,11 +545,29 @@ def test_native_target_graph_launcher_accepts_b1_and_b2_shape_buckets() -> None:
 
     b1 = launcher.launch(_b1_control())
     b2 = launcher.launch(_b2_control())
+    b3 = launcher.launch(_b3_control())
 
     assert b1.status is NativeSpecCycleStatus.COMPLETE
     assert b2.status is NativeSpecCycleStatus.COMPLETE
-    assert b1.request_count == b2.request_count == 1
-    assert launcher.launch_count == 2
+    assert b3.status is NativeSpecCycleStatus.COMPLETE
+    assert b1.request_count == b2.request_count == b3.request_count == 1
+    assert launcher.launch_count == 3
+
+
+def test_native_target_graph_keeps_n2_device_commit_bounded_to_b1_b2() -> None:
+    launcher = NativeSpecTargetGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        library=_FakeNativeLibrary(),
+    )
+    b3_n2 = replace(
+        _n2_control(),
+        shape=replace(_b3_control().shape, metadata_dtype=NativeSpecCycleDType.INT32),
+    )
+
+    with pytest.raises(ValueError, match="N2 B1/B2"):
+        launcher.launch(b3_n2)
 
 
 def test_native_target_graph_launcher_rejects_control_that_drifted_from_bound_graph() -> None:
@@ -636,6 +675,7 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
     )
     b1 = launcher.launch(_b1_control())
     b2 = launcher.launch(_b2_control())
+    b3 = launcher.launch(_b3_control())
     proposal_launcher = NativeSpecProposalGraphLauncher(
         graph_exec=0x6001,
         graph_launch_fn=ctypes.cast(graph_launch, ctypes.c_void_p).value or 0,
@@ -654,6 +694,7 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
 
     assert b1.status is NativeSpecCycleStatus.COMPLETE
     assert b2.status is NativeSpecCycleStatus.COMPLETE
+    assert b3.status is NativeSpecCycleStatus.COMPLETE
     assert proposal.status is NativeSpecCycleStatus.COMPLETE
     assert proposal.completed_stages is NativeSpecCycleStage.PROPOSE
     assert provider.status is NativeSpecCycleStatus.COMPLETE
@@ -663,6 +704,8 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
     assert provider_commit.status is NativeSpecCycleStatus.COMPLETE
     assert provider_commit.completed_stages == _provider_commit_control().stages
     assert calls == [
+        ("launch", 0x6000, 0x5000),
+        ("sync", 0x5000, 0),
         ("launch", 0x6000, 0x5000),
         ("sync", 0x5000, 0),
         ("launch", 0x6000, 0x5000),

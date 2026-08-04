@@ -203595,3 +203595,49 @@ Vulkan local sizes verbatim will close the measured gap.
 - Kernel/marker/summary/suite SHA-256s are `7ec3e9ed...4955d`,
   `d2b1577c...3f58`, `82aef264...dbb2`, and `62940e09...c0db`. This profile is
   diagnostic admission evidence, not a benchmark topline.
+
+### D27-O3 exact reusable native-verifier graph — GREEN
+
+- RED extends the provider-neutral chain metadata and launcher controls through
+  B3/four rows, then requires the real dense transaction oracle to report an
+  actual native graph submission for reject, partial, and full-accept cases.
+  The initial focused CPU run failed both new B3 tests at the inherited
+  two/three-row guard.
+- Reuse N1's stable graph owner without changing model arithmetic. Each native
+  row-attention view points its scalar rotary/KV-write/decode calls at one live
+  device token position, context count, and resident-slot page table through
+  `KVLiveSpans`; Conv/GDN and attention remain token-serial, while the retained
+  exact dense FFN rowtiles stay row-bulk. A graph-owned FP32 trunk-row buffer
+  preserves the existing host-F32-to-BF16 journal boundary exactly. B1-B3 use
+  independent reusable executables; stream-bound or unsupported contexts fail
+  closed before mutation to eager native verification.
+- Extend both Python and host-C++ N1 validators to VERIFY B1/B2/B3. N2 device
+  accept/selected-commit remains deliberately bounded to B1/B2. The C++ callback
+  gate now exercises a real B3 submission, and the Python tests independently
+  reject B3 N2 controls. Legacy `b2` helper/class/registry names remain ABI-
+  compatible refactor debt, not a hidden B3 device-policy expansion.
+- Three focused integration REDs were resolved in order, with no post-launch
+  fallback: the Python launcher rejected B3, cached-only mode correctly found
+  the newly keyed host launcher absent, then its mirrored C++ validator rejected
+  B3. Prebuilding outside the test produced
+  `native_spec_cycle_graph-f3fa825acf4647d4/native_spec_cycle_graph.so`.
+  Only the next run reached `hipGraphLaunch`.
+- CPU/fake boundary command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_native_spec_cycle_graph.py tests/test_gguf_native_spec_cycle.py -k 'not graph_matches_eager_hidden_state_and_kv'`
+  passes **26/26**, including the cached C++ callback. Ruff, py_compile, and
+  diff checks pass.
+- Complete W7900 command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1** after executing the graph. B3 reject/partial/full acceptance,
+  selected Conv/GDN/KV/trunk-hidden commits, correction logits, B1 natural
+  provider output, and all prior scalar full-logit oracles remain exact. The
+  same B3 executable also matches four scalar target rows when reused at real
+  positions 6, 7, and 9, guarding against captured host positions or stale
+  per-row `KVLiveSpans` metadata.
+- Compact cycle records now expose graph submission, first-capture wall,
+  submit wall, readback wall, and pre-launch fallback reason. The W7900 gate
+  observes one positive first-capture wall followed by zero reported capture
+  wall on reuse, positive submit/readback on every graph cycle, and an explicit
+  logits-readback fallback.
+  This is correctness/observability evidence only; no natural25 speed claim is
+  made before the clean same-suite gate.

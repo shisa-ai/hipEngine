@@ -1,6 +1,6 @@
-"""GGUF adapter for reusable B1/B2 native speculative target graphs.
+"""GGUF adapter for reusable B1-B3 native speculative target graphs.
 
-The adapter captures two- and three-row target buckets against stable
+The adapter captures two- through four-row target buckets against stable
 session/device addresses, binds each capture to a versioned
 :class:`NativeSpecCycleControl`, and submits it through one C++ launcher call.
 Proposal and acceptance/commit remain unchanged.
@@ -28,10 +28,6 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
     build_dflash_commit,
-    dflash_accept_chain_i32_native_cycle,
-    dflash_commit_chain_i32,
-    linear_state_pair_commit_chunked_i32,
-    linear_state_pair_commit_i32,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
@@ -177,14 +173,14 @@ def build_native_b2_target_batch(
     start_position: int,
     request_id: int = 0,
 ) -> TargetVerifyBatch:
-    """Build provider-neutral root+candidate metadata for a B1/B2 chain."""
+    """Build provider-neutral root+candidate metadata for a B1-B2/B3 chain."""
 
     tokens = tuple(int(token) for token in input_token_ids)
     start = int(start_position)
     request = int(request_id)
-    if len(tokens) not in {2, 3}:
+    if len(tokens) not in {2, 3, 4}:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph requires two or three rows (one root plus B1/B2)"
+            "native target graph requires two to four rows (one root plus B1-B3)"
         )
     if start < 0:
         raise ValueError("start_position must be non-negative")
@@ -306,6 +302,107 @@ def _dynamic_target_scratch(session: Any, buffers: TargetVerifyBuffers, *, rows:
     return dynamic_buffers, dynamic_scratch
 
 
+def _dynamic_native_decode_row_scratches(
+    session: Any,
+    dynamic_scratch: Any,
+    *,
+    rows: int,
+    start_position: int,
+    context_limit: int,
+) -> tuple[Any, ...]:
+    """Build scalar-attention views over graph-updated row metadata.
+
+    Native verification deliberately keeps attention token-serial so its
+    arithmetic and recurrent-state transitions match c=1 exactly.  During graph
+    replay, however, no host position upload may be captured.  Each view below
+    reuses the stable scalar decode temporaries/state/cache while pointing its
+    position and ``KVLiveSpans`` ABI at one dynamically unpacked verifier row.
+    """
+
+    base = getattr(session, "scratch", None)
+    if base is None:
+        raise RuntimeError("GGUF resident decode scratch is closed")
+    rows = int(rows)
+    start = int(start_position)
+    context_limit = int(context_limit)
+    blocks = int(base.blocks_per_slot)
+    if rows <= 0 or rows > int(dynamic_scratch.rows):
+        raise ValueError("native graph row views exceed dynamic scratch capacity")
+    if blocks <= 0 or blocks * int(base.block_size) < context_limit:
+        raise ValueError("native graph row block table does not cover the context bucket")
+    device = base.block_table_tensor.device
+    block_row_nbytes = blocks * DType.INT32.itemsize
+    if int(base.block_table.nbytes) < block_row_nbytes:
+        raise ValueError("resident decode block table is smaller than its declared capacity")
+    result = []
+    for row in range(rows):
+        # Every verifier row extends the same resident request, so page
+        # indirection comes from the target slot rather than the temporary bulk
+        # scratch's synthetic 0..N table.
+        block_table = DeviceBuffer(int(base.block_table.ptr), block_row_nbytes)
+        position_buf = DeviceBuffer(
+            int(dynamic_scratch.positions.ptr) + row * DType.INT64.itemsize,
+            DType.INT64.itemsize,
+        )
+        context_buf = DeviceBuffer(
+            int(dynamic_scratch.context_counts.ptr) + row * DType.INT64.itemsize,
+            DType.INT64.itemsize,
+        )
+        block_table_tensor = Tensor.from_handle(
+            block_table.ptr,
+            (blocks,),
+            DType.INT32,
+            device,
+        )
+        position_tensor = Tensor.from_handle(
+            position_buf.ptr,
+            (1,),
+            DType.INT64,
+            device,
+        )
+        context_tensor = Tensor.from_handle(
+            context_buf.ptr,
+            (1,),
+            DType.INT64,
+            device,
+        )
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=position_tensor,
+            max_live_count=context_limit - 1,
+            storage_dtype=DType.BF16,
+            row_positions=position_tensor,
+            span_role="verify_chain",
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=context_tensor,
+            max_live_count=context_limit,
+            storage_dtype=DType.BF16,
+            row_positions=position_tensor,
+            span_role="verify_chain",
+        )
+        captured_position = start + row
+        result.append(
+            replace(
+                base,
+                block_table=block_table,
+                position_buf=position_buf,
+                context_buf=context_buf,
+                block_table_tensor=block_table_tensor,
+                position_tensor=position_tensor,
+                context_tensor=context_tensor,
+                append_spans=append_spans,
+                decode_spans=decode_spans,
+                position_host=np.asarray([captured_position], dtype=np.int64),
+                context_host=np.asarray([captured_position + 1], dtype=np.int64),
+                slot_count=1,
+                blocks_per_slot=blocks,
+            )
+        )
+    return tuple(result)
+
+
 def _pack_dynamic_metadata(batch: TargetVerifyBatch) -> np.ndarray:
     rows = []
     for token, position in zip(batch.tokens, batch.positions, strict=True):
@@ -336,6 +433,7 @@ def _native_target_configuration_key(
     bulk_attention_mode: str,
     use_wmma_prefill: bool,
     capture_linear_state_rows: bool,
+    capture_pre_output_norm_hidden: bool,
     defer_linear_state_commit: bool,
     device_accept_commit: bool,
 ) -> tuple[object, ...]:
@@ -350,6 +448,7 @@ def _native_target_configuration_key(
         str(bulk_attention_mode),
         bool(use_wmma_prefill),
         bool(capture_linear_state_rows),
+        bool(capture_pre_output_norm_hidden),
         bool(defer_linear_state_commit),
         bool(device_accept_commit),
         env,
@@ -421,13 +520,13 @@ def _validate_capture_admission(
     )
 
     rows = len(input_token_ids)
-    if rows not in {2, 3}:
+    if rows not in {2, 3, 4}:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph requires two or three rows (one root plus B1/B2)"
+            "native target graph requires two to four rows (one root plus B1-B3)"
         )
-    if bulk_attention_mode != "bulk":
+    if bulk_attention_mode not in {"bulk", "native"}:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph N1 supports only the retained bulk verifier"
+            "native target graph requires bulk or exact native attention scheduling"
         )
     if use_wmma_prefill:
         raise NativeSpecTargetGraphUnsupportedError(
@@ -442,7 +541,9 @@ def _validate_capture_admission(
     # reported through ``last_verify_stage_timings_ms``.
     _ = record_stage_timings
     if getattr(session, "runner", None) is None or getattr(session, "scratch", None) is None:
-        raise RuntimeError("GGUF resident session is closed")
+        raise NativeSpecTargetGraphUnsupportedError(
+            "native target graph requires an open GGUF resident session"
+        )
     if bool(getattr(session, "host_token_embedding_enabled", False)):
         raise NativeSpecTargetGraphUnsupportedError(
             "native target graph N1 requires device-resident token embedding"
@@ -485,7 +586,7 @@ def _validate_capture_admission(
 
 @dataclass
 class Qwen35GGUFNativeB2TargetGraph:
-    """Reusable fixed B1/B2 verifier graph with device-driven metadata."""
+    """Reusable fixed B1-B3 verifier graph with device-driven metadata."""
 
     session: Any
     graph: int
@@ -500,6 +601,7 @@ class Qwen35GGUFNativeB2TargetGraph:
     hidden_seed_rows: Tensor
     hidden_f32_a: Tensor
     hidden_f32_b: Tensor
+    pre_output_norm_hidden_rows: Tensor | None
     dynamic_metadata: Tensor
     token_ids_i32: Tensor
     positions_i32: Tensor
@@ -516,6 +618,7 @@ class Qwen35GGUFNativeB2TargetGraph:
     context_limit: int
     rows: int
     capture_linear_state_rows: bool
+    capture_pre_output_norm_hidden: bool
     defer_linear_state_commit: bool
     configuration_key: tuple[object, ...]
     binding_signature: tuple[int, ...]
@@ -531,6 +634,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         bulk_attention_mode: str,
         use_wmma_prefill: bool,
         capture_linear_state_rows: bool,
+        capture_pre_output_norm_hidden: bool,
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
     ) -> bool:
@@ -540,6 +644,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=use_wmma_prefill,
             capture_linear_state_rows=capture_linear_state_rows,
+            capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
         )
@@ -683,6 +788,20 @@ class Qwen35GGUFNativeB2TargetGraph:
                 hidden_host.nbytes,
                 runtime=runtime,
             )
+            pre_output_hidden_host = None
+            if self.capture_pre_output_norm_hidden:
+                if self.pre_output_norm_hidden_rows is None:
+                    raise RuntimeError("native target graph trunk-hidden rows are missing")
+                pre_output_hidden_host = np.empty(
+                    (self.rows, hidden_size),
+                    dtype=np.float32,
+                )
+                copy_device_to_host(
+                    host_array_ptr(pre_output_hidden_host),
+                    _tensor_buffer(self.pre_output_norm_hidden_rows),
+                    pre_output_hidden_host.nbytes,
+                    runtime=runtime,
+                )
             session_hidden = self.session._verify_hidden_seed_buf
             if session_hidden is None or int(session_hidden.nbytes) < hidden_host.nbytes:
                 raise RuntimeError("GGUF verifier hidden-seed destination is closed or undersized")
@@ -701,7 +820,11 @@ class Qwen35GGUFNativeB2TargetGraph:
                 token_ids=[int(token) for token in token_host.tolist()],
                 hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
                 start_position=start,
-                pre_output_norm_hidden=None,
+                pre_output_norm_hidden=(
+                    None
+                    if pre_output_hidden_host is None
+                    else np.ascontiguousarray(pre_output_hidden_host, dtype=np.float32)
+                ),
                 layer_output_hidden=None,
                 layer_boundary_hidden=None,
                 lm_head_logits_f32=None,
@@ -757,6 +880,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         for cache_name in (
             "_native_spec_b1_target_graph",
             "_native_spec_b2_target_graph",
+            "_native_spec_b3_target_graph",
             "_native_spec_b1_target_graph_n2",
             "_native_spec_b2_target_graph_n2",
         ):
@@ -780,13 +904,14 @@ def capture_qwen35_gguf_native_b2_target_graph(
     bulk_attention_mode: str = "bulk",
     use_wmma_prefill: bool = False,
     capture_linear_state_rows: bool = False,
+    capture_pre_output_norm_hidden: bool = False,
     capture_lm_head_logits: bool = False,
     record_stage_timings: bool = False,
     sync_stage_timings: bool = False,
     defer_linear_state_commit: bool = False,
     device_accept_commit: bool = False,
 ) -> Qwen35GGUFNativeB2TargetGraph:
-    """Capture one fixed B1/B2 target forward without executing it."""
+    """Capture one fixed B1-B3 target forward without executing it."""
 
     capture_start = time.perf_counter()
     tokens = tuple(int(token) for token in input_token_ids)
@@ -800,6 +925,10 @@ def capture_qwen35_gguf_native_b2_target_graph(
         record_stage_timings=bool(record_stage_timings),
         sync_stage_timings=bool(sync_stage_timings),
     )
+    if device_accept_commit and rows == 4:
+        raise NativeSpecTargetGraphUnsupportedError(
+            "N2 device accept/commit currently supports only B1/B2 target graphs"
+        )
     if device_accept_commit and not (
         bool(capture_linear_state_rows) and bool(defer_linear_state_commit)
     ):
@@ -905,6 +1034,26 @@ def capture_qwen35_gguf_native_b2_target_graph(
             "native_spec_hidden_f32_b",
             (rows, hidden_size),
             DType.FP32,
+        )
+        pre_output_norm_hidden_rows = (
+            workspace.reserve_tensor(
+                "native_spec_pre_output_norm_hidden_rows",
+                (rows, hidden_size),
+                DType.FP32,
+            )
+            if capture_pre_output_norm_hidden
+            else None
+        )
+        native_decode_row_scratches = (
+            _dynamic_native_decode_row_scratches(
+                session,
+                dynamic_scratch,
+                rows=rows,
+                start_position=start,
+                context_limit=context_limit,
+            )
+            if bulk_attention_mode == "native"
+            else None
         )
         dynamic_metadata = workspace.reserve_tensor(
             "native_spec_dynamic_metadata",
@@ -1085,6 +1234,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 use_wmma_prefill=bool(use_wmma_prefill),
                 stream=stream,
                 capture_linear_state_rows=bool(capture_linear_state_rows),
+                capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 _pre_staged_token_ids_ptr=buffers.token_ids.ptr,
                 _target_top1_i64_ptr=(
@@ -1101,6 +1251,11 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 _graph_hidden_seed_buf=hidden_rows,
                 _graph_hidden_f32_a=hidden_f32_a,
                 _graph_hidden_f32_b=hidden_f32_b,
+                _graph_pre_output_norm_hidden_buf=pre_output_norm_hidden_rows,
+                _native_decode_row_scratches=native_decode_row_scratches,
+                _native_attention_context_limit=(
+                    context_limit if native_decode_row_scratches is not None else None
+                ),
             )
             if device_accept_commit:
                 assert accept_buffers is not None
@@ -1202,6 +1357,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
             hidden_seed_rows=hidden_rows,
             hidden_f32_a=hidden_f32_a,
             hidden_f32_b=hidden_f32_b,
+            pre_output_norm_hidden_rows=pre_output_norm_hidden_rows,
             dynamic_metadata=dynamic_metadata,
             token_ids_i32=token_ids_i32,
             positions_i32=positions_i32,
@@ -1218,11 +1374,13 @@ def capture_qwen35_gguf_native_b2_target_graph(
             context_limit=context_limit,
             rows=rows,
             capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             defer_linear_state_commit=bool(defer_linear_state_commit),
             configuration_key=_native_target_configuration_key(
                 bulk_attention_mode=bulk_attention_mode,
                 use_wmma_prefill=bool(use_wmma_prefill),
                 capture_linear_state_rows=bool(capture_linear_state_rows),
+                capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 device_accept_commit=bool(device_accept_commit),
             ),
@@ -1480,6 +1638,7 @@ def verify_qwen35_gguf_native_b2_target(
     bulk_attention_mode: str = "bulk",
     use_wmma_prefill: bool = False,
     capture_linear_state_rows: bool = False,
+    capture_pre_output_norm_hidden: bool = False,
     capture_lm_head_logits: bool = False,
     record_stage_timings: bool = False,
     sync_stage_timings: bool = False,
@@ -1500,6 +1659,8 @@ def verify_qwen35_gguf_native_b2_target(
         "capture_linear_state_rows": bool(capture_linear_state_rows),
         "defer_linear_state_commit": bool(defer_linear_state_commit),
     }
+    if capture_pre_output_norm_hidden:
+        eager_kwargs["capture_pre_output_norm_hidden"] = True
     if capture_lm_head_logits:
         eager_kwargs["capture_lm_head_logits"] = True
     if record_stage_timings:
@@ -1507,8 +1668,8 @@ def verify_qwen35_gguf_native_b2_target(
     if sync_stage_timings:
         eager_kwargs["sync_stage_timings"] = True
     rows = len(tuple(input_token_ids))
-    if rows not in {2, 3}:
-        reason = "native target graph requires two or three rows (one root plus B1/B2)"
+    if rows not in {2, 3, 4}:
+        reason = "native target graph requires two to four rows (one root plus B1-B3)"
         session.last_native_spec_target_fallback_reason = reason
         if not fallback:
             raise NativeSpecTargetGraphUnsupportedError(reason)
@@ -1521,6 +1682,7 @@ def verify_qwen35_gguf_native_b2_target(
         bulk_attention_mode=bulk_attention_mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_linear_state_rows=bool(capture_linear_state_rows),
+        capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=bool(device_accept_commit),
     ):
@@ -1537,6 +1699,7 @@ def verify_qwen35_gguf_native_b2_target(
                 bulk_attention_mode=bulk_attention_mode,
                 use_wmma_prefill=use_wmma_prefill,
                 capture_linear_state_rows=capture_linear_state_rows,
+                capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
                 capture_lm_head_logits=capture_lm_head_logits,
                 record_stage_timings=record_stage_timings,
                 sync_stage_timings=sync_stage_timings,

@@ -85,6 +85,11 @@ class Qwen35GGUFPreparedVerify:
     kv_journal_positions: tuple[int, ...]
     gpu_accept_match_cpu: bool
     target_verify_mode: str
+    native_graph_submitted: bool = False
+    native_graph_capture_ms: float = 0.0
+    native_graph_submit_ms: float = 0.0
+    native_graph_readback_ms: float = 0.0
+    native_graph_fallback_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -397,18 +402,55 @@ class Qwen35GGUFTransactionalVerifier:
         self.journal.capture_initial(stream=stream)
         logits: list[np.ndarray] = []
         top1: list[int] = []
+        native_graph_submitted = False
+        native_graph_capture_ms = 0.0
+        native_graph_submit_ms = 0.0
+        native_graph_readback_ms = 0.0
+        native_graph_fallback_reason = None
         try:
             if self.target_verify_mode == "native":
-                block = self.target.verify_target_block(
-                    batch.tokens,
-                    bulk_attention_mode="native",
-                    use_wmma_prefill=False,
-                    stream=stream,
-                    capture_linear_state_rows=True,
-                    capture_pre_output_norm_hidden=True,
-                    capture_lm_head_logits=return_logits,
-                    defer_linear_state_commit=True,
-                )
+                native_kwargs = {
+                    "bulk_attention_mode": "native",
+                    "use_wmma_prefill": False,
+                    "capture_linear_state_rows": True,
+                    "capture_pre_output_norm_hidden": True,
+                    "capture_lm_head_logits": return_logits,
+                    "defer_linear_state_commit": True,
+                }
+                if stream:
+                    native_graph_fallback_reason = (
+                        "native target graph does not support caller-owned streams"
+                    )
+                    block = self.target.verify_target_block(
+                        batch.tokens,
+                        stream=stream,
+                        **native_kwargs,
+                    )
+                else:
+                    block = self.target.verify_target_block_native_cycle(
+                        batch.tokens,
+                        fallback=True,
+                        cycle_id=int(graph_bucket.replay_count),
+                        transaction_id=int(transaction_id),
+                        request_id=int(batch.request_ids[0]),
+                        **native_kwargs,
+                    )
+                if not stream:
+                    native_graph_submitted = bool(
+                        self.target.last_native_spec_target_submitted
+                    )
+                    native_graph_capture_ms = float(
+                        self.target.last_native_spec_target_capture_ms
+                    )
+                    native_graph_submit_ms = float(
+                        self.target.last_native_spec_target_submit_ms
+                    )
+                    native_graph_readback_ms = float(
+                        self.target.last_native_spec_target_readback_ms
+                    )
+                    native_graph_fallback_reason = (
+                        self.target.last_native_spec_target_fallback_reason
+                    )
                 if block is None:
                     raise RuntimeError("native GGUF target verifier produced no host result")
                 if int(block.start_position) != initial_position:
@@ -490,6 +532,11 @@ class Qwen35GGUFTransactionalVerifier:
                 kv_journal_positions=tuple(int(position) for position in batch.positions),
                 gpu_accept_match_cpu=gpu_match,
                 target_verify_mode=self.target_verify_mode,
+                native_graph_submitted=native_graph_submitted,
+                native_graph_capture_ms=native_graph_capture_ms,
+                native_graph_submit_ms=native_graph_submit_ms,
+                native_graph_readback_ms=native_graph_readback_ms,
+                native_graph_fallback_reason=native_graph_fallback_reason,
             )
             self._prepared = prepared
             return prepared
@@ -775,6 +822,11 @@ class Qwen35GGUFMTPDecodeSession:
             prepared_logits = np.empty((0, 0), dtype=np.float32)
             prepared_gpu_match = False
             prepared_verify_mode = ""
+            prepared_native_graph_submitted = False
+            prepared_native_graph_capture_ms = 0.0
+            prepared_native_graph_submit_ms = 0.0
+            prepared_native_graph_readback_ms = 0.0
+            prepared_native_graph_fallback_reason = None
             draft_tail_advanced = False
             try:
                 verify_started = time.perf_counter()
@@ -791,6 +843,13 @@ class Qwen35GGUFMTPDecodeSession:
                 prepared_logits = prepared.target_logits
                 prepared_gpu_match = prepared.gpu_accept_match_cpu
                 prepared_verify_mode = prepared.target_verify_mode
+                prepared_native_graph_submitted = prepared.native_graph_submitted
+                prepared_native_graph_capture_ms = prepared.native_graph_capture_ms
+                prepared_native_graph_submit_ms = prepared.native_graph_submit_ms
+                prepared_native_graph_readback_ms = prepared.native_graph_readback_ms
+                prepared_native_graph_fallback_reason = (
+                    prepared.native_graph_fallback_reason
+                )
                 buffer_plan = scheduler.bind_speculative_verify_buffers(plan, prepared.buffers)
                 commit = scheduler.plan_speculative_commit(buffer_plan, prepared.summary)
                 state_buffers = self.verifier.commit(prepared, commit.commit_plan)
@@ -839,6 +898,11 @@ class Qwen35GGUFMTPDecodeSession:
                 "quant": self.quant,
                 "experts_per_token": experts_per_token,
                 "target_verify_mode": prepared_verify_mode,
+                "target_native_graph_submitted": prepared_native_graph_submitted,
+                "target_native_graph_capture_ms": prepared_native_graph_capture_ms,
+                "target_native_graph_submit_ms": prepared_native_graph_submit_ms,
+                "target_native_graph_readback_ms": prepared_native_graph_readback_ms,
+                "target_native_graph_fallback_reason": prepared_native_graph_fallback_reason,
                 "draft_tail_advanced": draft_tail_advanced,
             }
             # ``prepared`` is cleared only after the transaction is fully
