@@ -203641,3 +203641,39 @@ Vulkan local sizes verbatim will close the measured gap.
   logits-readback fallback.
   This is correctness/observability evidence only; no natural25 speed claim is
   made before the clean same-suite gate.
+
+### D27-O3 clean reusable native graph natural25 — RETAINED
+
+- Clean commit `ea33e64050b56c0a43d1c73d91f90a1d468553dd` uses GPU0 W7900,
+  exact 17,106,773,120-byte Qwen3.6-27B Q4_K_M GGUF (`a7cbd3ec...29e0f`),
+  TheRock HIP 7.15, BF16 K/V, cached-only JIT, one warmup, and the same ten-
+  prompt/240-transition true-AR plus native B1-B3 protocol as retained
+  `03ba1c479`. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-ea33e6405/natural25-native-graph-b1-b3.json`.
+- True AR is noise-flat **20.3621 -> 20.3790 tok/s (+0.083%)**. Reusable
+  graph B1/B2/B3 improve **20.8465/22.1016/21.8403 ->
+  23.2245/24.8203/25.1925 tok/s**, or **+11.407%/+12.301%/+15.349%**.
+  Complete decode wall falls **10.239%/10.954%/13.307%** and target verify
+  falls **11.104%/12.107%/14.818%**. Own-AR ratios advance
+  **1.0238x/1.0854x/1.0726x -> 1.1396x/1.2179x/1.2362x**; B3 becomes the
+  exact winner.
+- Every one of the 30 prompt/budget rows improves (**+2.908% to +16.970%**).
+  Every full/train/heldout/category rollup improves (**+9.920% to +16.152%**).
+  All 250 visible IDs at each budget match true AR and the prior route; every
+  accepted-count/proposal/cycle/target-row ledger matches; every GPU accept
+  summary matches CPU; all stage ledgers reconcile exactly.
+- Every measured cycle submits the graph without fallback. B1's 128 cycles
+  report 68.488 ms first capture / 8,961.199 ms submit / 16.092 ms readback;
+  B2's 92 cycles report 95.427 / 8,293.823 / 12.072 ms. B3's 77 measured
+  cycles are warm after the prescribed all-budget warmup and report 0 /
+  8,231.053 / 10.835 ms. The B1/B2 complete-wall gains therefore include one
+  measured recapture rather than hiding startup cost.
+- Tracked peak rises only **738,372 bytes / 0.000688 GiB** to
+  **31,134,012,448 bytes / 28.995809 GiB** and every allocation frees after
+  close. Model load 169.958 s is excluded. B3 reaches **25.193 tok/s** and
+  **1.2362x own AR**, but remains 63.00% below Vulkan B3 68.082 tok/s.
+- Retain compact artifact
+  `benchmarks/results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json`.
+  Candidate and comparison SHA-256s are `185e93f6...c25c` and
+  `12b1bc01...987`. Re-profile the retained B3 graph before admitting the next
+  D27-O3 candidate; do not attribute the remaining wall from the eager trace.

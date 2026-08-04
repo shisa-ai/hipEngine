@@ -1,0 +1,259 @@
+{
+  "schema": 1,
+  "status": "retained_exact_native_graph_b3_selected_still_below_vulkan",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_native_verifier_graph_w7900",
+  "timestamp": "2026-08-04T00:50:55.476733+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "hipengine_commit": "ea33e64050b56c0a43d1c73d91f90a1d468553dd",
+    "baseline_commit": "03ba1c479efd16701b0376469f936baef051d88b",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "max_tokens_visible": 25,
+    "timed_transitions": 240,
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "reasoning": "off"
+    },
+    "warmups": 1,
+    "repetitions": 1,
+    "target_verify_mode": "native",
+    "timing": "first output from prefill; 24 timed decode transitions per prompt; complete proposal/verify/commit/residual wall"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-ea33e6405/natural25-native-graph-b1-b3.json",
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-04-qwen36-27b-dense-local128-retained.json",
+    "route": "exact native target with resident-Q4 rowtiles and dense local128 verifier GEMV, submitted eagerly",
+    "true_ar_tok_s": 20.36213235841198,
+    "budgets": {
+      "1": {
+        "decode_seconds": 11.512731741880998,
+        "decode_tok_s": 20.846485906288283,
+        "mtp_vs_true_ar": 1.0237869757130917,
+        "target_verify_seconds": 10.400121504906565
+      },
+      "2": {
+        "decode_seconds": 10.858952617272735,
+        "decode_tok_s": 22.10157908031068,
+        "mtp_vs_true_ar": 1.0854255679749623,
+        "target_verify_seconds": 9.724277587840334
+      },
+      "3": {
+        "decode_seconds": 10.988868706161156,
+        "decode_tok_s": 21.84028278228846,
+        "mtp_vs_true_ar": 1.0725931055676412,
+        "target_verify_seconds": 9.816486090188846
+      }
+    },
+    "tracked_peak_gib": 28.995120968669653
+  },
+  "candidate": {
+    "load_seconds_excluded": 169.957576188026,
+    "true_ar_tok_s": 20.378958734042214,
+    "true_ar_delta_percent": 0.08263562643664457,
+    "budgets": {
+      "1": {
+        "decode_seconds": 10.333903509425,
+        "decode_wall_delta_percent": -10.239344222428626,
+        "decode_tok_s": 23.224524961076796,
+        "decode_tok_s_delta_percent": 11.407385712290164,
+        "mtp_vs_true_ar": 1.139632562397861,
+        "ratio_delta_percent": 11.315399534564307,
+        "target_verify_seconds": 9.245262641692534,
+        "target_verify_delta_percent": -11.104282413135191
+      },
+      "2": {
+        "decode_seconds": 9.669507910497487,
+        "decode_wall_delta_percent": -10.953585936854203,
+        "decode_tok_s": 24.8202909828999,
+        "decode_tok_s_delta_percent": 12.300984887596545,
+        "mtp_vs_true_ar": 1.217937153061634,
+        "ratio_delta_percent": 12.20826088829783,
+        "target_verify_seconds": 8.546992098446935,
+        "target_verify_delta_percent": -12.106662718735306
+      },
+      "3": {
+        "decode_seconds": 9.526631487999111,
+        "decode_wall_delta_percent": -13.306530974769116,
+        "decode_tok_s": 25.192535294593142,
+        "decode_tok_s_delta_percent": 15.348942803172916,
+        "mtp_vs_true_ar": 1.2362032635411369,
+        "ratio_delta_percent": 15.253702184381401,
+        "target_verify_seconds": 8.361895581241697,
+        "target_verify_delta_percent": -14.817832935157416
+      }
+    },
+    "numerically_best_budget": 3,
+    "best_decode_tok_s": 25.192535294593142,
+    "best_mtp_vs_true_ar": 1.2362032635411369,
+    "best_vs_llamacpp_vulkan_b3": 0.37003224486050856,
+    "best_percent_behind_llamacpp_vulkan_b3": 62.996775513949146,
+    "tracked_peak_gib": 28.995808631181717,
+    "tracked_peak_delta_gib": 0.0006876625120639801,
+    "allocations_after_close": 0
+  },
+  "cross_scope_retention": {
+    "all_prompt_budget_rows_improve": true,
+    "all_full_train_heldout_category_rows_improve": true,
+    "per_prompt_decode_improvement_percent_range": [
+      2.9076948280811976,
+      16.970115640296246
+    ],
+    "scope_decode_improvement_percent_range": [
+      9.920041675534863,
+      16.151909082290807
+    ],
+    "by_budget": {
+      "1": {
+        "full_percent": 11.407385712290164,
+        "train_percent": 10.995326601235567,
+        "heldout_percent": 11.999330705504207,
+        "category_percent_range": [
+          9.920041675534863,
+          13.005954162102507
+        ],
+        "prompt_percent_range": [
+          5.013936847905631,
+          13.514398775703885
+        ]
+      },
+      "2": {
+        "full_percent": 12.300984887596545,
+        "train_percent": 11.549360176812318,
+        "heldout_percent": 13.342062308091606,
+        "category_percent_range": [
+          10.559615112883215,
+          13.579670926303988
+        ],
+        "prompt_percent_range": [
+          2.9076948280811976,
+          14.11166757632989
+        ]
+      },
+      "3": {
+        "full_percent": 15.348942803172916,
+        "train_percent": 14.94246162903259,
+        "heldout_percent": 15.860108199111833,
+        "category_percent_range": [
+          14.75861844415427,
+          16.151909082290807
+        ],
+        "prompt_percent_range": [
+          14.391730478618413,
+          16.970115640296246
+        ]
+      }
+    }
+  },
+  "correctness": {
+    "all_250_visible_ids_match_true_ar_at_each_budget": true,
+    "all_candidate_ids_match_prior_native_route": true,
+    "all_acceptance_ledgers_match_prior_native_route": true,
+    "all_gpu_accept_summaries_match_cpu": true,
+    "all_stage_ledgers_reconcile": true,
+    "native_b1_b2_b3_reject_partial_full_state_kv_hidden_oracle_passed": true,
+    "native_b3_dynamic_positions_checked": [
+      6,
+      7,
+      9
+    ],
+    "all_measured_cycles_submitted_without_fallback": true
+  },
+  "graph_evidence": {
+    "correctness_commit": "ea33e64050b56c0a43d1c73d91f90a1d468553dd",
+    "owner": "one independently reusable N1 VERIFY executable per B1/B2/B3 bucket",
+    "dynamic_metadata": "device token IDs, positions, context counts, resident-page KVLiveSpans, and graph-owned FP32 pre-output-norm trunk rows",
+    "policy_boundary": "N2 device accept/selected commit remains B1/B2; dense B3 changes N1 VERIFY only",
+    "telemetry_by_budget": {
+      "1": {
+        "cycles": 128,
+        "positive_capture_count": 1,
+        "capture_ms_sum": 68.48800904117525,
+        "submit_ms_sum": 8961.199125042185,
+        "readback_ms_sum": 16.09164453111589
+      },
+      "2": {
+        "cycles": 92,
+        "positive_capture_count": 1,
+        "capture_ms_sum": 95.42666608467698,
+        "submit_ms_sum": 8293.822987237945,
+        "readback_ms_sum": 12.072220677509904
+      },
+      "3": {
+        "cycles": 77,
+        "positive_capture_count": 0,
+        "capture_ms_sum": 0.0,
+        "submit_ms_sum": 8231.052688555792,
+        "readback_ms_sum": 10.834604036062956
+      }
+    },
+    "warmup_note": "The prescribed warmup runs every budget. B3 remained warm into measurement; B1/B2 each report one measured first capture. Their complete-wall gains therefore include that first-capture cost."
+  },
+  "memory_tradeoff": {
+    "new_incremental_peak_bytes": 738372,
+    "new_incremental_peak_gib": 0.0006876625120639801,
+    "tracked_peak_gib": 28.995808631181717,
+    "allocations_after_close": 0,
+    "note": "The bounded graph workspaces add less than 0.001 GiB at tracked peak and free completely after close."
+  },
+  "decision": {
+    "action": "keep_and_promote_exact_reusable_native_verifier_graph_for_dense_b1_b2_b3",
+    "reason": "complete wall, target verify, and MTP/AR improve at every budget; every prompt/full/train/heldout/category row improves; all exactness, acceptance, transaction, graph-submission, and lifecycle gates pass",
+    "selected_budget": 3,
+    "limitations": [
+      "best exact B3 is 1.2362x own AR but remains 63.00% below llama.cpp Vulkan B3",
+      "graph admission remains bounded to supported below-1024, non-caller-stream contexts and falls back before mutation",
+      "full-logit diagnostics remain eager because the graph exposes only bounded target rows"
+    ]
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/final-03ba1c479/natural25-native-dense-local128-b1-b3.json": "ab6619d04a52dbfa7d49d38c8fbbb6953abfbe0ecbcc5c92169478af693f91e1",
+    "/tmp/hipengine-qwen36-27b/final-ea33e6405/natural25-native-graph-b1-b3.json": "185e93f670f7cf6fa81d04a0ff1be2bafaac8da68348ed41a7ab5c29cf5ec25c",
+    "/tmp/qwen36-native-graph-compare.json": "12b1bc013788dcc857c35091088b7aa4d92239bc35ba799b033d50626123d987"
+  }
+}

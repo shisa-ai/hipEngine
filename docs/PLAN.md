@@ -551,7 +551,9 @@ Current blockers that keep project-wide c>N incomplete:
   are landed. The exact dense Qwen3.6 native verifier now extends N1 VERIFY to
   an independent B3 bucket with dynamic row positions/`KVLiveSpans` and exact
   pre-output-norm trunk-row capture; N2 device accept/commit remains B1/B2.
-  N1 is byte-exact across dynamic positions and cached-session resets; the
+  Clean exact dense natural25 selects B3 at 25.193 tok/s / 1.2362x own AR, with
+  every prompt/category/heldout and transaction gate exact. N1 is byte-exact
+  across dynamic positions and cached-session resets; the
   retained accuracy-traded llama-compat suite reaches 122.667 tok/s
   versus llama.cpp's 115.444 tok/s W7900 floor. N2 device acceptance, selected
   hidden/Conv/GDN commit, cursor update, and bounded summary readback are also
