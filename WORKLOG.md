@@ -203438,3 +203438,30 @@ Vulkan local sizes verbatim will close the measured gap.
   remains blocked only by the already-recorded absent external Atlas checkout;
   this unit ports no kernel. No GPU lifecycle claim is made before the approved
   three-independent-process 128K gate.
+
+## 2026-08-04 — Qualify conservative 128K isolation and open split profiles
+
+- Prebuild the conservative path outside evidence runs, then pass a cache-only
+  512 warmup+3 control at measured **449.998-450.517 tok/s** and a cache-only
+  64K warmup+1 control at **385.923/385.708 tok/s**. Both use one hardware
+  queue, chunk flight recording, no host drain, exact selector provenance, and
+  full tracked-allocation cleanup. The 64K control establishes that the slower
+  unfused route still fits a bounded 128K lifecycle gate.
+- Run three independent cache-only Q4_K_M `128K/128` processes with one warmup,
+  three measured repetitions, chunk flight recording, no queue drain,
+  `GPU_MAX_HW_QUEUES=1`, and a 1,800-second process-group bound. All **12/12**
+  prefills complete. Measured prefill spans **306.824997-307.682727 tok/s** and
+  decode **29.630808-29.657539 tok/s**; every run is finite with final token
+  9707 and identical final logit `29.97690773010254`; each process returns
+  tracked allocation to zero. Captured kernel journals contain no matching
+  amdgpu/KFD fault, timeout, or reset. Raw JSON/log/flight/telemetry/journal
+  evidence is under `/tmp/hipengine-gfx1151-kernel-isolation.jSbQCW/`; JSON
+  SHA-256 prefixes are `e546048d`, `e6a8892c`, and `661e50bf`.
+- Interpret this only as elimination evidence: disabling exact GDN, Q4 shared-X,
+  and later convolution/dispatch changes avoids the observed failure across the
+  predeclared gate, but does not name the necessary route. Add fail-closed
+  `gdn_exact` and `q4_shared_x` profiles that start from the conservative map
+  and restore exactly one family. RED is **2 expected failures** before support;
+  GREEN focused profile plus queue-drain coverage passes **15/15**, pycompile
+  and diff checks pass. Run the same independent 128K gate for both profiles
+  before choosing a fallback.
