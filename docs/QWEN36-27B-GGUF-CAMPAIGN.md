@@ -642,6 +642,20 @@ D27-O1 is complete and D27-O3 resumes before D27-L1. Artifacts:
 `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-admitted.json`
 and `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json`.
 
+The post-compact B3 profile remains the current D27-O3 authority because the
+new populated-prefill route starts at 512 rows while every natural25 prompt is
+39-71 rows. Its **676.596-ms** complete wall is led by exact target Q4 rowtiles
+at **189.267 ms / 27.97%**, followed by dense-BF16 rowtiles at **137.839 ms /
+20.37%**. The first resumed candidate is a bounded two-output-pack Q4 rowtile
+for verifier rows. The already-bit-exact large-row screen shows compile-time
+16x4 is **6.00-9.67%** faster than 8x4 across all six real projection roles;
+that implies **11.36-18.31 ms / 1.68-2.71%** complete-wall recovery before
+launch savings. This is below the ordinary 5% admission floor but qualifies as
+an exact, low-risk additive specialization in the already-open dominant
+family. GPU1 must screen rows 2/3/4 against the retained small-row device oracle
+before any runtime route changes; unsupported rows and a losing shape retain
+the current 8-column owner.
+
 ---
 
 ## 7. Prioritized execution plan
