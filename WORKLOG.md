@@ -204078,3 +204078,27 @@ Vulkan local sizes verbatim will close the measured gap.
   complete wall. Engineering/risk is low. Promotion still requires clean
   W7900 512/128 and 4096/128 exact AR, unchanged decode, and expected traced
   WMMA symbols.
+- RED adds resident-pack8 `use_wmma_prefill` dispatch, wide-pair decline,
+  rows<16 fallback, measured shape policy, and wrapper-forwarding guards. The
+  focused run fails the intended **6** nodes while the rows=4 fallback passes:
+  dispatch still selects `pack8_prefill`, the wide pair still invokes the
+  legacy dual owner, Qwen shapes still default to 64x16, and the gfx1100
+  wrapper forwards no shape tile.
+- GREEN implementation passes
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_wmma_prefill.py`
+  (**132/132**), but the required real-input model oracle rejects the route.
+  Same-process W7900 control/candidate prefill is **52.142 -> 217.163 tok/s**
+  at 512 and **51.827 -> 207.910 tok/s** at 4096; first/next top-1 stays
+  `9707`, and KL is only `1.05e-6`/`1.26e-6` and
+  `6.69e-8`/`1.86e-7`, respectively. However, every full logit row differs
+  and both the post-prefill and post-step Conv/GDN/KV state hashes differ at
+  both contexts. The WMMA leaf casts dequantized FP32 weights to FP16 operands,
+  so the uniform-byte synthetic screen's BF16 equality does not establish the
+  campaign's byte-exact real-input contract.
+- Decision: **reject/revert** the `use_wmma_prefill` production rewrite and
+  gfx1100 tile policy. Do not run the expensive natural25 or profiler promotion
+  gates after the mandatory exact-state gate failed. Preserve the result only
+  as an accuracy-traded diagnostic; exact/default D27-O1 must instead preserve
+  the existing FMA/reduction tree (next screen: chunked resident-pack8 row
+  tiling). Real-gate script/result SHA-256s are `f475e433...8252` and
+  `74482f89...985`; all candidate code and RED tests were removed.

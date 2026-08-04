@@ -579,34 +579,41 @@ bytes and free completely. B3 is selected at **1.9422x own AR**, still 41.82%
 below Vulkan B3. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`.
 
-With the first D27-O3 pass retained, D27-O1 is now the highest-impact open
+With the first D27-O3 pass retained, D27-O1 remains the highest-impact open
 campaign gate. The unchanged clean 512-prefill profile assigns **7,815.869 ms /
 78.86%** of its reconciled 9,944.618-ms wall to 216 resident-Q4_K pack8
-projection launches. The exact wave32 WMMA consumer needed to remove that
-bucket is already registered and consumes the same qweight plus FP32 scale/min
-planes; the missing boundary is production routing and gfx1100 shape policy,
-not a new kernel or weight layout.
+projection launches. A registered wave32 WMMA consumer uses the same qweight
+plus FP32 scale/min planes, but it casts each dequantized weight to an FP16
+matrix operand and therefore cannot be presumed exact to the retained FP32-FMA
+reduction tree.
 
-A GPU1 7900 XTX screen covers every real dense-Q4 projection shape at M=512 and
-the 4K route's M=1024 linear chunk. At M=512, legacy-to-best-WMMA medians are
+A GPU1 7900 XTX component screen covered every real dense-Q4 projection *shape*
+at M=512 and the 4K route's M=1024 linear chunk, but used uniform synthetic
+activation/weight bytes. At M=512, legacy-to-best-WMMA medians were
 **75.058 -> 4.485 ms (16.73x)** for FFN gate/up, **9.540 -> 1.458 ms
 (6.54x)** for linear QKV, **5.843 -> 0.911 ms (6.41x)** for the linear gate,
 **12.839 -> 1.663 ms (7.72x)** for full Q, **0.941 -> 0.198 ms (4.76x)** for
-K/V, and **5.605 -> 0.949 ms (5.90x)** for attention output. M=1024 spans
-**5.01-17.28x**. All 72 tile/shape comparisons are BF16 bit-exact. The stable
-policy is 32x32 for wide K=5120 outputs, 32x16 for N=1024 K/V, and 16x32 for
-K=6144/N=5120 output projections.
+K/V, and **5.605 -> 0.949 ms (5.90x)** for attention output. M=1024 spanned
+**5.01-17.28x**. All 72 synthetic comparisons happened to round to equal BF16
+outputs, with stable best tiles of 32x32 for wide K=5120 outputs, 32x16 for
+N=1024 K/V, and 16x32 for K=6144/N=5120. That equality was not a real-input
+correctness proof.
 
-D27-O1 therefore admits the low-risk dispatcher unit: under the existing
-`use_wmma_prefill` opt-in, resident pack8 rows >=16 use the registered WMMA
-singleton; a wide equal-shape pair declines the old dual row-grid owner so the
-caller emits two WMMA singletons. Rows <16, WMMA-off, unsupported shapes, and
-registry misses keep the current exact fallback. A conservative 75% recovery
-of the measured Q4 bucket is **5,861.901 ms / 58.94%** of complete p512 wall.
-Retention requires the clean same-W7900 512/128 and 4096/128 AR gates, exact
-IDs/state, no decode regression, and a kernel trace proving the intended WMMA
-owner. GPU1 script/result SHA-256s are `229bc18b...6d25` and
-`728c349b...0528`.
+The production-routing trial is **rejected**. Its 132 focused dispatch/kernel
+tests pass, and same-process W7900 model prefill improves **52.142 -> 217.163
+tok/s** at 512 and **51.827 -> 207.910 tok/s** at 4096. First and next token
+remain `9707`, with KL at most `1.26e-6`, but every full logit row and both the
+post-prefill and post-step Conv/GDN/KV state hashes differ at both contexts.
+This fails D27-O1's exact IDs/state gate, so the `use_wmma_prefill` rewrite and
+gfx1100 tile policy were reverted before natural25 or profiler promotion.
+Script/result SHA-256s are `f475e433...8252` and `74482f89...985`; the earlier
+synthetic screen hashes remain `229bc18b...6d25` and `728c349b...0528`.
+
+The next D27-O1 candidate must preserve the existing FP32 FMA order, arithmetic
+partitions, reduction tree, and BF16 boundary while amortizing resident pack8
+weights across token rows. A chunked scalar row-tile is the next screen; it is
+not admitted until realistic-input component equality and a positive complete-
+wall ceiling are measured.
 
 ---
 
@@ -619,7 +626,7 @@ owner. GPU1 script/result SHA-256s are `229bc18b...6d25` and
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | in progress; exact resident-pack8 WMMA routing admitted |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | in progress; approximate WMMA rejected, exact row-tile screen next |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
 | 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | seven wins retained; compact exact B3 selected at 1.9422x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
