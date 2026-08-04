@@ -357,6 +357,16 @@ This profile changes only
 package default remains active. It is the required gate before changing the
 gfx1151 automatic route.
 
+That production-shaped gate passes: three independent warmup+3 processes
+complete all **12/12** prefills at measured **575.180-580.626 tok/s**, decode
+**29.623-29.686 tok/s**, stable token 9707 and final logit
+`30.117918014526367`, zero tracked bytes after every close, and no failure-
+signature telemetry or GPU fault/reset log. The gfx1151 package automatic mode
+therefore falls back to `baseline`. The explicit `shared_x` mode remains for
+repair/bisection, and gfx1100 policy is unchanged. Full evidence and raw hashes
+are in
+[`benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json`](../benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json).
+
 ### Experimental host-drain containment
 
 To test whether bounding outstanding work avoids the queue-retirement state,

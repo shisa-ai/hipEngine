@@ -674,9 +674,11 @@ GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS = 4096
 # Clean LCP-1 primitive/full-state, same-stream trace, and fresh-process wall
 # gates admit the exact 32-token shared-memory convolution schedule on gfx1151.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"
-# Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
-# selected-dual Q4T16 prefill schedule on gfx1151.
-GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
+# GPF-3A shared-X is byte-exact and wins at 512/1K/4K, but the controlled
+# repeated-128K split reproduces the gfx1151 queue no-progress state only when
+# this route is enabled. Keep the explicit diagnostic, and use the established
+# baseline body automatically until shared-X passes the long-context gate.
+GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "baseline"
 # LCP-4's exact router primitive and full-model gates admit the 256-thread
 # reduction geometry for BF16-hidden/F32-weight GGUF router logits on gfx1151.
 GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256
