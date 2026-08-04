@@ -203169,3 +203169,37 @@ Vulkan local sizes verbatim will close the measured gap.
   require the canonical scoreboard's artifact link. The focused bundle now
   passes **14/14**; both diagnostic JSON files parse and `git diff --check`
   passes.
+
+## 2026-08-04 — Freeze grouped-GQA and MoE structural contracts
+
+- Audit finds MoE coverage already stronger than the Nathan-review maintenance
+  requirement. `test_qwen35_moe_group_scatter_plan.py` checks serial/parallel
+  stable expert starts, ascending active-expert IDs, stable lane and source-row
+  order, sorted weights, 32/64 tile starts/maps, and active-prefix behavior.
+  H7U adds one/all/uneven/repeated/tail routing, natural M512 tile-map/packed-
+  hidden repeat/lifecycle parity, physical resource/source guards, and a pinned
+  47-count + 47-prefix + 47-scatter / zero-serial / 47-gather trace contract.
+- Grouped-GQA INT8 had exact CPU-oracle smoke and retained profiler evidence but
+  no direct source/launch guard. Add
+  `test_int8_gqa_splitk_producer_grid_is_owned_by_kv_head`, freezing
+  `blockIdx.x -> kv_head`, `q_base=kv_head*q_per_kv`, eight-Q-head inner loops,
+  KV-head scale offsets, and `dim3(num_kv_heads,num_splits)` launch ownership.
+  RED-first is inapplicable because this is a regression guard for existing
+  behavior, not a math or implementation change.
+- Fresh cached gfx1151 INT8 GQA smoke passes FP32-scale context 64, unaligned
+  384/128 three-split, and FP16-scale page-boundary context 520 with direct max
+  abs **<=2.98e-08**, FP16-gated **1.53e-05**, and BF16-gated **1.49e-08**.
+  Cached `rocprofv3 --kernel-trace` names the expected producer: FP32 scale runs
+  twice at global grids `(512,1,1)/(512,3,1)`; FP16 scale runs three times at
+  `(512,3,1)`. Global X is exactly two KV heads times local256, not 16 Q heads
+  times local256. Both use local256, VGPR80, SGPR128, LDS0, scratch0, with
+  positive **22.603-273.714 us** durations. Raw smoke/trace SHA-256 are
+  `6e4f385d...57094` / `5aa6687d...bbea` under
+  `/tmp/hipengine-nathan-structural/`.
+- The combined attention/MoE/H7U run completed with **25 passed / 1 stale source-
+  hash failure**. The sole failure was the accepted head-major AOTriton package
+  capability changing `hip_gfx1151/__init__.py`, orthogonal to H7U. Refresh that
+  post-merge expected hash with an explanatory comment; the full H7U file then
+  passes **9/9**, and its source-default trace/owner guard passes **3/3**. The
+  earlier combined run already established every other node green, so no
+  redundant broad rerun is needed under the focused-repair rule.

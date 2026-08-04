@@ -46,8 +46,10 @@ _POST_MERGE_PACKAGE_SHA256 = (
     "59d226de4caf87ddb92e8a4b66f721a874ca1f213436a7c1838d762d32ba9a91"
 )
 _POST_MERGE_SOURCE_SHA256 = {
+    # The later bounded head-major AOTriton capability is orthogonal to H7U's
+    # unchanged gfx1151 parallel-compaction owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "a4587d4362eb59bba65aacab65d4651fc8d594f7b19195fb8f6692ebafbde1d3"
+        "5cbd55545ba67ba79d6bf1b5e95b06860a0d03ff07758d9e9b1adeaf400f31f9"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

@@ -383,9 +383,13 @@ as `if model == deepseek4` or backend conditionals in generic dispatch.
    the captured kernel already has the replacement gfx1151 VGPR-size fix active
    and nevertheless reproduced. Keep the qualified layer drain opt-in while the
    upstream issue remains open.
-3. **P1 — maintain:** keep grouped-GQA INT8 decode and expert row-list metadata
-   covered by structural and profiler tests; these Nathan ideas are already in
-   hipEngine.
+3. **P1 — completed 2026-08-04:** grouped-GQA INT8 decode now has an
+   explicit source/launch guard proving `(kv_head, split)` producer ownership
+   plus a fresh exact gfx1151 smoke and named trace. Existing H7U/H7U-source
+   gates already cover stable expert starts, active lists, lane/source-row
+   order, MMQ tile maps, packed hidden, edge cases, and profiler topology; their
+   full GPU bundle remains green after refreshing only an orthogonal gfx1151
+   package hash.
 4. **P1 — quantized KV:** retain the fast BF16 prefill bridge; do not promote the
    severe-regression direct streaming INT8 prefill merely to remove scratch.
 5. **P2 — future model:** use the DeepSeek V4 indexer/sparse/gather/HC commits as
