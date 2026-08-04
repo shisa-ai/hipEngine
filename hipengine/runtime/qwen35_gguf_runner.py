@@ -286,6 +286,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
+    launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
     q8_mmq_prefill_session,
@@ -6815,38 +6816,50 @@ class Qwen35GGUFFullStackRunner:
             return
         if next_norm_weight_ptr is not None:
             raise ValueError("MoE-tail next RMSNorm fusion requires an MoE layer")
-        if not launch_gguf_linear_pair(
+        dense_silu_fused = rows > 1 and launch_gguf_linear_pair_silu(
             layer.weight("ffn_gate"),
             layer.weight("ffn_up"),
             scratch.post_norm.ptr,
-            scratch.ffn_gate_up.ptr,
-            scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
+            scratch.ffn_intermediate.ptr,
             rows=rows,
             in_features=self.hidden_size,
             out_features=self.ffn_size,
             stream=stream,
             runtime=runtime,
-        ):
-            launch_gguf_linear(
+        )
+        if not dense_silu_fused:
+            if not launch_gguf_linear_pair(
                 layer.weight("ffn_gate"),
-                scratch.post_norm.ptr,
-                scratch.ffn_gate_up.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=self.ffn_size,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
                 layer.weight("ffn_up"),
                 scratch.post_norm.ptr,
+                scratch.ffn_gate_up.ptr,
                 scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
                 rows=rows,
                 in_features=self.hidden_size,
                 out_features=self.ffn_size,
                 stream=stream,
                 runtime=runtime,
-            )
+            ):
+                launch_gguf_linear(
+                    layer.weight("ffn_gate"),
+                    scratch.post_norm.ptr,
+                    scratch.ffn_gate_up.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.ffn_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("ffn_up"),
+                    scratch.post_norm.ptr,
+                    scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.ffn_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -6856,15 +6869,16 @@ class Qwen35GGUFFullStackRunner:
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_gate_up")
-        silu_mul_separate_out_bf16(
-            scratch.ffn_gate_up.ptr,
-            scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
-            scratch.ffn_intermediate.ptr,
-            rows=rows,
-            features=self.ffn_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        if not dense_silu_fused:
+            silu_mul_separate_out_bf16(
+                scratch.ffn_gate_up.ptr,
+                scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
+                scratch.ffn_intermediate.ptr,
+                rows=rows,
+                features=self.ffn_size,
+                stream=stream,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,

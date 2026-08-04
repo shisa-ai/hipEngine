@@ -728,6 +728,22 @@ the next RED must select it only for native resident-pack8 dense FFN rows 2-4
 and fail closed everywhere else. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-admitted.json`.
 
+That fail-closed runtime route is now correctness-complete. The generic pair
+boundary first proves both native singleton owners resolve the exact rowtile
+key, then selects the fused registry leaf only at K5,120/N17,408 and rows 2-4;
+c1, ordinary sessions, row/shape/layout/opt-out misses, and absent keys retain
+the old two-rowtile plus separate-SiLU chain. The dense runner consumes the
+fused output directly without changing the down/residual path.
+
+Five focused policy/integration tests pass, the prior GPU1 Q4/rowtile bundle and
+all existing gfx1151 c1 pair-SiLU tests remain green, and lint/compile checks
+pass. The W7900 B1-B3 transaction oracle observes candidate rows exactly
+`{2,3,4}` at only `(5120,17408)`, observes no legacy Q4 singleton launches, and
+remains exact for logits, reject/partial/full/rollback Conv/GDN/KV/hidden state,
+dynamic graph reuse, correction logits, and natural provider output. Freeze
+this routing unit before the clean natural25 promotion gate; no complete-path
+performance claim is made yet.
+
 ---
 
 ## 7. Prioritized execution plan

@@ -403,12 +403,42 @@ def dense_virtual256_rowtile_calls() -> Iterator[list[tuple[int, int, int]]]:
         gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
 
+@pytest.fixture
+def q4_dual_rowtile_silu_calls() -> Iterator[list[tuple[int, int, int]]]:
+    """Count the exact dense-FFN rowtile+SiLU owner on real transactions."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_rowtile_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, int, int]] = []
+
+    def counted(*args, **kwargs):
+        calls.append((int(args[8]), int(args[9]), int(args[10])))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+
+
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     monkeypatch: pytest.MonkeyPatch,
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
+    q4_dual_rowtile_silu_calls: list[tuple[int, int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
@@ -678,7 +708,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for record in actual.cycle_records
     )
     assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
-    assert rowtile_rows == {2, 3, 4}
+    assert rowtile_rows == set()
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
     assert dense_virtual256_rowtile_calls
@@ -687,6 +717,12 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (in_features, out_features)
         for _, in_features, out_features in dense_virtual256_rowtile_calls
     } == {(6144, 5120)}
+    assert q4_dual_rowtile_silu_calls
+    assert {rows for rows, _, _ in q4_dual_rowtile_silu_calls} == {2, 3, 4}
+    assert {
+        (in_features, out_features)
+        for _, in_features, out_features in q4_dual_rowtile_silu_calls
+    } == {(5120, 17408)}
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:

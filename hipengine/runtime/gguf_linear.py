@@ -135,6 +135,8 @@ _DENSE_BF16_VIRTUAL256_ROWTILE_IN_FEATURES = 6_144
 _DENSE_BF16_VIRTUAL256_ROWTILE_OUT_FEATURES = 5_120
 _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
+_PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
+_PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
@@ -953,6 +955,57 @@ def _pack8_rowtile_dispatch(
     if not is_registered(key):
         return dispatch
     return GGUFLinearDispatch(key, dispatch.abi)
+
+
+def _pack8_dual_rowtile_silu_dispatch(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    use_rowtile: bool,
+    native_batch: bool,
+) -> KernelKey | None:
+    """Resolve the exact dense-FFN pair fusion or fail closed."""
+
+    if (
+        in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
+        or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
+    ):
+        return None
+    rowtile_a = _pack8_rowtile_dispatch(
+        dispatch_a,
+        rows=rows,
+        use_rowtile=use_rowtile,
+        native_batch=native_batch,
+    )
+    rowtile_b = _pack8_rowtile_dispatch(
+        dispatch_b,
+        rows=rows,
+        use_rowtile=use_rowtile,
+        native_batch=native_batch,
+    )
+    expected = KernelKey(
+        dispatch_a.key.backend,
+        "linear",
+        "gguf_q4_k",
+        "pack8_rowtile_bf16_bf16_out",
+    )
+    if (
+        rowtile_a.abi != "pack8"
+        or rowtile_b.abi != "pack8"
+        or rowtile_a.key != expected
+        or rowtile_b.key != expected
+    ):
+        return None
+    candidate = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_rowtile_bf16_bf16_out",
+    )
+    return candidate if is_registered(candidate) else None
 
 
 def _rowtile_dispatch(
@@ -2060,8 +2113,6 @@ def launch_gguf_linear_pair_silu(
     """Launch an exact registered gate/up pair plus SiLU, or return False."""
 
     resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
-    if rows != 1 or not _resolve_use_gemv_decode(use_gemv_decode):
-        return False
     dispatch_a = resolve_gguf_linear_dispatch(
         weight_a,
         backend=resolved_backend,
@@ -2072,6 +2123,45 @@ def launch_gguf_linear_pair_silu(
         backend=resolved_backend,
         rows=rows,
     )
+    if rows != 1:
+        fused_rowtile_key = _pack8_dual_rowtile_silu_dispatch(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            use_rowtile=_resolve_use_q4k_rowtile(None),
+            native_batch=_native_batch_decode_session_enabled,
+        )
+        if fused_rowtile_key is None:
+            return False
+        fn = resolve(
+            backend=fused_rowtile_key.backend,
+            layer=fused_rowtile_key.layer,
+            quant=fused_rowtile_key.quant,
+            variant=fused_rowtile_key.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = None if libraries is None else libraries.get(fused_rowtile_key.quant)
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            weight_a.allocation("qweight").tensor.ptr,
+            weight_a.allocation("scales").tensor.ptr,
+            weight_a.allocation("mins").tensor.ptr,
+            weight_b.allocation("qweight").tensor.ptr,
+            weight_b.allocation("scales").tensor.ptr,
+            weight_b.allocation("mins").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    if not _resolve_use_gemv_decode(use_gemv_decode):
+        return False
     q4_decode = KernelKey(
         resolved_backend,
         "linear",

@@ -204454,3 +204454,40 @@ Vulkan local sizes verbatim will close the measured gap.
   for every other session/shape and registry miss, and prove the W7900 complete
   transaction before natural25 timing. Artifact:
   `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-admitted.json`.
+
+### D27-O3 exact Q4 gate/up rowtile plus SiLU runtime routing — GREEN
+
+- Runtime RED freezes both ownership boundaries. The public pair helper must
+  select `linear_pair_silu/gguf_q4_k/pack8_dual_rowtile_bf16_bf16_out` only for
+  native resident-pack8 K5,120/N17,408 rows 2/3/4, and decline c1, rows outside
+  2-4, ordinary sessions, shape/layout misses, rowtile opt-out, and a missing
+  candidate key. The dense Qwen3.6 runner must consume the fused intermediate,
+  skip the old pair and separate SiLU, retain c1, and preserve the complete
+  unfused chain whenever the helper declines. RED fails only because supported
+  rows return false and the dense runner enters the old pair.
+- GREEN adds one registry-driven pair rewrite in `runtime/gguf_linear.py`. It
+  first routes both singleton dispatches through the existing exact rowtile
+  policy and requires both exact keys before resolving the shape-qualified
+  fused leaf. It deliberately does not auto-register a missing candidate. The
+  dense runner attempts this helper only at `rows > 1`; its down and residual
+  owners, c1 path, scratch ABI, weights, and fallback remain unchanged. No
+  backend/quant branch is added to model code and no flag or allocation is
+  introduced.
+- Focused policy/integration tests pass **5/5**. The cached GPU1 fused-Q4 plus
+  resident-rowtile bundle passed **33/33** before the final fallback-only node
+  was added, and that node is covered by the subsequent focused run. Existing
+  gfx1151 pack8/sidecar/interleaved c1 pair-SiLU dispatch tests pass **3/3**.
+  Ruff, py_compile, and diff checks pass.
+- Mandatory W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`.
+  The first completed run cleared every logits/state/graph/provider comparison
+  and failed only the obsolete assertion expecting legacy Q4 singleton calls;
+  their observed set was correctly empty under fusion. The scoped assertion
+  repair requires zero legacy calls plus the new fused counter, and the focused
+  rerun passes **1/1**.
+- The real registry counter observes fused rows exactly `{2,3,4}` and shape only
+  `(5120,17408)`. B1-B3 full logits, reject/partial/full/rollback and positions
+  6/7/9 Conv/GDN/KV/hidden transactions, graph capture/reuse, correction
+  logits, and natural provider output remain scalar-exact. Freeze this
+  correctness-only routing unit before timing; the retained clean W7900
+  natural25 artifact from `4a4a615a8` remains the promotion baseline.
