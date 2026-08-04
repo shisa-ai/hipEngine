@@ -1006,6 +1006,27 @@ actual single-Q4 shapes before broad ownership, then require W7900 transaction/
 profile/natural25 and populated-prefill gates. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-q4t16-rowtiles-admitted.json`.
 
+Production FFN routing is now correctness-qualified without yet advancing the
+headline. With decode repacking enabled, exactly 64 dense `ffn_gate` and 64
+`ffn_up` Q4_K weights retain pack8 and gain a compact-T16 `decode_tiles`
+sidecar. This adds **6,595,543,040 bytes / 6.143 GiB**. Existing exact compact
+c1 fusion owns AR/single-row calls, the new registered row-reuse fusion owns
+native rows 2-4, and a missing sidecar/key/session or unsupported shape fails
+closed to retained pack8. The focused planner/dispatch bundle passes, and the
+binding W7900 transaction test passes with exclusive T16 ownership at rows
+`{2,3,4}` plus exact logits, reject/partial/full/rollback state, dynamic graph
+reuse, correction output, natural provider output, and teardown.
+
+The independent actual-weight screen also closes the separate single-Q4
+question before any broad route. All seven remaining production shapes are
+BF16-bit exact at rows 2-4. Geometric-mean speedup over pack8 is
+**1.071x/1.256x/1.180x**; all row-3/4 shapes win, while row-2 `attn_qkv` and
+`attn_v` are effectively flat at **0.9977x/0.9969x**. Therefore this FFN-only
+correctness unit remains scoped, and any later single-Q4 promotion must use a
+measured shape/row policy rather than blanket ownership. Clean W7900 profile,
+natural25, and populated-prefill gates remain required before retaining the
+sidecars.
+
 ---
 
 ## 7. Prioritized execution plan

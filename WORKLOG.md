@@ -205396,3 +205396,52 @@ Vulkan local sizes verbatim will close the measured gap.
   exact pack8 fallback; screen all actual single-Q4 shapes independently before
   broad ownership, then run W7900 transaction/profile/natural25 and populated-
   prefill gates.
+
+## 2026-08-04 — Route compact-Q4T16 dense FFN sidecars — CORRECTNESS GREEN
+
+- RED adds planner ownership and dispatch-precedence assertions. Before
+  implementation, the two focused nodes fail because no dense FFN receives a
+  `decode_tiles` allocation and rows 2-4 continue to call retained pack8.
+- With `decode_repack=True`, plan exactly the 64 dense Q4_K K5,120/N17,408
+  `ffn_gate` plus 64 `ffn_up` tensors with their existing pack8 allocations and
+  one compact-T16 `decode_tiles` sidecar. The sidecars add exactly
+  **6,595,543,040 bytes / 6.142578 GiB**. Legacy planning remains unchanged.
+- Runtime resolves the registered
+  `linear_pair_silu/gguf_q4_k_t16_v1/dense_dual_rowtile_bf16_bf16_out` owner
+  only for native rows 2-4 at the admitted shape. It passes the two sidecar
+  pointers before the retained pack8 fusion; missing allocations, unsupported
+  rows/shapes, non-native sessions, and registry misses fail closed. Existing
+  exact compact-T16 c1 fusion also consumes these sidecars on the shared AR
+  path.
+- Focused CPU/fake command
+  `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_qwen35_gguf_mapping.py
+  tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py
+  tests/test_gguf_linear_dispatch.py --tb=short` passes; a direct GPU1
+  materialization smoke confirms `qweight/scales/mins/decode_tiles` and the
+  expected **51,527,680-byte** sidecar for one actual gate weight.
+- Binding W7900 command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar --tb=short`
+  passes **1/1**. The ownership census sees T16 at exactly rows `{2,3,4}` and
+  no pack8 fallback. B1-B3 logits, reject/partial/full/rollback Conv/GDN/KV/
+  hidden transactions, positions 6/7/9 graph reuse, correction output, natural
+  provider output, and teardown remain exact.
+- In parallel, screen every other actual Q4 projection shape on GPU1 with 30
+  warmups, 7 counterbalanced samples, and 30 synchronized launches/sample.
+  All 21 rows are BF16-bit exact. Rows 2/3/4 geometric-mean speedups are
+  **1.0710x/1.2559x/1.1800x**. All row-3/4 shapes win; row-2 `attn_qkv` and
+  `attn_v` are flat/slightly negative at **0.9977x/0.9969x**, while the other
+  row-2 shapes win **1.0136x-1.1998x**. Do not blanket-route the single family;
+  any follow-up must be shape/row selective. Aggregate result-list SHA-256 is
+  `e6f2bf07...9891e`; harness is `b463a843...7666`.
+- Freeze and commit this correctness route before profiling or natural25.
+  Retained authority remains `c44e32ff6`: **21.735 true AR** and
+  **33.456/40.067/44.886 B1/B2/B3 tok/s**. The new sidecar has a projected
+  B3 fused-FFN leaf recovery of **29.289 ms / 5.215% complete marker wall**, but
+  no complete-path speed claim is made before the clean W7900 gates.

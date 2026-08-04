@@ -529,32 +529,52 @@ def full_attn_k_grid_y_calls() -> Iterator[list[tuple[int, int, int]]]:
 
 
 @pytest.fixture
-def q4_dual_rowtile_silu_calls() -> Iterator[list[tuple[int, int, int]]]:
-    """Count the exact dense-FFN rowtile+SiLU owner on real transactions."""
+def q4_dual_rowtile_silu_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
+    """Count compact-T16 ownership and its exact pack8 fallback."""
 
-    key = KernelKey(
-        "hip_gfx1100",
-        "linear_pair_silu",
-        "gguf_q4_k",
-        "pack8_dual_rowtile_bf16_bf16_out",
-    )
-    original = resolve(
-        backend=key.backend,
-        layer=key.layer,
-        quant=key.quant,
-        variant=key.variant,
-    )
-    calls: list[tuple[int, int, int]] = []
+    keys = {
+        "t16": KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q4_k_t16_v1",
+            "dense_dual_rowtile_bf16_bf16_out",
+        ),
+        "pack8": KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "pack8_dual_rowtile_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        name: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for name, key in keys.items()
+    }
+    calls: dict[str, list[tuple[int, int, int]]] = {
+        "t16": [],
+        "pack8": [],
+    }
 
-    def counted(*args, **kwargs):
-        calls.append((int(args[8]), int(args[9]), int(args[10])))
-        return original(*args, **kwargs)
+    def counted_t16(*args, **kwargs):
+        calls["t16"].append((int(args[4]), int(args[5]), int(args[6])))
+        return originals["t16"](*args, **kwargs)
 
-    register(key, counted, replace=True)
+    def counted_pack8(*args, **kwargs):
+        calls["pack8"].append((int(args[8]), int(args[9]), int(args[10])))
+        return originals["pack8"](*args, **kwargs)
+
+    register(keys["t16"], counted_t16, replace=True)
+    register(keys["pack8"], counted_pack8, replace=True)
     try:
         yield calls
     finally:
-        register(key, original, replace=True)
+        for name, key in keys.items():
+            register(key, originals[name], replace=True)
 
 
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
@@ -566,7 +586,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
-    q4_dual_rowtile_silu_calls: list[tuple[int, int, int]],
+    q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
@@ -887,12 +907,15 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (in_features, out_features)
         for _, in_features, out_features in full_attn_k_grid_y_calls
     } == {(5120, 1024)}
-    assert q4_dual_rowtile_silu_calls
-    assert {rows for rows, _, _ in q4_dual_rowtile_silu_calls} == {2, 3, 4}
+    assert q4_dual_rowtile_silu_calls["t16"]
+    assert {
+        rows for rows, _, _ in q4_dual_rowtile_silu_calls["t16"]
+    } == {2, 3, 4}
     assert {
         (in_features, out_features)
-        for _, in_features, out_features in q4_dual_rowtile_silu_calls
+        for _, in_features, out_features in q4_dual_rowtile_silu_calls["t16"]
     } == {(5120, 17408)}
+    assert not q4_dual_rowtile_silu_calls["pack8"]
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:
