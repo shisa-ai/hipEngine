@@ -203135,3 +203135,37 @@ Vulkan local sizes verbatim will close the measured gap.
   INT8-KV/asymmetric-KV files report **61 passed, 15 skipped**. The skips are
   existing fixture/model availability guards; all 13 dedicated head-major tests
   run and pass with HIP available.
+
+## 2026-08-04 — Reject the superseded MES `lr_compute_wa` A/B
+
+- Follow-up upstream chronology invalidates the earlier recommendation to patch
+  `enable_lr_compute_wa`. Linux `1fb710793ce2` introduced that workaround, but
+  `6b0d812971370c64b837a2db4275410f478272fe` says it did not fully fix gfx1151,
+  could destabilize other products with newer GC microcode, and removes it.
+  Upstream identifies `b42f3bf9536c9b710fd1d4deb7d1b0dc819dc72d`, which
+  raises gfx1151 KFD VGPR accounting to `0x60000` bytes/CU, as the actual fix.
+- The exact captured CachyOS source
+  `0e558f948dfe28b50d2eb9ddda58900d7de01aac` contains gfx1151 in that corrected
+  branch and intentionally omits the removed MES workaround. The running
+  `7.1.3-2-cachyos` KFD topology reports `gfx_target_version=110501`, 40 CUs,
+  and `cwsr_size=19185664`; this exactly matches corrected 384-KiB/CU
+  accounting and not the old `13942784`-byte result. The repeated-128K stall
+  therefore occurred with the actual upstream fix active.
+- Reject restoring or A/B-testing `lr_compute_wa`; doing so would test an
+  upstream-removed, incompletely effective, potentially destabilizing path.
+  `checkupdates` shows CachyOS `7.1.6-1` is available and static source audit
+  confirms the same corrected-VGPR/no-workaround state, but a 7.1.3 -> 7.1.6
+  upgrade would be a broad system screen rather than the proposed causal A/B.
+  No package install, privileged change, reboot, or >5-minute benchmark was run.
+- Correct `docs/DEBUG-GFX1151-STALL.md`, the Nathan review and final priority
+  list, `docs/ROOFLINE.md`, `docs/REFACTOR.md`, and both layer-drain diagnostic
+  artifacts. Keep exact layer drain as explicit slower containment while
+  ROCm/ROCm#6437 remains open; reserve the default-path three-process gate for a
+  later named relevant stack fix or an explicitly approved broad kernel screen.
+- The narrow benchmark provenance/README guard initially exposed a stale
+  post-head-major assertion: it still expected every gfx1151 GGUF cell from the
+  July base artifact. Teach the guard to overlay the accepted August head-major
+  artifact for its 512/4K/32K/64K prefill, decode, and peak-memory cells and to
+  require the canonical scoreboard's artifact link. The focused bundle now
+  passes **14/14**; both diagnostic JSON files parse and `git diff --check`
+  passes.

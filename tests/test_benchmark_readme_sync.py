@@ -26,6 +26,10 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         results_dir / "2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json"
     )
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    head_major_path = (
+        results_dir / "2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json"
+    )
+    head_major = json.loads(head_major_path.read_text(encoding="utf-8"))
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
     canonical_values = canonical.replace("**", "")
@@ -45,6 +49,9 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     assert artifact["hardware"]["iommu_groups_after_boot"] == 0
     assert "NPU unavailable" in artifact["hardware"]["xdna_side_effect"]
     assert "not a causal IOMMU-only A/B" in artifact["measurement_qualification"]
+    assert head_major["status"] == "accepted_default"
+    assert head_major["performance_claim"] is True
+    assert head_major["topline_eligible"] is True
 
     correctness = artifact["correctness"]
     assert correctness["paro"]["passed"] is True
@@ -106,7 +113,15 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
                     f"{llama_hip:.3f} | {llama_vulkan:.3f} |"
                 )
             else:
-                gguf_value = gguf[metric]["median"]
+                head_major_row = head_major["end_to_end"].get(workload)
+                if head_major_row is None:
+                    gguf_value = gguf[metric]["median"]
+                elif metric == "prefill_tok_s":
+                    gguf_value = head_major_row["candidate_prefill_tok_s_median"]
+                elif metric == "decode_tok_s":
+                    gguf_value = head_major_row["candidate_decode_tok_s"]
+                else:
+                    gguf_value = head_major_row["candidate_peak_gib"]
                 row = (
                     f"| {workload} | {paro_value:.3f} | {gguf_value:.3f} | "
                     f"{llama_hip:.3f} | {llama_vulkan:.3f} |"
@@ -119,6 +134,7 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         assert "same-commit reboot A/B" in readme
         assert "128K/128 | 498.101 | — (blocked)" in readme
         assert artifact_path.name in readme
+    assert head_major_path.name in canonical
 
     for source in artifact["source_artifacts"].values():
         if source is None:

@@ -1309,9 +1309,11 @@ hipEngine therefore does not port or enable retained PM4 on gfx1151 now:
   confirmation.  This does not establish the `>~3%` dispatch budget required
   by `docs/PLAN.md` for another hot-path dispatch lever.
 - The open gfx1151 long-prefill failure is an active, non-retiring AQL queue.
-  Until an updated-kernel `enable_lr_compute_wa` A/B or equivalent root-cause
-  result closes that risk, adding another low-level queue/command-buffer path
-  would make diagnosis and fallback less reliable.
+  Upstream removed the incomplete `enable_lr_compute_wa` workaround, and the
+  captured kernel already runs its replacement gfx1151 VGPR-size correction.
+  Until a later named stack fix or equivalent root-cause result closes that
+  risk, adding another low-level queue/command-buffer path would make diagnosis
+  and fallback less reliable.
 - A future experiment must begin shadow-only: single queue, no production
   routing, exact artifact/kernarg identity, byte-exact logits/state/KV over at
   least 15 positions, explicit timeout/fault fallback, and two independent

@@ -5,15 +5,17 @@
   "performance_claim": false,
   "summary": "A real gfx1151 Q4_K_M 512/1 smoke proves that model-layer host drains execute, preserve the exact result, and carry a measurable short-context cost. This does not establish 128K lifecycle safety.",
   "issue": "https://github.com/ROCm/ROCm/issues/6437",
-  "kernel_lead": {
-    "upstream_commit": "1fb710793ce2619223adffaf981b1ff13cd48f17",
-    "url": "https://github.com/torvalds/linux/commit/1fb710793ce2619223adffaf981b1ff13cd48f17",
-    "upstream_intent": "Enable the MES lr_compute_wa resource bit to prevent hangs on long compute jobs.",
+  "kernel_audit": {
+    "initial_workaround_commit": "1fb710793ce2619223adffaf981b1ff13cd48f17",
+    "actual_fix_commit": "b42f3bf9536c9b710fd1d4deb7d1b0dc819dc72d",
+    "workaround_removal_commit": "6b0d812971370c64b837a2db4275410f478272fe",
+    "upstream_conclusion": "The MES workaround did not fully fix gfx1151 and could destabilize other products; upstream removed it and identified corrected gfx1151 VGPR-size accounting as the actual fix.",
     "captured_kernel": "7.1.3-2-cachyos",
     "captured_source_commit": "0e558f948dfe28b50d2eb9ddda58900d7de01aac",
-    "captured_source_observation": "mes_v11_0_set_hw_resources sets oversubscription_timer=50 but does not set enable_lr_compute_wa.",
-    "mes_firmware": "0x88",
-    "interpretation": "The exact captured kernel omits a known long-compute workaround that MES 0x88 is new enough to accept. This is the leading fixed-stack A/B candidate, not root-cause proof."
+    "captured_source_observation": "The exact source intentionally omits enable_lr_compute_wa and includes gfx1151 in the 0x60000-byte-per-CU VGPR branch.",
+    "live_kfd_cwsr_size_bytes": 19185664,
+    "old_uncorrected_cwsr_size_bytes": 13942784,
+    "interpretation": "The captured stall occurred with the actual upstream gfx1151 fix active. Do not restore or A/B the removed MES workaround; ROCm/ROCm#6437 remains distinct or incompletely fixed."
   },
   "platform": {
     "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
