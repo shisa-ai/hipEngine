@@ -369,21 +369,38 @@ finite logits, normal telemetry, and clean logs.
 
 ## Future DeepSeek V4 plugin checklist
 
-When hipEngine adds DeepSeek V4, review Nathan's clean commits before designing
-the plugin:
+**Execution decision (2026-08-04): deferred at the model-admission gate.** The
+live model registry contains Laguna, Moonshine, Qwen3.5/3.6, and toy plugins,
+but no DeepSeek architecture. Local model storage and the Hugging Face cache
+contain no DeepSeek V4 checkpoint/config, the repository has no DeepSeek V4 CPU
+reference or tokenizer fixture, and the phase model table in `PLAN.md` does not
+approve a DeepSeek V4 target. Generic old DeepSeek vocab/conversion files are not
+a model oracle. Likewise, existing `q8_1_ds4*` symbols mean llama.cpp's DS4
+activation-record layout, not DeepSeek V4. Implementing a kernel now would
+therefore invent semantics and bypass the model-plugin boundary.
 
-1. model and CPU-reference semantics for lightning indexer, top-k indexed
-   attention, and hyper-connections;
-2. separate cache policies for main compressed KV and F16 indexer keys;
-3. indexed sparse prefill attention with dense fallback;
-4. gather-to-compact c1 decode, then a union-gather design for verifier B>1;
-5. fused HC pre/comb/post plus mandatory unfused primitive chain;
-6. explicit small-B contiguous projection buffers where a measured stride tax
-   exceeds copy cost;
-7. full invalid-index, padding, dense-prefix, and long-context gates under
-   `KVLiveSpans`.
+When a checkpoint and model target are explicitly approved, review Nathan's
+clean commits and execute in this order:
 
-These should be new model/layer/quant/variant registrations. They must not appear
+1. pin checkpoint/config/tokenizer provenance and the authoritative model CPU
+   oracle, then register a metadata-only model plugin with exact architecture
+   names, layer sequence, weight map, cache roles, and chat/special-token rules;
+2. add CPU-reference semantics for lightning indexer, deterministic top-k,
+   indexed attention, gather/padding behavior, and hyper-connections;
+3. model main compressed KV and mandatory F16 indexer keys as separate cache
+   roles/policies; both attention paths still consume complete `KVLiveSpans`;
+4. register indexed sparse prefill attention under new layer/quant/variant keys
+   with a numerically equivalent dense fallback;
+5. add gather-to-compact c1 decode, then a union-gather design for verifier B>1,
+   preserving invalid-index, duplicate-index, padding, and dense-prefix rules;
+6. register fused HC pre/comb/post only beside a mandatory unfused primitive
+   chain and compare both against the model CPU oracle;
+7. add explicit small-B contiguous projection buffers only where a copy-inclusive
+   B2/B4 trace proves a stride tax;
+8. run full invalid-index, padding, dense-prefix, long-context, KL/top-1, and
+   named-kernel trace gates before any performance claim.
+
+These must be new model/layer/quant/variant registrations. They must not appear
 as `if model == deepseek4` or backend conditionals in generic dispatch.
 
 ## Final priority list
@@ -409,8 +426,11 @@ as `if model == deepseek4` or backend conditionals in generic dispatch.
    layer-local BF16 oracle now has an explicit guard proving it retains the
    bounded gfx1151 head-major AOTriton scratch. Do not promote the measured
    **-97.7%** 128K direct-streaming path merely to remove scratch.
-5. **P2 — future model:** use the DeepSeek V4 indexer/sparse/gather/HC commits as
-   implementation references when a DSv4 plugin is approved.
+5. **P2 — completed/deferred 2026-08-04:** no DeepSeek V4 plugin, checkpoint,
+   CPU oracle, tokenizer fixture, or approved phase target exists. Preserve the
+   indexer/sparse/gather/HC commits as references and start with the model/CPU-
+   oracle admission unit above only after explicit approval; do not add Qwen or
+   Laguna branches now.
 6. **No action:** Vulkan P/Psh source edits, persistent head-major KV before the
    scratch A/B, MMID scale cache/TILE16/int-dot negatives, generic ubatch values,
    RADV packaging, or any dev-release performance inference.
