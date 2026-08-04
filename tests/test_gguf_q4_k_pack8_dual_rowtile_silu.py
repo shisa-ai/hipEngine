@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -23,8 +24,15 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out,
     gguf_q4_k_pack8_rowtile_bf16_bf16_out,
 )
-from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.registry import KernelKey, register, resolve
+from hipengine.loading.qwen35_gguf_materialize import LAYOUT_Q4_K_PACK8, LAYOUT_RAW_GGUF
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
+from hipengine.runtime import qwen35_gguf_runner as qwen35_runner
+from hipengine.runtime.gguf_linear import (
+    launch_gguf_linear_pair_silu,
+    native_batch_decode_session,
+    q4k_rowtile_session,
+)
 from tests.test_gguf_q4_k_gemv import make_q4_k_weight
 
 
@@ -98,6 +106,278 @@ def test_pack8_dual_rowtile_silu_wrapper_rejects_unsupported_launches() -> None:
             16,
             threads=32,
         )
+
+
+def _fake_pack8_weight(base_ptr: int, *, layout: str = LAYOUT_Q4_K_PACK8):
+    allocations = {
+        "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 1)),
+        "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 2)),
+        "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 3)),
+        "raw": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 4)),
+    }
+    return SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(layout=layout, quant_key="gguf_q4_k"),
+        allocation=lambda name="raw": allocations[name],
+    )
+
+
+def _launch_runtime_candidate(
+    weight_a,
+    weight_b,
+    *,
+    rows: int = 4,
+    in_features: int = 5120,
+    out_features: int = 17408,
+) -> bool:
+    return launch_gguf_linear_pair_silu(
+        weight_a,
+        weight_b,
+        x_ptr=100,
+        out_ptr=400,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        backend="hip_gfx1100",
+        stream=7,
+        libraries={"gguf_q4_k": "library-sentinel"},
+        runtime="runtime-sentinel",
+        use_gemv_decode=True,
+    )
+
+
+def test_pack8_dual_rowtile_silu_runtime_policy_is_native_shape_bounded() -> None:
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_rowtile_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(key, lambda *args, **kwargs: calls.append((args, kwargs)), replace=True)
+    weight_a = _fake_pack8_weight(10)
+    weight_b = _fake_pack8_weight(20)
+    try:
+        assert not _launch_runtime_candidate(weight_a, weight_b)
+        with native_batch_decode_session(True):
+            for rows in (2, 3, 4):
+                assert _launch_runtime_candidate(weight_a, weight_b, rows=rows)
+            for rows in (1, 5):
+                assert not _launch_runtime_candidate(weight_a, weight_b, rows=rows)
+            assert not _launch_runtime_candidate(weight_a, weight_b, in_features=5376)
+            assert not _launch_runtime_candidate(weight_a, weight_b, out_features=17152)
+            assert not _launch_runtime_candidate(
+                _fake_pack8_weight(30, layout=LAYOUT_RAW_GGUF),
+                weight_b,
+            )
+            with q4k_rowtile_session(False):
+                assert not _launch_runtime_candidate(weight_a, weight_b)
+    finally:
+        register(key, original, replace=True)
+
+    assert [args[8] for args, _kwargs in calls] == [2, 3, 4]
+    for args, kwargs in calls:
+        assert args[:8] == (100, 11, 12, 13, 21, 22, 23, 400)
+        assert args[9:] == (5120, 17408)
+        assert kwargs == {
+            "stream": 7,
+            "runtime": "runtime-sentinel",
+            "library": "library-sentinel",
+        }
+
+
+def test_pack8_dual_rowtile_silu_runtime_policy_fails_closed_on_missing_key() -> None:
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_rowtile_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    register(key, None, replace=True)
+    try:
+        with native_batch_decode_session(True):
+            assert not _launch_runtime_candidate(
+                _fake_pack8_weight(10),
+                _fake_pack8_weight(20),
+            )
+    finally:
+        register(key, original, replace=True)
+
+
+def _fake_dense_runner():
+    slots = {
+        name: SimpleNamespace(name=name)
+        for name in ("post_attention_norm", "ffn_gate", "ffn_up", "ffn_down")
+    }
+    slots["post_attention_norm"].allocation = lambda: SimpleNamespace(
+        tensor=SimpleNamespace(ptr=300)
+    )
+    layer = SimpleNamespace(weight=lambda name: slots[name])
+    weights = SimpleNamespace(
+        config=SimpleNamespace(
+            hidden_size=5120,
+            feed_forward_length=17408,
+            is_moe=False,
+            rms_norm_eps=1.0e-6,
+        ),
+        layer=lambda layer_id: layer,
+    )
+    runner = object.__new__(qwen35_runner.Qwen35GGUFFullStackRunner)
+    runner.weights = weights
+    runner.runtime = SimpleNamespace()
+    scratch = SimpleNamespace(
+        post_norm=SimpleNamespace(ptr=400),
+        residual=SimpleNamespace(ptr=500),
+        ffn_gate_up=SimpleNamespace(ptr=600),
+        ffn_intermediate=SimpleNamespace(ptr=700),
+        ffn_down=SimpleNamespace(ptr=800),
+    )
+    return runner, scratch
+
+
+def test_dense_runner_consumes_native_dual_rowtile_silu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_dense_runner()
+    calls: list[tuple[str, tuple, dict]] = []
+    monkeypatch.setattr(
+        qwen35_runner,
+        "gguf_add_rmsnorm_bf16_f32_weight",
+        lambda *args, **kwargs: calls.append(("norm", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair_silu",
+        lambda *args, **kwargs: calls.append(("pair_silu", args, kwargs)) or True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair",
+        lambda *args, **kwargs: pytest.fail("fused route must skip the unfused pair"),
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "silu_mul_separate_out_bf16",
+        lambda *args, **kwargs: pytest.fail("fused route must skip separate SiLU"),
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear",
+        lambda *args, **kwargs: calls.append(("linear", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "gguf_bf16_add",
+        lambda *args, **kwargs: calls.append(("add", args, kwargs)),
+    )
+
+    runner._run_post_attention_ffn_rows(
+        0,
+        hidden_ptr=100,
+        attn_out_ptr=200,
+        out_ptr=900,
+        scratch=scratch,
+        rows=4,
+    )
+
+    assert [name for name, _args, _kwargs in calls] == [
+        "norm",
+        "pair_silu",
+        "linear",
+        "add",
+    ]
+    pair_args = calls[1][1]
+    pair_kwargs = calls[1][2]
+    assert pair_args[2:4] == (400, 700)
+    assert pair_kwargs["rows"] == 4
+    assert pair_kwargs["in_features"] == 5120
+    assert pair_kwargs["out_features"] == 17408
+    assert pair_kwargs["runtime"] is runner.runtime
+    assert calls[2][1][1:3] == (700, 800)
+
+
+def test_dense_runner_multirow_retains_unfused_chain_when_candidate_declines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_dense_runner()
+    calls: list[str] = []
+    monkeypatch.setattr(qwen35_runner, "gguf_add_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair_silu",
+        lambda *args, **kwargs: calls.append("pair_silu") or False,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair",
+        lambda *args, **kwargs: calls.append("pair") or True,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "silu_mul_separate_out_bf16",
+        lambda *args, **kwargs: calls.append("silu"),
+    )
+    monkeypatch.setattr(qwen35_runner, "launch_gguf_linear", lambda *a, **k: calls.append("down"))
+    monkeypatch.setattr(qwen35_runner, "gguf_bf16_add", lambda *a, **k: calls.append("add"))
+
+    runner._run_post_attention_ffn_rows(
+        0,
+        hidden_ptr=100,
+        attn_out_ptr=200,
+        out_ptr=900,
+        scratch=scratch,
+        rows=4,
+    )
+
+    assert calls == ["pair_silu", "pair", "silu", "down", "add"]
+
+
+def test_dense_runner_c1_retains_unfused_chain(monkeypatch: pytest.MonkeyPatch) -> None:
+    runner, scratch = _fake_dense_runner()
+    calls: list[str] = []
+    monkeypatch.setattr(qwen35_runner, "gguf_add_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair_silu",
+        lambda *args, **kwargs: pytest.fail("c1 must retain its existing owner"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair",
+        lambda *args, **kwargs: calls.append("pair") or True,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "silu_mul_separate_out_bf16",
+        lambda *args, **kwargs: calls.append("silu"),
+    )
+    monkeypatch.setattr(qwen35_runner, "launch_gguf_linear", lambda *a, **k: calls.append("down"))
+    monkeypatch.setattr(qwen35_runner, "gguf_bf16_add", lambda *a, **k: calls.append("add"))
+
+    runner._run_post_attention_ffn_rows(
+        0,
+        hidden_ptr=100,
+        attn_out_ptr=200,
+        out_ptr=900,
+        scratch=scratch,
+        rows=1,
+    )
+
+    assert calls == ["pair", "silu", "down", "add"]
 
 
 def _run_fused_chain(
