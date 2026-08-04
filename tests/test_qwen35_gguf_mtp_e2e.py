@@ -577,32 +577,69 @@ def q4_dual_rowtile_silu_calls() -> Iterator[dict[str, list[tuple[int, int, int]
             register(key, originals[name], replace=True)
 
 
+@pytest.fixture
+def q4_single_rowtile_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
+    """Count row-selective compact-T16 ownership and pack8 fallback."""
+
+    keys = {
+        "t16": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_bf16_bf16_out",
+        ),
+        "pack8": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k",
+            "pack8_rowtile_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        name: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for name, key in keys.items()
+    }
+    calls: dict[str, list[tuple[int, int, int]]] = {
+        "t16": [],
+        "pack8": [],
+    }
+
+    def counted_t16(*args, **kwargs):
+        calls["t16"].append((int(args[3]), int(args[4]), int(args[5])))
+        return originals["t16"](*args, **kwargs)
+
+    def counted_pack8(*args, **kwargs):
+        calls["pack8"].append((int(args[5]), int(args[6]), int(args[7])))
+        return originals["pack8"](*args, **kwargs)
+
+    register(keys["t16"], counted_t16, replace=True)
+    register(keys["pack8"], counted_pack8, replace=True)
+    try:
+        yield calls
+    finally:
+        for name, key in keys.items():
+            register(key, originals[name], replace=True)
+
+
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
-    monkeypatch: pytest.MonkeyPatch,
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
     q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
+    q4_single_rowtile_calls: dict[str, list[tuple[int, int, int]]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
     _require_free_vram(32.0)
-    rowtile_rows: set[int] = set()
-    original_rowtile = gguf_linear_module.gguf_q4_k_pack8_rowtile_bf16_bf16_out
-
-    def counted_rowtile(*args, **kwargs):
-        rowtile_rows.add(int(args[5]))
-        return original_rowtile(*args, **kwargs)
-
-    monkeypatch.setattr(
-        gguf_linear_module,
-        "gguf_q4_k_pack8_rowtile_bf16_bf16_out",
-        counted_rowtile,
-    )
     prompt = (9707, 9707, 9707, 9707)
     require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
     with Qwen35GGUFResidentSession(
@@ -870,7 +907,27 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for record in actual.cycle_records
     )
     assert all(record["span_role"] == "verify_chain" for record in actual.cycle_records)
-    assert rowtile_rows == set()
+    assert q4_single_rowtile_calls["t16"]
+    assert {rows for rows, _, _ in q4_single_rowtile_calls["t16"]} == {2, 3, 4}
+    assert {
+        (in_features, out_features)
+        for _, in_features, out_features in q4_single_rowtile_calls["t16"]
+    } == {
+        (5_120, 1_024),
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (6_144, 5_120),
+        (17_408, 5_120),
+    }
+    assert q4_single_rowtile_calls["pack8"]
+    assert {
+        (rows, in_features, out_features)
+        for rows, in_features, out_features in q4_single_rowtile_calls["pack8"]
+    } == {
+        (2, 5_120, 1_024),
+        (2, 5_120, 10_240),
+    }
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
     assert dense_virtual256_rowtile_calls

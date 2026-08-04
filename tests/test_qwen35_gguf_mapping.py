@@ -169,31 +169,51 @@ def test_qwen36_dense_decode_repack_replaces_only_wide_rank2_q6() -> None:
     assert all(spec.quant_key == "gguf_q6_k" for spec in narrow_v)
     assert all(spec.allocation_names == ("raw",) for spec in narrow_v)
 
-    q4_ffn_sidecars = [
+    q4_t16_sidecars = [
         spec
         for spec in plan.specs
         if spec.source.ggml_type_name == "Q4_K"
-        and spec.slot_path.endswith((".ffn_gate", ".ffn_up"))
-        and "decode_tiles" in spec.allocation_names
+        and any(name.startswith("decode_tiles") for name in spec.allocation_names)
     ]
-    assert sum(spec.slot_path.endswith(".ffn_gate") for spec in q4_ffn_sidecars) == 64
-    assert sum(spec.slot_path.endswith(".ffn_up") for spec in q4_ffn_sidecars) == 64
-    assert len(q4_ffn_sidecars) == 128
-    for spec in q4_ffn_sidecars:
-        assert spec.layout == LAYOUT_Q4_K_PACK8
-        assert spec.quant_key == "gguf_q4_k"
-        assert spec.allocation_names == (
-            "qweight",
-            "scales",
-            "mins",
-            "decode_tiles",
-        )
-        assert "decode_tiles" not in legacy_by_slot[spec.slot_path].allocation_names
+    expected_q4_sidecars = {
+        "attn_gate": (48, "decode_tiles"),
+        "attn_k": (16, "decode_tiles"),
+        "attn_output": (16, "decode_tiles"),
+        "attn_q": (16, "decode_tiles"),
+        "attn_qkv": (24, "decode_tiles_r3plus"),
+        "attn_v": (8, "decode_tiles_r3plus"),
+        "ffn_down": (32, "decode_tiles"),
+        "ffn_gate": (64, "decode_tiles"),
+        "ffn_up": (64, "decode_tiles"),
+    }
+    assert len(q4_t16_sidecars) == sum(
+        count for count, _allocation in expected_q4_sidecars.values()
+    )
+    for role, (count, sidecar_name) in expected_q4_sidecars.items():
+        role_specs = [
+            spec
+            for spec in q4_t16_sidecars
+            if spec.slot_path.endswith(f".{role}")
+        ]
+        assert len(role_specs) == count
+        for spec in role_specs:
+            assert spec.layout == LAYOUT_Q4_K_PACK8
+            assert spec.quant_key == "gguf_q4_k"
+            assert spec.allocation_names == (
+                "qweight",
+                "scales",
+                "mins",
+                sidecar_name,
+            )
+            assert all(
+                not name.startswith("decode_tiles")
+                for name in legacy_by_slot[spec.slot_path].allocation_names
+            )
     assert all(
-        "decode_tiles" not in spec.allocation_names
+        not any(name.startswith("decode_tiles") for name in spec.allocation_names)
         for spec in plan.specs
         if spec.source.ggml_type_name == "Q4_K"
-        and not spec.slot_path.endswith((".ffn_gate", ".ffn_up"))
+        and spec.slot_path.endswith(".token_embedding")
     )
 
 

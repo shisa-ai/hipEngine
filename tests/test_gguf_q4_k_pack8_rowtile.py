@@ -151,12 +151,18 @@ def test_pack8_exact_prefill_candidate_registry_contract() -> None:
         ) is wrapper
 
 
-def _fake_pack8_weight():
+def _fake_pack8_weight(*, sidecar_name: str | None = None):
     allocations = {
         "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
         "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=12)),
         "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=13)),
     }
+    if sidecar_name is not None:
+        allocations[sidecar_name] = SimpleNamespace(
+            tensor=SimpleNamespace(
+                ptr=15 if sidecar_name == "decode_tiles" else 16
+            )
+        )
 
     class Weight:
         spec = SimpleNamespace(layout="q4_k_pack8", quant_key="gguf_q4_k")
@@ -434,6 +440,120 @@ def test_native_pack8_pair_uses_two_bounded_rowtiles(
         use_gemv_decode=True,
     )
     assert len(dual_calls) == 1
+
+
+def test_native_pack8_single_uses_measured_t16_sidecar_policy() -> None:
+    t16_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_rowtile_bf16_bf16_out",
+    )
+    pack8_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_rowtile_bf16_bf16_out",
+    )
+    pack8_prefill_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_prefill_bf16_bf16_out",
+    )
+    original_t16 = resolve(
+        backend=t16_key.backend,
+        layer=t16_key.layer,
+        quant=t16_key.quant,
+        variant=t16_key.variant,
+    )
+    original_pack8 = resolve(
+        backend=pack8_key.backend,
+        layer=pack8_key.layer,
+        quant=pack8_key.quant,
+        variant=pack8_key.variant,
+    )
+    original_pack8_prefill = resolve(
+        backend=pack8_prefill_key.backend,
+        layer=pack8_prefill_key.layer,
+        quant=pack8_prefill_key.quant,
+        variant=pack8_prefill_key.variant,
+    )
+    calls: list[tuple[str, tuple]] = []
+    register(
+        t16_key,
+        lambda *args, **_kwargs: calls.append(("t16", args)),
+        replace=True,
+    )
+    register(
+        pack8_key,
+        lambda *args, **_kwargs: calls.append(("pack8", args)),
+        replace=True,
+    )
+    register(
+        pack8_prefill_key,
+        lambda *args, **_kwargs: calls.append(("pack8", args)),
+        replace=True,
+    )
+    try:
+        with native_batch_decode_session(True):
+            launch_gguf_linear(
+                _fake_pack8_weight(sidecar_name="decode_tiles"),
+                100,
+                200,
+                2,
+                5120,
+                6144,
+                use_wmma_prefill=False,
+                use_gemv_decode=True,
+            )
+            launch_gguf_linear(
+                _fake_pack8_weight(sidecar_name="decode_tiles_r3plus"),
+                100,
+                200,
+                2,
+                5120,
+                10240,
+                use_wmma_prefill=False,
+                use_gemv_decode=True,
+            )
+            for rows in (3, 4):
+                launch_gguf_linear(
+                    _fake_pack8_weight(sidecar_name="decode_tiles_r3plus"),
+                    100,
+                    200,
+                    rows,
+                    5120,
+                    10240,
+                    use_wmma_prefill=False,
+                    use_gemv_decode=True,
+                )
+        launch_gguf_linear(
+            _fake_pack8_weight(sidecar_name="decode_tiles"),
+            100,
+            200,
+            3,
+            5120,
+            6144,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+        )
+    finally:
+        register(t16_key, original_t16, replace=True)
+        register(pack8_key, original_pack8, replace=True)
+        register(pack8_prefill_key, original_pack8_prefill, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert [kind for kind, _args in calls] == [
+        "t16",
+        "pack8",
+        "t16",
+        "t16",
+        "pack8",
+    ]
+    assert calls[0][1] == (100, 15, 200, 2, 5120, 6144)
+    assert calls[2][1] == (100, 16, 200, 3, 5120, 10240)
+    assert calls[3][1] == (100, 16, 200, 4, 5120, 10240)
 
 
 def test_pack8_rowtile_wrapper_rejects_non_verifier_shapes() -> None:
