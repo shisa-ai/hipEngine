@@ -202996,3 +202996,48 @@ Vulkan local sizes verbatim will close the measured gap.
   layer.
 - Re-read the updated review and run docs-only link/coverage checks. No GPU run
   or benchmark claim is part of this completion audit.
+
+## 2026-08-04 — Qualify gfx1151 Q4_K_M per-layer drain containment
+
+- With explicit approval for the long gate, run one independent right-sized
+  process for each matched `none`/`layer` 512/128, 4K/128, and 64K/128 arm,
+  then three independent `layer` 128K/128 processes. Every process uses one
+  discarded warmup plus three measured repetitions, graph-replay decode for
+  measured runs, cached builds, BF16 KV, bulk prefill, and
+  `GPU_MAX_HW_QUEUES=1`; every process is bounded by 1,800 seconds. Preserve
+  ten-second telemetry for both 64K arms and all three long processes.
+- All six control processes pass exactly. Matched none -> layer prefill medians
+  are **1395.168 -> 1370.181 tok/s (-1.791%)** at 512,
+  **1463.311 -> 1459.767 (-0.242%)** at 4K, and
+  **890.033 -> 882.348 (-0.864%)** at 64K. Decode changes
+  **-0.003%/+0.000%/-0.134%**. This is a small but measurable prefill cost, not
+  a performance win.
+- All three independent 128K warmup+3 processes exit 0, completing **12/12**
+  long prefills. Their measured prefill medians are
+  **581.591/581.595/582.047 tok/s** and decode medians are
+  **29.603/29.667/29.607 tok/s**. Across all nine measured long repetitions,
+  prefill spans **580.482-583.311 tok/s**, every final ID is **9707**, every
+  final logit is finite and identical at **30.117918014526367**, measured graph
+  replay is effective, and every process returns tracked allocation to zero.
+- Across the two 64K plus three 128K telemetry streams, **295** samples at
+  least 80% activity have a minimum working power of **109.019 W** and zero
+  samples match the historical `100% / >=2.8 GHz / <=59 W` failure signature.
+  The kernel journal contains no amdgpu/KFD fault, timeout, or reset. One
+  `PME: Spurious native interrupt!` occurs during the successful 64K no-drain
+  control, which continues through warmup+3 and cleanup; this further weakens
+  the PME event as a causal trigger.
+- Benchmark provenance spans `b10a5f7d5`, `c98fba4e8`, and `db87f6d1e` because
+  three unrelated documentation commits land during the serial 72-minute
+  matrix. `git diff b10a5f7d5..db87f6d1e` contains only `WORKLOG.md`,
+  `docs/PHOTON2.md`, and `docs/STRIX-HALO-LLAMACPP-REVIEW.md`; runtime, kernels,
+  tests, and benchmark code are identical throughout.
+- Qualify `--prefill-queue-drain layer` as an explicit slower containment path,
+  but keep default `none`, the upstream issue, and the default repeated-128K
+  publication block open. A finite intermittent-failure matrix cannot prove
+  zero future incidence, and the measured short/medium cost fails the existing
+  non-regressive default-promotion criterion. Prefer the fixed-kernel MES
+  `enable_lr_compute_wa` A/B for true closure.
+- Compact diagnostic evidence:
+  `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json`.
+  It is explicitly non-topline and makes no performance claim, so benchmark
+  README/changelog rollups are unchanged.
