@@ -203797,3 +203797,62 @@ Vulkan local sizes verbatim will close the measured gap.
   throughput/wall/verify/own-AR deltas; `git diff --check`;
   `python3 scripts/sync_benchmark_readme.py --check`; and
   `python3 -m pytest -q tests/test_benchmark_readme_sync.py` (**6/6**).
+
+### D27-O3 post-staged profile and full-attention admission
+
+- Re-profile retained commit `4802c5e72` on GPU0 W7900 with the same hermetic
+  TheRock/HSA 1.21 environment, cached-only JIT, one-prompt native B3 leaf, no
+  warmup, and nested ROCTX markers. Exact command:
+  ```bash
+  THEROCK_PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+  THEROCK_ROOT="$($THEROCK_PY -m rocm_sdk path --root)"
+  ROOT=/tmp/hipengine-qwen36-27b/final-4802c5e72/profile-native-staged-linear-mtp-b3-hermetic
+  OVERRIDE=/tmp/hipengine-roctx-sdk-override-qwen36-dense
+  env -i HOME="$HOME" USER="${USER:-$(id -un)}" LOGNAME="${LOGNAME:-${USER:-$(id -un)}}" SHELL=/bin/bash TERM=xterm \
+    PATH="$THEROCK_ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+    LD_LIBRARY_PATH="$OVERRIDE:$THEROCK_ROOT/lib:$THEROCK_ROOT/lib/rocm_sysdeps/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+    HIP_PATH="$THEROCK_ROOT" ROCM_PATH="$THEROCK_ROOT" HIP_LIB_PATH="$THEROCK_ROOT/lib" HIP_INCLUDE_PATH="$THEROCK_ROOT/include" \
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH="$PWD" \
+    rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv -d "$ROOT" -o mtp-b3 -- \
+    "$THEROCK_PY" scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m \
+      --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 \
+      --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers \
+      --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output "$ROOT/suite.json" \
+      > "$ROOT/suite.stdout"
+  ```
+  The profiled row remains exact, preserves accepted counts
+  `[3,3,2,3,3,0,3]`, and submits 7/7 graph cycles without fallback.
+- Versus the graph-only retained profile, complete wall falls
+  **1,075.551 -> 742.080 ms (-31.005%)**, target verify
+  **951.747 -> 621.704 ms (-34.678%)**, and complete kernel sum
+  **783.308 -> 520.568 ms (-33.542%)**. Target dispatches fall
+  **23,318 -> 16,262 (-30.260%)**; the complete queue-gap/copy-overlap bucket
+  also falls **291.712 -> 221.034 ms (-24.229%)**. Proposal remains essentially
+  flat at 108.885 ms. First graph capture is 105.955 ms; seven submits total
+  496.487 ms and readback totals 1.303 ms.
+- Target verify still owns **621.704 ms / 83.78%** of complete wall. Its largest
+  retained arithmetic buckets are row-bulk Q4 projections
+  **171.620 ms / 23.13% complete wall** and row-bulk exact dense projections
+  **135.913 ms / 18.31%**. Those are already the staged linear+FFN path and are
+  not evidence for returning to scalar scheduling.
+- The largest untried row-serial boundary is full attention. Q4 singleton
+  projections consume **37.933 ms / 5.11% complete wall** across 1,568
+  dispatches; full-attention Q and output alone account for 30.555 ms / 896
+  dispatches. Per-row attention norm, split, key cast, head norm/rotary, and the
+  dense V projection add another measured ~11 ms. Actual serial attention,
+  gate, and KV write are only 9.018 ms and must remain token-ordered.
+- GPU1 same-GPU primitive screening confirms exact Q4 rowtiles improve full-Q
+  **1.55-1.67x** and full-output **1.35-1.41x** for rows2-4. The narrow K
+  projection regresses to **0.83-0.90x**, so it must retain scalar launches;
+  do not accept that leaf regression merely to label all QKV work bulk. The
+  established dense full-V rowtile improves **1.09-1.76x**.
+- Admit staged exact full attention: bulk independent norm/Q/V, split, key cast,
+  multi-position head norm/rotary, and output projection; keep Q4 K scalar and
+  preserve each row's KV append -> attention -> gate sequence exactly. Select
+  only dense c>1 native rows with dynamic row scratches; retain the complete
+  scalar helper as fallback. The measured reducible boundary is ~49 ms / 6.6%
+  complete wall before queue-gap savings; engineering/risk is medium.
+- Kernel/marker/copy/summary/suite SHA-256s are `3cd2d541...ee0`,
+  `b1ae1723...65a`, `d2cb8ec5...4b3c`, `24ab2f8f...d60`, and
+  `4a129533...e5a6`. The Q4 component screen is `f1ec8c76...bc25`.
