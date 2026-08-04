@@ -27,6 +27,9 @@ _SYMBOL_CONTEXT_BATCH_C1_EXACT = "hipengine_qwen35_paged_full_attn_decode_contex
 _SYMBOL_CONTEXT_BATCH_Q3_C1_EXACT = (
     "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans"
 )
+_SYMBOL_CONTEXT_BATCH_SHARED_NATIVE_EXACT = (
+    "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_shared_native_exact_spans"
+)
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
 _SYMBOL_SPLIT_WARP_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_bf16_spans"
 _SYMBOL_SPLIT_WARP_CONTEXT_BATCH = (
@@ -509,6 +512,76 @@ def qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans(
     library = library or build_qwen35_paged_attn_decode(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_CONTEXT_BATCH_Q3_C1_EXACT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(max_context_len),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_paged_full_attn_decode_context_bf16_batch_shared_native_exact_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Batch verifier rows over one shared resident physical page table."""
+
+    block_table_len = _check_decode_shared_batch_shape(
+        spans,
+        rows,
+        max_context_len,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_CONTEXT_BATCH_SHARED_NATIVE_EXACT)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -3924,6 +3997,16 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_attn_decode",
+            "gguf_q4_k_m",
+            "bf16_context_batch_shared_native_exact_spans",
+        ),
+        qwen35_paged_full_attn_decode_context_bf16_batch_shared_native_exact_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_spans"),
         qwen35_paged_full_attn_decode_split_k_bf16_spans,
         replace=replace,
@@ -4230,6 +4313,34 @@ def _check_decode_batch_shape(
     _check_positive(block_table_len, "block_table_len_per_row")
     if ((max_context_len + block_size - 1) // block_size) > block_table_len:
         raise ValueError("each row block table is too short for max_context_len")
+    return block_table_len
+
+
+def _check_decode_shared_batch_shape(
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> int:
+    _check_decode_shape(
+        spans,
+        max_context_len,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    _check_positive(rows, "rows")
+    if spans.live_counts.numel < rows:
+        raise ValueError("live_counts must have at least rows entries")
+    if len(spans.base_offsets.shape) != 1:
+        raise ValueError("shared batch base_offsets must contain one block table")
+    block_table_len = spans.base_offsets.numel
+    if ((max_context_len + block_size - 1) // block_size) > block_table_len:
+        raise ValueError("shared block table is too short for max_context_len")
     return block_table_len
 
 

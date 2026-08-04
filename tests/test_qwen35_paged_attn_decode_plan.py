@@ -11,6 +11,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.cpu_reference import attention_decode
 from hipengine.kernels.hip_gfx1100.attention import (
     plan_qwen35_paged_attn_decode_build,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
@@ -170,6 +171,21 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             variant="bf16_context_batch_native_exact_spans",
         )
         is qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans
+    )
+    shared_native = getattr(
+        paged_attn_decode,
+        "qwen35_paged_full_attn_decode_context_bf16_batch_shared_native_exact_spans",
+        None,
+    )
+    assert shared_native is not None
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="gguf_q4_k_m",
+            variant="bf16_context_batch_shared_native_exact_spans",
+        )
+        is shared_native
     )
     assert (
         resolve(
@@ -782,6 +798,156 @@ def test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks(batch_kern
             free(buffer, runtime=runtime)
 
     np.testing.assert_array_equal(batch_out, c1_out)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_qwen35_paged_attn_decode_batch_shared_table_matches_scalar_and_cpu() -> None:
+    batch_kernel = getattr(
+        paged_attn_decode,
+        "qwen35_paged_full_attn_decode_context_bf16_batch_shared_native_exact_spans",
+        None,
+    )
+    assert batch_kernel is not None
+
+    runtime = get_hip_runtime()
+    rows = 4
+    block_size = 256
+    blocks = 2
+    num_q_heads = 24
+    num_kv_heads = 4
+    head_dim = 256
+    live_counts = np.asarray([254, 255, 256, 257], dtype=np.int64)
+    max_context_len = int(live_counts[-1])
+    scale = head_dim ** -0.5
+    rng = np.random.default_rng(20260804)
+
+    query = rng.normal(0.0, 0.125, size=(rows, num_q_heads, head_dim)).astype(np.float32)
+    key_f32 = rng.normal(
+        0.0,
+        0.125,
+        size=(blocks, block_size, num_kv_heads, head_dim),
+    ).astype(np.float32)
+    value_f32 = rng.normal(
+        0.0,
+        0.125,
+        size=(blocks, block_size, num_kv_heads, head_dim),
+    ).astype(np.float32)
+    key_f32[1] += np.float32(1.0)
+    value_f32[1] -= np.float32(1.0)
+    key_cache = float_array_to_bf16_bits(key_f32)
+    value_cache = float_array_to_bf16_bits(value_f32)
+    block_table = np.asarray([1, 0], dtype=np.int32)
+    batch_out = np.empty_like(query)
+    scalar_out = np.empty_like(query)
+
+    buffers = []
+    try:
+        query_b = malloc(query.nbytes, runtime=runtime)
+        key_b = malloc(key_cache.nbytes, runtime=runtime)
+        value_b = malloc(value_cache.nbytes, runtime=runtime)
+        table_b = malloc(block_table.nbytes, runtime=runtime)
+        live_b = malloc(live_counts.nbytes, runtime=runtime)
+        batch_out_b = malloc(batch_out.nbytes, runtime=runtime)
+        scalar_out_b = malloc(scalar_out.nbytes, runtime=runtime)
+        buffers.extend(
+            (query_b, key_b, value_b, table_b, live_b, batch_out_b, scalar_out_b)
+        )
+        for buffer, host in (
+            (query_b, query),
+            (key_b, key_cache),
+            (value_b, value_cache),
+            (table_b, block_table),
+            (live_b, live_counts),
+        ):
+            copy_host_to_device(buffer, host_array_ptr(host), host.nbytes, runtime=runtime)
+
+        shared_spans = KVLiveSpans.paged_uniform(
+            block_table=_tensor(table_b.ptr, block_table.shape, "int32"),
+            live_counts=_tensor(live_b.ptr, live_counts.shape, "int64"),
+            max_live_count=max_context_len,
+            storage_dtype=DType.BF16,
+            span_role="verify_chain",
+        )
+        batch_kernel(
+            query_b.ptr,
+            key_b.ptr,
+            value_b.ptr,
+            batch_out_b.ptr,
+            shared_spans,
+            rows,
+            max_context_len,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            scale,
+            runtime=runtime,
+        )
+
+        row_nbytes = num_q_heads * head_dim * DType.FP32.itemsize
+        for row in range(rows):
+            row_spans = KVLiveSpans.paged_uniform(
+                block_table=_tensor(table_b.ptr, block_table.shape, "int32"),
+                live_counts=_tensor(
+                    live_b.ptr + row * DType.INT64.itemsize,
+                    (1,),
+                    "int64",
+                ),
+                max_live_count=max_context_len,
+                storage_dtype=DType.BF16,
+                span_role="verify_chain",
+            )
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                query_b.ptr + row * row_nbytes,
+                key_b.ptr,
+                value_b.ptr,
+                scalar_out_b.ptr + row * row_nbytes,
+                row_spans,
+                max_context_len,
+                block_size,
+                num_q_heads,
+                num_kv_heads,
+                head_dim,
+                scale,
+                runtime=runtime,
+            )
+
+        copy_device_to_host(
+            host_array_ptr(batch_out), batch_out_b, batch_out.nbytes, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(scalar_out), scalar_out_b, scalar_out.nbytes, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(batch_out, scalar_out)
+
+    key_rounded = (key_cache.astype(np.uint32) << 16).view(np.float32)
+    value_rounded = (value_cache.astype(np.uint32) << 16).view(np.float32)
+    logical_key = np.concatenate([key_rounded[index] for index in block_table], axis=0)
+    logical_value = np.concatenate([value_rounded[index] for index in block_table], axis=0)
+    q_per_kv = num_q_heads // num_kv_heads
+    cpu_out = np.empty_like(batch_out)
+    for row, live_count in enumerate(live_counts):
+        key_heads = np.repeat(
+            np.transpose(logical_key[:live_count], (1, 0, 2)),
+            q_per_kv,
+            axis=0,
+        )
+        value_heads = np.repeat(
+            np.transpose(logical_value[:live_count], (1, 0, 2)),
+            q_per_kv,
+            axis=0,
+        )
+        cpu_out[row] = attention_decode(
+            query[row, :, None, :],
+            key_heads,
+            value_heads,
+            scale=scale,
+        )[:, 0, :]
+    np.testing.assert_allclose(batch_out, cpu_out, rtol=5e-4, atol=2e-5)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")

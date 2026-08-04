@@ -204687,3 +204687,86 @@ Vulkan local sizes verbatim will close the measured gap.
   that exactness here is defined by the materialized BF16 boundary, not merely
   a close float result from the same GGUF source. SHA-256s: screen
   `d890612f...201ce`; result `d5547faf...1c038`.
+
+### D27-O3 full-attention post-write shared-page batching — RED
+
+- The post-chain W7900 B3 trace still emits **448** target scalar paged-attention
+  and **448** scalar gate launches. Because every staged verifier row appends to
+  the same resident page table and carries its own device `live_count`, all K/V
+  writes may retire first and one exact batch attention plus one whole-row gate
+  may replace each four-row serial attention/gate group without making future
+  rows visible. The projected seven-cycle schedule is **896 -> 224** calls,
+  removing **672 / 7.41%** of the current 9,063 complete dispatches; this is an
+  unmeasured ceiling, not a retained wall claim.
+- RX 7900 XTX/GPU1 screening reused the existing 256-thread generic batch
+  arithmetic against the production scalar paged owner at Qwen3.6 shape
+  `(Hq=24,Hkv=4,D=256)`. Rows 2/3/4 are byte-exact for context and gated BF16
+  output. Counterbalanced synchronized medians improve
+  **0.038249/0.056452/0.074700 -> 0.026005/0.026123/0.026276 ms**, or
+  **1.4709x/2.1610x/2.8430x**. Additional rows=4 screens remain byte-exact
+  across live-count ranges 125-128, 253-256, 510-513, and 1021-1024.
+- The ordinary batch ABI is not directly routable: it requires one page-table
+  row per query, while native chain verification intentionally gives every row
+  the same single resident page table. The candidate therefore needs a distinct
+  shared-table `KVLiveSpans` leaf; copying or reading synthetic bulk tables is
+  not admissible.
+- RED command:
+  `PYTHONPATH=. python3 -m pytest -q
+  tests/test_qwen35_paged_attn_decode_plan.py::test_qwen35_paged_attn_decode_registers_span_variant
+  tests/test_gguf_native_spec_cycle.py::test_staged_full_attention_batches_shared_cache_only_with_exact_owner`
+  fails **2/2** exactly on the absent Q4 shared-table registry leaf and the
+  still-serial write/attention/gate schedule. The tests also freeze missing-key
+  scalar fallback, shared-cache/table metadata, all-writes-before-attention
+  order, one whole-batch gate, a nontrivial physical-page map, a page boundary,
+  scalar byte identity, and a CPU-reference numerical comparison.
+- SHA-256s: screen `de246587...056e9`; rows2/3/4 results
+  `6e00d28b...4113 / 3c1bf702...e34 / 5aeaa325...786`; boundary results
+  `2d74369e...1ca / d7b113e9...0b6 / 14681f6a...5b5 / 0908c1b2...54e`.
+
+### D27-O3 full-attention post-write shared-page batching — GREEN
+
+- Add the exact
+  `paged_attn_decode/gguf_q4_k_m/bf16_context_batch_shared_native_exact_spans`
+  leaf. Its template specialization keeps the retained 256-thread dot,
+  shuffle, softmax, and value accumulation order while selecting one common
+  physical page table for all query rows. The ordinary row-table-major batch
+  entrypoint is unchanged.
+- Dense N1 staging resolves that exact key before scheduling. It verifies BF16
+  uniform `verify_chain` spans, one common cache/table, and contiguous device
+  position/context rows; only then does it enqueue all K/V writes followed by
+  one batch attention and one whole-batch gate. Missing key or any metadata
+  mismatch retains the original `[write, attention, gate] * rows` chain. No new
+  allocation, copy, env flag, backend/quant model branch, or changed commit
+  ownership is introduced.
+- Focused RED is GREEN **2/2**. The adjacent native-cycle CPU/fake bundle passes
+  **12/12** and the complete paged-attention plan/GPU file passes **9/9**.
+  GPU1's reversed physical-page production-shape fixture at live254-257 is FP32
+  byte-exact to four scalar paged launches and passes the independent CPU
+  attention oracle. Missing-key and noncontiguous-live-count negative paths both
+  execute the complete scalar fallback. Ruff, py_compile, and diff checks pass.
+- Cached GPU1 `rocprofv3 --kernel-trace` of that fixture names
+  `qwen35_paged_full_attn_decode_context_tensor_batch_kernel<false,1,true>` at
+  **189,639 ns**, grid `(6144,4,1)`, local `(256,1,1)`, VGPR40, SGPR128,
+  reported LDS0, and scratch0. Trace SHA-256 is `1d86dd7a...8449`; the cached
+  code object is `75433833...b03`.
+- Mandatory W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes **1/1**.
+  B1-B3 logits, reject/partial/full/rollback Conv/GDN/KV/hidden state, dynamic
+  positions 6/7/9, graph reuse, correction logits, and natural provider output
+  remain exact.
+- The permanent owner census first failed only its over-broad expected set
+  `{2,3,4}` while reporting actual `{2,4}`; all transaction assertions before
+  it passed. Audit confirms B2/rows3 intentionally uses the separate N2 bulk
+  graph. Correcting only that final expectation and rerunning the failing node
+  passes **1/1**. The shared owner sees N1 B1/B3 rows exactly `{2,4}`, block 256,
+  `(Hq,Hkv,D)=(24,4,256)`, one physical table block, and one live count per row.
+- Freeze this correctness unit before clean W7900 production tracing. The
+  **672-dispatch** B3 reduction remains a projection until the named trace
+  confirms 448 scalar attention plus 448 scalar gates became 112 plus 112 and
+  measures complete cycle wall; the **41.440 tok/s** headline is unchanged.

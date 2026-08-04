@@ -803,6 +803,26 @@ IDs, acceptance, state, peak memory, and teardown remain exact. The remaining
 Vulkan B3 gap narrows from 41.67% to **39.13%**. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-chain-journals-retained.json`.
 
+The next exact D27-O3 route batches short-context full attention after all
+verifier K/V writes. Every N1 row extends the same resident physical page table,
+while contiguous device `live_counts` keep each query causal even though later
+rows are already present. A dedicated Q4 registry leaf preserves the existing
+256-thread arithmetic and consumes that one shared table; the ordinary
+row-table-major batch ABI is not reused. Missing keys, different cache/table
+owners, or noncontiguous metadata retain the complete scalar
+`write -> attention -> gate` loop.
+
+GPU1 production-shape rows 2/3/4 screens are FP32/BF16 byte-exact across live
+counts through 1,024 and improve synchronized attention+gate wall by
+**1.47x/2.16x/2.84x**. A reversed-page live254-257 fixture is byte-exact to
+scalar and passes the CPU oracle; cached tracing names the new shared-table
+specialization at local256/VGPR40/scratch0. The W7900 transaction remains exact
+and observes the N1 owner at physical rows `{2,4}`. B2/rows3 intentionally stays
+with the separate N2 bulk graph rather than crossing transaction ownership.
+The B3 profile ceiling remains **672 fewer dispatches** (448 attention plus 448
+gate calls becoming 112 plus 112); named production tracing and natural25
+performance are still pending, so the **41.440 tok/s** headline is unchanged.
+
 ---
 
 ## 7. Prioritized execution plan
