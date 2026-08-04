@@ -202897,3 +202897,41 @@ Vulkan local sizes verbatim will close the measured gap.
   repair rule, do not spend another 25 minutes on a third broad run: the last
   complete run establishes all other 8,374 tests and the complete affected
   bundle establishes the isolated repair.
+
+## 2026-08-04 — Review Photon 2 generated decode for gfx11 transfer
+
+- Review the Photon 2 launch post, public Kestrel
+  `1b23055df49b13feff65f960baa02d46d44e9641`, and the public Python runtime and
+  catalog in `kestrel-kernels==0.4.9`; do not inspect or reproduce packaged
+  device code. The launch chart reports H100 system-level Photon/vLLM ratios
+  from **1.01x to 2.33x** at C1/C2/C4/C8 and fresh-process-to-first-inference
+  wins for every disclosed model. Exact commands, absolute rates,
+  checkpoint/precision details, and raw samples are not published, so none of
+  these are AMD or isolated-megakernel claims.
+- Source inspection separates the Moondream persistent instruction-tape path
+  from the generalized Qwen/Gemma generated-decode runtime. The latter ships 24
+  usable H100 programs across six dense model shapes and C1/C2/C4/C8. Its
+  transferable design is the compiler-emitted contract: physical weight
+  recipes, named ABI, explicit carried-state forms, dynamic active rows within
+  fixed capacities, direct paged-KV ownership, exact artifact matching, and
+  measured native fallback.
+- Do **not** port Photon or begin a whole-model gfx1100/gfx1151 persistent
+  megakernel. The compiler is proprietary, the binaries are CUDA `sm90`, the
+  public host is Torch-based, and current local evidence remains controlling:
+  gfx1100's AR-faithful persistent barrier sweep showed only **1.08-1.27x**
+  opportunity for 3-12 MiB fresh-weight stages and regression beyond cache,
+  while its fused PARO FFN was **2.66x slower** than production. Current
+  gfx1151 graph replay is only **+1.00%/+0.86%/+0.36%** and the non-retiring AQL
+  queue risk remains open.
+- Retain current registered eager/`hipGraph` owners and `KVLiveSpans`. Borrow
+  Photon's low-concurrency/cold-start benchmark lens now. Reopen an AMD-native
+  generated-decode descriptor plus one bounded subgraph only after profiling
+  attributes more than approximately 3% of wall to removable dispatch,
+  state-layout conversion, or intermediate traffic; require the normal
+  registry, fallback, complete-state/KV, correctness, startup, and repeated
+  server-wall gates.
+- Publish the full evidence, technique matrix, staged recommendation, and
+  licensing boundary in `docs/PHOTON2.md`. Although the launch post labels the
+  engine Apache 2.0, reviewed Kestrel Git/PyPI 0.5.0 carries no license file or
+  package license metadata; independently implement concepts only and await an
+  explicit upstream license before any source reuse.
