@@ -1129,6 +1129,27 @@ at **76.444 ms**, Q6T16 col8 follows at **75.244 ms**, compact single-Q4 is
 **37.316 ms**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json`.
 
+The matched module re-rank then justified one materially different return to
+Q5 `ssm_out`: hipEngine's retained dense family is **37.316 ms**, versus
+**15.12 ms** for Vulkan, while the existing raw-Q5 selected Q8_1/`sudot4`
+primitive had never reused a dense weight across verifier rows. A temporary
+raw-Q5 rowtile reuses each decoded value over rows 2-4 and is synthetic
+BF16-bit exact to the established integer-dot primitive at local128. On the
+actual K6,144/N5,120 weight it passes the component gate at maximum KL
+**0.001697** and top-1 **100%**.
+
+The economics still reject it. A complete column/thread screen covers
+`(1,32)`, `(2,64/128)`, `(4,64/128/256)`, and `(8,128/256)`. Final 11-sample
+col4 adjudication reaches only **0.646x/0.713x/0.798x** dense including Q8_1
+quantization at rows 2/3/4, with **0/11** paired wins in every final row. The
+rowtile cuts the row-separate integer dot by roughly 2-3x, but not enough to
+beat the 60-MiB dense-BF16 owner. Candidate kernel, wrapper, registry key,
+tests, and geometry selectors are removed; no allocation or runtime route
+remains. A direct Q5T16/Q8_1 control also loses at **0.605x/0.510x/0.479x**,
+but that control does not adjudicate a new T16 integer-dot row-reuse body.
+Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-raw-q5-q8-1-dp4a-rowreuse-rejected.json`.
+
 ---
 
 ## 7. Prioritized execution plan
