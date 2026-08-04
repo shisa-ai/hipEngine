@@ -1,11 +1,12 @@
 # Debugging the gfx1151 128K prefill stall
 
-**Status:** open, reproducible, intermittent; host-drain containment unverified<br>
+**Status:** open, reproducible, intermittent; opt-in layer-drain containment qualified<br>
 **Last updated:** 2026-08-04<br>
 **Primary platform:** Framework Desktop, Ryzen AI MAX+ 395 / Radeon 8060S
 (`gfx1151`)<br>
 **Current publication decision:** hipEngine GGUF rows through 64K are retained;
-the current repeated-128K row is blocked.<br>
+the default repeated-128K row is blocked, while explicit layer drain is a
+qualified slower containment path.<br>
 **Dedicated upstream issue:** [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437)<br>
 **Immutable reproducer:** [`rocm-6437-reproducer-v1`](https://github.com/shisa-ai/hipEngine/tree/rocm-6437-reproducer-v1) (`a7b4fe4b213c5afcbe1be2b13cb33464f251a06e`)<br>
 **Redacted evidence bundle:** [public gist](https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72)
@@ -88,9 +89,13 @@ hipEngine now has an explicit default-off `layer`/`chunk` host-drain diagnostic.
 the only current application containment strong enough to bound the observed
 two-layer submission lead. Unit coverage proves placement and default-off
 behavior. A matched gfx1151 Q4_K_M 512/1 smoke preserves the exact final token
-and logit while prefill changes `1297.739 -> 1211.852 tok/s` (`-6.62%`); no 128K
-lifecycle run has yet established safety. It is not a production workaround
-until it meets the closure gate below.
+and logit while prefill changes `1297.739 -> 1211.852 tok/s` (`-6.62%`). The
+predeclared production-shape gate now passes: exact matched 512/4K/64K controls
+cost **1.79%/0.24%/0.86%** prefill, and three independent 128K warmup+3
+processes complete all **12/12** prefills with finite logits, exact token 9707,
+normal telemetry, graph-replay decode, and full allocation recovery. This
+qualifies an explicit slower containment path; it does not fix the underlying
+stack issue, make layer drain the default, or unblock the default 128K row.
 
 ## User-visible impact and scope
 
@@ -297,6 +302,26 @@ The predeclared gate is the normal exact 512/4K/64K screen followed by at least
 three independent 128K warmup+3 processes, with finite logits, exact IDs, normal
 telemetry, and clean kernel logs. A single passing process is insufficient.
 
+The 2026-08-04 gate passes at commits `b10a5f7d5` through `db87f6d1e`; the
+intervening commits change only documentation and `WORKLOG.md`. Matched
+none/layer prefill medians are **1395.168 -> 1370.181 tok/s (-1.791%)** at 512,
+**1463.311 -> 1459.767 (-0.242%)** at 4K, and
+**890.033 -> 882.348 (-0.864%)** at 64K. Decode changes
+**-0.003%/+0.000%/-0.134%**. The three independent 128K processes report
+measured prefill medians **581.591/581.595/582.047 tok/s** and decode medians
+**29.603/29.667/29.607 tok/s**; all nine measured final logits are identical
+and finite at `30.117918014526367`, all final IDs are 9707, and every process
+returns tracked allocation to zero.
+
+Across the two 64K and three 128K telemetry streams, all **295** samples with
+at least 80% activity have **109.019 W** minimum working power and zero samples
+matching the historical `100% / >=2.8 GHz / <=59 W` failure signature. The
+kernel journal contains no amdgpu/KFD fault, timeout, or reset. One
+`PME: Spurious native interrupt!` line occurs during a successful 64K control
+that continues through warmup+3, further weakening it as a causal trigger. The
+compact evidence is
+[`2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json`](../benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json).
+
 ## Evidence chronology
 
 | Date | Probe | Result | Interpretation |
@@ -318,6 +343,7 @@ telemetry, and clean kernel logs. A single passing process is insufficient.
 | Jul 16 | MES-log boot plus stalled HQD | First 128K prefill stops at cursor 389/339; 36 samples hold 100%/2.9 GHz/median 43 W; active 1 MiB HQD has 32 unread AQL packets and zero error/dequeue state; MES-log bytes change only during teardown | Direct mapped-queue backlog evidence; debug parameters are not a workaround, while one HQD sample and an undecoded MES buffer still do not name the failed packet/component |
 | Jul 16 | AMD oversubscription-timer / stream-topology audit | Exact CachyOS source submits timer 50; no override; failing prefill uses one application thread and default stream 0; experimental AOTriton stream is off | Disabled timer and current application multistream submission are not supported as necessary triggers; firmware field still lacks live readback |
 | Jul 16 | Non-HWS `sched_policy=2` boot | Exact 512/1 passes before and after; intervening 128K process aborts before prefill with CPF gfxhub fault at ring 24 / VMID 8 / PASID 31; coredump reaches `AqlQueue::ExecutePM4` during code-cache invalidation | Reject policy 2 on this stack; no conclusion about the original HWS stall because 128K never reaches prefill |
+| Aug 4 | Per-layer host-drain containment | Exact matched 512/4K/64K costs -1.79%/-0.24%/-0.86% prefill; three independent 128K warmup+3 processes complete 12/12 prefills with exact IDs, finite logits, normal telemetry, clean AMDGPU/KFD logs, and full cleanup | Qualifies an explicit slower containment path; underlying default-path stack bug remains open and the fixed-kernel `lr_compute_wa` A/B remains preferred |
 
 ## Flight-recorder localization
 
@@ -962,6 +988,7 @@ State that:
 | [`2026-07-16-gfx1151-128k-kfd-healthy-controls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-kfd-healthy-controls.json) | Two complete pre-reboot healthy MQD/sysfs controls and prepared MES-debug boot |
 | [`2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json`](../benchmarks/results/2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json) | First MES-debug-boot stall with recorder cursor, telemetry, active non-empty HQD decode, MES-log control, firmware hashes, and evidence boundaries |
 | [`2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json`](../benchmarks/results/2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json) | Non-HWS boot rejection: exact bracketing 512 controls plus the pre-prefill 128K CPF VM fault and coredump stack |
+| [`2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json`](../benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json) | Matched 512/4K/64K cost controls plus three independent exact 128K warmup+3 layer-drain completions |
 
 Public reporting links:
 
@@ -994,6 +1021,12 @@ The bug is not closed by one successful 128K pass. Closure requires one of:
    and normal telemetry; or
 2. a production-quality workaround does the same, remains exact and
    non-regressive at 512/4K/64K, and has a documented mechanism and rollback.
+
+The layer-drain gate satisfies the repeated lifecycle, correctness, telemetry,
+log, mechanism, and rollback requirements but is measurably slower at all three
+control shapes. It is therefore qualified as an explicit opt-in containment
+path rather than promoted to the default or used to close the upstream bug.
+The fixed-kernel `enable_lr_compute_wa` A/B remains the preferred closure path.
 
 For an upstream fix, rerun both the original default-queue reproducer and the
 one-queue production gate. Preserve the pre-fix KFD/MES evidence and report the

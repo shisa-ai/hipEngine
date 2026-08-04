@@ -69,7 +69,7 @@ _POST_MERGE_SOURCE_SHA256 = {
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
     ),
     "docs/REFACTOR.md": (
-        "8d8f3b4d47b3c5810df455ecf0251e9f7487c743cf2a496463de556df7dd37c9"
+        "9b8b0886ba72e7bee2a5058d54599b196f9aa83c44edb46985874b28639ed62e"
     ),
 }
 _SOURCE_TOPOLOGY = {
