@@ -27,6 +27,12 @@ _Q6_T16_BF16_F32_TOP1_STAGE1 = (
 )
 _Q6_T16_ROWTILE_BF16_F32 = "hipengine_gguf_q6_k_t16_gemv_rowtile_bf16_f32_out"
 _Q6_T16_ROWTILE_BF16_BF16 = "hipengine_gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out"
+_Q6_T16_ROWTILE_COL8_BF16_F32 = (
+    "hipengine_gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out"
+)
+_Q6_T16_ROWTILE_COL8_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out"
+)
 _Q6_T16_WMMA_PREFILL_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_wmma_prefill_bf16_bf16_out"
 )
@@ -313,6 +319,62 @@ def gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out(
     )
 
 
+def gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact local128 small-B Q6T16 rowtile split into eight-column blocks."""
+
+    _launch(
+        _Q6_T16_ROWTILE_COL8_BF16_F32,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact local128 small-B Q6T16 col8 rowtile with BF16 output."""
+
+    _launch(
+        _Q6_T16_ROWTILE_COL8_BF16_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _launch(
     symbol: str,
     x_ptr: int,
@@ -396,6 +458,26 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "linear",
             "gguf_q6_k_t16_v1",
+            "t16_gemv_rowtile_col8_bf16_f32_out",
+        ),
+        gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_v1",
+            "t16_gemv_rowtile_col8_bf16_bf16_out",
+        ),
+        gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_v1",
             "t16_wmma_prefill_bf16_bf16_out",
         ),
         gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
@@ -432,8 +514,10 @@ __all__ = [
     "gguf_q6_k_t16_gemv_decode_bf16_f32_out",
     "gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out",
-    "gguf_q6_k_t16_proposal_top1_exact_bf16",
     "gguf_q6_k_t16_gemv_rowtile_bf16_f32_out",
+    "gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out",
+    "gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out",
+    "gguf_q6_k_t16_proposal_top1_exact_bf16",
     "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
     "plan_gguf_q6_k_t16_gemv_build",
     "register_gguf_q6_k_t16_gemv_kernels",

@@ -205685,3 +205685,71 @@ Vulkan local sizes verbatim will close the measured gap.
   `75487ba1...df8`, and populated rows `eacc3e37...3753` /
   `1f4f64e0...24ce4`. Re-rank only `2dbf6abdd`; Q6T16 rowtiles are now the
   largest remaining exact arithmetic family.
+
+## 2026-08-05 — Exact Q6T16 col8 verifier rowtiles
+
+- Re-rank only the retained `2dbf6abdd` B3 profile. Q6T16 rowtiles lead the
+  untried exact arithmetic at **99.135122 ms / 19.23%** of the 515.594-ms
+  complete wall: 392 BF16 projection calls cost **80.906257 ms** and seven
+  FP32 full-vocabulary heads cost **18.228865 ms**. The credible column-split
+  recovery is 20-25 ms / 3.9-4.8% of complete wall: preserve all 128 K
+  partitions and the four-wave ordered reduction while halving each block's
+  output columns and accumulator footprint from 16 to 8.
+- RED extends `tests/test_gguf_q6_k_t16_gemv_decode.py` with BF16/F32 rows 2-6
+  bit equality to the direct T16 producer plus four-axis registry contracts.
+  Collection fails only on the two absent col8 wrappers. The new local128 body
+  keeps each output's K/FMA/shuffle/wave-sum/BF16-or-FP32 store order exactly,
+  but doubles the output grid and cuts B4 resources from **136 VGPR / 1,024 B
+  LDS** to **80 VGPR / 512 B LDS**, with zero scratch.
+- GPU1 actual-weight screening uses `blk.0.ffn_down.weight`
+  (K17,408/N5,120), `blk.0.attn_qkv.weight` (K5,120/N10,240), and the
+  1,042,944,000-byte `output.weight` T16 resident (K5,120/N248,320), 11
+  counterbalanced samples, 50 warmup pairs, and synchronized event/wall
+  bursts. Every output is bit exact. BF16 rows 2/3/4 improve respectively
+  **1.231x/1.312x/1.202x** for `ffn_down` and
+  **1.129x/1.319x/1.235x** for `attn_qkv`. The FP32 head is flat at row 2
+  (**0.995x**) but improves **1.223x/1.246x** at rows 3/4. Rows 5/6 establish
+  the fail-closed policy: BF16 col8 wins at row 5 and loses at row 6, while
+  FP32 loses both. Production therefore selects col8 only for BF16 rows 2-5
+  and FP32 rows 3-4; every other row retains the existing col16 body.
+- The materially different col4 control is exact but loses every actual
+  rows-2-4 shape: **0.961-0.986x** on `ffn_down`, **0.971-0.996x** on
+  `attn_qkv`, and **0.827-0.895x** on the head versus selected production.
+  Remove its wrappers, registry entries, tests, and instantiations before the
+  W7900 profile; no geometry selector or refactor debt remains.
+- The final GPU1 Q6T16 bundle passes completely under cached gfx1100 builds.
+  The binding W7900
+  `test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` also
+  passes B1-B3 target logits, reject/partial/full/rollback state, changing
+  positions, graph reuse, provider output, ownership, and teardown.
+- Hermetic TheRock/ROCTX W7900 profiling over the same one-prompt B3 workload
+  confirms exactly **399** col8 launches and unchanged **8,055** total
+  dispatches. Combined Q6 rowtiles fall **99.135122 -> 75.244180 ms
+  (-24.10%, 1.3175x)**: BF16 **80.906257 -> 60.252972 ms (-25.53%)** and FP32
+  **18.228865 -> 14.991208 ms (-17.76%)**. Target verify falls **423.243689 ->
+  399.282324 ms (-5.661%)**, kernel sum **378.590523 -> 356.971900 ms
+  (-5.710%)**, device span **515.120787 -> 491.614247 ms (-4.563%)**, and
+  complete wall **515.593664 -> 492.172453 ms (-4.543%)**. Queue-gap/copy
+  overlap also falls **136.530264 -> 134.642347 ms**; acceptance remains
+  17/21 with the same token hash. The initial non-hermetic trace independently
+  agreed but omitted marker CSV because it loaded the system ROCTX shim; only
+  the corrected hermetic trace is promotion evidence.
+- Full clean-protocol natural25 advances B1/B2/B3
+  **37.544045/45.634454/50.344003 -> 38.580873/48.712333/52.652369 tok/s
+  (+2.762%/+6.745%/+4.585%)**. B3 own-AR rises **2.3260x -> 2.4291x
+  (+4.434%)**. Every one of 30 prompt-budget rows improves (**+1.839% to
+  +7.321%**) and every full/train/heldout/category scope improves (**+2.588%
+  to +7.049%**). B1/B2/B3 target verify falls **3.734%/8.319%/6.277%**.
+  All 750 MTP IDs, 250 AR IDs, proposal/acceptance ledgers, GPU/CPU summaries,
+  and stage reconciliation remain exact. True AR moves **21.644160 ->
+  21.675538 tok/s (+0.145%)** on the unchanged c1 route. Peak is byte-identical
+  at **35,317,648,936 bytes / 32.892 GiB**, and teardown returns to zero.
+- Retain and promote the row-selective col8 schedule with no new allocation,
+  environment flag, prompt/token condition, or changed c1/prefill path. The
+  populated 512/4096 benchmark is not repeated because it cannot execute a
+  rows-2-5-only body; the natural suite's true-AR control plus the complete
+  transaction gate are the binding non-regression evidence. Selected B3 is now
+  **52.652 tok/s / 2.4291x own AR**, **22.66% below** Vulkan's 68.082 tok/s.
+  Re-rank only this profile: compact Q4 dual+SiLU leads at **76.444 ms**, the
+  now-col8 Q6 rowtiles are **75.244 ms**, compact single-Q4 is **52.287 ms**,
+  proposal Q6 top-1 is **40.466 ms**, and dense `ssm_out` is **37.316 ms**.
