@@ -4747,6 +4747,32 @@ byte-identical at **28.996 GiB** and returns to zero. B3 remains selected at
 **1.8047x** own AR, but is still 46.17% below Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-staged-linear-projections-retained.json`](results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json).
 
+#### Qwen3.6-27B exact staged full attention, W7900/gfx1100
+
+Clean hipEngine `a67d59ac9` stages independent full-attention norm/Q/V,
+split/key-cast/head-norm-RoPE, and output work across verifier rows. The narrow
+Q4 K projection remains scalar after a measured rowtile regression, and every
+row preserves the prior `KV write -> attention -> gate` sequence. Eager, MoE,
+c1, split-decode, and scaled/non-BF16 paths retain the scalar fallback.
+
+| Route | Staged linear projections | + staged full attention | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.309 tok/s | **20.361 tok/s** | +0.256% | 1.0000x | n/a |
+| B1 | 27.734 tok/s | **28.348 tok/s** | **+2.21%** | **1.3923x** | **-2.54%** |
+| B2 | 33.544 tok/s | **34.818 tok/s** | **+3.80%** | **1.7100x** | **-4.37%** |
+| B3 | 36.652 tok/s | **38.322 tok/s** | **+4.56%** | **1.8821x** | **-5.61%** |
+
+All 30 prompt/budget rows improve (**+1.66% to +5.32%**), and every full,
+train, heldout, and category rollup improves (**+1.99% to +4.83%**). All 250
+IDs per budget, acceptance/cycle ledgers, GPU/CPU summaries, graph submissions,
+stage reconciliations, and reject/partial/full plus changing-position state/KV/
+hidden oracles remain exact. GPU1 component checks are bit-exact and improve
+full-Q/full-output 1.35-1.67x; the 0.83-0.90x narrow-K rowtile is rejected and
+not dispatched. Tracked peak is byte-identical at **28.996 GiB** and returns to
+zero. B3 remains selected at **1.8821x** own AR, but is still 43.71% below
+Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-staged-full-attention-retained.json`](results/2026-08-04-qwen36-27b-staged-full-attention-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
@@ -4877,6 +4903,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact dense local128 verifier GEMV](results/2026-08-04-qwen36-27b-dense-local128-retained.json),
 [Qwen3.6-27B exact reusable native-verifier graph](results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json),
 [Qwen3.6-27B exact staged linear projections](results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json),
+[Qwen3.6-27B exact staged full attention](results/2026-08-04-qwen36-27b-staged-full-attention-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
 [current W7900 hipEngine `llama-compat` baseline](results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json),

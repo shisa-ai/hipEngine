@@ -203884,3 +203884,37 @@ Vulkan local sizes verbatim will close the measured gap.
   reuse, and natural provider output remain exact.
 - Freeze this correctness unit before clean natural25 timing. No speed claim is
   inferred from the primitive screen or profile ceiling.
+
+### D27-O3 staged exact full attention — RETAINED
+
+- Benchmark clean correctness commit
+  `a67d59ac9eb6a01faddf22037ab7264ecdcff05f` on GPU0 W7900 against the
+  clean staged-linear artifact from `b94810438`, using the full 10-prompt
+  natural25 category suite, B1/B2/B3, one warmup, one measured run, cached-only
+  JIT, and exact native verification. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-a67d59ac9/natural25-native-staged-full-b1-b3.json`.
+- B1/B2/B3 complete decode improves
+  **27.734/33.544/36.652 -> 28.348/34.818/38.322 tok/s**
+  (**+2.21%/+3.80%/+4.56%**). Target-verify wall falls
+  **7.5607/6.0264/5.3817 -> 7.3683/5.7628/5.0800 s**
+  (**-2.54%/-4.37%/-5.61%**). Same-process true AR is
+  **20.361 tok/s**, +0.256% from the prior run; MTP/own-AR becomes
+  **1.3923x/1.7100x/1.8821x** and B3 remains selected.
+- All 30 prompt/budget rows improve by **1.66-5.32%**. Every aggregate, train,
+  heldout, and category row improves by **1.99-4.83%**. All 250 visible IDs per
+  budget, candidate IDs, acceptance/cycle ledgers, GPU/CPU summaries, stage
+  reconciliation, graph submissions, and the W7900 B1-B3 reject/partial/full
+  plus positions 6/7/9 state/KV/hidden transaction oracle remain exact.
+- Tracked peak is byte-identical at **28.995808631 GiB** and returns to zero.
+  No kernel or allocation was added. B3 remains **43.71% below** the clean
+  llama.cpp Vulkan B3 floor, so retain this exact default schedule and select
+  the next candidate from a refreshed profile.
+- Compact artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-staged-full-attention-retained.json`.
+  Candidate suite, comparison, Q4-screen, and dense-rowtile SHA-256s are
+  `89450542...a7e`, `43d9228d...8c4`, `f1ec8c76...c25`, and
+  `28de22d7...633`.
+- Promotion-record validation passes: JSON parse, source hashes, and
+  independently recomputed throughput/wall/verify/own-AR deltas;
+  `git diff --check`; `python3 scripts/sync_benchmark_readme.py --check`; and
+  `python3 -m pytest -q tests/test_benchmark_readme_sync.py` (**6/6**).
