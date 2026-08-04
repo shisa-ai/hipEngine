@@ -203373,6 +203373,45 @@ Vulkan local sizes verbatim will close the measured gap.
   reread end-to-end. No code or kernel changed, so no pytest/GPU rerun is
   applicable beyond the completed benchmark processes themselves.
 
+## 2026-08-04 — Open exact GGUF decode/memory campaign from fork result
+
+- Split the local exact-model comparator in
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md` into independent prefill, decode, and
+  descriptive-memory tables. hipEngine retains every prefill lead
+  (**0.273%-8.226%**); the fork retains every F16/Q8 decode lead
+  (**13.528%-33.474%**); and its whole-GTT peak is descriptively
+  **0.648-2.153 GiB** below hipEngine tracked peak under explicitly different
+  scopes.
+- Reattribute the result before proposing ports. Fork F16 decode is only
+  **1.268%-1.787%** above the prior vanilla Vulkan lane across the four rows,
+  so most of the BF16/F16 gap is not Nathan-specific. Fork Q8_0 is neutral
+  through 4K but improves **8.142%/14.430%** over fork F16 at 32K/64K and saves
+  **0.632 GiB** at 64K, isolating long-context KV bandwidth.
+- Anchor short/mid work to the retained hipEngine profile: dense Q8T16,
+  selected-MoE T16, and Q6T16 lm-head own **14.628/14.588 ms/token** or
+  **76.1%/80.6%** of 512/4K GPU wall. Anchor memory work to the non-KV jump:
+  tracked peak rises **21.480 -> 23.007 GiB** from 512 to 4K while BF16 KV
+  grows only about **0.068 GiB**, and current full-attention query scratch uses
+  4,096 rows at 4K/32K/64K.
+- Open the ordered SH campaign: C0 matched per-role and memory-scope attribution;
+  D1 exact row-1 weight-kernel redesign; M1 4096/2048/1024/768 scratch/lifetime
+  Pareto; K1 strict layer-adaptive compact KV; A1 gated page-internal head-major
+  decode micro-screen; and G retained multi-prompt recertification. The first
+  cumulative gate closes half the F16 time gap at
+  **58.076/58.679/49.314/42.386 tok/s**; the end target matches fork F16 at
+  **64.658/62.648/53.220/45.913 tok/s** while preserving prefill within 1%.
+- Freeze negative retries: no MMID prefill port for c1 decode, closed thread/
+  chunk/register-tile/d-scale/launch-only sweeps stay closed, pure all-layer
+  INT8/Q8_0/block16/K-only is not an exact default, and no persistent cache
+  rewrite precedes the bounded decode-layout screen. Registry, torch-free,
+  `KVLiveSpans`, unfused-fallback, complete quality, and anti-gaming rules remain
+  mandatory.
+- Documentation-only validation: recompute every derived delta/time target from
+  the retained comparator and decode-profile artifacts; confirm all relative
+  links resolve; reread the changed review end-to-end; and pass
+  `git diff --check`. No kernel/runtime changed, so no GPU or pytest rerun is
+  applicable.
+
 ## 2026-08-04 — Add conservative gfx1151 prefill-kernel isolation profile
 
 - Reconstruct the first repeated-128K failure chronology before changing the
