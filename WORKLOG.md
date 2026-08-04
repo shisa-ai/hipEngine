@@ -202866,3 +202866,34 @@ Vulkan local sizes verbatim will close the measured gap.
   external reference repositories read-only. Implementing inside Hipfire needs
   a task rooted in that repository; the evidence above does not yet justify
   such a promotion anyway.
+
+## 2026-08-04 — Close the post-merge repository suite under focused repair
+
+- With explicit approval for full validation, run `uv run pytest -v
+  --tb=short`. The first complete run collects 8,463 tests and finishes in
+  1,527.85 seconds with **8,372 passed / 89 skipped / 2 failed**. The failures
+  are isolated to a stale `docs/REFACTOR.md` H8B source-pin hash and the real
+  Laguna root probe resolving an exact gfx1151 Q6 linear request to the CPU
+  fallback.
+- The first root cause is test teardown restoring `_KERNELS` without clearing
+  the resolver cache or advancing its generation. Add the test-only
+  `restore_registry_for_tests()` API with normal mutation semantics, route the
+  pytest fixture through it, add a RED/GREEN cached-fallback regression, and
+  refresh the intentional post-merge docs hash.
+- Because this changes shared suite teardown, run the complete suite a second
+  time. It collects 8,464 tests and finishes in 1,528.36 seconds with **8,374
+  passed / 89 skipped / 1 failed**. The H8B guard is green and every other test
+  passes; only the real Laguna root probe still fails.
+- The remaining exact-key failure is independent of cache restoration:
+  `_ensure_embedding_kernel_registered()` and
+  `_ensure_linear_kernel_registered()` incorrectly treated a resolvable CPU
+  fallback as proof that the requested backend key was installed. Switch both
+  lazy-registration guards to exact `is_registered()` checks. Tighten the
+  existing gfx1151 test with registered CPU fallbacks so it is RED before the
+  fix and requires exact embedding and Q6-T16 linear registrations afterward.
+- Final focused evidence is **12/12** for the registry/H8B/root-probe nodes and
+  **97/97** for the complete affected gfx1151 backend, GGUF linear/embedding
+  dispatch, dispatch-cache, and real Laguna root-probe bundle. Per the focused
+  repair rule, do not spend another 25 minutes on a third broad run: the last
+  complete run establishes all other 8,374 tests and the complete affected
+  bundle establishes the isolated repair.

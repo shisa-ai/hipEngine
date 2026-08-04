@@ -11,7 +11,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
     register_gguf_q6_k_embedding_kernels,
 )
 from hipengine.kernels.hip_gfx1100.runtime.state import register_runtime_state_kernels
-from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_BF16, LAYOUT_RAW_GGUF
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
@@ -120,13 +120,7 @@ def _ensure_embedding_kernel_registered(key: KernelKey) -> None:
     # module import. Re-register at dispatch time so the runtime path does not
     # depend on import order, but do not overwrite tests that deliberately
     # replace one dispatch key with a fixture kernel.
-    if resolve(
-        backend=key.backend,
-        layer=key.layer,
-        quant=key.quant,
-        variant=key.variant,
-        missing="none",
-    ) is not None:
+    if is_registered(key):
         return
     register_gguf_q6_k_embedding_kernels()
     register_runtime_state_kernels()
