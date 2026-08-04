@@ -204963,3 +204963,48 @@ Vulkan local sizes verbatim will close the measured gap.
 - Promote the exact grid-y owner and new **41.890 tok/s / 2.0584x** B3
   headline. Re-rank only the refreshed 8,055-dispatch profile before admitting
   another D27-O3 candidate; all older K/attention/chain counts are superseded.
+
+### D27-O3 raw-Q6 dense-BF16-exact rowtile — REJECTED
+
+- Re-rank the retained 8,055-dispatch B3 trace. The two largest remaining exact
+  projection owners are 448 Q4 dual-rowtile+SiLU calls at **105.956798 ms** and
+  448 materialized dense-BF16 local256 rowtile calls at **106.772002 ms**;
+  another 336 qualified Q5 `ssm_out` local128 rowtiles cost **36.769684 ms**.
+- The earlier raw-Q6 rowbatch rejection is not an oracle for an exact compact
+  replacement: it used full-precision dequantized weights and a strided-K
+  reduction, whereas production first rounds every Q6 weight to BF16 and then
+  uses contiguous-eight local256 partitions. Freeze a new raw-byte leaf that
+  reproduces the CPU dequant multiply order, BF16 weight boundary, per-thread
+  K order, local256 reduction tree, and BF16 output exactly. Its first go/no-go
+  is actual `blk.3.attn_v.weight` at K5,120/N1,024 on GPU1; no runtime route is
+  admissible unless it is byte-exact and faster than the retained dense leaf.
+- RED command `PYTHONPATH=. python3 -m pytest -q tests/test_gguf_k_gemv.py -k
+  dense_bf16_exact_rowtile --tb=short` fails collection only on the absent
+  `gguf_q6_k_dense_bf16_exact_rowtile_bf16_bf16_out` wrapper. The test covers
+  rows 2/3/4, a K2,304 main+tail traversal, exact equality to the materialized
+  dense-BF16 leaf, four-axis resolution, and the KL/top-1 CPU-reference gate.
+- Minimal GREEN passed **3/3** on GPU1. The candidate dequantized raw Q6 bytes,
+  rounded every weight to the resident BF16 value, and copied the dense
+  local256 contiguous-eight main/tail and 128..1 LDS tree exactly. This proved
+  that compact source bytes can reproduce the production boundary; no
+  tolerance or reassociation was used.
+- Decisive GPU1 command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -u
+  /tmp/screen_qwen36_q6_dense_bf16_exact_rowtile.py --output
+  /tmp/qwen36-q6-dense-bf16-exact-rowtile-attn-v-gpu1.json`. It uses actual
+  `blk.3.attn_v.weight`, 250 warmup pairs, 15 counterbalanced samples, and
+  50-launch synchronized event/wall bursts per sample.
+- All rows are BF16-byte exact (`0/2,048`, `0/3,072`, `0/4,096` mismatches), but
+  the candidate loses despite reading **4,300,800** raw bytes instead of
+  **10,485,760** dense BF16 bytes. Rows 2/3/4 event medians are
+  **17.902 -> 21.678 us (0.8258x)**, **19.383 -> 23.141 us (0.8376x)**, and
+  **20.995 -> 24.058 us (0.8727x)**; synchronized wall agrees at
+  **0.8258x/0.8402x/0.8747x**.
+- Reject and remove the wrapper, key, device body, and RED test before any
+  runtime/full-model work. The exact dequant+BF16 restoration cost exceeds the
+  byte saving even at the predeclared leaf, so the retained materialized
+  dense-BF16 rowtile remains canonical. Script/result SHA-256s are
+  `d99fedbc...50c3` / `c418a8d0...29df`.
