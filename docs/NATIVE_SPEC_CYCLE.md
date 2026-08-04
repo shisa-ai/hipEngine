@@ -1,7 +1,7 @@
 # NativeSpecCycle Milestones and Status
 
 > Canonical guide to hipEngine's `N0`–`N5` speculative-cycle milestones.
-> Status snapshot: **2026-07-20**. Performance source of truth remains
+> Status snapshot: **2026-08-04**. Performance source of truth remains
 > [`benchmarks/README.md`](../benchmarks/README.md) and the linked compact
 > artifacts; this document explains what each milestone owns and consolidates
 > the current qualified results.
@@ -22,8 +22,9 @@ The milestones move speculative decoding across three separate boundaries:
 
 Those boundaries do not advance in lockstep. In particular:
 
-- `N1R` is the current W7900 performance winner because it removes the dominant
-  target-verifier submission overhead while leaving cheap policy work alone.
+- `N1R` remains the graph owner under the current exact W7900 winner: it removes
+  target-verifier submission overhead, while exact staged linear projections
+  now remove independent row-serial arithmetic around the unchanged recurrence.
 - On W7900, `N2` and `N3` own more of the transaction but are not faster than
   `N1R` yet. On gfx1151, N3 retains essentially all of N1 and improves the clean
   current-main direct-commit control by 14.39%.
@@ -87,7 +88,7 @@ single-native-submission boundary.
 | --- | --- | --- | --- | --- |
 | `N0` | Versioned ABI and oracle | Host/device control/result layouts, lifecycle, validation, CPU/fake launcher | Real model submission | Landed; no performance claim |
 | `N1` | Initial fixed-B2 native target graph | One native `VERIFY` submission | Reusable positions; proposal, accept, commit, cursors | Exact but rejected because recapture regressed wall |
-| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; exact dense B3 retained at 1.2362x own AR |
+| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; current exact dense B3 with staged linear projections reaches 1.8047x own AR |
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
@@ -144,11 +145,15 @@ to dynamic position/context/`KVLiveSpans` views over the resident request page
 table; it does not broaden the accuracy-traded llama-compat policy or N2. Exact
 dense cycle records expose graph submission, first-capture wall, submit wall,
 readback wall, and pre-launch fallback reason without changing execution. On the
-clean Qwen3.6-27B Q4_K_M W7900 natural25 gate, exact dense B1/B2/B3 improve
-**11.41%/12.30%/15.35%** to **23.225/24.820/25.193 tok/s**; B3 is selected at
-**1.2362x** own true AR with all prompt/category/heldout and transaction gates
-exact. This dense result is separate from the accuracy-traded llama-compat
-scoreboard row.
+clean Qwen3.6-27B Q4_K_M W7900 natural25 graph-promotion gate, exact dense
+B1/B2/B3 improve **11.41%/12.30%/15.35%** to
+**23.225/24.820/25.193 tok/s**; graph-only B3 is selected at **1.2362x** own
+true AR. The later exact staged-linear scheduler bulks independent
+norm/QKV/gate/alpha/beta and `ssm_out` work while preserving each serial
+Conv/GDN transition and state journal. It further moves B1/B2/B3 to
+**27.734/33.544/36.652 tok/s**, with B3 at **1.8047x** own AR. Every
+prompt/category/heldout and transaction gate remains exact. These dense results
+are separate from the accuracy-traded llama-compat scoreboard row.
 
 ### N2 — device acceptance and selected-state commit
 

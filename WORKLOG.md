@@ -203761,3 +203761,39 @@ Vulkan local sizes verbatim will close the measured gap.
   logits, dynamic-position replays at 6/7/9, and natural B1 provider output all
   remain exact. Freeze this correctness unit before a clean natural25 timing
   claim; no speed is inferred from the 339.579-ms profile ceiling.
+
+### D27-O3 staged exact linear projections — RETAINED
+
+- Benchmark clean correctness commit
+  `b94810438d492b8be720cbf30f73c380a585a498` on GPU0 W7900 against the
+  clean reusable-graph artifact from `ea33e6405`, using the full 10-prompt
+  natural25 category suite, B1/B2/B3, one warmup, one measured run, cached-only
+  JIT, and exact native verification. Exact candidate command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-b94810438/natural25-native-staged-linear-b1-b3.json`.
+- B1/B2/B3 complete decode improves
+  **23.225/24.820/25.193 -> 27.734/33.544/36.652 tok/s**
+  (**+19.42%/+35.15%/+45.49%**). Target-verify wall falls
+  **9.2453/8.5470/8.3619 -> 7.5607/6.0264/5.3817 s**
+  (**-18.22%/-29.49%/-35.64%**). Same-process true AR is
+  **20.309 tok/s**, -0.342% from the prior run; MTP/own-AR becomes
+  **1.3656x/1.6517x/1.8047x** and B3 is selected.
+- All 30 prompt/budget rows improve by **19.08-47.62%**. Every aggregate,
+  train, heldout, and category row improves by **19.23-45.90%**. All 250
+  visible IDs per budget, candidate IDs, acceptance/cycle ledgers, GPU/CPU
+  summaries, stage reconciliation, graph submissions, and the W7900 B1-B3
+  reject/partial/full plus positions 6/7/9 state/KV/hidden transaction oracle
+  remain exact. The six Q4 QKV/gate rows2-4 component cases are independently
+  bit-exact on GPU1 7900 XTX and improve **1.17-1.67x** same-GPU; this is
+  component evidence only, not a cross-GPU comparison.
+- Tracked peak is byte-identical at **28.995808631 GiB** and returns to zero.
+  No kernel or allocation was added. B3 is still **46.17% below** the clean
+  llama.cpp Vulkan B3 floor, so retain this exact default schedule and select
+  the next candidate only from a refreshed profile.
+- Compact artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json`.
+  Candidate suite, comparison, and component-source SHA-256s are
+  `3a7d8ea7...2b37`, `10201f18...25e5`, and `69884f1f...9dc4`.
+- Promotion-record validation passes: JSON parse plus independently recomputed
+  throughput/wall/verify/own-AR deltas; `git diff --check`;
+  `python3 scripts/sync_benchmark_readme.py --check`; and
+  `python3 -m pytest -q tests/test_benchmark_readme_sync.py` (**6/6**).
