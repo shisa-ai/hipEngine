@@ -2997,13 +2997,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     # Registry plan tests clear global registrations; keep GGUF runtime dispatch
     # independent of previous test/import order without overwriting tests that
     # deliberately replace one dispatch key with a fixture kernel.
-    if resolve(
-        backend=key.backend,
-        layer=key.layer,
-        quant=key.quant,
-        variant=key.variant,
-        missing="none",
-    ) is not None:
+    if is_registered(key):
         return
     register_dense_gemv_kernels()
     register_gguf_k_gemv_kernels()

@@ -1596,7 +1596,13 @@ def test_gguf_runtime_has_no_literal_gfx1100_resolver_backend() -> None:
 
 
 def test_gfx1151_gguf_lazy_registration_rebinds_source_kernels() -> None:
-    from hipengine.kernels.registry import KernelKey, clear_registry_for_tests, resolve
+    from hipengine.kernels.registry import (
+        KernelKey,
+        clear_registry_for_tests,
+        is_registered,
+        register,
+        resolve,
+    )
     from hipengine.runtime.gguf_embedding import _ensure_embedding_kernel_registered
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
@@ -1609,14 +1615,18 @@ def test_gfx1151_gguf_lazy_registration_rebinds_source_kernels() -> None:
     linear_key = KernelKey(
         "hip_gfx1151",
         "linear",
-        "gguf_q8_0",
-        "gemv_bf16_bf16_out",
+        "gguf_q6_k_t16_v1",
+        "t16_gemv_decode_bf16_f32_out",
     )
     clear_registry_for_tests()
+    register(KernelKey("cpu_reference", "embedding", "fp16"), lambda *args: args)
+    register(KernelKey("cpu_reference", "linear", "fp16"), lambda *args: args)
 
     _ensure_embedding_kernel_registered(embedding_key)
     _ensure_linear_kernel_registered(linear_key)
 
+    assert is_registered(embedding_key)
+    assert is_registered(linear_key)
     assert callable(
         resolve(
             backend=embedding_key.backend,
