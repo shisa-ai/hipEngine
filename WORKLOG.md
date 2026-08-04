@@ -203561,3 +203561,37 @@ Vulkan local sizes verbatim will close the measured gap.
   below Vulkan B3 68.082 tok/s. Re-profile the retained native B3 route before
   admitting another D27-O3 candidate; do not extrapolate the next target from
   the pre-local128 trace.
+
+### D27-O3 post-local128 profile and reusable-graph admission
+
+- Re-profile clean retained commit `f9489dc23242fecfa66d5e2533759bbb831fdf44`
+  on GPU0 W7900 with the same hermetic TheRock/HSA 1.21, cached-only,
+  one-prompt native-B3 leaf and nested ROCTX markers. Exact output root is
+  `/tmp/hipengine-qwen36-27b/final-f9489dc23/profile-native-dense-local128-mtp-b3-hermetic`.
+  The run preserves all IDs and GPU/CPU accept summaries.
+- Wall remains reconciled: **1,219.266 ms** host versus **1,218.734 ms** device
+  activity (0.532 ms outside activity), with **791.701 ms** kernel sum and
+  **427.033 ms** of in-queue spacing/copy overlap across **25,322** dispatches.
+  Target verify is **1,097.438 ms / 90.01%** of complete wall and contains
+  **24,619** launches but only **700.491 ms** of kernels. Its
+  **396.947-ms host-minus-kernel gap is 32.56% of complete wall**, larger than
+  any remaining kernel family.
+- The retained local128 symbol is present for 2,240 calls / 241.105 ms; Q4
+  singleton and rowtile kernels are 146.738/136.542 ms, dense-BF16 rowtile is
+  66.881 ms, and proposal Q6 head is 65.888 ms. Profiler-perturbed absolute
+  kernel time does not replace the clean natural25 improvement. More arithmetic
+  tuning is now subordinate to submission structure.
+- Admit an exact reusable native-verifier HIP graph. A conservative 50% recovery
+  of the measured target gap saves **198.474 ms / 16.28% complete wall**;
+  engineering/risk is **high**. Reuse the existing registered N1 graph
+  machinery, but do not merely relax its guards: native row-attention requires
+  dynamic per-row token/position/`KVLiveSpans` metadata rather than captured
+  host positions, B3 requires rows=4, and the transaction needs exact BF16
+  pre-output-norm trunk rows plus every Conv/GDN state row. Unsupported
+  contexts/configurations must fail closed to current eager native execution.
+  RED/GREEN must cover graph admission/configuration, B1-B3 replay across
+  changing positions, and the complete real reject/partial/full/rollback
+  transaction oracle before any timing screen.
+- Kernel/marker/summary/suite SHA-256s are `7ec3e9ed...4955d`,
+  `d2b1577c...3f58`, `82aef264...dbb2`, and `62940e09...c0db`. This profile is
+  diagnostic admission evidence, not a benchmark topline.
