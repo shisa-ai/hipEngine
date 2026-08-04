@@ -202975,3 +202975,24 @@ Vulkan local sizes verbatim will close the measured gap.
   RED/GREEN/perf gates, and final priorities in
   `docs/STRIX-HALO-LLAMACPP-REVIEW.md`. This is a docs/research unit; no GPU run,
   benchmark rollup, or architecture plan change is claimed.
+
+## 2026-08-04 — Completion-audit the Nathan gfx1151 review
+
+- Map the objective to the committed release audit, source-linked applicability
+  matrix, hipEngine current-code comparison, candidate design/gates, and final
+  priorities. GitHub's release API still exposes exactly `v0.1`-`v0.4` plus the
+  compile-only `dev-20260803-b7b85da`; all nine local links resolve.
+- Verify all 33 pinned Nathan source/tree/commit links against clean local clones,
+  including their commit objects, file objects, and cited line ranges. Reinspect
+  the active hipEngine AOTriton strides, layer-local INT8 BF16 prefill oracle,
+  grouped-GQA producer, parallel MoE compactor/tile map, gfx1151 256-row policy,
+  and MES `lr_compute_wa` stall evidence.
+- The audit found one weakly explicit item in Nathan's README: the Vulkan FA
+  scratch capacity/fallback pair (`e21d01e`, `8a2c6b2`). Add it to the runtime
+  matrix and candidate gates. Transfer only bounded tracked allocation plus an
+  exact existing-path fallback; gfx1151 is UMA, so do not port the discrete-VRAM
+  reserve heuristic or Vulkan storage-buffer limit. Clarify that the proposed K
+  and V scratch pair is shared across full-attention layers, not duplicated per
+  layer.
+- Re-read the updated review and run docs-only link/coverage checks. No GPU run
+  or benchmark claim is part of this completion audit.
