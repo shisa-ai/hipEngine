@@ -203465,3 +203465,34 @@ Vulkan local sizes verbatim will close the measured gap.
   GREEN focused profile plus queue-drain coverage passes **15/15**, pycompile
   and diff checks pass. Run the same independent 128K gate for both profiles
   before choosing a fallback.
+
+## 2026-08-05 — Isolate repeated-128K stall to Q4 shared-X
+
+- Run the predeclared split gate with one hardware queue, chunk flight
+  recording, no host drain, cached builds, and the exact Q4_K_M model.
+  `gdn_exact` passes three independent warmup+3 processes, completing all
+  **12/12** 128K prefills at measured **575.083-580.002 tok/s** with normal
+  decode and cleanup. This eliminates exact GDN as an individually necessary
+  cause under the controlled profile.
+- `q4_shared_x` passes its 512 warmup+3 control at measured
+  **456.176-456.849 tok/s**, then reproduces the target state on measured
+  prefill 3 of the first 128K process after the warmup and two measured passes
+  completed at **308.858/308.825/308.952 tok/s**. The flight cursor freezes at
+  submitted sequence 4946 versus completed 4887 (59 unretired submissions),
+  with the last retired chunk `[81920,86016)` and host submission in
+  `[86016,90112)`. Telemetry is the historical 100%-active, approximately
+  2.9-GHz, low-power signature. The 1,800-second process bound exits 124; the
+  GPU returns idle, and the captured kernel journal has no matching GPU fault,
+  timeout, or reset.
+- Preserve the live snapshot under
+  `/tmp/hipengine-gfx1151-kernel-isolation.jSbQCW/q4-shared-x-128k-1-stall/`,
+  including identical before/after cursors, task stacks/waits, KFD
+  MQD/HQD/RLS, amdgpu VM/fence state, telemetry, and checksums. Source and
+  registry mapping show that the one changed Q4 key resolves the BF16 model to
+  `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`;
+  selected-down and all GDN/attention routes are unchanged.
+- Add fail-closed `--prefill-kernel-profile q4_baseline`, which sets only
+  `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=baseline` and otherwise inherits
+  current gfx1151 package defaults. RED is one expected focused failure before
+  support; GREEN profile plus queue-drain coverage passes **16/16**. Run its
+  same three-process 128K gate before changing the gfx1151 automatic route.

@@ -336,6 +336,27 @@ failure-era application families with the same gate:
 selected prefill `baseline -> shared_x`. All other selectors remain pinned to
 the conservative map. These are independent commands, not a combined profile.
 
+The split gate identifies the Q4 route. `gdn_exact` completes all **12/12**
+128K prefills across three independent warmup+3 processes. In contrast,
+`q4_shared_x` completes its warmup and first two measured prefills, then stalls
+during measured prefill 3. The frozen chunk recorder has 59 unretired
+submissions, the GPU remains at 100% activity near 2.9 GHz and low socket power,
+and no amdgpu/KFD fault or reset is logged. Because this profile changes only
+one registry key, the implicated device body is
+`gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`;
+the selected-down and GDN/attention kernels are unchanged.
+
+Validate the narrow production-shaped fallback with:
+
+```bash
+--prefill-kernel-profile q4_baseline
+```
+
+This profile changes only
+`HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=baseline`; every other backend
+package default remains active. It is the required gate before changing the
+gfx1151 automatic route.
+
 ### Experimental host-drain containment
 
 To test whether bounding outstanding work avoids the queue-retirement state,
