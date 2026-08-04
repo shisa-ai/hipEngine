@@ -205073,3 +205073,68 @@ Vulkan local sizes verbatim will close the measured gap.
 - Commit this correctness route before profiling. The prior selected B3 remains
   **41.890 tok/s / 2.0584x own AR** until a clean W7900 trace proves proposal
   physical ownership and the full natural25 gate is non-regressive.
+
+### D27-O3 borrowed target Q6T16 proposal scoring — RETAINED
+
+- Correctness route committed as `b888de6052836a759b7d0da59d1fc157b608c537`;
+  both performance processes report tracked-clean source. No broad validation
+  was repeated after the binding W7900 transaction gate because the evidence
+  unit changes no implementation.
+- Hermetic W7900 `rocprofv3 --kernel-trace --marker-trace
+  --memory-copy-trace` command uses the canonical one-prompt natural25 B3
+  `scripts/qwen36_dense_gguf_suite.py --limit 1 --no-warmup --roctx-markers`
+  protocol with cached TheRock objects. Root:
+  `/tmp/hipengine-qwen36-27b/final-b888de605/profile-native-proposal-t16-mtp-b3-hermetic`.
+- Physical ownership is exact: **25** raw-Q6 stage1 calls at **49.459813 ms**,
+  grid 3,973,120/local128 become **25** resident-T16 stage1 calls at
+  **37.924705 ms**, grid 1,986,560/local128. The final reducer falls
+  **0.979649 -> 0.520004 ms** because its input block count halves. Complete
+  exact top-1 chain time falls **50.439462 -> 38.444709 ms (-23.7805%,
+  1.3120x)**.
+- Proposal stage wall falls **92.255507 -> 78.286455 ms (-15.1417%)**.
+  Complete marker wall falls **611.399258 -> 585.481208 ms (-4.2391%)** and
+  kernel sum **470.907766 -> 457.428578 ms (-2.8624%)** with unchanged
+  **8,055** dispatches and 21 copies. Target kernel sum changes only **-0.321%**;
+  commit/residual shifts are disclosed as run variance. IDs, GPU/CPU acceptance,
+  and ledger `[3,3,2,3,3,0,3]` are exact.
+- Profile tracked peak falls **31,133,840,110 -> 29,375,734,510 bytes**, exactly
+  the **1,758,105,600-byte** borrowed-resident saving, and teardown returns to
+  zero.
+- Canonical full-suite command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-b888de605/natural25-native-proposal-t16-b1-b3.json`.
+- B1/B2/B3 improve **30.154091/37.663336/41.889818 ->
+  30.718897/38.627479/43.240494 tok/s (+1.8731%/+2.5599%/+3.2244%)**.
+  Selected B3 complete wall falls **5.729316 -> 5.550353 s (-3.1236%)**,
+  proposal **0.902311 -> 0.744697 s (-17.4678%)**, and MTP/own-AR rises
+  **2.058439x -> 2.128992x (+3.4275%)**. The unchanged true-AR control is
+  noise-negative **20.350279 -> 20.310313 tok/s (-0.1964%)**.
+- Every one of 30 prompt-budget rows improves (**+1.3575% to +3.8006%**) and
+  every full/train/heldout/category aggregate improves (**+1.5100% to
+  +3.3005%**). IDs, accepted/proposed counts, cycle ledgers, GPU/CPU acceptance,
+  and stage reconciliation remain exact. Natural tracked peak falls
+  **31,134,260,776 -> 29,376,155,176 bytes (28.996 -> 27.359 GiB)** and all
+  allocations free after close.
+- Selected B3 remains **36.4881%** below the 68.082480-tok/s llama.cpp Vulkan
+  row. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-resident-t16-proposal-retained.json`.
+  Natural candidate/comparison SHA-256s are `8d9ed503...a71b79` /
+  `d926ab82...ac8cb`; profile kernel/marker/copy/suite/summary/comparison are
+  `8ff5948e...f85ad / f8119aae...d2d9 / 500387ce...e6edb /
+  468df9c9...2c8c / 60276f1d...13de9 / 63b2471a...408cd`.
+- Re-rank only the `b888de605` profile. Proposal ownership is no longer the
+  first untried ceiling. Rank-2 source-Q6 weights materialized as dense BF16
+  consume about **106.6 ms** and Q5 `ssm_out` another **36.6 ms**, together
+  **31.3% of kernel sum / 24.5% of marker wall**. The next candidate must screen
+  packed Q5/Q6 target projection economics while preserving the dense fallback,
+  full category/state quality, and >=512 prefill performance.
