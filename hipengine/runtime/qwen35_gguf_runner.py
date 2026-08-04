@@ -4322,6 +4322,204 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _run_full_attention_attn_chain_rows_exact(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        decode_row_scratches: tuple[object, ...],
+        start_position: int,
+        hidden_f32_ptr: int | None = None,
+        attention_context_limit: int,
+        stream: int = 0,
+    ) -> None:
+        """Stage independent full-attention work around serial cache reads.
+
+        Q, V, split, rotary, and output work is independent across verifier
+        rows. K deliberately keeps its faster scalar Q4 launch. Each row still
+        appends K/V and attends before the next row mutates the shared cache, so
+        the target transaction remains equivalent to the c1 chain.
+        """
+
+        assert self.weights is not None
+        rows = int(rows)
+        start_position = int(start_position)
+        attention_context_limit = int(attention_context_limit)
+        decode_row_scratches = tuple(decode_row_scratches)
+        if rows <= 1:
+            raise ValueError("staged full-attention chain requires rows > 1")
+        if len(decode_row_scratches) != rows:
+            raise ValueError("staged full-attention row scratch count must match rows")
+        if start_position < 0:
+            raise ValueError("start_position must be non-negative")
+        if attention_context_limit < start_position + rows:
+            raise ValueError("full-attention context limit must cover every verifier row")
+        if _use_gguf_full_attention_split_decode(attention_context_limit):
+            raise ValueError("staged full-attention chain currently requires non-split decode")
+        for row, row_scratch in enumerate(decode_row_scratches):
+            if getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16:
+                raise ValueError("staged full-attention chain requires BF16 KV")
+            if int(row_scratch.position_host[0]) != start_position + row:
+                raise ValueError("staged full-attention row view has unexpected position")
+            if attention_context_limit > int(row_scratch.max_positions):
+                raise ValueError("full-attention context limit exceeds resident capacity")
+            if row_scratch.append_spans.scale_metadata is not None:
+                raise ValueError("staged full-attention chain does not support scaled KV")
+
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        cast_library = self._cast_library()
+        kv_write_library = self._paged_kv_write_library()
+        paged_attn_library = self._paged_attn_decode_library()
+
+        self._run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+            out_ptr=scratch.norm.ptr,
+            rows=rows,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_q"),
+            scratch.norm.ptr,
+            scratch.full_q.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=2 * self.q_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        norm_row_nbytes = self.hidden_size * DType.BF16.itemsize
+        kv_bf16_row_nbytes = self.kv_width * DType.BF16.itemsize
+        for row in range(rows):
+            launch_gguf_linear(
+                layer.weight("attn_k"),
+                scratch.norm.ptr + row * norm_row_nbytes,
+                scratch.full_k.ptr + row * kv_bf16_row_nbytes,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=self.kv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+        launch_gguf_linear(
+            layer.weight("attn_v"),
+            scratch.norm.ptr,
+            scratch.full_v.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_split_qgate_bf16(
+            scratch.full_q.ptr,
+            scratch.full_query_raw.ptr,
+            scratch.full_gate.ptr,
+            rows,
+            cfg.head_count,
+            cfg.key_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        bf16_to_f32(
+            scratch.full_k.ptr,
+            scratch.full_key_raw.ptr,
+            rows * self.kv_width,
+            stream=stream,
+            library=cast_library,
+            runtime=runtime,
+        )
+        metadata_scratch = decode_row_scratches[0]
+        gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+            scratch.full_query_raw.ptr,
+            scratch.full_key_raw.ptr,
+            layer.weight("attn_q_norm").allocation().tensor.ptr,
+            layer.weight("attn_k_norm").allocation().tensor.ptr,
+            metadata_scratch.cos_table.ptr,
+            metadata_scratch.sin_table.ptr,
+            scratch.positions_tensor.ptr,
+            scratch.full_query.ptr,
+            scratch.full_key.ptr,
+            cfg.rms_norm_eps,
+            rows,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.rope_dimension_count,
+            metadata_scratch.max_positions,
+            stream=stream,
+            runtime=runtime,
+        )
+
+        query_row_nbytes = self.q_width * DType.FP32.itemsize
+        key_row_nbytes = self.kv_width * DType.FP32.itemsize
+        gate_row_nbytes = self.q_width * DType.BF16.itemsize
+        for row, row_scratch in enumerate(decode_row_scratches):
+            query_ptr = scratch.full_query.ptr + row * query_row_nbytes
+            key_ptr = scratch.full_key.ptr + row * key_row_nbytes
+            value_ptr = scratch.full_v.ptr + row * kv_bf16_row_nbytes
+            gate_ptr = scratch.full_gate.ptr + row * gate_row_nbytes
+            context_ptr = scratch.full_query_raw.ptr + row * query_row_nbytes
+            gated_ptr = scratch.full_gated.ptr + row * gate_row_nbytes
+            key_cache, value_cache = row_scratch.full_cache(layer_id)
+            qwen35_write_paged_kv_mixed_value_bf16_spans(
+                key_ptr,
+                value_ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                row_scratch.append_spans,
+                row_scratch.block_size,
+                cfg.head_count_kv,
+                cfg.key_length,
+                stream=stream,
+                library=kv_write_library,
+                runtime=runtime,
+            )
+            qwen35_paged_full_attn_decode_context_bf16_spans(
+                query_ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                context_ptr,
+                row_scratch.decode_spans,
+                attention_context_limit,
+                row_scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+            qwen35_full_attn_gate_mul_bf16(
+                context_ptr,
+                gate_ptr,
+                gated_ptr,
+                self.q_width,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+
+        launch_gguf_linear(
+            layer.weight("attn_output"),
+            scratch.full_gated.ptr,
+            attn_out_ptr,
+            rows=rows,
+            in_features=self.q_width,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+
     def _run_linear_attention_attn_rows_indexed_exact(
         self,
         layer_id: int,
@@ -5030,9 +5228,10 @@ class Qwen35GGUFFullStackRunner:
     ) -> None:
         """Run exact serial attention cores with row-bulk independent work.
 
-        Dense linear-attention rows stage projection inputs/outputs around the
-        token-serial Conv/GDN recurrence. Full attention and MoE linear attention
-        retain the scalar core scheduler. Every path keeps the row-bulk FFN.
+        Dense linear-attention rows stage projections around token-serial
+        Conv/GDN. Eligible dense full-attention rows stage independent work
+        around serial KV append/attention. MoE and unsupported contexts retain
+        scalar attention helpers. Every path keeps the row-bulk FFN.
         """
 
         if rows <= 0:
@@ -5051,6 +5250,19 @@ class Qwen35GGUFFullStackRunner:
             and rows > 1
             and not bool(self.weights.config.is_moe)
         )
+        staged_dense_full = (
+            layer_type == FULL_ATTENTION
+            and rows > 1
+            and not bool(self.weights.config.is_moe)
+            and decode_row_scratches is not None
+            and attention_context_limit is not None
+            and 0 < int(attention_context_limit)
+            and not _use_gguf_full_attention_split_decode(int(attention_context_limit))
+            and all(
+                getattr(row_scratch, "kv_storage_dtype", DType.BF16) == DType.BF16
+                for row_scratch in decode_row_scratches
+            )
+        )
         if staged_dense_linear:
             self._run_linear_attention_attn_chain_rows_exact(
                 layer_id,
@@ -5061,6 +5273,21 @@ class Qwen35GGUFFullStackRunner:
                 decode_scratch=decode_scratch,
                 linear_state_rows=linear_state_rows,
                 hidden_f32_ptr=hidden_f32_ptr,
+                stream=stream,
+            )
+        elif staged_dense_full:
+            assert decode_row_scratches is not None
+            assert attention_context_limit is not None
+            self._run_full_attention_attn_chain_rows_exact(
+                layer_id,
+                hidden_ptr,
+                scratch.attn_out.ptr,
+                scratch,
+                rows=rows,
+                decode_row_scratches=decode_row_scratches,
+                start_position=start_position,
+                hidden_f32_ptr=hidden_f32_ptr,
+                attention_context_limit=attention_context_limit,
                 stream=stream,
             )
         else:
