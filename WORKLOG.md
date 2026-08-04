@@ -204209,3 +204209,35 @@ Vulkan local sizes verbatim will close the measured gap.
   rows, so the >=512 dispatch cannot alter the retained exact compact-proposal
   B3 path and that suite is not redundantly rerun. Artifact:
   `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json`.
+
+### D27-O3 resumed profile authority and Q4 output-pack-pair admission
+
+- Do not rerun an equivalent expensive MTP trace after D27-O1. The retained
+  populated-prefill rewrite starts at 512 rows, while natural25 prompts are
+  39-71 rows, so it cannot affect the clean post-compact B3 profile at
+  `/tmp/hipengine-qwen36-27b/final-2929faa38/profile-native-compact-proposal-mtp-b3-hermetic`.
+  That trace is exact (`[3,3,2,3,3,0,3]` accepted drafts; 7/7 native graph
+  submissions), reconciles **676.596 ms** host wall to **676.095 ms** device
+  activity, and has source hashes `a611d7e1...5009` (kernel),
+  `f3a2f239...95ae` (marker), `68cead22...63f0` (copy),
+  `7d59a480...0678` (summary), and `f9b9a5ef...ab5f` (suite).
+- Exact target Q4 rowtiles are now the largest arithmetic family at
+  **189.267 ms / 27.973%** complete wall; dense-BF16 rowtiles follow at
+  **137.839 ms / 20.372%**. Together they are **327.106 ms / 48.346%**.
+- Admit a bounded two-output-pack Q4 verifier rowtile before lower-ceiling
+  families. The prior nonuniform-random populated-prefill screen already proves
+  the shared kernel template BF16-bit exact, and at M=512 its compile-time
+  16x4 tile beats 8x4 by **6.00-9.67%** across FFN gate/up, linear QKV/gate,
+  full Q/K/V, and attention output. Applied conservatively to the current Q4
+  family, that is **11.36-18.31 ms / 1.68-2.71%** complete-wall recovery.
+- `ceiling_ms = 189.267`; `expected_saved_ms = 11.36-18.31`;
+  `engineering/risk = low`. This is below the ordinary 5% floor but is admitted
+  by the exact low-risk additive exception in the already-open dominant family.
+  RED/GREEN must expose only a registry leaf first, prove rows 2/3/4 byte-exact
+  to the retained small-row pack8 device oracle, and run a balanced GPU1 shape
+  screen. Production dispatch remains unchanged until that screen selects a
+  stable row/shape policy; all losers are removed rather than retained as flags.
+- Kernel preflight passed: both gfx1100 devices are visible, HIP loads, and
+  `scripts/check_lineage.py --kind kernel --diff stat` reports only the known
+  parent DRIFT through nano-vllm-amd `59195ed`. This specialization reuses the
+  in-tree exact kernel template and copies no parent code.
