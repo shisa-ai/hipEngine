@@ -1,0 +1,314 @@
+{
+  "schema": 1,
+  "status": "retained_exact_selected_b3_full_attention_k_grid_y",
+  "performance_claim": true,
+  "performance_claim_scope": "Selected B3 only: canonical ten-prompt W7900 natural25 complete decode wall, supported by a hermetic one-prompt B3 kernel/marker/copy trace. B1 is supportive and B2 is a separately owned N2 diagnostic; no 30/30 prompt-row claim is made.",
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_full_attention_k_grid_y_w7900",
+  "timestamp": "2026-08-04T09:37:04.586800+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "routing_commit": "d0cee5efa3f248699e7d3dee57a1f7bc183de671",
+    "source_predecessor_commit": "53fdf457a9d75586d474d7b299245fbcc48b8dba",
+    "measured_baseline_commit": "9c2f33b9916df3e261314e431ae9dc4c7bf075ec",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "change": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q4_k_m",
+      "pack8_full_k_grid_y_native_exact_bf16_bf16_out"
+    ],
+    "scope": "Dense N1 native B1/B3 full-attention K projection at K5120/N1024 and rows 2-4. Production ownership is observed at rows 2 and 4; B2 rows=3 remains in the separate N2 bulk graph.",
+    "summary": "Resolve a selected-quant alias of the existing exact generic pack8 prefill wrapper and replace each rows-long scalar K loop with one grid-y launch.",
+    "exactness": "The device body, per-row K traversal, FP32 FMA/shuffle reduction, and BF16 store are unchanged; only independent rows are exposed in grid Y.",
+    "fallback": "A missing quant-specific registry key retains the complete scalar K loop. Other shapes, c1, MoE, ordinary prefill, and N2 ownership are unchanged.",
+    "new_device_body": false,
+    "new_allocation": false,
+    "new_copy": false,
+    "new_environment_flag": false,
+    "approximation": false
+  },
+  "correctness": {
+    "focused_red_green": "2/2",
+    "w7900_transaction_test": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+    "w7900_transaction_passed": true,
+    "runtime_owner_rows": [
+      2,
+      4
+    ],
+    "runtime_owner_shape": {
+      "in_features": 5120,
+      "out_features": 1024
+    },
+    "runtime_non_owner": "B2 rows=3 uses N2 bulk graph",
+    "transaction_scope": "B1-B3 full logits; reject/partial/full/rollback Conv/GDN/KV/hidden state; positions 6/7/9; graph reuse; correction logits; natural provider output",
+    "gpu1_component": {
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "rows": [
+        2,
+        3,
+        4
+      ],
+      "bf16_mismatches": [
+        0,
+        0,
+        0
+      ],
+      "elements": [
+        2048,
+        3072,
+        4096
+      ],
+      "event_speedup": [
+        1.8487445947768901,
+        2.3735027016296315,
+        2.6201960708040035
+      ],
+      "synchronized_wall_speedup": [
+        1.823983879705084,
+        2.3381324044159197,
+        2.587058276167662
+      ],
+      "claim": "same-GPU component evidence only"
+    },
+    "natural_ids_exact": true,
+    "natural_acceptance_exact": true,
+    "natural_gpu_accept_match_cpu": true,
+    "natural_stage_reconciled": true,
+    "candidate_active_allocations_after_close": 0
+  },
+  "protocol": {
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-d0cee5efa/natural25-native-full-k-gridy-b1-b3.json",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "visible_outputs": 250,
+    "timed_transitions": 240,
+    "warmups": 1,
+    "repetitions": 1,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "target_verify_mode": "native",
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "timing": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual"
+  },
+  "natural25": {
+    "true_ar": {
+      "baseline_tok_s": 20.37039522114481,
+      "candidate_tok_s": 20.35027949176312,
+      "delta_percent": -0.0987498237678297,
+      "claim": "noise diagnostic; c1 route unchanged"
+    },
+    "budgets": {
+      "1": {
+        "baseline_decode_seconds": 7.96913118311204,
+        "candidate_decode_seconds": 7.959118977189064,
+        "baseline_tok_s": 30.11620645781328,
+        "candidate_tok_s": 30.154091261588505,
+        "tok_s_delta_percent": 0.1257954046380183,
+        "decode_wall_delta_percent": -0.1256373586143722,
+        "target_verify_delta_percent": -0.23388056160427162,
+        "candidate_mtp_vs_true_ar": 1.4817531756157711,
+        "claim": "supportive owner diagnostic"
+      },
+      "2": {
+        "baseline_decode_seconds": 6.409005370456725,
+        "candidate_decode_seconds": 6.372244945494458,
+        "baseline_tok_s": 37.44730829939949,
+        "candidate_tok_s": 37.66333561450643,
+        "tok_s_delta_percent": 0.576883426119057,
+        "decode_wall_delta_percent": -0.5735745694912309,
+        "target_verify_delta_percent": -0.5592709755640968,
+        "candidate_mtp_vs_true_ar": 1.8507527441945382,
+        "claim": "diagnostic; N2 owns rows=3"
+      },
+      "3": {
+        "baseline_decode_seconds": 5.754652054747567,
+        "candidate_decode_seconds": 5.7293159023392946,
+        "baseline_tok_s": 41.705388565065526,
+        "candidate_tok_s": 41.889817927827536,
+        "tok_s_delta_percent": 0.44221950473923854,
+        "decode_wall_delta_percent": -0.44027253372113107,
+        "baseline_target_verify_seconds": 4.774089268408716,
+        "candidate_target_verify_seconds": 4.745669424999505,
+        "target_verify_delta_percent": -0.5952935064970633,
+        "baseline_mtp_vs_true_ar": 2.04735294098637,
+        "candidate_mtp_vs_true_ar": 2.0584394403419695,
+        "ratio_delta_percent": 0.5415040628147905,
+        "accepted_draft_tokens": 168,
+        "proposed_draft_tokens": 222,
+        "cycles": 77,
+        "claim": "retained selected budget"
+      }
+    },
+    "b3_scopes": {
+      "full_delta_percent": 0.44221950473923854,
+      "train_delta_percent": 0.47665409349531007,
+      "heldout_delta_percent": 0.3986048899317307,
+      "code_delta_percent": 0.4368257358658534,
+      "general_en_delta_percent": 0.3785763100318196,
+      "general_ja_delta_percent": 0.471076422634753,
+      "mixed_ja_en_delta_percent": 0.47881367381008566
+    },
+    "all_full_train_heldout_category_scopes_improve": true,
+    "scope_delta_percent_range_all_budgets": [
+      0.016484990393506038,
+      0.9918336222326518
+    ],
+    "per_prompt_delta_percent_range_all_budgets": [
+      -0.1725566258124145,
+      1.9570771750886617
+    ],
+    "b3_per_prompt_delta_percent_range": [
+      -0.11624060600027297,
+      0.9135772685715526
+    ],
+    "all_prompt_budget_rows_improve": false,
+    "all_budget_packet_claim": false,
+    "baseline_peak_bytes": 31134260776,
+    "candidate_peak_bytes": 31134260776
+  },
+  "profile": {
+    "command_scope": "Hermetic cached W7900 rocprofv3 kernel+marker+memory-copy trace, natural25 prompt limit=1, B3, no warmup",
+    "correctness": {
+      "exact_greedy": true,
+      "gpu_accept_match_cpu": true,
+      "accepted_counts": [
+        3,
+        3,
+        2,
+        3,
+        3,
+        0,
+        3
+      ],
+      "cycles": 7,
+      "target_rows": 28
+    },
+    "window": {
+      "baseline_host_wall_ms": 608.986116014421,
+      "candidate_host_wall_ms": 611.439028987661,
+      "host_wall_delta_percent": 0.4027863540294385,
+      "baseline_marker_span_ms": 608.945596,
+      "candidate_marker_span_ms": 611.399258,
+      "marker_span_delta_percent": 0.40293615983388875,
+      "baseline_kernel_sum_ms": 474.067192,
+      "candidate_kernel_sum_ms": 470.907766,
+      "kernel_sum_delta_percent": -0.6664510966622683,
+      "baseline_queue_gap_copy_overlap_ms": 134.410868,
+      "candidate_queue_gap_copy_overlap_ms": 140.118727,
+      "queue_gap_copy_overlap_delta_percent": 4.246575507569772,
+      "baseline_dispatches": 8391,
+      "candidate_dispatches": 8055,
+      "dispatch_delta": -336,
+      "dispatch_delta_percent": -4.004290311047553,
+      "attribution_note": "The one-prompt profiled complete wall is +0.403% because queue-gap/copy-overlap variance exceeds the physical kernel saving. Retention is based on exact 448-to-112 ownership, selected-family time, lower target-verify/kernel sums, and the unprofiled full natural25 gate."
+    },
+    "target_verify": {
+      "baseline_host_ms": 508.4833591245115,
+      "candidate_host_ms": 507.5480812229216,
+      "host_delta_percent": -0.18393481021683478,
+      "baseline_kernel_ms": 399.277184,
+      "candidate_kernel_ms": 395.97051,
+      "kernel_delta_percent": -0.8281650273309848,
+      "baseline_dispatches": 7638,
+      "candidate_dispatches": 7302,
+      "dispatch_delta": -336
+    },
+    "ownership": {
+      "baseline_target_k_dispatches": 448,
+      "candidate_target_k_dispatches": 112,
+      "dispatch_delta": -336,
+      "baseline_target_k_ms": 4.918712,
+      "candidate_target_k_ms": 2.251532,
+      "target_k_delta_ms": -2.66718,
+      "target_k_delta_percent": -54.22517114236409,
+      "target_k_speedup": 2.18460674776108,
+      "baseline_total_generic_pack8_dispatches": 573,
+      "candidate_total_generic_pack8_dispatches": 237,
+      "baseline_total_generic_pack8_ms": 14.184906,
+      "candidate_total_generic_pack8_ms": 11.51184
+    },
+    "candidate_kernel": {
+      "name": "gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>",
+      "target_dispatches": 112,
+      "target_duration_ms": 2.251532,
+      "grid": [
+        4096,
+        4,
+        1
+      ],
+      "workgroup": [
+        32,
+        1,
+        1
+      ],
+      "vgpr": 96,
+      "sgpr": 128,
+      "lds": 512,
+      "scratch": 0
+    }
+  },
+  "comparison": {
+    "llamacpp_vulkan_b3_tok_s": 68.08248,
+    "candidate_gap_percent": -38.4719564742243
+  },
+  "sha256": {
+    "gpu1_component_script": "3f7d4122d53da21bf74160155cd51904e334909d32888866f1d075e481eb9612",
+    "gpu1_component_result": "42f578eb87d1a326f33bbc52a0d85a4f5aa448f924539d39a803ced5754f2b29",
+    "natural25_candidate": "d9a9132c0d26e5cadf97d08adbf08d1cc9a62d4b04c2b0a55f5c228d463ed01b",
+    "natural25_comparison": "38c1a32a49b763e6d84f02508fbd75e53ca8638fd48af7bfa1160e276beab08e",
+    "natural25_stdout": "19c176f99f495a71735fba175163e332764219650a0728d1980ab72a12ffa5fd",
+    "profile_kernel_trace": "178a3f9643a7d6b069462326e351f7256c99e121a44f8dabb51eafe005b25ae5",
+    "profile_marker_trace": "43d3a1027bd74cdaa0055b3c2f726a9cf93ded3b014d09cafef5a1454a757a37",
+    "profile_memory_copy_trace": "221df47ca9a726c9736b5c661a1027c15c80da8290fa63ba475608612c11364b",
+    "profile_suite": "f2b59f534add1d62f5a1e021cc170ba9e38d93af7771e2cf20e976ef0b0c859f",
+    "profile_comparison": "0df4db2e262b778f4e687aa03821fc6f82c1f269862b0018e9068557f1dc20f4",
+    "profile_summary": "576941a72ddcfe664c2fb86ed167cb5895adcf098f895e4733a033fdb7f041a3"
+  }
+}

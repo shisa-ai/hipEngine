@@ -204891,3 +204891,75 @@ Vulkan local sizes verbatim will close the measured gap.
   remains **41.705 tok/s / 2.0474x own AR** until a clean W7900 trace proves
   physical **448 -> 112** K ownership and the full natural25 gate is
   non-regressive.
+
+### D27-O3 exact full-attention K grid-y batching — RETAINED
+
+- Correctness route committed as `d0cee5efa3f248699e7d3dee57a1f7bc183de671`
+  from retained source revision `53fdf457a`; both W7900 performance processes
+  report tracked-clean state. The focused RED/GREEN, GPU1 actual-weight byte
+  gate, and complete W7900 B1-B3 transaction census remain the correctness
+  authority; no broad validation was repeated for this evidence-only unit.
+- Hermetic W7900 profile: cached TheRock Python under
+  `rocprofv3 --kernel-trace --marker-trace --memory-copy-trace`, running
+  `scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1
+  --no-warmup --roctx-markers --compiler-version-file
+  /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build` on GPU0.
+  Root:
+  `/tmp/hipengine-qwen36-27b/final-d0cee5efa/profile-native-full-k-gridy-mtp-b3-hermetic`.
+- The physical prediction is exact: complete dispatches fall **8,391 -> 8,055
+  (-336 / -4.0043%)**, target dispatches **7,638 -> 7,302**, and target K
+  becomes exactly **448** scalar grid `(4096,1,1)` launches -> **112** grid-y
+  `(4096,4,1)` launches. Selected K time falls **4.918712 -> 2.251532 ms
+  (-54.2252%, 2.1846x)**. The reused symbol remains
+  `gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>` at
+  local32, VGPR96, SGPR128, LDS512, scratch0.
+- Target-verify kernel sum falls **399.277184 -> 395.970510 ms (-0.8282%)**
+  and target host wall falls **508.483359 -> 507.548081 ms (-0.1839%)**.
+  Complete kernel sum falls **474.067192 -> 470.907766 ms (-0.6665%)**, but
+  queue-gap/copy-overlap grows **134.410868 -> 140.118727 ms (+4.2466%)** and
+  the one-prompt complete marker wall is noise-negative at **608.945596 ->
+  611.399258 ms (+0.4029%)**. Do not claim the profiled complete-wall ratio;
+  physical ownership, selected-family time, and full natural25 are binding.
+  IDs, GPU/CPU acceptance, and ledger `[3,3,2,3,3,0,3]` remain exact.
+- Canonical W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-d0cee5efa/natural25-native-full-k-gridy-b1-b3.json`.
+- Selected B3 improves **41.705389 -> 41.889818 tok/s (+0.44222%)**;
+  complete decode wall falls **5.754652 -> 5.729316 s (-0.44027%)**, target
+  verify falls **4.774089 -> 4.745669 s (-0.59529%)**, and MTP/own-AR improves
+  **2.047353x -> 2.058439x (+0.54150%)**. The unchanged c1 true-AR route is
+  noise-negative at **20.370395 -> 20.350279 tok/s (-0.09875%)**.
+- B1 improves **30.116206 -> 30.154091 tok/s (+0.12580%)**. B2 reports
+  **37.447308 -> 37.663336 tok/s (+0.57688%)** but remains an N2-owned
+  diagnostic. Every full/train/heldout/category aggregate across all budgets is
+  positive (**+0.01648% to +0.99183%**); selected-B3 scopes improve
+  **+0.37858% to +0.47881%**. Individual rows range **-0.17256% to +1.95708%**
+  and one B3 prompt is **-0.11624%**, so promote only the selected-B3 aggregate,
+  not a 30/30-row claim.
+- All visible IDs, accepted/proposed counts, cycle ledgers, GPU/CPU acceptance,
+  stage reconciliation, and the complete state transaction remain exact.
+  Tracked peak is byte-identical at **31,134,260,776 bytes / 28.996 GiB** and
+  all allocations free after close. B3 remains **38.4720%** below the
+  68.082480-tok/s llama.cpp Vulkan row.
+- SHA-256s: GPU1 script/result `3f7d4122...9612 / 42f578eb...2b29`;
+  natural packet/comparison/stdout `d9a9132c...ed01 / 38c1a32a...ab08 /
+  19c176f9...a5fd`; profile kernel/marker/copy/suite/comparison/summary
+  `178a3f96...ae5 / 43d3a102...a37 / 221df47c...64b / f2b59f53...59f /
+  0df4db2e...0f4 / 576941a7...1a3`. Retained artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json`.
+- Promote the exact grid-y owner and new **41.890 tok/s / 2.0584x** B3
+  headline. Re-rank only the refreshed 8,055-dispatch profile before admitting
+  another D27-O3 candidate; all older K/attention/chain counts are superseded.
