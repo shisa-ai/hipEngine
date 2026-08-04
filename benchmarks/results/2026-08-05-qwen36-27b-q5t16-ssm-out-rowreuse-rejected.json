@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "status": "rejected_q5t16_ssm_out_rowreuse",
+  "performance_claim": false,
+  "performance_claim_scope": "GPU1 component-only actual-weight rows 2-4 admission screen; no runtime owner, resident sidecar, end-to-end benchmark, or scoreboard change.",
+  "correctness_claim": true,
+  "correctness_scope": "The exact local128 candidates are BF16-bit identical to the existing Q5T16 direct producer. Local32/local64 diagnostics pass the component KL/top-1 gate versus retained dense BF16.",
+  "kind": "qwen36_27b_q5t16_ssm_out_dense_rowreuse_screen",
+  "timestamp": "2026-08-05T01:25:25+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor": "blk.0.ssm_out.weight",
+    "source_qtype": "Q5_K",
+    "shape": "K6144/N5120",
+    "production_tensor_count": 48
+  },
+  "hardware": {
+    "gpu_index": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100"
+  },
+  "software": {
+    "base_commit": "d59d9f5b0e4b434ef29f7011d89671a3b79aa12e",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "require_cached_build": true,
+    "candidate_source_retained": false
+  },
+  "production_context": {
+    "authoritative_profile_commit": "0439ecc3c",
+    "ssm_out_family_ms": 36.981614,
+    "ssm_out_calls": 336,
+    "b3_cycles": 7,
+    "retained_owner": "dense_bf16"
+  },
+  "residency": {
+    "per_tensor_dense_bf16_bytes": 62914560,
+    "per_tensor_q5_t16_bytes": 22118400,
+    "dense_bf16_total_bytes": 3019898880,
+    "q5_t16_total_bytes": 1061683200,
+    "projected_saving_bytes": 1958215680,
+    "note": "The projected saving is rejected; no Q5T16 ssm_out allocation is retained."
+  },
+  "protocol": {
+    "final_samples": 11,
+    "counterbalanced": true,
+    "decode_warmup": 50,
+    "decode_burst": 50,
+    "decode_rows": [2, 3, 4],
+    "geometry_smoke_samples": 3,
+    "geometry_threads": [32, 64, 128],
+    "geometry_column_tiles": [4, 8, 16],
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "quality": {
+    "exact_local128_vs_direct_bf16_mismatches": 0,
+    "max_kl_vs_dense": 1.3245793596146793e-07,
+    "min_top1_agreement": 1.0,
+    "max_abs_delta": 0.015625,
+    "local32_local64_max_direct_bf16_mismatches": 6,
+    "gate_passed": true
+  },
+  "final_exact_local128_col4": [
+    {
+      "rows": 2,
+      "dense_event_us": 34.36347961425781,
+      "candidate_event_us": 48.25399875640869,
+      "speedup_over_dense": 0.7121374497423169,
+      "dense_wall_us": 34.6503,
+      "candidate_wall_us": 48.5101
+    },
+    {
+      "rows": 3,
+      "dense_event_us": 39.59634065628052,
+      "candidate_event_us": 53.58366012573242,
+      "speedup_over_dense": 0.7389629704907973,
+      "dense_wall_us": 39.85118,
+      "candidate_wall_us": 53.86058
+    },
+    {
+      "rows": 4,
+      "dense_event_us": 50.628437995910645,
+      "candidate_event_us": 57.413320541381836,
+      "speedup_over_dense": 0.8818238958922285,
+      "dense_wall_us": 50.92354,
+      "candidate_wall_us": 57.69024
+    }
+  ],
+  "exact_geometry_smoke_speedup_over_dense": {
+    "local128_col4": {"rows2": 0.870, "rows3": 0.855, "rows4": 0.989},
+    "local128_col8": {"rows2": 0.891, "rows3": 0.801, "rows4": 0.837},
+    "local128_col16": {"rows2": 0.642, "rows3": 0.741, "rows4": 0.677}
+  },
+  "changed_association_geometry_smoke_speedup_over_dense": {
+    "local32_col4": {"rows2": 0.698, "rows3": 0.641, "rows4": 0.762},
+    "local32_col8": {"rows2": 0.449, "rows3": 0.355, "rows4": 0.391},
+    "local32_col16": {"rows2": 0.379, "rows3": 0.376, "rows4": 0.375},
+    "local64_col4": {"rows2": 0.767, "rows3": 0.722, "rows4": 0.899},
+    "local64_col8": {"rows2": 0.701, "rows3": 0.607, "rows4": 0.589},
+    "local64_col16": {"rows2": 0.539, "rows3": 0.473, "rows4": 0.525}
+  },
+  "validation": {
+    "red": "Focused test collection failed because gguf_q5_k_t16_dense_rowtile_bf16_bf16_out did not exist.",
+    "green": "The complete selected-T16 module passed 109/109 before the packed-load refinement; focused rows 2/3/4 passed for every exact 4/8/16-column geometry after refinement.",
+    "candidate_removed_after_rejection": true,
+    "working_tree_kernel_diff_after_removal": false
+  },
+  "decision": {
+    "runtime_changed": false,
+    "repository_kernel_changed": false,
+    "resident_plan_changed": false,
+    "retained_owner": "dense_bf16",
+    "reason": "Every exact and changed-association row-reuse geometry loses the retained dense-BF16 owner. The final exact candidate reaches only 0.712x/0.739x/0.882x at rows 2/3/4.",
+    "next_target": "Re-rank the 0439ecc3c profile and prioritize the larger single-Q4 pack8 or Q6T16 verifier families."
+  },
+  "commands": {
+    "final": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_Q5_T16_DENSE_ROWTILE_THREADS=128 HIPENGINE_GGUF_Q5_T16_DENSE_ROWTILE_COLS=4 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/screen_qwen36_q5_ssm_out_t16_rowreuse.py --decode-rows 2,3,4 --prefill-rows 64 --samples 11 --decode-warmup 50 --prefill-warmup 5 --decode-burst 50 --prefill-burst 3 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-q5-ssm-out-t16-rowreuse-final-gpu1.json"
+  },
+  "raw_evidence_sha256": {
+    "candidate_hip_source": "2c63ac15b9a238467c0e63a9602a7412d08f4ed1696b7cf202725fe10e2133ab",
+    "harness": "cec914bf6b80964e5dcf0e9e1036d9144ec53d73655b14f8b526602b6192bc11",
+    "final_result": "64f7f7696dc67857316db5a7ddf44b206038d83d957f764326e71b25375f4d62",
+    "exact_col4_smoke": "0022556e3df7adc5c8b538be21b7f6cb6b3d97c68c5bbbbf17943529026c95d9",
+    "exact_col8_smoke": "c92ac981e052dced155b45822e591ec56ff565b942715aa6874a85f2fc5308ae",
+    "exact_col16_smoke": "9c1d3db40469d233285e73220032b9ff2ce40174af3315cb47e1f0cb71fe179b",
+    "local32_col4_smoke": "c0712688cbbd6c5cfd372357590411fbef90d522fd1b5ec821fa59e628d4a95a",
+    "local32_col8_smoke": "7469f3132416d528563fc108aad86cd593f9afe027c63df341d38cc9421ceb07",
+    "local32_col16_smoke": "d28919cd1e49a21d9e48d2580d49c1bc1fd39ccc9ba16b99e1566d93f29152ee",
+    "local64_col4_smoke": "bc359baa9b9c64f251a6e20669246adc2a58144c48d34883c957ead904d08f06",
+    "local64_col8_smoke": "e0c272d10302e147167c1a1ae6c431d61966df736d71e12b77ee01508f6d5e44",
+    "local64_col16_smoke": "2adfc1c588318924ab9b18e4e6f465d96cae77536b9b23b678ddc67249a150a7"
+  }
+}

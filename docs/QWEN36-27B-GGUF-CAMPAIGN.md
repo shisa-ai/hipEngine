@@ -985,6 +985,19 @@ verifier sidecar. Dense BF16 remains production and the larger Q4 verifier
 family becomes the next layout discriminator. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-q5-ssm-out-compressed-layouts-rejected.json`.
 
+Compact-Q4's later row-reuse win justified one materially different Q5
+follow-up, which is also closed and removed. An exact local128 Q5T16 body
+reused each decoded weight across all verifier rows while preserving the direct
+producer's K partitions, wave tree, ordered reduction, and BF16 output. Packed
+metadata/coeff loads plus a complete 3x3 thread/column geometry screen all pass
+quality; the exact paths have zero BF16 mismatches to direct Q5T16, while the
+changed-association local32/local64 diagnostics reach maximum KL **1.33e-7**
+and top-1 **100%** versus dense. The final 11-sample local128/col4 adjudication
+still reaches only **0.712x/0.739x/0.882x** dense at rows 2/3/4. Candidate
+kernel, wrapper, registry key, tests, and temporary geometry selectors are
+removed. Dense BF16 remains the sole `ssm_out` owner. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-rowreuse-rejected.json`.
+
 That discriminator now admits exact compact-Q4T16 rowtiles without changing
 runtime ownership. The new single local32 and two-wave fused-FFN local64 bodies
 reuse each decoded T16 weight across rows 2-4 while retaining every row's
