@@ -28,6 +28,10 @@ Q4_SHARED_X_SELECTORS = {
     "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "shared_x",
 }
 
+Q4_BASELINE_SELECTORS = {
+    "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "baseline",
+}
+
 
 def test_conservative_prefill_kernel_profile_sets_complete_selector_contract(
     monkeypatch: pytest.MonkeyPatch,
@@ -60,6 +64,20 @@ def test_split_prefill_kernel_profiles_reenable_exactly_one_family(
 
     assert selectors == expected
     assert {name: os.environ[name] for name in selectors} == expected
+
+
+def test_q4_baseline_prefill_kernel_profile_changes_only_implicated_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in CONSERVATIVE_SELECTORS:
+        monkeypatch.delenv(name, raising=False)
+
+    selectors = sweep._apply_prefill_kernel_profile("q4_baseline")
+
+    assert selectors == Q4_BASELINE_SELECTORS
+    assert os.environ["HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE"] == "baseline"
+    for name in CONSERVATIVE_SELECTORS.keys() - Q4_BASELINE_SELECTORS.keys():
+        assert name not in os.environ
 
 
 def test_default_prefill_kernel_profile_does_not_mutate_environment(

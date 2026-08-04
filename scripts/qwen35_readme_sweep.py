@@ -65,6 +65,11 @@ _CONSERVATIVE_PREFILL_KERNEL_SELECTORS = {
 }
 
 _PREFILL_KERNEL_PROFILES = {
+    # Preserve every backend package default except the one kernel route under
+    # test. This is the production-shaped fallback-validation profile.
+    "q4_baseline": {
+        "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "baseline",
+    },
     "conservative": _CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
     "gdn_exact": {
         **_CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
