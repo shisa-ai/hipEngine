@@ -205523,3 +205523,18 @@ Vulkan local sizes verbatim will close the measured gap.
   GPU1 leaf exactness/speed; no runtime or sidecar route before it wins. The
   already-screened broad single-Q4 sidecars project only **12.413 ms / 2.265%**
   and another **3.907 GiB**, so they remain subordinate.
+
+## 2026-08-05 — Refresh dense Qwen3.6 kernel catalog before Q5 row reuse
+
+- Re-run `python3 scripts/check_lineage.py --kind kernel --diff stat` before the
+  next kernel body. It reports the same four known external-reference DRIFT
+  entries (`qwen35_expert.hip`, `smoke.hip`, `paroquant_kernels.py`, and
+  `paroquant_fusedw4.py`); none is the parent of the in-tree dense T16 rowtile.
+- Update `docs/KERNELS.md` stale admission-time rows for retained compact-Q4T16
+  FFN sidecars, selective Q6T16 projections, full-attention K grid-y batching,
+  and pack8 dual-rowtile SiLU. The catalog now names their physical ownership,
+  clean promotion result or explicit no-headline status, artifacts, and memory
+  boundary. No kernel, registry, runtime, allocation, or benchmark changed.
+- Next RED remains a new Q5T16 dense rows-2-4 weight-reuse wrapper/body tested
+  against the existing direct T16 producer and retained dense-BF16 `ssm_out`
+  owner. Do not copy a parent kernel or reopen prior Q5 schedule/layout branches.
