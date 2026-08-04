@@ -15,8 +15,8 @@ below. The local fork row is descriptive, not a strict cross-engine claim.
 
 ## Executive decision
 
-The initial review identified **one immediate, bounded experiment** on
-hipEngine, which has now completed:
+The original source-transfer review identified **one immediate, bounded
+experiment** on hipEngine, which has now completed:
 
 > Measure one reusable, cross-layer pair of **head-contiguous BF16 K/V prefill
 > scratch buffers** in front of AOTriton at 32K and 64K, including the copy in
@@ -38,6 +38,14 @@ rounded capacity. Copy-inclusive full prefill changes 512/4K/32K/64K by
 allocation denial, explicit disable, unsupported backends, and larger sessions
 retain strided AOTriton. Evidence:
 [`2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`](../benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json).
+
+The later exact-model fork run changes the next objective without invalidating
+that source-review closure: **protect hipEngine's prefill lead, close the exact
+BF16 c1 decode gap, and reduce prefill-scratch high-water before pursuing an
+approximate KV headline.** The new campaign is defined below. It is not a plan
+to port every fork patch: Nathan's F16 decode is only 1.27%-1.79% above the
+previous vanilla llama.cpp Vulkan lane, while Q8_0 becomes a large additional
+lever only at 32K/64K.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -112,19 +120,38 @@ The exact `dev-20260803-b7b85da` portable payload was run on the same Radeon
 `b7b85da9` number 10283, Vulkan, and RADV STRIX_HALO. All sixteen matched
 phase runs and the separate depth run exit zero with those identities.
 
-| Workload | hipEngine BF16 prefill | Fork F16 / Q8 prefill | hipEngine BF16 decode | Fork F16 / Q8 decode |
-| --- | ---: | ---: | ---: | ---: |
-| 512/128 | **1394.772** | 1390.978 / 1387.763 | 52.710 | **64.658** / 64.246 |
-| 4K/128 | **1472.330** | 1399.336 / 1389.530 | 55.183 | 62.648 / **63.107** |
-| 32K/128 | **1171.610** | 1102.982 / 1104.183 | 45.943 | 53.220 / **57.553** |
-| 64K/128 | **952.348** | 893.919 / 879.963 | 39.362 | 45.913 / **52.538** |
+### Full-prompt prefill (tok/s)
 
-hipEngine leads every full-prompt prefill row: **0.273%-6.536%** versus fork
-F16 KV and **0.505%-8.226%** versus fork Q8_0 KV. The fork leads every tg128
-decode row: **13.528%-22.666%** with F16 and **14.361%-33.474%** with Q8_0.
-Fork whole-device GTT peaks are **20.831-22.871 GiB** with F16 and
-**20.832-22.239 GiB** with Q8_0, descriptively **0.648-2.153 GiB** below
-hipEngine's **21.480-24.392-GiB** tracked peaks.
+| Workload | hipEngine BF16 | Fork F16 | hipEngine lead | Fork Q8_0 | hipEngine lead |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **1394.772** | 1390.978 | **+0.273%** | 1387.763 | **+0.505%** |
+| 4K/128 | **1472.330** | 1399.336 | **+5.216%** | 1389.530 | **+5.959%** |
+| 32K/128 | **1171.610** | 1102.982 | **+6.222%** | 1104.183 | **+6.107%** |
+| 64K/128 | **952.348** | 893.919 | **+6.536%** | 879.963 | **+8.226%** |
+
+### Decode (tok/s)
+
+| Workload | hipEngine BF16 | Fork F16 | Fork lead | Fork Q8_0 | Fork lead |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 52.710 | **64.658** | **+22.666%** | **64.246** | **+21.885%** |
+| 4K/128 | 55.183 | **62.648** | **+13.528%** | **63.107** | **+14.361%** |
+| 32K/128 | 45.943 | **53.220** | **+15.841%** | **57.553** | **+25.273%** |
+| 64K/128 | 39.362 | **45.913** | **+16.642%** | **52.538** | **+33.474%** |
+
+### Peak memory (GiB; descriptive scopes)
+
+| Workload | hipEngine BF16 tracked | Fork F16 whole-GTT | hipEngine minus fork | Fork Q8_0 whole-GTT | hipEngine minus fork |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 21.480 | 20.831 | +0.649 | 20.832 | +0.648 |
+| 4K/128 | 23.007 | 21.161 | +1.847 | 21.253 | +1.754 |
+| 32K/128 | 23.654 | 21.999 | +1.655 | 21.630 | +2.024 |
+| 64K/128 | 24.392 | 22.871 | +1.521 | 22.239 | +2.153 |
+
+hipEngine leads every full-prompt prefill row. The fork leads every tg128
+decode row. Within the fork, Q8_0 versus F16 decode changes
+**-0.637%/+0.734%/+8.142%/+14.430%** at 512/4K/32K/64K and saves
+**0.632 GiB** at 64K. That isolates a long-context KV-bandwidth lever; it does
+not explain the short-context gap.
 
 This is a retained diagnostic, not a strict cross-engine performance or memory
 claim. The exact weight file, hardware, and split phase shapes match, but KV
@@ -142,6 +169,80 @@ model Q4_K_XL row. This validates the local payload/backend; the model differenc
 precludes calling it a reproduction speedup. Complete commands, standard
 deviations, qualifications, and raw hashes are in
 [`2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json`](../benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json).
+
+## Campaign 2: close the exact GGUF decode and memory gap
+
+This is a new locally measured campaign, not a reopening of the completed six-
+item source-transfer list. It prioritizes the gaps the local run actually
+exposes.
+
+### Measured signals and ownership
+
+| Signal | Evidence | Campaign implication |
+| --- | --- | --- |
+| Prefill is already ahead | hipEngine leads fork F16 by **0.273%-6.536%** and Q8_0 by **0.505%-8.226%**. | Treat current prefill as a guard, not the next optimization target. Do not port MMID row lists, F16B, or generic ubatch values into a path already winning. |
+| Nathan-specific F16 decode uplift is small | Versus the previous same-model vanilla Vulkan lane, fork F16 decode is only **+1.353%/+1.268%/+1.787%/+1.666%** at 512/4K/32K/64K. | Most of the BF16/F16 decode gap is base Vulkan-versus-hipEngine execution, not a missing Nathan toggle. Start with matched family attribution. |
+| Q8_0 is a long-context lever | Fork Q8_0 is effectively neutral through 4K, then **+8.142%/+14.430%** versus its F16 lane at 32K/64K. | Separate short/mid weight-kernel work from long-context KV work. Do not credit Q8 for the 512/4K gap. |
+| hipEngine short/mid decode is weight-kernel dominated | The retained eager profile attributes **14.628/14.588 ms/token** at 512/4K to dense Q8T16, selected-MoE T16, and Q6T16 lm-head work: **76.1%/80.6%** of measured GPU wall. | The first implementation lane needs a new exact algorithm/layout for row-1 weight kernels, not another graph or launch-only sweep. |
+| The memory gap is not only KV | hipEngine tracked peak jumps **21.480 -> 23.007 GiB** from 512 to 4K while BF16 full-attention KV growth is only about **0.068 GiB**. The current full-attention query scratch uses 4,096 rows at 4K/32K/64K. | Audit and reduce/alias row-dependent prefill scratch before treating all of the **1.5-2.2-GiB** descriptive gap as a KV-format problem. |
+| Q8_0 explains a bounded portion of 64K memory | Fork F16 -> Q8_0 saves **0.632 GiB** at 64K, close to halving the ten full-attention layers' K/V payload. | A strict compact-KV path is valuable but cannot close the entire memory gap; it also must pass hipEngine's stricter quality gate. |
+
+Sources are the [local comparator](../benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json),
+the [prior vanilla Vulkan lane](../benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json),
+the [retained decode family profile](../benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json),
+and the [current prefill/memory overlay](../benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json).
+The family profile predates the final head-major prefill-only change, but decode
+was measured neutral in that promotion. Campaign C0 refreshes the attribution
+before any kernel candidate is selected.
+
+### Cumulative decode targets
+
+These are reporting/stop targets, never license to specialize to the repeated-
+token benchmark. Every candidate must also win on natural prompts and category
+heldouts with no token-, prompt-, or candidate-ID-conditioned branch.
+
+| Stage | 512/128 | 4K/128 | 32K/128 | 64K/128 |
+| --- | ---: | ---: | ---: | ---: |
+| Current hipEngine BF16 | 52.710 | 55.183 | 45.943 | 39.362 |
+| C1: close at least half the F16 **time** gap | **58.076** | **58.679** | **49.314** | **42.386** |
+| C2: match the local fork F16 lane | **64.658** | **62.648** | **53.220** | **45.913** |
+
+The exact/default lane targets F16 parity, not the fork's approximate Q8_0
+headline. Preserve current prefill within **1%** at every context while keeping
+all existing exact state, allocator-lifecycle, and fallback gates. For memory,
+the first internal target is at least **1.0 GiB** less hipEngine tracked peak at
+4K+ without more than **1%** prefill loss; cross-engine memory stays descriptive
+until both engines expose the same scope.
+
+### Ordered work packages
+
+| ID | Priority | Hypothesis and experiment | Promotion / stop rule |
+| --- | --- | --- | --- |
+| **SH-C0 — matched attribution freeze** | P0, first | Reprofile current hipEngine eager/graph decode at 512/4K/32K/64K with role-resolved ROCTX/kernel accounting; run the fork perf logger separately for F16/Q8_0; collect 10-ms whole-GTT for both plus hipEngine's owned-allocation census. A/B only the fork's relevant FA/Q8 controls to distinguish fork-specific changes from the base Vulkan lane. | No production change. Publish per-role ms/token, dispatches, resources, host-minus-device wall, and allocation components. Admit a kernel campaign only for a family owning at least **5%** or **0.5 ms/token**. Profiled rates are not topline rates. |
+| **SH-D1 — exact row-1 weight-kernel redesign** | P0 | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. For the largest role, test one gfx1151-specific replacement-layout consumer at a time: better coalesced tile traversal, one reusable activation representation across existing pair/triple groups, or a larger selected-down/combine owner only when the trace proves intermediate traffic is material. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
+| **SH-M1 — prefill-scratch/lifetime Pareto** | P0, parallel after C0 | Add a component/lifetime census for the 4,096-row bulk scratch. Sweep full-attention query rows **4096/2048/1024/768** while keeping the qualified gfx1151 linear/MoE policy and head-major consumer fixed, then alias only the largest proven-mutually-exclusive buffers. Measure 512/4K/32K/64K prefill, decode, tracked peak, whole-GTT peak, and close-to-baseline reclamation. | Default promotion requires exact state, decode neutrality, >=**1.0 GiB** lower 4K+ tracked peak, and <=**1%** prefill loss. If the Pareto point trades more speed, expose it only as an explicit memory profile; do not silently weaken the winning prefill default. |
+| **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |
+| **SH-A1 — page-internal head-major decode screen** | P2, only if C0 leaves BF16 attention material | Microbenchmark the current `[block, token, kv_head, D]` layout against a page-internal `[block, kv_head, token, D]` variant with complete `KVLiveSpans`, charging append/copy and reducer wall. Do not first rewrite every writer/compactor/graph. | Proceed to runtime plumbing only if copy/append-inclusive attention improves >=**1.10x**, projected whole decode saves >=**1%**, memory does not grow, and dense/permuted/evicted page oracles are exact. The fork's F16 lane being only 1.27%-1.79% above vanilla makes this a bounded screen, not P0. |
+| **SH-G — retained recertification** | Required after each retained unit | Re-run hipEngine one-warmup/three-measurement 512/4K/32K/64K rows, exact natural/heldout prompts, allocator/GTT sampling, and the applicable cached kernel trace. Re-run the five-repetition fork comparator only at a campaign milestone, not after every micro-change. | Publish an own-engine A/B only when exact and non-regressive. Keep the external row diagnostic until timing ownership, dtype, and output oracle align. Update artifact, benchmark rollup, changelog, and worklog for every retained performance unit. |
+
+### Campaign guardrails and closed retries
+
+- Keep the persistent `KVLiveSpans` ABI, four-axis registry, torch-free runtime,
+  and unfused fallback for every new fused owner.
+- Do not repeat the closed 64/256-thread dense-Q8 sweep, 128/512 split-chunk
+  alternatives, all-eight-query-head register tile, Q8T16 d-scale cache,
+  row-GEMV launch-width sweep, or launch-only graph work. Current graph replay
+  is about a 1% lever; host/C++ work requires the project-wide >3% dispatch-wall
+  trigger.
+- Do not call fork Q8_0 an exact target. Existing GGUF pure INT8 and component-
+  only formats have prompt-dependent quality failures; a new strict lane needs a
+  new fixed policy/format and complete quality evidence.
+- Do not optimize the repeated token or the four publication lengths with
+  prompt-conditioned behavior. Development screens must include all natural
+  prompt categories and heldouts before retention.
+- The full persistent head-major cache rewrite remains closed for prefill. SH-A1
+  authorizes only a decode-layout micro-screen; it does not authorize changing
+  every paged-KV consumer without a measured whole-decode gate.
 
 ## Current hipEngine baseline relevant to the comparison
 
@@ -257,7 +358,7 @@ Status meanings:
 | Quantized-KV dequantize+transpose once for Vulkan prefill | The Vulkan route explicitly creates per-head-contiguous FP16 scratch and reuses it ([`484ad9b`, lines 10263-10470](https://github.com/Nathanw1014/llama.cpp/blob/484ad9ba068ad946a835b6097558c5b15603aae3/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10263-L10470)). | **Present and revalidated.** Normal hipEngine quantized-KV prefill uses a temporary BF16/AOTriton bridge instead of repeatedly consuming retained INT8, and GGUF's layer-local BF16 oracle preserves the admitted head-major consumer. | Do not port the Vulkan shader. Retain the bridge and its dedicated policy/head-major regression guard. |
 | All-quant q4/q5 extension | Toolbox inventory identifies the extension and its correctness routing ([BRANCHES lines 32-36](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/BRANCHES.md#L32-L36)). | **Not format-compatible.** hipEngine's KV INT8 is sideband-scale, not GGML q4/q5/q8 blocks. | No literal port. Any future KV format gets its own CPU oracle and registry quant axis. |
 | Contiguize strided BF16 K/V before prefill FA | The copy shader converts the interleaved source to contiguous output ([`ab5910a`, lines 9-31](https://github.com/Nathanw1014/llama.cpp/blob/ab5910a15e85b919b228193ed297a35beaf135c6/ggml/src/ggml-vulkan/vulkan-shaders/dequant_f16_transpose.comp#L9-L31)); toolbox reports the long-context effect ([README lines 103-109](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L103-L109)). | **Completed and promoted.** A bounded tracked head-major pair is the gfx1151 default through rounded capacity 65,792. | Retain the copy-inclusive default: 32K/64K improve **3.383%/7.001%** with exact state and bounded strided fallback. |
-| Persistent head-major K/V cache | The experimental layout changes K from token-major to `[head_dim, kv_size, n_head_kv]` ([`0f74840`, lines 231-254](https://github.com/Nathanw1014/llama.cpp/blob/0f748408e2af0f4fe05b2ccdf7a7765bf6cc29fe/src/llama-kv-cache.cpp#L231-L254)). Later commits restrict formats/consumers after correctness failures. | **Rejected after the scratch A/B.** All paged writers, decode kernels, copies, compaction, graph captures, and `KVLiveSpans` consumers assume the current physical row layout, while the 64K copy is only **0.032%** of full prefill across ten layers. | Keep persistent paged KV unchanged; revisit only if a future consumer makes copy wall material. |
+| Persistent head-major K/V cache | The experimental layout changes K from token-major to `[head_dim, kv_size, n_head_kv]` ([`0f74840`, lines 231-254](https://github.com/Nathanw1014/llama.cpp/blob/0f748408e2af0f4fe05b2ccdf7a7765bf6cc29fe/src/llama-kv-cache.cpp#L231-L254)). Later commits restrict formats/consumers after correctness failures. | **Rejected after the prefill scratch A/B.** All paged writers, decode kernels, copies, compaction, graph captures, and `KVLiveSpans` consumers assume the current physical row layout, while the 64K copy is only **0.032%** of full prefill across ten layers. | Keep persistent paged KV unchanged for prefill. SH-A1 may test only a page-internal decode layout before any runtime rewrite. |
 | HIP tile dequant-on-load, shared across GQA heads | The tile loader dequantizes into SRAM once and reuses it across `ncols2` query heads ([`b781a8d`, lines 485-547](https://github.com/Nathanw1014/llama.cpp/blob/b781a8d5dc73331b4f8413dcf820d017e1938c67/ggml/src/ggml-cuda/fattn-tile.cuh#L485-L547)). | **Present and guarded.** hipEngine INT8 split-K decode is KV-head grouped and shares K/V across all eight query heads. | No port. The new source/launch regression guard freezes `(kv_head, split)`, not `(q_head, split)`. |
 | P-fragment load hoist | The P fragments move outside the `hsv_tile` loop ([`e11cafa`, lines 428-437](https://github.com/Nathanw1014/llama.cpp/blob/e11cafa02f96b009c3088f9f601edc13e75524ab/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp#L428-L437)). | **Backend-specific.** hipEngine's production Qwen prefill core is a precompiled AOTriton image, not this GLSL shader. | Feed upstream to AOTriton/native-FA work only if profiling makes FA a top wall component. |
 | `Psh` query-major relayout | The relayout changes cooperative-matrix load orientation ([`40f85eb`, lines 47-51 and 382-437](https://github.com/Nathanw1014/llama.cpp/blob/40f85eb859959d9416f601deef287275d354680f/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp#L382-L437)). Nathan reports no standalone speed win. | **Backend-specific / no action.** | Do not reproduce a perf-neutral GLSL layout change in HIP. |
@@ -465,13 +566,15 @@ changed:
   AOTriton `attn_fwd`; there is no GLSL P-fragment loop or `Psh` storage to edit.
   The head-major copy already removed the measured stride bottleneck without
   reproducing a perf-neutral Vulkan layout change.
-- **Persistent head-major KV is not the next step.** At 64K the standalone copy
-  is **2.233 ms**, only **0.708%** of the **315.417-ms** copy-inclusive attention
-  sub-window. Even charging one copy to each of ten full-attention layers is
-  **22.329 ms**, about **0.032%** of the measured **68.815-s** full prefill. That
-  removable cost cannot justify changing every writer, decode reader, graph,
-  compactor, and `KVLiveSpans` consumer. Revisit only if a future consumer makes
-  the copy material.
+- **Persistent head-major KV is not the next prefill step.** At 64K the
+  standalone copy is **2.233 ms**, only **0.708%** of the **315.417-ms** copy-
+  inclusive attention sub-window. Even charging one copy to each of ten full-
+  attention layers is **22.329 ms**, about **0.032%** of the measured
+  **68.815-s** full prefill. That removable cost cannot justify changing every
+  writer, decode reader, graph, compactor, and `KVLiveSpans` consumer. Campaign
+  SH-A1 permits only a page-internal decode micro-screen after C0; the full
+  persistent rewrite stays closed unless that screen passes its whole-decode
+  gate.
 - **MMID negative experiments remain negative evidence.** Nathan's current scale
   cache was disabled after 4%-20% regressions, `TILE16` increased expert-weight
   re-streaming, and scalar packed-int MMID lost to cooperative F16. hipEngine's
@@ -490,7 +593,7 @@ No hipEngine implementation is warranted for these items. The external
 comparison above measures the fork rather than changing any no-action code
 decision.
 
-## Final priority list
+## Original source-review priority list (completed)
 
 1. **P0 — completed 2026-08-04:** head-contiguous BF16 AOTriton prefill scratch
    is the bounded gfx1151 default after exact copy-inclusive 32K/64K gains of
@@ -519,15 +622,15 @@ decision.
    oracle admission unit above only after explicit approval; do not add Qwen or
    Laguna branches now.
 6. **Completed/revalidated 2026-08-04 — no action:** Vulkan P/Psh source edits,
-   persistent head-major KV, MMID scale cache/TILE16/int-dot negatives, generic
-   ubatch values, and RADV packaging remain unsupported. The successful scratch
-   A/B strengthens this decision: its 64K copy is only **0.708%** of the
-   candidate attention sub-window and at most **0.032%** of full prefill across
-   ten full-attention layers. The later locally measured fork diagnostic
-   establishes a real prefill/decode split without making any of those
-   backend-specific changes portable.
+   a full persistent head-major KV rewrite, MMID scale cache/TILE16/int-dot
+   negatives, generic ubatch values, and RADV packaging remain unsupported. The
+   successful scratch A/B strengthens the prefill decision: its 64K copy is only
+   **0.708%** of the candidate attention sub-window and at most **0.032%** of
+   full prefill across ten full-attention layers. Campaign SH-A1 is only a
+   bounded decode-layout screen and makes none of those backend-specific changes
+   portable by itself.
 
-## Completion audit
+## Original campaign completion audit
 
 Every prioritized item has an explicit retained, rejected, or deferred outcome:
 
@@ -546,7 +649,8 @@ artifact, matched all four published deltas and benchmark rollups, found every
 new regression guard, confirmed all six execution commits are ancestors of the
 current tree, and passed `git diff --check`. Expensive GPU gates were not rerun
 after later docs/test-only units because their completed evidence remains valid
-under the focused-repair rule. There is no unassigned action left in this review;
-future 128K driver work requires a named stack fix, and DeepSeek V4 requires
-explicit model admission. The later exact-model fork comparison is separately
-retained as diagnostic evidence and does not reopen any completion item.
+under the focused-repair rule. There is no unassigned action left in the
+original six-item campaign; future 128K driver work requires a named stack fix,
+and DeepSeek V4 requires explicit model admission. The later exact-model fork
+comparison does not reopen any of those six source-transfer items; it creates
+the separate SH-C0 through SH-G decode/memory campaign above.
