@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "status": "rejected_exactness_gate",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "kind": "qwen36_27b_gguf_resident_pack8_wmma_prefill_diagnostic",
+  "date": "2026-08-04",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48
+  },
+  "software": {
+    "base_revision": "7c19ca521",
+    "candidate_state": "uncommitted dispatcher/tile-policy trial; fully reverted after gate",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "backend": "hip_gfx1100",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "change_tested": {
+    "summary": "Route resident Q4_K pack8 rows >=16 from use_wmma_prefill to the registered FP16-operand wave32 WMMA singleton, decline the legacy wide dual owner, and forward gfx1100 shape-specific tiles.",
+    "retained": false,
+    "reason": "The candidate changes real-input logits and Conv/GDN/KV state at both required contexts, violating the campaign's byte-exact default contract."
+  },
+  "focused_tests": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gguf_q4_k_wmma_prefill.py",
+    "passed": true,
+    "tests": 132
+  },
+  "synthetic_shape_screen": {
+    "hardware": "AMD Radeon RX 7900 XTX / GPU1 / gfx1100",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/bench_qwen36_q4_pack8_wmma_tiles.py",
+    "scope": "uniform synthetic activation/weight bytes; real Qwen3.6 projection dimensions at M=512 and M=1024; six tile choices; seven synchronized samples",
+    "comparisons": 72,
+    "bf16_equal_comparisons": 72,
+    "m512_speedup_range": [4.76, 16.73],
+    "m1024_speedup_range": [5.01, 17.28],
+    "warning": "Uniform synthetic equality did not generalize to real activations and weights and is not an exactness proof.",
+    "script_sha256": "229bc18bf5017018c246c6a5d415e99c5247b06ab81a4d4294a6f1b60f8c6d25",
+    "result_sha256": "728c349bb7ead0f0b784be62bfde59e434c90eaad3480a4d8d9e483481510528"
+  },
+  "real_input_gate": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/qwen36_q4_pack8_wmma_real_gate.py",
+    "protocol": "one resident session; reset between control and candidate; [9707]*N bulk prefill; full first logits; one subsequent exact decode step; hashes of live Conv/GDN/full-attention KV state",
+    "load_seconds_excluded": 169.57236496405676,
+    "contexts": {
+      "512": {
+        "control_prefill_seconds": 9.819316412089393,
+        "control_prefill_tok_s": 52.14212257888272,
+        "candidate_prefill_seconds": 2.357672346988693,
+        "candidate_prefill_tok_s": 217.16333936475334,
+        "prefill_speedup": 4.1648350436102755,
+        "first_top1_match": true,
+        "first_token": 9707,
+        "first_logits_array_exact": false,
+        "first_logits_mismatch_count": 248320,
+        "first_logits_max_abs_diff": 0.1583399772644043,
+        "first_logits_mean_abs_diff": 0.021187857148080306,
+        "first_logits_kl": 1.0473636517491251e-06,
+        "post_prefill_state_exact": false,
+        "next_top1_match": true,
+        "next_token": 9707,
+        "next_logits_array_exact": false,
+        "next_logits_mismatch_count": 248320,
+        "next_logits_max_abs_diff": 0.16545939445495605,
+        "next_logits_mean_abs_diff": 0.019883397368284556,
+        "next_logits_kl": 1.260220126162416e-06,
+        "post_step_state_exact": false
+      },
+      "4096": {
+        "control_prefill_seconds": 79.03151017380878,
+        "control_prefill_tok_s": 51.827429224013784,
+        "candidate_prefill_seconds": 19.700784771936014,
+        "candidate_prefill_tok_s": 207.9104993743598,
+        "prefill_speedup": 4.0115919791373,
+        "first_top1_match": true,
+        "first_token": 9707,
+        "first_logits_array_exact": false,
+        "first_logits_mismatch_count": 248319,
+        "first_logits_max_abs_diff": 0.13043195009231567,
+        "first_logits_mean_abs_diff": 0.017933763110198286,
+        "first_logits_kl": 6.688702664265579e-08,
+        "post_prefill_state_exact": false,
+        "next_top1_match": true,
+        "next_token": 9707,
+        "next_logits_array_exact": false,
+        "next_logits_mismatch_count": 248320,
+        "next_logits_max_abs_diff": 0.15545350313186646,
+        "next_logits_mean_abs_diff": 0.019157303675088656,
+        "next_logits_kl": 1.8565321681618477e-07,
+        "post_step_state_exact": false
+      }
+    },
+    "script_sha256": "f475e4334abae0f802ef824f4a89c292beb766c1c530310588222d3f44318252",
+    "result_sha256": "74482f899deb2811ead65b96a50fb8eb2b1be93d80b745fcfc948c3354bab985"
+  },
+  "decision": {
+    "action": "reject_and_revert",
+    "failed_gate": "exact first/next logits and byte-exact Conv/GDN/KV state at both 512 and 4096",
+    "natural25_run": "not run after mandatory exactness failure",
+    "kernel_trace": "not run after mandatory exactness failure",
+    "default_runtime_impact": "none",
+    "next_candidate": "screen chunked resident-pack8 scalar row tiling that preserves the retained FP32 FMA and reduction order"
+  }
+}
