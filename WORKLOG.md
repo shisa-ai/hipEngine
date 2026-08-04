@@ -205219,3 +205219,96 @@ Vulkan local sizes verbatim will close the measured gap.
   **43.240 tok/s / 2.1290x own-AR** result remains canonical until a clean trace
   proves physical Q6T16 ownership and the complete natural25 category/prefill
   quality gate is non-regressive.
+
+### D27-O3 selective dense rank-2 Q6T16 — RETAINED
+
+- Correctness route `c44e32ff6452140f0cce365b1a21e60bc80b0562` is tracked
+  clean for every performance process. This is a quality-gated source-Q6-
+  preserving route, not a claim of BF16-byte identity to the prior once-
+  materialized dense resident. The independent actual-weight gate remains
+  maximum KL **4.7267e-5** / minimum top-1 **98.4375%**, and the W7900 B1-B3
+  state transaction remains exact relative to candidate scalar execution.
+- Hermetic W7900 profile command uses `rocprofv3 --kernel-trace --marker-trace
+  --memory-copy-trace` around the canonical
+  `scripts/qwen36_dense_gguf_suite.py --candidate-budgets 3 --runs 1 --limit 1
+  --no-warmup --roctx-markers` leaf with cached TheRock objects. Root:
+  `/tmp/hipengine-qwen36-27b/final-c44e32ff6/profile-native-wide-q6t16-mtp-b3-hermetic`.
+  IDs, GPU/CPU acceptance, and `[3,3,2,3,3,0,3]` remain exact.
+- Physical ownership is exact. Baseline `b888de605` runs **224** dense-BF16
+  K17,408/N5,120 `ffn_down` launches at **69.808406 ms** plus **168** dense
+  K5,120/N10,240 `attn_qkv` launches at **35.127486 ms**. Candidate runs the
+  same counts in Q6T16 at **54.719902/24.998854 ms**. The combined wide family
+  falls **104.935892 -> 79.718756 ms (-24.0310%, 1.3163x)**. All **56** narrow
+  K5,120/N1,024 `attn_v` launches remain visibly dense. Target-verify wall
+  falls **494.990936 -> 469.670789 ms (-5.1153%)**, complete marker wall
+  **585.481208 -> 561.643713 ms (-4.0714%)**, and kernel sum **457.428578 ->
+  436.017552 ms (-4.6807%)**, with unchanged **8,055** dispatches and 21 copies.
+- Canonical full-suite command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-c44e32ff6/natural25-native-wide-q6t16-b1-b3.json`.
+- True AR improves **20.310313 -> 21.735184 tok/s (+7.0155%)**. B1/B2/B3
+  improve **30.718897/38.627479/43.240494 ->
+  33.456087/40.067196/44.886492 tok/s (+8.9104%/+3.7272%/+3.8066%)**;
+  target verify falls **9.4927%/4.6363%/5.0530%**. Every one of 30 prompt-
+  budget rows improves (**+3.3623% to +15.5634%**) and every full/train/
+  heldout/category aggregate improves (**+3.5956% to +11.3028%**). MTP is
+  exact to candidate AR, GPU acceptance remains CPU-exact, and all stage
+  ledgers reconcile.
+- Prior-route token agreement is **249/250 (99.6%)** at true AR and every MTP
+  budget. The sole difference is `general_ja_plan` position 15, token `案` ->
+  `書`, yielding fluent `実践的な計画案を作成しました` ->
+  `実践的な計画書を作成しました`. B1 accepted tokens remain 115 while
+  proposals/cycles improve **128 -> 126** and acceptance **89.844% -> 91.270%**;
+  B2/B3 accepted/proposed totals remain **151/184** and **168/222**. B1's own-
+  AR ratio improves **1.5125x -> 1.5393x**. B2/B3 ratios fall about 3% to
+  **1.8434x/2.0652x** only because common c1 AR improves faster; do not present
+  this common-path retention as an MTP-ratio gain.
+- Campaign-standard populated command is the canonical
+  `scripts/qwen35_gguf_bench.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707
+  --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1
+  --measured-runs 3 --persistent-session --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode
+  --graph-replay-decode --graph-steps-per-replay 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build`, once with `--prompt-length 512 --json
+  /tmp/hipengine-qwen36-27b/final-c44e32ff6/ar-512x128.json` and once with
+  `--prompt-length 4096 --json
+  /tmp/hipengine-qwen36-27b/final-c44e32ff6/ar-4096x128.json`.
+- Median 512/4096 prefill improves retained tile8x8
+  **152.909556/144.308232 -> 202.011491/188.765108 tok/s
+  (+32.1118%/+30.8069%)**. Graph AR decode improves
+  **19.565375/18.701158 -> 20.896282/19.784138 tok/s
+  (+6.8024%/+5.7910%)**. Prefill stdev/median is **1.2881%/0.4110%** and decode
+  **0.2596%/0.0545%**; all six final IDs remain `9707` with finite logits.
+  Tracked peaks fall **26.122795/28.947097 -> 21.606804/24.431106 GiB**.
+- Natural and profiled peaks fall exactly **4,849,008,640 bytes / 4.515991
+  GiB**, and teardown returns to zero. Selected B3 narrows the Vulkan gap
+  **36.4881% -> 34.0704%**. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json`.
+  Candidate source hashes are natural `9aeae1aa...26bb`, profile kernel/marker/
+  copy `f28039a7...b5f / dadce945...344 / ba35d0e8...84f`, 512/4096 AR
+  `001c4e39...b334 / a092f714...891e`, and comparison bundle
+  `e26a69fd...9967`.
+- Re-rank only `c44e32ff6`. Dense Q5 `ssm_out` remains **37.371834 ms** in the
+  refreshed trace and is the next untried compressed-ownership family; Q4
+  rowtiles and the now-resident Q6T16 family are larger but already have active
+  exact owners that require a fresh leaf hypothesis rather than blind tuning.
+- Publication validation: JSON parse and `git diff --check` pass. The first
+  `tests/test_benchmark_readme_sync.py` run passed **5/6** and isolated the
+  expected stale generated `SPECULATIVE` block. Run
+  `python3 scripts/sync_benchmark_readme.py --write`; it imports the current K
+  grid-y, resident-proposal, and selective-Q6T16 canonical sections. Preserve
+  the five passing nodes and rerun only
+  `test_root_readme_benchmark_blocks_match_canonical_scoreboard`, which passes;
+  a final `--check` reports synchronized blocks.

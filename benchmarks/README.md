@@ -4981,6 +4981,53 @@ tracked peak falls **28.996 -> 27.359 GiB** and teardown returns to zero. B3 is
 now **36.49%** below llama.cpp Vulkan. Artifact:
 [`2026-08-04-qwen36-27b-resident-t16-proposal-retained.json`](results/2026-08-04-qwen36-27b-resident-t16-proposal-retained.json).
 
+#### Qwen3.6-27B selective source-Q6 T16 projection residency, W7900/gfx1100
+
+Clean hipEngine `c44e32ff6` keeps 32 wide Q6 `ffn_down` and 24 wide Q6
+`attn_qkv` tensors solely in source-preserving T16 form instead of expanding
+them to dense BF16. Their resident footprint falls **8,220,835,840 ->
+3,371,827,200 bytes**, saving exactly **4,849,008,640 bytes / 4.516 GiB**. The
+eight narrow K5,120/N1,024 `attn_v` tensors remain dense because actual-weight
+c1 T16 is only 0.40x as fast. `decode_repack=false`, missing registry siblings,
+and the unfused chains retain the prior fallbacks.
+
+| Route | Resident-T16 proposal baseline | Selective wide Q6T16 | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.310 tok/s | **21.735 tok/s** | **+7.016%** | 1.0000x | n/a |
+| B1 | 30.719 tok/s | **33.456 tok/s** | **+8.910%** | **1.5393x** | **-9.493%** |
+| B2 | 38.627 tok/s | **40.067 tok/s** | **+3.727%** | 1.8434x | **-4.636%** |
+| **B3 (retained)** | 43.240 tok/s | **44.886 tok/s** | **+3.807%** | **2.0652x** | **-5.053%** |
+
+Every one of the 30 prompt-budget rows and every full/train/heldout/category
+aggregate improves (**+3.362% to +15.563%** prompts; **+3.596% to +11.303%**
+scopes). MTP is exactly greedy to candidate AR and GPU acceptance remains
+CPU-exact. The new source-preserving arithmetic is quality-gated, not claimed
+BF16-byte-identical to the old once-materialized dense route: **249/250**
+natural tokens agree, with only fluent Japanese `計画案` -> `計画書`. B1 keeps
+115 accepted tokens while proposals fall 128 -> 126; B2/B3 accepted/proposed
+totals are unchanged. B2/B3 own-AR ratios decline about 3% only because the
+shared AR denominator improves 7.02%, not because absolute MTP or quality
+regresses.
+
+The hermetic B3 trace proves exact physical ownership: **224 `ffn_down` + 168
+`attn_qkv`** dense launches become Q6T16, while all **56 `attn_v`** calls stay
+dense. The wide family falls **104.936 -> 79.719 ms (-24.03%, 1.316x)**,
+target-verify wall falls **5.12%**, complete marker wall falls **585.481 ->
+561.644 ms (-4.07%)**, and dispatches remain 8,055. GPU1 actual-weight gates
+measure maximum KL **4.73e-5**, minimum top-1 **98.4375%**, and wide M512 WMMA
+speedups **3.332x/3.251x**; cached tracing names the intended local32,
+VGPR72, scratch-free T16 WMMA symbol.
+
+| Shape | Dense-resident baseline | Selective Q6T16 | Prefill delta | Graph AR decode | Tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 152.910 tok/s | **202.011 tok/s** | **+32.11% / 1.321x** | 19.565 -> **20.896 tok/s (+6.80%)** | 26.123 -> **21.607 GiB** |
+| 4096/128 | 144.308 tok/s | **188.765 tok/s** | **+30.81% / 1.308x** | 18.701 -> **19.784 tok/s (+5.79%)** | 28.947 -> **24.431 GiB** |
+
+Each populated row has three measured resets after warmup; all six final IDs
+remain `9707`, and prefill/decode variation is at most 1.29%/0.26%. Selected
+B3 is now **34.07%** below llama.cpp Vulkan. Artifact:
+[`2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json`](results/2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
