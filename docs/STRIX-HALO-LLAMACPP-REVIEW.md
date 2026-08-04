@@ -8,9 +8,10 @@
 Qwen3.6/Laguna GGUF gfx1151 paths.
 
 **Decision type:** source/evidence review followed by prioritized local
-execution. Nathan's own speedups remain upstream evidence; hipEngine's only new
-performance claim is the separately measured, accepted head-major scratch
-artifact linked below.
+execution and a later user-requested exact-model fork diagnostic. Nathan's
+published speedups remain upstream evidence; hipEngine's only new accepted
+performance claim is the separately measured head-major scratch artifact linked
+below. The local fork row is descriptive, not a strict cross-engine claim.
 
 ## Executive decision
 
@@ -91,13 +92,56 @@ Release status matters:
   adds fused DeepSeek V4 hyper-connections and reports the community gfx1151
   measurements.
 - [`dev-20260803-b7b85da`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/dev-20260803-b7b85da)
-  is explicitly compile/container-smoke tested only; it is not a benchmark or
-  correctness validation release.
+  is explicitly compile/container-smoke tested only by its publisher; it is not
+  an upstream benchmark or correctness-validation release. We subsequently ran
+  that exact payload locally, creating an independent diagnostic rather than
+  changing its upstream release status.
 
 The evidence pack also names claims for which raw logs are not vendored. This
-review therefore treats commit-level mechanisms as source facts, toolbox
-measurements as upstream evidence, and none of the reported speedups as local
-hipEngine measurements.
+review therefore treats commit-level mechanisms as source facts and toolbox
+measurements as upstream evidence. The local exact-model run below is the only
+fork execution measured by this project and remains explicitly qualified.
+
+## Local exact-model fork diagnostic
+
+The exact `dev-20260803-b7b85da` portable payload was run on the same Radeon
+8060S with the exact hipEngine
+`Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. Its manifest pins source
+`b7b85da9c4a9fdeb3cab51030a40d1552270f272`, Mesa `d18d598e2`, libdrm
+2.4.133, and shaderc v2026.3-dev `49a8724d`; the binary identifies build
+`b7b85da9` number 10283, Vulkan, and RADV STRIX_HALO. All sixteen matched
+phase runs and the separate depth run exit zero with those identities.
+
+| Workload | hipEngine BF16 prefill | Fork F16 / Q8 prefill | hipEngine BF16 decode | Fork F16 / Q8 decode |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **1394.772** | 1390.978 / 1387.763 | 52.710 | **64.658** / 64.246 |
+| 4K/128 | **1472.330** | 1399.336 / 1389.530 | 55.183 | 62.648 / **63.107** |
+| 32K/128 | **1171.610** | 1102.982 / 1104.183 | 45.943 | 53.220 / **57.553** |
+| 64K/128 | **952.348** | 893.919 / 879.963 | 39.362 | 45.913 / **52.538** |
+
+hipEngine leads every full-prompt prefill row: **0.273%-6.536%** versus fork
+F16 KV and **0.505%-8.226%** versus fork Q8_0 KV. The fork leads every tg128
+decode row: **13.528%-22.666%** with F16 and **14.361%-33.474%** with Q8_0.
+Fork whole-device GTT peaks are **20.831-22.871 GiB** with F16 and
+**20.832-22.239 GiB** with Q8_0, descriptively **0.648-2.153 GiB** below
+hipEngine's **21.480-24.392-GiB** tracked peaks.
+
+This is a retained diagnostic, not a strict cross-engine performance or memory
+claim. The exact weight file, hardware, and split phase shapes match, but KV
+dtype, timing owner, memory scope, and output-oracle protocol do not. In
+particular, llama-bench does not prove shared token/logit equality; hipEngine
+memory is tracked/owned allocation while the fork is 10-ms whole-device UMA GTT.
+
+The fork's published Q8-KV `pp512/tg32 at depth` command was also rerun on the
+exact local GGUF with `-b 512 -ub 512 -r 3`. It measures pp512/tg32
+**1391.809/64.406**, **1281.593/62.965**, **1067.613/60.513**,
+**860.787/57.544**, and **623.634/52.462 tok/s** at d0/4K/16K/32K/64K. At
+the three published overlap depths, those are **+1.707%/+6.952%**,
+**+10.900%/+7.539%**, and **+16.044%/+6.521%** above the fork's different-
+model Q4_K_XL row. This validates the local payload/backend; the model difference
+precludes calling it a reproduction speedup. Complete commands, standard
+deviations, qualifications, and raw hashes are in
+[`2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json`](../benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json).
 
 ## Current hipEngine baseline relevant to the comparison
 
@@ -437,11 +481,14 @@ changed:
   same-device-qualified 256-row linear/MoE profile while full-attention chunks
   remain shape/memory selected. Copying llama.cpp's generic 1024/2048 advice
   would overwrite local evidence rather than extend it.
-- **RADV packaging and dev-release inference remain out of scope.** hipEngine
-  ships HIP, not a Vulkan ICD/Mesa stack. The pinned dev release is still only a
-  build/container smoke, so it supplies no performance or correctness row.
+- **RADV packaging remains out of scope.** hipEngine ships HIP, not a Vulkan
+  ICD/Mesa stack. The later user-requested exact-payload run supplies a qualified
+  external diagnostic, but it creates no reason to bundle RADV or infer that
+  Vulkan-specific code is portable to HIP.
 
-No implementation or benchmark is warranted for these items.
+No hipEngine implementation is warranted for these items. The external
+comparison above measures the fork rather than changing any no-action code
+decision.
 
 ## Final priority list
 
@@ -473,10 +520,12 @@ No implementation or benchmark is warranted for these items.
    Laguna branches now.
 6. **Completed/revalidated 2026-08-04 — no action:** Vulkan P/Psh source edits,
    persistent head-major KV, MMID scale cache/TILE16/int-dot negatives, generic
-   ubatch values, RADV packaging, and dev-release performance inference remain
-   unsupported. The successful scratch A/B strengthens this decision: its 64K
-   copy is only **0.708%** of the candidate attention sub-window and at most
-   **0.032%** of full prefill across ten full-attention layers.
+   ubatch values, and RADV packaging remain unsupported. The successful scratch
+   A/B strengthens this decision: its 64K copy is only **0.708%** of the
+   candidate attention sub-window and at most **0.032%** of full prefill across
+   ten full-attention layers. The later locally measured fork diagnostic
+   establishes a real prefill/decode split without making any of those
+   backend-specific changes portable.
 
 ## Completion audit
 
@@ -499,4 +548,5 @@ current tree, and passed `git diff --check`. Expensive GPU gates were not rerun
 after later docs/test-only units because their completed evidence remains valid
 under the focused-repair rule. There is no unassigned action left in this review;
 future 128K driver work requires a named stack fix, and DeepSeek V4 requires
-explicit model admission.
+explicit model admission. The later exact-model fork comparison is separately
+retained as diagnostic evidence and does not reopen any completion item.

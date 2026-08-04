@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [diagnostic retained local Nathan fork comparison, no strict cross-engine claim] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/4K/32K/64K split pp/tg128: hipEngine BF16 leads fork F16/Q8 full-prompt prefill by **0.273%-6.536% / 0.505%-8.226%**, while fork F16/Q8 leads decode by **13.528%-22.666% / 14.361%-33.474%**; fork whole-device GTT is descriptively **0.648-2.153 GiB** below hipEngine tracked peak under non-comparable memory scopes, and the exact-model Q8 claim-protocol rerun exceeds the published different-model d0/d32K/d64K pp512/tg32 rows; `benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json`.
+
 - [diagnostic metadata correction, no benchmark delta] Radeon 8060S / gfx1151 repeated-128K: reject the former `enable_lr_compute_wa` A/B after upstream removed the incomplete workaround and identified a VGPR-size fix already active in the captured kernel; `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-{smoke,containment}.json`.
 
 - [accepted bounded-default gfx1151 Qwen GGUF head-major AOTriton prefill] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K/32K/64K: reuse one tracked cross-layer head-major K/V pair, moving same-protocol prefill **1395.168/1463.311/1133.272/890.033 -> 1394.772/1472.330/1171.610/952.348 tok/s (-0.028%/+0.616%/+3.383%/+7.001%)** with byte-exact full-model state, neutral decode, 65,792-token bounded admission, and exact strided fallback; `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`.
