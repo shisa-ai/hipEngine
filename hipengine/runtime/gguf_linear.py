@@ -140,7 +140,6 @@ _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
 _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
-_Q4_T16_COL4_SELECTIVE_ROWS = {(5_120, 10_240): frozenset({2, 4})}
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
@@ -1619,10 +1618,7 @@ def _q4_t16_sidecar_decode_variants(
     if not 2 <= rows <= 4:
         return ()
     shape = (in_features, out_features)
-    if (
-        shape in _Q4_T16_COL4_ALL_ROWS_SHAPES
-        or rows in _Q4_T16_COL4_SELECTIVE_ROWS.get(shape, ())
-    ):
+    if shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
         return (
             "dense_rowtile_col4_bf16_bf16_out",
             "dense_rowtile_bf16_bf16_out",

@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "status": "retained_narrow_q4t16_col4_shape_policy_broad_policy_rejected",
+  "performance_claim": true,
+  "performance_claim_scope": "Exact W7900 physical-family and actual-weight component win for K5120/N1024 verifier rows only. No natural25 or topline throughput gain is claimed.",
+  "correctness_claim": true,
+  "correctness_scope": "BF16-bit exact col4 leaf, exact W7900 B1-B3 transaction/state/provider output, explicit prior-owner fallbacks, and clean teardown.",
+  "kind": "qwen36_27b_q4t16_col4_verifier_shape_policy_w7900",
+  "timestamp": "2026-08-05T04:43:49+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "screen_gpu_index": 1,
+    "screen_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100"
+  },
+  "software": {
+    "implementation_base_commit": "35129d4dbacf88ebc08586f613fe71164bef6629",
+    "retained_baseline_commit": "a821d571b0b63e2158dd6b8f5c2f14e97eb563f8",
+    "baseline_measurement_commit": "b3b16b32e3eebd177ed88cca67d4fe1e6c90c270",
+    "baseline_measurement_disclosure": "The baseline trace used the exact five-file a821d571b implementation patch before that patch was committed; the retained Q6 artifact records the full provenance.",
+    "final_selector_diff_sha256": "23b2397e4fe5e23ce5bc5e59b9627ac79fdae6b6410bb109065f081fb0311cd4",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100"
+  },
+  "change": {
+    "kernel": "q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short,4>",
+    "registry_key": ["hip_gfx1100", "linear", "gguf_q4_k_t16_v1", "dense_rowtile_col4_bf16_bf16_out"],
+    "arithmetic": "Preserves each output's contiguous-eight K traversal, FP32 fmaf stream, wave32 tree, zero-seeded BF16 store, and existing T16 bytes while splitting each sixteen-column slab into two four-column workgroups.",
+    "resources_row4": {
+      "tile8": {"local_size": 32, "vgpr": 144, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0},
+      "col4": {"local_size": 32, "vgpr": 96, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0}
+    },
+    "initial_gpu1_policy": {
+      "K5120_N1024_rows": [2, 3, 4],
+      "K5120_N10240_rows": [2, 4],
+      "note": "All other singleton shapes and the complete fused-FFN col4 family lost and were excluded before production profiling."
+    },
+    "final_w7900_policy": {
+      "col4": {"shape": "K5120/N1024", "rows": [2, 3, 4]},
+      "prior_owner_fallback": "K5120/N10240 returns to pack8 at row 2 and compact-T16 tile8 at rows 3-4; every other shape retains its pre-candidate owner.",
+      "gfx1151": "Registry alias explicitly excluded pending an independent architecture-local crossover and full-model gate."
+    },
+    "new_allocation_bytes": 0,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false
+  },
+  "broad_policy_profile": {
+    "protocol": "Hermetic cached W7900 rocprofv3 kernel+marker+memory-copy trace, natural25 prompt limit=1, B3, no warmup.",
+    "correctness": {
+      "token_sha256_i64": "0e257ed1f08deae7cf88d0ca82cb1e6e478e848b798a5ccdab9393ce7468aafe",
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "target_passes": 7,
+      "exact_greedy_match": true,
+      "gpu_accept_match_cpu": true,
+      "peak_allocated_bytes": 35317228270,
+      "active_allocations_after_close": 0
+    },
+    "window": {
+      "dispatches": {"baseline": 8055, "broad_candidate": 8055},
+      "kernel_sum_ms": {"baseline": 356.9719, "broad_candidate": 359.06968, "delta_percent": 0.587659700945653},
+      "target_verify_host_ms": {"baseline": 399.2823241278529, "broad_candidate": 404.9757376778871, "delta_percent": 1.4259117436441038},
+      "complete_host_wall_ms": {"baseline": 492.1724530868232, "broad_candidate": 496.9560110475868, "delta_percent": 0.971927203719325},
+      "device_span_ms": {"baseline": 491.614247, "broad_candidate": 496.466624, "delta_percent": 0.9870293689840937}
+    },
+    "physical_shapes": {
+      "K5120_N1024": {
+        "dispatches": 56,
+        "tile8_ms": 0.868968,
+        "col4_ms": 0.777411,
+        "speedup": 1.1177716806168165,
+        "saved_ms": 0.091557,
+        "decision": "retain"
+      },
+      "K5120_N10240": {
+        "dispatches": 168,
+        "tile8_ms": 8.914387,
+        "col4_ms": 9.488588,
+        "speedup": 0.939485095147982,
+        "delta_percent": 6.441284184767837,
+        "decision": "reject_and_restore_prior_owner"
+      }
+    },
+    "interpretation": "The broad candidate regresses every complete-window metric. The wide N10240 crossover is the isolated material loss; the narrow N1024 family remains exact and positive."
+  },
+  "w7900_narrow_leaf": {
+    "tensor": "blk.3.attn_k.weight",
+    "shape": "K5120/N1024",
+    "rows": 4,
+    "protocol": "11 counterbalanced samples, 50 warmups, 50-launch HIP-event bursts, cached build.",
+    "event_us": {
+      "pack8": 20.152180194854736,
+      "tile8": 16.883339881896973,
+      "col4": 12.200900316238403,
+      "col4_speedup_vs_tile8": 1.3837782003207275,
+      "col4_paired_wins": "11/11"
+    },
+    "wall_us": {
+      "pack8": 20.50228,
+      "tile8": 17.23402,
+      "col4": 12.55576,
+      "col4_speedup_vs_tile8": 1.372598711666996,
+      "col4_paired_wins": "11/11"
+    },
+    "correctness_vs_pack8": {
+      "bf16_mismatches": 0,
+      "elements": 4096,
+      "max_abs_delta": 0.0,
+      "max_kl": 0.0,
+      "top1_agreement": 1.0
+    }
+  },
+  "validation": {
+    "admission_bundle": "153 tests passed before the binding profile.",
+    "broad_w7900_transaction": "passed exact logits, reject/partial/full/rollback state, dynamic positions, graph reuse, provider output, physical ownership, lifecycle, and teardown.",
+    "final_selector_test": "tests/test_gguf_q4_k_pack8_rowtile.py::test_native_pack8_single_uses_measured_t16_sidecar_policy passed after updating the intended row-2 N10240 pack8 fallback ledger.",
+    "final_w7900_transaction": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar passed; the final ledger observes only K5120/N1024 col4 and the intended K5120/N10240 row-2 pack8 fallback.",
+    "rerun_policy": "No broad suite or natural25 repeat: the semantic transaction is green, the rejected shape restores an already retained exact owner, and the surviving family's 0.091557-ms profiled saving is only 0.0186% of the complete window."
+  },
+  "topline": {
+    "unchanged_hipengine_b3_tok_s": 52.65236917199619,
+    "unchanged_hipengine_true_ar_tok_s": 21.675538192926137,
+    "unchanged_mtp_vs_own_ar": 2.429114733085586,
+    "llamacpp_vulkan_b3_tok_s": 68.08247965468567,
+    "hipengine_below_vulkan_percent": 22.663849144377522
+  },
+  "decision": {
+    "action": "retain_narrow_K5120_N1024_col4_and_reject_broad_policy",
+    "reason": "The narrow family is BF16-bit exact and wins both the complete trace (1.118x) and a counterbalanced W7900 actual-weight leaf (1.384x, 11/11). The N10240 policy loses 6.44%, drives a 0.972% complete-wall regression, and is restored to its prior owners.",
+    "natural25_advanced": false,
+    "scoreboard_headline_changed": false,
+    "next_profile": "Re-rank the retained a821d571b physical profile; this narrow selector is below topline timing resolution."
+  },
+  "commands": {
+    "profile_setup": "root=/tmp/hipengine-qwen36-27b/final-35129d4db/profile-native-q4t16-col4-single-mtp-b3-hermetic-v2; sdk=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1; override=/tmp/hipengine-roctx-sdk-override-qwen36; mkdir -p $root $override; if test ! -L $override/libroctx64.so; then rm -f $override/libroctx64.so; ln -s $sdk $override/libroctx64.so; fi",
+    "broad_profile": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt LD_LIBRARY_PATH=$override:$(dirname $sdk):$(dirname $sdk)/rocm_sysdeps/lib:${LD_LIBRARY_PATH-} PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-directory /tmp/hipengine-qwen36-27b/final-35129d4db/profile-native-q4t16-col4-single-mtp-b3-hermetic-v2 --output-file mtp-b3 --output-format csv -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-35129d4db/profile-native-q4t16-col4-single-mtp-b3-hermetic-v2/suite.json",
+    "w7900_leaf": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.:/tmp /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/screen_qwen36_q4t16_col4.py --gate-tensor blk.3.attn_k.weight --up-tensor blk.3.attn_k.weight --gate-slot layers.3.attn_k --up-slot layers.3.attn_k --rows 4 --samples 11 --warmup 50 --burst 50 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-q4t16-col4-attn-k-final-w7900.json",
+    "final_transaction": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar"
+  },
+  "sources": {
+    "baseline_profile_root": "/tmp/hipengine-qwen36-27b/final-b3b16b32e/profile-native-q6t16-col8-single-mtp-b3-hermetic-v2",
+    "broad_candidate_profile_root": "/tmp/hipengine-qwen36-27b/final-35129d4db/profile-native-q4t16-col4-single-mtp-b3-hermetic-v2",
+    "w7900_narrow_leaf": "/tmp/qwen36-q4t16-col4-attn-k-final-w7900.json",
+    "sha256": {
+      "baseline_suite": "61c5463730dbb5ce8615e1aec2f48c4b64600e2c6362211b5288ea5312b50cee",
+      "baseline_kernel_csv": "2252c408469f4f8f1c0c153739d8682ba0f66dc7f1b02d6603b2c5f0ca1d47c4",
+      "baseline_marker_csv": "8e5d0961ceb18c9d9d81e8953e6a082cf1f96c4460eeae59afa6af89635fcf90",
+      "broad_suite": "ea0eee8aa0283d120900097da1e31eeb739ece0b602e69c8c643f81bdff391d5",
+      "broad_kernel_csv": "7d3a4a4dc8e78e6ba6807e29aad9b61ec202141eb4285c4921197205a80d0a6d",
+      "broad_marker_csv": "f2142ba32078581170a3ced6f59ecfd31445d68a0b6230cec4a163f7418a2e91",
+      "profile_comparison": "2b156e9412d3114794ef20015add8849fa3bab570f4d64da5aabc490e41d631a",
+      "physical_comparison": "f4d52f9fb53e1a17015c8e6f8e32a7b8086595289feea3e72ef7da36ddfa5cd3",
+      "w7900_narrow_leaf": "8882d0321a33e12bfa580dc4d270b4176782475b59ae25e51e42ee75d3659e63"
+    }
+  }
+}

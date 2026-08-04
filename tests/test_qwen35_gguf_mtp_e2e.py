@@ -935,18 +935,13 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert {
         (in_features, out_features)
         for _, in_features, out_features in q4_single_rowtile_calls["col4"]
-    } == {(5_120, 1_024), (5_120, 10_240)}
+    } == {(5_120, 1_024)}
     assert {
         rows
         for rows, in_features, out_features in q4_single_rowtile_calls["col4"]
         if (in_features, out_features) == (5_120, 1_024)
     } == {2, 4}
-    assert {
-        rows
-        for rows, in_features, out_features in q4_single_rowtile_calls["col4"]
-        if (in_features, out_features) == (5_120, 10_240)
-    } == {2, 4}
-    assert not q4_single_rowtile_calls["pack8"]
+    assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
     assert dense_virtual256_rowtile_calls
