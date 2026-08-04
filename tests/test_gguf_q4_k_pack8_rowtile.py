@@ -22,12 +22,13 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_gemv_bf16_bf16_out,
     gguf_q4_k_pack8_rowtile_bf16_bf16_out,
 )
-from hipengine.kernels.registry import KernelKey, resolve
+from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8
 import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.runtime.gguf_linear import (
     GGUFLinearDispatch,
     _pack8_rowtile_dispatch,
+    launch_gguf_linear,
     launch_gguf_linear_pair,
     native_batch_decode_session,
 )
@@ -136,6 +137,232 @@ def test_pack8_exact_prefill_candidate_registry_contract() -> None:
             quant="gguf_q4_k",
             variant=variant,
         ) is wrapper
+
+
+def _fake_pack8_weight():
+    allocations = {
+        "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
+        "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=12)),
+        "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=13)),
+    }
+
+    class Weight:
+        spec = SimpleNamespace(layout="q4_k_pack8", quant_key="gguf_q4_k")
+        backend = "hip_gfx1100"
+
+        def allocation(self, name: str):
+            return allocations[name]
+
+    return Weight()
+
+
+@pytest.mark.parametrize("rows", (512, 1024))
+def test_populated_pack8_prefill_routes_to_exact_tile8x8(rows: int) -> None:
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_prefill_bf16_bf16_out",
+    )
+    original_candidate = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    original_fallback = resolve(
+        backend=fallback_key.backend,
+        layer=fallback_key.layer,
+        quant=fallback_key.quant,
+        variant=fallback_key.variant,
+    )
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def fake_candidate(*args, **kwargs):
+        calls.append(("tile8x8", args, kwargs))
+
+    def fake_fallback(*args, **kwargs):
+        calls.append(("fallback", args, kwargs))
+
+    register(candidate_key, fake_candidate, replace=True)
+    register(fallback_key, fake_fallback, replace=True)
+    try:
+        launch_gguf_linear(
+            _fake_pack8_weight(),
+            x_ptr=100,
+            out_ptr=200,
+            rows=rows,
+            in_features=5120,
+            out_features=17408,
+            stream=7,
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+            use_gemv_decode=False,
+        )
+    finally:
+        register(candidate_key, original_candidate, replace=True)
+        register(fallback_key, original_fallback, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            "tile8x8",
+            (100, 11, 12, 13, 200, rows, 5120, 17408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("rows", "use_wmma_prefill"),
+    ((511, True), (512, False)),
+)
+def test_populated_pack8_prefill_keeps_exact_fallback_outside_policy(
+    rows: int,
+    use_wmma_prefill: bool,
+) -> None:
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_prefill_bf16_bf16_out",
+    )
+    original_candidate = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    original_fallback = resolve(
+        backend=fallback_key.backend,
+        layer=fallback_key.layer,
+        quant=fallback_key.quant,
+        variant=fallback_key.variant,
+    )
+    calls: list[str] = []
+    register(candidate_key, lambda *args, **kwargs: calls.append("tile8x8"), replace=True)
+    register(fallback_key, lambda *args, **kwargs: calls.append("fallback"), replace=True)
+    try:
+        launch_gguf_linear(
+            _fake_pack8_weight(),
+            x_ptr=100,
+            out_ptr=200,
+            rows=rows,
+            in_features=5120,
+            out_features=17408,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=False,
+        )
+    finally:
+        register(candidate_key, original_candidate, replace=True)
+        register(fallback_key, original_fallback, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == ["fallback"]
+
+
+def test_populated_pack8_prefill_missing_tile8x8_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k",
+        "pack8_prefill_bf16_bf16_out",
+    )
+    original_candidate = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    original_fallback = resolve(
+        backend=fallback_key.backend,
+        layer=fallback_key.layer,
+        quant=fallback_key.quant,
+        variant=fallback_key.variant,
+    )
+    calls: list[str] = []
+    dual_calls: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_pack8_dual_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: dual_calls.append((args, kwargs)),
+    )
+    register(candidate_key, None, replace=True)  # type: ignore[arg-type]
+    register(fallback_key, lambda *args, **kwargs: calls.append("fallback"), replace=True)
+    try:
+        launch_gguf_linear(
+            _fake_pack8_weight(),
+            x_ptr=100,
+            out_ptr=200,
+            rows=512,
+            in_features=5120,
+            out_features=17408,
+            use_wmma_prefill=True,
+            use_gemv_decode=False,
+        )
+        assert launch_gguf_linear_pair(
+            _fake_pack8_weight(),
+            _fake_pack8_weight(),
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=512,
+            in_features=5120,
+            out_features=17408,
+            use_wmma_prefill=True,
+            use_gemv_decode=False,
+        )
+    finally:
+        register(candidate_key, original_candidate, replace=True)
+        register(fallback_key, original_fallback, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == ["fallback"]
+    assert len(dual_calls) == 1
+
+
+def test_populated_pack8_pair_declines_legacy_dual_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dual_calls: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_pack8_dual_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: dual_calls.append((args, kwargs)),
+    )
+    assert not launch_gguf_linear_pair(
+        _fake_pack8_weight(),
+        _fake_pack8_weight(),
+        x_ptr=100,
+        out_a_ptr=200,
+        out_b_ptr=300,
+        rows=512,
+        in_features=5120,
+        out_features=17408,
+        use_wmma_prefill=True,
+        use_gemv_decode=False,
+    )
+    assert dual_calls == []
 
 
 def test_native_pack8_pair_uses_two_bounded_rowtiles(

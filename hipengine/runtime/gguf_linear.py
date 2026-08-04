@@ -131,6 +131,7 @@ _DENSE_BF16_ROWTILE_MAX_ROWS = 4
 _DENSE_BF16_VIRTUAL256_MAX_IN_FEATURES = 10_240
 _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
+_PACK8_EXACT_PREFILL_MIN_ROWS = 512
 _ROWTILE_SUPPORTED_PREFILL_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out", "prefill_f32_f32_out"}
 )
@@ -880,6 +881,32 @@ def _dense_bf16_rowtile_dispatch(
     return GGUFLinearDispatch(key, dispatch.abi)
 
 
+def _pack8_exact_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    enabled: bool,
+) -> GGUFLinearDispatch:
+    """Select exact resident-pack8 row reuse for populated prefill chunks."""
+
+    if (
+        not enabled
+        or rows < _PACK8_EXACT_PREFILL_MIN_ROWS
+        or dispatch.abi != "pack8"
+        or dispatch.key.variant != "pack8_prefill_bf16_bf16_out"
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
 def _pack8_rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -1233,7 +1260,9 @@ def launch_gguf_linear(
 
     When ``rows > 1`` and the raw-layout quant has a WMMA prefill kernel
     registered (currently ``gguf_q8_0`` and raw ``gguf_q4_k``), the dispatch
-    rewrites to the ``wmma_prefill_*`` family if any of these is true:
+    rewrites to the ``wmma_prefill_*`` family if any of these is true. The same
+    opt-in selects the registered arithmetic-preserving resident-pack8 tile8x8
+    leaf for populated Q4_K chunks (rows >= 512):
 
     * ``use_wmma_prefill=True`` is passed explicitly,
     * a runner has called :func:`set_wmma_prefill_enabled` with ``True``,
@@ -1308,6 +1337,11 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_wmma=use_wmma,
+        )
+        dispatch = _pack8_exact_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            enabled=use_wmma and not use_q4_pack8_wmma,
         )
         dispatch = _dense_bf16_rowtile_dispatch(
             dispatch,
@@ -1720,8 +1754,9 @@ def launch_gguf_linear_pair(
 
     The pair fast paths cover registered exact raw decode pairs (including
     unequal-width F32 output), Q8_0 dual decode GEMV, Q4_K pack8 dual prefill,
-    and the P8.2 raw-Q4_K dual WMMA
-    prefill. There is still no Q8_0 dual WMMA
+    and the P8.2 raw-Q4_K dual WMMA prefill. Populated resident-pack8 pairs
+    decline the legacy dual owner when the exact tile8x8 singleton is registered.
+    There is still no Q8_0 dual WMMA
     prefill; when ``use_wmma_prefill`` would otherwise route Q8_0 rows>1 to
     the WMMA family, the pair function returns ``False`` so the caller falls
     back to two singletons that each take the WMMA path via
@@ -2192,6 +2227,15 @@ def _resolve_gguf_linear_pair_kind(
         out_features=out_features_b,
     )
     if use_wmma and rows > 1:
+        # A populated resident-pack8 pair has no exact fused tile owner. Decline
+        # only when the registered singleton rewrite is available; callers then
+        # issue two tile8x8 leaves. Missing keys retain the legacy dual owner.
+        if any(
+            _pack8_exact_prefill_dispatch(d, rows=rows, enabled=True) is not d
+            for d in (dispatch_a, dispatch_b)
+        ):
+            return "none"
+
         q4_prefill_raw = KernelKey(
             backend, "linear", "gguf_q4_k", "prefill_bf16_bf16_out"
         )
