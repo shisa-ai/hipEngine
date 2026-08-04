@@ -204267,3 +204267,33 @@ Vulkan local sizes verbatim will close the measured gap.
   candidate C export, Python wrapper/key, and RED tests were removed; `git diff`
   confirms all production/test source returned to the admission commit.
   Script/result SHA-256s are `5b425b4c...e367` and `cb3d1fe6...1abe`.
+
+### D27-O3 dense-BF16 virtual256 rowtile admission
+
+- The exact compact-proposal B3 profile remains authoritative. After rejecting
+  the higher-ceiling Q4 output-pack pair, dense-BF16 rowtiles are the next
+  measured family at **137.838925 ms / 20.372%** of complete wall across 784
+  launches. Conv plus GDN total only **19.406009 ms / 2.868%**, so changing
+  those recurrence bodies first would violate Amdahl order.
+- The profile splits the dense family into 224 slow K=17,408/N=5,120 FFN-down
+  launches (**67.369786 ms**) and 560 qualifying K<=10,240 launches
+  (**70.469139 ms**) across linear QKV, `ssm_out`, and full-attention V. The
+  existing one-row virtual256/local128 schedule improves those three shapes by
+  **1.091-1.103x** while the K=17,408 control is neutral-negative.
+- Admit a registry-only rowtile sibling that maps the same 256 arithmetic
+  partitions onto 128 physical threads for each of rows 2-4. Each thread keeps
+  the two original virtual partials per row, performs exactly the old s=128 add
+  in registers, then reproduces s=64/32 in LDS and the 16..1 wave reduction.
+  Cross-row weight reuse, every FMA sequence, and the BF16 boundary remain
+  unchanged. Production dispatch stays untouched during screening.
+- `ceiling_ms = 137.838925`; `credible_reducible_ms = 70.469139`;
+  `expected_saved_ms = 5.88-6.58` (**0.87-0.97%** complete wall);
+  `engineering/risk = low`. This is below the normal admission floor but is an
+  exact additive specialization in the already-open second-largest arithmetic
+  family. GPU1 must screen rows 2/3/4 across all four real shapes; K=17,408 and
+  any losing shape fail closed to local256. All candidate code is removed if
+  the balanced screen is not positive.
+- Preflight: HIP loads and both gfx1100 devices are visible. The required
+  `scripts/check_lineage.py --kind kernel --diff stat` reports only the known
+  nano-vllm-amd DRIFT through `59195ed`; this is an in-tree schedule extension
+  and copies no parent device code.

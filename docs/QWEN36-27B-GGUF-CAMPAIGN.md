@@ -666,6 +666,20 @@ attention output **19.70%**. The candidate wrapper, registry key, tests, and
 export were removed completely; the dedicated eight-column verifier rowtile
 remains the sole owner.
 
+The next exact screen moves to the second-largest measured family: dense-BF16
+rowtiles own **137.839 ms / 20.37%** of complete B3 wall. Of that, the three
+K<=10,240 production shapes account for **70.469 ms** across 560 launches; the
+remaining K=17,408 FFN-down shape keeps the current local256 owner because its
+one-row control already crossed negative. The admitted candidate maps the same
+256 arithmetic partitions onto local128 for every verifier row, performs the
+original s=128 pair add in registers, and preserves the s=64/32 LDS plus 16..1
+wave tree while retaining cross-row weight reuse. The qualifying one-row
+schedule improved **1.091-1.103x**, implying **5.88-6.58 ms / 0.87-0.97%**
+complete-wall recovery if it transfers. This below-floor screen is allowed only
+as an exact, low-risk extension of the already-open dominant dense family.
+GPU1 must compare rows 2/3/4 over all four real shapes before production routing;
+all losing K ranges and every unsupported row retain the current rowtile.
+
 ---
 
 ## 7. Prioritized execution plan
