@@ -31,7 +31,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_bf16_bf16_out,
     gguf_q6_k_pack8_gemv_decode_bf16_f32_out,
     gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
-    gguf_q6_k_pack8_gemv_decode_bf16_top1_stage1_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_gather_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack16_gather_f32,
     gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_pack16_stage1_f32,
@@ -105,6 +104,12 @@ def test_p9_b4b_registry_keys_resolve() -> None:
     ):
         fn = resolve(backend="hip_gfx1100", layer="linear", quant="gguf_q6_k", variant=variant)
         assert fn is not None, f"missing registry entry: {variant}"
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear+argmax",
+        quant="gguf_q6_k",
+        variant="proposal_top1_exact_bf16",
+    ) is not None
 
 
 def test_p9_b4b_build_plan_is_dry_run_safe() -> None:

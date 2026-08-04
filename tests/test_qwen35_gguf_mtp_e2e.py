@@ -318,12 +318,18 @@ def test_ud_q3_k_m_real_nextn_chain_matches_mtp_disabled_greedy_output() -> None
         while len(expected) < decode_tokens:
             expected.append(int(target.step(expected[-1], return_logits=False).token_id))
 
+        assert target.runner.weights is not None
+        borrowed_fallback_weights = {
+            slot: target.runner.weights.root(slot)
+            for slot in ("token_embedding", "lm_head")
+        }
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             _MODEL,
             max_positions=128,
             max_requests=1,
             runtime=target.runtime,
             require_cached_build=os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1",
+            borrowed_fallback_weights=borrowed_fallback_weights,
         )
         try:
             with Qwen35GGUFMTPDecodeSession(
@@ -786,14 +792,27 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         expected = [root]
         while len(expected) < 8:
             expected.append(int(target.step(expected[-1], return_logits=False).token_id))
+        assert target.runner.weights is not None
+        borrowed_fallback_weights = {
+            slot: target.runner.weights.root(slot)
+            for slot in ("token_embedding", "lm_head")
+        }
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             _DENSE_MODEL,
             max_positions=64,
             max_requests=1,
             runtime=target.runtime,
             require_cached_build=require_cached,
+            borrowed_fallback_weights=borrowed_fallback_weights,
         )
         try:
+            assert provider.executor.weights is not None
+            assert provider.executor.weights.fallback("lm_head") is borrowed_fallback_weights["lm_head"]
+            assert provider.executor.weights.fallback("lm_head").spec.quant_key == "gguf_q6_k_t16_v1"
+            assert (
+                provider.executor.weights.fallback("output_norm").spec.source.name
+                == "blk.64.nextn.shared_head_norm.weight"
+            )
             with Qwen35GGUFMTPDecodeSession(
                 target,
                 provider,
@@ -806,6 +825,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                     max_new_tokens=8,
                     use_bulk_prefill=False,
                 )
+            assert provider.executor.last_lm_head_path == "exact_q6_top1"
         finally:
             provider.close()
 

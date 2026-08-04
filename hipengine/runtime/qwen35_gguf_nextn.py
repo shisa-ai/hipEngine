@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Mapping, Protocol
 
 import numpy as np
 
@@ -20,7 +20,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q3_k_gemv import register_gguf_q3_
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+    build_gguf_q6_k_t16_gemv,
+)
 from hipengine.kernels.registry import KernelKey, MissingKernelError, is_registered, resolve
+from hipengine.loading.qwen35_gguf_materialize import Qwen35GGUFDeviceWeight
 from hipengine.loading.qwen35_gguf_nextn_materialize import (
     Qwen35GGUFNextNResidentWeights,
     materialize_qwen35_gguf_nextn_weights,
@@ -87,6 +91,7 @@ class Qwen35GGUFNextNExecutor:
         runtime: HipRuntime | None = None,
         compiler_version: str | None = None,
         require_cached_build: bool = False,
+        borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
@@ -101,6 +106,7 @@ class Qwen35GGUFNextNExecutor:
         register_gguf_q3_k_gemv_kernels()
         self.weights: Qwen35GGUFNextNResidentWeights | None = materialize_qwen35_gguf_nextn_weights(
             self.model,
+            borrowed_fallback_weights=borrowed_fallback_weights,
             runtime=self.runtime,
         )
         adapted = self.weights.as_full_stack_weights()
@@ -131,11 +137,11 @@ class Qwen35GGUFNextNExecutor:
         self._final_hidden_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._logits_buf = malloc(self._logits_host.nbytes, runtime=self.runtime)
         self._lm_head_top1_kernel = None
-        self._lm_head_top1_weight_ptr = 0
+        self._lm_head_top1_weight: Qwen35GGUFDeviceWeight | None = None
         self._lm_head_top1_block_values: DeviceBuffer | None = None
         self._lm_head_top1_block_indices: DeviceBuffer | None = None
         self._lm_head_top1_result: DeviceBuffer | None = None
-        self._q6_pack8_library = None
+        self._lm_head_top1_libraries: Mapping[str, object] | None = None
         self.last_lm_head_path = "unobserved"
         self._prepare_exact_lm_head_top1()
         self._buffers = tuple(
@@ -163,33 +169,40 @@ class Qwen35GGUFNextNExecutor:
         weight = self.weights.fallback("lm_head")
         key = KernelKey(
             self.weights.backend,
-            "linear",
+            "linear+argmax",
             weight.spec.quant_key,
-            "pack8_gemv_decode_bf16_top1_gather_f32",
+            "proposal_top1_exact_bf16",
         )
         if not is_registered(key):
             return
         try:
-            weight_ptr = int(weight.allocation("raw").tensor.ptr)
             kernel = resolve(
                 backend=key.backend,
                 layer=key.layer,
                 quant=key.quant,
                 variant=key.variant,
             )
-        except (KeyError, MissingKernelError):
+        except MissingKernelError:
             return
-        self._q6_pack8_library = build_gguf_q6_k_pack8_gemv(
-            load=True,
-            compiler_version=self.compiler_version,
-            require_cached=self.require_cached_build,
-        )
+        libraries = {
+            "q6_pack8": build_gguf_q6_k_pack8_gemv(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            ),
+            "q6_t16": build_gguf_q6_k_t16_gemv(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            ),
+        }
         block_nbytes = (self.vocab_size // 8) * DType.FP32.itemsize
         self._lm_head_top1_block_values = malloc(block_nbytes, runtime=self.runtime)
         self._lm_head_top1_block_indices = malloc(block_nbytes, runtime=self.runtime)
         self._lm_head_top1_result = malloc(DType.INT32.itemsize + DType.FP32.itemsize, runtime=self.runtime)
         self._lm_head_top1_kernel = kernel
-        self._lm_head_top1_weight_ptr = weight_ptr
+        self._lm_head_top1_weight = weight
+        self._lm_head_top1_libraries = libraries
 
     def _run_exact_lm_head_top1(
         self,
@@ -201,29 +214,27 @@ class Qwen35GGUFNextNExecutor:
 
         if (
             self._lm_head_top1_kernel is None
-            or self._lm_head_top1_weight_ptr <= 0
+            or self._lm_head_top1_weight is None
             or self._lm_head_top1_block_values is None
             or self._lm_head_top1_block_indices is None
             or self._lm_head_top1_result is None
-            or self._q6_pack8_library is None
+            or self._lm_head_top1_libraries is None
         ):
             return None
         result_ptr = int(self._lm_head_top1_result.ptr)
         self._lm_head_top1_kernel(
+            self._lm_head_top1_weight,
             int(hidden_ptr),
-            self._lm_head_top1_weight_ptr,
+            self._logits_buf.ptr,
             self._lm_head_top1_block_values.ptr,
             self._lm_head_top1_block_indices.ptr,
             result_ptr,
             result_ptr + DType.INT32.itemsize,
-            None,
-            None,
             1,
             self.hidden_size,
             self.vocab_size,
-            0,
             stream=int(stream),
-            library=self._q6_pack8_library,
+            libraries=self._lm_head_top1_libraries,
             runtime=self.runtime,
         )
         self.runtime.device_synchronize()

@@ -205008,3 +205008,68 @@ Vulkan local sizes verbatim will close the measured gap.
   byte saving even at the predeclared leaf, so the retained materialized
   dense-BF16 rowtile remains canonical. Script/result SHA-256s are
   `d99fedbc...50c3` / `c418a8d0...29df`.
+
+### D27-O3 borrowed target Q6T16 proposal scoring — CORRECTNESS ROUTED
+
+- The refreshed retained profile leaves proposal scoring as the largest clean
+  ownership gap: every standalone NextN provider replans and uploads target
+  fallback weights with `decode_repack=False`, so its 25 proposal steps use the
+  raw-Q6 exact top-1 scorer even while the live target already owns the same
+  `output.weight` in byte-neutral Q6T16 form.
+- Predeclared GPU1 actual-weight leaf command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -u
+  /tmp/screen_qwen36_proposal_q6_t16_top1.py
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/qwen36-proposal-q6-t16-top1-gpu1.json` uses real
+  `output.weight`, K5,120/N248,320, 100 warmup pairs, 15 counterbalanced
+  samples, and 20-launch synchronized event/wall bursts.
+- The existing resident-T16 stage1 plus existing pack8 stage2 is full-logit
+  byte exact and top-1 id/value-bit exact to the raw-Q6 scorer. Event median
+  falls **2,218.341 -> 1,489.425 us (-32.8586%, 1.4894x)** and synchronized
+  wall falls **2,219.191 -> 1,490.893 us (-32.8182%, 1.4885x)**. Both residents
+  are exactly **1,042,944,000 bytes**; this is a layout/ownership win, not an
+  added sidecar. Script/result SHA-256s are `2a7d3b89...fca01` /
+  `551d45b9...ef6e`.
+- RED froze one quant-neutral four-axis contract,
+  `(hip_gfx1100, linear+argmax, <resident quant>,
+  proposal_top1_exact_bf16)`, for both raw Q6 and Q6T16 adapters; the common
+  ABI carries the weight record, optional full-logit scratch, tile winners,
+  final token/value, and named libraries. It also froze borrowed-fallback
+  identity and non-ownership plus one stage1/one reducer for T16. The seven
+  focused tests failed only on the absent adapters/registry route, old pointer
+  ABI, and absent borrowed materialization.
+- GREEN adds no device body and no quant/backend branch in runtime dispatch.
+  The raw adapter retains the prior exact scorer; the T16 adapter composes the
+  already-proven exact producer/reducer. NextN materialization may borrow
+  source-compatible target fallbacks and excludes them from `owned_weights`.
+  Canonical benchmark/e2e scripts now borrow target `token_embedding` and
+  `lm_head` while the target session remains alive, avoiding duplicate
+  **715,161,600 + 1,042,944,000 = 1,758,105,600 bytes** of residents.
+- The first W7900 transaction run correctly rejected borrowing all three roots:
+  NextN must use `blk.64.nextn.shared_head_norm.weight`, not target
+  `output_norm.weight`. The focused repair allows partial borrowing, validates
+  source name/shape/type/backend before allocating, keeps the distinct 20,480-
+  byte shared-head norm draft-owned, and adds a unit rejection for the unsafe
+  alias. This is a correctness boundary, not a fallback preference.
+- Focused GREEN: the original seven RED cases pass; the materialization gate
+  also proves borrowed records are never freed and the incompatible norm is
+  rejected; `tests/test_qwen36_dense_gguf_suite.py` passes **6/6**.
+- Binding W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes **1/1**
+  after the focused norm repair. Borrowed lm-head identity is Q6T16, the mapped
+  shared-head norm remains distinct, natural provider IDs match scalar AR,
+  and all B1-B3 logits, reject/partial/full/rollback state, dynamic positions,
+  graph reuse, correction output, ownership, and teardown checks remain exact.
+- Commit this correctness route before profiling. The prior selected B3 remains
+  **41.890 tok/s / 2.0584x own AR** until a clean W7900 trace proves proposal
+  physical ownership and the full natural25 gate is non-regressive.

@@ -536,12 +536,19 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         use_gemv_decode=True,
     ) as target:
         target.select_prefill_quant(str(args.quant))
+        if target.runner.weights is None:
+            raise RuntimeError("target GGUF weights are unavailable")
+        borrowed_fallback_weights = {
+            slot: target.runner.weights.root(slot)
+            for slot in ("token_embedding", "lm_head")
+        }
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             model,
             max_positions=max_sequence_length,
             max_requests=1,
             runtime=target.runtime,
             require_cached_build=bool(args.require_cached_build),
+            borrowed_fallback_weights=borrowed_fallback_weights,
         )
         verifier = Qwen35GGUFTransactionalVerifier(
             target,
