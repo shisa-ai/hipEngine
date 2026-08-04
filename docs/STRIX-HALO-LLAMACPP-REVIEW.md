@@ -27,6 +27,14 @@ A/B is smaller, preserves the paged-KV ABI and all decode kernels, and directly
 answers whether AOTriton on gfx1151 pays the same strided-load tax as RADV
 coopmat1.
 
+**Execution update (2026-08-04): completed and promoted.** One bounded tracked
+head-major pair is now the gfx1151 default through the validated 65,792-token
+rounded capacity. Copy-inclusive full prefill changes 512/4K/32K/64K by
+**-0.028%/+0.616%/+3.383%/+7.001%** with byte-exact complete model state;
+allocation denial, explicit disable, unsupported backends, and larger sessions
+retain strided AOTriton. Evidence:
+[`2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`](../benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json).
+
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
 - INT8 decode uses a grouped-GQA producer whose grid is `(kv_head, split)` and
@@ -348,8 +356,9 @@ as `if model == deepseek4` or backend conditionals in generic dispatch.
 
 ## Final priority list
 
-1. **P0 — run after current GPU validation completes:** head-contiguous BF16
-   AOTriton prefill scratch A/B at 32K/64K, copy-inclusive.
+1. **P0 — completed 2026-08-04:** head-contiguous BF16 AOTriton prefill scratch
+   is the bounded gfx1151 default after exact copy-inclusive 32K/64K gains of
+   **3.383%/7.001%**; see the execution update and artifact above.
 2. **P0 — independent system lane:** test the kernel MES `lr_compute_wa` fix for
    repeated 128K before promoting host drains.
 3. **P1 — maintain:** keep grouped-GQA INT8 decode and expert row-list metadata

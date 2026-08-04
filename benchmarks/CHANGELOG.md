@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted bounded-default gfx1151 Qwen GGUF head-major AOTriton prefill] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K/32K/64K: reuse one tracked cross-layer head-major K/V pair, moving same-protocol prefill **1395.168/1463.311/1133.272/890.033 -> 1394.772/1472.330/1171.610/952.348 tok/s (-0.028%/+0.616%/+3.383%/+7.001%)** with byte-exact full-model state, neutral decode, 65,792-token bounded admission, and exact strided fallback; `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`.
+
 - [accepted byte-exact gfx1151 Laguna ctx4096 all-wave K1024 QK] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d128K: reuse the exact local1024 all-wave score owner in ordinary layers 32/36/40/44 and compensated layer 28 at 98,304+ live slots, cutting their leaves **2.159%/2.071%** and moving production **11.318784 -> 11.374827 tok/s (+0.495%)** with exact recurrent state, structural short-context exclusion, safe metadata fallback, and full lifecycle recovery; `benchmarks/results/2026-08-04-gfx1151-laguna-long-global-ctx4096-allwave-qk1024-retained.json`.
 
 - [accepted byte-exact gfx1151 Laguna all-wave K1024 QK] Radeon 8060S / Poolside Laguna S 2.1 Q4_K_M BF16-KV / d512-d128K: replace only tokenloop4 QK from the measured 32K crossover with a local1024 all-wave dense score owner, cutting its 128K median **1,261.046 -> 1,201.495 us (-4.722%)** and moving d64K/d128K **14.620/11.233 -> 14.759/11.319 tok/s (+0.948%/+0.760%)** with byte-exact leaves, exact recurrent trajectories, noise-flat 512/1K/4K, and full lifecycle recovery; `benchmarks/results/2026-08-04-gfx1151-laguna-long-global-allwave-qk1024-retained.json`.

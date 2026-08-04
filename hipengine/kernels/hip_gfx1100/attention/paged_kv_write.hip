@@ -531,6 +531,163 @@ __global__ void qwen35_write_paged_kv_int8_hadamard_group32_kernel(
   value_cache[cache_base + lane] = quantize_int8_per_token_head_value(transformed_value, value_scale);
 }
 
+template <bool dense_prefix>
+__global__ void qwen35_copy_paged_kv_bf16_to_head_major_kernel(
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* key_head_major,
+    uint16_t* value_head_major,
+    const int32_t* block_table,
+    const void* live_counts,
+    const void* token_positions,
+    const uint8_t* evict_mask,
+    int64_t context_len,
+    int64_t output_capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t block_table_row,
+    int64_t live_count_index,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int live_counts_i64,
+    int token_positions_i64,
+    int has_slot_metadata) {
+  constexpr int64_t tokens_per_block = 8;
+  const int64_t head = static_cast<int64_t>(blockIdx.y);
+  const int64_t first_token = static_cast<int64_t>(blockIdx.x) * tokens_per_block;
+  const int64_t dim = static_cast<int64_t>(threadIdx.x);
+  if (head >= num_kv_heads || dim >= head_dim) {
+    return;
+  }
+
+  const int64_t metadata_count = live_counts_i64
+      ? static_cast<const int64_t*>(live_counts)[live_count_index]
+      : static_cast<int64_t>(static_cast<const int32_t*>(live_counts)[live_count_index]);
+  const int64_t visible_count = metadata_count < context_len ? metadata_count : context_len;
+#pragma unroll
+  for (int64_t offset = 0; offset < tokens_per_block; ++offset) {
+    const int64_t token = first_token + offset;
+    if (token >= visible_count) {
+      continue;
+    }
+    int64_t physical_token = token;
+    if (!dense_prefix) {
+      const int64_t logical_block = token / block_size;
+      if (logical_block >= block_table_len) {
+        continue;
+      }
+      const int64_t physical_block = static_cast<int64_t>(
+          block_table[block_table_row * block_table_len + logical_block]);
+      if (physical_block < 0) {
+        continue;
+      }
+      physical_token = physical_block * block_size + (token - logical_block * block_size);
+    }
+    if (has_slot_metadata) {
+      if (evict_mask[physical_token] != 0) {
+        continue;
+      }
+      const int64_t stored_position = token_positions_i64
+          ? static_cast<const int64_t*>(token_positions)[physical_token]
+          : static_cast<int64_t>(static_cast<const int32_t*>(token_positions)[physical_token]);
+      if (stored_position != token) {
+        continue;
+      }
+    }
+    const int64_t source = (physical_token * num_kv_heads + head) * head_dim + dim;
+    const int64_t destination = (head * output_capacity + token) * head_dim + dim;
+    key_head_major[destination] = key_cache[source];
+    value_head_major[destination] = value_cache[source];
+  }
+}
+
+int launch_qwen35_copy_paged_kv_bf16_to_head_major(
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* key_head_major,
+    uint16_t* value_head_major,
+    const int32_t* base_offsets,
+    const void* live_counts,
+    const void* token_positions,
+    const uint8_t* evict_mask,
+    int64_t context_len,
+    int64_t output_capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t block_table_row,
+    int64_t live_count_index,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int live_counts_i64,
+    int token_positions_i64,
+    int has_slot_metadata,
+    int dense_prefix,
+    hipStream_t stream) {
+  if (context_len <= 0 || output_capacity < context_len || block_size <= 0 ||
+      block_table_len <= 0 || block_table_row < 0 || live_count_index < 0 ||
+      num_kv_heads <= 0 || head_dim <= 0 || head_dim > 1024) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(
+      static_cast<unsigned int>((context_len + 7) / 8),
+      static_cast<unsigned int>(num_kv_heads));
+  const dim3 threads(static_cast<unsigned int>(head_dim));
+  if (dense_prefix) {
+    hipLaunchKernelGGL(
+        (qwen35_copy_paged_kv_bf16_to_head_major_kernel<true>),
+        grid,
+        threads,
+        0,
+        stream,
+        key_cache,
+        value_cache,
+        key_head_major,
+        value_head_major,
+        base_offsets,
+        live_counts,
+        token_positions,
+        evict_mask,
+        context_len,
+        output_capacity,
+        block_size,
+        block_table_len,
+        block_table_row,
+        live_count_index,
+        num_kv_heads,
+        head_dim,
+        live_counts_i64,
+        token_positions_i64,
+        has_slot_metadata);
+  } else {
+    hipLaunchKernelGGL(
+        (qwen35_copy_paged_kv_bf16_to_head_major_kernel<false>),
+        grid,
+        threads,
+        0,
+        stream,
+        key_cache,
+        value_cache,
+        key_head_major,
+        value_head_major,
+        base_offsets,
+        live_counts,
+        token_positions,
+        evict_mask,
+        context_len,
+        output_capacity,
+        block_size,
+        block_table_len,
+        block_table_row,
+        live_count_index,
+        num_kv_heads,
+        head_dim,
+        live_counts_i64,
+        token_positions_i64,
+        has_slot_metadata);
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
 bool valid_kv_shape(int64_t block_size, int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim) {
   return block_size > 0 && block_table_len > 0 && num_kv_heads > 0 && head_dim > 0;
 }
@@ -722,6 +879,96 @@ int launch_qwen35_write_paged_kv_int8_hadamard_group32(
 }
 
 }  // namespace
+
+extern "C" int hipengine_qwen35_copy_paged_kv_bf16_to_head_major_spans(
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* key_head_major,
+    uint16_t* value_head_major,
+    const int32_t* base_offsets,
+    const void* live_counts,
+    const void* token_positions,
+    const uint8_t* evict_mask,
+    int64_t context_len,
+    int64_t output_capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t block_table_row,
+    int64_t live_count_index,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int live_counts_i64,
+    int token_positions_i64,
+    int has_slot_metadata,
+    hipStream_t stream) {
+  return launch_qwen35_copy_paged_kv_bf16_to_head_major(
+      key_cache,
+      value_cache,
+      key_head_major,
+      value_head_major,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      context_len,
+      output_capacity,
+      block_size,
+      block_table_len,
+      block_table_row,
+      live_count_index,
+      num_kv_heads,
+      head_dim,
+      live_counts_i64,
+      token_positions_i64,
+      has_slot_metadata,
+      0,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_copy_paged_kv_bf16_to_head_major_dense_prefix_spans(
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* key_head_major,
+    uint16_t* value_head_major,
+    const int32_t* base_offsets,
+    const void* live_counts,
+    const void* token_positions,
+    const uint8_t* evict_mask,
+    int64_t context_len,
+    int64_t output_capacity,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t block_table_row,
+    int64_t live_count_index,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int live_counts_i64,
+    int token_positions_i64,
+    int has_slot_metadata,
+    hipStream_t stream) {
+  return launch_qwen35_copy_paged_kv_bf16_to_head_major(
+      key_cache,
+      value_cache,
+      key_head_major,
+      value_head_major,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      context_len,
+      output_capacity,
+      block_size,
+      block_table_len,
+      block_table_row,
+      live_count_index,
+      num_kv_heads,
+      head_dim,
+      live_counts_i64,
+      token_positions_i64,
+      has_slot_metadata,
+      1,
+      stream);
+}
 
 extern "C" int hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans(
     const float* key,

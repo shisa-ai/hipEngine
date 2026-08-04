@@ -1863,6 +1863,27 @@ should be boring.
   gate and survives one release cycle. Then delete the rejected duplicate
   route and selector; keep only the proven scheduling policy.
 
+## `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV*`
+
+- Added 2026-08-04 for the Nathan-review P0 gfx1151 promotion. The backend
+  capability now defaults one cross-layer BF16 K/V scratch pair on before
+  AOTriton when the resident rounded capacity is at most 65,792 tokens and the
+  pair is at most 512 MiB. `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV=0` restores
+  strided AOTriton; `*_MAX_TOKENS` and `*_MAX_BYTES` can tighten admission.
+  Allocation or registry failure also falls back exactly, and gfx1100 remains
+  default-off.
+- The retained gate is byte-exact for permuted page-copy fixtures and complete
+  p512 hidden/GDN/KV/logit state. Copy-inclusive 512/4K/32K/64K full prefill is
+  **-0.028%/+0.616%/+3.383%/+7.001%**; the 64K pair adds 134,742,016 tracked
+  bytes. Evidence:
+  `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`.
+- Remove the boolean A/B environment branch after one non-regressive release
+  checkpoint no longer needs direct bisection. Keep strided AOTriton as the
+  mandatory oversized/allocation-denied/unsupported-backend fallback. Keep the
+  two capacity controls until a general scratch-budget admission API replaces
+  them; do not raise the default beyond 65,792 without a separate 128K-class
+  correctness, memory, stability, and copy-inclusive performance gate.
+
 ## Laguna D8 row-vector selected gate/up rollback
 
 - Added 2026-07-26 after the exact wave-column MMQ128x32 consumer became the

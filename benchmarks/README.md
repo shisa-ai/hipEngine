@@ -3972,6 +3972,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M head-major BF16 AOTriton prefill | 2026-08-04 | candidate parent `f8d49a25a`; TheRock HIP 7.15; BF16 KV; one warmup plus three right-sized runs at 512/4K/32K/64K, byte-exact full-model state, forced allocation denial, copy-inclusive sub-window screen, and cached kernel trace | **Accepted bounded production default:** one reusable tracked K/V pair removes AOTriton's token-major head stride through the validated 65,792-token allocation class. Same-protocol prefill moves **1395.168/1463.311/1133.272/890.033 -> 1394.772/1472.330/1171.610/952.348 tok/s (-0.028%/+0.616%/+3.383%/+7.001%)** with exact hidden/GDN/KV/logits and neutral decode. [`artifact`](results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json). | Yes for gfx1151 Qwen3.x GGUF BF16-KV AOTriton prefill through 65,792-token resident capacity | Rerun after AOTriton, KV layout/spans, scratch ownership, compiler/runtime, or capacity policy changes; require a new 128K gate before broadening. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact long-global GQA6/D32 decode | 2026-08-01 | production `5849759cf`, post-profile `8e28afdd6`; TheRock HIP 7.15; BF16 KV; byte-exact dense/evicted primitive, cached-only four-depth trace, focused 66-test gate, directional 4K/16K/64K/128K sweep, tracked-clean 16K confirmation, and 127-transition post-profile | **Accepted production default:** live16,448 exact global attention is **16.293 ms/token**, down from **86.240**. Clean d16K improves **7.732 -> 16.756 tok/s (+116.72%)**; directional d4K/d64K/d128K improve to **21.662/9.079/5.603 tok/s**, with exact trajectories/lifecycle. Post-profile global is **3.660 score + 3.371 normalize + 9.261 PV ms/token** and explains **98.081%** of the remaining device gap. [`production/profile`](results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json). | Yes for gfx1151 gated global 48Q/8KV/D128 decode above 6,000 live slots | Context-parallelize PV/merge, then normalization, while moving 4K/16K/64K and gating 128K toward <=5-ms global. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M matched 16K decode attribution | 2026-08-01 | tracked-clean hipEngine `fc8e1e9e4`; llama.cpp Vulkan `c0bc8591e`; exact same GGUF; BF16/F16 KV; 127 cached-only rocprof transitions and final 127 Vulkan logger sections | **Accepted LC-D2 attribution:** hipEngine device union is **127.892 ms/token** versus Vulkan logged GPU **45.337 ms/token**. hipEngine global attention is **86.240 ms/token**; Vulkan's complete global FA+concurrent-output group is **3.693 ms/token**. Their **82.547-ms** gap explains **99.991%** of the complete **82.555-ms** device gap. The exact HIP reducer/PV alone costs **76.527 ms/token**, serially rescans V per query head, and reaches only **31.69 GB/s** on its six-way logical V ledger. [`profile`](results/2026-08-01-gfx1151-laguna-16k-hip-vulkan-decode-profile.json). | Yes, attribution only; clean production remains 7.735836 vs 21.728347 tok/s | Replace the full score/physical plane with an exact GQA6 context-parallel owner; require positive 4K/16K/64K direction and mandatory 128K before promotion. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 projection/head/KV tile2 decode | 2026-07-31 | retained/default and tracked-clean production `a4c2c5d26`; TheRock HIP 7.15; BF16 KV; llama.cpp Vulkan source audit, global/SWA F32/BF16 byte oracle, seven same-resident p512/d128 pairs, cache-only distinct-symbol trace, and three selector-unset production repetitions | **Accepted current exact production default:** one local256 block owns two adjacent Q/K/V/gate columns and shares each BF16 activation load/conversion plus barrier while preserving both F32 FMA/reduction trees, head outputs, KV bytes, spans, and counters. All seven model pairs improve **22.886574 -> 22.994503 tok/s (+0.47158%)**. Clean production advances **22.891692 -> 23.017271 tok/s (+0.54858%, -0.238335 ms/token)**, reaching **+100.732%** over sprint start at unchanged **79,066,169,172-byte** residency. [`retention`](results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json), [`production`](results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json). | Yes for gfx1151 Laguna c=1 source-F16 Q/K/V/gate projection→head/KV | gfx1100 and ordinary output projection remain one-column rollback. Re-profile the clean wall, then attack the remaining 0.616-ms Vulkan wall gap. |
@@ -4425,6 +4426,18 @@ each llama.cpp backend uses five repetitions. PARO passes all six shapes. GGUF
 5% variance gate; maximum prefill/decode stdev over median is only
 **0.122%/0.028%**, and all 15 measured IDs are `9707`.
 
+The 2026-08-04 Nathan-review P0 default overlays the GGUF 512/4K/32K/64K
+cells below with independent right-sized runs from candidate parent
+`f8d49a25a`. One tracked head-major BF16 K/V pair is reused across all ten
+full-attention layers before AOTriton, while persistent paged KV is unchanged.
+Same-protocol controls move **1395.168/1463.311/1133.272/890.033 ->
+1394.772/1472.330/1171.610/952.348 tok/s**
+(**-0.028%/+0.616%/+3.383%/+7.001%**). Full hidden/GDN/KV/logit state is
+byte-exact, decode is neutral, forced allocation denial restores strided
+AOTriton, and the default is capped at the validated 65,792-token rounded
+capacity. The 1K row remains the prior July 17 publication until the next full
+six-shape refresh.
+
 **IOMMU boot note (directional, not causal):** relative to the prior published
 IOMMU-on rows, the arithmetic mean change across the 11 eligible current
 hipEngine cells is **+4.60% prefill / +6.20% decode**. GGUF 512-64K averages
@@ -4448,33 +4461,33 @@ are descriptive raw leaders rather than same-math allocator claims.
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 1298.259 | **1395.379** | 1184.628 | 1161.498 |
+| 512/128 | 1298.259 | **1394.772** | 1184.628 | 1161.498 |
 | 1K/128 | 1332.199 | **1481.943** | 1192.768 | 1154.327 |
-| 4K/128 | 977.252 | **1444.733** | 1148.155 | 1114.081 |
-| 32K/128 | 827.350 | **1132.215** | 843.252 | 873.573 |
-| 64K/128 | 690.642 | **892.663** | 632.774 | 702.742 |
+| 4K/128 | 977.252 | **1472.330** | 1148.155 | 1114.081 |
+| 32K/128 | 827.350 | **1171.610** | 843.252 | 873.573 |
+| 64K/128 | 690.642 | **952.348** | 632.774 | 702.742 |
 | 128K/128 | 498.101 | — (blocked) | 432.033 | **499.728** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **70.750** | 52.761 | 53.222 | 63.795 |
+| 512/128 | **70.750** | 52.710 | 53.222 | 63.795 |
 | 1K/128 | **65.905** | 54.658 | 53.044 | 63.391 |
-| 4K/128 | **66.728** | 55.297 | 52.338 | 61.863 |
-| 32K/128 | **53.458** | 45.983 | 45.946 | 52.286 |
-| 64K/128 | 44.793 | 39.388 | 40.353 | **45.160** |
+| 4K/128 | **66.728** | 55.183 | 52.338 | 61.863 |
+| 32K/128 | **53.458** | 45.943 | 45.946 | 52.286 |
+| 64K/128 | 44.793 | 39.362 | 40.353 | **45.160** |
 | 128K/128 | 32.615 | — (blocked) | 32.728 | **35.569** |
 
 #### Peak memory GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **18.039** | 21.478 | 21.375 | 21.551 |
+| 512/128 | **18.039** | 21.480 | 21.375 | 21.551 |
 | 1K/128 | **18.051** | 21.710 | 21.387 | 21.501 |
-| 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
-| 32K/128 | **19.716** | 23.559 | 21.987 | 22.191 |
-| 64K/128 | **20.344** | 24.203 | 22.666 | 22.627 |
+| 4K/128 | **19.026** | 23.007 | 21.444 | 21.507 |
+| 32K/128 | **19.716** | 23.654 | 21.987 | 22.191 |
+| 64K/128 | **20.344** | 24.392 | 22.666 | 22.627 |
 | 128K/128 | **21.881** | — (blocked) | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
@@ -4486,7 +4499,8 @@ Use memory values for within-column context growth; small cross-column deltas
 are not allocator-efficiency claims. hipEngine load and graph capture are
 excluded from phase throughput.
 
-Artifacts: [current IOMMU-off four-column refresh and 128K blocker](results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json),
+Artifacts: [head-major BF16 AOTriton prefill promotion](results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json),
+[current IOMMU-off four-column refresh and 128K blocker](results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json),
 [preliminary 512/4K IOMMU-off diagnostic](results/2026-07-17-gfx1151-amd-iommu-off-short-context-diagnostic.json),
 [previous IOMMU-on GGUF 512-64K refresh](results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json),
 [HIP 7.13 versus 7.15 128K lifecycle diagnostic](results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json),

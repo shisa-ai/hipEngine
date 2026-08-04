@@ -14,7 +14,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipError, HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -3175,16 +3175,62 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
 
+            kv_key_ptr = scratch.key_cache.ptr
+            kv_value_ptr = scratch.value_cache.ptr
+            kv_strides = (self.kv_width * end, cfg.key_length, self.kv_width, 1)
+            head_major_buffers = _gguf_aotriton_head_major_buffers(
+                scratch,
+                context_len=end,
+            )
+            if head_major_buffers is not None:
+                head_major_key, head_major_value, head_major_capacity = head_major_buffers
+                copy_variant = (
+                    "head_major_dense_prefix_spans"
+                    if bool(getattr(scratch, "head_major_kv_dense_prefix", False))
+                    else "head_major_spans"
+                )
+                copy_head_major = resolve(
+                    backend=scratch.backend,
+                    layer="paged_kv_copy",
+                    quant="bf16",
+                    variant=copy_variant,
+                    missing="none",
+                )
+                if copy_head_major is not None:
+                    copy_head_major(
+                        scratch.key_cache.ptr,
+                        scratch.value_cache.ptr,
+                        head_major_key.ptr,
+                        head_major_value.ptr,
+                        scratch.prefill_spans,
+                        end,
+                        head_major_capacity,
+                        scratch.block_size,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        stream=stream,
+                        library=kv_write_library,
+                        runtime=runtime,
+                    )
+                    kv_key_ptr = head_major_key.ptr
+                    kv_value_ptr = head_major_value.ptr
+                    kv_strides = (
+                        self.kv_width * head_major_capacity,
+                        cfg.key_length * head_major_capacity,
+                        cfg.key_length,
+                        1,
+                    )
+
             k_tensor = aotriton_tensor4(
-                scratch.key_cache.ptr,
+                kv_key_ptr,
                 (1, cfg.head_count_kv, end, cfg.key_length),
-                (self.kv_width * end, cfg.key_length, self.kv_width, 1),
+                kv_strides,
                 DType.BF16,
             )
             v_tensor = aotriton_tensor4(
-                scratch.value_cache.ptr,
+                kv_value_ptr,
                 (1, cfg.head_count_kv, end, cfg.key_length),
-                (self.kv_width * end, cfg.key_length, self.kv_width, 1),
+                kv_strides,
                 DType.BF16,
             )
 
@@ -7738,6 +7784,15 @@ class Qwen35GGUFFullStackRunner:
 
 _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
+_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV = "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV"
+_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV = (
+    "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
+)
+_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV = (
+    "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS"
+)
+_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT = 512 * 1024 * 1024
+_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT = 65_792
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 _GGUF_FULL_ATTN_PREFILL_SPLIT_BATCH_ROWS = 16
@@ -7972,6 +8027,83 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _gguf_aotriton_head_major_kv_enabled(backend: str) -> bool:
+    """Resolve the architecture package default with an explicit rollback."""
+
+    if _env_value(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV) is not None:
+        return _env_flag(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, False)
+    return bool(
+        backend_package_capability(
+            backend,
+            "GGUF_AOTRITON_HEAD_MAJOR_KV",
+            False,
+        )
+    )
+
+
+def _try_allocate_gguf_aotriton_head_major_kv_scratch(
+    *,
+    backend: str,
+    capacity_tokens: int,
+    kv_width: int,
+    runtime: HipRuntime,
+) -> tuple[DeviceBuffer, DeviceBuffer] | None:
+    """Best-effort tracked allocation for one cross-layer BF16 K/V pair.
+
+    The gfx1151 default is bounded to the validated 64K allocation class.
+    Token/byte capacity or HIP allocation denial is an exact fallback signal,
+    not a session-construction failure. If the second allocation fails, the
+    first is released before returning.
+    """
+
+    if not _gguf_aotriton_head_major_kv_enabled(backend):
+        return None
+    capacity_tokens = int(capacity_tokens)
+    kv_width = int(kv_width)
+    if capacity_tokens <= 0 or kv_width <= 0:
+        raise ValueError("head-major KV scratch dimensions must be positive")
+    max_tokens = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+    )
+    if max_tokens <= 0 or capacity_tokens > max_tokens:
+        return None
+    per_buffer_bytes = capacity_tokens * kv_width * DType.BF16.itemsize
+    total_bytes = 2 * per_buffer_bytes
+    max_bytes = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
+    )
+    if max_bytes <= 0 or total_bytes > max_bytes:
+        return None
+    key_buffer: DeviceBuffer | None = None
+    try:
+        key_buffer = malloc(per_buffer_bytes, runtime=runtime)
+        value_buffer = malloc(per_buffer_bytes, runtime=runtime)
+    except (HipError, MemoryError):
+        if key_buffer is not None:
+            free(key_buffer, runtime=runtime)
+        return None
+    return key_buffer, value_buffer
+
+
+def _gguf_aotriton_head_major_buffers(
+    scratch,
+    *,
+    context_len: int,
+) -> tuple[object, object, int] | None:
+    """Return an admitted complete scratch pair or select the strided fallback."""
+
+    if not bool(getattr(scratch, "head_major_kv_admitted", False)):
+        return None
+    key_buffer = getattr(scratch, "head_major_key_cache", None)
+    value_buffer = getattr(scratch, "head_major_value_cache", None)
+    capacity = int(getattr(scratch, "head_major_kv_capacity", 0))
+    if key_buffer is None or value_buffer is None or capacity < int(context_len):
+        return None
+    return key_buffer, value_buffer, capacity
 
 
 def _gguf_host_token_embedding_requested() -> bool:
@@ -10209,6 +10341,21 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             runtime_state_library=self._runtime_state_library,
         )
+        head_major_pair = _try_allocate_gguf_aotriton_head_major_kv_scratch(
+            backend=self.backend,
+            capacity_tokens=prefill_capacity,
+            kv_width=self.runner.kv_width,
+            runtime=runtime,
+        )
+        if head_major_pair is not None:
+            head_major_key_cache, head_major_value_cache = head_major_pair
+            self._bulk_prefill_scratch = replace(
+                self._bulk_prefill_scratch,
+                head_major_key_cache=head_major_key_cache,
+                head_major_value_cache=head_major_value_cache,
+                head_major_kv_capacity=prefill_capacity,
+                buffers=(*self._bulk_prefill_scratch.buffers, *head_major_pair),
+            )
         self._buffers = (
             self._token_buf,
             self._hidden_a,
@@ -18869,6 +19016,11 @@ class _GGUFFullAttentionPrefillScratch:
     cos_table: object | None = None
     sin_table: object | None = None
     int8_kv_value_bf16: bool = False
+    head_major_key_cache: object | None = None
+    head_major_value_cache: object | None = None
+    head_major_kv_capacity: int = 0
+    head_major_kv_admitted: bool = False
+    head_major_kv_dense_prefix: bool = True
     start: int = 0
     gdn_segment_capacity: int = 1
     gdn_active_segments: int = 1
@@ -19229,6 +19381,11 @@ class _GGUFFullAttentionPrefillScratch:
             self,
             start=start,
             rows=rows,
+            head_major_kv_admitted=(
+                self.head_major_key_cache is not None
+                and self.head_major_value_cache is not None
+                and self.head_major_kv_capacity >= total_tokens
+            ),
             block_table_tensor=block_table,
             positions_tensor=positions,
             context_counts_tensor=context_counts,
