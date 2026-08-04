@@ -562,6 +562,23 @@ vocabulary-cap, or prompt-specific approximation is admitted. GPU1 may screen
 the same-gfx1100 component, but retention still requires the clean W7900
 natural25 B1-B3 gate against the current 38.322 tok/s baseline.
 
+The compact exact proposal path is now retained. CPU/fake tests bind it to the
+four-axis raw-Q6 registry key and preserve explicit full-logit diagnostics; real
+dense and MoE one-step controls match the prior token and FP32 winner value.
+The complete W7900 transaction oracle preserves B1-B3 target logits, candidate
+IDs, acceptance, graph execution, reject/partial/full state, and changing
+positions.
+
+Clean W7900 natural25 moves B1/B2/B3
+**28.348/34.818/38.322 -> 28.878/35.712/39.610 tok/s**
+(**+1.87%/+2.57%/+3.36%**). Proposal wall falls
+**16.41%/16.74%/17.87%** while target verify is effectively flat. Every prompt
+and full/train/heldout/category rollup improves; all IDs/cycle semantics and
+transaction gates remain exact. The required compact arrays add only 248,328
+bytes and free completely. B3 is selected at **1.9422x own AR**, still 41.82%
+below Vulkan B3. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -575,7 +592,7 @@ natural25 B1-B3 gate against the current 38.322 tok/s baseline.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | six wins retained; staged exact B3 selected at 1.8821x AR; compact exact proposal scoring admitted |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | seven wins retained; compact exact B3 selected at 1.9422x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

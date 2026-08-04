@@ -23,8 +23,9 @@ The milestones move speculative decoding across three separate boundaries:
 Those boundaries do not advance in lockstep. In particular:
 
 - `N1R` remains the graph owner under the current exact W7900 winner: it removes
-  target-verifier submission overhead, while exact staged linear/full-attention
-  work removes independent arithmetic around unchanged serial state/cache steps.
+  target-verifier submission overhead, exact staged linear/full-attention work
+  removes independent arithmetic around unchanged serial state/cache steps, and
+  compact exact proposal scoring removes the unrelated full-logit host drain.
 - On W7900, `N2` and `N3` own more of the transaction but are not faster than
   `N1R` yet. On gfx1151, N3 retains essentially all of N1 and improves the clean
   current-main direct-commit control by 14.39%.
@@ -88,7 +89,7 @@ single-native-submission boundary.
 | --- | --- | --- | --- | --- |
 | `N0` | Versioned ABI and oracle | Host/device control/result layouts, lifecycle, validation, CPU/fake launcher | Real model submission | Landed; no performance claim |
 | `N1` | Initial fixed-B2 native target graph | One native `VERIFY` submission | Reusable positions; proposal, accept, commit, cursors | Exact but rejected because recapture regressed wall |
-| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; current exact dense B3 with staged linear/full-attention work reaches 1.8821x own AR |
+| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; current exact route built on dense B3 N1R, staged target work, and compact proposal scoring reaches 1.9422x own AR |
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
@@ -153,9 +154,13 @@ norm/QKV/gate/alpha/beta and `ssm_out` work while preserving each serial
 Conv/GDN transition and state journal. It moves B1/B2/B3 to
 **27.734/33.544/36.652 tok/s**. Exact full-attention staging then bulks Q/V/O
 support while retaining scalar K and serial per-row KV/attention/gate, reaching
-**28.348/34.818/38.322 tok/s** and **1.8821x** own AR at B3. Every
-prompt/category/heldout and transaction gate remains exact. These dense results
-are separate from the accuracy-traded llama-compat scoreboard row.
+**28.348/34.818/38.322 tok/s** and **1.8821x** own AR at B3. The subsequent
+proposal-only optimization preserves N1R target ownership and exact arithmetic,
+but replaces full-vocabulary proposal readback with the registered raw-Q6 exact
+top-1 result; B1/B2/B3 reach **28.878/35.712/39.610 tok/s**, with B3 at
+**1.9422x** own AR. Every prompt/category/heldout and transaction gate remains
+exact. These dense results are separate from the accuracy-traded llama-compat
+scoreboard row.
 
 ### N2 — device acceptance and selected-state commit
 

@@ -1,0 +1,278 @@
+{
+  "schema": 1,
+  "status": "retained_exact_compact_proposal_scoring_b3_selected_still_below_vulkan",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_compact_proposal_scoring_w7900",
+  "timestamp": "2026-08-04T02:55:46.870068+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "hipengine_commit": "39509df39a979dab503c95f13a658df2ddacd5f9",
+    "baseline_commit": "a67d59ac9eb6a01faddf22037ab7264ecdcff05f",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "max_tokens_visible": 25,
+    "timed_transitions": 240,
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345,
+      "reasoning": "off"
+    },
+    "warmups": 1,
+    "repetitions": 1,
+    "target_verify_mode": "native",
+    "timing": "first output from prefill; 24 timed decode transitions per prompt; complete proposal/verify/commit/residual wall"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-39509df39/natural25-native-compact-proposal-b1-b3.json",
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-04-qwen36-27b-staged-full-attention-retained.json",
+    "route": "exact reusable B1-B3 native target graph with staged linear/full-attention verification and full-vocabulary FP32 proposal logits readback",
+    "true_ar_tok_s": 20.36130296235656,
+    "budgets": {
+      "1": {
+        "decode_seconds": 8.466150566237047,
+        "decode_tok_s": 28.348184705941613,
+        "mtp_vs_true_ar": 1.3922578902907632,
+        "proposal_seconds": 0.9708276921883225,
+        "target_verify_seconds": 7.368305616546422
+      },
+      "2": {
+        "decode_seconds": 6.892926430795342,
+        "decode_tok_s": 34.81830285142149,
+        "mtp_vs_true_ar": 1.7100233180456403,
+        "proposal_seconds": 1.0350890720728785,
+        "target_verify_seconds": 5.762847554637119
+      },
+      "3": {
+        "decode_seconds": 6.2626982787624,
+        "decode_tok_s": 38.32213996543156,
+        "mtp_vs_true_ar": 1.8821064661863989,
+        "proposal_seconds": 1.1001693897414953,
+        "target_verify_seconds": 5.079995218198746
+      }
+    },
+    "tracked_peak_bytes": 31134012448,
+    "tracked_peak_gib": 28.995808631181717
+  },
+  "candidate": {
+    "load_seconds_excluded": 170.57551353704184,
+    "true_ar_tok_s": 20.39388519482292,
+    "true_ar_delta_percent": 0.1600203706344283,
+    "budgets": {
+      "1": {
+        "decode_seconds": 8.310805751942098,
+        "decode_wall_delta_percent": -1.8348931203097552,
+        "decode_tok_s": 28.878066358838428,
+        "decode_tok_s_delta_percent": 1.8691907732129254,
+        "mtp_vs_true_ar": 1.4160159323721826,
+        "ratio_delta_percent": 1.7064397513637086,
+        "proposal_seconds": 0.8115608510561287,
+        "proposal_delta_percent": -16.405263510066725,
+        "target_verify_seconds": 7.366001955699176,
+        "target_verify_delta_percent": -0.03126445844039427
+      },
+      "2": {
+        "decode_seconds": 6.720343926222995,
+        "decode_wall_delta_percent": -2.50376246294034,
+        "decode_tok_s": 35.71245796863348,
+        "decode_tok_s_delta_percent": 2.56806060027559,
+        "mtp_vs_true_ar": 1.751135579487289,
+        "ratio_delta_percent": 2.4041930310421344,
+        "proposal_seconds": 0.861863630823791,
+        "proposal_delta_percent": -16.735317367633364,
+        "target_verify_seconds": 5.758785156533122,
+        "target_verify_delta_percent": -0.07049289549101445
+      },
+      "3": {
+        "decode_seconds": 6.059126442763954,
+        "decode_wall_delta_percent": -3.2505451633968008,
+        "decode_tok_s": 39.60967018382945,
+        "decode_tok_s_delta_percent": 3.359755534422937,
+        "mtp_vs_true_ar": 1.9422326744236327,
+        "ratio_delta_percent": 3.1946231160378424,
+        "proposal_seconds": 0.9036093200556934,
+        "proposal_delta_percent": -17.866345993500797,
+        "target_verify_seconds": 5.070841632084921,
+        "target_verify_delta_percent": -0.1801888726397527
+      }
+    },
+    "numerically_best_budget": 3,
+    "best_decode_tok_s": 39.60967018382945,
+    "best_mtp_vs_true_ar": 1.9422326744236327,
+    "best_vs_llamacpp_vulkan_b3": 0.5817935751568617,
+    "best_percent_behind_llamacpp_vulkan_b3": 41.82064248431383,
+    "tracked_peak_bytes": 31134260776,
+    "tracked_peak_gib": 28.996039904654026,
+    "tracked_peak_delta_bytes": 248328,
+    "tracked_peak_delta_gib": 0.00023127347230911255,
+    "allocations_after_close": 0
+  },
+  "cross_scope_retention": {
+    "all_prompt_budget_rows_improve": true,
+    "all_full_train_heldout_category_rows_improve": true,
+    "per_prompt_decode_improvement_percent_range": [
+      1.5624420278532503,
+      3.7354038876797224
+    ],
+    "scope_decode_improvement_percent_range": [
+      1.7163677121988963,
+      3.470658836389817
+    ],
+    "by_budget": {
+      "1": {
+        "full_percent": 1.8691907732129254,
+        "train_percent": 1.963820318741205,
+        "heldout_percent": 1.7336508972735976,
+        "category_percent_range": [
+          1.7163677121988963,
+          2.2282069434878427
+        ],
+        "prompt_percent_range": [
+          1.5624420278532503,
+          2.38319422993869
+        ]
+      },
+      "2": {
+        "full_percent": 2.56806060027559,
+        "train_percent": 2.533038833326051,
+        "heldout_percent": 2.6163186995716847,
+        "category_percent_range": [
+          2.2851660316267175,
+          2.740112515334525
+        ],
+        "prompt_percent_range": [
+          2.1597071129756396,
+          2.981119649529429
+        ]
+      },
+      "3": {
+        "full_percent": 3.359755534422937,
+        "train_percent": 3.470658836389817,
+        "heldout_percent": 3.2196335937616505,
+        "category_percent_range": [
+          3.079447759014542,
+          3.4659874814932046
+        ],
+        "prompt_percent_range": [
+          2.737428456668267,
+          3.7354038876797224
+        ]
+      }
+    }
+  },
+  "correctness": {
+    "all_250_visible_ids_match_true_ar_at_each_budget": true,
+    "all_draft_tokens_match_prior_full_logit_route": true,
+    "all_target_top1_and_acceptance_ledgers_match_prior_full_logit_route": true,
+    "all_commit_rows_positions_and_next_tokens_match_prior_full_logit_route": true,
+    "all_gpu_accept_summaries_match_cpu": true,
+    "all_stage_ledgers_reconcile": true,
+    "native_b1_b2_b3_reject_partial_full_state_kv_hidden_oracle_passed": true,
+    "native_b3_dynamic_positions_checked": [
+      6,
+      7,
+      9
+    ],
+    "real_dense_and_moe_compact_vs_full_token_value_gates_passed": true,
+    "diagnostic_full_logits_fallback_tested": true,
+    "all_measured_cycles_submitted_target_graph_without_fallback": true
+  },
+  "implementation_evidence": {
+    "correctness_commit": "39509df39a979dab503c95f13a658df2ddacd5f9",
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q6_k",
+      "pack8_gemv_decode_bf16_top1_gather_f32"
+    ],
+    "route": "for supported raw-Q6 output heads and return_logits=false, enqueue pack winners plus final exact top-1 and copy only token/value; retain full-vocabulary logits for diagnostics and unsupported heads",
+    "compact_buffers": {
+      "winner_value_bytes": 124160,
+      "winner_index_bytes": 124160,
+      "final_token_value_bytes": 8,
+      "total_incremental_bytes": 248328
+    },
+    "no_new_kernel_body": true,
+    "no_approximation": true,
+    "no_prompt_or_token_branch": true,
+    "gpu1_component_screen": {
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "comparison_rule": "same-GPU component diagnostic only; W7900 complete suite owns promotion",
+      "shape": "rows=1, K=5120, N=248320, real dense output.weight",
+      "warmups": 3,
+      "alternating_pairs": 15,
+      "full_logits_ms": 3.74325,
+      "compact_exact_top1_ms": 3.0353,
+      "speedup": 1.2332,
+      "saved_ms_per_step": 0.70795,
+      "exact_token": 46424,
+      "exact_value_f32": 12.931821823120117,
+      "result_sha256": "99a7fc242d004f4388275c9bb84b5fe1b807603163b528343909887ac5ed64f0"
+    }
+  },
+  "memory_tradeoff": {
+    "new_incremental_peak_bytes": 248328,
+    "new_incremental_peak_gib": 0.00023127347230911255,
+    "tracked_peak_gib": 28.996039904654026,
+    "allocations_after_close": 0,
+    "note": "One vocab/8 FP32 value array, one vocab/8 uint32 index array, and one 8-byte token/value result replace per-step full-logit readback on the production proposal path; all three allocations are session-owned and fully freed."
+  },
+  "decision": {
+    "action": "keep_and_promote_exact_compact_q6_proposal_scoring",
+    "reason": "complete wall, proposal wall, and MTP/AR improve at every budget; every prompt/full/train/heldout/category row improves; draft IDs, target IDs, acceptance, commits, graph submission, transaction state, diagnostics, and lifecycle gates pass",
+    "selected_budget": 3,
+    "limitations": [
+      "best exact B3 is 1.9422x own AR but remains 41.82% below llama.cpp Vulkan B3",
+      "compact scoring is restricted to the exact registered raw-Q6 head layout; unsupported heads retain full logits",
+      "explicit return_logits=true diagnostics retain the full-vocabulary scoring and readback route"
+    ]
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/final-a67d59ac9/natural25-native-staged-full-b1-b3.json": "894505423e539d06469b28d2f53188bb5b88a81f13aae4059348354947c62a7e",
+    "/tmp/hipengine-qwen36-27b/final-39509df39/natural25-native-compact-proposal-b1-b3.json": "d8de34379f3cdec6f3a3ae3e8452316f01160a3494cd8ea3031ff3f9ca72f5bd",
+    "/tmp/qwen36-compact-proposal-compare.json": "7715cb57cc53663c5de3fe0980f32b17798e13a4ebb53881ae3d67a8a433c382",
+    "/tmp/hipengine-qwen36-27b/final-db5a76f8f/compact-proposal-head/gpu1-screen.json": "99a7fc242d004f4388275c9bb84b5fe1b807603163b528343909887ac5ed64f0"
+  }
+}

@@ -204000,3 +204000,44 @@ Vulkan local sizes verbatim will close the measured gap.
 - Freeze the correctness unit before the clean natural25 promotion run. The
   component screen establishes plausibility only; retention still requires
   every prompt/category/heldout row to improve on the W7900.
+
+### D27-O3 compact exact proposal scoring — RETAINED
+
+- Benchmark clean correctness commit
+  `39509df39a979dab503c95f13a658df2ddacd5f9` on GPU0 W7900 against the
+  retained staged-full-attention artifact from `a67d59ac9`, using the full
+  10-prompt natural25 category suite, B1/B2/B3, one warmup, one measured run,
+  cached-only JIT, and exact native verification. Exact command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-39509df39/natural25-native-compact-proposal-b1-b3.json`.
+- B1/B2/B3 complete decode improves
+  **28.348/34.818/38.322 -> 28.878/35.712/39.610 tok/s**
+  (**+1.87%/+2.57%/+3.36%**). Complete decode wall falls
+  **1.83%/2.50%/3.25%**, while proposal wall falls
+  **0.9708/1.0351/1.1002 -> 0.8116/0.8619/0.9036 s**
+  (**-16.41%/-16.74%/-17.87%**). Target verify is effectively flat at
+  **-0.03%/-0.07%/-0.18%**, localizing the gain to the intended proposal
+  boundary. Same-process true AR is **20.394 tok/s** (+0.160% run variance),
+  and B3 reaches **1.9422x own AR**.
+- All 30 prompt/budget rows improve by **1.56-3.74%**. Every aggregate, train,
+  heldout, and category row improves by **1.72-3.47%**. All 250 visible IDs per
+  budget, draft IDs, target top-1 rows, acceptance ledgers, commit rows/
+  positions, next tokens, GPU/CPU summaries, stage reconciliation, graph
+  submissions, and the W7900 reject/partial/full plus positions 6/7/9 state/KV/
+  hidden transaction oracle remain exact.
+- The `vocab/8` FP32-value and uint32-index arrays plus 8-byte result raise
+  tracked peak **31,134,012,448 -> 31,134,260,776 bytes
+  (+248,328 bytes / 0.000231 GiB)**,
+  exactly the intended compact workspace. All three allocations free on close.
+  B3 remains **41.82% below** the clean llama.cpp Vulkan B3 floor, so retain
+  this exact default route and select the next candidate from a refreshed
+  profile.
+- Compact artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`.
+  Baseline/candidate/comparison/GPU1-screen SHA-256s are
+  `89450542...a7e`, `d8de3437...f5b`, `7715cb57...382`, and
+  `99a7fc24...4f0`.
+- Promotion-record validation passes: JSON parse, all raw-source hashes, and
+  independently recomputed throughput/wall/proposal/verify/memory deltas;
+  changed campaign/milestone docs re-read end-to-end; `git diff --check`;
+  `python3 scripts/sync_benchmark_readme.py --check`; and
+  `python3 -m pytest -q tests/test_benchmark_readme_sync.py` (**6/6**).
