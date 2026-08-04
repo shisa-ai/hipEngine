@@ -19,8 +19,9 @@ from hipengine.core.tensor import Tensor
 from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNDraftProvider,
-    Qwen35GGUFNextNStepResult,
     Qwen35GGUFNextNExecutor,
+    Qwen35GGUFNextNStateAdvance,
+    Qwen35GGUFNextNStepResult,
 )
 from hipengine.speculative import MtpDraftProvider, MtpProposalContext
 
@@ -45,6 +46,7 @@ class _FakeExecutor:
 
     def __init__(self) -> None:
         self.calls: list[tuple[int, int, int, int]] = []
+        self.state_only_calls: list[tuple[int, int, int, int]] = []
 
     def run_step(
         self,
@@ -67,6 +69,20 @@ class _FakeExecutor:
             logit=float(next_token),
             hidden=hidden,
             logits=logits,
+        )
+
+    def advance_state_only(
+        self,
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+    ) -> Qwen35GGUFNextNStateAdvance:
+        self.state_only_calls.append((request_id, token_id, position, target_hidden.ptr))
+        return Qwen35GGUFNextNStateAdvance(
+            request_id=request_id,
+            input_token=token_id,
+            position=position,
         )
 
     def reset_request(self, request_id: int) -> None:
@@ -121,13 +137,52 @@ def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
     assert provider.advance_full_accept_tail(41, accepted_count=1) is None
     assert len(executor.calls) == 2
     update = provider.advance_full_accept_tail(41, accepted_count=2)
-    assert update is not None
-    assert executor.calls[-1] == (41, 11, 14, 1002)
-    assert update.token_id == 12
+    assert isinstance(update, Qwen35GGUFNextNStateAdvance)
+    assert len(executor.calls) == 2
+    assert executor.state_only_calls == [(41, 11, 14, 1002)]
+    assert update.input_token == 11
     with pytest.raises(ValueError, match="prior proposal"):
         provider.advance_full_accept_tail(42, accepted_count=0)
     with pytest.raises(ValueError, match="prior proposal budget"):
         provider.advance_full_accept_tail(41, accepted_count=3)
+
+
+def test_nextn_executor_state_only_tail_skips_output_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    runtime_calls: list[str] = []
+    block_calls: list[tuple[int, int, int, int]] = []
+    executor.runtime = SimpleNamespace(
+        device_synchronize=lambda: runtime_calls.append("synchronize")
+    )
+    hidden = Tensor.from_handle(0x7000, (1, 8), DType.BF16, Device("hip", 0))
+
+    def fake_run_block(
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+    ) -> tuple[int, int]:
+        block_calls.append((request_id, token_id, position, target_hidden.ptr))
+        return 0x8000, 0x9000
+
+    monkeypatch.setattr(executor, "_run_block", fake_run_block, raising=False)
+    monkeypatch.setattr(
+        executor,
+        "_sample_lm_head",
+        lambda *args, **kwargs: pytest.fail("state-only tail must not sample lm-head"),
+    )
+
+    result = executor.advance_state_only(41, 11, 14, hidden)
+
+    assert result == Qwen35GGUFNextNStateAdvance(
+        request_id=41,
+        input_token=11,
+        position=14,
+    )
+    assert block_calls == [(41, 11, 14, 0x7000)]
+    assert runtime_calls == ["synchronize"]
 
 
 @pytest.mark.parametrize("quant_key", ["gguf_q6_k", "gguf_q6_k_t16_v1"])

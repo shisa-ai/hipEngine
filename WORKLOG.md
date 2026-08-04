@@ -206210,3 +206210,29 @@ Vulkan local sizes verbatim will close the measured gap.
   9.170 ms**. Any next high-leverage attempt must introduce a materially new
   Q5 representation/compute mechanism; remaining exact gaps are individually
   second-order.
+
+## 2026-08-05 — Skip discarded NextN tail scoring
+
+- Reconcile the retained proposal-head call count before another kernel edit.
+  The one-prompt B3 profile has **25** proposal top-1 calls: **21** scored draft
+  candidates plus four non-final full-accept tail catch-ups. A catch-up must
+  consume the accepted final draft token through the NextN block to publish its
+  recurrent/KV state, but its final shared RMSNorm, 248,320-row lm-head score,
+  token, and output hidden are discarded before the next proposal, whose first
+  hidden input comes from the target model.
+- Add a production `advance_state_only` executor contract. It runs the same
+  state-mutating embedding/fusion/NextN block and synchronizes completion, then
+  returns a state-advance record without final normalization or lm-head
+  sampling. The provider selects it only for a complete accepted chain and
+  keeps the prior `run_step` fallback for compatible external executors. Partial
+  accepts remain untouched; no model math, candidate, acceptance, graph, state,
+  allocation, registry key, flag, or prompt/token policy changes.
+- RED fails collection on the absent state-advance contract. GREEN passes the
+  two focused state-only/provider nodes plus the complete non-real provider
+  bundle (**8 passed**). Ruff, Python compilation, and `git diff --check` pass.
+  The binding cached W7900
+  `test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes
+  exact B1-B3 target/provider trajectories, reject/partial/full/rollback state,
+  dynamic graph positions, physical ownership, lifecycle, and teardown. This
+  is correctness admission only; a tracked-clean profile and natural25 gate
+  decide the performance promotion.
