@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact dense verifier chain journals] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: canonical **28.979/35.826/39.714 -> 30.130/37.357/41.440 tok/s (+3.971%/+4.274%/+4.346%)** by writing Conv/GDN row journals through one exact chain owner per family; all 30 prompt/budget rows improve, B3 reaches **2.0348x** own AR, and tracing confirms **13,767 -> 9,063 dispatches (-34.17%)** plus **662.664 -> 635.545 ms (-4.09%)** complete cycle wall; `benchmarks/results/2026-08-04-qwen36-27b-chain-journals-retained.json`.
+
 - [accepted exact Q4 dual-rowtile SiLU cycle wall] Qwen3.6-27B Q4_K_M / natural25 B3 / W7900: compact-profile cycle wall **676.596 -> 662.705 ms (-2.053%, compounded with the preceding `ssm_out` specialization)** and queue-gap/copy-overlap wall **192.822 -> 174.794 ms (-9.350%)** by replacing two exact K5,120/N17,408 rowtiles plus SiLU with one exact leaf, uniquely removing **896 dispatches**; retain the default mechanically but keep the canonical **39.714 tok/s** headline because the mixed one-run B3 sample is **39.614 tok/s (-0.250%)**; `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`.
 
 - [accepted exact dense `ssm_out` local128 rowtile] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: compact-proposal baseline **28.878/35.712/39.610 -> 28.979/35.826/39.714 tok/s (+0.349%/+0.318%/+0.263%)** by selecting the exact virtual256/local128 dense-BF16 rowtile only at native K6,144/N5,120 rows 2-4; every full/train/heldout/category aggregate improves, IDs/state/acceptance and memory remain exact, and B3 reaches **1.9511x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`.

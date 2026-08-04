@@ -1,0 +1,848 @@
+{
+  "schema": 1,
+  "status": "retained_exact_chain_journals_b3_above_2x_own_ar_still_below_vulkan",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical ten-prompt W7900 natural25 B1-B3 complete decode wall plus hermetic one-prompt B3 kernel/marker/copy trace.",
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_dense_verifier_chain_journals_w7900",
+  "timestamp": "2026-08-04T07:40:42.377053+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "routing_commit": "d4616f1207d00e4f0fff3eba3e0854cdcf5962fe",
+    "immediate_predecessor_commit": "98114138e90755e6286031296d4b87bf3cecb718",
+    "prior_canonical_commit": "4a4a615a89c4f716fb8b017fb29c03ca65000871",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "change": {
+    "registry_keys": [
+      [
+        "hip_gfx1100",
+        "linear_attn_conv",
+        "gguf_qwen35",
+        "bf16_c1_exact_state_rows_tloop"
+      ],
+      [
+        "hip_gfx1100",
+        "gdn_recurrent",
+        "gguf_qwen35",
+        "bf16_c1_exact_state_rows_tloop"
+      ]
+    ],
+    "scope": "Dense native GGUF verifier rows 2-4 with both row journals and both exact keys present.",
+    "conv_shape": [
+      10240,
+      4
+    ],
+    "gdn_shape": [
+      16,
+      48,
+      128,
+      128
+    ],
+    "summary": "Replace four scalar Conv/GDN transitions plus four post-row state copies with one exact t-loop per family that writes every selected-row journal directly while keeping the initial resident state immutable.",
+    "deferred_commit": "No resident state write during verification; selected row remains committed by the existing transaction owner.",
+    "non_deferred_commit": "Copy only the final journal row back to each resident state.",
+    "fallback": "Missing either key, c1, MoE, absent journals, and ordinary prefill keep the complete scalar producer/copy chain.",
+    "new_kernel_body": false,
+    "new_arithmetic": false,
+    "new_allocation": false,
+    "new_environment_flag": false,
+    "approximation": false
+  },
+  "correctness": {
+    "focused_chain_journal_tests": "5/5",
+    "gpu1_production_shape_tests": "4/4 at rows 2/4; all outputs and every Conv/GDN journal byte exact; initial state immutable",
+    "adjacent_scheduler_plan_bundle": "19/19",
+    "w7900_transaction_test": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+    "w7900_transaction_passed": true,
+    "runtime_owner_rows": [
+      2,
+      3,
+      4
+    ],
+    "runtime_conv_shapes": [
+      [
+        10240,
+        4
+      ]
+    ],
+    "runtime_gdn_shapes": [
+      [
+        16,
+        48,
+        128,
+        128
+      ]
+    ],
+    "transaction_scope": "B1-B3 full logits; reject/partial/full/rollback and positions 6/7/9 Conv/GDN/KV/hidden state; graph reuse; correction logits; natural provider output",
+    "natural_ids_exact": true,
+    "natural_acceptance_exact": true,
+    "natural_gpu_accept_match_cpu": true,
+    "natural_stage_reconciled": true,
+    "natural_prompt_budget_rows_exact": 30
+  },
+  "protocol": {
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-d4616f120/natural25-native-chain-journal-b1-b3.json",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "visible_outputs": 250,
+    "timed_transitions": 240,
+    "warmups": 1,
+    "repetitions": 1,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "target_verify_mode": "native",
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "timing": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual"
+  },
+  "natural25": {
+    "candidate_true_ar": {
+      "prompt_count": 10,
+      "request_count": 10,
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "visible_outputs": 250,
+      "timed_transitions": 240,
+      "decode_seconds": 11.784612539922819,
+      "decode_tok_s_weighted": 20.365540164086873,
+      "request_wall_seconds": 34.76474005077034,
+      "client_transition_tok_s": 6.903546514356345,
+      "accepted_draft_tokens": 0,
+      "proposed_draft_tokens": 0,
+      "draft_acceptance": null,
+      "accepted_per_output": 0.0,
+      "accepted_per_transition": 0.0,
+      "cycles": 0,
+      "target_passes": 0,
+      "visible_transitions_per_cycle": null,
+      "target_forward_rows": 240,
+      "stage_seconds": {
+        "autoregressive_step": 11.784612539922819
+      },
+      "stage_reconciliation_error_seconds": 0.0,
+      "stage_reconciled": true
+    },
+    "candidate_budgets": {
+      "1": {
+        "decode_seconds": 7.965577949769795,
+        "decode_tok_s_weighted": 30.12964049983793,
+        "accepted_draft_tokens": 115,
+        "proposed_draft_tokens": 128,
+        "draft_acceptance": 0.8984375,
+        "accepted_per_output": 0.46,
+        "accepted_per_transition": 0.4791666666666667,
+        "cycles": 128,
+        "target_passes": 128,
+        "target_forward_rows": 256,
+        "mtp_vs_true_ar": 1.4794422469073187,
+        "stage_seconds": {
+          "proposal": 0.7929172331932932,
+          "scheduler_accept_replay_host_residual": 0.030618838500231504,
+          "target_commit_finish": 0.0907066660001874,
+          "target_verify": 7.051335212076083
+        },
+        "stage_reconciled": true
+      },
+      "2": {
+        "decode_seconds": 6.424474138068035,
+        "decode_tok_s_weighted": 37.35714314388581,
+        "accepted_draft_tokens": 151,
+        "proposed_draft_tokens": 184,
+        "draft_acceptance": 0.8206521739130435,
+        "accepted_per_output": 0.604,
+        "accepted_per_transition": 0.6291666666666667,
+        "cycles": 92,
+        "target_passes": 92,
+        "target_forward_rows": 276,
+        "mtp_vs_true_ar": 1.8343310731213687,
+        "stage_seconds": {
+          "proposal": 0.8451445486862212,
+          "scheduler_accept_replay_host_residual": 0.025642775697633624,
+          "target_commit_finish": 0.06528854835778475,
+          "target_verify": 5.488398265326396
+        },
+        "stage_reconciled": true
+      },
+      "3": {
+        "decode_seconds": 5.791538307676092,
+        "decode_tok_s_weighted": 41.43976733813614,
+        "accepted_draft_tokens": 168,
+        "proposed_draft_tokens": 222,
+        "draft_acceptance": 0.7567567567567568,
+        "accepted_per_output": 0.672,
+        "accepted_per_transition": 0.7,
+        "cycles": 77,
+        "target_passes": 77,
+        "target_forward_rows": 299,
+        "mtp_vs_true_ar": 2.034798340935347,
+        "stage_seconds": {
+          "proposal": 0.8931470462121069,
+          "scheduler_accept_replay_host_residual": 0.022935984656214714,
+          "target_commit_finish": 0.05475067556835711,
+          "target_verify": 4.820704601239413
+        },
+        "stage_reconciled": true
+      }
+    },
+    "vs_immediate_predecessor": {
+      "baseline": "/tmp/hipengine-qwen36-27b/final-98114138e/natural25-native-q4-dual-rowtile-silu-b1-b3.json",
+      "baseline_commit": "98114138e90755e6286031296d4b87bf3cecb718",
+      "candidate_commit": "d4616f1207d00e4f0fff3eba3e0854cdcf5962fe",
+      "both_tracked_clean": true,
+      "true_ar": {
+        "baseline_tok_s": 20.36297689165134,
+        "candidate_tok_s": 20.365540164086873,
+        "delta_percent": 0.012587906223981982
+      },
+      "budgets": {
+        "1": {
+          "baseline_decode_seconds": 8.196157646132633,
+          "candidate_decode_seconds": 7.965577949769795,
+          "decode_wall_delta_percent": -2.81326575595624,
+          "baseline_tok_s": 29.28201364126327,
+          "candidate_tok_s": 30.12964049983793,
+          "tok_s_delta_percent": 2.8947013991558634,
+          "baseline_target_verify_seconds": 7.277584266848862,
+          "candidate_target_verify_seconds": 7.051335212076083,
+          "target_verify_delta_percent": -3.1088483001618816,
+          "baseline_mtp_vs_true_ar": 1.4380025964312058,
+          "candidate_mtp_vs_true_ar": 1.4794422469073187,
+          "ratio_delta_percent": 2.881750740850997,
+          "scopes": {
+            "full": {
+              "baseline_tok_s": 29.28201364126327,
+              "candidate_tok_s": 30.12964049983793,
+              "delta_percent": 2.8947013991558634
+            },
+            "train": {
+              "baseline_tok_s": 29.83665655552802,
+              "candidate_tok_s": 30.729478729446555,
+              "delta_percent": 2.992366695835824
+            },
+            "heldout": {
+              "baseline_tok_s": 28.487664520370526,
+              "candidate_tok_s": 29.272542172804492,
+              "delta_percent": 2.755149169468507
+            }
+          },
+          "categories": {
+            "code": {
+              "baseline_tok_s": 30.323999901960775,
+              "candidate_tok_s": 31.267839790160792,
+              "delta_percent": 3.1125177788270175
+            },
+            "general_en": {
+              "baseline_tok_s": 28.956976022463966,
+              "candidate_tok_s": 29.76914725833265,
+              "delta_percent": 2.8047515570639225
+            },
+            "general_ja": {
+              "baseline_tok_s": 29.0256112605963,
+              "candidate_tok_s": 29.81103374344889,
+              "delta_percent": 2.7059636257129815
+            },
+            "mixed_ja_en": {
+              "baseline_tok_s": 27.923133511580744,
+              "candidate_tok_s": 28.694731132186533,
+              "delta_percent": 2.7632916638305582
+            }
+          }
+        },
+        "2": {
+          "baseline_decode_seconds": 6.694629323901609,
+          "candidate_decode_seconds": 6.424474138068035,
+          "decode_wall_delta_percent": -4.035401704304187,
+          "baseline_tok_s": 35.84963235277809,
+          "candidate_tok_s": 37.35714314388581,
+          "tok_s_delta_percent": 4.205094145103261,
+          "baseline_target_verify_seconds": 5.759810338495299,
+          "candidate_target_verify_seconds": 5.488398265326396,
+          "target_verify_delta_percent": -4.71217031843808,
+          "baseline_mtp_vs_true_ar": 1.7605300317104497,
+          "candidate_mtp_vs_true_ar": 1.8343310731213687,
+          "ratio_delta_percent": 4.191978556549647,
+          "scopes": {
+            "full": {
+              "baseline_tok_s": 35.84963235277809,
+              "candidate_tok_s": 37.35714314388581,
+              "delta_percent": 4.205094145103261
+            },
+            "train": {
+              "baseline_tok_s": 37.06319860111407,
+              "candidate_tok_s": 38.74323693393748,
+              "delta_percent": 4.532901628120456
+            },
+            "heldout": {
+              "baseline_tok_s": 34.17131699425796,
+              "candidate_tok_s": 35.45449168851006,
+              "delta_percent": 3.755122152499202
+            }
+          },
+          "categories": {
+            "code": {
+              "baseline_tok_s": 38.32821262620285,
+              "candidate_tok_s": 40.064150638236626,
+              "delta_percent": 4.5291389634146695
+            },
+            "general_en": {
+              "baseline_tok_s": 36.862073709548305,
+              "candidate_tok_s": 38.20563205389629,
+              "delta_percent": 3.644825722324896
+            },
+            "general_ja": {
+              "baseline_tok_s": 34.93005808804116,
+              "candidate_tok_s": 36.35610918426263,
+              "delta_percent": 4.082590108001294
+            },
+            "mixed_ja_en": {
+              "baseline_tok_s": 31.712035747466985,
+              "candidate_tok_s": 33.06503696373937,
+              "delta_percent": 4.266522739337075
+            }
+          }
+        },
+        "3": {
+          "baseline_decode_seconds": 6.0583940404467285,
+          "candidate_decode_seconds": 5.791538307676092,
+          "decode_wall_delta_percent": -4.404727242715955,
+          "baseline_tok_s": 39.614458616875154,
+          "candidate_tok_s": 41.43976733813614,
+          "tok_s_delta_percent": 4.607683116192929,
+          "baseline_target_verify_seconds": 5.090094992425293,
+          "candidate_target_verify_seconds": 4.820704601239413,
+          "target_verify_delta_percent": -5.292443295984983,
+          "baseline_mtp_vs_true_ar": 1.9454158803822428,
+          "candidate_mtp_vs_true_ar": 2.034798340935347,
+          "ratio_delta_percent": 4.59451685649559,
+          "scopes": {
+            "full": {
+              "baseline_tok_s": 39.614458616875154,
+              "candidate_tok_s": 41.43976733813614,
+              "delta_percent": 4.607683116192929
+            },
+            "train": {
+              "baseline_tok_s": 42.53093740100411,
+              "candidate_tok_s": 44.51570466311054,
+              "delta_percent": 4.666643585569252
+            },
+            "heldout": {
+              "baseline_tok_s": 35.9197635951611,
+              "candidate_tok_s": 37.5480371145787,
+              "delta_percent": 4.53308528911629
+            }
+          },
+          "categories": {
+            "code": {
+              "baseline_tok_s": 43.56359747717026,
+              "candidate_tok_s": 45.5809410209237,
+              "delta_percent": 4.630801082969893
+            },
+            "general_en": {
+              "baseline_tok_s": 40.443909477987944,
+              "candidate_tok_s": 42.32841697626324,
+              "delta_percent": 4.659558194543378
+            },
+            "general_ja": {
+              "baseline_tok_s": 36.22887605825929,
+              "candidate_tok_s": 37.80159250586538,
+              "delta_percent": 4.341057793449132
+            },
+            "mixed_ja_en": {
+              "baseline_tok_s": 35.741400111519944,
+              "candidate_tok_s": 37.45268295366406,
+              "delta_percent": 4.787956926154502
+            }
+          }
+        }
+      },
+      "scope_delta_percent_range": [
+        2.7059636257129815,
+        4.787956926154502
+      ],
+      "all_scopes_improve": true,
+      "per_prompt_delta_percent_range": [
+        2.526942046062164,
+        5.752441588056123
+      ],
+      "all_prompt_budget_rows_improve": true,
+      "prompt_budget_rows_compared": 30,
+      "ids_exact": true,
+      "acceptance_exact": true,
+      "candidate_gpu_accept_match_cpu": true,
+      "candidate_all_exact_greedy": true,
+      "candidate_all_stage_reconciled": true,
+      "baseline_peak_bytes": 31134260776,
+      "candidate_peak_bytes": 31134260776,
+      "candidate_active_allocations_after_close": 0
+    },
+    "vs_prior_canonical": {
+      "baseline": "/tmp/hipengine-qwen36-27b/final-4a4a615a8/natural25-native-dense-ssm-rowtile-b1-b3.json",
+      "baseline_commit": "4a4a615a89c4f716fb8b017fb29c03ca65000871",
+      "candidate_commit": "d4616f1207d00e4f0fff3eba3e0854cdcf5962fe",
+      "both_tracked_clean": true,
+      "true_ar": {
+        "baseline_tok_s": 20.354711523325165,
+        "candidate_tok_s": 20.365540164086873,
+        "delta_percent": 0.05319967688708349
+      },
+      "budgets": {
+        "1": {
+          "baseline_decode_seconds": 8.281877344008535,
+          "candidate_decode_seconds": 7.965577949769795,
+          "decode_wall_delta_percent": -3.8191750626150545,
+          "baseline_tok_s": 28.978936783412554,
+          "candidate_tok_s": 30.12964049983793,
+          "tok_s_delta_percent": 3.970827932804055,
+          "baseline_target_verify_seconds": 7.377419976983219,
+          "candidate_target_verify_seconds": 7.051335212076083,
+          "target_verify_delta_percent": -4.420037979733927,
+          "baseline_mtp_vs_true_ar": 1.423696756900956,
+          "candidate_mtp_vs_true_ar": 1.4794422469073187,
+          "ratio_delta_percent": 3.915545198522974,
+          "scopes": {
+            "full": {
+              "baseline_tok_s": 28.978936783412554,
+              "candidate_tok_s": 30.12964049983793,
+              "delta_percent": 3.970827932804055
+            },
+            "train": {
+              "baseline_tok_s": 29.55073522040112,
+              "candidate_tok_s": 30.729478729446555,
+              "delta_percent": 3.9888804804817823
+            },
+            "heldout": {
+              "baseline_tok_s": 28.161559372384232,
+              "candidate_tok_s": 29.272542172804492,
+              "delta_percent": 3.9450329640116077
+            }
+          },
+          "categories": {
+            "code": {
+              "baseline_tok_s": 30.01885025208855,
+              "candidate_tok_s": 31.267839790160792,
+              "delta_percent": 4.160684128751213
+            },
+            "general_en": {
+              "baseline_tok_s": 28.704918435501895,
+              "candidate_tok_s": 29.76914725833265,
+              "delta_percent": 3.7074789995380497
+            },
+            "general_ja": {
+              "baseline_tok_s": 28.723665849419763,
+              "candidate_tok_s": 29.81103374344889,
+              "delta_percent": 3.7856167096829374
+            },
+            "mixed_ja_en": {
+              "baseline_tok_s": 27.57664089218781,
+              "candidate_tok_s": 28.694731132186533,
+              "delta_percent": 4.054483083599436
+            }
+          }
+        },
+        "2": {
+          "baseline_decode_seconds": 6.699053324293345,
+          "candidate_decode_seconds": 6.424474138068035,
+          "decode_wall_delta_percent": -4.09877594539485,
+          "baseline_tok_s": 35.8259575468175,
+          "candidate_tok_s": 37.35714314388581,
+          "tok_s_delta_percent": 4.273955818396069,
+          "baseline_target_verify_seconds": 5.771721113473177,
+          "candidate_target_verify_seconds": 5.488398265326396,
+          "target_verify_delta_percent": -4.908810432392663,
+          "baseline_mtp_vs_true_ar": 1.7600818122999828,
+          "candidate_mtp_vs_true_ar": 1.8343310731213687,
+          "ratio_delta_percent": 4.218511906805111,
+          "scopes": {
+            "full": {
+              "baseline_tok_s": 35.8259575468175,
+              "candidate_tok_s": 37.35714314388581,
+              "delta_percent": 4.273955818396069
+            },
+            "train": {
+              "baseline_tok_s": 37.03284837315643,
+              "candidate_tok_s": 38.74323693393748,
+              "delta_percent": 4.618571446480568
+            },
+            "heldout": {
+              "baseline_tok_s": 34.15624302910138,
+              "candidate_tok_s": 35.45449168851006,
+              "delta_percent": 3.800911763927206
+            }
+          },
+          "categories": {
+            "code": {
+              "baseline_tok_s": 38.28347038272619,
+              "candidate_tok_s": 40.064150638236626,
+              "delta_percent": 4.6513031282396256
+            },
+            "general_en": {
+              "baseline_tok_s": 36.887126382629724,
+              "candidate_tok_s": 38.20563205389629,
+              "delta_percent": 3.5744331439367727
+            },
+            "general_ja": {
+              "baseline_tok_s": 34.943939494242294,
+              "candidate_tok_s": 36.35610918426263,
+              "delta_percent": 4.0412435187881846
+            },
+            "mixed_ja_en": {
+              "baseline_tok_s": 31.650829652860576,
+              "candidate_tok_s": 33.06503696373937,
+              "delta_percent": 4.46815241935048
+            }
+          }
+        },
+        "3": {
+          "baseline_decode_seconds": 6.043242236599326,
+          "candidate_decode_seconds": 5.791538307676092,
+          "decode_wall_delta_percent": -4.165047818186984,
+          "baseline_tok_s": 39.71378121275735,
+          "candidate_tok_s": 41.43976733813614,
+          "tok_s_delta_percent": 4.34606343861399,
+          "baseline_target_verify_seconds": 5.0835561954882,
+          "candidate_target_verify_seconds": 4.820704601239413,
+          "target_verify_delta_percent": -5.170624345258046,
+          "baseline_mtp_vs_true_ar": 1.9510854362759187,
+          "candidate_mtp_vs_true_ar": 2.034798340935347,
+          "ratio_delta_percent": 4.290581186399156,
+          "scopes": {
+            "full": {
+              "baseline_tok_s": 39.71378121275735,
+              "candidate_tok_s": 41.43976733813614,
+              "delta_percent": 4.34606343861399
+            },
+            "train": {
+              "baseline_tok_s": 42.665966254417825,
+              "candidate_tok_s": 44.51570466311054,
+              "delta_percent": 4.33539556484599
+            },
+            "heldout": {
+              "baseline_tok_s": 35.97948946046091,
+              "candidate_tok_s": 37.5480371145787,
+              "delta_percent": 4.359560620896286
+            }
+          },
+          "categories": {
+            "code": {
+              "baseline_tok_s": 43.66716211004129,
+              "candidate_tok_s": 45.5809410209237,
+              "delta_percent": 4.382650070228267
+            },
+            "general_en": {
+              "baseline_tok_s": 40.58728537271062,
+              "candidate_tok_s": 42.32841697626324,
+              "delta_percent": 4.289844929425346
+            },
+            "general_ja": {
+              "baseline_tok_s": 36.250520876264225,
+              "candidate_tok_s": 37.80159250586538,
+              "delta_percent": 4.278756807096662
+            },
+            "mixed_ja_en": {
+              "baseline_tok_s": 35.87340403581061,
+              "candidate_tok_s": 37.45268295366406,
+              "delta_percent": 4.402367046843225
+            }
+          }
+        }
+      },
+      "scope_delta_percent_range": [
+        3.5744331439367727,
+        4.6513031282396256
+      ],
+      "all_scopes_improve": true,
+      "per_prompt_delta_percent_range": [
+        3.284604692505444,
+        5.9829565398193285
+      ],
+      "all_prompt_budget_rows_improve": true,
+      "prompt_budget_rows_compared": 30,
+      "ids_exact": true,
+      "acceptance_exact": true,
+      "candidate_gpu_accept_match_cpu": true,
+      "candidate_all_exact_greedy": true,
+      "candidate_all_stage_reconciled": true,
+      "baseline_peak_bytes": 31134260776,
+      "candidate_peak_bytes": 31134260776,
+      "candidate_active_allocations_after_close": 0
+    },
+    "interpretation": "Every one of 30 prompt/budget rows and every full/train/heldout/category aggregate improves against both controls. B3 advances the exact headline to 41.440 tok/s and 2.0348x own AR."
+  },
+  "profile": {
+    "command": "HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --marker-trace --memory-copy-trace ... scripts/qwen36_dense_gguf_suite.py --candidate-budgets 3 --limit 1 --no-warmup --roctx-markers",
+    "scope": {
+      "baseline": "routing commit 98114138e (retained through docs commit 659966704)",
+      "candidate": "chain-journal routing commit d4616f120",
+      "hardware": "AMD Radeon Pro W7900 / GPU0 / gfx1100",
+      "workload": "one canonical code prompt, natural25, B3, seven cycles, no warmup, rocprofv3 kernel+marker+memory-copy trace",
+      "correctness": "exact greedy IDs, GPU accept equals CPU, same [3,3,2,3,3,0,3] ledger"
+    },
+    "baseline_window": {
+      "start": 1982953821399710,
+      "end": 1982954484064116,
+      "host_wall_ms": 662.705116905272,
+      "marker_span_ms": 662.664406,
+      "kernel_sum_ms": 487.406746,
+      "copy_sum_ms": 0.182121,
+      "device_activity_span_ms": 662.20105,
+      "kernel_queue_gaps_and_copy_overlap_ms": 174.794304,
+      "host_outside_device_span_ms": 0.5040669052719977,
+      "kernel_dispatches": 13767,
+      "copy_count": 21
+    },
+    "candidate_window": {
+      "start": 1985615157237685,
+      "end": 1985615792782906,
+      "host_wall_ms": 635.5928310658783,
+      "marker_span_ms": 635.545221,
+      "kernel_sum_ms": 475.934741,
+      "copy_sum_ms": 0.18364,
+      "device_activity_span_ms": 635.103465,
+      "kernel_queue_gaps_and_copy_overlap_ms": 159.168724,
+      "host_outside_device_span_ms": 0.4893660658782437,
+      "kernel_dispatches": 9063,
+      "copy_count": 21
+    },
+    "delta": {
+      "host_wall_ms_percent": -4.0911538401882,
+      "kernel_sum_ms_percent": -2.3536820313110773,
+      "copy_sum_ms_percent": 0.8340608716183251,
+      "device_activity_span_ms_percent": -4.0920480268039405,
+      "kernel_queue_gaps_and_copy_overlap_ms_percent": -8.939410291081352,
+      "kernel_dispatches_percent": -34.16866419699281,
+      "copy_count_percent": 0.0,
+      "proposal": {
+        "host_ms_percent": 4.069159264877631,
+        "kernel_ms_percent": 1.9166491413787456,
+        "kernel_dispatches_percent": 0.0,
+        "copy_ms_percent": null,
+        "copy_count_percent": null
+      },
+      "target_verify": {
+        "host_ms_percent": -5.52138416157244,
+        "kernel_ms_percent": -3.0920306794287145,
+        "kernel_dispatches_percent": -36.14568925772246,
+        "copy_ms_percent": 0.8340608716183251,
+        "copy_count_percent": 0.0
+      },
+      "target_commit_finish": {
+        "host_ms_percent": 0.6738972147594335,
+        "kernel_ms_percent": 0.0820074079098454,
+        "kernel_dispatches_percent": 0.0,
+        "copy_ms_percent": null,
+        "copy_count_percent": null
+      }
+    },
+    "ownership": {
+      "baseline": {
+        "copybuffer": {
+          "dispatches": 3639,
+          "duration_ms": 12.921489,
+          "grid_counts": {
+            "10240x512": 1680,
+            "24576x512": 1680,
+            "512x512": 244,
+            "1024x512": 14,
+            "1536x512": 14,
+            "5120x512": 7
+          }
+        },
+        "scalar_conv": {
+          "dispatches": 1344,
+          "duration_ms": 4.013236
+        },
+        "chain_conv": {
+          "dispatches": 0,
+          "duration_ms": 0.0
+        },
+        "scalar_gdn": {
+          "dispatches": 1344,
+          "duration_ms": 15.869229
+        },
+        "chain_gdn": {
+          "dispatches": 0,
+          "duration_ms": 0.0
+        }
+      },
+      "candidate": {
+        "copybuffer": {
+          "dispatches": 951,
+          "duration_ms": 5.821001,
+          "grid_counts": {
+            "10240x512": 336,
+            "24576x512": 336,
+            "512x512": 244,
+            "1024x512": 14,
+            "1536x512": 14,
+            "5120x512": 7
+          }
+        },
+        "scalar_conv": {
+          "dispatches": 0,
+          "duration_ms": 0.0
+        },
+        "chain_conv": {
+          "dispatches": 336,
+          "duration_ms": 1.708933
+        },
+        "scalar_gdn": {
+          "dispatches": 0,
+          "duration_ms": 0.0
+        },
+        "chain_gdn": {
+          "dispatches": 336,
+          "duration_ms": 14.424147
+        }
+      },
+      "state_copy_dispatches": {
+        "baseline": 3360,
+        "candidate": 672,
+        "removed": 2688
+      },
+      "producer_dispatches": {
+        "baseline": 2688,
+        "candidate": 672,
+        "removed": 2016
+      },
+      "producer_duration_ms": {
+        "baseline": 19.882465,
+        "candidate": 16.13308,
+        "delta_percent": -18.857747266246918
+      },
+      "copybuffer_duration_ms": {
+        "baseline": 12.921489,
+        "candidate": 5.821001,
+        "delta_percent": -54.95100448562855
+      },
+      "total_dispatches_removed": 4704,
+      "projection_confirmed_exactly": true,
+      "interpretation": "Each target pass now emits one immutable-initial-state Conv chain and one c1-exact GDN chain per linear layer. Only the initial rollback snapshots remain; every post-row journal is written directly. The selected producer families plus copyBuffer kernel time fall independently of unrelated arithmetic noise."
+    },
+    "correctness": {
+      "commit": "d4616f1207d00e4f0fff3eba3e0854cdcf5962fe",
+      "exact": true,
+      "gpu_accept": true,
+      "accepted_counts": [
+        3,
+        3,
+        2,
+        3,
+        3,
+        0,
+        3
+      ],
+      "cycles": 7,
+      "target_rows": 28
+    },
+    "interpretation": "The measured dispatch reduction exactly equals the predeclared 2,688 post-row copies plus 2,016 net producer launches. Complete cycle wall and target-verify host wall contract with unchanged acceptance."
+  },
+  "memory": {
+    "baseline_peak_bytes": 31134260776,
+    "candidate_peak_bytes": 31134260776,
+    "delta_bytes": 0,
+    "allocations_after_close": 0
+  },
+  "external_comparison": {
+    "llamacpp_vulkan_artifact": "benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json",
+    "llamacpp_vulkan_b3_transition_tok_s": 68.08247965468567,
+    "hipengine_b3_tok_s": 41.43976733813614,
+    "hipengine_below_vulkan_percent": 39.13299346863005,
+    "prior_hipengine_below_vulkan_percent": 41.6681333961606,
+    "gap_narrowed_percentage_points": 2.535139927530551,
+    "execution_format_note": "hipEngine uses exact/default BF16 K/V; llama.cpp Vulkan baseline uses F16 K/V."
+  },
+  "decision": {
+    "action": "retain_default_and_advance_exact_natural25_headline",
+    "selected_budget": 3,
+    "canonical_b3_tok_s": 41.43976733813614,
+    "canonical_b3_vs_own_ar": 2.034798340935347,
+    "canonical_b3_delta_percent": 4.34606343861399,
+    "reason": "Exact same-suite non-regressive win: all aggregate scopes and all 30 individual prompt/budget rows improve, while the named trace confirms intended ownership and a 34.17% dispatch reduction.",
+    "next": "Re-rank the post-chain-journal trace; do not extrapolate from the removed producer/copy families."
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/natural25-native-chain-journal-b1-b3.json": "3a571f9771a3c512a3a4e011b7089ea9fd0985a9bc4da01a68fb915e2be9311e",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/natural25-native-chain-journal-b1-b3.stdout": "8aadfd69ef0836772161e61c149b76c043efb4aea323c27f395c8d27fa4d157f",
+    "/tmp/qwen36-chain-journal-vs-immediate-natural.json": "be03acae8ef53fd088b03664387ae21145d30ce20dee80d5b9524470c2608464",
+    "/tmp/qwen36-chain-journal-vs-canonical-natural.json": "95274eb2005e206f0c12de0bb21785bc68f1e1ef0d57099de725e2c85810d7ab",
+    "/tmp/qwen36-chain-journal-profile-compare.json": "eaa50a2d12d894e44560b44b60759410981c5e9f547acb5b08730451a497e554",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/profile-native-chain-journal-mtp-b3-hermetic/mtp-b3_agent_info.csv": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/profile-native-chain-journal-mtp-b3-hermetic/mtp-b3_kernel_trace.csv": "d6be3de24c5e238990c53a6578b0ab000e76839fcc931366c73e497e6c1cd4e2",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/profile-native-chain-journal-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv": "6f1f58e9e3a116796ec4d67437f4a6ff3418b480480ba5ae8308bc04f174728e",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/profile-native-chain-journal-mtp-b3-hermetic/mtp-b3_memory_copy_trace.csv": "c3a19ff6398a4bc7cfc2b496796bb26d0e721bb0f046fc5f1fdc60d9c114c278",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/profile-native-chain-journal-mtp-b3-hermetic/suite.json": "f7dc5af035c5816da2a14a442180442861ef903e26c18dfc0e9dd5a3cfb0d57d",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/profile-native-chain-journal-mtp-b3-hermetic/suite.stdout": "8ebfa7efaae54b9da62c5e925d762709d174c7faf8f65d87665b86b6f274fae0",
+    "/tmp/hipengine-qwen36-27b/final-d4616f120/profile-native-chain-journal-mtp-b3-hermetic/summary.json": "eaa50a2d12d894e44560b44b60759410981c5e9f547acb5b08730451a497e554"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/linear_attn/__init__.py": "14e39dbbcc8c57bb4ed7f69555c29129cbcecf0cdad171ed8a2c0faf7c90c707",
+    "hipengine/kernels/hip_gfx1100/linear_attn/conv.py": "1ac6c21ee295010f412b98fde72118bd2d20a6b15c34441fcf5975c51fd7b8cd",
+    "hipengine/kernels/hip_gfx1100/linear_attn/gdn.py": "659c9c148b1aefac3ae96f36e772ee1c86ac424147d7c8f9d27158ee98b10cf1",
+    "hipengine/runtime/qwen35_gguf_runner.py": "8f6a90a127a30d5ccb16b906e054fe1ad88b77863e42d4dab111dd4478908188",
+    "tests/test_qwen35_linear_attn_chain_journal.py": "682925758fc139640fc4aff20d6deb85e5664ab3535c4f2f48f392ac77947b0a",
+    "tests/test_gguf_native_spec_cycle.py": "b10fa5881618b5b7032bd38e031363c593d877bb2c9525cad6d69bdeb75dd009",
+    "tests/test_qwen35_gguf_mtp_e2e.py": "f06fbc00f931b866fe41cdee65c4f8b51e90c586a34d0c4c749ec5675d658770",
+    "docs/KERNELS.md": "270fe5059762bddcaba3c971f160c312580f206c02ad6523d35562f9dd725152"
+  }
+}

@@ -785,6 +785,24 @@ serial producers = 4,704 target dispatches**, **34.17%** of the refreshed
 13,767-dispatch profile. Retained performance and named trace remain the next
 gate; no speed claim is made yet.
 
+The exact chain-journal route is now retained and advances the natural25
+headline. The hermetic W7900 trace confirms the projection exactly:
+**13,767 -> 9,063 dispatches (-4,704 / -34.17%)**, including
+**3,360 -> 672** state-sized copies and **2,688 -> 672** Conv/GDN producers.
+Complete B3 cycle wall falls **662.664 -> 635.545 ms (-4.09%)**, target verify
+falls **5.52%**, and queue-gap/copy-overlap wall falls **8.94%**, with the same
+`[3,3,2,3,3,0,3]` acceptance ledger.
+
+Against the immediately preceding clean route, the canonical ten-prompt W7900
+B1/B2/B3 packet improves **29.282/35.850/39.614 ->
+30.130/37.357/41.440 tok/s (+2.895%/+4.205%/+4.608%)**. Against the prior best
+headline, B3 improves **39.714 -> 41.440 tok/s (+4.346%)** and reaches
+**2.0348x own AR**. All 30 prompt/budget rows improve (**+2.53% to +5.75%**),
+as do every full/train/heldout/category aggregate (**+2.71% to +4.79%**);
+IDs, acceptance, state, peak memory, and teardown remain exact. The remaining
+Vulkan B3 gap narrows from 41.67% to **39.13%**. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-chain-journals-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -798,7 +816,7 @@ gate; no speed claim is made yet.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 reaches 152.910/144.308 tok/s and beats matched Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; nine wins retained, exact B3 headline remains 1.9511x AR |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; ten wins retained, exact B3 reaches 41.440 tok/s / 2.0348x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O2-O3; dense BF16 prefill is queued AR target |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
