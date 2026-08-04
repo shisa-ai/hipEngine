@@ -744,6 +744,28 @@ dynamic graph reuse, correction logits, and natural provider output. Freeze
 this routing unit before the clean natural25 promotion gate; no complete-path
 performance claim is made yet.
 
+The exact fusion is now retained on mechanical cycle-wall evidence without
+advancing the natural25 headline. A second balanced production-shape W7900
+screen remains byte-exact and improves the unfused chain by
+**1.1060x/1.1093x/1.1128x** at rows 2/3/4. Production B3 tracing observes the
+fused owner 448 times, removes exactly **896 graph dispatches**, and eliminates
+legacy N17,408 rowtiles. Against the pre-`ssm_out` compact profile, complete
+cycle wall falls **676.596 -> 662.705 ms (-2.053%)** and queue-gap/copy-overlap
+wall falls **192.822 -> 174.794 ms (-9.350%)**. The complete-window result is
+compounded with the separately retained `ssm_out` route; only the dispatch
+reduction is uniquely attributable here.
+
+The clean natural25 packet measures B1/B2/B3
+**29.282/35.850/39.614 tok/s** (**+1.046%/+0.066%/-0.250%**) versus the prior
+clean route. Every selected-B3 aggregate scope is slightly negative
+(**-0.060% to -0.368%**), so it cannot replace the canonical
+**39.714 tok/s / 1.9511x own AR** row. IDs, acceptance, full transaction state,
+tracked peak, and teardown remain exact. Keep the exact default because both
+gfx1100 boards win the binding leaf and W7900 proves fewer launches, less
+queue-gap wall, and a shorter cycle window; disclose the mixed aggregate and
+continue D27-O3 from the refreshed trace. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -757,7 +779,7 @@ performance claim is made yet.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 reaches 152.910/144.308 tok/s and beats matched Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | resume next; eight wins retained, exact B3 at 1.9511x AR |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; nine wins retained, exact B3 headline remains 1.9511x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O2-O3; dense BF16 prefill is queued AR target |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

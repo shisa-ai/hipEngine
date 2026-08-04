@@ -1,0 +1,497 @@
+{
+  "schema": 1,
+  "status": "retained_exact_cycle_wall_default_headline_unchanged",
+  "performance_claim": true,
+  "performance_claim_scope": "Exact W7900 K5120/N17408 rows2-4 leaf, removed graph dispatches, and profiled B3 cycle wall; the mixed one-run natural25 packet is disclosed and does not replace the prior 39.714 tok/s headline.",
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_q4_dual_rowtile_silu_cycle_wall_w7900",
+  "timestamp": "2026-08-04T06:51:16.548717+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "routing_commit": "98114138e90755e6286031296d4b87bf3cecb718",
+    "primitive_commit": "9623ea496",
+    "measured_natural_baseline_commit": "4a4a615a89c4f716fb8b017fb29c03ca65000871",
+    "profile_baseline_commit": "2929faa38",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "change": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair_silu",
+      "gguf_q4_k",
+      "pack8_dual_rowtile_bf16_bf16_out"
+    ],
+    "shape": [
+      5120,
+      17408
+    ],
+    "rows": [
+      2,
+      3,
+      4
+    ],
+    "summary": "One local64 block assigns exact local32 gate/up rowtiles to separate waves, restores both BF16 projection boundaries in LDS, and executes the unchanged BF16 SiLU expression.",
+    "runtime_policy": "Only native resident-pack8 dense FFN K5120/N17408 rows2-4 after both singleton owners resolve pack8_rowtile; c1, ordinary sessions, row/shape/layout/opt-out/registry misses retain the unfused chain.",
+    "removed_graph_nodes_per_profile": 896,
+    "new_weight_layout": false,
+    "new_workspace": false,
+    "new_environment_flag": false,
+    "approximation": false
+  },
+  "correctness": {
+    "focused_policy_integration_tests": 5,
+    "cached_gpu1_fused_plus_rowtile_tests": 33,
+    "existing_gfx1151_c1_pair_silu_tests": 3,
+    "primitive_all_outputs_bit_exact": true,
+    "cpu_gate": "KL <= 0.05 and top-1 >= 90%",
+    "w7900_transaction_test": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+    "w7900_transaction_passed": true,
+    "runtime_fused_rows": [
+      2,
+      3,
+      4
+    ],
+    "runtime_fused_shapes": [
+      [
+        5120,
+        17408
+      ]
+    ],
+    "runtime_legacy_q4_rowtile_calls": 0,
+    "transaction_scope": "B1-B3 logits; reject/partial/full/rollback; positions 6/7/9 Conv/GDN/KV/hidden; graph reuse; correction logits; natural provider output",
+    "natural_ids_exact": true,
+    "natural_acceptance_exact": true,
+    "natural_gpu_accept_match_cpu": true,
+    "natural_stage_reconciled": true
+  },
+  "w7900_balanced_leaf": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/bench_qwen36_q4_pack8_dual_rowtile_silu.py",
+    "protocol": {
+      "rows": [
+        2,
+        3,
+        4
+      ],
+      "shape": [
+        5120,
+        17408
+      ],
+      "warmup_pairs": 1000,
+      "samples": 15,
+      "burst": 50,
+      "ordering": "alternating chain->fused / fused->chain",
+      "timing": "synchronized HIP events plus synchronized wall",
+      "inputs": "deterministic nonuniform BF16 activations and packed Q4/scales/mins"
+    },
+    "control": "two exact local32 resident-pack8 rowtiles plus separate BF16 SiLU",
+    "candidate": "one exact local64 dual-rowtile plus shared-BF16 SiLU",
+    "all_exact": true,
+    "all_event_wins": true,
+    "all_wall_wins": true,
+    "results": [
+      {
+        "rows": 2,
+        "in_features": 5120,
+        "out_features": 17408,
+        "medians": {
+          "chain_event_ms": 0.2377950668334961,
+          "chain_wall_ms": 0.23814141750335693,
+          "fused_event_ms": 0.21501075744628906,
+          "fused_wall_ms": 0.21534993778914213
+        },
+        "event_speedup": 1.1059682299519302,
+        "wall_speedup": 1.1058346240923036,
+        "mismatch_count": 0,
+        "element_count": 34816,
+        "control_sha256": "945a1cc1104a591b8a6297bf1aec7dee0696d04eaabdccf7761f5f6239b29bbf",
+        "candidate_sha256": "945a1cc1104a591b8a6297bf1aec7dee0696d04eaabdccf7761f5f6239b29bbf"
+      },
+      {
+        "rows": 3,
+        "in_features": 5120,
+        "out_features": 17408,
+        "medians": {
+          "chain_event_ms": 0.24178796768188476,
+          "chain_wall_ms": 0.24208527989685535,
+          "fused_event_ms": 0.2179684829711914,
+          "fused_wall_ms": 0.21826455835253
+        },
+        "event_speedup": 1.1092794902547518,
+        "wall_speedup": 1.1091369195444518,
+        "mismatch_count": 0,
+        "element_count": 52224,
+        "control_sha256": "f7fed3318987af8f11b744e65528b78842a4dbe16b52d8379c6ac0f319a171f4",
+        "candidate_sha256": "f7fed3318987af8f11b744e65528b78842a4dbe16b52d8379c6ac0f319a171f4"
+      },
+      {
+        "rows": 4,
+        "in_features": 5120,
+        "out_features": 17408,
+        "medians": {
+          "chain_event_ms": 0.24769128799438478,
+          "chain_wall_ms": 0.24814414326101542,
+          "fused_event_ms": 0.2225869369506836,
+          "fused_wall_ms": 0.22301184013485909
+        },
+        "event_speedup": 1.1127844759787646,
+        "wall_speedup": 1.1126949273677953,
+        "mismatch_count": 0,
+        "element_count": 69632,
+        "control_sha256": "de53d7b83f71ae0376331e00b54358545ec29c1d7b1fd29102e70b6cdaabded5",
+        "candidate_sha256": "de53d7b83f71ae0376331e00b54358545ec29c1d7b1fd29102e70b6cdaabded5"
+      }
+    ]
+  },
+  "natural25": {
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-98114138e/natural25-native-q4-dual-rowtile-silu-b1-b3.json",
+    "protocol": {
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompts": 10,
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "train_prompts": 6,
+      "heldout_prompts": 4,
+      "visible_outputs": 250,
+      "timed_transitions": 240,
+      "warmups": 1,
+      "repetitions": 1,
+      "target_verify_mode": "native"
+    },
+    "true_ar": {
+      "baseline_tok_s": 20.354711523325165,
+      "candidate_tok_s": 20.36297689165134,
+      "delta_percent": 0.04060665913492301
+    },
+    "budgets": {
+      "1": {
+        "baseline_decode_seconds": 8.281877344008535,
+        "candidate_decode_seconds": 8.196157646132633,
+        "decode_wall_delta_percent": -1.0350273774329066,
+        "baseline_tok_s": 28.978936783412554,
+        "candidate_tok_s": 29.28201364126327,
+        "tok_s_delta_percent": 1.045852234386313,
+        "baseline_target_verify_seconds": 7.377419976983219,
+        "candidate_target_verify_seconds": 7.277584266848862,
+        "target_verify_delta_percent": -1.3532604954826222,
+        "baseline_mtp_vs_true_ar": 1.423696756900956,
+        "candidate_mtp_vs_true_ar": 1.4380025964312058,
+        "ratio_delta_percent": 1.004837544294901,
+        "scopes": {
+          "full": {
+            "baseline_tok_s": 28.978936783412554,
+            "candidate_tok_s": 29.28201364126327,
+            "delta_percent": 1.045852234386313
+          },
+          "train": {
+            "baseline_tok_s": 29.55073522040112,
+            "candidate_tok_s": 29.83665655552802,
+            "delta_percent": 0.9675608169962047
+          },
+          "heldout": {
+            "baseline_tok_s": 28.161559372384232,
+            "candidate_tok_s": 28.487664520370526,
+            "delta_percent": 1.157979725746583
+          }
+        },
+        "categories": {
+          "code": {
+            "baseline_tok_s": 30.01885025208855,
+            "candidate_tok_s": 30.323999901960775,
+            "delta_percent": 1.016526773376314
+          },
+          "general_en": {
+            "baseline_tok_s": 28.704918435501895,
+            "candidate_tok_s": 28.956976022463966,
+            "delta_percent": 0.8780989485423163
+          },
+          "general_ja": {
+            "baseline_tok_s": 28.723665849419763,
+            "candidate_tok_s": 29.0256112605963,
+            "delta_percent": 1.0512077837120382
+          },
+          "mixed_ja_en": {
+            "baseline_tok_s": 27.57664089218781,
+            "candidate_tok_s": 27.923133511580744,
+            "delta_percent": 1.2564714489613271
+          }
+        }
+      },
+      "2": {
+        "baseline_decode_seconds": 6.699053324293345,
+        "candidate_decode_seconds": 6.694629323901609,
+        "decode_wall_delta_percent": -0.06603918759227057,
+        "baseline_tok_s": 35.8259575468175,
+        "candidate_tok_s": 35.84963235277809,
+        "tok_s_delta_percent": 0.0660828281551229,
+        "baseline_target_verify_seconds": 5.771721113473177,
+        "candidate_target_verify_seconds": 5.759810338495299,
+        "target_verify_delta_percent": -0.20636435378129647,
+        "baseline_mtp_vs_true_ar": 1.7600818122999828,
+        "candidate_mtp_vs_true_ar": 1.7605300317104497,
+        "ratio_delta_percent": 0.025465828198134588,
+        "scopes": {
+          "full": {
+            "baseline_tok_s": 35.8259575468175,
+            "candidate_tok_s": 35.84963235277809,
+            "delta_percent": 0.0660828281551229
+          },
+          "train": {
+            "baseline_tok_s": 37.03284837315643,
+            "candidate_tok_s": 37.06319860111407,
+            "delta_percent": 0.08195488408511142
+          },
+          "heldout": {
+            "baseline_tok_s": 34.15624302910138,
+            "candidate_tok_s": 34.17131699425796,
+            "delta_percent": 0.04413238640950112
+          }
+        },
+        "categories": {
+          "code": {
+            "baseline_tok_s": 38.28347038272619,
+            "candidate_tok_s": 38.32821262620285,
+            "delta_percent": 0.11687091851746434
+          },
+          "general_en": {
+            "baseline_tok_s": 36.887126382629724,
+            "candidate_tok_s": 36.862073709548305,
+            "delta_percent": -0.06791711780838039
+          },
+          "general_ja": {
+            "baseline_tok_s": 34.943939494242294,
+            "candidate_tok_s": 34.93005808804116,
+            "delta_percent": -0.03972478891060005
+          },
+          "mixed_ja_en": {
+            "baseline_tok_s": 31.650829652860576,
+            "candidate_tok_s": 31.712035747466985,
+            "delta_percent": 0.19337911605383784
+          }
+        }
+      },
+      "3": {
+        "baseline_decode_seconds": 6.043242236599326,
+        "candidate_decode_seconds": 6.0583940404467285,
+        "decode_wall_delta_percent": 0.25072309290596895,
+        "baseline_tok_s": 39.71378121275735,
+        "candidate_tok_s": 39.614458616875154,
+        "tok_s_delta_percent": -0.2500960443683087,
+        "baseline_target_verify_seconds": 5.0835561954882,
+        "candidate_target_verify_seconds": 5.090094992425293,
+        "target_verify_delta_percent": 0.12862643168765064,
+        "baseline_mtp_vs_true_ar": 1.9510854362759187,
+        "candidate_mtp_vs_true_ar": 1.9454158803822428,
+        "ratio_delta_percent": -0.290584706761865,
+        "scopes": {
+          "full": {
+            "baseline_tok_s": 39.71378121275735,
+            "candidate_tok_s": 39.614458616875154,
+            "delta_percent": -0.2500960443683087
+          },
+          "train": {
+            "baseline_tok_s": 42.665966254417825,
+            "candidate_tok_s": 42.53093740100411,
+            "delta_percent": -0.31647907048099055
+          },
+          "heldout": {
+            "baseline_tok_s": 35.97948946046091,
+            "candidate_tok_s": 35.9197635951611,
+            "delta_percent": -0.16599975762703334
+          }
+        },
+        "categories": {
+          "code": {
+            "baseline_tok_s": 43.66716211004129,
+            "candidate_tok_s": 43.56359747717026,
+            "delta_percent": -0.23716822405368543
+          },
+          "general_en": {
+            "baseline_tok_s": 40.58728537271062,
+            "candidate_tok_s": 40.443909477987944,
+            "delta_percent": -0.3532532255016818
+          },
+          "general_ja": {
+            "baseline_tok_s": 36.250520876264225,
+            "candidate_tok_s": 36.22887605825929,
+            "delta_percent": -0.05970898481381104
+          },
+          "mixed_ja_en": {
+            "baseline_tok_s": 35.87340403581061,
+            "candidate_tok_s": 35.741400111519944,
+            "delta_percent": -0.3679715595400146
+          }
+        }
+      }
+    },
+    "scope_delta_percent_range": [
+      -0.3679715595400146,
+      1.2564714489613271
+    ],
+    "all_scopes_improve": false,
+    "per_prompt_delta_percent_range": [
+      -0.42964525214469473,
+      1.4708277458216124
+    ],
+    "all_prompt_budget_rows_improve": false,
+    "interpretation": "B1 is positive, B2 aggregate-flat, and selected B3 is 0.250% noise-negative with every B3 aggregate scope negative. Do not claim a natural25 headline advance or replace the prior 39.714 tok/s canonical row."
+  },
+  "profile": {
+    "command": "HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --marker-trace --memory-copy-trace ... scripts/qwen36_dense_gguf_suite.py --candidate-budgets 3 --limit 1 --no-warmup --roctx-markers",
+    "baseline_scope": "clean compact-proposal commit 2929faa38; excludes the later tiny ssm_out specialization",
+    "candidate_scope": "routing commit 98114138e; includes retained ssm_out plus dual-rowtile-SiLU",
+    "exact": true,
+    "gpu_accept_match_cpu": true,
+    "accepted_counts": [
+      3,
+      3,
+      2,
+      3,
+      3,
+      0,
+      3
+    ],
+    "cycles": 7,
+    "baseline_window": {
+      "start": 1969880146819327,
+      "end": 1969880823373477,
+      "host_wall_ms": 676.5958399046212,
+      "marker_span_ms": 676.55415,
+      "kernel_sum_ms": 483.272968,
+      "copy_sum_ms": 0.182481,
+      "device_activity_span_ms": 676.095304,
+      "kernel_queue_gaps_and_copy_overlap_ms": 192.822336,
+      "host_outside_device_span_ms": 0.5005359046211879,
+      "kernel_dispatches": 14663,
+      "copy_count": 21
+    },
+    "candidate_window": {
+      "start": 1982953821399710,
+      "end": 1982954484064116,
+      "host_wall_ms": 662.705116905272,
+      "marker_span_ms": 662.664406,
+      "kernel_sum_ms": 487.406746,
+      "copy_sum_ms": 0.182121,
+      "device_activity_span_ms": 662.20105,
+      "kernel_queue_gaps_and_copy_overlap_ms": 174.794304,
+      "host_outside_device_span_ms": 0.5040669052719977,
+      "kernel_dispatches": 13767,
+      "copy_count": 21
+    },
+    "delta": {
+      "host_wall_ms_percent": -2.0530310977536326,
+      "kernel_sum_ms_percent": 0.855371244352332,
+      "copy_sum_ms_percent": -0.19728081279695164,
+      "device_activity_span_ms_percent": -2.055073288898346,
+      "kernel_queue_gaps_and_copy_overlap_ms_percent": -9.349555852284663,
+      "kernel_dispatches_percent": -6.11061856373184,
+      "copy_count_percent": 0.0,
+      "proposal": {
+        "host_ms_percent": -1.2068334031076544,
+        "kernel_ms_percent": -3.284555661585431,
+        "kernel_dispatches_percent": 0.0,
+        "copy_ms_percent": null,
+        "copy_count_percent": null
+      },
+      "target_verify": {
+        "host_ms_percent": -2.419034430326761,
+        "kernel_ms_percent": 1.5970668958076084,
+        "kernel_dispatches_percent": -6.441409058231484,
+        "copy_ms_percent": -0.19728081279695164,
+        "copy_count_percent": 0.0
+      },
+      "target_commit_finish": {
+        "host_ms_percent": 11.767535080741798,
+        "kernel_ms_percent": -0.42063087156543055,
+        "kernel_dispatches_percent": 0.0,
+        "copy_ms_percent": null,
+        "copy_count_percent": null
+      }
+    },
+    "named": {
+      "baseline_q4_rowtile_ms": 189.267227,
+      "baseline_silu_ms": 0.864046,
+      "candidate_q4_rowtile_ms": 80.502949,
+      "candidate_q4_dual_rowtile_silu_ms": 109.945578,
+      "candidate_silu_ms": 0.05256,
+      "baseline_dense_rowtile_ms": 137.838925,
+      "candidate_dense_rowtile_ms": 105.768864,
+      "candidate_dense_virtual256_rowtile_ms": 36.170326
+    },
+    "candidate_fused_shape": {
+      "2176": {
+        "dispatches": 448,
+        "duration_ms": 109.945578
+      }
+    },
+    "attribution": "The fused leaf is 448 launches and legacy N17408 rowtiles disappear. Exactly 896 graph nodes are removed. Selected arithmetic time is profile-flat, while dispatch/queue wall contracts mechanically; the 2.05% complete-window delta is compounded with the earlier ssm_out specialization."
+  },
+  "memory": {
+    "baseline_peak_bytes": 31134260776,
+    "candidate_peak_bytes": 31134260776,
+    "delta_bytes": 0,
+    "allocations_after_close": 0
+  },
+  "decision": {
+    "action": "retain_default_as_exact_launch_count_and_cycle_wall_improvement",
+    "headline_advanced": false,
+    "canonical_b3_tok_s": 39.71378121275735,
+    "reason": "Both gfx1100 boards win every exact production-shape leaf comparison. W7900 production tracing proves the intended owner, 896 fewer dispatches, 9.35% less queue-gap wall, and a 2.05% shorter compounded B3 window. The one-run natural packet is mixed, so retention is scoped to the mechanical evidence and no new broad throughput headline is claimed.",
+    "limitations": [
+      "The natural25 B3 sample is 0.250% below the prior clean row and all B3 aggregate scopes are negative by 0.060-0.368%.",
+      "The profile baseline predates the separately retained ssm_out specialization, so the complete 2.05% profile delta is compounded; the -896 dispatch delta and fused ownership are uniquely attributable here.",
+      "Best exact canonical B3 remains 39.714 tok/s / 1.9511x own AR and 41.67% below llama.cpp Vulkan B3."
+    ]
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/final-4a4a615a8/natural25-native-dense-ssm-rowtile-b1-b3.json": "5f7ee674fe9ab671abb4371502ea79036c4d5243f4953134c0210e0d68f38299",
+    "/tmp/hipengine-qwen36-27b/final-98114138e/natural25-native-q4-dual-rowtile-silu-b1-b3.json": "c92774002be2aee15edea6937639c95be3cf09ba98f256e2ca5d4d0c1454b037",
+    "/tmp/qwen36-q4-dual-rowtile-silu-compare.json": "97ec383338497de805f47d40019ca053959f48701b1f2e3e00fbc851c9852e76",
+    "/tmp/bench_qwen36_q4_pack8_dual_rowtile_silu_w7900.json": "7fc213953fcc31832a7c3177bef531fe18c63f97f6f1b586d15b38fe08026aeb",
+    "/tmp/hipengine-qwen36-27b/final-98114138e/profile-native-q4-dual-rowtile-silu-mtp-b3-hermetic/mtp-b3_kernel_trace.csv": "61fc3d127dc1f34986893ccc44af7f25479449120c7a5a60a4b0d663e6f3af45",
+    "/tmp/hipengine-qwen36-27b/final-98114138e/profile-native-q4-dual-rowtile-silu-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv": "ba9a494c5013641edec797472456fb9b1ed38030a55d87a2d7fe9ae2821af7d5",
+    "/tmp/hipengine-qwen36-27b/final-98114138e/profile-native-q4-dual-rowtile-silu-mtp-b3-hermetic/mtp-b3_memory_copy_trace.csv": "c21eb85969f8874d50a6310e6f7653a0c4fc817b02feb8c4f9c0e164124d2769",
+    "/tmp/hipengine-qwen36-27b/final-98114138e/profile-native-q4-dual-rowtile-silu-mtp-b3-hermetic/suite.json": "c6626dea8d65bbc39e0fb8ae7a19c09c725dec364471e1230ff4b8cd1ade4148",
+    "/tmp/hipengine-qwen36-27b/final-98114138e/profile-native-q4-dual-rowtile-silu-mtp-b3-hermetic/summary.json": "c89ef529321b50deb315b919686527423e01e559a6a4f13aea4393367a09c201",
+    "benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-admitted.json": "d2a1aff1f71ff4bb9319d5a15343570c3e1b0764fee6c3dd956bf0f13eb499bb"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip": "e67c4a63691b547ed8d2622cd15b48ae1a38efd610eb0700dd8e8a72202f12aa",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py": "d0af2811276b46938081f3cecdeecbabdf625972637697eb9c73953157a09956",
+    "hipengine/runtime/gguf_linear.py": "1fd1a9e77ce5fc65e713f807ee71c6e1c5b3968af0fc93ee2aa76212e12d9c28",
+    "hipengine/runtime/qwen35_gguf_runner.py": "673bc36c2fe60efd1b0989ca4d87d2f9f3db330fb05bbbed9b9d5b8527c86b70",
+    "tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py": "972c9497c05ff7190a7b48259a0b1cef4f8031f7cfe148b27f442097dee2b914",
+    "tests/test_qwen35_gguf_mtp_e2e.py": "4713fedca5e97ead58e05934d94664a879a5a8195e24422321a7e35d7a431d6a"
+  }
+}

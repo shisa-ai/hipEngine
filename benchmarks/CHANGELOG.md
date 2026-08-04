@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact Q4 dual-rowtile SiLU cycle wall] Qwen3.6-27B Q4_K_M / natural25 B3 / W7900: compact-profile cycle wall **676.596 -> 662.705 ms (-2.053%, compounded with the preceding `ssm_out` specialization)** and queue-gap/copy-overlap wall **192.822 -> 174.794 ms (-9.350%)** by replacing two exact K5,120/N17,408 rowtiles plus SiLU with one exact leaf, uniquely removing **896 dispatches**; retain the default mechanically but keep the canonical **39.714 tok/s** headline because the mixed one-run B3 sample is **39.614 tok/s (-0.250%)**; `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`.
+
 - [accepted exact dense `ssm_out` local128 rowtile] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: compact-proposal baseline **28.878/35.712/39.610 -> 28.979/35.826/39.714 tok/s (+0.349%/+0.318%/+0.263%)** by selecting the exact virtual256/local128 dense-BF16 rowtile only at native K6,144/N5,120 rows 2-4; every full/train/heldout/category aggregate improves, IDs/state/acceptance and memory remain exact, and B3 reaches **1.9511x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`.
 
 - [accepted exact populated pack8 prefill tile8x8] Qwen3.6-27B Q4_K_M / 512/128 and 4096/128 / W7900: scalar pack8 **50.515/50.473 -> 152.910/144.308 tok/s (+202.70%/+185.91%)** by reusing each resident output pack across eight rows while preserving the FP32-FMA/wave32/BF16 boundary; graph decode is non-regressive, logits/state/IDs and memory remain exact, matched stateful Vulkan is exceeded by **91.60%/76.43%**, and the traced Q4 bucket falls **80.86%**; `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json`.

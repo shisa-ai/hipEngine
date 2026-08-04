@@ -204491,3 +204491,51 @@ Vulkan local sizes verbatim will close the measured gap.
   logits, and natural provider output remain scalar-exact. Freeze this
   correctness-only routing unit before timing; the retained clean W7900
   natural25 artifact from `4a4a615a8` remains the promotion baseline.
+
+### D27-O3 exact Q4 gate/up rowtile plus SiLU — RETAINED on cycle wall
+
+- Clean routing commit `98114138e` ran the canonical W7900 natural25 B1-B3
+  packet with one warmup, one measured repetition, 10 prompts/four categories,
+  25 visible outputs, 24 timed transitions, native target verification, cached
+  builds, and the same `4a4a615a8` baseline protocol. Command:
+  `/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-98114138e/natural25-native-q4-dual-rowtile-silu-b1-b3.json`.
+- The packet is mixed rather than a new headline. B1/B2/B3 move
+  **28.978937/35.825958/39.713781 -> 29.282014/35.849632/39.614459 tok/s**
+  (**+1.0459%/+0.0661%/-0.2501%**). True AR is structurally unchanged and
+  measures **20.354712 -> 20.362977 tok/s (+0.0406%)**. All selected-B3
+  full/train/heldout/category scopes are noise-negative by **0.0597-0.3680%**;
+  do not replace the canonical **39.713781 tok/s / 1.9511x own-AR** row.
+- Correctness remains exact: all 250 visible IDs per budget, accepted/proposed
+  counts, cycle ledgers, GPU/CPU acceptance summaries, and stage
+  reconciliations match. The prior transaction oracle proves the fused owner at
+  rows `{2,3,4}` and only `(5120,17408)`. Tracked peak remains
+  **31,134,260,776 bytes / 28.996 GiB**, with zero allocations after close.
+- A separate production-shape W7900 leaf screen uses 1,000 warmup pairs, 15
+  alternating samples, 50 launches/sample, synchronized events and wall, and
+  deterministic nonuniform resident Q4 inputs. Every output is byte-exact.
+  Unfused -> fused event medians improve rows 2
+  **0.237795 -> 0.215011 ms (1.1060x)**, rows 3
+  **0.241788 -> 0.217968 ms (1.1093x)**, and rows 4
+  **0.247691 -> 0.222587 ms (1.1128x)**; synchronized wall agrees within
+  0.02 percentage point.
+- A hermetic cached W7900 `rocprofv3 --kernel-trace --marker-trace
+  --memory-copy-trace` one-prompt B3 run observes the fused owner exactly 448
+  times and no legacy N17,408 rowtiles. Relative to the clean compact-proposal
+  `2929faa38` profile, complete cycle wall falls
+  **676.595840 -> 662.705117 ms (-2.0530%)**, device activity falls **2.0551%**,
+  queue-gap/copy-overlap wall falls **192.822336 -> 174.794304 ms (-9.3496%)**,
+  and dispatches fall **14,663 -> 13,767 (-6.1106%)**. Exactly 896 removed
+  dispatches are attributable to fusion. Kernel-sum movement is profile noise
+  (**+0.8554%**) while the selected arithmetic family is flat.
+- The profile baseline predates the separately retained `ssm_out` specialization,
+  so the full 2.053% cycle-window delta is compounded. Keep the exact fusion as
+  default because both gfx1100 boards win every binding leaf comparison and
+  W7900 proves intended ownership, **896 fewer launches**, a smaller queue-gap
+  bucket, and shorter cycle wall. Do not claim a broad natural25 throughput
+  advance.
+- Raw SHA-256s: natural packet `c9277400...b037`; comparison
+  `97ec3833...e76`; W7900 leaf result `7fc21395...aeb`; leaf stdout
+  `916fa1ca...6d0`; profile kernel/marker/copy/suite/summary
+  `61fc3d12...45 / ba9a494c...d5 / c21eb859...769 / c6626dea...148 /
+  c89ef529...201`. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`.
