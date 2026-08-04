@@ -973,6 +973,18 @@ Re-rank only the `c44e32ff6` profile; the remaining dense Q5 `ssm_out` family
 is **37.372 ms**, while Q4 and the now-resident Q6T16 families remain larger
 arithmetic buckets.
 
+The Q5 `ssm_out` compressed-ownership branch is now closed without a runtime
+change. On the actual K6,144/N5,120 weight, byte-neutral Q5T16 passes the
+component quality gate and improves M64/M512 prefill **2.373x/3.382x**, but its
+best c1-c4 decode rows reach only **0.516x/0.531x/0.405x/0.448x** of the retained
+dense-BF16 owner. Every existing raw-Q5 control also passes quality and is
+mutually BF16-bit exact, but the best c1-c4 rows reach only
+**0.828x/0.361x/0.312x/0.282x**; its best M64/M512 coltile reaches
+**0.603x/0.565x**. Therefore neither layout qualifies as a sole resident or
+verifier sidecar. Dense BF16 remains production and the larger Q4 verifier
+family becomes the next layout discriminator. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-q5-ssm-out-compressed-layouts-rejected.json`.
+
 ---
 
 ## 7. Prioritized execution plan
