@@ -1,0 +1,220 @@
+{
+  "schema": 1,
+  "status": "retained_exact_pack8_tile8x8_prefill_closes_vulkan_gap",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_resident_pack8_prefill_tile8x8_w7900",
+  "timestamp": "2026-08-04T13:47:58+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "hipengine_commit": "68e8c10c5b542dcaafab7380d4d76cced2cc879b",
+    "admission_commit": "32b63176d",
+    "baseline_commit": "da6865f74c5f164445897987ff03fc818df2d5e6",
+    "tracked_clean": true,
+    "staged_clean": true,
+    "untracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm_runtime": "HIP version: 7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "change": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q4_k",
+      "pack8_exact_prefill_tile8x8_bf16_bf16_out"
+    ],
+    "symbol": "gguf_q4_k_pack8_exact_prefill_tiled_out_kernel<unsigned short,unsigned short,1,8>",
+    "policy": "Resident pack8 BF16 outputs with rows >= 512 select tile8x8 under the existing use_wmma_prefill contract. Supported equal-width pairs decline the legacy dual owner so callers emit two exact singleton leaves.",
+    "exactness_contract": "Preserve each output's contiguous-8 K traversal, FP32 fmaf sequence, wave32 reduction tree, zero-seeded final sum, and BF16 store.",
+    "fallbacks": "Rows below 512, explicit WMMA opt-out, c1, native verifier rows 2-4, missing registry keys, and the explicit Laguna pack8-WMMA flag retain their prior owners.",
+    "new_weight_layout": false,
+    "new_workspace": false,
+    "new_persistent_bytes": 0
+  },
+  "protocol": {
+    "prompt": "raw token 9707 repeated to 512 or 4096 tokens",
+    "decode_transitions": 128,
+    "warmup": "one complete discarded run, including one decode warmup transition",
+    "measurements": "three completed same-session reset/rearm runs per shape",
+    "prefill": "resident bulk prefill with use_wmma_prefill enabled",
+    "decode": "resident GEMV one-step state-bound graph; capture excluded from measured steady-state windows",
+    "sampling": "greedy device argmax",
+    "correctness": "finite final logits, deterministic IDs, and separate byte-exact scalar-vs-tile logits/state oracle"
+  },
+  "commands": {
+    "512/128": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-27b/final-68e8c10c5/ar-512x128.json",
+    "4096/128": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-27b/final-68e8c10c5/ar-4096x128.json"
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json",
+    "note": "Later D27-O3 commits do not change populated AR prefill or c1 decode; the same-process scalar control below independently anchors current-route exactness and component speed.",
+    "rows": {
+      "512/128": {
+        "prefill_tok_s_median": 50.5146422082834,
+        "decode_tok_s_median": 19.556155084333767,
+        "tracked_peak_gib": 26.122795466333628
+      },
+      "4096/128": {
+        "prefill_tok_s_median": 50.47340560756913,
+        "decode_tok_s_median": 18.648977725489225,
+        "tracked_peak_gib": 28.9470974765718
+      }
+    }
+  },
+  "candidate": {
+    "rows": {
+      "512/128": {
+        "prefill_tok_s_samples": [154.47860988746672, 152.90955593746318, 151.53401251142137],
+        "prefill_tok_s_median": 152.90955593746318,
+        "prefill_stdev_percent": 0.9635487098338334,
+        "prefill_speedup": 3.027034326146114,
+        "prefill_delta_percent": 202.70343261461142,
+        "decode_tok_s_samples": [19.596224071644034, 19.56537463607264, 19.54782271530988],
+        "decode_tok_s_median": 19.56537463607264,
+        "decode_stdev_percent": 0.12523771084783855,
+        "decode_delta_percent": 0.04714398970102618,
+        "final_token_ids": [9707, 9707, 9707],
+        "tracked_peak_gib": 26.122795466333628,
+        "hip_sampled_peak_gib": 27.33740234375,
+        "vs_stateful_vulkan_prefill_tok_s": 79.805,
+        "vs_stateful_vulkan_delta_percent": 91.60397962215796
+      },
+      "4096/128": {
+        "prefill_tok_s_samples": [144.7561359652081, 144.30823234990672, 144.0831347984053],
+        "prefill_tok_s_median": 144.30823234990672,
+        "prefill_stdev_percent": 0.2374031949460844,
+        "prefill_speedup": 2.8590944203746353,
+        "prefill_delta_percent": 185.90944203746352,
+        "decode_tok_s_samples": [18.701158146900795, 18.70787222062722, 18.689565844210062],
+        "decode_tok_s_median": 18.701158146900795,
+        "decode_stdev_percent": 0.049520369708702945,
+        "decode_delta_percent": 0.279803119396993,
+        "final_token_ids": [9707, 9707, 9707],
+        "tracked_peak_gib": 28.9470974765718,
+        "hip_sampled_peak_gib": 30.181640625,
+        "vs_stateful_vulkan_prefill_tok_s": 81.792,
+        "vs_stateful_vulkan_delta_percent": 76.43318704751896
+      }
+    },
+    "tracked_peak_delta_bytes": 0,
+    "new_persistent_bytes": 0
+  },
+  "correctness": {
+    "focused_tests": {
+      "runtime_policy": "6/6 passed",
+      "exact_pack8_gpu1": "21/21 passed",
+      "gguf_linear_dispatch": "68/68 passed",
+      "ruff": "passed"
+    },
+    "same_process_real_input_gate": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/qwen36_q4_pack8_wmma_real_gate.py",
+      "protocol": "one resident session; reset between scalar control and tile candidate; [9707]*N bulk prefill; full first logits; one subsequent exact decode step; hashes of live Conv/GDN/full-attention KV state",
+      "rows": {
+        "512": {
+          "control_prefill_tok_s": 51.688214596134806,
+          "candidate_prefill_tok_s": 155.0690130360088,
+          "speedup": 3.000085,
+          "first_logits_mismatches": 0,
+          "next_logits_mismatches": 0,
+          "first_kl": 0.0,
+          "next_kl": 0.0,
+          "post_prefill_state_exact": true,
+          "post_step_state_exact": true
+        },
+        "4096": {
+          "control_prefill_tok_s": 51.886253835091395,
+          "candidate_prefill_tok_s": 144.0397193725667,
+          "speedup": 2.776067,
+          "first_logits_mismatches": 0,
+          "next_logits_mismatches": 0,
+          "first_kl": 0.0,
+          "next_kl": 0.0,
+          "post_prefill_state_exact": true,
+          "post_step_state_exact": true
+        }
+      },
+      "script_sha256": "f475e4334abae0f802ef824f4a89c292beb766c1c530310588222d3f44318252",
+      "result_sha256": "dd0d64a7fd2f1e86f478a549d6ea014026319188b21cc6523d5a7c4525113420"
+    },
+    "natural25_dispatch_impact": {
+      "rerun_required": false,
+      "reason": "All ten retained rendered prompts are 39-71 rows, below the explicit 512-row threshold; runtime RED proves rows 511 and below retain the prior owner. The latest exact compact-proposal B3 result is therefore inherited unchanged, not remeasured here."
+    }
+  },
+  "production_profile": {
+    "protocol": "cached-only rocprofv3 selected-region kernel trace of one production 512-row bulk prefill; throughput claims use the separate unprofiled runs",
+    "command": "shim=/tmp/hipengine-roctx-profiler-shim; mkdir -p $shim; ln -sfn /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocprofiler-sdk-roctx.so $shim/libroctx64.so; LD_LIBRARY_PATH=$shim:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/opt/rocm/lib HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 --kernel-trace --selected-regions -f csv -d /tmp/hipengine-qwen36-27b/final-68e8c10c5/profile-ar-p512 -o ar-p512 -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-27b/final-68e8c10c5/profile-ar-p512/bench.json",
+    "command_note": "The current libroctx64.so lacks roctxProfilerResume/Pause. A temporary /tmp symlink named libroctx64.so points to the profiler SDK's librocprofiler-sdk-roctx.so, and the direct TheRock rocprofv3 binary is used; a no-GPU probe verified the control symbols before the model run. This profiler-only stack matches the baseline profile class; throughput claims use the separate unprofiled system-runtime rows.",
+    "host_wall_ms": 3273.555241059512,
+    "baseline_host_wall_ms": 9944.618250010535,
+    "host_wall_delta_percent": -67.08214273528253,
+    "total_kernel_ms": 3241.170736,
+    "baseline_total_kernel_ms": 9911.076203,
+    "total_kernel_delta_percent": -67.29748949948619,
+    "total_dispatches": 1275,
+    "baseline_total_dispatches": 1203,
+    "tile8x8": {
+      "dispatches": 288,
+      "total_ms": 1496.172597,
+      "average_ms": 5.195043739583333,
+      "share_of_kernel_sum": 0.46161486662268814,
+      "baseline_q4_dispatches": 216,
+      "baseline_q4_ms": 7815.868685,
+      "q4_delta_percent": -80.85724495510765,
+      "q4_speedup": 5.223908458604125,
+      "workgroup_size": 32,
+      "vgpr": 144,
+      "sgpr": 128,
+      "lds_block_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "next_measured_target": {
+      "kernel": "dense_prefill_gemm_out_kernel<unsigned short,32,8,16>",
+      "dispatches": 112,
+      "total_ms": 1654.462175,
+      "share_of_kernel_sum": 0.5104520279119291,
+      "selection": "largest refreshed p512 kernel bucket"
+    },
+    "parser_note": "The existing summary classifier labels the new exact pack8-prefill symbol as dense_q4_k_legacy_decode; this artifact reports the exact symbol directly.",
+    "raw_sha256": {
+      "ar-p512_kernel_trace.csv": "bbc973e1db92c48d17e11ffc17972d0887460dfd4477593503c95d0e8af9cf09",
+      "bench.json": "008c68b91ca63cdae877ce78f158fcad732efcf5bc1648c9ea38e477a6808497",
+      "summary.json": "9111521a9cfba5fa6ea831d1d50372c3cdc13506e4d854d6fce41859ca9d6620"
+    }
+  },
+  "source_sha256": {
+    "ar-512x128.json": "04c05e087f480e2d8c353f6f93617115c94ed4881c90e39d67032aefb49d58fb",
+    "ar-4096x128.json": "bd8ba483f77953a87c0ec85e9ecabb79fee150623d037a953409de679b33d3f6"
+  },
+  "decision": {
+    "action": "retain_and_promote_existing_use_wmma_prefill_route",
+    "reason": "Both required populated-prefill workloads improve by 2.86-3.03x, exceed the matched stateful Vulkan floor by 76-92%, preserve byte-exact logits and Conv/GDN/KV state, leave c1 decode non-regressive, and add no memory.",
+    "d27_o1_status": "complete",
+    "next_step": "D27-O1 is complete; resume D27-O3 from the retained compact-proposal B3 profile. Keep exact dense BF16 populated prefill (1,654.462 ms / 51.05% of refreshed AR kernel wall) queued as the measured D27-L1 AR target."
+  }
+}

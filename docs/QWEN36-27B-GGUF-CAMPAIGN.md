@@ -620,13 +620,27 @@ and replacing dual gate/up with two exact singletons improves **5.454x/4.973x**
 at M=512/1024. Four uniformly slower 8x2/8x4/16x2/16x4 candidates were removed.
 
 Cached GPU1 tracing names the tile8x8 body at local32, VGPR144, SGPR128,
-LDS256 B, and scratch0. A conservative 50% recovery of the measured Q4 bucket
-is **3,907.935 ms / 39.30%** of complete p512 wall. Admit runtime wiring only
-for resident pack8 rows >=512 under `use_wmma_prefill`; smaller rows, opt-out,
-registry misses, c1, and the existing exact native rows 2-4 owner fail closed.
-Retention still requires exact same-W7900 512/128 and 4096/128 IDs/state,
-non-regressive decode, and a production trace. Artifact:
-`benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-admitted.json`.
+LDS256 B, and scratch0. Runtime commit `68e8c10c5` now routes resident pack8
+rows >=512 under `use_wmma_prefill`; smaller rows, opt-out, registry misses,
+c1, and the existing exact native rows 2-4 owner fail closed. Supported wide
+pairs decline the legacy dual owner so callers emit two tile8x8 singletons.
+
+The W7900 promotion gate is retained. A same-process scalar/tile oracle is
+byte-exact for first and next full logits plus post-prefill/post-step Conv/GDN/
+KV state at 512 and 4096, while diagnostic prefill improves **3.0001x/2.7761x**.
+Clean campaign-standard 512/128 and 4096/128 medians improve
+**50.515/50.473 -> 152.910/144.308 tok/s (+202.70%/+185.91%)**. Graph decode
+is non-regressive at **19.565/18.701 tok/s**, all six final IDs are `9707`, and
+tracked peak remains byte-identical at **26.123/28.947 GiB**. This puts matched
+prefill **91.60%/76.43% above** the stateful Vulkan floor.
+
+Selected-region production tracing executes the exact tile8x8 symbol 288 times
+and cuts the prior Q4 bucket **7,815.869 -> 1,496.173 ms (-80.86%, 5.224x)**;
+complete kernel sum falls **9,911.076 -> 3,241.171 ms (-67.30%)**. Dense BF16
+prefill GEMM is now the queued AR follow-up at **1,654.462 ms / 51.05%**, but
+D27-O1 is complete and D27-O3 resumes before D27-L1. Artifacts:
+`benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-admitted.json`
+and `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json`.
 
 ---
 
@@ -639,10 +653,10 @@ non-regressive decode, and a production trace. Artifact:
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | in progress; exact tile8x8 primitive admitted, runtime wiring next |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 reaches 152.910/144.308 tok/s and beats matched Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | seven wins retained; compact exact B3 selected at 1.9422x AR |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | resume next; seven wins retained, compact exact B3 at 1.9422x AR |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O2-O3; dense BF16 prefill is queued AR target |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
