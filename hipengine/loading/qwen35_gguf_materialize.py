@@ -611,15 +611,26 @@ def _spec_for_tensor(
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q6_K and decode_repack and slot_path == "root.lm_head" and len(tensor.shape) == 2:
-        allocation_names = ("tiles",)
-        if gguf_lm_head_q6_x8_sidecar_enabled():
-            allocation_names = ("tiles", "x8")
+        keep_x8_sidecar = gguf_lm_head_q6_x8_sidecar_enabled()
+        use_qmicro_planar = (
+            dense_q6_qmicro_planar
+            and not keep_x8_sidecar
+            and tuple(map(int, tensor.shape)) == (248_320, 5_120)
+        )
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
-            quant_key="gguf_q6_k_t16_v1",
-            layout=LAYOUT_GGUF_Q6_K_T16,
-            allocation_names=allocation_names,
+            quant_key=(
+                "gguf_q6_k_t16_qmicro_planar_v1"
+                if use_qmicro_planar
+                else "gguf_q6_k_t16_v1"
+            ),
+            layout=(
+                LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+                if use_qmicro_planar
+                else LAYOUT_GGUF_Q6_K_T16
+            ),
+            allocation_names=("tiles", "x8") if keep_x8_sidecar else ("tiles",),
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
         if decode_repack and _is_wide_rank2_q6_t16_tensor(slot_path, tensor):

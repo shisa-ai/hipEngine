@@ -503,6 +503,19 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         ),
         "t16",
     ),
+    (
+        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        GGUF_ACTIVATION_BF16,
+        GGUF_OUTPUT_F32,
+    ): GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_decode_bf16_f32_out",
+        ),
+        "t16",
+    ),
     (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
         "t16",

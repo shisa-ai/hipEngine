@@ -877,7 +877,10 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         try:
             assert provider.executor.weights is not None
             assert provider.executor.weights.fallback("lm_head") is borrowed_fallback_weights["lm_head"]
-            assert provider.executor.weights.fallback("lm_head").spec.quant_key == "gguf_q6_k_t16_v1"
+            assert (
+                provider.executor.weights.fallback("lm_head").spec.quant_key
+                == "gguf_q6_k_t16_qmicro_planar_v1"
+            )
             assert (
                 provider.executor.weights.fallback("output_norm").spec.source.name
                 == "blk.64.nextn.shared_head_norm.weight"

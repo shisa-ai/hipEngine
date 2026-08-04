@@ -206115,3 +206115,48 @@ Vulkan local sizes verbatim will close the measured gap.
   the gfx1100 capability, make verifier rowtile selection registry-driven, and
   require actual materialization, full B1-B3 transaction, and physical kernel
   tracing before committing runtime ownership.
+
+## 2026-08-05 — Select the planar-Q6 root-head runtime owner
+
+- RED adds four independent contracts and fails all four on the retained route:
+  the measured dense root must join the qmicro materialization plan; planar
+  qmicro BF16-to-FP32 must resolve through generic linear dispatch; verifier
+  rows must resolve a same-quant registered FP32 rowtile rather than call the
+  legacy-T16 wrapper; and gfx1151 must not inherit the new unmeasured FP32/top-1
+  aliases. GREEN passes all four.
+- Scope ownership to `root.lm_head` shape K5,120/N248,320 under the existing
+  gfx1100 `GGUF_DENSE_Q6_T16_QMICRO_PLANAR` package capability. The K2,048
+  Qwen3.6-MoE head, gfx1151, explicit legacy plans, and X8 sidecar requests keep
+  legacy T16. No model/engine backend or quant branch, environment flag,
+  sidecar, allocation, or byte is added. The verifier now derives its sibling
+  key from `(backend, layer, resident quant, t16_gemv_rowtile_bf16_f32_out)`.
+- The adjacent mapping/materialization/dispatch/verifier/backend bundle collects
+  **131 tests** and is green with **107 passed / 24 unavailable-fixture skips**.
+  Changed-file Ruff, `py_compile`, and `git diff --check` pass. The five focused
+  ownership nodes pass after the added unmeasured-MoE-head fallback assertion.
+- Actual backend-driven GPU1 materialization of only `root.lm_head` selects
+  quant/layout `gguf_q6_k_t16_qmicro_planar_v1`, tensor
+  `[1,15520,20,3360]` INT8, and exactly **1,042,944,000 bytes**. One allocation
+  is live before free; after `weights.free()` active allocations and current
+  bytes are both zero.
+- The binding cached W7900 command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -m pytest -q
+  tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes **1/1**.
+  It covers exact B1-B3 logits and state, reject/partial/full/rollback, reusable
+  graph execution, borrowed physical head ownership, natural provider output,
+  exact qmicro proposal top-1 selection, lifecycle, and teardown.
+- Cache-only `rocprofv3 --kernel-trace` on GPU1 materializes the actual root and
+  launches all runtime-owned routes. Generic FP32 c1, verifier row4, proposal
+  top-1 stage1, and final reducer appear at total-grid/local
+  **1,986,560/128**, **3,973,120/128**, **1,986,560/128**, and **256/256**;
+  qmicro VGPRs are **96/80/96**, SGPR128, LDS512 B, scratch0. Diagnostic
+  profiled durations are **3.095/3.209/1.830 ms** plus **27.600 us** reducer.
+  Runtime reports the qmicro quant and handled rowtile. Harness/trace SHA-256s:
+  `0c545c59...11cde6` / `ccba0863...440951`.
+- Runtime correctness admission is complete. Commit this unit before the
+  canonical tracked-clean W7900 one-prompt B3 profile against `d858cb7de`;
+  natural25 and populated 512/4K gates remain mandatory before publication.

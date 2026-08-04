@@ -110,6 +110,22 @@ def test_qwen35moe_gguf_tensor_map_covers_local_inventory() -> None:
     assert layer0.tensor("ffn_gate_shexp").shape == (512, 2048)
 
 
+def test_qwen36_moe_qmicro_plan_keeps_unmeasured_root_head_legacy() -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(GGUFReader(MOE_MODEL).info)
+
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q6_qmicro_planar=True,
+    )
+
+    assert plan.root_specs["lm_head"].source.shape == (248_320, 2_048)
+    assert plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16
+    assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k_t16_v1"
+
+
 def test_qwen36_dense_untied_gguf_tensor_map_uses_output_weight() -> None:
     if not DENSE_UNTIED_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {DENSE_UNTIED_MODEL}")
@@ -131,7 +147,7 @@ def test_qwen36_dense_untied_gguf_tensor_map_uses_output_weight() -> None:
     }
 
 
-def test_qwen36_dense_decode_repack_replaces_only_wide_rank2_q6() -> None:
+def test_qwen36_dense_decode_repack_replaces_wide_rank2_q6_and_root_head() -> None:
     if not DENSE_UNTIED_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {DENSE_UNTIED_MODEL}")
     reader = GGUFReader(DENSE_UNTIED_MODEL)
@@ -171,8 +187,14 @@ def test_qwen36_dense_decode_repack_replaces_only_wide_rank2_q6() -> None:
     assert sum(
         spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
         for spec in qmicro_plan.specs
-    ) == 56
-    assert qmicro_plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16
+    ) == 57
+    assert plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16
+    assert qmicro_plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+    assert (
+        qmicro_plan.root_specs["lm_head"].quant_key
+        == "gguf_q6_k_t16_qmicro_planar_v1"
+    )
+    assert qmicro_plan.root_specs["lm_head"].allocation_names == ("tiles",)
 
     narrow_v = [
         spec
