@@ -54,6 +54,15 @@ class Qwen35GGUFNextNStepResult:
     logits: np.ndarray | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFNextNStateAdvance:
+    """A draft-state append whose discarded prediction was not scored."""
+
+    request_id: int
+    input_token: int
+    position: int
+
+
 class Qwen35GGUFNextNStepExecutor(Protocol):
     hidden_size: int
 
@@ -66,6 +75,14 @@ class Qwen35GGUFNextNStepExecutor(Protocol):
         *,
         return_logits: bool = False,
     ) -> Qwen35GGUFNextNStepResult: ...
+
+    def advance_state_only(
+        self,
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+    ) -> Qwen35GGUFNextNStateAdvance: ...
 
     def reset_request(self, request_id: int) -> None: ...
 
@@ -302,15 +319,15 @@ class Qwen35GGUFNextNExecutor:
         self._request_slots[request_id] = slot
         return slot
 
-    def run_step(
+    def _run_block(
         self,
         request_id: int,
         token_id: int,
         position: int,
         target_hidden: Tensor,
-        *,
-        return_logits: bool = False,
-    ) -> Qwen35GGUFNextNStepResult:
+    ) -> tuple[int, int]:
+        """Run the state-mutating NextN block before shared norm/head scoring."""
+
         if self.closed or self.weights is None:
             raise RuntimeError("GGUF NextN executor is closed")
         if target_hidden.dtype != DType.BF16 or target_hidden.shape != (1, self.hidden_size):
@@ -378,6 +395,25 @@ class Qwen35GGUFNextNExecutor:
             slot_scratch,
             position=int(position),
         )
+        return layer_out_ptr, final_hidden_ptr
+
+    def run_step(
+        self,
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+        *,
+        return_logits: bool = False,
+    ) -> Qwen35GGUFNextNStepResult:
+        layer_out_ptr, final_hidden_ptr = self._run_block(
+            request_id,
+            token_id,
+            position,
+            target_hidden,
+        )
+        if self.weights is None:
+            raise RuntimeError("GGUF NextN executor is closed")
         gguf_rmsnorm_bf16_f32_weight(
             layer_out_ptr,
             self.weights.fallback("output_norm").allocation().tensor.ptr,
@@ -405,6 +441,23 @@ class Qwen35GGUFNextNExecutor:
             logit=logit,
             hidden=hidden,
             logits=logits,
+        )
+
+    def advance_state_only(
+        self,
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+    ) -> Qwen35GGUFNextNStateAdvance:
+        """Consume an accepted tail without computing its discarded prediction."""
+
+        self._run_block(request_id, token_id, position, target_hidden)
+        self.runtime.device_synchronize()
+        return Qwen35GGUFNextNStateAdvance(
+            request_id=int(request_id),
+            input_token=int(token_id),
+            position=int(position),
         )
 
     def reset_request(self, request_id: int) -> None:
@@ -530,7 +583,7 @@ class Qwen35GGUFNextNDraftProvider:
         request_id: int,
         *,
         accepted_count: int,
-    ) -> Qwen35GGUFNextNStepResult | None:
+    ) -> Qwen35GGUFNextNStepResult | Qwen35GGUFNextNStateAdvance | None:
         """Append the last candidate when the whole proposed chain commits.
 
         A B-token proposal executes inputs ``root, d1, ..., d{B-1}``, so its
@@ -551,6 +604,14 @@ class Qwen35GGUFNextNDraftProvider:
         if accepted < len(results):
             return None
         tail = results[-1]
+        advance_state_only = getattr(self.executor, "advance_state_only", None)
+        if callable(advance_state_only):
+            return advance_state_only(
+                rid,
+                int(tail.token_id),
+                int(tail.position) + 1,
+                tail.hidden,
+            )
         return self.executor.run_step(
             rid,
             int(tail.token_id),
@@ -583,6 +644,7 @@ __all__ = [
     "Qwen35GGUFNextNDraftModel",
     "Qwen35GGUFNextNDraftProvider",
     "Qwen35GGUFNextNExecutor",
+    "Qwen35GGUFNextNStateAdvance",
     "Qwen35GGUFNextNStepExecutor",
     "Qwen35GGUFNextNStepResult",
 ]
