@@ -535,12 +535,18 @@ def _spec_for_tensor(
                 allocation_names=("raw",),
                 sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
             )
+        allocation_names = ("qweight", "scales", "mins")
+        if decode_repack and _is_dense_q4_ffn_t16_sidecar_tensor(
+            slot_path,
+            tensor,
+        ):
+            allocation_names += ("decode_tiles",)
         return Qwen35GGUFWeightSpec(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q4_k",
             layout=LAYOUT_Q4_K_PACK8,
-            allocation_names=("qweight", "scales", "mins"),
+            allocation_names=allocation_names,
         )
     if qtype == GGMLQuantizationType.Q5_K:
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
@@ -725,6 +731,19 @@ def _is_token_embedding_slot(slot_path: str) -> bool:
     return slot_path == "root.token_embedding" or slot_path.endswith(".embed_tokens")
 
 
+def _is_dense_q4_ffn_t16_sidecar_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select only the measured Qwen3.6-27B dense FFN gate/up shape."""
+
+    return (
+        len(tensor.shape) == 2
+        and tuple(map(int, tensor.shape)) == (17_408, 5_120)
+        and slot_path.endswith((".ffn_gate", ".ffn_up"))
+    )
+
+
 def _is_wide_rank2_q6_t16_tensor(
     slot_path: str,
     tensor: GGUFTensorInfo,
@@ -850,6 +869,18 @@ def _materialize_spec(
                 runtime=runtime,
             ),
         }
+        if "decode_tiles" in spec.allocation_names:
+            decode_tiles = repack_gguf_q4_k_tile16(
+                raw if raw.ndim == 3 else raw[None, ...]
+            ).tiles
+            allocations["decode_tiles"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.t16_decode_sidecar",
+                decode_tiles,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
     elif spec.layout in {
         LAYOUT_GGUF_Q4_K_T16,
         LAYOUT_GGUF_Q4_K_X8,

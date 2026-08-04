@@ -16,6 +16,7 @@ from hipengine.loading.qwen35_gguf import (
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_GGUF_Q6_K_T16,
+    LAYOUT_Q4_K_PACK8,
     plan_qwen35_gguf_materialization,
 )
 
@@ -167,6 +168,33 @@ def test_qwen36_dense_decode_repack_replaces_only_wide_rank2_q6() -> None:
     assert all(spec.layout == LAYOUT_DENSE_BF16 for spec in narrow_v)
     assert all(spec.quant_key == "gguf_q6_k" for spec in narrow_v)
     assert all(spec.allocation_names == ("raw",) for spec in narrow_v)
+
+    q4_ffn_sidecars = [
+        spec
+        for spec in plan.specs
+        if spec.source.ggml_type_name == "Q4_K"
+        and spec.slot_path.endswith((".ffn_gate", ".ffn_up"))
+        and "decode_tiles" in spec.allocation_names
+    ]
+    assert sum(spec.slot_path.endswith(".ffn_gate") for spec in q4_ffn_sidecars) == 64
+    assert sum(spec.slot_path.endswith(".ffn_up") for spec in q4_ffn_sidecars) == 64
+    assert len(q4_ffn_sidecars) == 128
+    for spec in q4_ffn_sidecars:
+        assert spec.layout == LAYOUT_Q4_K_PACK8
+        assert spec.quant_key == "gguf_q4_k"
+        assert spec.allocation_names == (
+            "qweight",
+            "scales",
+            "mins",
+            "decode_tiles",
+        )
+        assert "decode_tiles" not in legacy_by_slot[spec.slot_path].allocation_names
+    assert all(
+        "decode_tiles" not in spec.allocation_names
+        for spec in plan.specs
+        if spec.source.ggml_type_name == "Q4_K"
+        and not spec.slot_path.endswith((".ffn_gate", ".ffn_up"))
+    )
 
 
 def test_qwen35_gguf_tensor_map_reports_missing_tensor() -> None:

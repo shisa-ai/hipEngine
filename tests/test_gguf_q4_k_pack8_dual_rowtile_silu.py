@@ -108,13 +108,22 @@ def test_pack8_dual_rowtile_silu_wrapper_rejects_unsupported_launches() -> None:
         )
 
 
-def _fake_pack8_weight(base_ptr: int, *, layout: str = LAYOUT_Q4_K_PACK8):
+def _fake_pack8_weight(
+    base_ptr: int,
+    *,
+    layout: str = LAYOUT_Q4_K_PACK8,
+    decode_tiles: bool = False,
+):
     allocations = {
         "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 1)),
         "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 2)),
         "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 3)),
         "raw": SimpleNamespace(tensor=SimpleNamespace(ptr=base_ptr + 4)),
     }
+    if decode_tiles:
+        allocations["decode_tiles"] = SimpleNamespace(
+            tensor=SimpleNamespace(ptr=base_ptr + 5)
+        )
     return SimpleNamespace(
         backend="hip_gfx1100",
         spec=SimpleNamespace(layout=layout, quant_key="gguf_q4_k"),
@@ -140,7 +149,10 @@ def _launch_runtime_candidate(
         out_features=out_features,
         backend="hip_gfx1100",
         stream=7,
-        libraries={"gguf_q4_k": "library-sentinel"},
+        libraries={
+            "gguf_q4_k": "library-sentinel",
+            "gguf_q4_k_t16_v1": "t16-library-sentinel",
+        },
         runtime="runtime-sentinel",
         use_gemv_decode=True,
     )
@@ -189,6 +201,74 @@ def test_pack8_dual_rowtile_silu_runtime_policy_is_native_shape_bounded() -> Non
             "stream": 7,
             "runtime": "runtime-sentinel",
             "library": "library-sentinel",
+        }
+
+
+def test_q4_t16_dual_rowtile_silu_sidecar_precedes_pack8() -> None:
+    t16_key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_rowtile_bf16_bf16_out",
+    )
+    pack8_key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair_silu",
+        "gguf_q4_k",
+        "pack8_dual_rowtile_bf16_bf16_out",
+    )
+    original_t16 = resolve(
+        backend=t16_key.backend,
+        layer=t16_key.layer,
+        quant=t16_key.quant,
+        variant=t16_key.variant,
+    )
+    original_pack8 = resolve(
+        backend=pack8_key.backend,
+        layer=pack8_key.layer,
+        quant=pack8_key.quant,
+        variant=pack8_key.variant,
+    )
+    calls: list[tuple[str, tuple, dict]] = []
+    register(
+        t16_key,
+        lambda *args, **kwargs: calls.append(("t16", args, kwargs)),
+        replace=True,
+    )
+    register(
+        pack8_key,
+        lambda *args, **kwargs: calls.append(("pack8", args, kwargs)),
+        replace=True,
+    )
+    try:
+        with native_batch_decode_session(True):
+            for rows in (2, 3, 4):
+                assert _launch_runtime_candidate(
+                    _fake_pack8_weight(10, decode_tiles=True),
+                    _fake_pack8_weight(20, decode_tiles=True),
+                    rows=rows,
+                )
+            assert _launch_runtime_candidate(
+                _fake_pack8_weight(10, decode_tiles=True),
+                _fake_pack8_weight(20),
+            )
+    finally:
+        register(t16_key, original_t16, replace=True)
+        register(pack8_key, original_pack8, replace=True)
+
+    assert [name for name, _args, _kwargs in calls] == [
+        "t16",
+        "t16",
+        "t16",
+        "pack8",
+    ]
+    for _name, args, kwargs in calls[:3]:
+        assert args[:4] == (100, 15, 25, 400)
+        assert args[5:] == (5120, 17408)
+        assert kwargs == {
+            "stream": 7,
+            "runtime": "runtime-sentinel",
+            "library": "t16-library-sentinel",
         }
 
 

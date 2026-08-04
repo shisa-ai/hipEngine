@@ -1012,6 +1012,41 @@ def _pack8_dual_rowtile_silu_dispatch(
     return candidate if is_registered(candidate) else None
 
 
+def _q4_t16_dual_rowtile_silu_dispatch(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    use_sidecar: bool,
+    native_batch: bool,
+) -> KernelKey | None:
+    """Resolve the exact compact-T16 dense-FFN sidecar or fail closed."""
+
+    if (
+        not use_sidecar
+        or not native_batch
+        or rows < _PACK8_ROWTILE_MIN_ROWS
+        or rows > _PACK8_ROWTILE_MAX_ROWS
+        or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
+        or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
+        or dispatch_a.abi != "pack8"
+        or dispatch_b.abi != "pack8"
+        or dispatch_a.key.quant != "gguf_q4_k"
+        or dispatch_b.key.quant != "gguf_q4_k"
+    ):
+        return None
+    candidate = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_rowtile_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(candidate)
+    return candidate if is_registered(candidate) else None
+
+
 def _rowtile_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -2128,6 +2163,52 @@ def launch_gguf_linear_pair_silu(
         rows=rows,
     )
     if rows != 1:
+        t16_rowtile_key = _q4_t16_dual_rowtile_silu_dispatch(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            use_sidecar=use_q4_t16_sidecar,
+            native_batch=_native_batch_decode_session_enabled,
+        )
+        decode_tiles_a = None
+        decode_tiles_b = None
+        try:
+            decode_tiles_a = weight_a.allocation("decode_tiles")
+            decode_tiles_b = weight_b.allocation("decode_tiles")
+        except KeyError:
+            pass
+        if (
+            t16_rowtile_key is not None
+            and decode_tiles_a is not None
+            and decode_tiles_b is not None
+        ):
+            fn = resolve(
+                backend=t16_rowtile_key.backend,
+                layer=t16_rowtile_key.layer,
+                quant=t16_rowtile_key.quant,
+                variant=t16_rowtile_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = (
+                None
+                if libraries is None
+                else libraries.get(t16_rowtile_key.quant)
+            )
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                x_ptr,
+                decode_tiles_a.tensor.ptr,
+                decode_tiles_b.tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         fused_rowtile_key = _pack8_dual_rowtile_silu_dispatch(
             dispatch_a,
             dispatch_b,
