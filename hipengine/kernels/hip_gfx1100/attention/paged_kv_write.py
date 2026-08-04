@@ -13,6 +13,10 @@ from hipengine.kvcache import KVLiveSpans
 
 _SOURCE = Path(__file__).with_name("paged_kv_write.hip")
 _OUTPUT_NAME = "qwen35_paged_kv_write.so"
+_SYMBOL_COPY_HEAD_MAJOR = "hipengine_qwen35_copy_paged_kv_bf16_to_head_major_spans"
+_SYMBOL_COPY_HEAD_MAJOR_DENSE = (
+    "hipengine_qwen35_copy_paged_kv_bf16_to_head_major_dense_prefix_spans"
+)
 _SYMBOL_MIXED_BF16 = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
 _SYMBOL_MIXED_BF16_BATCH = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_batch_spans"
 _SYMBOL_MIXED_FP16 = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_spans"
@@ -81,6 +85,82 @@ def build_qwen35_paged_kv_write(
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
+    )
+
+
+def qwen35_copy_paged_kv_bf16_to_head_major_spans(
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    key_head_major_ptr: int,
+    value_head_major_ptr: int,
+    spans: KVLiveSpans,
+    context_len: int,
+    output_capacity: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Gather paged BF16 K/V into reusable ``[head, token, dim]`` buffers."""
+
+    _launch_copy_head_major(
+        _SYMBOL_COPY_HEAD_MAJOR,
+        key_cache_ptr,
+        value_cache_ptr,
+        key_head_major_ptr,
+        value_head_major_ptr,
+        spans,
+        context_len,
+        output_capacity,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_copy_paged_kv_bf16_to_head_major_dense_prefix_spans(
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    key_head_major_ptr: int,
+    value_head_major_ptr: int,
+    spans: KVLiveSpans,
+    context_len: int,
+    output_capacity: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Copy an explicitly proven identity-page BF16 prefix to head-major buffers.
+
+    The caller owns the dense-prefix predicate. The generic registry sibling is
+    the exact fallback for any page-table layout that is not known to be identity.
+    """
+
+    _launch_copy_head_major(
+        _SYMBOL_COPY_HEAD_MAJOR_DENSE,
+        key_cache_ptr,
+        value_cache_ptr,
+        key_head_major_ptr,
+        value_head_major_ptr,
+        spans,
+        context_len,
+        output_capacity,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
 
 
@@ -773,6 +853,21 @@ def qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
 
 def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "paged_kv_copy", "bf16", "head_major_spans"),
+        qwen35_copy_paged_kv_bf16_to_head_major_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_kv_copy",
+            "bf16",
+            "head_major_dense_prefix_spans",
+        ),
+        qwen35_copy_paged_kv_bf16_to_head_major_dense_prefix_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_kv_write", "w4_paro", "mixed_bf16_spans"),
         qwen35_write_paged_kv_mixed_value_bf16_spans,
         replace=replace,
@@ -872,6 +967,78 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
         qwen35_write_paged_kv_int8_key_bf16_value_batch_spans,
         replace=replace,
     )
+
+
+def _launch_copy_head_major(
+    symbol: str,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    key_head_major_ptr: int,
+    value_head_major_ptr: int,
+    spans: KVLiveSpans,
+    context_len: int,
+    output_capacity: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    (
+        block_table_len,
+        block_table_row,
+        live_count_index,
+        has_slot_metadata,
+    ) = _check_head_major_copy_shape(
+        spans,
+        context_len,
+        output_capacity,
+        block_size,
+        num_kv_heads,
+        head_dim,
+    )
+    library = library or build_qwen35_paged_kv_write(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        *(ctypes.c_void_p for _ in range(8)),
+        *(ctypes.c_int64 for _ in range(8)),
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    token_positions_ptr = 0 if spans.token_positions is None else spans.token_positions.ptr
+    evict_mask_ptr = 0 if spans.evict_mask is None else spans.evict_mask.ptr
+    token_positions_i64 = bool(
+        spans.token_positions is not None and spans.token_positions.dtype == DType.INT64
+    )
+    err = fn(
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(key_head_major_ptr),
+        ctypes.c_void_p(value_head_major_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(token_positions_ptr),
+        ctypes.c_void_p(evict_mask_ptr),
+        ctypes.c_int64(context_len),
+        ctypes.c_int64(output_capacity),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(block_table_row),
+        ctypes.c_int64(live_count_index),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int(1 if spans.live_counts.dtype == DType.INT64 else 0),
+        ctypes.c_int(1 if token_positions_i64 else 0),
+        ctypes.c_int(1 if has_slot_metadata else 0),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def _launch_write(
@@ -1227,6 +1394,47 @@ def _launch_int8_key_bf16_value_write_batch(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def _check_head_major_copy_shape(
+    spans: KVLiveSpans,
+    context_len: int,
+    output_capacity: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> tuple[int, int, int, bool]:
+    if spans.spans_mode != "uniform":
+        raise ValueError("paged KV head-major copy currently requires uniform spans")
+    if spans.storage_dtype != DType.BF16:
+        raise ValueError("paged KV head-major copy requires bf16 storage spans")
+    _check_positive(context_len, "context_len")
+    if output_capacity < context_len:
+        raise ValueError("head-major output capacity must cover context_len")
+    _check_positive(block_size, "block_size")
+    _check_positive(num_kv_heads, "num_kv_heads")
+    _check_positive(head_dim, "head_dim")
+    if len(spans.base_offsets.shape) == 1:
+        block_table_rows = 1
+        block_table_len = int(spans.base_offsets.shape[0])
+    elif len(spans.base_offsets.shape) == 2:
+        block_table_rows, block_table_len = (int(dim) for dim in spans.base_offsets.shape)
+    else:
+        raise ValueError("paged KV head-major copy requires rank-1 or rank-2 block tables")
+    _check_positive(block_table_rows, "block_table_rows")
+    _check_positive(block_table_len, "block_table_len")
+    if context_len > block_size * block_table_len:
+        raise ValueError("context_len must fit within one paged span block table")
+    if spans.live_counts.numel <= 0:
+        raise ValueError("paged KV head-major copy requires at least one live count")
+    live_count_index = spans.live_counts.numel - 1
+    block_table_row = min(live_count_index, block_table_rows - 1)
+    if (spans.token_positions is None) != (spans.evict_mask is None):
+        raise ValueError("token_positions and evict_mask must be provided together")
+    has_slot_metadata = spans.token_positions is not None
+    if has_slot_metadata and spans.token_positions.numel != spans.evict_mask.numel:
+        raise ValueError("token_positions and evict_mask must cover the same physical slots")
+    return block_table_len, block_table_row, live_count_index, has_slot_metadata
 
 
 def _check_write_shape(

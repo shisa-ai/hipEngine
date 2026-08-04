@@ -1287,13 +1287,29 @@ def _session_buffer_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, A
     prefill_token = _sum_named_buffers(session, ("_prefill_token_buf",))
     prefill_hidden = _sum_named_buffers(session, ("_prefill_hidden_a", "_prefill_hidden_b"))
     bulk_scratch_obj = getattr(session, "_bulk_prefill_scratch", None)
-    bulk_scratch = _sum_buffers(getattr(bulk_scratch_obj, "buffers", ())) if bulk_scratch_obj is not None else 0
+    bulk_scratch_total = (
+        _sum_buffers(getattr(bulk_scratch_obj, "buffers", ()))
+        if bulk_scratch_obj is not None
+        else 0
+    )
+    head_major_kv_scratch = (
+        _sum_buffers(
+            (
+                getattr(bulk_scratch_obj, "head_major_key_cache", None),
+                getattr(bulk_scratch_obj, "head_major_value_cache", None),
+            )
+        )
+        if bulk_scratch_obj is not None
+        else 0
+    )
+    bulk_scratch = max(0, bulk_scratch_total - head_major_kv_scratch)
     total = _sum_buffers(getattr(session, "_buffers", ()))
     named = {
         "decode_logits_and_lm_head": decode_runtime,
         "prefill_token_buffer": prefill_token,
         "prefill_full_sequence_hidden": prefill_hidden,
         "bulk_prefill_scratch": bulk_scratch,
+        "aotriton_head_major_kv_scratch": head_major_kv_scratch,
     }
     named["session_buffer_other"] = max(0, total - sum(named.values()))
     payload: dict[str, Any] = {
@@ -1305,6 +1321,9 @@ def _session_buffer_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, A
     if bulk_scratch_obj is not None:
         payload["bulk_prefill_scratch_rows"] = _maybe_int(getattr(bulk_scratch_obj, "rows", None))
         payload["bulk_prefill_scratch_capacity"] = _maybe_int(getattr(bulk_scratch_obj, "max_positions", None))
+        payload["aotriton_head_major_kv_capacity"] = _maybe_int(
+            getattr(bulk_scratch_obj, "head_major_kv_capacity", None)
+        )
     return payload
 
 

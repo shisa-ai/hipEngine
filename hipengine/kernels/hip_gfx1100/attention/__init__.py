@@ -88,6 +88,8 @@ from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import (
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     build_qwen35_paged_kv_write,
     plan_qwen35_paged_kv_write_build,
+    qwen35_copy_paged_kv_bf16_to_head_major_dense_prefix_spans,
+    qwen35_copy_paged_kv_bf16_to_head_major_spans,
     qwen35_write_paged_kv_f32_spans,
     qwen35_write_paged_kv_int8_block16_batch_spans,
     qwen35_write_paged_kv_int8_block16_prompt_spans,
@@ -148,6 +150,8 @@ __all__ = [
     "qwen35_full_attn_gate_mul_bf16",
     "qwen35_full_attn_gate_mul_bf16_to_bf16",
     "qwen35_full_attn_gate_mul_fp16",
+    "qwen35_copy_paged_kv_bf16_to_head_major_dense_prefix_spans",
+    "qwen35_copy_paged_kv_bf16_to_head_major_spans",
     "qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans",
     "qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans",
     "qwen35_paged_attn_decode_int8_hadamard_group32_gqa_splitk_gate_bf16_spans",

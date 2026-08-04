@@ -626,6 +626,11 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
+# Nathan-review P0 exactness, copy-inclusive sub-window, and right-sized
+# 512/4K/32K/64K gates admit one reusable head-major BF16 K/V pair before
+# AOTriton. Runtime capacity remains capped at the validated 64K allocation
+# class, and env=0 or any allocation denial restores strided AOTriton exactly.
+GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
@@ -1554,6 +1559,7 @@ register_backend_kernels = register_gfx1151_kernels
 
 __all__ = [
     "BACKEND",
+    "GGUF_AOTRITON_HEAD_MAJOR_KV",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",

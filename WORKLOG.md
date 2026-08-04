@@ -203041,3 +203041,97 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json`.
   It is explicitly non-topline and makes no performance claim, so benchmark
   README/changelog rollups are unchanged.
+
+## 2026-08-04 — Start Nathan-review priority execution
+
+- Execute `docs/STRIX-HALO-LLAMACPP-REVIEW.md` in priority order. Priority 1 is
+  the copy-inclusive head-contiguous BF16 K/V AOTriton screen; preserve the
+  strided AOTriton and native paged fallbacks and do not change persistent
+  `KVLiveSpans` storage first. GPU preflight is clear on Radeon 8060S/gfx1151,
+  HIP 7.15; no benchmark or profiler process was active before the baseline.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` cannot complete
+  because this machine no longer has the manifest paths
+  `/home/lhl/amd-gpu-tuning/{nano-vllm-amd,reference/atlas}`. The narrow
+  `--file '*paged*'` query selects zero manifest sources. This candidate is a
+  net-new in-tree layout copy using the already reviewed Nathan commit evidence,
+  not a parent-kernel port; no missing external source body will be copied.
+- Freeze the missing 32K control at tracked-clean `f8d49a25a`, BF16 KV,
+  `GPU_MAX_HW_QUEUES=1`, gfx1151, hermetic TheRock HIP, cached builds, one
+  discarded warmup plus three measured persistent-session resets:
+  `scripts/qwen35_readme_sweep.py --engine gguf --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend
+  hip_gfx1151 --workloads 32K/128 --warmup-runs 1 --measured-runs 3
+  --warmup-decode-tokens 1 --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode
+  --graph-replay-decode --prefill-queue-drain none --require-cached-build`.
+  Measured prefill is **1133.283/1133.272/1132.438 tok/s**, median
+  **1133.272**; decode median is **45.934 tok/s**; owned peak is
+  **23.591 GiB**. Raw JSON/log remain under
+  `/tmp/hipengine-nathan-headmajor/`. Existing same-protocol controls in the
+  layer-drain artifact supply 512/4K/64K medians
+  **1395.168/1463.311/890.033 tok/s**.
+
+## 2026-08-04 — Head-major AOTriton candidate through the 32K gate
+
+- RED collection failed on the absent copy exports. GREEN adds registry keys
+  `paged_kv_copy/bf16/{head_major_spans,head_major_dense_prefix_spans}` over a
+  raw-pointer HIP K/V gather. The generic body consumes `KVLiveSpans` page/live
+  metadata and follows permuted physical pages; the dense body is admitted only
+  from the bulk scratch owner's known identity table. One tracked BF16 K/V pair
+  is shared across layers, capped at 512 MiB total, and both cap denial and HIP
+  allocation failure select the existing strided AOTriton path. Persistent
+  paged KV and native attention are unchanged.
+- Primitive lengths `1/255/256/257`, two heads, permuted pages, sentinel tails,
+  and dense-vs-generic comparisons are byte-exact. A shared-runner real-model
+  512-token A/B matches token, selected-logit bits, all logits, all 40 layer
+  outputs, all 30 Conv/GDN states, and all ten K/V prefixes. A separately run
+  one-byte cap denial allocates no head-major buffer and matches the same full
+  state. Focused kernel/runtime/policy validation reports **39 passed**.
+- Same-protocol right-sized full-model candidate medians versus controls are:
+  512 **1395.168 -> 1394.772 tok/s (-0.028%, neutral)**, 4K
+  **1463.311 -> 1472.330 (+0.616%)**, and 32K **1133.272 -> 1171.610
+  (+3.383%)**. Decode is unchanged within noise. Tracked head-major scratch is
+  **1.5/8.9/67.6 MB** at the rounded 768/4352/33024-token capacities; 32K owned
+  peak rises **23.591 -> 23.654 GiB**. Every measured row emits stable token
+  `9707` and finite identical per-shape final logits.
+- The five-repeat production-shape AOTriton sub-window screen is output-bit
+  exact. Strided -> copy-inclusive head-major medians at 512/4K/32K/64K are
+  **0.356 -> 0.363 ms (0.981x)**, **13.275 -> 12.769 ms (1.040x)**,
+  **179.441 -> 154.983 ms (1.158x)**, and **382.542 -> 315.417 ms
+  (1.213x)**; standalone copies cost **0.011/0.126/1.164/2.233 ms**.
+  Cached `rocprofv3 --kernel-trace` records 12 expected
+  `qwen35_copy_paged_kv_bf16_to_head_major_kernel<true>` launches (local256,
+  VGPR16, scratch0) and 20 AOTriton `attn_fwd` launches with plausible duration.
+- Raw artifacts/logs remain under `/tmp/hipengine-nathan-headmajor/`. The
+  required right-sized 64K warmup+3 process is estimated at 5.5-6 minutes, so it
+  is paused for the mandatory explicit approval before the promotion decision.
+
+## 2026-08-04 — Promote bounded gfx1151 head-major AOTriton KV
+
+- After explicit approval, the independent right-sized 64K warmup plus three
+  measured runs completed normally. Candidate prefill is
+  **952.766/952.348/952.190 tok/s**, median **952.348**, versus the frozen
+  same-protocol **890.033** control (**+7.001%**). Decode is **39.362 tok/s**
+  versus **39.385** (**-0.059%, neutral**). All rows emit token `9707` with
+  identical finite final logit `30.0891914368`. The resident head-major pair is
+  **134,742,016 bytes** at rounded capacity **65,792**, moving tracked peak
+  **24.267 -> 24.392 GiB**.
+- Promote the path as gfx1151's backend capability through only that validated
+  capacity class. `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV=0`, a tighter token or
+  byte cap, registry miss, allocation denial, gfx1100, and larger resident
+  capacity all retain strided AOTriton; native paged attention remains the
+  short-context fallback. The boolean rollback and capacity controls are
+  tracked in `docs/REFACTOR.md`, and the new four-axis copy keys plus trace are
+  catalogued in `docs/KERNELS.md`.
+- The accepted evidence packet is
+  `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`.
+  `benchmarks/README.md` now overlays the qualified 512/4K/32K/64K gfx1151
+  cells and adds a platform-index row; `benchmarks/CHANGELOG.md` records the
+  same-protocol old-to-new curve. Raw hashes pin the control/candidate/state/
+  denial/sub-window/profile files under `/tmp/hipengine-nathan-headmajor/`.
+- Post-promotion validation passes: JSON parse, `py_compile`, benchmark README
+  write/check sync, and `git diff --check`; focused head-major/paged-write/
+  registry/benchmark-runner/full-attention/chunked-prefill/AOTriton-stream/
+  INT8-KV/asymmetric-KV files report **61 passed, 15 skipped**. The skips are
+  existing fixture/model availability guards; all 13 dedicated head-major tests
+  run and pass with HIP available.
