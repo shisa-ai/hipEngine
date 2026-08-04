@@ -691,13 +691,24 @@ every other shape or registry miss. The row-four subfamily projection is
 **2.397 ms / 0.354%** of current complete B3 wall. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-admitted.json`.
 
-The qualified runtime route is now correctness-green. Only the native-batch
-K6,144/N5,120 dense-BF16 projection selects the exact-key candidate; every
-other shape/session and registry miss retains local256. The complete W7900
-oracle observes candidate rows exactly `{2,3,4}` at only that shape and remains
-byte-exact for B1-B3 logits, reject/partial/full/rollback state, dynamic graph
-reuse, correction logits, and natural provider output. Clean natural25 timing
-remains required before this route is promoted as a performance win.
+The qualified runtime route is retained. Only the native-batch K6,144/N5,120
+dense-BF16 projection selects the exact-key candidate; every other shape/session
+and registry miss retains local256. The complete W7900 oracle observes candidate
+rows exactly `{2,3,4}` at only that shape and remains byte-exact for B1-B3
+logits, reject/partial/full/rollback state, dynamic graph reuse, correction
+logits, and natural provider output.
+
+Clean W7900 natural25 moves B1/B2/B3
+**28.878/35.712/39.610 -> 28.979/35.826/39.714 tok/s**
+(**+0.349%/+0.318%/+0.263%**) and improves MTP/own-AR by
+**+0.542%/+0.511%/+0.456%**. Every full/train/heldout/category aggregate is
+positive (**+0.117% to +0.551%**), all IDs/acceptance ledgers remain exact, and
+tracked peak is byte-identical. Four of 30 individual prompt-budget timing rows
+are noise-negative by at most **0.145%**; the predeclared exact component wins
+all three supported row counts and complete suite wall improves at every budget.
+B3 remains selected at **1.9511x** own AR, still **41.67%** below Vulkan B3.
+Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`.
 
 ---
 
@@ -712,7 +723,7 @@ remains required before this route is promoted as a performance win.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 reaches 152.910/144.308 tok/s and beats matched Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | resume next; seven wins retained, compact exact B3 at 1.9422x AR |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | resume next; eight wins retained, exact B3 at 1.9511x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O2-O3; dense BF16 prefill is queued AR target |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

@@ -204357,3 +204357,35 @@ Vulkan local sizes verbatim will close the measured gap.
 - Freeze this routing/correctness unit before timing. The clean W7900 natural25
   B1-B3 comparison against retained `2929faa38` remains the promotion gate; no
   complete-path speed or benchmark-rollup claim is made yet.
+
+### D27-O3 dense-BF16 `ssm_out` local128 rowtile — RETAINED
+
+- Clean candidate commit `4a4a615a8` ran the canonical W7900 natural25 B1-B3
+  command with one warmup, one measured repetition, 10 prompts/four categories,
+  25 visible outputs, 24 timed transitions, exact native target verification,
+  cached builds, and the same compact-proposal baseline protocol. Raw candidate
+  SHA-256 is `5f7ee674...299`; comparison SHA-256 is `5983beb2...e0`.
+- Complete decode improves B1/B2/B3
+  **28.878066/35.712458/39.609670 -> 28.978937/35.825958/39.713781 tok/s**
+  (**+0.3493%/+0.3178%/+0.2628%**), saving
+  **28.928/21.291/15.884 ms** over 240 transitions. MTP/own-AR improves
+  **+0.5424%/+0.5109%/+0.4558%** to
+  **1.4237x/1.7601x/1.9511x**. The unchanged c1 AR control measures
+  **20.393885 -> 20.354712 tok/s (-0.1921%)**, classified as run noise because
+  the route is structurally excluded at rows==1.
+- Every full/train/heldout/category aggregate improves; the complete aggregate
+  range is **+0.1169% to +0.5515%**. Twenty-six of 30 individual prompt-budget
+  rows improve. Four isolated rows are noise-negative by only **0.0245-0.1452%**,
+  while all three complete-suite budgets and every required category/heldout
+  gate are positive.
+- All 250 visible IDs per budget, accepted/proposed counts, cycle ledgers,
+  GPU/CPU acceptance summaries, and stage reconciliations match the compact
+  baseline. The prior W7900 transaction gate already proves candidate rows
+  `{2,3,4}` only at `(6144,5120)` with full logits and dynamic Conv/GDN/KV/
+  hidden state exact. Tracked peak is byte-identical at **31,134,260,776 bytes
+  / 28.996 GiB** and teardown returns to zero allocations.
+- Keep and promote the exact shape-qualified route. The predeclared GPU1 leaf
+  improves rows 2/3/4 **1.2095x/1.1654x/1.0761x**, complete W7900 wall and
+  MTP/AR improve at every budget, and every aggregate scope is non-regressive.
+  B3 remains selected but is still **41.67%** below Vulkan B3. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`.
