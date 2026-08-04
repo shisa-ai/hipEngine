@@ -206026,3 +206026,51 @@ Vulkan local sizes verbatim will close the measured gap.
   run the hermetic one-prompt W7900 B3 profile against clean `064219ec6`.
   Natural25 and populated 512/4K remain mandatory because qmicro changes c1 and
   prefill as well as verifier rows; no canonical performance row changes yet.
+
+## 2026-08-05 — Retain byte-neutral planar-Q6T16 replacement
+
+- Commit correctness/admission as `3728531ba`. Run matching cache-only,
+  hermetic W7900 one-prompt B3 traces from clean detached `064219ec6` and clean
+  `3728531ba` with `rocprofv3 --kernel-trace --marker-trace
+  --memory-copy-trace`, `--limit 1 --no-warmup --candidate-budgets 3`, and the
+  campaign TheRock/ROCTX overlay. Both produce exact token hash
+  `0e257ed1...aafe`, acceptance **17/21**, and **8,055** dispatches.
+- The intended 392-call wide-Q6 family falls **59.876229 -> 46.713837 ms
+  (-21.98%, 1.282x)**; all Q6 rowtiles including the unchanged seven-call FP32
+  head fall **74.847744 -> 61.745620 ms**. Total kernel sum falls **356.002570
+  -> 343.677576 ms (-3.462%)**, device span **503.842 -> 499.813 ms
+  (-0.800%)**, and complete wall **504.331 -> 500.205 ms (-0.818%)**. The
+  no-warmup first target pass rises **122.407 -> 132.944 ms**, but steady passes
+  2-7 fall **47.742 -> 45.840 ms (-3.984%)**; disclose that one-time capture
+  movement instead of attributing it to arithmetic.
+- Run the required clean W7900 ten-prompt natural25 command with true AR and
+  native B1-B3. True AR advances **21.675538 -> 23.030766 tok/s (+6.252%)**;
+  B1/B2/B3 advance **38.580873/48.712333/52.652369 ->
+  39.830391/49.848002/54.547370 tok/s (+3.239/+2.331/+3.599%)**. All **30/30**
+  prompt-budget rows and every full/train/heldout/category scope improve; all
+  IDs, acceptance totals, GPU/CPU summaries, and stage ledgers remain exact.
+  Target verify falls **3.416%/2.651%/4.223%**. Because common c1 AR improves
+  faster, selected B3/own-AR moves **2.4291x -> 2.3685x (-2.497%)**; this is an
+  explicit denominator disclosure, not a ratio claim.
+- Run populated 512/128 and 4096/128 with one warmup, three measured resets,
+  persistent bulk prefill, WMMA, GEMV graph decode, and cache-only builds.
+  Prefill advances **202.549626 -> 207.022147 tok/s (+2.208%)** and
+  **188.637331 -> 192.527666 (+2.062%)**; graph AR advances **20.939964 ->
+  22.106737 (+5.572%)** and **19.767545 -> 20.925791 (+5.859%)**. All final
+  IDs are `9707`; tracked peaks are byte-identical at **31.656/34.481 GiB** and
+  teardown returns to zero.
+- Retain and publish the backend-capability default. No bytes, allocation,
+  prompt condition, or environment flag were added. Canonical W7900 B3 is now
+  **54.547 tok/s**, **19.88% below** llama.cpp Vulkan's **68.082 tok/s**.
+  Artifact: `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json`
+  (SHA-256 `acfd4558...e3c16`). Natural candidate/comparison SHA-256s are
+  `c1964490...24831` / `a6eded2f...cc371`; clean profile baseline/candidate
+  kernel SHA-256s are `7da53afc...95f59` / `ed7f5508...3f49`.
+- Re-rank the retained profile against Vulkan. Compact Q4 families are already
+  at or ahead of matched Vulkan, while wide Q6 is now **46.714 vs 41.486 ms**.
+  Dense Q5 `ssm_out` remains the largest arithmetic gap (**37.152 vs 15.119
+  ms**) but all current representations are closed. The next open byte-neutral
+  candidate is planar-qmicro ownership for the legacy root Q6T16 proposal and
+  target head (**40.606 + 15.032 ms** hipEngine versus roughly **31.873 +
+  9.170 ms** Vulkan); screen actual head c1/top1/F32-rowtile on GPU1 before any
+  runtime ownership change.
