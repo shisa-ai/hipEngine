@@ -148,6 +148,30 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="t16_wmma_prefill_bf16_bf16_out",
     ) is t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_decode_bf16_f32_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_rowtile_bf16_f32_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear+argmax",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_decode_bf16_f32_top1_stage1",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear+argmax",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="proposal_top1_exact_bf16",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16
     dense_wmma = getattr(
         t16_mod,
         "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
@@ -162,8 +186,23 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
     ) is dense_wmma
 
 
+@pytest.mark.parametrize(
+    ("adapter", "stage1_name"),
+    [
+        (
+            t16_mod.gguf_q6_k_t16_proposal_top1_exact_bf16,
+            "gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1",
+        ),
+        (
+            t16_mod.gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16,
+            "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
+        ),
+    ],
+)
 def test_q6_t16_proposal_top1_adapter_uses_tiles_and_half_vocab_blocks(
     monkeypatch: pytest.MonkeyPatch,
+    adapter,
+    stage1_name,
 ) -> None:
     calls: dict[str, tuple[tuple[object, ...], dict[str, object]]] = {}
     runtime = object()
@@ -177,7 +216,7 @@ def test_q6_t16_proposal_top1_adapter_uses_tiles_and_half_vocab_blocks(
 
     monkeypatch.setattr(
         t16_mod,
-        "gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1",
+        stage1_name,
         lambda *args, **kwargs: calls.__setitem__("stage1", (args, kwargs)),
     )
     monkeypatch.setattr(
@@ -187,7 +226,7 @@ def test_q6_t16_proposal_top1_adapter_uses_tiles_and_half_vocab_blocks(
         raising=False,
     )
 
-    t16_mod.gguf_q6_k_t16_proposal_top1_exact_bf16(
+    adapter(
         weight,
         0x1000,
         0x2000,
@@ -395,6 +434,86 @@ def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_c1_f32_is_bit_exact_to_legacy(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 1, 512, 256
+    rng = np.random.default_rng(0x6A12)
+    qweight = make_q6_k_weight(out_features, in_features)
+    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    expected = _run_single(
+        gguf_q6_k_t16_gemv_decode_bf16_f32_out,
+        x,
+        legacy_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.float32,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.float32,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [2, 3, 4])
+def test_q6_t16_qmicro_planar_rowtile_col8_f32_is_bit_exact_to_legacy(
+    rows,
+    q6_t16_library,
+) -> None:
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(0x6A13 + rows)
+    qweight = make_q6_k_weight(out_features, in_features)
+    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    expected = _run_single(
+        gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out,
+        x,
+        legacy_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.float32,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.float32,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_q6_t16_qmicro_planar_wmma_is_bit_exact_to_legacy_wmma(
     q6_t16_library,
 ) -> None:
@@ -540,6 +659,70 @@ def _stable_kl(reference: np.ndarray, candidate: np.ndarray) -> float:
     got_lse = np.log(np.sum(np.exp(got)))
     probabilities = np.exp(ref - ref_lse)
     return float(np.sum(probabilities * ((ref - ref_lse) - (got - got_lse))))
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_top1_stage1_is_bit_exact_to_legacy(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 1, 512, 256
+    rng = np.random.default_rng(0x6A14)
+    qweight = make_q6_k_weight(out_features, in_features)
+    qweight[80] = qweight[17]
+    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    tile_count = out_features // 16
+
+    def run_stage1(fn, tiles):
+        buffers = []
+        try:
+            x_d = malloc(x.nbytes)
+            tiles_d = malloc(tiles.nbytes)
+            logits_d = malloc(out_features * 4)
+            tile_values_d = malloc(tile_count * 4)
+            tile_indices_d = malloc(tile_count * 4)
+            buffers.extend((x_d, tiles_d, logits_d, tile_values_d, tile_indices_d))
+            copy_host_to_device(x_d, host_array_ptr(x), x.nbytes)
+            copy_host_to_device(tiles_d, host_array_ptr(tiles), tiles.nbytes)
+            fn(
+                x_d.ptr,
+                tiles_d.ptr,
+                logits_d.ptr,
+                tile_values_d.ptr,
+                tile_indices_d.ptr,
+                in_features,
+                out_features,
+                library=q6_t16_library,
+            )
+            logits = np.empty(out_features, dtype=np.float32)
+            tile_values = np.empty(tile_count, dtype=np.float32)
+            tile_indices = np.empty(tile_count, dtype=np.int32)
+            for host, device in (
+                (logits, logits_d),
+                (tile_values, tile_values_d),
+                (tile_indices, tile_indices_d),
+            ):
+                copy_device_to_host(host_array_ptr(host), device, host.nbytes)
+            return logits, tile_values, tile_indices
+        finally:
+            for buffer in reversed(buffers):
+                free(buffer)
+
+    expected = run_stage1(
+        gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1,
+        legacy_tiles,
+    )
+    actual = run_stage1(
+        t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1,
+        qmicro_tiles,
+    )
+    for got, want in zip(actual, expected, strict=True):
+        np.testing.assert_array_equal(got, want)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

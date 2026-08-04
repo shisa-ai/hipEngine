@@ -206074,3 +206074,44 @@ Vulkan local sizes verbatim will close the measured gap.
   target head (**40.606 + 15.032 ms** hipEngine versus roughly **31.873 +
   9.170 ms** Vulkan); screen actual head c1/top1/F32-rowtile on GPU1 before any
   runtime ownership change.
+
+## 2026-08-05 — Admit planar-Q6 root-head consumers
+
+- Add FP32 c1, exact FP32 col8 rows2-4, and fused logits/tile-top1 consumers
+  for the existing byte-neutral `gguf_q6_k_t16_qmicro_planar_v1` layout. The
+  kernels preserve the legacy T16 K partition, FMA stream, wave reductions,
+  ordered four-wave sum, full-logit surface, and tie order; only record
+  addressing changes. Register both the primitive leaves and the exact
+  proposal adapter. This is component admission only: no materialization or
+  runtime owner changes in this unit.
+- The complete cached GPU1 kernel file passes **32 tests**. Synthetic c1,
+  rows2-4, and stage-1 logits/value/index outputs are bit-exact to legacy T16;
+  the inherited legacy-vs-CPU fixture remains the independent quality oracle.
+- Screen actual Qwen3.6-27B Q4_K_M `output.weight` at K5,120/N248,320 on the
+  Radeon RX 7900 XTX (`HIP_VISIBLE_DEVICES=1`) with 30 warmup pairs, 11
+  counterbalanced samples, and burst 3. Proposal top-1 improves event median
+  **1,522.920 -> 1,222.930 us (-19.698%, 1.2453x)**. Target FP32 rows 2/3/4
+  improve **1,897.909 -> 1,583.520 (1.1985x)**, **2,098.191 -> 1,772.295
+  (1.1839x)**, and **2,341.913 -> 1,823.175 us (1.2845x)**. Every cell wins
+  **11/11** event and wall pairs with zero FP32-logit, tile-value, tile-index,
+  or target-output mismatches. Each layout is byte-neutral at
+  **1,042,944,000 bytes**.
+- Screen command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3
+  /tmp/screen_qwen36_q6_qmicro_planar_root_head.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --samples 11 --warmup-pairs 30
+  --burst 3 --compiler-version-file
+  /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output
+  /tmp/qwen36-q6-qmicro-planar-root-head-gpu1.json`. Harness/result SHA-256s:
+  `03713829...99de53` / `55605ec1...28e52`.
+- Cache-only GPU1 `rocprofv3 --kernel-trace` over the c1-FP32, row4-FP32, and
+  top-1 nodes names all intended qmicro kernels at local128. FP32 c1/top-1/row4
+  use VGPR **96/96/80**, SGPR128, LDS **256/256/512 B**, scratch0, and plausible
+  fixture durations **9.040/14.960/21.760 us**. Trace DB SHA-256
+  `7b8859bd...e6b551e`.
+- Admit the leaf family. Next select the shape-qualified root layout through
+  the gfx1100 capability, make verifier rowtile selection registry-driven, and
+  require actual materialization, full B1-B3 transaction, and physical kernel
+  tracing before committing runtime ownership.
