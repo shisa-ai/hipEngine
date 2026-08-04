@@ -941,9 +941,37 @@ grid `(512,2)`, local32,
 VGPR72, SGPR128, LDS0, and scratch0. The binding W7900 B1-B3 transaction gate
 passes with natural provider/scalar agreement and complete reject/partial/full/
 rollback state, dynamic positions, correction, graph reuse, ownership, and
-teardown checks. This is a correctness-routed candidate only: the prior
-**43.240 tok/s / 2.1290x own-AR** row remains canonical until a clean profile
-and the full category/prefill quality gate pass.
+teardown checks.
+
+Clean W7900 measurement promotes the route. The one-prompt B3 trace replaces
+exactly **224 `ffn_down` + 168 `attn_qkv` dense-BF16 rowtiles** with the same
+number of Q6T16 rowtiles while all **56 narrow `attn_v` calls remain dense**.
+The wide family falls **104.936 -> 79.719 ms (-24.03%, 1.316x)**, target verify
+falls **494.991 -> 469.671 ms (-5.12%)**, complete marker wall falls **585.481
+-> 561.644 ms (-4.07%)**, and dispatches remain 8,055. Profile peak drops by
+the projected **4,849,008,640 bytes** exactly.
+
+On the full ten-prompt suite, true AR improves **20.310 -> 21.735 tok/s
+(+7.02%)** and B1/B2/B3 improve **30.719/38.627/43.240 ->
+33.456/40.067/44.886 tok/s (+8.91%/+3.73%/+3.81%)**. Every prompt-budget row
+and every full/train/heldout/category aggregate improves. MTP remains exactly
+greedy to candidate AR and GPU acceptance remains CPU-exact. Relative to the
+prior dense-BF16 route, **249/250 tokens agree**; the sole change is fluent
+Japanese `計画案` -> `計画書`. B1 keeps 115 accepted tokens while proposals fall
+128 -> 126; B2/B3 accepted/proposed totals are unchanged. B2/B3 own-AR ratios
+fall about 3% only because the shared AR denominator improves faster, so this
+is retained as a common-path absolute win rather than an MTP-ratio claim.
+
+Campaign-standard populated rows also improve. Median 512/4096 prefill rises
+**152.910/144.308 -> 202.011/188.765 tok/s (+32.11%/+30.81%)** and graph AR
+decode rises **19.565/18.701 -> 20.896/19.784 tok/s (+6.80%/+5.79%)**. All six
+final IDs remain `9707`, timing variation is at most 1.29%, and tracked peaks
+fall **26.123/28.947 -> 21.607/24.431 GiB**. Selected B3 is now **34.07%** below
+Vulkan. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json`.
+Re-rank only the `c44e32ff6` profile; the remaining dense Q5 `ssm_out` family
+is **37.372 ms**, while Q4 and the now-resident Q6T16 families remain larger
+arithmetic buckets.
 
 ---
 
@@ -956,10 +984,10 @@ and the full category/prefill quality gate pass.
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 reaches 152.910/144.308 tok/s and beats matched Vulkan |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; thirteen wins retained, exact B3 reaches 43.240 tok/s / 2.1290x AR |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O2-O3; dense BF16 prefill is queued AR target |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 established parity, selective Q6T16 now reaches 202.011/188.765 tok/s |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; common Q6T16 raises graph AR to 20.896/19.784 tok/s and Vulkan remains beaten |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; fourteen wins retained, quality-gated B3 reaches 44.886 tok/s / 2.0652x faster own AR |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `c44e32ff6`, with a 34.07% Vulkan B3 gap |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
