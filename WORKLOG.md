@@ -203856,3 +203856,31 @@ Vulkan local sizes verbatim will close the measured gap.
 - Kernel/marker/copy/summary/suite SHA-256s are `3cd2d541...ee0`,
   `b1ae1723...65a`, `d2cb8ec5...4b3c`, `24ab2f8f...d60`, and
   `4a129533...e5a6`. The Q4 component screen is `f1ec8c76...bc25`.
+
+### D27-O3 staged exact full attention — GREEN
+
+- RED adds a CPU scheduler boundary requiring dense c>1 native full-attention
+  rows with dynamic row scratches to invoke one staged owner. The intended RED
+  failed with `[scalar, scalar, scalar, scalar, ffn]` instead of
+  `[staged, ffn]`; dense eager/no-row-view, MoE, c1, split-decode, and non-BF16
+  cases remain required scalar fallbacks.
+- Add `_run_full_attention_attn_chain_rows_exact()`. It bulks exact attention
+  norm, Q, V, split, key cast, multi-position head RMSNorm/rotary, and output.
+  The measured-regressive narrow Q4 K projection deliberately remains one c1
+  launch per row. Each row then executes the unchanged BF16 `KVLiveSpans`
+  append, context attention, and gate in token order before the next row mutates
+  the shared cache. No kernel, buffer, env flag, or registry branch is added.
+- Structural CPU coverage proves Q/V/O are rows-shaped, K pointer offsets stay
+  scalar, and the serial call ledger is exactly
+  `[write, attention, gate] * rows`. It also proves dynamic-dense selection plus
+  eager, MoE, and c1 fallbacks. Focused results: staging scheduler/ledger
+  **3/3**; `tests/test_gguf_native_spec_cycle.py -k 'not graph_matches_eager_hidden_state_and_kv'`
+  **12/12**; full-attention norm/output/dispatch mock bundle **13/13**. Ruff,
+  py_compile, and diff checks pass.
+- Complete W7900 command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1**. B1-B3 full-logit controls, graph execution, reject/partial/full
+  selected Conv/GDN/KV/trunk-hidden commits, correction logits, positions 6/7/9
+  reuse, and natural provider output remain exact.
+- Freeze this correctness unit before clean natural25 timing. No speed claim is
+  inferred from the primitive screen or profile ceiling.
