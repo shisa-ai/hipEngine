@@ -1,0 +1,205 @@
+{
+  "schema": 1,
+  "status": "rejected_q5t16_q8_1_dp4a_ssm_out_rowreuse",
+  "performance_claim": false,
+  "performance_claim_scope": "GPU1 component-only actual-weight rows 2-4 admission screen; no runtime owner, resident sidecar, W7900 end-to-end benchmark, or scoreboard change.",
+  "correctness_claim": true,
+  "correctness_scope": "Every screened candidate is BF16-bit exact to the existing Q5T16 selected Q8_1/dp4a producer at the same launch width; actual-weight outputs pass the project KL/top-1 component gate versus retained dense BF16.",
+  "kind": "qwen36_27b_q5_ssm_out_t16_q8_1_dp4a_rowreuse_screen",
+  "timestamp": "2026-08-05T05:15:44+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor": "blk.0.ssm_out.weight",
+    "source_qtype": "Q5_K",
+    "shape": "K6144/N5120",
+    "production_tensor_count": 48
+  },
+  "hardware": {
+    "gpu_index": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "role": "component screening only"
+  },
+  "software": {
+    "base_commit": "064219ec6c27438ba029011fff59774d72e00cba",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "candidate_build_cache_key": "2d97abe82b583c8b",
+    "candidate_source_retained": false
+  },
+  "production_context": {
+    "authoritative_profile_commit": "a821d571b0b63e2158dd6b8f5c2f14e97eb563f8",
+    "complete_marker_wall_ms": 492.172453,
+    "ssm_out_family_ms": 37.315653,
+    "ssm_out_calls": 336,
+    "b3_cycles": 7,
+    "retained_owner": "dense_bf16",
+    "vulkan_ssm_out_ms": 15.12,
+    "canonical_natural25_b3_tok_s": 52.652369,
+    "vulkan_natural25_b3_tok_s": 68.082480
+  },
+  "residency": {
+    "per_tensor_dense_bf16_bytes": 62914560,
+    "per_tensor_q5_t16_bytes": 22118400,
+    "dense_bf16_total_bytes": 3019898880,
+    "q5_t16_total_bytes": 1061683200,
+    "projected_replacement_saving_bytes": 1958215680,
+    "note": "The projected replacement saving is rejected; no Q5T16 ssm_out allocation is retained."
+  },
+  "protocol": {
+    "activation": "deterministic synthetic BF16 rows, normal scale 0.55",
+    "quantization": "GGML-compatible Q8_1 activation blocks",
+    "dot": "RDNA3 __builtin_amdgcn_sudot4 over Q5T16 packed values",
+    "timing": "counterbalanced HIP-event bursts",
+    "geometry_screen": {
+      "samples": 7,
+      "warmup": 30,
+      "burst": 30,
+      "rows": [2, 3, 4],
+      "threads": [32, 64, 128],
+      "columns": [4, 8, 16],
+      "cases": 27
+    },
+    "final_adjudication": {
+      "samples": 11,
+      "warmup": 50,
+      "burst": 50,
+      "rows": [2, 3, 4],
+      "threads": [64, 128],
+      "columns": [8]
+    },
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-qwen36-27b-hipcc-version.txt",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "quality": {
+    "same_width_direct_bf16_mismatches_across_all_27_cases": 0,
+    "actual_max_kl_vs_dense": 0.00048912273943551,
+    "actual_min_top1_agreement": 1.0,
+    "actual_max_abs_delta": 0.09375,
+    "gate_passed": true
+  },
+  "geometry_screen_best_total_speedup_over_dense": [
+    {
+      "rows": 2,
+      "threads": 64,
+      "columns": 8,
+      "dense_event_us": 35.265601,
+      "quantize_plus_dot_event_us": 42.265634,
+      "speedup_over_dense": 0.834380,
+      "candidate_wins": "0/7"
+    },
+    {
+      "rows": 3,
+      "threads": 128,
+      "columns": 16,
+      "dense_event_us": 42.000365,
+      "quantize_plus_dot_event_us": 50.132402,
+      "speedup_over_dense": 0.837789,
+      "candidate_wins": "0/7"
+    },
+    {
+      "rows": 4,
+      "threads": 128,
+      "columns": 8,
+      "dense_event_us": 51.345766,
+      "quantize_plus_dot_event_us": 59.337835,
+      "speedup_over_dense": 0.865312,
+      "candidate_wins": "0/7"
+    }
+  ],
+  "final_col8": [
+    {
+      "rows": 2,
+      "threads": 64,
+      "dense_event_us": 33.926520,
+      "quantize_event_us": 3.557620,
+      "selected_direct_dot_event_us": 53.093119,
+      "candidate_dot_event_us": 39.852240,
+      "quantize_plus_dot_event_us": 44.098639,
+      "speedup_over_dense": 0.769333,
+      "candidate_wins": "1/11"
+    },
+    {
+      "rows": 2,
+      "threads": 128,
+      "dense_event_us": 33.833840,
+      "quantize_event_us": 3.510420,
+      "selected_direct_dot_event_us": 50.367541,
+      "candidate_dot_event_us": 39.369860,
+      "quantize_plus_dot_event_us": 42.852321,
+      "speedup_over_dense": 0.789545,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 3,
+      "threads": 64,
+      "dense_event_us": 39.909899,
+      "quantize_event_us": 3.475240,
+      "selected_direct_dot_event_us": 67.900519,
+      "candidate_dot_event_us": 46.871538,
+      "quantize_plus_dot_event_us": 49.959559,
+      "speedup_over_dense": 0.798844,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 3,
+      "threads": 128,
+      "dense_event_us": 41.853118,
+      "quantize_event_us": 3.616820,
+      "selected_direct_dot_event_us": 77.858181,
+      "candidate_dot_event_us": 49.590001,
+      "quantize_plus_dot_event_us": 53.064418,
+      "speedup_over_dense": 0.788723,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 4,
+      "threads": 64,
+      "dense_event_us": 49.897461,
+      "quantize_event_us": 3.636820,
+      "selected_direct_dot_event_us": 103.385639,
+      "candidate_dot_event_us": 55.549240,
+      "quantize_plus_dot_event_us": 59.039979,
+      "speedup_over_dense": 0.845147,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 4,
+      "threads": 128,
+      "dense_event_us": 51.668420,
+      "quantize_event_us": 4.016840,
+      "selected_direct_dot_event_us": 103.732862,
+      "candidate_dot_event_us": 55.328441,
+      "quantize_plus_dot_event_us": 58.250880,
+      "speedup_over_dense": 0.886998,
+      "candidate_wins": "0/11"
+    }
+  ],
+  "decision": {
+    "runtime_changed": false,
+    "repository_kernel_changed": false,
+    "resident_plan_changed": false,
+    "retained_owner": "dense_bf16",
+    "reason": "Row reuse makes the Q5T16 integer dot 1.28-1.87x faster than the existing row-separated control, but all 27 geometries and both final schedules still lose dense BF16. Even the best final prequantized dot is only 0.934x dense, and quantization lowers the best final total to 0.887x.",
+    "candidate_removed_after_rejection": true,
+    "q5_compressed_ownership_branch_closed": true,
+    "next_gate": "Do not retry Q5 ssm_out compression without a materially different representation or hardware primitive; re-rank the refreshed retained profile instead."
+  },
+  "commands": {
+    "geometry_screen": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/screen_qwen36_q5_ssm_out_t16_dp4a_rowreuse.py --rows 2,3,4 --threads 32,64,128 --columns 4,8,16 --samples 7 --warmup 30 --burst 30 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-q5-ssm-out-t16-dp4a-rowreuse-screen-gpu1.json",
+    "final": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/screen_qwen36_q5_ssm_out_t16_dp4a_rowreuse.py --rows 2,3,4 --threads 64,128 --columns 8 --samples 11 --warmup 50 --burst 50 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-q5-ssm-out-t16-dp4a-rowreuse-final-gpu1.json"
+  },
+  "raw_evidence_sha256": {
+    "candidate_patch": "814cdee5601270fdd6603645de575aff6a38ebd6c641af2167e519723458c0e8",
+    "harness": "349a07cd7838d37d991fad395a677375a1e74c1fa36d41e51101f5ffd2c1d499",
+    "geometry_screen": "0315614bdb836759bf586ad1dc99144299c84c60f5816a5657d0412456ddbf9a",
+    "final": "dbfcf003503f943a8e2cdcb17bbdfb3f9710b3fce0757e1d7eec36d2885c9e85"
+  }
+}
