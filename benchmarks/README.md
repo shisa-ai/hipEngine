@@ -4827,6 +4827,34 @@ zero. B3 remains selected at **1.9511x** own AR, but is still 41.67% below
 Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`](results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json).
 
+#### Qwen3.6-27B exact Q4 dual-rowtile SiLU cycle wall, W7900/gfx1100
+
+Clean hipEngine `98114138e` replaces two native-verifier K5,120/N17,408
+resident-pack8 rowtiles plus separate SiLU with one registered local64 leaf at
+rows 2-4. Separate waves reproduce the gate and up FMA/shuffle trees, publish
+the same BF16 projection values through 128 B LDS, and execute the unchanged
+BF16 SiLU expression. Every other row, shape, session, opt-out, or registry miss
+retains the unfused chain.
+
+A balanced production-shape W7900 leaf screen is byte-exact and improves
+chain -> fused event time by **1.1060x/1.1093x/1.1128x** at rows 2/3/4. The
+production B3 trace observes 448 fused launches, no legacy N17,408 rowtiles,
+and exactly **896 fewer graph dispatches**. Versus the pre-`ssm_out` compact
+profile, complete cycle wall falls **676.596 -> 662.705 ms (-2.053%)** and the
+queue-gap/copy-overlap bucket falls **192.822 -> 174.794 ms (-9.350%)**. The
+complete-window delta is explicitly compounded with the separately retained
+`ssm_out` specialization; the -896 dispatch delta is uniquely attributable to
+this fusion.
+
+The one-run natural25 packet is mixed: B1/B2/B3 measure
+**29.282/35.850/39.614 tok/s** (**+1.046%/+0.066%/-0.250%** versus the clean
+`ssm_out` baseline). Every selected-B3 aggregate scope is noise-negative by
+only **0.060-0.368%**, while IDs, acceptance, state, tracked peak
+(**28.996 GiB**), and teardown remain exact. Retain the exact default for its
+same-device leaf, launch-count, queue-gap, and cycle-wall evidence, but do not
+advance the canonical **39.714 tok/s / 1.9511x own-AR** headline. Artifact:
+[`2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`](results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -4991,6 +5019,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact staged full attention](results/2026-08-04-qwen36-27b-staged-full-attention-retained.json),
 [Qwen3.6-27B exact compact proposal scoring](results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json),
 [Qwen3.6-27B exact dense `ssm_out` local128 rowtile](results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json),
+[Qwen3.6-27B exact Q4 dual-rowtile SiLU cycle wall](results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
