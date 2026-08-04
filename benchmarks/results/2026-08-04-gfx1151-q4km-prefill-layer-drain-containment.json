@@ -174,7 +174,7 @@
     "default_changed": false,
     "qualified_use": "Explicit --prefill-queue-drain layer for a slower bounded-submission path when avoiding the intermittent 128K failure is more important than prefill throughput.",
     "not_claimed": "This finite intermittent-failure matrix does not prove zero future incidence, identify root cause, close ROCm/ROCm#6437, or qualify the default no-drain 128K row.",
-    "next": "Prefer a fixed-kernel enable_lr_compute_wa A/B, including the original default-queue reproducer and the one-queue production gate."
+    "next": "Do not restore the removed enable_lr_compute_wa workaround. The captured kernel already runs the replacement gfx1151 VGPR-size fix; keep layer drain explicit while ROCm/ROCm#6437 remains open, and rerun both queue policies only for a later named relevant stack fix."
   },
   "raw_sha256": {
     "control_none_512_json": "4385e7e0a8cc17ce53debb06a87e4cfbfe1ec613fc4eda2e05d22af79248771d",

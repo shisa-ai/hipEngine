@@ -59,9 +59,11 @@ small-batch O-projection contiguization belong in a future DeepSeek V4 plugin.
 
 The Vulkan command-buffer byte cap is not portable to HIP. Its robustness
 principle is relevant to the open repeated-128K stall, but hipEngine already has
-bounded chunk/layer host-drain diagnostics. The next 128K priority remains an
-updated-kernel A/B with MES `lr_compute_wa`, not another application submission
-heuristic.
+a qualified opt-in layer drain. A follow-up kernel audit rejects the former MES
+`lr_compute_wa` A/B: upstream removed that incomplete workaround because it
+caused instability and identified the gfx1151 VGPR-size correction as the real
+fix. The captured kernel already has that correction active, so its stall is not
+a missing-`lr_compute_wa` configuration mismatch.
 
 ## Source and evidence quality
 
@@ -230,7 +232,7 @@ Status meanings:
 
 | Nathan change | Source evidence | hipEngine status | Decision |
 | --- | --- | --- | --- |
-| Bound Vulkan command buffers by estimated bytes | The fork defaults to an 8-GiB traffic cap ([`e709b94`, lines 6628-6631](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L6628-L6631)) and submits when accumulated bytes cross it ([line 17967](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L17967)). | **Backend-specific, analogous issue only.** HIP/AQL submission has no llama.cpp Vulkan command-buffer batching layer. hipEngine has default-off chunk/layer `hipStreamSynchronize` drains. | Do not emulate byte estimates in Python. First test the upstream MES long-compute workaround; use layer drain only as diagnostic containment. |
+| Bound Vulkan command buffers by estimated bytes | The fork defaults to an 8-GiB traffic cap ([`e709b94`, lines 6628-6631](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L6628-L6631)) and submits when accumulated bytes cross it ([line 17967](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L17967)). | **Backend-specific, analogous issue only.** HIP/AQL submission has no llama.cpp Vulkan command-buffer batching layer. hipEngine has an exact, qualified, default-off layer `hipStreamSynchronize` containment path. | Do not emulate byte estimates in Python and do not restore the rejected MES workaround. Keep layer drain explicit while ROCm/ROCm#6437 remains open. |
 | Bound FA scratch and fall back when it cannot remain resident | [`e21d01e`, lines 10545-10562](https://github.com/Nathanw1014/llama.cpp/blob/e21d01ed4ddb4eb0193c148daa2569972bcfd115/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10545-L10562) turns an oversized Vulkan storage-buffer abort into fallback. [`8a2c6b2`, lines 10778-10834](https://github.com/Nathanw1014/llama.cpp/blob/8a2c6b29c45bf0346ad9dde6a0ae1b38ac005b13/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10778-L10834) adds a discrete-VRAM residency gate; the commit explicitly exempts UMA. | **Transfer the guard, not the Vulkan policy.** gfx1151 is UMA, HIP has no `maxStorageBufferRange`, and Nathan's discrete-heap reserve heuristic does not map directly. The proposed BF16 contiguity scratch still needs bounded tracked allocation and an exact existing-path fallback. | If scratch allocation/capacity admission fails, use strided AOTriton or native paged attention rather than aborting or overcommitting. Record high-water; do not port `GGML_VK_FA_DEQUANT_RESERVE_MB`. |
 | `amd_iommu=off` | Toolbox reports a modest prefill effect and a DMA-isolation tradeoff ([README line 48](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L48)). | **Already exercised.** Current gfx1151 publication uses IOMMU-off but correctly says cross-revision deltas are not causal; XDNA is unavailable in this boot. | No engine change. A causal claim still needs a same-commit reboot A/B. |
 | Verify the actual GPU backend | `v0.2` fixed silent CPU fallback; the README requires checking the backend column ([README lines 86-90](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L86-L90)). | **Present process rule.** hipEngine artifacts record backend/arch and kernel traces verify expected symbols. | Keep explicit backend/arch and trace evidence in every retained benchmark. |
@@ -323,17 +325,34 @@ single opaque retirement boundary. They act at different layers:
   drains without replacing the runtime.
 
 The open hipEngine capture has an active non-empty compute queue with unread AQL
-packets and no reported HQD error. The strongest current lead is the kernel's
-missing MES `enable_lr_compute_wa` resource bit. Therefore the order remains:
+packets and no reported HQD error. Follow-up upstream and live-kernel evidence
+changes the former system recommendation:
 
-1. update/patch the kernel and run a fixed-stack `lr_compute_wa` A/B;
-2. if needed, run the declared `--prefill-queue-drain layer` containment gate;
-3. only then consider finer application batching, with measured cost and no
-   claim that it fixes firmware/driver root cause.
+1. [`1fb710793ce2`](https://github.com/torvalds/linux/commit/1fb710793ce2619223adffaf981b1ff13cd48f17)
+   introduced `enable_lr_compute_wa`, but upstream later said it did not fully
+   fix gfx1151 hangs.
+2. [`b42f3bf9536c`](https://github.com/torvalds/linux/commit/b42f3bf9536c9b710fd1d4deb7d1b0dc819dc72d)
+   corrected gfx1151's KFD VGPR-size accounting from the generic 256 KiB to
+   384 KiB per CU.
+3. [`6b0d81297137`](https://github.com/torvalds/linux/commit/6b0d812971370c64b837a2db4275410f478272fe)
+   removed `lr_compute_wa`, explicitly citing incomplete efficacy and
+   instability on other products.
+4. The exact captured CachyOS source includes gfx1151 in the 384-KiB branch
+   ([`kfd_queue.c` lines 412-427](https://github.com/CachyOS/linux/blob/0e558f948dfe28b50d2eb9ddda58900d7de01aac/drivers/gpu/drm/amd/amdkfd/kfd_queue.c#L412-L427)),
+   and the running KFD topology reports `cwsr_size=19185664`, exactly the value
+   computed with that correction rather than the old `13942784` value.
 
-A single successful 128K pass is not closure; the declared gate is at least
-three independent warmup+3 processes with exact IDs, finite logits, normal
-telemetry, and clean logs.
+Therefore do **not** patch or test `lr_compute_wa`. The actual upstream fix was
+already active when this workload stalled, so ROCm/ROCm#6437 remains a distinct
+or incompletely fixed queue-retirement problem. Keep the qualified
+`--prefill-queue-drain layer` path explicit/default-off. Only test a newer
+kernel when it contains a relevant additional fix or as an approved broad
+system screen; only consider finer application batching with measured cost and
+without a firmware/driver root-cause claim.
+
+A single successful 128K pass is not closure; any future default-path stack gate
+still requires at least three independent warmup+3 processes with exact IDs,
+finite logits, normal telemetry, and clean logs.
 
 ## Future DeepSeek V4 plugin checklist
 
@@ -359,8 +378,11 @@ as `if model == deepseek4` or backend conditionals in generic dispatch.
 1. **P0 — completed 2026-08-04:** head-contiguous BF16 AOTriton prefill scratch
    is the bounded gfx1151 default after exact copy-inclusive 32K/64K gains of
    **3.383%/7.001%**; see the execution update and artifact above.
-2. **P0 — independent system lane:** test the kernel MES `lr_compute_wa` fix for
-   repeated 128K before promoting host drains.
+2. **P0 — completed/rejected 2026-08-04:** do not enable MES
+   `lr_compute_wa`. Upstream removed the incomplete, destabilizing workaround;
+   the captured kernel already has the replacement gfx1151 VGPR-size fix active
+   and nevertheless reproduced. Keep the qualified layer drain opt-in while the
+   upstream issue remains open.
 3. **P1 — maintain:** keep grouped-GQA INT8 decode and expert row-list metadata
    covered by structural and profiler tests; these Nathan ideas are already in
    hipEngine.

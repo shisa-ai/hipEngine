@@ -75,14 +75,17 @@ result is posted to ROCm/ROCm#6437. The machine has been restored and verified
 on `sched_policy=0`. A legacy-interposition or streaming rocprofiler retry
 remains lower priority.
 
-The strongest new stack lead is upstream Linux commit
-[`1fb710793ce2`](https://github.com/torvalds/linux/commit/1fb710793ce2619223adffaf981b1ff13cd48f17),
-which enables the MES `lr_compute_wa` resource bit specifically to prevent hangs
-on long compute jobs. The exact CachyOS source used by the captured
-`7.1.3-2-cachyos` kernel sets the oversubscription timer but does **not** set
-`enable_lr_compute_wa`; MES `0x88` satisfies upstream's gfx11 minimum firmware
-check. This is a concrete kernel/configuration mismatch and the leading fixed-
-stack A/B candidate, not proof that it caused the captured stall.
+A follow-up kernel audit rejects the former `lr_compute_wa` lead. Upstream
+[`6b0d81297137`](https://github.com/torvalds/linux/commit/6b0d812971370c64b837a2db4275410f478272fe)
+removed that workaround after finding it did not fully fix gfx1151 and could
+cause instability on other products. Upstream identifies
+[`b42f3bf9536c`](https://github.com/torvalds/linux/commit/b42f3bf9536c9b710fd1d4deb7d1b0dc819dc72d),
+which corrects gfx1151 KFD VGPR-size accounting, as the actual fix. The exact
+captured CachyOS source contains both the correction and the intentional
+workaround removal. Live KFD topology reports `cwsr_size=19185664`, exactly the
+corrected 384-KiB-per-CU value rather than the old `13942784`. The stall
+therefore reproduced with the upstream actual fix active; do **not** restore or
+A/B the removed MES workaround.
 
 hipEngine now has an explicit default-off `layer`/`chunk` host-drain diagnostic.
 `layer` synchronizes the caller stream after each completed model layer and is
@@ -164,7 +167,7 @@ The main evidence set uses:
 | Queue policy | `GPU_MAX_HW_QUEUES=1` unless a row explicitly says default/four; this does not mean only one KFD queue object |
 | Primary stalled-HQD scheduler policy | `sched_policy=0` (hardware scheduling enabled); the rejected non-HWS follow-up used `2` |
 | CWSR | `cwsr_enable=1` |
-| MES long-running-compute workaround | Exact kernel source does not submit `enable_lr_compute_wa`; MES `0x88` is new enough for the upstream gfx11 check |
+| gfx1151 long-compute kernel status | Exact source and live `cwsr_size=19185664` prove the replacement 384-KiB/CU VGPR accounting fix is active; `enable_lr_compute_wa` is intentionally absent after upstream removed it for incomplete efficacy and cross-product instability |
 
 Relevant values on the primary stalled-HQD MES-debug boot were:
 
@@ -343,7 +346,8 @@ compact evidence is
 | Jul 16 | MES-log boot plus stalled HQD | First 128K prefill stops at cursor 389/339; 36 samples hold 100%/2.9 GHz/median 43 W; active 1 MiB HQD has 32 unread AQL packets and zero error/dequeue state; MES-log bytes change only during teardown | Direct mapped-queue backlog evidence; debug parameters are not a workaround, while one HQD sample and an undecoded MES buffer still do not name the failed packet/component |
 | Jul 16 | AMD oversubscription-timer / stream-topology audit | Exact CachyOS source submits timer 50; no override; failing prefill uses one application thread and default stream 0; experimental AOTriton stream is off | Disabled timer and current application multistream submission are not supported as necessary triggers; firmware field still lacks live readback |
 | Jul 16 | Non-HWS `sched_policy=2` boot | Exact 512/1 passes before and after; intervening 128K process aborts before prefill with CPF gfxhub fault at ring 24 / VMID 8 / PASID 31; coredump reaches `AqlQueue::ExecutePM4` during code-cache invalidation | Reject policy 2 on this stack; no conclusion about the original HWS stall because 128K never reaches prefill |
-| Aug 4 | Per-layer host-drain containment | Exact matched 512/4K/64K costs -1.79%/-0.24%/-0.86% prefill; three independent 128K warmup+3 processes complete 12/12 prefills with exact IDs, finite logits, normal telemetry, clean AMDGPU/KFD logs, and full cleanup | Qualifies an explicit slower containment path; underlying default-path stack bug remains open and the fixed-kernel `lr_compute_wa` A/B remains preferred |
+| Aug 4 | Per-layer host-drain containment | Exact matched 512/4K/64K costs -1.79%/-0.24%/-0.86% prefill; three independent 128K warmup+3 processes complete 12/12 prefills with exact IDs, finite logits, normal telemetry, clean AMDGPU/KFD logs, and full cleanup | Qualifies an explicit slower containment path; underlying default-path stack bug remains open |
+| Aug 4 | Kernel-fix chronology and live CWSR audit | Upstream removed incomplete `lr_compute_wa` and names gfx1151 VGPR-size correction `b42f3bf9536c` as the actual fix; captured source contains it, and live topology is exactly corrected at `19185664` bytes rather than old `13942784` | Reject restoring/testing the removed workaround; the captured stall survives the actual upstream fix |
 
 ## Flight-recorder localization
 
@@ -409,9 +413,10 @@ the tested protocol.” It does not mean the component can never affect incidenc
 Evidence supporting this interpretation:
 
 - queue count materially changes initial incidence;
-- upstream Linux added `enable_lr_compute_wa` specifically for long-compute MES
-  hangs, while the exact captured-kernel source omits that resource bit despite
-  MES `0x88` meeting the upstream firmware-version check;
+- upstream's initial `enable_lr_compute_wa` did not fully fix gfx1151 and was
+  removed for cross-product instability; upstream instead identifies the
+  gfx1151 KFD VGPR-size correction as the actual fix, and exact source plus the
+  running `cwsr_size` prove that correction was active during reproduction;
 - AMD has publicly described the gfx11 fix as still under development in
   [ROCm#5107](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4800268515),
   with a [nearby follow-up](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4847244516)
@@ -1026,8 +1031,11 @@ The layer-drain gate satisfies the repeated lifecycle, correctness, telemetry,
 log, mechanism, and rollback requirements but is measurably slower at all three
 control shapes. It is therefore qualified as an explicit opt-in containment
 path rather than promoted to the default or used to close the upstream bug.
-The fixed-kernel `enable_lr_compute_wa` A/B remains the preferred closure path.
+Do not restore or test `enable_lr_compute_wa`: upstream removed it after finding
+it incomplete and destabilizing, and the captured stack already runs the
+replacement gfx1151 VGPR-size correction.
 
-For an upstream fix, rerun both the original default-queue reproducer and the
-one-queue production gate. Preserve the pre-fix KFD/MES evidence and report the
-exact fixed kernel and firmware hashes.
+For a future upstream fix, rerun both the original default-queue reproducer and
+the one-queue production gate. Preserve the prior KFD/MES evidence and report
+the exact fixed kernel and firmware hashes. A broad distribution-kernel update
+without a named relevant fix is a system screen, not a causal fix A/B.
