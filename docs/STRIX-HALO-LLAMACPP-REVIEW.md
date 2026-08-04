@@ -138,6 +138,19 @@ The normal performance path already follows the useful part of Nathan's
 - pure/no-mirror GGUF INT8 is not the default because it failed the project
   quality gate on relevant prompts.
 
+The 2026-08-04 execution audit preserves this split. Current PARO `auto` policy
+keeps the BF16-oracle/AOTriton bridge below 224 Ki tokens and on larger-memory
+systems even above that threshold; direct streaming requires both very-long
+context and memory pressure, or an explicit diagnostic override. GGUF retained
+INT8 prefill continues to write layer-local BF16 attention-oracle K/V separately
+from retained INT8 K/V. A new structural guard proves that replacing the layer's
+primary K/V with this oracle preserves the admitted gfx1151 head-major scratch,
+so the bounded 64K AOTriton consumer from priority 1 applies without an INT8-
+specific route. Fresh host/policy coverage and the gfx1151 direct-INT8 NumPy
+primitive gate pass. The retained 128K evidence still shows direct streaming
+prefill regressing **1020.723 -> 23.425 tok/s (-97.7%)**, so no new performance
+run or promotion is warranted.
+
 The decode kernel is already grouped by KV head. In
 [`qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel`](../hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip),
 one workgroup owns one `(kv_head, split)`, loads/dequantizes K/V once, and loops
@@ -390,8 +403,12 @@ as `if model == deepseek4` or backend conditionals in generic dispatch.
    order, MMQ tile maps, packed hidden, edge cases, and profiler topology; their
    full GPU bundle remains green after refreshing only an orthogonal gfx1151
    package hash.
-4. **P1 — quantized KV:** retain the fast BF16 prefill bridge; do not promote the
-   severe-regression direct streaming INT8 prefill merely to remove scratch.
+4. **P1 — completed 2026-08-04:** retain the fast BF16 prefill bridge; current
+   policy keeps direct streaming INT8 limited to explicit diagnostics or
+   very-long memory-pressure fallback. Fresh route/GPU gates pass, and the GGUF
+   layer-local BF16 oracle now has an explicit guard proving it retains the
+   bounded gfx1151 head-major AOTriton scratch. Do not promote the measured
+   **-97.7%** 128K direct-streaming path merely to remove scratch.
 5. **P2 — future model:** use the DeepSeek V4 indexer/sparse/gather/HC commits as
    implementation references when a DSv4 plugin is approved.
 6. **No action:** Vulkan P/Psh source edits, persistent head-major KV before the
