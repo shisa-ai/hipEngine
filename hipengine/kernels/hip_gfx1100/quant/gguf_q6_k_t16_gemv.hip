@@ -10,6 +10,8 @@
 namespace {
 
 using half_t = _Float16;
+typedef half_t __attribute__((ext_vector_type(16))) half16_t;
+typedef float __attribute__((ext_vector_type(8))) float8_t;
 
 constexpr int QK_K = 256;
 constexpr int T16_COLS = 16;
@@ -68,6 +70,30 @@ __device__ inline float scalar_to_float(scalar_t v) {
 template <>
 __device__ inline float scalar_to_float<uint16_t>(uint16_t v) {
   return bf16_bits_to_float(v);
+}
+
+__device__ inline float8_t zero_float8() {
+  return float8_t{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+}
+
+__device__ inline half16_t load_bf16_row_half16(
+    const uint16_t* __restrict__ x,
+    int64_t row,
+    int64_t in_features,
+    int64_t k_base,
+    bool valid_row) {
+  half16_t out;
+  if (valid_row) {
+    const uint16_t* __restrict__ values = x + row * in_features + k_base;
+#pragma unroll
+    for (int i = 0; i < 16; ++i) {
+      out[i] = static_cast<half_t>(bf16_bits_to_float(values[i]));
+    }
+  } else {
+#pragma unroll
+    for (int i = 0; i < 16; ++i) out[i] = static_cast<half_t>(0.0f);
+  }
+  return out;
 }
 
 template <typename out_t>
@@ -155,6 +181,70 @@ __global__ __launch_bounds__(128, 4) void q6_k_t16_gemv_kernel(
       float total = 0.0f;
       for (int g = 0; g < sub_groups; ++g) total += xchg[g * T16_COLS + col];
       out_row[col] = float_to_output<out_t>(total);
+    }
+  }
+}
+
+// Dense prefill owner over the same Q6T16 bytes. One wave32 block computes a
+// 16x16 output tile. Its arithmetic is the one-expert specialization of the
+// registered selected-Q6T16 direct WMMA producer; c=1 and small-B retain the
+// GEMV/rowtile fallbacks above.
+__global__ __launch_bounds__(32, 2)
+void q6_k_t16_wmma_prefill_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t col_tile = blockIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 16;
+  const int lane16 = threadIdx.x & 15;
+  const int half_id = threadIdx.x >> 4;
+  const int64_t input_row = row_base + lane16;
+  const bool valid_row = input_row < rows;
+  const int64_t out_col = col_tile * T16_COLS + lane16;
+  const int64_t blocks_per_row = in_features / QK_K;
+
+  float8_t acc = zero_float8();
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile =
+        tiles + (col_tile * blocks_per_row + blk) * Q6_T16_BLOCK_BYTES;
+    const float d = fp16_bytes_to_float(
+        tile + Q6_T16_D_OFFSET + lane16 * 2);
+    const int8_t* __restrict__ scales =
+        reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+    const int64_t block_k_base = blk * QK_K;
+#if defined(__gfx1100__)
+#pragma unroll 1
+#else
+#pragma unroll
+#endif
+    for (int kt = 0; kt < Q6_GROUPS16; ++kt) {
+      const int k_in_block = kt * 16;
+      const half16_t a = load_bf16_row_half16(
+          x,
+          valid_row ? input_row : 0,
+          in_features,
+          block_k_base + k_in_block,
+          valid_row);
+      const float scale = d * static_cast<float>(
+          scales[kt * T16_COLS + lane16]);
+      half16_t b;
+#pragma unroll
+      for (int kk = 0; kk < 16; ++kk) {
+        const int q = t16_q6_quant(tile, k_in_block + kk, lane16);
+        b[kk] = static_cast<half_t>(scale * static_cast<float>(q));
+      }
+      acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, acc);
+    }
+  }
+
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t out_row = row_base + half_id + j * 2;
+    if (out_row < rows) {
+      out[out_row * out_features + out_col] = float_to_bf16_bits(acc[j]);
     }
   }
 }
@@ -269,6 +359,38 @@ int launch_q6_t16(const void* x,
   hipLaunchKernelGGL((q6_k_t16_gemv_kernel<scalar_t, out_t>), grid, block, 0, stream,
                      reinterpret_cast<const scalar_t*>(x), reinterpret_cast<const uint8_t*>(tiles),
                      reinterpret_cast<out_t*>(out), rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+int launch_q6_t16_wmma_prefill(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>((rows + 15) / 16));
+  hipLaunchKernelGGL(
+      q6_k_t16_wmma_prefill_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<uint16_t*>(out),
+      rows,
+      in_features,
+      out_features);
   return hipGetLastError();
 }
 
@@ -429,6 +551,13 @@ int launch_q6_t16_rowtile(const void* x,
 }
 
 }  // namespace
+
+extern "C" int hipengine_gguf_q6_k_t16_wmma_prefill_bf16_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_t16_wmma_prefill(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
 
 extern "C" int hipengine_gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
     const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,

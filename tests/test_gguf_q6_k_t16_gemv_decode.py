@@ -11,6 +11,10 @@ import pytest
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant import gguf_q6_k_t16_gemv as t16_mod
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    build_gguf_k_t16_selected_prefill,
+    gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     build_gguf_q6_k_t16_gemv,
     gguf_q6_k_t16_gemv_decode_bf16_f32_out,
@@ -40,6 +44,13 @@ def q6_t16_library():
     if not HIP_AVAILABLE:
         pytest.skip("HIP runtime is not available")
     return build_gguf_q6_k_t16_gemv(load=True)
+
+
+@pytest.fixture(scope="module")
+def q6_t16_selected_prefill_library():
+    if not HIP_AVAILABLE:
+        pytest.skip("HIP runtime is not available")
+    return build_gguf_k_t16_selected_prefill(load=True)
 
 
 def _f32_to_bf16_u16(arr: np.ndarray) -> np.ndarray:
@@ -87,6 +98,24 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_v1",
         variant="proposal_top1_exact_bf16",
     ) is not None
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_v1",
+        variant="t16_gemv_rowtile_bf16_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out
+    dense_wmma = getattr(
+        t16_mod,
+        "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
+        None,
+    )
+    assert dense_wmma is not None
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_v1",
+        variant="t16_wmma_prefill_bf16_bf16_out",
+    ) is dense_wmma
 
 
 def test_q6_t16_proposal_top1_adapter_uses_tiles_and_half_vocab_blocks(
@@ -183,6 +212,115 @@ def test_p9_h3_q6_t16_bf16_f32_matches_cpu_oracle(rows, in_features, out_feature
 
     expected = gguf_quant_gemv(x_ref, qweight, GGMLQuantizationType.Q6_K)
     np.testing.assert_allclose(actual, expected, atol=1.0e-3, rtol=5.0e-3)
+
+
+def _run_selected_q6_t16_direct(
+    x: np.ndarray,
+    tiles: np.ndarray,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    library,
+) -> np.ndarray:
+    padded_rows = ((rows + 15) // 16) * 16
+    host_metadata = (
+        np.array([0, rows], dtype=np.int64),
+        np.array([0, padded_rows], dtype=np.int64),
+        np.zeros(padded_rows // 16, dtype=np.int64),
+    )
+    buffers = []
+    try:
+        x_buf = malloc(x.nbytes)
+        tiles_buf = malloc(tiles.nbytes)
+        out = np.zeros((rows, out_features), dtype=np.uint16)
+        out_buf = malloc(out.nbytes)
+        buffers.extend((x_buf, tiles_buf, out_buf))
+        copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
+        copy_host_to_device(tiles_buf, host_array_ptr(tiles), tiles.nbytes)
+        metadata = []
+        for host in host_metadata:
+            device = malloc(host.nbytes)
+            buffers.append(device)
+            metadata.append(device)
+            copy_host_to_device(device, host_array_ptr(host), host.nbytes)
+        gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out(
+            x_buf.ptr,
+            metadata[0].ptr,
+            metadata[1].ptr,
+            metadata[2].ptr,
+            tiles_buf.ptr,
+            out_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            1,
+            padded_rows,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out), out_buf, out.nbytes)
+        return out
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_dense_wmma_prefill_passes_cpu_quality_gate(
+    q6_t16_library,
+    q6_t16_selected_prefill_library,
+) -> None:
+    rows, in_features, out_features = 17, 512, 256
+    rng = np.random.default_rng(0x3627)
+    qweight = make_q6_k_weight(out_features, in_features)
+    tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+    x_ref = _bf16_u16_to_f32(x_bf16)
+    dense_wmma = getattr(
+        t16_mod,
+        "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
+        None,
+    )
+    assert dense_wmma is not None
+
+    actual_bits = _run_single(
+        dense_wmma,
+        x_bf16,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    selected_bits = _run_selected_q6_t16_direct(
+        x_bf16,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        q6_t16_selected_prefill_library,
+    )
+    actual = _bf16_u16_to_f32(actual_bits)
+    expected = gguf_quant_gemv(x_ref, qweight, GGMLQuantizationType.Q6_K)
+
+    np.testing.assert_array_equal(actual_bits, selected_bits)
+    np.testing.assert_allclose(actual, expected, atol=3.0e-1, rtol=1.2e-2)
+    kls = [_stable_kl(expected[row], actual[row]) for row in range(rows)]
+    top1 = np.mean(np.argmax(expected, axis=1) == np.argmax(actual, axis=1))
+    assert max(kls) <= 0.05
+    assert top1 >= 0.90
+
+
+def _stable_kl(reference: np.ndarray, candidate: np.ndarray) -> float:
+    ref = reference.astype(np.float64)
+    got = candidate.astype(np.float64)
+    ref -= np.max(ref)
+    got -= np.max(got)
+    ref_lse = np.log(np.sum(np.exp(ref)))
+    got_lse = np.log(np.sum(np.exp(got)))
+    probabilities = np.exp(ref - ref_lse)
+    return float(np.sum(probabilities * ((ref - ref_lse) - (got - got_lse))))
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

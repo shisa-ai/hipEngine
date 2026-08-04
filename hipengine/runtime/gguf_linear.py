@@ -180,8 +180,8 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q8_0": 32,
     "gguf_q4_k": 256,
     "gguf_q6_k": 256,
-    # P10.B4: Q8T16 dense WMMA prefill consumes T16 tiles with 32 K-values
-    # per tile slab. Same block alignment as raw Q8_0.
+    # Dense T16 WMMA consumers keep the source quant's K-block alignment.
+    "gguf_q6_k_t16_v1": 256,
     "gguf_q8_0_t16_v1": 32,
 }
 
@@ -476,6 +476,10 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     (LAYOUT_DENSE_F32, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out"),
         "dense_bf16",
+    ),
+    (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
+        "t16",
     ),
     (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_f32_out"),
@@ -2984,9 +2988,23 @@ def _native_batch_decode_dispatch(
     *,
     rows: int,
 ) -> GGUFLinearDispatch:
-    """Select the exact raw pack8 GEMV family for compact c=2/4/8 decode."""
+    """Select registered compact c=2..8 native projection families."""
 
     if not _native_batch_decode_session_enabled or rows <= 1 or rows > 8:
+        return dispatch
+    if (
+        dispatch.abi == "t16"
+        and rows <= 6
+        and dispatch.key.variant == "t16_gemv_decode_bf16_bf16_out"
+    ):
+        rewritten_key = KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            "t16_gemv_rowtile_bf16_bf16_out",
+        )
+        if is_registered(rewritten_key):
+            return GGUFLinearDispatch(rewritten_key, dispatch.abi)
         return dispatch
     if dispatch.abi != "raw" or dispatch.key.quant != "gguf_q6_k":
         return dispatch

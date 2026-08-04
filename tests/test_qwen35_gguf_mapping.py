@@ -13,6 +13,11 @@ from hipengine.loading.qwen35_gguf import (
     required_qwen35_gguf_tensor_names,
     validate_qwen35_gguf_tensor_map,
 )
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q6_K_T16,
+    plan_qwen35_gguf_materialization,
+)
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -122,6 +127,46 @@ def test_qwen36_dense_untied_gguf_tensor_map_uses_output_weight() -> None:
     assert set(model_map.tensor_names) == {
         tensor.name for tensor in info.tensors if not tensor.name.startswith("blk.64.")
     }
+
+
+def test_qwen36_dense_decode_repack_replaces_only_wide_rank2_q6() -> None:
+    if not DENSE_UNTIED_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {DENSE_UNTIED_MODEL}")
+    reader = GGUFReader(DENSE_UNTIED_MODEL)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+
+    legacy = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
+    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=True)
+    legacy_by_slot = {spec.slot_path: spec for spec in legacy.specs}
+    plan_by_slot = {spec.slot_path: spec for spec in plan.specs}
+
+    wide_slots = {
+        spec.slot_path
+        for spec in plan.specs
+        if spec.slot_path.startswith("layers.")
+        and spec.source.ggml_type_name == "Q6_K"
+        and spec.layout == LAYOUT_GGUF_Q6_K_T16
+    }
+    assert sum(slot.endswith(".ffn_down") for slot in wide_slots) == 32
+    assert sum(slot.endswith(".attn_qkv") for slot in wide_slots) == 24
+    assert len(wide_slots) == 56
+    for slot in wide_slots:
+        spec = plan_by_slot[slot]
+        assert spec.quant_key == "gguf_q6_k_t16_v1"
+        assert spec.allocation_names == ("tiles",)
+        assert legacy_by_slot[slot].layout == LAYOUT_DENSE_BF16
+        assert legacy_by_slot[slot].allocation_names == ("raw",)
+
+    narrow_v = [
+        spec
+        for spec in plan.specs
+        if spec.slot_path.endswith(".attn_v")
+        and spec.source.ggml_type_name == "Q6_K"
+    ]
+    assert len(narrow_v) == 8
+    assert all(spec.layout == LAYOUT_DENSE_BF16 for spec in narrow_v)
+    assert all(spec.quant_key == "gguf_q6_k" for spec in narrow_v)
+    assert all(spec.allocation_names == ("raw",) for spec in narrow_v)
 
 
 def test_qwen35_gguf_tensor_map_reports_missing_tensor() -> None:
