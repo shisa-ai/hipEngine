@@ -204389,3 +204389,68 @@ Vulkan local sizes verbatim will close the measured gap.
   MTP/AR improve at every budget, and every aggregate scope is non-regressive.
   B3 remains selected but is still **41.67%** below Vulkan B3. Artifact:
   `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`.
+
+### D27-O3 exact Q4 gate/up rowtile plus SiLU fusion admission
+
+- Re-rank the authoritative post-compact B3 trace after retaining the tiny dense
+  `ssm_out` schedule. Q4 rowtiles remain first at **189.267227 ms / 27.97%**
+  of 676.596-ms complete wall. The already-rejected two-output-pack schedule
+  closes column widening; the materially distinct launch seam is dense FFN
+  gate/up plus SiLU.
+- Across seven profiled B3 cycles, N17,408 gate/up accounts for **896 rowtile
+  launches / 109.866020 ms** and target SiLU contributes an estimated **448
+  launches / 0.818378 ms**. One local64 block can assign one retained local32
+  rowtile wave to each projection, round both results to BF16 in shared memory,
+  then execute the existing `g * sigmoid(g) * u` formula. It removes two of
+  three launches per layer without changing either projection's K/FMA/wave
+  tree, the BF16 boundary, weights, or workspace.
+- `ceiling_ms = 110.684398` (**16.36%** complete wall); proportional graph
+  queue-gap opportunity from removing **896 / 14,663 dispatches** is
+  **11.782637 ms**, plus **0.818378 ms** SiLU kernel time;
+  `expected_saved_ms = 6-12.6` (**0.89-1.86%** complete wall);
+  `engineering/risk = medium`. This below-floor candidate is admitted only as
+  an exact fusion in the still-open dominant family. A registry-only GPU1
+  screen must beat two rowtiles plus separate SiLU at rows 2/3/4 on the real
+  K5,120/N17,408 role; any losing row removes the candidate before routing.
+- Preflight: HIP loads and both gfx1100 devices are visible. The required
+  `scripts/check_lineage.py --kind kernel --diff stat` reports only the known
+  nano-vllm-amd DRIFT through `59195ed`; this is an in-tree fusion and copies no
+  external device code.
+- RED command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py`
+  fails collection only because the new
+  `gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out` wrapper does not yet exist.
+  The frozen contract requires a `linear_pair_silu/gguf_q4_k` registry leaf,
+  rows 2-4/local64 only, BF16 bit identity to two retained rowtiles plus the
+  existing separate SiLU, and the CPU tolerance/KL/top-1 gate.
+- GREEN adds only the registry leaf, raw-pointer wrapper, and device body;
+  production dispatch remains unchanged. Local64 assigns gate/up to independent
+  waves, each with `lane*8 + 256*n` K ownership and its own row accumulators.
+  Wave leaders perform the old zero-seeded BF16 projection store into 128 B LDS;
+  threads 0..31 reload gate/up and execute the existing SiLU expression.
+- Focused GPU1 validation passes **36/36** across the new fused file, the full
+  resident-pack8 rowtile file, and base Q4 GEMV tests. All six candidate cases
+  at rows 2/3/4 and K256/N16 plus K512/N64 are BF16-bit identical to two
+  retained rowtiles plus separate SiLU; CPU tolerance, KL<=0.05, and top-1>=90%
+  remain green. Ruff, py_compile, and diff checks pass.
+- The binding K5,120/N17,408 GPU1 screen uses 1,000 warmup pairs, 15 alternating
+  samples, 50 launches/sample, synchronized HIP events and wall, and independent
+  deterministic nonuniform resident Q4 inputs. Every output is byte-exact.
+  Control chain -> fused event/wall medians improve rows 2
+  **0.203797/0.204079 -> 0.187170/0.187441 ms (1.0888x/1.0888x)**,
+  rows 3 **0.204033/0.204400 -> 0.187428/0.187709 ms
+  (1.0886x/1.0889x)**, and rows 4
+  **0.209317/0.209588 -> 0.186721/0.186991 ms (1.1210x/1.1208x)**.
+- Cached GPU1 `rocprofv3 --kernel-trace` names
+  `gguf_q4_k_pack8_dual_rowtile_silu_out_kernel<unsigned short,4>` at local64,
+  VGPR96, SGPR128, LDS128 B, scratch0, and a plausible **13.400 us** K512/N64
+  fixture duration. Screen script/result hashes are `b0321a62...eb54` /
+  `74913d26...9a7`; trace database hash is `c08367ba...a99`.
+- Admit the exact primitive without runtime ownership. Applying the row-four
+  component ratio to the **110.684398-ms** profiled FFN gate/up+SiLU family
+  projects **11.948189 ms / 1.766%** complete-wall recovery before any distinct
+  graph-node benefit. Runtime RED must select the key only for native resident-
+  pack8 dense FFN rows 2-4, keep the current two-rowtile plus separate-SiLU chain
+  for every other session/shape and registry miss, and prove the W7900 complete
+  transaction before natural25 timing. Artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-admitted.json`.
