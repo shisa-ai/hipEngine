@@ -204141,3 +204141,37 @@ Vulkan local sizes verbatim will close the measured gap.
   singletons; rows<512, WMMA-off, registry misses, c1, and native rows 2-4 keep
   their existing owners. Artifact:
   `benchmarks/results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-admitted.json`.
+
+### D27-O1 exact populated-prefill runtime wiring — RED
+
+- Public-dispatch RED fixes the measured policy boundary before implementation:
+  resident Q4_K pack8 rows 512/1024 under `use_wmma_prefill` must select the
+  registered exact tile8x8 leaf; rows 511 and explicit opt-out retain scalar
+  pack8; a missing tile key retains both scalar singleton and legacy dual
+  owners; and a supported populated pair declines fusion so its caller can
+  emit two tile8x8 singletons. Native rows 2-4 remain covered by their existing
+  bounded-rowtile tests.
+- Focused command
+  `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_q4_k_pack8_rowtile.py -k 'populated_pack8'`
+  has exactly the intended **3 failures / 3 passes**: both 512/1024 singleton
+  routes still select scalar pack8 and the rows=512 pair still selects the
+  legacy dual owner; both threshold/opt-out cases and the missing-key fail-
+  closed case already pass.
+- GREEN adds one registry-driven resident-pack8 rewrite and reuses that exact
+  eligibility check to decline populated pair fusion only when the singleton
+  leaf exists. No kernel math, weight layout, workspace, or model-layer branch
+  changes. The policy bundle passes **6/6**, the full GPU1 exact-pack8 file
+  passes **21/21**, `tests/test_gguf_linear_dispatch.py` passes **68/68**, and
+  narrow Ruff checks pass.
+- The mandatory same-process W7900 real-input oracle is byte-exact at both
+  required contexts. Scalar -> tile8x8 prefill is **51.688215 -> 155.069013
+  tok/s (3.0001x)** at 512 and **51.886254 -> 144.039719 tok/s (2.7761x)** at
+  4096. First and next full logits have zero mismatches, max/mean difference
+  zero, and KL zero; token/value, post-prefill Conv/GDN/KV state, and post-step
+  state hashes all match. The c1 decode step is therefore unchanged. Exact
+  command is the prior real-gate protocol with the current candidate;
+  script/result SHA-256s are `f475e433...8252` and `dd0d64a7...3420`.
+- This freezes the correctness/routing unit before performance promotion. Clean
+  three-sample 512/128 and 4096/128 runs plus a selected-region production trace
+  remain required before the route is called retained or benchmark rollups are
+  updated.
