@@ -140,15 +140,47 @@ def plan_qwen35_gguf_nextn_materialization(
 def materialize_qwen35_gguf_nextn_weights(
     reader_or_path: GGUFReader | str | Path,
     *,
+    borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None = None,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     backend: str = "hip_gfx1100",
 ) -> Qwen35GGUFNextNResidentWeights:
-    """Materialize the draft block without adding it to the 40-layer AR map."""
+    """Materialize the draft block without adding it to the 40-layer AR map.
+
+    When target root weights are supplied, the draft resident borrows those
+    records and owns only its layer/NextN allocations. The caller must keep the
+    target resident alive until this draft resident is closed.
+    """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_nextn_tensor_map(reader.info)
     plan = plan_qwen35_gguf_nextn_materialization(model_map)
+    borrowed: dict[str, Qwen35GGUFDeviceWeight] | None = None
+    if borrowed_fallback_weights is not None:
+        borrowed = dict(borrowed_fallback_weights)
+        expected_slots = set(plan.fallback_specs)
+        extra = sorted(set(borrowed) - expected_slots)
+        if extra:
+            raise ValueError(f"borrowed fallback slots are not in the NextN map: extra={extra}")
+        borrowed_specs = dict(plan.fallback_specs)
+        for slot, weight in borrowed.items():
+            expected_spec = plan.fallback_specs[slot]
+            borrowed_spec = weight.spec
+            expected_source = expected_spec.source
+            borrowed_source = borrowed_spec.source
+            if (
+                borrowed_source.name != expected_source.name
+                or tuple(borrowed_source.shape) != tuple(expected_source.shape)
+                or int(borrowed_source.ggml_type) != int(expected_source.ggml_type)
+            ):
+                raise ValueError(f"borrowed fallback {slot!r} does not match the NextN source tensor")
+            if str(weight.backend) != str(backend):
+                raise ValueError(
+                    f"borrowed fallback {slot!r} uses backend {weight.backend!r}, expected {backend!r}"
+                )
+            borrowed_specs[slot] = borrowed_spec
+        plan = replace(plan, fallback_specs=MappingProxyType(borrowed_specs))
+
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
 
     def load(spec: Qwen35GGUFWeightSpec) -> Qwen35GGUFDeviceWeight:
@@ -168,7 +200,10 @@ def materialize_qwen35_gguf_nextn_weights(
     try:
         layer_weights = {slot: load(spec) for slot, spec in plan.layer_specs.items()}
         nextn_weights = {slot: load(spec) for slot, spec in plan.nextn_specs.items()}
-        fallback_weights = {slot: load(spec) for slot, spec in plan.fallback_specs.items()}
+        fallback_weights = {
+            slot: borrowed[slot] if borrowed is not None and slot in borrowed else load(spec)
+            for slot, spec in plan.fallback_specs.items()
+        }
     except Exception:
         for weight in reversed(tuple(materialized.values())):
             weight.free(runtime=runtime)

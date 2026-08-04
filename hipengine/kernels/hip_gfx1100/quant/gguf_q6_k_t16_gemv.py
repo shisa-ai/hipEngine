@@ -9,9 +9,13 @@ from __future__ import annotations
 
 import ctypes
 from pathlib import Path
+from typing import Mapping
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+    gguf_q6_k_pack8_top1_stage2_gather_f32,
+)
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_q6_k_t16_gemv.hip")
@@ -166,6 +170,58 @@ def gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1(
         runtime.check(int(err))
 
 
+def gguf_q6_k_t16_proposal_top1_exact_bf16(
+    weight: object,
+    x_ptr: int,
+    logits_f32_ptr: int,
+    tile_values_f32_ptr: int,
+    tile_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact resident-T16 proposal logits and reduce them to one winner."""
+
+    if rows != 1:
+        raise ValueError("Q6T16 proposal top-1 currently requires rows=1")
+    allocation = getattr(weight, "allocation")("tiles")
+    t16_library = None if libraries is None else libraries.get("q6_t16")
+    pack8_library = None if libraries is None else libraries.get("q6_pack8")
+    gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1(
+        x_ptr,
+        int(allocation.tensor.ptr),
+        logits_f32_ptr,
+        tile_values_f32_ptr,
+        tile_indices_i32_ptr,
+        in_features,
+        out_features,
+        stream=stream,
+        library=t16_library,
+        runtime=runtime,
+    )
+    gguf_q6_k_pack8_top1_stage2_gather_f32(
+        tile_values_f32_ptr,
+        tile_indices_i32_ptr,
+        out_indices_i32_ptr,
+        out_values_f32_ptr,
+        None,
+        None,
+        rows,
+        out_features // _T16_COLS,
+        0,
+        out_features,
+        stream=stream,
+        library=pack8_library,
+        runtime=runtime,
+    )
+
+
 def gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -294,6 +350,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+argmax",
+            "gguf_q6_k_t16_v1",
+            "proposal_top1_exact_bf16",
+        ),
+        gguf_q6_k_t16_proposal_top1_exact_bf16,
+        replace=replace,
+    )
 
 
 register_gguf_q6_k_t16_gemv_kernels()
@@ -305,6 +371,7 @@ __all__ = [
     "gguf_q6_k_t16_gemv_decode_bf16_f32_out",
     "gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_gemv_rowtile_bf16_bf16_out",
+    "gguf_q6_k_t16_proposal_top1_exact_bf16",
     "gguf_q6_k_t16_gemv_rowtile_bf16_f32_out",
     "plan_gguf_q6_k_t16_gemv_build",
     "register_gguf_q6_k_t16_gemv_kernels",

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ctypes
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.quant import gguf_q6_k_t16_gemv as t16_mod
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     build_gguf_q6_k_t16_gemv,
     gguf_q6_k_t16_gemv_decode_bf16_f32_out,
@@ -79,6 +81,63 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_v1",
         variant="t16_gemv_decode_bf16_f32_out",
     ) is not None
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear+argmax",
+        quant="gguf_q6_k_t16_v1",
+        variant="proposal_top1_exact_bf16",
+    ) is not None
+
+
+def test_q6_t16_proposal_top1_adapter_uses_tiles_and_half_vocab_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, tuple[tuple[object, ...], dict[str, object]]] = {}
+    runtime = object()
+    t16_library = object()
+    pack8_library = object()
+    weight = SimpleNamespace(
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=0xA000))
+        if name == "tiles"
+        else (_ for _ in ()).throw(KeyError(name))
+    )
+
+    monkeypatch.setattr(
+        t16_mod,
+        "gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1",
+        lambda *args, **kwargs: calls.__setitem__("stage1", (args, kwargs)),
+    )
+    monkeypatch.setattr(
+        t16_mod,
+        "gguf_q6_k_pack8_top1_stage2_gather_f32",
+        lambda *args, **kwargs: calls.__setitem__("stage2", (args, kwargs)),
+        raising=False,
+    )
+
+    t16_mod.gguf_q6_k_t16_proposal_top1_exact_bf16(
+        weight,
+        0x1000,
+        0x2000,
+        0x3000,
+        0x4000,
+        0x5000,
+        0x6000,
+        1,
+        512,
+        1024,
+        stream=7,
+        libraries={"q6_t16": t16_library, "q6_pack8": pack8_library},
+        runtime=runtime,
+    )
+
+    assert calls["stage1"] == (
+        (0x1000, 0xA000, 0x2000, 0x3000, 0x4000, 512, 1024),
+        {"stream": 7, "library": t16_library, "runtime": runtime},
+    )
+    assert calls["stage2"] == (
+        (0x3000, 0x4000, 0x5000, 0x6000, None, None, 1, 64, 0, 1024),
+        {"stream": 7, "library": pack8_library, "runtime": runtime},
+    )
 
 
 def test_p9_h3_q6_t16_build_plan_is_dry_run_safe() -> None:

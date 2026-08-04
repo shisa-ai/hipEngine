@@ -16,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import os
 from pathlib import Path
+from typing import Mapping
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
@@ -1257,6 +1258,46 @@ def gguf_q6_k_pack8_top1_stage2_gather_f32(
         runtime.check(int(err))
 
 
+def gguf_q6_k_proposal_top1_exact_bf16(
+    weight: object,
+    x_ptr: int,
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact raw-Q6 proposal scoring through the common weight-record ABI."""
+
+    del logits_f32_ptr
+    allocation = getattr(weight, "allocation")("raw")
+    library = None if libraries is None else libraries.get("q6_pack8")
+    gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32(
+        x_ptr,
+        int(allocation.tensor.ptr),
+        block_values_f32_ptr,
+        block_indices_i32_ptr,
+        out_indices_i32_ptr,
+        out_values_f32_ptr,
+        None,
+        None,
+        rows,
+        in_features,
+        out_features,
+        0,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _check_common(rows: int, in_features: int, out_features: int) -> None:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -1296,6 +1337,11 @@ def register_gguf_q6_k_pack8_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear", "gguf_q6_k", "pack8_gemv_decode_bf16_top1_gather_f32"),
         gguf_q6_k_pack8_gemv_decode_bf16_top1_gather_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear+argmax", "gguf_q6_k", "proposal_top1_exact_bf16"),
+        gguf_q6_k_proposal_top1_exact_bf16,
         replace=replace,
     )
     register(
@@ -1436,6 +1482,7 @@ __all__ = [
     "gguf_q6_k_pack8_gemv_decode_fp16_f32_out",
     "gguf_q6_k_pack8_gemv_decode_fp16_fp16_out",
     "gguf_q6_k_pack8_top1_stage2_gather_f32",
+    "gguf_q6_k_proposal_top1_exact_bf16",
     "plan_gguf_q6_k_pack8_gemv_build",
     "register_gguf_q6_k_pack8_gemv_kernels",
 ]

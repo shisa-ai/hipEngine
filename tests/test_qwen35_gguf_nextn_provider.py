@@ -130,14 +130,16 @@ def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
         provider.advance_full_accept_tail(41, accepted_count=3)
 
 
-def test_nextn_executor_prepares_compact_top1_through_registry(
+@pytest.mark.parametrize("quant_key", ["gguf_q6_k", "gguf_q6_k_t16_v1"])
+def test_nextn_executor_prepares_exact_top1_through_quant_registry(
     monkeypatch: pytest.MonkeyPatch,
+    quant_key: str,
 ) -> None:
     executor = object.__new__(Qwen35GGUFNextNExecutor)
     weight = SimpleNamespace(
-        spec=SimpleNamespace(quant_key="gguf_q6_k"),
+        spec=SimpleNamespace(quant_key=quant_key),
         allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000))
-        if name == "raw"
+        if name in {"raw", "tiles"}
         else (_ for _ in ()).throw(KeyError(name)),
     )
     executor.weights = SimpleNamespace(
@@ -152,13 +154,14 @@ def test_nextn_executor_prepares_compact_top1_through_registry(
     executor.require_cached_build = True
     executor.runtime = object()
     executor._lm_head_top1_kernel = None
-    executor._lm_head_top1_weight_ptr = 0
+    executor._lm_head_top1_weight = None
     executor._lm_head_top1_block_values = None
     executor._lm_head_top1_block_indices = None
     executor._lm_head_top1_result = None
-    executor._q6_pack8_library = None
+    executor._lm_head_top1_libraries = None
     kernel = object()
-    library = object()
+    pack8_library = object()
+    t16_library = object()
     registered_keys: list[object] = []
     resolve_calls: list[dict[str, object]] = []
     malloc_calls: list[int] = []
@@ -178,7 +181,17 @@ def test_nextn_executor_prepares_compact_top1_through_registry(
 
     monkeypatch.setattr(nextn_mod, "is_registered", fake_is_registered)
     monkeypatch.setattr(nextn_mod, "resolve", fake_resolve)
-    monkeypatch.setattr(nextn_mod, "build_gguf_q6_k_pack8_gemv", lambda **kwargs: library)
+    monkeypatch.setattr(
+        nextn_mod,
+        "build_gguf_q6_k_pack8_gemv",
+        lambda **kwargs: pack8_library,
+    )
+    monkeypatch.setattr(
+        nextn_mod,
+        "build_gguf_q6_k_t16_gemv",
+        lambda **kwargs: t16_library,
+        raising=False,
+    )
     monkeypatch.setattr(nextn_mod, "malloc", fake_malloc)
 
     executor._prepare_exact_lm_head_top1()
@@ -186,42 +199,47 @@ def test_nextn_executor_prepares_compact_top1_through_registry(
     assert [(key.backend, key.layer, key.quant, key.variant) for key in registered_keys] == [
         (
             "hip_gfx1100",
-            "linear",
-            "gguf_q6_k",
-            "pack8_gemv_decode_bf16_top1_gather_f32",
+            "linear+argmax",
+            quant_key,
+            "proposal_top1_exact_bf16",
         )
     ]
     assert resolve_calls == [
         {
             "backend": "hip_gfx1100",
-            "layer": "linear",
-            "quant": "gguf_q6_k",
-            "variant": "pack8_gemv_decode_bf16_top1_gather_f32",
+            "layer": "linear+argmax",
+            "quant": quant_key,
+            "variant": "proposal_top1_exact_bf16",
         }
     ]
     assert malloc_calls == [512, 512, 8]
     assert executor._lm_head_top1_kernel is kernel
-    assert executor._lm_head_top1_weight_ptr == 0x2000
-    assert executor._q6_pack8_library is library
+    assert executor._lm_head_top1_weight is weight
+    assert executor._lm_head_top1_libraries == {
+        "q6_pack8": pack8_library,
+        "q6_t16": t16_library,
+    }
 
 
-def test_nextn_executor_compact_top1_reads_only_token_and_value(
+def test_nextn_executor_exact_top1_reads_only_token_and_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     executor = object.__new__(Qwen35GGUFNextNExecutor)
     kernel_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
     sync_calls: list[str] = []
-    library = object()
+    weight = object()
+    libraries = {"q6_pack8": object(), "q6_t16": object()}
     runtime = SimpleNamespace(device_synchronize=lambda: sync_calls.append("sync"))
     executor.runtime = runtime
     executor.hidden_size = 512
     executor.vocab_size = 1024
+    executor._logits_buf = SimpleNamespace(ptr=0x6000)
     executor._lm_head_top1_kernel = lambda *args, **kwargs: kernel_calls.append((args, kwargs))
-    executor._lm_head_top1_weight_ptr = 0x2000
+    executor._lm_head_top1_weight = weight
     executor._lm_head_top1_block_values = SimpleNamespace(ptr=0x3000)
     executor._lm_head_top1_block_indices = SimpleNamespace(ptr=0x4000)
     executor._lm_head_top1_result = SimpleNamespace(ptr=0x5000, nbytes=8)
-    executor._q6_pack8_library = library
+    executor._lm_head_top1_libraries = libraries
 
     def fake_copy(host_ptr, _device, nbytes, *, runtime) -> None:
         assert nbytes == 8
@@ -239,20 +257,18 @@ def test_nextn_executor_compact_top1_reads_only_token_and_value(
     assert len(kernel_calls) == 1
     args, kwargs = kernel_calls[0]
     assert args == (
+        weight,
         0x1000,
-        0x2000,
+        0x6000,
         0x3000,
         0x4000,
         0x5000,
         0x5004,
-        None,
-        None,
         1,
         512,
         1024,
-        0,
     )
-    assert kwargs == {"stream": 7, "library": library, "runtime": runtime}
+    assert kwargs == {"stream": 7, "libraries": libraries, "runtime": runtime}
 
 
 def test_nextn_executor_sample_prefers_compact_top1_without_logits(
