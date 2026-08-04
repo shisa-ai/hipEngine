@@ -710,6 +710,24 @@ B3 remains selected at **1.9511x** own AR, still **41.67%** below Vulkan B3.
 Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`.
 
+The dominant Q4 family now admits a materially distinct fusion rather than
+retrying rejected output-column widening. In the authoritative B3 trace, dense
+FFN gate/up plus SiLU owns **110.684 ms / 16.36%** of complete wall across
+**1,344 launches**. A registry-only local64 leaf assigns gate and up to separate
+wave32 owners, preserves each existing rowtile's K/FMA/shuffle tree and BF16
+boundary, then executes the unchanged BF16 SiLU formula from 128 B shared
+memory. Production dispatch remains unchanged during admission.
+
+The full 36-test Q4 bundle is green. A balanced K5,120/N17,408 GPU1 screen is
+BF16-bit exact and improves inclusive event/wall by
+**1.0888x/1.0888x**, **1.0886x/1.0889x**, and **1.1210x/1.1208x** at rows
+2/3/4. Cached tracing reports local64/VGPR96/SGPR128/LDS128B/scratch0. Applying
+the row-four ratio projects **11.948 ms / 1.766%** complete-wall recovery before
+any separate graph-node benefit. Admit the primitive without runtime routing;
+the next RED must select it only for native resident-pack8 dense FFN rows 2-4
+and fail closed everywhere else. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-admitted.json`.
+
 ---
 
 ## 7. Prioritized execution plan

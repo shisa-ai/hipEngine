@@ -1094,6 +1094,145 @@ __global__ void gguf_q4_k_pack8_rowtile_out_kernel(
   }
 }
 
+// Exact dense-FFN fusion for two resident Q4_K rowtiles plus separate SiLU.
+// Wave 0 owns gate and wave 1 owns up; each independently preserves the
+// local32 rowtile K/FMA/shuffle tree. Wave leaders reproduce the zero-seeded
+// BF16 projection boundary in LDS before wave 0 executes the unchanged
+// BF16-load SiLU formula.
+template <typename scalar_t, int ROW_TILE>
+__launch_bounds__(64, 1)
+__global__ void gguf_q4_k_pack8_dual_rowtile_silu_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int32_t* __restrict__ qweight_a,
+    const float* __restrict__ scales_a,
+    const float* __restrict__ mins_a,
+    const int32_t* __restrict__ qweight_b,
+    const float* __restrict__ scales_b,
+    const float* __restrict__ mins_b,
+    uint16_t* __restrict__ out,
+    int in_features,
+    int out_features,
+    int out_packed) {
+  const int64_t out_pack = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (out_pack >= out_packed) return;
+
+  const int32_t* __restrict__ qweight = wave == 0 ? qweight_a : qweight_b;
+  const float* __restrict__ scales = wave == 0 ? scales_a : scales_b;
+  const float* __restrict__ mins = wave == 0 ? mins_a : mins_b;
+  const int64_t out_col = out_pack << 3;
+  const int64_t qw_base = out_pack * static_cast<int64_t>(in_features);
+  pack8_row_acc acc[ROW_TILE];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    acc[r] = pack8_row_acc{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  }
+
+  constexpr int kValuesPerThread = 8;
+  constexpr int kStride = 32 * kValuesPerThread;
+  for (int64_t k_base = static_cast<int64_t>(lane) * kValuesPerThread;
+       k_base < in_features;
+       k_base += kStride) {
+    const int64_t group32 = k_base >> 5;
+    const float* __restrict__ scale_ptr = scales + group32 * out_features + out_col;
+    const float* __restrict__ min_ptr = mins + group32 * out_features + out_col;
+    const float s0 = scale_ptr[0];
+    const float s1 = scale_ptr[1];
+    const float s2 = scale_ptr[2];
+    const float s3 = scale_ptr[3];
+    const float s4 = scale_ptr[4];
+    const float s5 = scale_ptr[5];
+    const float s6 = scale_ptr[6];
+    const float s7 = scale_ptr[7];
+    const float m0 = min_ptr[0];
+    const float m1 = min_ptr[1];
+    const float m2 = min_ptr[2];
+    const float m3 = min_ptr[3];
+    const float m4 = min_ptr[4];
+    const float m5 = min_ptr[5];
+    const float m6 = min_ptr[6];
+    const float m7 = min_ptr[7];
+
+#pragma unroll
+    for (int j = 0; j < kValuesPerThread; ++j) {
+      const uint32_t pw = static_cast<uint32_t>(qweight[qw_base + k_base + j]);
+      const float w0 = static_cast<float>((pw >> pack8_shift_for_lane(0)) & 0x0Fu) * s0 - m0;
+      const float w1 = static_cast<float>((pw >> pack8_shift_for_lane(1)) & 0x0Fu) * s1 - m1;
+      const float w2 = static_cast<float>((pw >> pack8_shift_for_lane(2)) & 0x0Fu) * s2 - m2;
+      const float w3 = static_cast<float>((pw >> pack8_shift_for_lane(3)) & 0x0Fu) * s3 - m3;
+      const float w4 = static_cast<float>((pw >> pack8_shift_for_lane(4)) & 0x0Fu) * s4 - m4;
+      const float w5 = static_cast<float>((pw >> pack8_shift_for_lane(5)) & 0x0Fu) * s5 - m5;
+      const float w6 = static_cast<float>((pw >> pack8_shift_for_lane(6)) & 0x0Fu) * s6 - m6;
+      const float w7 = static_cast<float>((pw >> pack8_shift_for_lane(7)) & 0x0Fu) * s7 - m7;
+#pragma unroll
+      for (int r = 0; r < ROW_TILE; ++r) {
+        const float xv = scalar_to_float<scalar_t>(
+            x[static_cast<int64_t>(r) * in_features + k_base + j]);
+        acc[r].a0 = fmaf(xv, w0, acc[r].a0);
+        acc[r].a1 = fmaf(xv, w1, acc[r].a1);
+        acc[r].a2 = fmaf(xv, w2, acc[r].a2);
+        acc[r].a3 = fmaf(xv, w3, acc[r].a3);
+        acc[r].a4 = fmaf(xv, w4, acc[r].a4);
+        acc[r].a5 = fmaf(xv, w5, acc[r].a5);
+        acc[r].a6 = fmaf(xv, w6, acc[r].a6);
+        acc[r].a7 = fmaf(xv, w7, acc[r].a7);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc[r].a0 += __shfl_down(acc[r].a0, offset);
+      acc[r].a1 += __shfl_down(acc[r].a1, offset);
+      acc[r].a2 += __shfl_down(acc[r].a2, offset);
+      acc[r].a3 += __shfl_down(acc[r].a3, offset);
+      acc[r].a4 += __shfl_down(acc[r].a4, offset);
+      acc[r].a5 += __shfl_down(acc[r].a5, offset);
+      acc[r].a6 += __shfl_down(acc[r].a6, offset);
+      acc[r].a7 += __shfl_down(acc[r].a7, offset);
+    }
+  }
+
+  __shared__ uint16_t projected[2][4][8];
+  if (lane == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      float v0 = 0.0f, v1 = 0.0f, v2 = 0.0f, v3 = 0.0f;
+      float v4 = 0.0f, v5 = 0.0f, v6 = 0.0f, v7 = 0.0f;
+      v0 += acc[r].a0;
+      v1 += acc[r].a1;
+      v2 += acc[r].a2;
+      v3 += acc[r].a3;
+      v4 += acc[r].a4;
+      v5 += acc[r].a5;
+      v6 += acc[r].a6;
+      v7 += acc[r].a7;
+      projected[wave][r][0] = float_to_bf16_bits(v0);
+      projected[wave][r][1] = float_to_bf16_bits(v1);
+      projected[wave][r][2] = float_to_bf16_bits(v2);
+      projected[wave][r][3] = float_to_bf16_bits(v3);
+      projected[wave][r][4] = float_to_bf16_bits(v4);
+      projected[wave][r][5] = float_to_bf16_bits(v5);
+      projected[wave][r][6] = float_to_bf16_bits(v6);
+      projected[wave][r][7] = float_to_bf16_bits(v7);
+    }
+  }
+  __syncthreads();
+
+  if (tid < ROW_TILE * 8) {
+    const int row = tid >> 3;
+    const int col = tid & 7;
+    const float gate = bf16_bits_to_float(projected[0][row][col]);
+    const float up = bf16_bits_to_float(projected[1][row][col]);
+    const float sig = 1.0f / (1.0f + expf(-gate));
+    out[static_cast<int64_t>(row) * out_features + out_col + col] =
+        float_to_bf16_bits(gate * sig * up);
+  }
+}
+
 // Exact populated-prefill extension of the small-B rowtile above. Each wave
 // owns COL_PACKS adjacent resident output packs and a fixed ROW_TILE token
 // chunk. Independent rows/columns are interleaved only around the retained
@@ -1511,6 +1650,50 @@ int launch_gguf_q4_k_pack8_rowtile_out(
       return static_cast<int>(hipErrorInvalidValue);
   }
 #undef GGUF_Q4K_PACK8_ROWTILE_CASE
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t>
+int launch_gguf_q4_k_pack8_dual_rowtile_silu_out(
+    const scalar_t* x,
+    const int32_t* qweight_a,
+    const float* scales_a,
+    const float* mins_a,
+    const int32_t* qweight_b,
+    const float* scales_b,
+    const float* mins_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || scales_a == nullptr || mins_a == nullptr ||
+      qweight_b == nullptr || scales_b == nullptr || mins_b == nullptr ||
+      out == nullptr || rows < 2 || rows > 4 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % 8) != 0 || threads != 64) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const dim3 block(64);
+  const dim3 grid(static_cast<unsigned int>(out_packed));
+#define GGUF_Q4K_PACK8_DUAL_ROWTILE_SILU_CASE(N)                            \
+  case N:                                                                     \
+    gguf_q4_k_pack8_dual_rowtile_silu_out_kernel<scalar_t, N>               \
+        <<<grid, block, 0, stream>>>(                                         \
+            x, qweight_a, scales_a, mins_a, qweight_b, scales_b, mins_b,     \
+            out, static_cast<int>(in_features), static_cast<int>(out_features), \
+            static_cast<int>(out_packed));                                   \
+    break;
+  switch (static_cast<int>(rows)) {
+    GGUF_Q4K_PACK8_DUAL_ROWTILE_SILU_CASE(2)
+    GGUF_Q4K_PACK8_DUAL_ROWTILE_SILU_CASE(3)
+    GGUF_Q4K_PACK8_DUAL_ROWTILE_SILU_CASE(4)
+    default:
+      return static_cast<int>(hipErrorInvalidValue);
+  }
+#undef GGUF_Q4K_PACK8_DUAL_ROWTILE_SILU_CASE
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1968,6 +2151,25 @@ extern "C" int hipengine_gguf_q4_k_pack8_rowtile_bf16_bf16_out(
     hipStream_t stream) {
   return launch_gguf_q4_k_pack8_rowtile_out<uint16_t, uint16_t>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const int32_t* qweight_a,
+    const float* scales_a,
+    const float* mins_a,
+    const int32_t* qweight_b,
+    const float* scales_b,
+    const float* mins_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_pack8_dual_rowtile_silu_out<uint16_t>(
+      x, qweight_a, scales_a, mins_a, qweight_b, scales_b, mins_b, out,
+      rows, in_features, out_features, threads, stream);
 }
 
 #define HIPENGINE_Q4_PACK8_EXACT_PREFILL_EXPORT(NAME, COL_PACKS, ROW_TILE)    \

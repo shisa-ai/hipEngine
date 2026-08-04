@@ -46,6 +46,9 @@ _SYMBOL_PACK8_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_pack8_dual_gemv_bf16_bf1
 _SYMBOL_PACK8_DUAL_SILU_BF16_BF16_OUT = (
     "hipengine_gguf_q4_k_pack8_dual_silu_gemv_bf16_bf16_out"
 )
+_SYMBOL_PACK8_DUAL_ROWTILE_SILU_BF16_BF16_OUT = (
+    "hipengine_gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out"
+)
 _ALLOWED_THREADS = {64, 128, 256}
 _Q4_K_BLOCK = 256
 _Q8_1_BLOCK = 32
@@ -384,6 +387,68 @@ def gguf_q4_k_pack8_rowtile_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out(
+    x_ptr: int,
+    qweight_a_ptr: int,
+    scales_a_ptr: int,
+    mins_a_ptr: int,
+    qweight_b_ptr: int,
+    scales_b_ptr: int,
+    mins_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fuse two exact 2-4-row resident Q4_K projections with BF16 SiLU."""
+
+    if rows not in (2, 3, 4):
+        raise ValueError("pack8 dual rowtile SiLU rows must be 2, 3, or 4")
+    if threads not in (0, 64):
+        raise ValueError("pack8 dual rowtile SiLU threads must be 0 or 64")
+    _validate(rows, in_features, out_features, 64, require_pack8=True)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PACK8_DUAL_ROWTILE_SILU_BF16_BF16_OUT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(scales_a_ptr),
+        ctypes.c_void_p(mins_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(scales_b_ptr),
+        ctypes.c_void_p(mins_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(64),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_f32_f32_out"),
@@ -427,6 +492,16 @@ def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
     )
     for variant, fn in _EXTRA_Q4_K_WRAPPERS.items():
         register(KernelKey("hip_gfx1100", "linear", "gguf_q4_k", variant), fn, replace=replace)
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q4_k",
+            "pack8_dual_rowtile_bf16_bf16_out",
+        ),
+        gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 def _launch(
@@ -1111,6 +1186,7 @@ __all__ = [
     "gguf_q4_k_gemv_rowtile_bf16_bf16_out",
     "gguf_q4_k_pack8_dual_prefill_bf16_bf16_out",
     "gguf_q4_k_pack8_dual_silu_bf16_bf16_out",
+    "gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_bf16_bf16_out",
     "gguf_q4_k_pack8_gemv_bf16_f32_out",
     "gguf_q4_k_pack8_gemv_bf16_fp16_out",

@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "status": "admitted_exact_primitive_runtime_unwired",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_q4_dual_rowtile_silu_gpu1",
+  "date": "2026-08-04",
+  "model_scope": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M with resident Q4_K pack8 dense FFN gate/up",
+    "projection": "ffn_gate + ffn_up + SiLU",
+    "shape": "K5120/N17408",
+    "rows": [
+      2,
+      3,
+      4
+    ]
+  },
+  "hardware": {
+    "gpu_index": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 24,
+    "rule": "same-GPU component ratios only; W7900 transaction and complete natural25 promotion remain required"
+  },
+  "software": {
+    "base_revision": "67809a30e",
+    "candidate_state": "uncommitted exact primitive screen",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_version_file": "/tmp/hipengine-qwen36-27b-hipcc-version.txt",
+    "cached_library_sha256": "bc9416b44c4daa52e68585fc830a98c0dcbeaa19f3f446f0d7073da4b07d74b4"
+  },
+  "change": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair_silu",
+      "gguf_q4_k",
+      "pack8_dual_rowtile_bf16_bf16_out"
+    ],
+    "symbol": "gguf_q4_k_pack8_dual_rowtile_silu_out_kernel<unsigned short,4>",
+    "summary": "Assign gate and up to independent wave32 owners in one local64 block, retain each projection's exact small-row weight reuse, round both to BF16 in shared memory, then execute the existing BF16 SiLU formula.",
+    "exactness_contract": "Each wave preserves the retained contiguous-8 K traversal, FP32 fmaf sequence, wave32 shuffle tree, zero-seeded final sum, and BF16 projection boundary; fused SiLU reloads those BF16 values and evaluates g * (1 / (1 + expf(-g))) * u before the same BF16 store.",
+    "new_weight_layout": false,
+    "new_workspace": false,
+    "production_dispatch_changed": false
+  },
+  "red_green": {
+    "red": "tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py failed collection on the missing gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out import",
+    "green": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py tests/test_gguf_q4_k_pack8_rowtile.py tests/test_gguf_q4_k_gemv.py",
+      "tests": 36,
+      "passed": true,
+      "candidate_cases": 6,
+      "rows": [
+        2,
+        3,
+        4
+      ],
+      "shapes": [
+        "K256/N16",
+        "K512/N64"
+      ],
+      "bit_mismatches": 0,
+      "cpu_gate": "Q4 CPU reference plus BF16 projection boundaries and SiLU; rtol/atol, KL<=0.05, and top-1>=90% all pass"
+    }
+  },
+  "screen": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/bench_qwen36_q4_pack8_dual_rowtile_silu.py",
+    "fixture": "deterministic nonuniform BF16 activations and independently generated resident packed Q4/scales/mins",
+    "shape": "K5120/N17408",
+    "protocol": {
+      "warmup_pairs": 1000,
+      "samples_per_route": 15,
+      "launches_per_sample": 50,
+      "ordering": "alternating control->candidate and candidate->control",
+      "timing": "synchronized HIP events plus synchronized wall"
+    },
+    "control": "two exact local32 resident-pack8 rowtiles plus separate BF16 SiLU",
+    "candidate": "one exact local64 dual-rowtile plus shared-BF16 SiLU",
+    "all_outputs_bit_exact": true,
+    "comparisons": 3,
+    "event_wins": 3,
+    "wall_wins": 3,
+    "rows": [
+      {
+        "rows": 2,
+        "control_event_ms": 0.20379650115966796,
+        "candidate_event_ms": 0.18716997146606446,
+        "event_speedup": 1.0888311814302865,
+        "control_wall_ms": 0.20407936070114374,
+        "candidate_wall_ms": 0.1874413574114442,
+        "wall_speedup": 1.0887637793466156,
+        "mismatch_count": 0
+      },
+      {
+        "rows": 3,
+        "control_event_ms": 0.2040333366394043,
+        "candidate_event_ms": 0.18742765426635744,
+        "event_speedup": 1.0885978242540888,
+        "control_wall_ms": 0.20439977757632732,
+        "candidate_wall_ms": 0.18770915921777487,
+        "wall_speedup": 1.088917442431184,
+        "mismatch_count": 0
+      },
+      {
+        "rows": 4,
+        "control_event_ms": 0.20931663513183593,
+        "candidate_event_ms": 0.18672126770019531,
+        "event_speedup": 1.1210112147905955,
+        "control_wall_ms": 0.20958766341209412,
+        "candidate_wall_ms": 0.1869905600324273,
+        "wall_speedup": 1.1208462254765592,
+        "mismatch_count": 0
+      }
+    ],
+    "script_sha256": "b0321a62432a4d0cb765a20bd507d21f7410d47999b4f8bc6b1db2424d78eb54",
+    "result_sha256": "74913d2633ebe3852f25e17848744a5007840181d4ae3d949425a60861e459a7"
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/trace-q4-dual-rowtile-silu-67809 -o q4-dual-rowtile-silu -- /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py::test_pack8_dual_rowtile_silu_is_bit_exact_and_passes_cpu_gate[512-64-4]",
+    "duration_ns_profiled": 13400,
+    "workgroup_x": 64,
+    "grid_workitems_x": 512,
+    "vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 128,
+    "scratch_bytes": 0,
+    "trace_database_sha256": "c08367ba3bb3d360e4b6cafb1611ae816866fd6c047d0656f01fe38861d76a99"
+  },
+  "admission": {
+    "authoritative_wall_ms": 676.5958399046212,
+    "q4_rowtile_ceiling_ms": 189.267227,
+    "ffn_gate_up_rowtile_ms": 109.86602,
+    "estimated_target_silu_ms": 0.8183776067653277,
+    "qualified_family_ms": 110.68439760676533,
+    "row4_component_speedup": 1.1210112147905955,
+    "projected_family_ms": 98.73620901057724,
+    "projected_saved_ms": 11.948188596188098,
+    "projected_complete_wall_percent": 1.7659269968128117,
+    "dispatch_reduction_per_profile": 896,
+    "engineering_risk": "medium",
+    "next_step": "route only native resident-pack8 dense FFN gate/up rows 2-4 through the exact registered fused leaf, retain the two-rowtile plus separate-SiLU chain for all other cases and registry misses, then run W7900 transaction and natural25 gates"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip": "e67c4a63691b547ed8d2622cd15b48ae1a38efd610eb0700dd8e8a72202f12aa",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py": "d0af2811276b46938081f3cecdeecbabdf625972637697eb9c73953157a09956",
+    "tests/test_gguf_q4_k_pack8_dual_rowtile_silu.py": "65aad0f4662572381f360b53eff842dcf0777d113e32bf4d9c5ec81cc66c43ad"
+  }
+}
