@@ -5145,6 +5145,23 @@ The measured candidate was the exact five-file patch committed unchanged as
 `a821d571b`. Selected B3 is now **22.66%** below llama.cpp Vulkan. Artifact:
 [`2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json`](results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json).
 
+#### Qwen3.6-27B narrow Q4T16 col4 verifier rowtile, W7900/gfx1100
+
+The exact col4 pressure split lowers row-4 VGPR **144 -> 96**, but the binding
+profile rejects its initial two-shape policy. K5,120/N10,240 rises **8.914 ->
+9.489 ms (+6.44%)**, driving kernel sum **+0.588%**, target verify **+1.426%**,
+and complete B3 wall **492.172 -> 496.956 ms (+0.972%)**. That shape returns
+to its retained row-2 pack8 and rows-3/4 compact-T16 tile8 owners.
+
+Only K5,120/N1,024 rows 2-4 keep col4. The complete trace improves that exact
+family **0.869 -> 0.777 ms (1.118x)**, and an 11-sample W7900 actual-weight
+leaf confirms **16.883 -> 12.201 us (1.384x, 11/11 wins)** with zero BF16
+mismatches. The final focused selector test and complete B1-B3 transaction
+pass. This **0.0916-ms / 0.0186%-of-window** mechanical win is below natural25
+resolution, so the canonical headline remains **52.652 tok/s / 2.4291x own
+AR / 22.66% below Vulkan**. Artifact:
+[`2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json`](results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5318,6 +5335,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B compact-Q4T16 FFN sidecars](results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json),
 [Qwen3.6-27B row-selective compact-Q4T16 projections](results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json),
 [Qwen3.6-27B exact Q6T16 col8 verifier rowtiles](results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json),
+[Qwen3.6-27B narrow Q4T16 col4 verifier rowtile](results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

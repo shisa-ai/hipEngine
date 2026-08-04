@@ -205855,3 +205855,49 @@ Vulkan local sizes verbatim will close the measured gap.
 - This is a correctness/admission unit, not yet a performance claim. Next run
   the hermetic cached W7900 one-prompt B3 trace against `a821d571b`; only an
   intended physical-family and complete-window win advances to natural25.
+
+## 2026-08-05 — Narrow Q4T16 col4 to the W7900-positive N1,024 shape
+
+- Run the binding cached W7900 one-prompt B3 trace at clean `35129d4db`
+  against the exact retained `a821d571b` route. Both runs are exact with the
+  same token SHA-256 `0e257ed1...8aafe`, **17/21** accepted/proposed draft
+  tokens, seven target passes, byte-identical **35,317,228,270-byte** peak,
+  and zero allocations after teardown.
+- The broad two-shape policy is rejected. Dispatches remain **8,055**, but
+  kernel sum rises **356.971900 -> 359.069680 ms (+0.588%)**, target-verify
+  host wall rises **399.282324 -> 404.975738 ms (+1.426%)**, and complete
+  host wall rises **492.172453 -> 496.956011 ms (+0.972%)**. The physical
+  split isolates the crossover: K5,120/N10,240 rises **8.914387 -> 9.488588
+  ms (+6.441%)**, while K5,120/N1,024 improves **0.868968 -> 0.777411 ms
+  (-10.536%, 1.1178x)**.
+- Adjudicate the surviving narrow shape on the W7900 itself with actual
+  `blk.3.attn_k.weight`, row 4, 11 counterbalanced samples, 50 warmups, and
+  50-launch bursts. HIP-event medians are tile8 **16.883340 us** versus col4
+  **12.200900 us (1.3838x, 11/11 paired wins)**; synchronized wall is
+  **17.234020 -> 12.555760 us (1.3726x, 11/11)**. All **4,096** BF16 outputs
+  match pack8 exactly (KL zero, top-1 100%). Raw result SHA-256 is
+  `8882d032...9e63`.
+- Remove K5,120/N10,240 from the col4 selector. Its row 2 returns to the
+  retained pack8 fallback and rows 3-4 return to compact-T16 tile8. Keep col4
+  only for K5,120/N1,024 rows 2-4. The final route adds no allocation, flag,
+  prompt/token condition, or gfx1151 alias.
+- Focused validation follows the repaired-failure rule. The first selector
+  node and final transaction each reached only stale fallback-ledger
+  assertions after the intended route changed; update those assertions, then
+  rerun only the failing nodes. Final results:
+  `tests/test_gguf_q4_k_pack8_rowtile.py::test_native_pack8_single_uses_measured_t16_sidecar_policy`
+  **1 passed**, and W7900
+  `tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  **1 passed** with exact transaction/state/provider output and clean teardown.
+  The earlier **153-test** admission bundle remains the broad evidence; no
+  full-suite repetition is needed for this isolated selector contraction.
+- Do not run natural25: the surviving complete-trace saving is only
+  **0.091557 ms / 0.0186%** of the B3 window, below suite resolution, while
+  the rejected shape restores an already retained exact owner. Canonical
+  status remains **52.652 tok/s / 2.4291x own AR / 22.66% below Vulkan**.
+  Publish compact evidence at
+  `benchmarks/results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json`.
+  Artifact SHA-256 is `aca801a3...7c52`. Source hashes: comparison
+  `2b156e94...631a`, physical split `f4d52f9f...5cd3`, candidate suite
+  `ea0eee8a...91d5`, candidate kernel trace `7d3a4a4d...a6d`, marker trace
+  `f2142ba3...2e91`.

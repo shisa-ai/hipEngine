@@ -544,16 +544,16 @@ def test_native_pack8_single_uses_measured_t16_sidecar_policy() -> None:
 
     assert [kind for kind, _args in calls] == [
         "t16",
-        "col4",
+        "pack8",
         "t16",
-        "col4",
+        "t16",
         "col4",
         "col4",
         "col4",
         "pack8",
     ]
     assert calls[0][1] == (100, 15, 200, 2, 5120, 6144)
-    assert calls[1][1] == (100, 16, 200, 2, 5120, 10240)
+    assert calls[1][1] == (100, 11, 12, 13, 200, 2, 5120, 10240)
     assert calls[2][1] == (100, 16, 200, 3, 5120, 10240)
     assert calls[3][1] == (100, 16, 200, 4, 5120, 10240)
     assert calls[4][1] == (100, 16, 200, 2, 5120, 1024)
