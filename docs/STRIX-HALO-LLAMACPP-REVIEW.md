@@ -7,12 +7,15 @@
 `b7b85da9c4a9fdeb3cab51030a40d1552270f272`, and the current hipEngine
 Qwen3.6/Laguna GGUF gfx1151 paths.
 
-**Decision type:** source/evidence review only. No Nathan result was reproduced
-locally in this review, and no hipEngine performance claim is added here.
+**Decision type:** source/evidence review followed by prioritized local
+execution. Nathan's own speedups remain upstream evidence; hipEngine's only new
+performance claim is the separately measured, accepted head-major scratch
+artifact linked below.
 
 ## Executive decision
 
-There is **one immediate, bounded experiment worth running** on hipEngine:
+The initial review identified **one immediate, bounded experiment** on
+hipEngine, which has now completed:
 
 > Measure one reusable, cross-layer pair of **head-contiguous BF16 K/V prefill
 > scratch buffers** in front of AOTriton at 32K and 64K, including the copy in
@@ -207,11 +210,11 @@ Status meanings:
 
 | Nathan change | Source evidence | hipEngine status | Decision |
 | --- | --- | --- | --- |
-| Quantized-KV dequantize+transpose once for Vulkan prefill | The Vulkan route explicitly creates per-head-contiguous FP16 scratch and reuses it ([`484ad9b`, lines 10263-10470](https://github.com/Nathanw1014/llama.cpp/blob/484ad9ba068ad946a835b6097558c5b15603aae3/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10263-L10470)). | **Present in principle.** Normal hipEngine quantized-KV prefill uses a temporary BF16/AOTriton bridge instead of repeatedly consuming retained INT8. | Do not port the Vulkan shader. Preserve the bridge design; include retained-INT8 sessions in the BF16 contiguity A/B. |
+| Quantized-KV dequantize+transpose once for Vulkan prefill | The Vulkan route explicitly creates per-head-contiguous FP16 scratch and reuses it ([`484ad9b`, lines 10263-10470](https://github.com/Nathanw1014/llama.cpp/blob/484ad9ba068ad946a835b6097558c5b15603aae3/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10263-L10470)). | **Present and revalidated.** Normal hipEngine quantized-KV prefill uses a temporary BF16/AOTriton bridge instead of repeatedly consuming retained INT8, and GGUF's layer-local BF16 oracle preserves the admitted head-major consumer. | Do not port the Vulkan shader. Retain the bridge and its dedicated policy/head-major regression guard. |
 | All-quant q4/q5 extension | Toolbox inventory identifies the extension and its correctness routing ([BRANCHES lines 32-36](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/BRANCHES.md#L32-L36)). | **Not format-compatible.** hipEngine's KV INT8 is sideband-scale, not GGML q4/q5/q8 blocks. | No literal port. Any future KV format gets its own CPU oracle and registry quant axis. |
-| Contiguize strided BF16 K/V before prefill FA | The copy shader converts the interleaved source to contiguous output ([`ab5910a`, lines 9-31](https://github.com/Nathanw1014/llama.cpp/blob/ab5910a15e85b919b228193ed297a35beaf135c6/ggml/src/ggml-vulkan/vulkan-shaders/dequant_f16_transpose.comp#L9-L31)); toolbox reports the long-context effect ([README lines 103-109](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L103-L109)). | **Measure — highest priority gap.** AOTriton currently consumes the token-major/head-interleaved paged cache through strides. | Add a temporary reusable head-major BF16 scratch A/B at 32K/64K. Include copy wall and scratch high-water. Do not alter persistent `KVLiveSpans` first. |
-| Persistent head-major K/V cache | The experimental layout changes K from token-major to `[head_dim, kv_size, n_head_kv]` ([`0f74840`, lines 231-254](https://github.com/Nathanw1014/llama.cpp/blob/0f748408e2af0f4fe05b2ccdf7a7765bf6cc29fe/src/llama-kv-cache.cpp#L231-L254)). Later commits restrict formats/consumers after correctness failures. | **Risky/invasive.** All paged writers, decode kernels, copies, compaction, graph captures, and `KVLiveSpans` consumers assume the current physical row layout. | Do not start here. Consider only if the temporary scratch wins and copy cost is material. |
-| HIP tile dequant-on-load, shared across GQA heads | The tile loader dequantizes into SRAM once and reuses it across `ncols2` query heads ([`b781a8d`, lines 485-547](https://github.com/Nathanw1014/llama.cpp/blob/b781a8d5dc73331b4f8413dcf820d017e1938c67/ggml/src/ggml-cuda/fattn-tile.cuh#L485-L547)). | **Present.** hipEngine INT8 split-K decode is KV-head grouped and shares K/V across all eight query heads. | No port. Keep a regression test that the producer grid remains `(kv_head, split)`, not `(q_head, split)`. |
+| Contiguize strided BF16 K/V before prefill FA | The copy shader converts the interleaved source to contiguous output ([`ab5910a`, lines 9-31](https://github.com/Nathanw1014/llama.cpp/blob/ab5910a15e85b919b228193ed297a35beaf135c6/ggml/src/ggml-vulkan/vulkan-shaders/dequant_f16_transpose.comp#L9-L31)); toolbox reports the long-context effect ([README lines 103-109](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L103-L109)). | **Completed and promoted.** A bounded tracked head-major pair is the gfx1151 default through rounded capacity 65,792. | Retain the copy-inclusive default: 32K/64K improve **3.383%/7.001%** with exact state and bounded strided fallback. |
+| Persistent head-major K/V cache | The experimental layout changes K from token-major to `[head_dim, kv_size, n_head_kv]` ([`0f74840`, lines 231-254](https://github.com/Nathanw1014/llama.cpp/blob/0f748408e2af0f4fe05b2ccdf7a7765bf6cc29fe/src/llama-kv-cache.cpp#L231-L254)). Later commits restrict formats/consumers after correctness failures. | **Rejected after the scratch A/B.** All paged writers, decode kernels, copies, compaction, graph captures, and `KVLiveSpans` consumers assume the current physical row layout, while the 64K copy is only **0.032%** of full prefill across ten layers. | Keep persistent paged KV unchanged; revisit only if a future consumer makes copy wall material. |
+| HIP tile dequant-on-load, shared across GQA heads | The tile loader dequantizes into SRAM once and reuses it across `ncols2` query heads ([`b781a8d`, lines 485-547](https://github.com/Nathanw1014/llama.cpp/blob/b781a8d5dc73331b4f8413dcf820d017e1938c67/ggml/src/ggml-cuda/fattn-tile.cuh#L485-L547)). | **Present and guarded.** hipEngine INT8 split-K decode is KV-head grouped and shares K/V across all eight query heads. | No port. The new source/launch regression guard freezes `(kv_head, split)`, not `(q_head, split)`. |
 | P-fragment load hoist | The P fragments move outside the `hsv_tile` loop ([`e11cafa`, lines 428-437](https://github.com/Nathanw1014/llama.cpp/blob/e11cafa02f96b009c3088f9f601edc13e75524ab/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp#L428-L437)). | **Backend-specific.** hipEngine's production Qwen prefill core is a precompiled AOTriton image, not this GLSL shader. | Feed upstream to AOTriton/native-FA work only if profiling makes FA a top wall component. |
 | `Psh` query-major relayout | The relayout changes cooperative-matrix load orientation ([`40f85eb`, lines 47-51 and 382-437](https://github.com/Nathanw1014/llama.cpp/blob/40f85eb859959d9416f601deef287275d354680f/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp#L382-L437)). Nathan reports no standalone speed win. | **Backend-specific / no action.** | Do not reproduce a perf-neutral GLSL layout change in HIP. |
 | Head-size-gated Vulkan wave32 | `dfb619c` controls Vulkan subgroup selection; toolbox says it is not yet upstream-ready without more hardware coverage ([README lines 153-158](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L153-L158)). | **Already native/consumer-owned.** gfx1151 HIP has wave32 and AOTriton selects gfx11xx images. | No host knob copy. Inspect selected AOTriton image metadata only if the contiguity A/B leaves an FA residual. |
@@ -221,7 +224,7 @@ Status meanings:
 
 | Nathan change | Source evidence | hipEngine status | Decision |
 | --- | --- | --- | --- |
-| MMID row-list prepass | Prefix counts and scatter packed rows once, then kernels read direct lists ([`ffe5cb4` shader lines 5-87](https://github.com/Nathanw1014/llama.cpp/blob/ffe5cb4a9e144a16a94a28f88d02c52f6133261f/ggml/src/ggml-vulkan/vulkan-shaders/mmid_row_lists.comp#L5-L87)). | **Present.** hipEngine count/prefix/stable-scatter/active-expert/tile-map pipeline is the same algorithmic class. | No port. Profile the local metadata only if it becomes material after weight-kernel wins. |
+| MMID row-list prepass | Prefix counts and scatter packed rows once, then kernels read direct lists ([`ffe5cb4` shader lines 5-87](https://github.com/Nathanw1014/llama.cpp/blob/ffe5cb4a9e144a16a94a28f88d02c52f6133261f/ggml/src/ggml-vulkan/vulkan-shaders/mmid_row_lists.comp#L5-L87)). | **Present and coverage-audited.** hipEngine count/prefix/stable-scatter/active-expert/tile-map pipeline is the same algorithmic class, with natural-shape and trace guards. | No port. Profile the local metadata only if it becomes material after weight-kernel wins. |
 | Select tile from expected per-expert rows (`SMALLN`) | [`954ae8e`](https://github.com/Nathanw1014/llama.cpp/commit/954ae8edd16ad2f788130aef8b9f64738c8aecb2) makes tile choice depend on per-expert occupancy. | **Present and more specific.** hipEngine has exact model/quant/row-qualified package schedules and tile maps. | Continue local measured selectors; do not import env heuristics. |
 | Taller M tiles (`BM64`, `M128`) | [`fbec25f`](https://github.com/Nathanw1014/llama.cpp/commit/fbec25f2e79bcf9fc03cebee69f4ee1fba3aa34c) and [`7c3ba9f`](https://github.com/Nathanw1014/llama.cpp/commit/7c3ba9f6df00d2338508c2153ce628ca26af02b0) reduce repeated operand reads at particular ubatches. | **Present as a tuning dimension.** Laguna/Qwen kernels already carry 32/64/128-row and model-qualified schedules. | Use Nathan's result as a reminder to sweep tile M with real per-expert occupancy, not as a direct tile selection. |
 | FP16 B activations (`F16B`) | [`b47a5b1`](https://github.com/Nathanw1014/llama.cpp/commit/b47a5b1cf7df7bad76b37616e0b90a5314c49580) converts Vulkan MMID F32 activations to F16. | **Present.** hipEngine's main MoE paths already use BF16/FP16 or explicitly quantized activation layouts. | No action. |
@@ -229,7 +232,7 @@ Status meanings:
 | Q4/Q5 scale cache | Initially positive, then disabled after later tile changes made it regress; toolbox records -4% to -20% on the current stack ([BRANCHES lines 81-85](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/BRANCHES.md#L81-L85)). | **No missing win.** hipEngine's retained paths use different raw/repacked layouts; local raw-dequant and precompute candidates already require end-to-end A/B. | Do not port. This is evidence against carrying unmeasured caches after tile/layout changes. |
 | `TILE16` | Nathan measured more expert weight re-streaming and a regression ([BRANCHES lines 87-94](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/BRANCHES.md#L87-L94)). | **No action.** | Keep as a negative design lesson: do not make N smaller than typical per-expert occupancy without accounting for repeated weight traffic. |
 | Scalar packed-int MMID | [`e8ba41b`](https://github.com/Nathanw1014/llama.cpp/commit/e8ba41b90c743ac73dbdf7912f646c82da050c8e) lost to cooperative F16 despite lower activation bytes. | **Not directly transferable, but cautionary.** hipEngine has measured dp4a/WMMA/T16 alternatives and retains them per exact shape. | Do not infer all integer kernels lose; do require full-model evidence rather than byte-count reasoning. |
-| Larger `-ub` | Toolbox recommends model-specific 1024/2048 and explicitly reports that 2048 regresses Qwen3.6 shallow prefill. | **Already model/architecture tuned.** | Keep hipEngine's measured gfx1151 chunk policy. Re-sweep only when the active kernel/layout changes. |
+| Larger `-ub` | Toolbox recommends model-specific 1024/2048 and explicitly reports that 2048 regresses Qwen3.6 shallow prefill. | **Already model/architecture tuned and revalidated.** | Keep hipEngine's measured gfx1151 256-row linear/MoE policy. Re-sweep only when the active kernel/layout changes. |
 
 ### DeepSeek V4
 
@@ -246,15 +249,15 @@ Status meanings:
 | Nathan change | Source evidence | hipEngine status | Decision |
 | --- | --- | --- | --- |
 | Bound Vulkan command buffers by estimated bytes | The fork defaults to an 8-GiB traffic cap ([`e709b94`, lines 6628-6631](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L6628-L6631)) and submits when accumulated bytes cross it ([line 17967](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L17967)). | **Backend-specific, analogous issue only.** HIP/AQL submission has no llama.cpp Vulkan command-buffer batching layer. hipEngine has an exact, qualified, default-off layer `hipStreamSynchronize` containment path. | Do not emulate byte estimates in Python and do not restore the rejected MES workaround. Keep layer drain explicit while ROCm/ROCm#6437 remains open. |
-| Bound FA scratch and fall back when it cannot remain resident | [`e21d01e`, lines 10545-10562](https://github.com/Nathanw1014/llama.cpp/blob/e21d01ed4ddb4eb0193c148daa2569972bcfd115/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10545-L10562) turns an oversized Vulkan storage-buffer abort into fallback. [`8a2c6b2`, lines 10778-10834](https://github.com/Nathanw1014/llama.cpp/blob/8a2c6b29c45bf0346ad9dde6a0ae1b38ac005b13/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10778-L10834) adds a discrete-VRAM residency gate; the commit explicitly exempts UMA. | **Transfer the guard, not the Vulkan policy.** gfx1151 is UMA, HIP has no `maxStorageBufferRange`, and Nathan's discrete-heap reserve heuristic does not map directly. The proposed BF16 contiguity scratch still needs bounded tracked allocation and an exact existing-path fallback. | If scratch allocation/capacity admission fails, use strided AOTriton or native paged attention rather than aborting or overcommitting. Record high-water; do not port `GGML_VK_FA_DEQUANT_RESERVE_MB`. |
+| Bound FA scratch and fall back when it cannot remain resident | [`e21d01e`, lines 10545-10562](https://github.com/Nathanw1014/llama.cpp/blob/e21d01ed4ddb4eb0193c148daa2569972bcfd115/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10545-L10562) turns an oversized Vulkan storage-buffer abort into fallback. [`8a2c6b2`, lines 10778-10834](https://github.com/Nathanw1014/llama.cpp/blob/8a2c6b29c45bf0346ad9dde6a0ae1b38ac005b13/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10778-L10834) adds a discrete-VRAM residency gate; the commit explicitly exempts UMA. | **Guard transferred; Vulkan policy rejected.** gfx1151 uses bounded tracked admission for one reusable pair, while UMA has no imported discrete-heap heuristic. | Capacity/byte/registry/allocation failure selects exact strided AOTriton; high-water is recorded and `GGML_VK_FA_DEQUANT_RESERVE_MB` is not ported. |
 | `amd_iommu=off` | Toolbox reports a modest prefill effect and a DMA-isolation tradeoff ([README line 48](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L48)). | **Already exercised.** Current gfx1151 publication uses IOMMU-off but correctly says cross-revision deltas are not causal; XDNA is unavailable in this boot. | No engine change. A causal claim still needs a same-commit reboot A/B. |
 | Verify the actual GPU backend | `v0.2` fixed silent CPU fallback; the README requires checking the backend column ([README lines 86-90](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L86-L90)). | **Present process rule.** hipEngine artifacts record backend/arch and kernel traces verify expected symbols. | Keep explicit backend/arch and trace evidence in every retained benchmark. |
 | Bundle Mesa/libdrm and repair ICD metadata | Vulkan distribution concern. | **Not applicable.** hipEngine is a native HIP runtime and does not ship a RADV ICD. | No action. Pin HIP/compiler provenance instead. |
 | Perf-logger graph-split flush | llama.cpp Vulkan instrumentation fix in the v0.4 stack. | **Not applicable to hot path.** | Only borrow the principle that timing boundaries must flush/record the queue they claim to measure. |
 
-## Recommended experiment: BF16 head-contiguous AOTriton prefill
+## Executed experiment: BF16 head-contiguous AOTriton prefill
 
-### Hypothesis
+### Original hypothesis and result
 
 For long-context Qwen3.6 full-attention layers on gfx1151, AOTriton pays a
 material penalty when K/V tokens for one head are separated by
@@ -262,8 +265,10 @@ material penalty when K/V tokens for one head are separated by
 into reusable `[Hkv, context, D]` contiguous BF16 scratch will save more
 AOTriton time than the copy costs.
 
-This is a hypothesis, not a predicted win. AOTriton may already handle this
-stride well, and only ten of 40 Qwen3.6 layers use full attention.
+**Result:** the hypothesis is confirmed for long context and neutral at short
+context. Copy-inclusive full prefill changes 512/4K/32K/64K by
+**-0.028%/+0.616%/+3.383%/+7.001%**; the complete state is byte-exact. The
+bounded implementation and evidence are retained in priority 1 above.
 
 ### Minimal implementation shape
 
@@ -322,6 +327,10 @@ stride well, and only ten of 40 Qwen3.6 layers use full attention.
 Promote only if copy-inclusive full prefill is exact/non-regressive at short
 context and repeatedly faster at long context. A faster AOTriton sub-window that
 loses end-to-end wall is a rejected experiment.
+
+**Gate result:** passed. Short context is neutral/positive, both long contexts
+improve repeatedly, full state is exact, allocation denial falls back exactly,
+and the named copy/AOTriton kernels appear in the cached trace.
 
 Do not include repeated 128K in the first screen. The existing lifecycle gate is
 more than five minutes and remains subject to explicit approval and the
@@ -468,3 +477,26 @@ No implementation or benchmark is warranted for these items.
    unsupported. The successful scratch A/B strengthens this decision: its 64K
    copy is only **0.708%** of the candidate attention sub-window and at most
    **0.032%** of full prefill across ten full-attention layers.
+
+## Completion audit
+
+Every prioritized item has an explicit retained, rejected, or deferred outcome:
+
+| Priority | Incorporated result | Validation and evidence | Commit |
+| --- | --- | --- | --- |
+| 1 — head-major BF16 AOTriton scratch | Added registry-resolved dense/generic `KVLiveSpans` copies, one bounded tracked cross-layer K/V pair, gfx1151 capability admission, and exact strided/allocation-denial fallbacks. Promoted through rounded capacity 65,792. | Primitive permutations/boundaries and complete-model state are byte-exact; pre-promotion focused gate **39 passed** and post-promotion bundle **61 passed, 15 fixture skips**. The accepted artifact records the cached named-kernel trace and copy-inclusive 512/4K/32K/64K deltas **-0.028%/+0.616%/+3.383%/+7.001%**. Benchmark README, changelog, root README, kernel catalog, and refactor ledger are updated. | `d5e95d1c9` |
+| 2 — repeated-128K MES hypothesis | Rejected `lr_compute_wa`; retained only the already-qualified default-off layer drain. Corrected the stall guide, roofline interpretation, refactor condition, and diagnostic metadata. | Upstream chronology and exact running-kernel/KFD accounting prove the replacement 384-KiB/CU VGPR fix was active when the stall reproduced. The focused benchmark provenance/README guard passes **14/14**. No unsafe kernel patch, reboot, or invalid causal benchmark was run. | `b8909a22b` |
+| 3 — grouped GQA and MoE structure | Added a direct source/launch guard for `(kv_head, split)` INT8 producer ownership; existing MoE/H7U coverage already freezes stable counts, prefixes, row/lane ordering, active experts, tile maps, and trace topology. | Fresh gfx1151 INT8 NumPy-oracle smoke has max error **<=1.53e-05** and the trace names the expected producer/grid. The combined gate established **25 passing nodes** before one orthogonal stale package hash; focused repair then passed H7U **9/9** and its source/owner guard **3/3**. | `849b680b9` |
+| 4 — quantized-KV prefill bridge | Retained BF16-oracle/AOTriton as the normal policy and added a structural guard proving GGUF's layer-local BF16 oracle preserves the bounded head-major consumer. Direct streaming remains diagnostic or memory-pressure fallback only. | Host policy/artifact gate **38 passed**; gfx1151 direct-INT8 plus head-major primitives **14 passed**; runtime dispatch/layout **178 passed**; GGUF full-attention/INT8/head-major bundle **34 passed, 2 fixture skips**. Existing [128K diagnostic](../benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-throughput-diagnostic.json) rejects direct streaming at **-97.7%**; no redundant 93-minute rerun was warranted without a kernel change. | `a8d64d3b9` |
+| 5 — DeepSeek V4 | Deferred at the model-admission boundary and documented a CPU-first plugin checklist; no Qwen/Laguna/backend branch was added. | Registry, repository, plan, local-model, and Hugging Face cache audit finds no approved plugin, checkpoint/config/tokenizer, or CPU oracle. Existing `ds4` quant symbols were verified to mean an activation layout, not the model. | `09a262bd1` |
+| 6 — no-action set | Revalidated Vulkan P/Psh, persistent-KV, negative MMID, generic-ubatch, RADV, and dev-release decisions; no rejected backend code was ported. | Live dispatch/profile audit confirms the consumer and local policies differ. Accepted-artifact arithmetic bounds removable persistent-layout copy cost to **0.708%** of the 64K attention sub-window and **0.032%** of full prefill. | `788b87f77` |
+
+The original source review and permalink audit are commits `aef75209c` and
+`db87f6d1e`. The final machine-readable closure check reparsed the accepted
+artifact, matched all four published deltas and benchmark rollups, found every
+new regression guard, confirmed all six execution commits are ancestors of the
+current tree, and passed `git diff --check`. Expensive GPU gates were not rerun
+after later docs/test-only units because their completed evidence remains valid
+under the focused-repair rule. There is no unassigned action left in this review;
+future 128K driver work requires a named stack fix, and DeepSeek V4 requires
+explicit model admission.

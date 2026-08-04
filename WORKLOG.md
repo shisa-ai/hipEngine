@@ -203284,3 +203284,26 @@ Vulkan local sizes verbatim will close the measured gap.
   inspect the live AOTriton/head-major dispatch, gfx1151 256-row profile, and
   registry-qualified T16/WMMA paths; reread the review end-to-end; `git diff
   --check` passes.
+
+## 2026-08-04 — Close the Nathan priority-list execution audit
+
+- Map every action to implementation/disposition, tests, benchmark or source
+  gate, retained artifact/docs, and atomic commit in the review's new completion
+  table. Priorities 1-6 resolve respectively to retained, rejected, guarded,
+  retained, deferred, and revalidated-no-action; there is no unassigned item.
+- The closure audit caught stale pre-execution wording in the review itself.
+  Update the decision type, executive framing, applicability rows for head-major
+  scratch/persistent KV/grouped GQA/MoE/ubatch/bounded allocation, and the
+  experiment hypothesis/promotion result so the matrix no longer calls a
+  promoted default an unmeasured gap.
+- Machine-check the accepted artifact status/action/scope and exact four deltas;
+  benchmark README/changelog publication; presence of the three new regression
+  guards; tracked evidence paths; and ancestry of execution commits
+  `d5e95d1c9`, `b8909a22b`, `849b680b9`, `a8d64d3b9`, `09a262bd1`, and
+  `788b87f77`. Result: **PASS**. The updated review was then read end-to-end and
+  passes execution-state consistency plus `git diff --check`.
+- Do not redundantly rerun completed expensive GPU gates after docs/test-only
+  follow-ups. The completion table preserves their exact results and applies the
+  focused-repair rule. Future repeated-128K work requires a named stack fix;
+  future DeepSeek V4 work requires explicit model admission, neither is open
+  work under this action list.
