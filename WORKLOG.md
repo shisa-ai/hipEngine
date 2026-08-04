@@ -202935,3 +202935,43 @@ Vulkan local sizes verbatim will close the measured gap.
   engine Apache 2.0, reviewed Kestrel Git/PyPI 0.5.0 carries no license file or
   package license metadata; independently implement concepts only and await an
   explicit upstream license before any source reuse.
+
+## 2026-08-04 — Review Nathanw1014 Strix Halo llama.cpp for gfx1151 GGUF
+
+- Review the user-facing `Nathanw1014/strix-halo-llamacpp@b166a56e`, releases
+  `v0.1` through `v0.4` plus the compile-only `dev-20260803-b7b85da`, the
+  vendored evidence pack, and the per-concern branches in
+  `Nathanw1014/llama.cpp` through `strix-halo-vulkan@b7b85da`. Treat commit
+  mechanisms and upstream measurements separately; no Nathan speedup is a
+  locally reproduced hipEngine claim.
+- The highest-priority transferable gap is a bounded head-contiguous BF16 K/V
+  prefill scratch A/B before AOTriton at 32K/64K. hipEngine currently presents
+  token-major/head-interleaved paged BF16 K/V through strides, the same layout
+  class Nathan's RADV f16-contiguize pass fixes. Start with one reusable
+  per-layer scratch and include copy wall/memory; do not change persistent
+  `KVLiveSpans` layout first.
+- Do not port the quantized-KV or MMID patches mechanically. hipEngine already
+  uses a grouped-GQA INT8 decode producer keyed by `(kv_head, split)`, normal
+  quantized-KV prefill bridges through temporary BF16/AOTriton storage, and MoE
+  prefill builds count/prefix/stable compact rows, active experts, and tile maps.
+  Laguna gfx1151 selects the parallel row compactor. Existing BF16/FP16
+  activations, wave32 HIP kernels, shape-qualified tiles, and measured 256-row
+  chunk policy also supersede Vulkan F16B/wave/tile and generic ubatch knobs.
+- Keep Nathan's P-load/Psh/subgroup shader edits as Vulkan/AOTriton-reference
+  material only. Preserve the scale-cache, TILE16, and scalar-int MMID results as
+  negative evidence; the scale cache was later disabled after -4% to -20%
+  regressions.
+- DeepSeek V4 lightning indexer, indexed sparse FA, gather-to-compact decode,
+  fused hyper-connections, F16 indexer cache, and small-B O-projection copy are
+  valid future-model references, not Qwen3.6/Laguna changes. A future DSv4 port
+  must use new model/layer/quant/variant registrations, CPU oracles, and unfused
+  fallbacks over `KVLiveSpans`.
+- Nathan's Vulkan byte-capped submission is not portable to HIP. The analogous
+  hipEngine layer/chunk drains already exist as default-off diagnostics. For the
+  repeated-128K stall, keep the updated-kernel MES `lr_compute_wa` A/B ahead of
+  application batching or drain promotion; one passing 128K process is not
+  lifecycle closure.
+- Publish the source-linked matrix, current-code comparison, candidate design,
+  RED/GREEN/perf gates, and final priorities in
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md`. This is a docs/research unit; no GPU run,
+  benchmark rollup, or architecture plan change is claimed.
