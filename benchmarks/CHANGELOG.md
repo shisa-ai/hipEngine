@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact reusable native-verifier graph] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: exact dense local128 **20.846/22.102/21.840 -> 23.225/24.820/25.193 tok/s (+11.41%/+12.30%/+15.35%)** by replaying each target bucket through one graph with live device position/`KVLiveSpans` metadata; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, and B3 becomes selected at **1.2362x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json`.
+
 - [accepted exact dense local128 verifier GEMV] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: resident-Q4 baseline **20.634/21.752/21.467 -> 20.846/22.102/21.840 tok/s (+1.03%/+1.61%/+1.74%)** by mapping the exact 256-partition dense reduction onto local128 for qualified native c1 shapes; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance and 28.995-GiB peak remain exact, and B2 reaches **1.0854x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-dense-local128-retained.json`.
 
 - [accepted exact resident-Q4 verifier row reuse] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: prior native **18.751/18.752/17.983 -> 20.634/21.752/21.467 tok/s (+10.04%/+16.00%/+19.38%)** by reusing each pack8 gate/up weight across 2-4 rows; every full/train/heldout/category row improves, IDs/state/acceptance remain exact, memory is unchanged at 28.995 GiB, and B2 reaches **1.0678x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-resident-q4-rowtile-retained.json`.

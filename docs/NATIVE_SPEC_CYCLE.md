@@ -87,7 +87,7 @@ single-native-submission boundary.
 | --- | --- | --- | --- | --- |
 | `N0` | Versioned ABI and oracle | Host/device control/result layouts, lifecycle, validation, CPU/fake launcher | Real model submission | Landed; no performance claim |
 | `N1` | Initial fixed-B2 native target graph | One native `VERIFY` submission | Reusable positions; proposal, accept, commit, cursors | Exact but rejected because recapture regressed wall |
-| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; dense B3 correctness green, timing pending |
+| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; exact dense B3 retained at 1.2362x own AR |
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
@@ -143,7 +143,12 @@ preserves token-serial attention/Conv/GDN arithmetic and binds each captured row
 to dynamic position/context/`KVLiveSpans` views over the resident request page
 table; it does not broaden the accuracy-traded llama-compat policy or N2. Exact
 dense cycle records expose graph submission, first-capture wall, submit wall,
-readback wall, and pre-launch fallback reason without changing execution.
+readback wall, and pre-launch fallback reason without changing execution. On the
+clean Qwen3.6-27B Q4_K_M W7900 natural25 gate, exact dense B1/B2/B3 improve
+**11.41%/12.30%/15.35%** to **23.225/24.820/25.193 tok/s**; B3 is selected at
+**1.2362x** own true AR with all prompt/category/heldout and transaction gates
+exact. This dense result is separate from the accuracy-traded llama-compat
+scoreboard row.
 
 ### N2 — device acceptance and selected-state commit
 

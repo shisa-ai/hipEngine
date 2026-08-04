@@ -2095,6 +2095,33 @@ local256 fallback avoids a measured regression. B2 remains selected at
 **1.0854x** own AR and 22.102 tok/s, still 67.54% below Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-dense-local128-retained.json`](results/2026-08-04-qwen36-27b-dense-local128-retained.json).
 
+#### Qwen3.6-27B exact reusable native-verifier graph, W7900/gfx1100
+
+Clean hipEngine `ea33e6405` preserves native row-serial attention/Conv/GDN and
+the retained row-bulk FFN arithmetic, but submits each B1/B2/B3 target bucket
+through one reusable HIP graph. Device-live token/position/context/
+`KVLiveSpans` metadata and graph-owned FP32 trunk rows keep the transaction exact;
+N2 device accept/commit remains B1/B2.
+
+| Route | Exact dense local128 | + reusable native graph | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.362 tok/s | **20.379 tok/s** | +0.083% | 1.0000x | n/a |
+| B1 | 20.846 tok/s | **23.225 tok/s** | **+11.41%** | **1.1396x** | **-11.10%** |
+| B2 | 22.102 tok/s | **24.820 tok/s** | **+12.30%** | **1.2179x** | **-12.11%** |
+| B3 | 21.840 tok/s | **25.193 tok/s** | **+15.35%** | **1.2362x** | **-14.82%** |
+
+All 30 prompt/budget rows improve (**+2.91% to +16.97%**), and every full,
+train, heldout, and category rollup improves (**+9.92% to +16.15%**). All 250
+IDs per budget, acceptance/cycle ledgers, GPU/CPU summaries, stage
+reconciliations, and reject/partial/full state/KV/hidden oracles remain exact;
+the same B3 executable also matches scalar target rows at positions 6, 7, and
+9. Every measured cycle submits without fallback. The prescribed gate includes
+one measured first capture for B1/B2; B3 is warm after the common warmup.
+Tracked peak rises only **0.0007 GiB** to **28.996 GiB** and returns to zero.
+B3 becomes the selected exact route at **1.2362x** own AR, but remains 63.00%
+below Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-native-verifier-graph-retained.json`](results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
