@@ -24,8 +24,9 @@ Those boundaries do not advance in lockstep. In particular:
 
 - `N1R` remains the graph owner under the current exact W7900 winner: it removes
   target-verifier submission overhead, exact staged linear/full-attention work
-  removes independent arithmetic around unchanged serial state/cache steps, and
-  compact exact proposal scoring removes the unrelated full-logit host drain.
+  removes independent arithmetic around unchanged serial state/cache steps,
+  compact exact proposal scoring removes the unrelated full-logit host drain,
+  and the qualified dense `ssm_out` rowtile right-sizes that verifier leaf.
 - On W7900, `N2` and `N3` own more of the transaction but are not faster than
   `N1R` yet. On gfx1151, N3 retains essentially all of N1 and improves the clean
   current-main direct-commit control by 14.39%.
@@ -89,7 +90,7 @@ single-native-submission boundary.
 | --- | --- | --- | --- | --- |
 | `N0` | Versioned ABI and oracle | Host/device control/result layouts, lifecycle, validation, CPU/fake launcher | Real model submission | Landed; no performance claim |
 | `N1` | Initial fixed-B2 native target graph | One native `VERIFY` submission | Reusable positions; proposal, accept, commit, cursors | Exact but rejected because recapture regressed wall |
-| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; current exact route built on dense B3 N1R, staged target work, and compact proposal scoring reaches 1.9422x own AR |
+| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; current exact route built on dense B3 N1R, staged target work, compact proposal scoring, and qualified `ssm_out` rowtiling reaches 1.9511x own AR |
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
@@ -158,9 +159,13 @@ support while retaining scalar K and serial per-row KV/attention/gate, reaching
 proposal-only optimization preserves N1R target ownership and exact arithmetic,
 but replaces full-vocabulary proposal readback with the registered raw-Q6 exact
 top-1 result; B1/B2/B3 reach **28.878/35.712/39.610 tok/s**, with B3 at
-**1.9422x** own AR. Every prompt/category/heldout and transaction gate remains
-exact. These dense results are separate from the accuracy-traded llama-compat
-scoreboard row.
+**1.9422x** own AR. A subsequent exact shape-qualified local128 rowtile for only
+the dense `ssm_out` projection raises those rows to
+**28.979/35.826/39.714 tok/s** and B3 to **1.9511x** own AR. Every
+full/train/heldout/category aggregate is positive and every transaction gate
+remains exact. These dense results are separate from the accuracy-traded
+llama-compat scoreboard row. Artifact:
+[`exact dense ssm-output rowtile`](../benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json).
 
 ### N2 — device acceptance and selected-state commit
 

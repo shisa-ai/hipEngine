@@ -4798,6 +4798,35 @@ The compact workspace raises tracked peak by exactly **248,328 bytes** to
 but is still 41.82% below Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`](results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json).
 
+#### Qwen3.6-27B exact dense `ssm_out` local128 rowtile, W7900/gfx1100
+
+Clean hipEngine `4a4a615a8` selects the registered virtual256/local128
+rowtile only for native dense-BF16 rows 2-4 at K6,144/N5,120. Every other
+shape/session and registry miss retains local256. The arithmetic partitions,
+s=128 register add, s=64/32 LDS tree, first-wave 16..1 tree, BF16 boundary,
+weights, and workspace are unchanged.
+
+| Route | Compact-proposal baseline | Qualified `ssm_out` rowtile | Decode delta | MTP / true AR | Complete-wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR (c1 route unchanged) | 20.394 tok/s | 20.355 tok/s | -0.192% noise | 1.0000x | +0.192% |
+| B1 | 28.878 tok/s | **28.979 tok/s** | **+0.349%** | **1.4237x** | **-0.348%** |
+| B2 | 35.712 tok/s | **35.826 tok/s** | **+0.318%** | **1.7601x** | **-0.317%** |
+| B3 | 39.610 tok/s | **39.714 tok/s** | **+0.263%** | **1.9511x** | **-0.262%** |
+
+Every full/train/heldout/category aggregate improves (**+0.117% to +0.551%**).
+Twenty-six of 30 individual prompt-budget timing rows improve; the other four
+are noise-negative by at most **0.145%**. All 250 IDs per budget, acceptance/
+cycle ledgers, GPU/CPU summaries, stage reconciliations, and reject/partial/full
+plus changing-position state/KV/hidden oracles remain exact. The W7900 oracle
+observes candidate rows exactly `{2,3,4}` at only K6,144/N5,120.
+
+The predeclared same-GPU XTX component screen is BF16-bit exact and improves
+that leaf **1.2095x/1.1654x/1.0761x** for rows 2/3/4; broad local128 selection
+is rejected. Tracked peak remains byte-identical at **28.996 GiB** and frees to
+zero. B3 remains selected at **1.9511x** own AR, but is still 41.67% below
+Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json`](results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -4961,6 +4990,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact staged linear projections](results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json),
 [Qwen3.6-27B exact staged full attention](results/2026-08-04-qwen36-27b-staged-full-attention-retained.json),
 [Qwen3.6-27B exact compact proposal scoring](results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json),
+[Qwen3.6-27B exact dense `ssm_out` local128 rowtile](results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
