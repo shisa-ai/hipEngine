@@ -1,0 +1,493 @@
+{
+  "schema": 1,
+  "status": "retained_exact_byte_neutral_planar_qmicro_root_head",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical W7900 ten-prompt natural25 true-AR plus B1-B3 complete decode wall, populated 512/4096 prefill and graph decode, one-prompt B3 kernel/marker trace, and actual-weight GPU1 component screen.",
+  "correctness_claim": true,
+  "correctness_scope": "FP32-bit-exact c1/rows2-4/top-1 consumers versus legacy T16; exact B1-B3 transaction/state/provider output; exact natural25 IDs and acceptance; deterministic populated IDs; clean teardown.",
+  "kind": "qwen36_27b_gguf_q6t16_planar_qmicro_root_head_w7900",
+  "timestamp": "2026-08-05T08:07:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "09494117538a6ca7487b9265a5c4192d4a5da691",
+    "baseline_implementation_commit": "3728531ba1682deefdeaa79318e03a2f733c543e",
+    "baseline_publication_commit": "d858cb7de",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Select the already-retained byte-neutral planar-qmicro Q6T16 layout and exact FP32/top-1 consumers for the K5,120/N248,320 root lm-head.",
+    "tensor": "output.weight / root.lm_head",
+    "shape": {
+      "in_features": 5120,
+      "out_features": 248320
+    },
+    "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+    "legacy_bytes": 1042944000,
+    "candidate_bytes": 1042944000,
+    "new_allocation_bytes": 0,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "fallbacks": "K2,048 MoE head, gfx1151, explicit legacy plans, X8 sidecar requests, and registry misses retain legacy T16."
+  },
+  "correctness": {
+    "adjacent_bundle": "107 passed / 24 unavailable-fixture skips",
+    "focused_ownership_nodes": "5 passed",
+    "materialization": "Actual backend-driven root selects one 1,042,944,000-byte planar allocation and returns active allocations/current bytes to zero after free.",
+    "w7900_transaction": "B1-B3 logits, reject/partial/full/rollback state, graph reuse, borrowed physical head, natural provider output, exact top-1 selection, lifecycle, and teardown passed.",
+    "component_all_exact": true,
+    "natural25": {
+      "acceptance_exact": {
+        "1": true,
+        "2": true,
+        "3": true
+      },
+      "all_candidate_exact_greedy": true,
+      "all_candidate_gpu_accept_match_cpu": true,
+      "mtp_tokens_exact": {
+        "1": true,
+        "2": true,
+        "3": true
+      },
+      "true_ar_tokens_exact": true
+    },
+    "natural25_memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 35317648936,
+      "total_allocated_bytes": 36128082554,
+      "total_freed_bytes": 36128082554,
+      "active_allocations": 0,
+      "peak_allocations": 2415
+    },
+    "runtime_trace": "Generic FP32 c1, verifier row4, proposal top-1 stage1, and final reducer use the intended qmicro root; local 128/128/128/256 and zero scratch."
+  },
+  "component_screen": {
+    "protocol": {
+      "burst": 3,
+      "samples": 11,
+      "timing": "counterbalanced HIP events plus synchronized host wall",
+      "warmup_pairs": 30
+    },
+    "resident_bytes_per_layout": 1042944000,
+    "rows": {
+      "proposal_top1_stage1_rows1": {
+        "legacy_us": 1522.9196548461914,
+        "qmicro_us": 1222.9300340016682,
+        "delta_percent": -19.698322225332422,
+        "speedup": 1.2453039932815273,
+        "paired_wins": 11,
+        "correctness_mismatches": 0
+      },
+      "target_f32_rowtile_rows2": {
+        "legacy_us": 1897.9093233744304,
+        "qmicro_us": 1583.5196177164714,
+        "delta_percent": -16.56505407218205,
+        "speedup": 1.1985385606471535,
+        "paired_wins": 11,
+        "correctness_mismatches": 0
+      },
+      "target_f32_rowtile_rows3": {
+        "legacy_us": 2098.1906255086265,
+        "qmicro_us": 1772.2946802775066,
+        "delta_percent": -15.532237217584498,
+        "speedup": 1.1838836108113189,
+        "paired_wins": 11,
+        "correctness_mismatches": 0
+      },
+      "target_f32_rowtile_rows4": {
+        "legacy_us": 2341.9130643208823,
+        "qmicro_us": 1823.175271352132,
+        "delta_percent": -22.150172902305233,
+        "speedup": 1.2845243686220227,
+        "paired_wins": 11,
+        "correctness_mismatches": 0
+      }
+    }
+  },
+  "profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy traces; one natural25 prompt; B3; no warmup; clean 3728531ba baseline and clean 094941175 candidate.",
+    "exact": {
+      "accepted": 17,
+      "proposed": 21,
+      "token_sha256_i64": "0e257ed1f08deae7cf88d0ca82cb1e6e478e848b798a5ccdab9393ce7468aafe"
+    },
+    "window": {
+      "host_wall_ms": {
+        "baseline": 500.2047340385616,
+        "candidate": 478.3614769112319,
+        "delta_percent": -4.36686333433337
+      },
+      "kernel_sum_ms": {
+        "baseline": 343.677576,
+        "candidate": 337.735663,
+        "delta_percent": -1.728920771950515
+      },
+      "device_span_ms": {
+        "baseline": 499.812639,
+        "candidate": 477.927371,
+        "delta_percent": -4.378694393120375
+      },
+      "dispatches": {
+        "baseline": 8055,
+        "candidate": 8055
+      }
+    },
+    "proposal_wall_ms": {
+      "baseline": 80.43939247727394,
+      "candidate": 76.25988917425275,
+      "delta_percent": -5.195841458153727
+    },
+    "target_verify_wall_ms": {
+      "baseline": 408.05523190647364,
+      "candidate": 390.2914731297642,
+      "delta_percent": -4.353273132589286
+    },
+    "steady_target_passes_2_to_7_ms": {
+      "baseline_mean": 45.83998966666667,
+      "candidate_mean": 45.552702000000004,
+      "delta_percent": -0.626718436796625,
+      "first_pass_disclosure_ms": {
+        "baseline": 132.944061,
+        "candidate": 116.897449
+      }
+    },
+    "root_head": {
+      "proposal_top1_stage1": {
+        "dispatches": 25,
+        "baseline_ms": 40.60636100000001,
+        "candidate_ms": 37.126874,
+        "delta_percent": -8.568822505419792,
+        "speedup": 1.0937188248059884
+      },
+      "target_f32_rows": {
+        "dispatches": 7,
+        "baseline_ms": 15.031782999999999,
+        "candidate_ms": 11.724417999999998,
+        "delta_percent": -22.002479679223686,
+        "speedup": 1.2820920407307212
+      },
+      "combined_ms": {
+        "baseline": 55.638144000000004,
+        "candidate": 48.851292,
+        "delta_percent": -12.198199853683123
+      }
+    },
+    "unchanged_wide_q6_disclosure": {
+      "baseline_ms": 46.71383699999999,
+      "candidate_ms": 46.916956999999954,
+      "delta_percent": 0.43481763230017734
+    }
+  },
+  "natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-094941175/natural25-native-q6-qmicro-root-b1-b3.json",
+    "true_ar": {
+      "baseline_tok_s": 23.03076594412583,
+      "candidate_tok_s": 23.06907477796356,
+      "delta_percent": 0.16633764561140296
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 39.8303907731306,
+        "candidate_tok_s": 40.17903540463996,
+        "delta_percent": 0.8753231508452863,
+        "baseline_mtp_vs_true_ar": 1.7294427319422108,
+        "candidate_mtp_vs_true_ar": 1.7416838686144653,
+        "accepted_draft_tokens": 115,
+        "proposed_draft_tokens": 126,
+        "stage_seconds": {
+          "proposal": {
+            "baseline": 0.7335494367871433,
+            "candidate": 0.6960179200395942,
+            "delta_percent": -5.116426360019122
+          },
+          "scheduler_accept_replay_host_residual": {
+            "baseline": 0.037027354119345546,
+            "candidate": 0.038584315683692694,
+            "delta_percent": 4.204895546489196
+          },
+          "target_commit_finish": {
+            "baseline": 0.09283240442164242,
+            "candidate": 0.09436475182883441,
+            "delta_percent": 1.6506600434823548
+          },
+          "target_verify": {
+            "baseline": 5.1621405254118145,
+            "candidate": 5.144297367427498,
+            "delta_percent": -0.34565424742855066
+          }
+        }
+      },
+      "2": {
+        "baseline_tok_s": 49.84800226816637,
+        "candidate_tok_s": 50.81263300778421,
+        "delta_percent": 1.935144229910013,
+        "baseline_mtp_vs_true_ar": 2.164409224994989,
+        "candidate_mtp_vs_true_ar": 2.2026298625691885,
+        "accepted_draft_tokens": 151,
+        "proposed_draft_tokens": 184,
+        "stage_seconds": {
+          "proposal": {
+            "baseline": 0.7794521674513817,
+            "candidate": 0.7279129417147487,
+            "delta_percent": -6.612237144089761
+          },
+          "scheduler_accept_replay_host_residual": {
+            "baseline": 0.031229538144543767,
+            "candidate": 0.031088120071217418,
+            "delta_percent": -0.4528343412310676
+          },
+          "target_commit_finish": {
+            "baseline": 0.06824781256727874,
+            "candidate": 0.06825530086643994,
+            "delta_percent": 0.010972218565696856
+          },
+          "target_verify": {
+            "baseline": 3.9357067577075213,
+            "candidate": 3.8959785061888397,
+            "delta_percent": -1.009431188969545
+          }
+        }
+      },
+      "3": {
+        "baseline_tok_s": 54.5473697142049,
+        "candidate_tok_s": 55.89894007943694,
+        "delta_percent": 2.4777920041121115,
+        "baseline_mtp_vs_true_ar": 2.368456604810298,
+        "candidate_mtp_vs_true_ar": 2.423111486587823,
+        "accepted_draft_tokens": 168,
+        "proposed_draft_tokens": 222,
+        "stage_seconds": {
+          "proposal": {
+            "baseline": 0.8165583475492895,
+            "candidate": 0.7559395097196102,
+            "delta_percent": -7.423699483522839
+          },
+          "scheduler_accept_replay_host_residual": {
+            "baseline": 0.027801403775811195,
+            "candidate": 0.02730733365751803,
+            "delta_percent": -1.777140903665575
+          },
+          "target_commit_finish": {
+            "baseline": 0.05708228354342282,
+            "candidate": 0.057235512882471085,
+            "delta_percent": 0.2684358955816979
+          },
+          "target_verify": {
+            "baseline": 3.4984034802764654,
+            "candidate": 3.4529800896998495,
+            "delta_percent": -1.2984034240963616
+          }
+        }
+      }
+    },
+    "prompt_delta_percent_range": {
+      "1": [
+        -0.6526563623920012,
+        1.490715608690918
+      ],
+      "2": [
+        1.5485120690290177,
+        2.644666244146765
+      ],
+      "3": [
+        1.9535139969035997,
+        2.658907873147487
+      ]
+    },
+    "scope_delta_percent_range": {
+      "1": [
+        0.6739472294940319,
+        1.0985008759945014
+      ],
+      "2": [
+        1.859136808161721,
+        2.0243779096288606
+      ],
+      "3": [
+        2.3675277009155504,
+        2.6175229599894045
+      ]
+    },
+    "all_aggregate_scopes_improve": true,
+    "individual_noise_disclosure": {
+      "all_b2_b3_prompt_rows_improve": true,
+      "b1_negative_prompt": "code_merge_intervals",
+      "b1_negative_delta_percent": -0.6526563623920012
+    },
+    "b3_ratio_delta_percent": 2.3076159245021266
+  },
+  "populated": {
+    "512": {
+      "prefill_tok_s": {
+        "baseline": 207.0221469904562,
+        "candidate": 207.86408193376735,
+        "delta_percent": 0.40668834496724315,
+        "candidate_samples": [
+          210.06581558367617,
+          207.86408193376735,
+          205.85089533245255
+        ]
+      },
+      "decode_tok_s": {
+        "baseline": 22.106737226278465,
+        "candidate": 22.207638739558348,
+        "delta_percent": 0.45642879022391725,
+        "candidate_samples": [
+          22.237650634743556,
+          22.207638739558348,
+          22.186077785031934
+        ]
+      },
+      "tracked_peak_gib": {
+        "baseline": 31.656242731958628,
+        "candidate": 31.656242731958628
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "after_close_bytes": 0,
+      "command": "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-27b/final-094941175/ar-512x128-q6-qmicro-root.json"
+    },
+    "4096": {
+      "prefill_tok_s": {
+        "baseline": 192.527666193746,
+        "candidate": 193.0014539813733,
+        "delta_percent": 0.246088158130231,
+        "candidate_samples": [
+          195.2497856873664,
+          193.0014539813733,
+          192.83090419918148
+        ]
+      },
+      "decode_tok_s": {
+        "baseline": 20.925791264539814,
+        "candidate": 21.01738856723784,
+        "delta_percent": 0.43772444033332025,
+        "candidate_samples": [
+          21.02539743334478,
+          21.01738856723784,
+          20.98196918297396
+        ]
+      },
+      "tracked_peak_gib": {
+        "baseline": 34.4805447421968,
+        "candidate": 34.4805447421968
+      },
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ],
+      "after_close_bytes": 0,
+      "command": "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json /tmp/hipengine-qwen36-27b/final-094941175/ar-4096x128-q6-qmicro-root.json"
+    }
+  },
+  "matched_module_rerank": {
+    "protocol_note": "Profiler-only directional matched-shape ledger; Vulkan query logger and rocprof perturb execution differently, and differing proposal call counts are disclosed. Topline speed uses unprofiled natural25.",
+    "dense_q5_ssm_out": {
+      "hipengine_ms": 37.39343899999999,
+      "vulkan_ms": 15.1194,
+      "gap_ms": 22.274038999999988,
+      "status": "largest gap; exact raw/T16/Q8_1 representations exhausted and closed"
+    },
+    "q4_ffn_gate_up_plus_silu": {
+      "hipengine_ms": 76.64774800000006,
+      "vulkan_ms": 89.53352,
+      "gap_ms": -12.885771999999932,
+      "status": "hipEngine ahead"
+    },
+    "wide_q6_ffn_down_plus_qkv": {
+      "hipengine_ms": 46.916956999999954,
+      "vulkan_ms": 41.4862,
+      "gap_ms": 5.430756999999957,
+      "status": "small residual after retained planar qmicro"
+    },
+    "proposal_root_head_stage1": {
+      "hipengine_ms": 37.126874,
+      "vulkan_ms": 31.8732,
+      "gap_ms": 5.253674,
+      "call_counts": {
+        "hipengine": 25,
+        "vulkan": 22
+      },
+      "status": "directional only because call counts differ"
+    },
+    "target_root_head_f32_rows": {
+      "hipengine_ms": 11.724417999999998,
+      "vulkan_ms": 9.17016,
+      "gap_ms": 2.554257999999999,
+      "status": "small residual after retained planar qmicro"
+    }
+  },
+  "comparison": {
+    "llamacpp_vulkan_natural25_b3_tok_s": 68.08247965468567,
+    "baseline_b3_tok_s": 54.5473697142049,
+    "candidate_b3_tok_s": 55.89894007943694,
+    "candidate_below_vulkan_percent": 17.8952641517225,
+    "vulkan_over_candidate_ratio": 1.2179565401049632,
+    "candidate_vs_own_true_ar": 2.423111486587823
+  },
+  "sources": {
+    "paths": {
+      "natural_baseline": "/tmp/hipengine-qwen36-27b/final-3728531ba/natural25-native-q6-qmicro-planar-b1-b3.json",
+      "natural_candidate": "/tmp/hipengine-qwen36-27b/final-094941175/natural25-native-q6-qmicro-root-b1-b3.json",
+      "natural_comparison": "/tmp/hipengine-qwen36-27b/final-094941175/natural25-q6-qmicro-root-vs-3728531ba.json",
+      "profile_baseline_suite": "/tmp/hipengine-qwen36-27b/final-3728531ba/profile-native-q6-qmicro-planar-mtp-b3-hermetic/suite.json",
+      "profile_candidate_suite": "/tmp/hipengine-qwen36-27b/final-094941175/profile-native-q6-qmicro-root-mtp-b3-hermetic/suite.json",
+      "profile_baseline_kernel_csv": "/tmp/hipengine-qwen36-27b/final-3728531ba/profile-native-q6-qmicro-planar-mtp-b3-hermetic/mtp-b3_kernel_trace.csv",
+      "profile_candidate_kernel_csv": "/tmp/hipengine-qwen36-27b/final-094941175/profile-native-q6-qmicro-root-mtp-b3-hermetic/mtp-b3_kernel_trace.csv",
+      "profile_baseline_marker_csv": "/tmp/hipengine-qwen36-27b/final-3728531ba/profile-native-q6-qmicro-planar-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv",
+      "profile_candidate_marker_csv": "/tmp/hipengine-qwen36-27b/final-094941175/profile-native-q6-qmicro-root-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv",
+      "profile_comparison": "/tmp/hipengine-qwen36-27b/final-094941175/profile-native-q6-qmicro-root-mtp-b3-hermetic/summary-vs-3728531ba.json",
+      "component_screen": "/tmp/qwen36-q6-qmicro-planar-root-head-gpu1.json",
+      "runtime_trace": "/tmp/qwen36-qmicro-root-runtime-trace-gpu1-1785882892/root-qmicro_kernel_trace.csv",
+      "populated_512": "/tmp/hipengine-qwen36-27b/final-094941175/ar-512x128-q6-qmicro-root.json",
+      "populated_4096": "/tmp/hipengine-qwen36-27b/final-094941175/ar-4096x128-q6-qmicro-root.json"
+    },
+    "sha256": {
+      "natural_baseline": "c19644908dfbb779c80d60ec8114bd41bc2c50e0958bc54f8f387de61f724831",
+      "natural_candidate": "cd75fc298e6558a74488129e736095995c7dc2639022fa201b709996a9f2167a",
+      "natural_comparison": "2e8969b3a079a7c2a6fdee3300d61c4823b726a134c0b282bcbf5e76a3a9d9ee",
+      "profile_baseline_suite": "143ab9887c2b0b692ee289b5957161b02be4ff35d3f3d9cd52456c58583687ae",
+      "profile_candidate_suite": "954042511a8e127a1941f1929c6dbce0e68b2d2cf210f6e3bb1e3525987fe6f6",
+      "profile_baseline_kernel_csv": "ed7f5508eda56f11bf35965377dba24c9b79b989c1559174d108625044dc3f49",
+      "profile_candidate_kernel_csv": "090fbfd3ed5001f93f36481e04bc7115e93c7499594697c02dbd43736505cfbe",
+      "profile_baseline_marker_csv": "3e067023902ce60d89704e7d3e123495d5d399dce8980cc4d6b9dca3d391d365",
+      "profile_candidate_marker_csv": "94d9d646900350fb393925b64e942ab7b494f075166fefa4a86096d4578379c6",
+      "profile_comparison": "7c449f6dabbf9ae073d6da85580e739f0ff203849bf765a89570f552cc7e0c90",
+      "component_screen": "55605ec12e547c051515d1c600aa3c81c43412f1dc3aa30074bfd92812d28e52",
+      "runtime_trace": "ccba0863ff78fcc3c0ed2c88dcf303fde824ae904f668936a8cd5dcb2c440951",
+      "populated_512": "05cacbd93ec5206ad994028a895694369b6bbf21dd338ba1d43a3ed6abd2eb4e",
+      "populated_4096": "13ca4e02748004157a4ff81a8f445e3bd024d8f07dc8b71b6585308e5426d75c"
+    }
+  },
+  "decision": {
+    "action": "retain_and_promote_planar_qmicro_root_head",
+    "reason": "All exactness gates pass; every full/train/heldout/category scope, absolute B1-B3, true AR, both populated prefill rows, and both populated graph-decode rows improve; physical tracing proves the intended root-head reduction; bytes and teardown are unchanged.",
+    "noise_disclosure": "One B1 code prompt is -0.653% in a one-run per-prompt cell; every B1 aggregate scope and every B2/B3 prompt row improve.",
+    "next_profile": "Dense Q5 ssm_out remains the largest matched arithmetic gap but all exact compressed forms are closed. Any continuation must use a materially new representation/compute mechanism; the remaining exact Q6/root/attention gaps are individually second-order."
+  }
+}

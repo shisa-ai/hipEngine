@@ -1218,6 +1218,48 @@ Populated 512/4096 prefill advances **202.550/188.637 -> 207.022/192.528 tok/s
 B3 is now **54.547 tok/s / 19.88% below Vulkan**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json`.
 
+The same byte-neutral layout is now retained for the distinct K5,120/N248,320
+root head. The owner is shape-qualified: the K2,048 MoE head, gfx1151,
+explicit legacy plans, X8 requests, and registry misses retain legacy T16.
+Actual-weight GPU1 leaves are FP32/top-1 bit-exact and improve proposal top-1
+**1.245x** plus target rows 2/3/4 **1.199x/1.184x/1.285x**, every cell with
+**11/11** paired wins. Materialization and actual-route tracing prove one
+unchanged **1,042,944,000-byte** allocation, intended qmicro c1/row4/top-1
+symbols, zero scratch, and clean free; the complete W7900 B1-B3 transaction is
+exact.
+
+The tracked-clean W7900 profile cuts combined root work **55.638 -> 48.851 ms
+(-12.20%)**: proposal stage1 **40.606 -> 37.127 ms (-8.57%)** and target FP32
+rows **15.032 -> 11.724 ms (-22.00%)**. Complete no-warmup profile wall falls
+**500.205 -> 478.361 ms (-4.37%)**, but passes 2-7 improve only **45.840 ->
+45.553 ms (-0.63%)** because first-use graph capture also moves; physical
+kernels and the unprofiled suite bind attribution.
+
+Natural25 true AR advances **23.031 -> 23.069 tok/s (+0.166%)** and B1/B2/B3
+advance **39.830/49.848/54.547 -> 40.179/50.813/55.899 tok/s
+(+0.875/+1.935/+2.478%)**. Every aggregate scope and every B2/B3 prompt
+improves; one B1 prompt is noise-negative **-0.653%**, so no 30/30-row claim is
+made. Populated 512/4096 prefill advances **+0.407%/+0.246%** to
+**207.864/193.001 tok/s**, graph AR advances **+0.456%/+0.438%** to
+**22.208/21.017**, peaks are byte-identical, and teardown is clean. B3 reaches
+**2.4231x own AR** and is now **17.90% below Vulkan**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json`.
+
+The refreshed profiler-only matched-module ledger is now:
+
+| Module | hipEngine | llama.cpp Vulkan | Directional gap / status |
+| --- | ---: | ---: | --- |
+| Dense Q5 `ssm_out` | 37.393 ms | 15.119 ms | +22.274 ms; largest gap, but all exact raw/T16/Q8_1 representations are closed |
+| Q4 FFN gate/up + SiLU | 76.648 ms | 89.534 ms | hipEngine ahead 12.886 ms |
+| Wide Q6 FFN-down + QKV | 46.917 ms | 41.486 ms | +5.431 ms; retained planar owner, second-order residual |
+| Proposal root stage1 | 37.127 ms / 25 calls | 31.873 ms / 22 calls | directional only; call counts differ |
+| Target root FP32 rows | 11.724 ms | 9.170 ms | +2.554 ms; second-order residual |
+
+These are synchronized-profiler ranking values, not toplines. Dense Q5 remains
+the only high-leverage arithmetic gap, but another exact compressed-layout
+retry is not admissible without a materially new representation or compute
+mechanism.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1229,10 +1271,10 @@ B3 is now **54.547 tok/s / 19.88% below Vulkan**. Artifact:
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 plus planar Q6T16 reach 207.022/192.528 tok/s |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 22.107/20.926 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact B3 reaches 54.547 tok/s absolute, while faster AR lowers own-AR ratio to 2.3685x as disclosed |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank `3728531ba`, with a 19.88% Vulkan B3 gap |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 plus planar Q6T16 reach 207.864/193.001 tok/s |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 22.208/21.017 tok/s and Vulkan remains beaten |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact B3 reaches 55.899 tok/s / 2.4231x own AR, with every aggregate scope positive |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O3; re-rank `094941175`, with a 17.90% Vulkan B3 gap and only closed dense-Q5 above second-order exact residuals |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
@@ -1383,6 +1425,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | 2026-08-04 | llama.cpp Vulkan `ee0445c99` | W7900 | stateful 512/128, 4K/128; natural25 B3 | 79.805 / 81.792 | 12.574 / 12.488; natural AR 12.546 | 68.082 engine / 36.122 client | 5.4265x engine / 3.7600x client | `[9707]*128` captured exact; all categories improve; 6/10 natural content hashes match AR | `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json` |
 | 2026-08-04 | hipEngine `da6865f74`, exact/default dense GGUF | W7900 | 512/128, 4K/128; natural25 B1-B3 | 50.515 / 50.473 | 19.556 / 18.649; natural AR 20.361 | B1 17.128 (best), B2 16.005, B3 14.858 | 0.8412x / 0.7861x / 0.7297x | all repeated IDs deterministic; all 750 MTP-visible IDs exact vs AR; GPU/CPU accept exact; state transaction oracle green | `benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json` |
 | 2026-08-05 | hipEngine `3728531ba`, byte-neutral planar Q6T16 | W7900 | 512/128, 4K/128; natural25 B1-B3 | 207.022 / 192.528 | 22.107 / 20.926; natural AR 23.031 | B1 39.830, B2 49.848, B3 54.547 | 1.7294x / 2.1644x / 2.3685x | all 750 MTP IDs and acceptance exact; all 30 rows/scopes improve; populated IDs deterministic; byte-identical peaks and clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json` |
+| 2026-08-05 | hipEngine `094941175`, planar Q6T16 root head | W7900 | 512/128, 4K/128; natural25 B1-B3 | 207.864 / 193.001 | 22.208 / 21.017; natural AR 23.069 | B1 40.179, B2 50.813, B3 55.899 | 1.7417x / 2.2026x / 2.4231x | all IDs/acceptance exact; all aggregate scopes and all B2/B3 prompt rows improve; one B1 prompt -0.653% disclosed; byte-identical peaks and clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json` |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

@@ -5194,6 +5194,41 @@ Populated 512/4096 prefill improves **202.550/188.637 -> 207.022/192.528 tok/s
 **19.88% below** llama.cpp Vulkan. Artifact:
 [`2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json`](results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json).
 
+#### Qwen3.6-27B byte-neutral planar-Q6T16 root head, W7900/gfx1100
+
+Clean implementation `094941175` extends the retained planar-qmicro layout to
+the distinct K5,120/N248,320 root head. Proposal top-1, generic FP32 c1, and
+native target FP32 rows use registered same-quant consumers. The K2,048 MoE
+head, gfx1151, X8 requests, explicit legacy plans, and registry misses retain
+legacy T16. The allocation remains exactly **1,042,944,000 bytes**.
+
+| Route | Wide-planar baseline | + planar root head | Delta | MTP / true AR | Primary stage delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 23.031 tok/s | **23.069 tok/s** | **+0.166%** | 1.0000x | n/a |
+| B1 | 39.830 tok/s | **40.179 tok/s** | **+0.875%** | 1.7417x | proposal **-5.116%** |
+| B2 | 49.848 tok/s | **50.813 tok/s** | **+1.935%** | 2.2026x | proposal **-6.612%** |
+| **B3 (retained)** | 54.547 tok/s | **55.899 tok/s** | **+2.478%** | **2.4231x** | proposal **-7.424%** |
+
+Every full/train/heldout/category scope improves, all B2/B3 prompt rows improve,
+and IDs, acceptance, GPU/CPU summaries, and stage ledgers remain exact. One B1
+`code_merge_intervals` cell is **-0.653%** in the one-run per-prompt timing, so
+there is no 30/30-row claim.
+
+The tracked-clean one-prompt B3 trace cuts intended root work **55.638 ->
+48.851 ms (-12.20%)**: proposal top-1 stage1 **40.606 -> 37.127 ms (-8.57%)**
+and target FP32 rows **15.032 -> 11.724 ms (-22.00%)**. Kernel sum falls
+**1.729%** and complete no-warmup wall falls **4.367%** at unchanged **8,055**
+dispatches. First-use graph capture also moves; steady target passes 2-7 improve
+only **45.840 -> 45.553 ms (-0.627%)**, so the physical root family and
+unprofiled suite bind attribution.
+
+Populated 512/4096 prefill improves **207.022/192.528 -> 207.864/193.001 tok/s
+(+0.407%/+0.246%)** and graph AR improves **22.107/20.926 -> 22.208/21.017
+(+0.456%/+0.438%)**. All six final IDs are `9707`; peaks remain byte-identical
+at **31.656/34.481 GiB** and teardown returns to zero. Canonical B3 is now
+**17.90% below** llama.cpp Vulkan. Artifact:
+[`2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json`](results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5369,6 +5404,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact Q6T16 col8 verifier rowtiles](results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json),
 [Qwen3.6-27B narrow Q4T16 col4 verifier rowtile](results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json),
 [Qwen3.6-27B byte-neutral planar-Q6T16 replacement](results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json),
+[Qwen3.6-27B byte-neutral planar-Q6T16 root head](results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
