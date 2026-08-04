@@ -727,6 +727,13 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
+        # Qwen3.6 narrow/selective Q4T16 col4 rowtiles are W7900-only until
+        # gfx1151 receives an independent shape crossover and full-model gate.
+        (
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_col4_bf16_bf16_out",
+        ),
         # Exact single-page and P2 split attention are W7900-only until gfx1151
         # receives independent crossover, full-state, and performance gates.
         (

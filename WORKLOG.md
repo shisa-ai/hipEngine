@@ -205805,3 +205805,53 @@ Vulkan local sizes verbatim will close the measured gap.
   (SHA-256 `df7bca0d...a4f8694`). Raw harness/final hashes are
   `f5339cf6...6fb9` / `11fc9c37...8c43`; the temporary final JIT key is
   `09d3a5be...e0d72`.
+
+## 2026-08-05 — Admit shape-selective Q4T16 col4 verifier rowtiles
+
+- Re-rank only the retained `a821d571b` trace. Compact Q4T16 dual+SiLU and
+  singleton rowtiles total **128.731862 ms / 26.1558%** of the 492.172-ms
+  complete wall. Both allocate **144 VGPR** at row 4. A four-column split is
+  materially different from the retained eight-column body and, using the
+  prior Q6 pressure split as the conservative analogue, had a credible
+  19-31-ms / 3.9-6.3% complete-wall recovery. Admit one bounded GPU1
+  actual-weight screen before runtime changes.
+- RED extends `tests/test_gguf_t16_selected_gemv_decode.py` with exact col4
+  leaf and four-axis registry contracts; collection fails only on the absent
+  wrapper. The implementation preserves each output's contiguous-eight K
+  traversal, FP32 `fmaf` stream, wave32 shuffle tree, zero-seeded BF16 store,
+  and existing T16 bytes while doubling the output grid.
+- The broad candidate does not transfer. On actual K5,120/N17,408 gate/up,
+  fused FFN col4 loses tile8 at rows 2/3/4 (**0.784x/0.906x/0.913x**) and is
+  removed completely. Across the seven actual singleton shapes, only 8/21
+  row-shape cases win. Gate, output, Q, and FFN-down lose; no broad selector
+  survives.
+- Final 11-sample, 50-warmup, 50-launch counterbalanced GPU1 adjudication
+  retains two shape policies. K5,120/N1,024 rows 2/3/4 improve tile8
+  **1.4922x/1.4390x/1.4869x** on `attn_k` and
+  **1.4917x/1.4412x/1.4766x** on `attn_v`, with **11/11** paired wins in all
+  six rows. K5,120/N10,240 improves **1.0591x/0.9969x/1.0530x**; therefore
+  only rows 2 and 4 select col4 and row 3 remains tile8. A separate two-route
+  production comparison confirms row-2 col4 over pack8 at **1.1441x** for
+  QKV and **1.5542x** for V. Every compared output has zero BF16 mismatches.
+  Final hashes: K/N1,024 K `7a4c85c3...34f7`, V `74558b25...c71e`; QKV
+  `59a6e9c7...fe71`; row-2 pack8 controls `12405aaa...265e` /
+  `ce0fe1f1...834f`.
+- Production selects `linear/gguf_q4_k_t16_v1/
+  dense_rowtile_col4_bf16_bf16_out` only for K5,120/N1,024 rows 2-4 and
+  K5,120/N10,240 rows 2/4. Missing keys/sidecars and every other row/shape
+  retain the prior tile8 or pack8 chain. Existing `decode_tiles_r3plus`
+  storage is reused at row 2; no allocation, environment flag, prompt/token
+  condition, or c1/prefill change is added. gfx1151 excludes the alias pending
+  an independent architecture-local gate.
+- Cached GPU1 tracing observes the final col4 symbols for rows 2/3/4 at
+  local32, **72/88/96 VGPR**, SGPR128, LDS0, scratch0, and plausible
+  **5,880/6,320/7,160 ns** tiny-fixture durations (trace SHA-256
+  `ee3ef0ef...d8e78`). The focused T16/Q4-rowtile/gfx1151 bundle passes
+  **153 tests**. The binding W7900 B1-B3 transaction passes exact logits,
+  reject/partial/full/rollback state, dynamic positions, graph reuse,
+  provider output, physical ownership, lifecycle, and teardown. Its first two
+  completed runs failed only stale call-ledger assertions after all semantic
+  checks; focused assertion repair then passes the same node.
+- This is a correctness/admission unit, not yet a performance claim. Next run
+  the hermetic cached W7900 one-prompt B3 trace against `a821d571b`; only an
+  intended physical-family and complete-window win advances to natural25.
