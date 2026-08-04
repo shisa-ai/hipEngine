@@ -14,9 +14,10 @@ locally in this review, and no hipEngine performance claim is added here.
 
 There is **one immediate, bounded experiment worth running** on hipEngine:
 
-> Measure a reusable, per-layer **head-contiguous BF16 K/V prefill scratch** in
-> front of AOTriton at 32K and 64K, including the copy in wall time. hipEngine
-> currently gives AOTriton a token-major, head-interleaved paged cache through
+> Measure one reusable, cross-layer pair of **head-contiguous BF16 K/V prefill
+> scratch buffers** in front of AOTriton at 32K and 64K, including the copy in
+> wall time. hipEngine currently gives AOTriton a token-major, head-interleaved
+> paged cache through
 > explicit strides. Nathan's strongest and most transferable finding is that
 > converting that exact layout to per-head-contiguous storage before cooperative-
 > matrix Flash Attention removed a severe long-context prefill collapse.
@@ -65,9 +66,11 @@ and maintains clean per-concern upstream branches
 
 Release status matters:
 
+- [`v0.1`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.1)
+  silently fell back to CPU because its bundled ICD manifest was invalid;
+  `v0.1` performance is therefore invalid as GPU evidence.
 - [`v0.2`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.2)
-  fixed a silent CPU fallback in `v0.1`; `v0.1` performance is invalid as GPU
-  evidence.
+  repaired that fallback and added an explicit backend check.
 - [`v0.3`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.3)
   adds DeepSeek V4 lightning-indexer/indexed sparse attention and
   gather-to-compact decode.
@@ -220,6 +223,7 @@ Status meanings:
 | Nathan change | Source evidence | hipEngine status | Decision |
 | --- | --- | --- | --- |
 | Bound Vulkan command buffers by estimated bytes | The fork defaults to an 8-GiB traffic cap ([`e709b94`, lines 6628-6631](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L6628-L6631)) and submits when accumulated bytes cross it ([line 17967](https://github.com/Nathanw1014/llama.cpp/blob/e709b949e7ef43db08a7b1f42d0d6a5a18946153/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L17967)). | **Backend-specific, analogous issue only.** HIP/AQL submission has no llama.cpp Vulkan command-buffer batching layer. hipEngine has default-off chunk/layer `hipStreamSynchronize` drains. | Do not emulate byte estimates in Python. First test the upstream MES long-compute workaround; use layer drain only as diagnostic containment. |
+| Bound FA scratch and fall back when it cannot remain resident | [`e21d01e`, lines 10545-10562](https://github.com/Nathanw1014/llama.cpp/blob/e21d01ed4ddb4eb0193c148daa2569972bcfd115/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10545-L10562) turns an oversized Vulkan storage-buffer abort into fallback. [`8a2c6b2`, lines 10778-10834](https://github.com/Nathanw1014/llama.cpp/blob/8a2c6b29c45bf0346ad9dde6a0ae1b38ac005b13/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10778-L10834) adds a discrete-VRAM residency gate; the commit explicitly exempts UMA. | **Transfer the guard, not the Vulkan policy.** gfx1151 is UMA, HIP has no `maxStorageBufferRange`, and Nathan's discrete-heap reserve heuristic does not map directly. The proposed BF16 contiguity scratch still needs bounded tracked allocation and an exact existing-path fallback. | If scratch allocation/capacity admission fails, use strided AOTriton or native paged attention rather than aborting or overcommitting. Record high-water; do not port `GGML_VK_FA_DEQUANT_RESERVE_MB`. |
 | `amd_iommu=off` | Toolbox reports a modest prefill effect and a DMA-isolation tradeoff ([README line 48](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L48)). | **Already exercised.** Current gfx1151 publication uses IOMMU-off but correctly says cross-revision deltas are not causal; XDNA is unavailable in this boot. | No engine change. A causal claim still needs a same-commit reboot A/B. |
 | Verify the actual GPU backend | `v0.2` fixed silent CPU fallback; the README requires checking the backend column ([README lines 86-90](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L86-L90)). | **Present process rule.** hipEngine artifacts record backend/arch and kernel traces verify expected symbols. | Keep explicit backend/arch and trace evidence in every retained benchmark. |
 | Bundle Mesa/libdrm and repair ICD metadata | Vulkan distribution concern. | **Not applicable.** hipEngine is a native HIP runtime and does not ship a RADV ICD. | No action. Pin HIP/compiler provenance instead. |
@@ -246,7 +250,9 @@ stride well, and only ten of 40 Qwen3.6 layers use full attention.
    correct. A dense-prefix specialization may exist only with an explicit
    predicate and generic fallback.
 3. Allocate one K and one V scratch sized to the active context and reuse them
-   across full-attention layers. Do not allocate one duplicate per layer.
+   across full-attention layers. Do not allocate one duplicate per layer. Admit
+   the scratch through tracked runtime capacity; allocation/admission failure
+   must select an existing attention path rather than abort or overcommit.
 4. Run the copy after append and before AOTriton; pass contiguous K/V strides to
    AOTriton.
 5. Keep current strided AOTriton and native paged attention registered as
@@ -263,6 +269,8 @@ stride well, and only ten of 40 Qwen3.6 layers use full attention.
 - Byte-exact copy against a NumPy gather/transpose oracle.
 - Dense-prefix and generic-page variants must produce identical contiguous
   tensors.
+- A forced scratch-capacity denial must select the existing strided/native
+  fallback, produce the same output, and leave no partial allocation.
 
 **Attention correctness**
 
