@@ -203372,3 +203372,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `python3 scripts/sync_benchmark_readme.py --check` also pass; the review was
   reread end-to-end. No code or kernel changed, so no pytest/GPU rerun is
   applicable beyond the completed benchmark processes themselves.
+
+## 2026-08-04 — Add conservative gfx1151 prefill-kernel isolation profile
+
+- Reconstruct the first repeated-128K failure chronology before changing the
+  device path. There is no proven lifecycle-safe repeated-128K application
+  revision: the first full repetition campaign completed three measured
+  prefills and then stalled, and its retry stalled during the second measured
+  prefill. The first-failure route predates LCP-1 convolution, device metadata,
+  the 128-thread router, Q8 four-wave long-context admission, and head-major
+  AOTriton K/V. Its promoted application changes were exact LDS/direct GDN and
+  Q4 selected-prefill shared-X.
+- Add `qwen35_readme_sweep.py --prefill-kernel-profile conservative` as a
+  fail-closed, GGUF-only diagnostic. It records and applies unfused exact GDN
+  `chain`, baseline Q4 selected prefill, baseline linear-attention convolution,
+  512-thread router selection, and host metadata. It leaves queue drain at
+  `none`, so it changes device-kernel selection without bounding host
+  submission. Conflicting environment overrides abort instead of weakening
+  provenance.
+- RED: the new focused profile contract produced **5 expected failures** before
+  the helper/CLI existed. GREEN: `uv run pytest -q
+  tests/test_qwen35_prefill_kernel_profile.py
+  tests/test_qwen35_prefill_queue_drain.py` passes **13/13**;
+  `python3 -m py_compile scripts/qwen35_readme_sweep.py` and
+  `git diff --check` pass. `scripts/check_lineage.py --kind kernel --diff stat`
+  remains blocked only by the already-recorded absent external Atlas checkout;
+  this unit ports no kernel. No GPU lifecycle claim is made before the approved
+  three-independent-process 128K gate.
