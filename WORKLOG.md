@@ -203677,3 +203677,61 @@ Vulkan local sizes verbatim will close the measured gap.
   Candidate and comparison SHA-256s are `185e93f6...c25c` and
   `12b1bc01...987`. Re-profile the retained B3 graph before admitting the next
   D27-O3 candidate; do not attribute the remaining wall from the eager trace.
+
+### D27-O3 post-graph profile and staged-projection admission
+
+- Re-profile clean retained commit `3dc452ea72ecc6fc08f44c6b03a04f8ae9ecbbd6`
+  on GPU0 W7900 with the same hermetic TheRock/HSA 1.21 environment,
+  cached-only JIT, one-prompt native B3 leaf, no warmup, and nested ROCTX
+  markers. Exact command:
+  ```bash
+  THEROCK_PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+  THEROCK_ROOT="$($THEROCK_PY -m rocm_sdk path --root)"
+  ROOT=/tmp/hipengine-qwen36-27b/final-3dc452ea7/profile-native-graph-mtp-b3-hermetic
+  OVERRIDE=/tmp/hipengine-roctx-sdk-override-qwen36-dense
+  env -i HOME="$HOME" USER="${USER:-$(id -un)}" LOGNAME="${LOGNAME:-${USER:-$(id -un)}}" SHELL=/bin/bash TERM=xterm \
+    PATH="$THEROCK_ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+    LD_LIBRARY_PATH="$OVERRIDE:$THEROCK_ROOT/lib:$THEROCK_ROOT/lib/rocm_sysdeps/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+    HIP_PATH="$THEROCK_ROOT" ROCM_PATH="$THEROCK_ROOT" HIP_LIB_PATH="$THEROCK_ROOT/lib" HIP_INCLUDE_PATH="$THEROCK_ROOT/include" \
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH="$PWD" \
+    rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv -d "$ROOT" -o mtp-b3 -- \
+    "$THEROCK_PY" scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m \
+      --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 \
+      --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers \
+      --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output "$ROOT/suite.json" \
+      > "$ROOT/suite.stdout"
+  ```
+  The suite is exact, preserves the seven-cycle accepted ledger
+  `[3,3,2,3,3,0,3]`, and submits 7/7 graph cycles without fallback.
+- Versus the clean eager retained profile at `f9489dc23`, complete profiled wall
+  falls **1,219.266 -> 1,075.551 ms (-11.787%)** and target verify falls
+  **1,097.438 -> 951.747 ms (-13.276%)**. Kernel sum is near-flat
+  **791.701 -> 783.308 ms (-1.060%)**; the device-span queue-gap/copy-overlap
+  bucket falls **427.033 -> 291.712 ms (-135.320 ms / -31.689%)**. Target
+  dispatches fall **24,619 -> 23,318 (-1,301 / -5.285%)**. The graph therefore
+  realizes the intended submission win rather than borrowing from arithmetic or
+  profiler reconciliation; host outside the device span remains 0.531 ms.
+- Target verify still owns **951.747 ms / 88.49%** of complete wall. Its
+  host-minus-kernel gap is now **259.746 ms / 24.15%**, but one graph submission
+  already owns each cycle and the no-warmup trace includes 139.198 ms first
+  capture. Do not treat the whole residual as removable Python dispatch.
+- The new measured arithmetic ceiling is exact row-serial projection work.
+  Dense-BF16 local128 remains 240.778 ms; Q4 singleton projection work is
+  138.549 ms after excluding the retained 136.069-ms rowtile, for a combined
+  **379.327 ms / 35.27% complete wall**. The linear-attention subset alone is
+  **339.579 ms / 31.57%**: Q6-repacked QKV 106.355 ms, Q5-repacked `ssm_out`
+  131.740 ms, Q4 QKV 48.257 ms, and Q4 gate 53.228 ms.
+- Admit an exact staged linear-attention projection scheduler first. Bulk only
+  per-row-independent norm/QKV/gate/alpha/beta inputs, preserve the existing
+  token-serial Conv/GDN recurrence and per-row state journal, then bulk exact
+  `ssm_out`; retain the current scalar chain as the unfused fallback. Existing
+  rows2-4 Q4/BF16 rowtiles preserve each row's c1 FMA/reduction order. A
+  conservative 50% recovery of the linear subset saves
+  **169.790 ms / 15.79% complete wall**; engineering/risk is high.
+  Full-attention projection staging remains a separate follow-up only after the
+  linear transaction gate.
+- Kernel/marker/copy/summary/suite SHA-256s are `0ca28663...569c`,
+  `6cd4e5ab...d05`, `efd5c9d5...6425`, `4c672b7c...65d9`, and
+  `1989beec...fb5`. This profile is diagnostic admission evidence, not a new
+  benchmark topline.

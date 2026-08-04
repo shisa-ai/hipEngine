@@ -486,6 +486,19 @@ stay exact. Peak rises only 0.0007 GiB to 28.996 GiB and frees completely. B3
 is now selected at **1.2362x own AR**, though still 63.00% below Vulkan B3.
 Artifact: `benchmarks/results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json`.
 
+The post-graph B3 trace now moves complete profiled wall
+**1,219.266 -> 1,075.551 ms (-11.79%)** and target verify
+**1,097.438 -> 951.747 ms (-13.28%)**. Kernel sum is near-flat while the
+queue-gap/copy-overlap bucket falls 135.320 ms; this validates submission
+ownership. Target verify still owns 88.49% of wall, but its next measured target
+is arithmetic: exact row-serial dense-BF16 plus Q4 singleton projections total
+**379.327 ms / 35.27%** of wall. The linear-attention subset is
+**339.579 ms / 31.57%**. D27-O3 therefore admits staged exact linear projections:
+bulk independent norm/QKV/gate/alpha/beta, preserve serial Conv/GDN and each
+state-journal boundary, then bulk exact `ssm_out`. A conservative 50% recovery
+is 169.790 ms / 15.79% of wall. Full-attention staging is deferred until this
+narrower transaction gate passes.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -499,7 +512,7 @@ Artifact: `benchmarks/results/2026-08-04-qwen36-27b-native-verifier-graph-retain
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | four wins retained; exact graph B3 selected at 1.2362x AR |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | four wins retained; exact graph B3 1.2362x AR; staged linear projections admitted |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
