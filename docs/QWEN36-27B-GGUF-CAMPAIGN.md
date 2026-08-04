@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: active, measured optimization (2026-08-04); clean exact hipEngine AR/MTP baseline and reconciled profiles complete.
+Status: active, measured optimization (2026-08-05); clean exact hipEngine AR/MTP baseline and reconciled profiles complete.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -1066,6 +1066,41 @@ ms**, retained compact FFN **76.440 ms**, and dense Q5 `ssm_out` **36.982 ms**.
 Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json`.
 
+The measured single-Q4 follow-up is now retained with an explicit row policy.
+All **288** screened rank-2 Q4 tensors carry compact sidecars. Seven projection
+families select T16 at native rows 2-4; `attn_qkv` and `attn_v` retain pack8 at
+row 2 because their actual-weight component ratios were only
+**0.9977x/0.9969x**, then select T16 at rows 3-4. Pack8 remains resident for
+populated prefill and every fail-closed route. The binding W7900 transaction
+census observes compact rows `{2,3,4}` across all six production shapes and
+pack8 only at those two declared row-2 exceptions, with exact logits,
+reject/partial/full/rollback state, graph reuse, provider output, ownership,
+and teardown.
+
+The hermetic W7900 B3 trace replaces exactly **1,008 pack8 single-Q4 launches /
+81.461 ms** with **1,008 compact-T16 launches / 51.370 ms (-36.94%, 1.586x)**.
+Target verification falls **452.948 -> 423.244 ms (-6.56%)**, kernel sum falls
+**407.085 -> 378.591 ms (-7.00%)**, and complete marker wall falls **548.103 ->
+515.594 ms (-5.93%)** without changing dispatch or copy counts.
+
+Clean natural25 advances B1/B2/B3 **36.078/42.879/47.496 ->
+37.544/45.634/50.344 tok/s (+4.06%/+6.43%/+6.00%)** and selected B3 own-AR
+**2.1887x -> 2.3260x (+6.27%)**. All 30 prompt-budget rows improve
+(**+3.73% to +7.09%**), as does every full/train/heldout/category scope
+(**+3.97% to +6.62%**); IDs, acceptance, and stage accounting remain exact.
+True AR's **-0.259%** movement is timing noise on an unchanged c1 route.
+
+Populated 512/4096 prefill moves **+0.422%/+0.030%** and graph AR
+**+0.144%/-0.184%**, with all six final IDs `9707`. The extension adds exactly
+**4,194,959,360 bytes / 3.907 GiB**, bringing total compact-Q4T16 sidecars to
+**10.049 GiB** before clean teardown. This remains a 48-GiB W7900 route, not a
+24-GiB component-board claim. B3 is now **26.05%** below Vulkan. Re-rank only
+`2dbf6abdd`: remaining leaders are Q6T16 rowtiles (**80.906 ms** BF16 plus
+**18.229 ms** F32 output), retained compact FFN (**76.456 ms**), compact
+single-Q4 (**51.370 ms**), proposal Q6T16 top-1 stage1 (**39.973 ms**), and
+dense `ssm_out` (**37.160 ms**). Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1079,8 +1114,8 @@ Artifact:
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 established parity, selective Q6T16 now reaches 202.011/188.765 tok/s |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 20.910/19.804 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; fifteen wins retained, exact B3 reaches 47.496 tok/s / 2.1887x faster own AR |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `0439ecc3c`, with a 30.24% Vulkan B3 gap |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; sixteen wins retained, exact B3 reaches 50.344 tok/s / 2.3260x faster own AR |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `2dbf6abdd`, with a 26.05% Vulkan B3 gap |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule

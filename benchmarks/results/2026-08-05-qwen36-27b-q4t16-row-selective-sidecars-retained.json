@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "status": "retained_exact_row_selective_compact_q4t16_projection_sidecars",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical W7900 ten-prompt natural25 true-AR plus B1-B3, populated 512/128 and 4096/128 controls, and a hermetic one-prompt B3 physical-kernel trace.",
+  "correctness_claim": true,
+  "correctness_scope": "BF16-bit-exact compact-Q4T16 leaf arithmetic, exact B1-B3 transaction/state/provider output, exact natural25 IDs and acceptance versus the retained route, deterministic populated final IDs, and zero allocations after teardown.",
+  "kind": "qwen36_27b_gguf_row_selective_compact_q4t16_projection_sidecars_w7900",
+  "timestamp": "2026-08-05T02:16:23+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "retained_vram_gib_marketing": 48,
+    "component_vram_gib_marketing": 24,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "candidate_commit": "2dbf6abdd6d939092dbcb7856514874e0ef5fe4f",
+    "baseline_commit": "0439ecc3c97c016f9934fb777f78923cff42d1b3",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "profile_rocm": "HIP version: 7.15.0-0000000",
+    "profile_compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Extend the retained compact-Q4T16 sidecar route from dense FFN gate/up to every screened rank-2 Q4 projection, while keeping row-2 pack8 for the two measured flat families attn_qkv and attn_v.",
+    "selected_tensors": {
+      "attn_gate": 48,
+      "attn_k": 16,
+      "attn_output": 16,
+      "attn_q": 16,
+      "attn_qkv": 24,
+      "attn_v": 8,
+      "ffn_down": 32,
+      "ffn_gate": 64,
+      "ffn_up": 64,
+      "total": 288
+    },
+    "row_policy": {
+      "rows_2_3_4": [
+        "attn_gate",
+        "attn_k",
+        "attn_output",
+        "attn_q",
+        "ffn_down",
+        "ffn_gate",
+        "ffn_up"
+      ],
+      "rows_3_4_only": [
+        "attn_qkv",
+        "attn_v"
+      ],
+      "reason": "Actual-weight row-2 speedups for attn_qkv and attn_v were only 0.9977x and 0.9969x; pack8 remains their non-regressive row-2 owner."
+    },
+    "residency": {
+      "additional_sidecar_bytes_vs_baseline": 4194959360,
+      "additional_sidecar_gib_vs_baseline": 3.9068603515625,
+      "total_q4t16_sidecar_bytes_including_ffn": 10790502400,
+      "total_q4t16_sidecar_gib_including_ffn": 10.0494384765625,
+      "pack8_retained": true,
+      "sole_resident": false
+    },
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q4_k_t16_v1",
+      "dense_rowtile_bf16_bf16_out"
+    ],
+    "fallbacks": "Missing sidecar/key, legacy or no-repack plan, non-native session, explicit WMMA/variant/thread override, unsupported row, attn_qkv/attn_v row 2, or unsupported shape retains pack8.",
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false
+  },
+  "correctness": {
+    "focused_tests": {
+      "planner_and_dispatch_red_green": "passed",
+      "mapping_materialize_dispatch_bundle": "passed with fixture-availability skips",
+      "gpu1_exact_primitive_and_fallback_bundle": "passed",
+      "w7900_transaction": "1/1 passed",
+      "ruff_pycompile_diff": "passed"
+    },
+    "component_screen": {
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "actual_weight_families": 7,
+      "row_cases": 21,
+      "all_bf16_bit_exact": true,
+      "geometric_mean_speedup": {
+        "rows_2": 1.0710408117501635,
+        "rows_3": 1.255909530177075,
+        "rows_4": 1.1800466711570332
+      },
+      "row2_flat_exceptions": {
+        "attn_qkv": 0.9977,
+        "attn_v": 0.9969
+      }
+    },
+    "w7900_transaction": {
+      "test": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+      "passed": true,
+      "exclusive_t16_rows": [2, 3, 4],
+      "row2_pack8_shapes": [
+        "K5120/N1024 attn_v",
+        "K5120/N10240 attn_qkv"
+      ],
+      "scope": "B1-B3 logits; reject/partial/full/rollback Conv/GDN/KV/hidden state; positions 6/7/9; graph reuse; correction output; natural provider output; physical ownership; lifecycle and teardown."
+    },
+    "natural25": {
+      "ids_exact_vs_baseline": true,
+      "acceptance_exact_vs_baseline": true,
+      "candidate_all_exact_greedy": true,
+      "candidate_gpu_accept_match_cpu": true,
+      "candidate_all_stage_reconciled": true
+    }
+  },
+  "natural25": {
+    "protocol": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-2dbf6abdd/natural25-native-q4t16-single-b1-b3.json",
+      "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompts": 10,
+      "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+      "train_prompts": 6,
+      "heldout_prompts": 4,
+      "visible_outputs": 250,
+      "timed_transitions": 240,
+      "warmups": 1,
+      "repetitions": 1,
+      "candidate_budgets": [1, 2, 3],
+      "sampling": "temperature=0, top_k=1, top_p=1, min_p=0, seed=12345"
+    },
+    "true_ar": {
+      "baseline_tok_s": 21.700260580801576,
+      "candidate_tok_s": 21.644159946314577,
+      "delta_percent": -0.2585251650693565
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 36.07794214026721,
+        "candidate_tok_s": 37.54404463581497,
+        "delta_percent": 4.0637087610144285,
+        "target_verify_delta_percent": -4.50642070242303,
+        "candidate_mtp_vs_true_ar": 1.734603917589683,
+        "ratio_delta_percent": 4.333436951114833,
+        "selected": false
+      },
+      "2": {
+        "baseline_tok_s": 42.878884356319006,
+        "candidate_tok_s": 45.63445377812269,
+        "delta_percent": 6.426401859957909,
+        "target_verify_delta_percent": -7.21664679046744,
+        "candidate_mtp_vs_true_ar": 2.1083957007947087,
+        "ratio_delta_percent": 6.702254038343258,
+        "selected": false
+      },
+      "3": {
+        "baseline_tok_s": 47.49623359176212,
+        "candidate_tok_s": 50.344003409092515,
+        "delta_percent": 5.995780300828568,
+        "target_verify_delta_percent": -6.985607040336916,
+        "candidate_mtp_vs_true_ar": 2.3259855561021556,
+        "ratio_delta_percent": 6.270516328587128,
+        "selected": true
+      }
+    },
+    "scope_delta_percent_range_all_budgets": [3.970811633984872, 6.623089875194976],
+    "per_prompt_delta_percent_range_all_budgets": [3.7264594980820798, 7.092488051885515],
+    "all_full_train_heldout_category_scopes_improve": true,
+    "all_prompt_budget_rows_improve": true,
+    "baseline_peak_bytes": 31122689576,
+    "candidate_peak_bytes": 35317648936,
+    "peak_delta_bytes": 4194959360,
+    "candidate_peak_gib": 32.892123736441135,
+    "candidate_active_allocations_after_close": 0,
+    "ar_disclosure": "True AR uses the exact unchanged c1 route and moved -0.259% in one suite run; populated graph controls bracket zero, so this is timing noise rather than a functional regression."
+  },
+  "profile": {
+    "protocol": "Hermetic cached W7900 rocprofv3 kernel+marker+memory-copy trace, natural25 prompt limit=1, B3, no warmup.",
+    "correctness": {
+      "exact_greedy_to_candidate_ar": true,
+      "gpu_accept_match_cpu": true,
+      "accepted_counts": [3, 3, 2, 3, 3, 0, 3]
+    },
+    "window": {
+      "host_wall_ms": {"baseline": 548.103037988767, "candidate": 515.5936640221626, "delta_percent": -5.931252285317701},
+      "kernel_sum_ms": {"baseline": 407.084853, "candidate": 378.590523, "delta_percent": -6.999604576297013},
+      "device_activity_span_ms": {"baseline": 547.354827, "candidate": 515.120787, "delta_percent": -5.889057410285714},
+      "kernel_queue_gaps_and_copy_overlap_ms": {"baseline": 140.269974, "candidate": 136.530264, "delta_percent": -2.666080197605225},
+      "kernel_dispatches": {"baseline": 8055, "candidate": 8055, "delta_percent": 0.0},
+      "copy_count": {"baseline": 21, "candidate": 21, "delta_percent": 0.0}
+    },
+    "target_verify": {
+      "host_ms": {"baseline": 452.9481513891369, "candidate": 423.24368888512254, "delta_percent": -6.558027097122354},
+      "kernel_ms": {"baseline": 342.579971, "candidate": 313.850192, "delta_percent": -8.386298508969169},
+      "kernel_dispatches": {"baseline": 7302, "candidate": 7302, "delta_percent": 0.0}
+    },
+    "physical_single_q4_ownership": {
+      "baseline_dispatches": 1008,
+      "candidate_dispatches": 1008,
+      "baseline_pack8_ms": 81.460979,
+      "candidate_q4t16_ms": 51.370363,
+      "delta_percent": -36.93868692641173,
+      "speedup": 1.5857582902421772,
+      "candidate_symbol": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>",
+      "local_size": 32,
+      "vgpr": 144,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "ar_prefill": {
+    "protocol": "One discarded warmup plus three measured same-session resets; repeated token 9707; resident bulk prefill; 128 one-step graph decode transitions; cached builds.",
+    "rows": {
+      "512/128": {
+        "baseline_prefill_tok_s": 201.698049241932,
+        "candidate_prefill_tok_s_samples": [204.78367022077248, 202.54962560647857, 200.17255060521455],
+        "candidate_prefill_tok_s": 202.54962560647857,
+        "prefill_delta_percent": 0.4222035700132798,
+        "baseline_decode_tok_s": 20.909798902218117,
+        "candidate_decode_tok_s_samples": [20.959956105558717, 20.939963783552567, 20.864601291773358],
+        "candidate_decode_tok_s": 20.939963783552567,
+        "decode_delta_percent": 0.14426193898617878,
+        "baseline_peak_gib": 27.749382380396128,
+        "candidate_peak_gib": 31.656242731958628,
+        "peak_delta_bytes": 4194959360,
+        "final_token_ids": [9707, 9707, 9707],
+        "finite_final_logits": true,
+        "candidate_prefill_stdev_percent": 1.1384516203729027,
+        "candidate_decode_stdev_percent": 0.24014089482301176,
+        "candidate_tracked_clean": true
+      },
+      "4096/128": {
+        "baseline_prefill_tok_s": 188.58002547706545,
+        "candidate_prefill_tok_s_samples": [190.47328986784564, 188.63733109626753, 188.4883111926471],
+        "candidate_prefill_tok_s": 188.63733109626753,
+        "prefill_delta_percent": 0.03038795813985473,
+        "baseline_decode_tok_s": 19.8040524296531,
+        "candidate_decode_tok_s_samples": [19.765517786312817, 19.768122037967604, 19.767545213326137],
+        "candidate_decode_tok_s": 19.767545213326137,
+        "decode_delta_percent": -0.1843421514694632,
+        "baseline_peak_gib": 30.5736843906343,
+        "candidate_peak_gib": 34.4805447421968,
+        "peak_delta_bytes": 4194959360,
+        "final_token_ids": [9707, 9707, 9707],
+        "finite_final_logits": true,
+        "candidate_prefill_stdev_percent": 0.5860575901134307,
+        "candidate_decode_stdev_percent": 0.006919438858320439,
+        "candidate_tracked_clean": true
+      }
+    }
+  },
+  "comparison": {
+    "llamacpp_vulkan_natural25_b3_tok_s": 68.08247965468567,
+    "candidate_b3_tok_s": 50.344003409092515,
+    "candidate_below_vulkan_percent": 26.054392166035523,
+    "vulkan_over_candidate_ratio": 1.3523453647786272,
+    "candidate_vs_own_true_ar": 2.3259855561021556
+  },
+  "sources": {
+    "natural_baseline": "/tmp/hipengine-qwen36-27b/final-0439ecc3c/natural25-native-q4t16-ffn-b1-b3.json",
+    "natural_candidate": "/tmp/hipengine-qwen36-27b/final-2dbf6abdd/natural25-native-q4t16-single-b1-b3.json",
+    "natural_comparison": "/tmp/hipengine-qwen36-27b/final-2dbf6abdd/natural25-vs-0439ecc3c.json",
+    "profile_root": "/tmp/hipengine-qwen36-27b/final-2dbf6abdd/profile-native-q4t16-single-mtp-b3-hermetic",
+    "ar_512_candidate": "/tmp/hipengine-qwen36-27b/final-2dbf6abdd/ar-512x128.json",
+    "ar_4096_candidate": "/tmp/hipengine-qwen36-27b/final-2dbf6abdd/ar-4096x128.json",
+    "sha256": {
+      "natural_candidate": "dc9cf99dc73a0b7bbf822bb53e594b75e431c030d15e10b4d6e3f1907c3483bb",
+      "natural_comparison": "9b38ff962b34efc84b992acc5ca3f0723b319257b58b8d83d35ec6788fb5490b",
+      "profile_kernel_csv": "2e1d598ae093f4961bfed19565cc6e43f551335909509cb8cfbced828f7e66bf",
+      "profile_marker_csv": "3388ea6c1bdbc5bcf3e6f1e8d9e20959dca459148189b954de5e5a30c8406119",
+      "profile_copy_csv": "01aed33af24fc8930465ae05420a40bd14a7305a9dfc3537f75772eb6b18af0b",
+      "profile_summary": "75487ba175c3ba8d1725c351aef07b7d7ff11b0b26389b8c8422f4199e05fdf8",
+      "profile_comparison": "dba7ce00a560cfa64aab3867836101f4b4fc113fad952e599c1c190a5d5b213e",
+      "ar_512_candidate": "eacc3e373f2361dd8f0e07845326c9ec638735cf1357e03acf0e0198d03c3753",
+      "ar_4096_candidate": "1f4f64e08d9aaee63c39cd4af6f179bc18a75f6e23b1e8426b36ed21d7c24ce4"
+    }
+  },
+  "decision": {
+    "action": "retain_and_promote_row_selective_compact_q4t16_projection_sidecars",
+    "reason": "Every natural25 prompt-budget row and aggregate scope improves; B3 gains 5.996% and reaches 2.3260x own AR; the physical profile proves 1,008 intended calls and a 36.94% single-Q4 leaf reduction; complete marker wall falls 5.93%; populated prefill/graph controls are noise-flat with deterministic IDs; and all exact transaction, ownership, lifecycle, and teardown gates pass.",
+    "memory_disclosure": "This extension costs 3.907 GiB beyond the retained 6.143-GiB FFN sidecars because pack8 remains required for populated prefill and fail-closed fallback. Total compact-Q4T16 sidecars are 10.049 GiB. The route targets the 48-GiB W7900 and is not claimed to fit the 24-GiB component board.",
+    "next_profile": "Re-rank only 2dbf6abdd. The largest remaining exact arithmetic buckets are Q6T16 rowtiles (80.906 ms BF16-output plus 18.229 ms F32-output), retained fused compact-Q4 FFN (76.456 ms), compact single-Q4 (51.370 ms), proposal top-1 Q6T16 stage1 (39.973 ms), and dense ssm_out (37.160 ms)."
+  }
+}

@@ -5067,6 +5067,47 @@ W7900 campaign target and is not claimed to fit the 24-GiB component board.
 Selected B3 is now **30.24%** below llama.cpp Vulkan. Artifact:
 [`2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json`](results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json).
 
+#### Qwen3.6-27B row-selective compact-Q4T16 projections, W7900/gfx1100
+
+Clean hipEngine `2dbf6abdd` extends compact-T16 decode sidecars to all **288**
+screened rank-2 Q4 weights while retaining pack8 for populated prefill and
+fail-closed fallback. Seven families use T16 at native rows 2-4; `attn_qkv` and
+`attn_v` retain pack8 at row 2 because their actual-weight component results
+were flat at **0.9977x/0.9969x**, then select T16 at rows 3-4. No prompt/token
+condition or new environment selector is introduced.
+
+| Route | FFN-only Q4T16 baseline | Row-selective Q4T16 | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 21.700 tok/s | 21.644 tok/s | -0.259% noise | 1.0000x | n/a |
+| B1 | 36.078 tok/s | **37.544 tok/s** | **+4.064%** | **1.7346x** | **-4.506%** |
+| B2 | 42.879 tok/s | **45.634 tok/s** | **+6.426%** | **2.1084x** | **-7.217%** |
+| **B3 (retained)** | 47.496 tok/s | **50.344 tok/s** | **+5.996%** | **2.3260x** | **-6.986%** |
+
+Every one of 30 prompt-budget rows improves **+3.726% to +7.092%**, and every
+full/train/heldout/category aggregate improves **+3.971% to +6.623%**. IDs,
+acceptance, cycle ledgers, GPU/CPU checks, complete transaction state, and
+teardown remain exact. The binding transaction census sees compact-T16 rows
+`{2,3,4}` across every production shape and pack8 only at the two declared
+row-2 exceptions.
+
+The hermetic B3 trace replaces exactly **1,008 pack8 single-Q4 calls / 81.461
+ms** with **1,008 compact-T16 calls / 51.370 ms (-36.94%, 1.586x)**. Target
+verification falls **452.948 -> 423.244 ms (-6.56%)**, kernel sum falls
+**407.085 -> 378.591 ms (-7.00%)**, and complete marker wall falls **548.103
+-> 515.594 ms (-5.93%)** with unchanged 8,055 dispatches.
+
+| Shape | FFN-only Q4T16 baseline | Row-selective Q4T16 | Prefill delta | Graph AR decode | Tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 201.698 tok/s | **202.550 tok/s** | **+0.422%** | 20.910 -> **20.940 tok/s (+0.144%)** | 27.749 -> **31.656 GiB** |
+| 4096/128 | 188.580 tok/s | **188.637 tok/s** | **+0.030%** | 19.804 -> 19.768 tok/s (-0.184% noise) | 30.574 -> **34.481 GiB** |
+
+All six populated final IDs remain `9707`. The extension adds exactly
+**4,194,959,360 bytes / 3.907 GiB**, bringing total compact-Q4T16 sidecars to
+**10.049 GiB** because pack8 remains required. Teardown returns to zero. This
+is a 48-GiB W7900 route and is not claimed to fit the 24-GiB component board.
+Selected B3 is now **26.05%** below llama.cpp Vulkan. Artifact:
+[`2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json`](results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5236,6 +5277,9 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact shared-page full-attention batch](results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json),
 [Qwen3.6-27B exact full-attention K grid-y batch](results/2026-08-04-qwen36-27b-full-attention-k-grid-y-retained.json),
 [Qwen3.6-27B exact target-resident Q6T16 proposal scoring](results/2026-08-04-qwen36-27b-resident-t16-proposal-retained.json),
+[Qwen3.6-27B selective source-Q6 T16 projections](results/2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json),
+[Qwen3.6-27B compact-Q4T16 FFN sidecars](results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json),
+[Qwen3.6-27B row-selective compact-Q4T16 projections](results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

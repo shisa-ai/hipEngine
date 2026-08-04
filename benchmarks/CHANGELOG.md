@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-05
 
+- [accepted exact row-selective compact-Q4T16 projections] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: **36.078/42.879/47.496 -> 37.544/45.634/50.344 tok/s (+4.064%/+6.426%/+5.996%)** and selected own-AR **2.1887x -> 2.3260x (+6.271%)** by extending exact compact-T16 sidecars across all 288 screened rank-2 Q4 weights while keeping pack8 for row-2 `attn_qkv`/`attn_v`; all 30 prompt-budget rows and every aggregate scope improve, tracing confirms single-Q4 **81.461 -> 51.370 ms (-36.94%)**, populated prefill/decode are noise-flat, and peak rises exactly **4,194,959,360 bytes**; `benchmarks/results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json`.
+
 - [accepted exact compact-Q4T16 dense FFN sidecars] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: **33.456/40.067/44.886 -> 36.078/42.879/47.496 tok/s (+7.837%/+7.017%/+5.814%)** and selected own-AR **2.0652x -> 2.1887x (+5.984%)** by adding exact compact-T16 decode sidecars to 64 gate plus 64 up tensors; all 30 prompt-budget rows and every aggregate scope improve, tracing confirms fused FFN **106.201 -> 76.440 ms (-28.02%)**, populated prefill/decode are noise-flat, and peak rises exactly **6,595,543,040 bytes**; `benchmarks/results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json`.
 
 ## 2026-08-04
