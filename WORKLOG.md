@@ -203307,3 +203307,68 @@ Vulkan local sizes verbatim will close the measured gap.
   focused-repair rule. Future repeated-128K work requires a named stack fix;
   future DeepSeek V4 work requires explicit model admission, neither is open
   work under this action list.
+
+## 2026-08-04 — Measure Nathan's fork on the exact local GGUF and hardware
+
+- Use the exact published `dev-20260803-b7b85da` portable payload rather than a
+  local compiler-drift rebuild. Manifest provenance is llama.cpp source
+  `b7b85da9c4a9fdeb3cab51030a40d1552270f272`, Mesa `d18d598e2`, libdrm
+  2.4.133, and shaderc v2026.3-dev `49a8724d`; archive SHA-256 is
+  `1449e4f6...66d` and `llama-bench` is `a5923323...c4`. The payload reports
+  build `b7b85da9` number 10283, backend Vulkan, and
+  `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`. A p128/tg8 smoke reaches
+  **885.817/63.540 tok/s**, proving this is not the historical silent CPU
+  fallback.
+- Run `scripts/llamacpp_bench_with_peak.py` on
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` with 512/128, 4K/128,
+  32K/128, and 64K/128 split phases; `-ngl 99 -fa 1 -dev Vulkan0 -b 1024
+  -ub 1024`; one llama-bench warmup plus five repetitions; separate F16 and
+  Q8_0 K/V; and 10-ms whole-device `card1` UMA-GTT sampling. Compare against
+  today's accepted hipEngine BF16 one-warmup/three-run right-sized artifact.
+- F16 fork prefill/decode is **1390.978/64.658**, **1399.336/62.648**,
+  **1102.982/53.220**, and **893.919/45.913 tok/s**. hipEngine prefill
+  **1394.772/1472.330/1171.610/952.348** leads by
+  **0.273%/5.216%/6.222%/6.536%**; fork decode leads by
+  **22.666%/13.528%/15.841%/16.642%**.
+- Q8_0 fork prefill/decode is **1387.763/64.246**, **1389.530/63.107**,
+  **1104.183/57.553**, and **879.963/52.538 tok/s**. hipEngine prefill leads
+  by **0.505%/5.959%/6.107%/8.226%**; fork decode leads by
+  **21.885%/14.361%/25.273%/33.474%**. All sixteen phase processes exit zero
+  with the expected backend/build identity.
+- Fork F16 whole-device GTT peaks are **20.831/21.161/21.999/22.871 GiB**;
+  Q8_0 is **20.832/21.253/21.630/22.239 GiB**. Those are descriptively
+  **0.648-2.153 GiB** below hipEngine's **21.480/23.007/23.654/24.392-GiB**
+  tracked peaks, but the scopes differ and are not an allocator-memory ratio.
+- Reproduce the fork's published Q8 `pp512/tg32 at depth` protocol with the
+  exact local GGUF: `-b 512 -ub 512 -p 512 -n 32 -d
+  0,4096,16384,32768,65536 -r 3`. The corrected run exits zero in 149.323 s
+  at **1391.809/64.406**, **1281.593/62.965**, **1067.613/60.513**,
+  **860.787/57.544**, and **623.634/52.462 tok/s**. At d0/d32K/d64K this is
+  **+1.707%/+6.952%**, **+10.900%/+7.539%**, and
+  **+16.044%/+6.521%** versus the fork's published different-model Q4_K_XL
+  row. This validates the payload/backend, not a same-model reproduction
+  speedup. The first temporary helper launch exited 126 before any GPU work
+  because the file lacked an executable bit; invoking it through Python fixed
+  the harness.
+- Keep the comparison `diagnostic_retained`, `performance_claim=false`, and
+  non-topline: hardware, exact weight bytes, and split phase shapes match, but
+  BF16/F16/Q8 KV, timing ownership, memory scopes, and cross-engine output
+  oracle do not. Raw F16/Q8/depth JSON SHA-256 are respectively
+  `9786a932...db2a`, `f5efb6ff...111c`, and `b03f82e3...580e` under
+  `/tmp/hipengine-nathan-fork-compare/`; compact retained evidence is
+  `benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json`.
+
+## 2026-08-04 — Publish the qualified Nathan fork comparison
+
+- Add the diagnostic artifact, a dedicated benchmark-rollup section and platform
+  row, a changelog entry, and the locally measured section/updated dev-release
+  wording in `docs/STRIX-HALO-LLAMACPP-REVIEW.md`. Do not export this row to the
+  root topline because its explicit cross-engine qualifications remain binding.
+- Machine validation reparses the compact artifact, requires all 17 fork return
+  codes to be zero, verifies every matched prefill/decode direction, validates
+  all three positive overlap-depth comparisons, rehashes all raw JSON, checks
+  every new relative link, and confirms all four publication files reference
+  the artifact: **PASS**. `python3 -m json.tool`, `git diff --check`, and
+  `python3 scripts/sync_benchmark_readme.py --check` also pass; the review was
+  reread end-to-end. No code or kernel changed, so no pytest/GPU rerun is
+  applicable beyond the completed benchmark processes themselves.
