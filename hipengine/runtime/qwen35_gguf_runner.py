@@ -1957,6 +1957,7 @@ class Qwen35GGUFFullStackRunner:
         self.__dict__.pop("_gguf_gdn_prefill_plan_cache", None)
         self.__dict__.pop("_gguf_gdn_decode_output_cast_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_batch_native_fn_cache", None)
+        self.__dict__.pop("_gguf_full_attn_decode_batch_shared_native_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
 
     def _gdn_decode_output_cast_fn(self):
@@ -2010,6 +2011,27 @@ class Qwen35GGUFFullStackRunner:
             if fn is None:
                 fn = qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans
             self._gguf_full_attn_decode_batch_native_fn_cache = fn
+        return fn
+
+    def _full_attn_decode_batch_shared_native_fn(self):
+        """Resolve an exact verifier batch leaf over one shared page table."""
+
+        missing = object()
+        fn = getattr(
+            self,
+            "_gguf_full_attn_decode_batch_shared_native_fn_cache",
+            missing,
+        )
+        if fn is missing:
+            quant = getattr(self, "_gguf_prefill_quant", "gguf_qwen35")
+            fn = resolve(
+                backend=self.backend,
+                layer="paged_attn_decode",
+                quant=quant,
+                variant="bf16_context_batch_shared_native_exact_spans",
+                missing="none",
+            )
+            self._gguf_full_attn_decode_batch_shared_native_fn_cache = fn
         return fn
 
     def _full_attn_prefill_native_fn(self):
@@ -4414,6 +4436,114 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _full_attn_shared_batch_spans(
+        self,
+        layer_id: int,
+        decode_row_scratches: tuple[object, ...],
+        *,
+        rows: int,
+        attention_context_limit: int,
+    ) -> tuple[KVLiveSpans, object, object] | None:
+        """Bind contiguous row counts to one verified resident page table."""
+
+        if rows <= 1 or len(decode_row_scratches) != rows:
+            return None
+        first = decode_row_scratches[0]
+        first_decode = getattr(first, "decode_spans", None)
+        first_append = getattr(first, "append_spans", None)
+        if not isinstance(first_decode, KVLiveSpans) or not isinstance(
+            first_append,
+            KVLiveSpans,
+        ):
+            return None
+        table = first_decode.base_offsets
+        first_live = first_decode.live_counts
+        first_position = first_decode.row_positions
+        if (
+            first_decode.spans_mode != "uniform"
+            or first_decode.storage_dtype != DType.BF16
+            or first_decode.scale_metadata is not None
+            or first_decode.span_role != "verify_chain"
+            or first_append.span_role != "verify_chain"
+            or first_position is None
+            or len(table.shape) != 1
+            or table.dtype != DType.INT32
+            or first_live.dtype != DType.INT64
+            or first_live.numel != 1
+            or first_position.dtype != DType.INT64
+            or first_position.numel != 1
+            or table.numel * int(first.block_size) < int(attention_context_limit)
+        ):
+            return None
+        try:
+            key_cache, value_cache = first.full_cache(layer_id)
+        except (AttributeError, ValueError):
+            return None
+        for row, row_scratch in enumerate(decode_row_scratches):
+            decode_spans = getattr(row_scratch, "decode_spans", None)
+            append_spans = getattr(row_scratch, "append_spans", None)
+            if not isinstance(decode_spans, KVLiveSpans) or not isinstance(
+                append_spans,
+                KVLiveSpans,
+            ):
+                return None
+            row_position = decode_spans.row_positions
+            try:
+                row_key_cache, row_value_cache = row_scratch.full_cache(layer_id)
+            except (AttributeError, ValueError):
+                return None
+            if (
+                getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16
+                or int(row_scratch.block_size) != int(first.block_size)
+                or decode_spans.spans_mode != "uniform"
+                or decode_spans.storage_dtype != DType.BF16
+                or decode_spans.scale_metadata is not None
+                or append_spans.scale_metadata is not None
+                or decode_spans.span_role != "verify_chain"
+                or append_spans.span_role != "verify_chain"
+                or decode_spans.base_offsets.ptr != table.ptr
+                or decode_spans.base_offsets.shape != table.shape
+                or append_spans.base_offsets.ptr != table.ptr
+                or decode_spans.live_counts.dtype != DType.INT64
+                or decode_spans.live_counts.numel != 1
+                or decode_spans.live_counts.ptr
+                != first_live.ptr + row * DType.INT64.itemsize
+                or row_position is None
+                or row_position.dtype != DType.INT64
+                or row_position.numel != 1
+                or row_position.ptr
+                != first_position.ptr + row * DType.INT64.itemsize
+                or append_spans.live_counts.ptr != row_position.ptr
+                or row_key_cache.ptr != key_cache.ptr
+                or row_value_cache.ptr != value_cache.ptr
+                or int(decode_spans.max_live_count) < int(attention_context_limit)
+            ):
+                return None
+        live_counts = Tensor.from_handle(
+            first_live.ptr,
+            (rows,),
+            DType.INT64,
+            first_live.device,
+        )
+        row_positions = Tensor.from_handle(
+            first_position.ptr,
+            (rows,),
+            DType.INT64,
+            first_position.device,
+        )
+        return (
+            KVLiveSpans.paged_uniform(
+                block_table=table,
+                live_counts=live_counts,
+                max_live_count=int(attention_context_limit),
+                storage_dtype=DType.BF16,
+                row_positions=row_positions,
+                span_role="verify_chain",
+            ),
+            key_cache,
+            value_cache,
+        )
+
     def _run_full_attention_attn_chain_rows_exact(
         self,
         layer_id: int,
@@ -4428,12 +4558,13 @@ class Qwen35GGUFFullStackRunner:
         attention_context_limit: int,
         stream: int = 0,
     ) -> None:
-        """Stage independent full-attention work around serial cache reads.
+        """Stage independent full-attention work around exact cache reads.
 
         Q, V, split, rotary, and output work is independent across verifier
-        rows. K deliberately keeps its faster scalar Q4 launch. Each row still
-        appends K/V and attends before the next row mutates the shared cache, so
-        the target transaction remains equivalent to the c1 chain.
+        rows. K deliberately keeps its faster scalar Q4 launch. An exact
+        registry leaf may attend all rows after their shared-cache writes using
+        row-specific live counts; otherwise the c1 write/attention/gate order is
+        retained unchanged.
         """
 
         assert self.weights is not None
@@ -4554,35 +4685,69 @@ class Qwen35GGUFFullStackRunner:
         query_row_nbytes = self.q_width * DType.FP32.itemsize
         key_row_nbytes = self.kv_width * DType.FP32.itemsize
         gate_row_nbytes = self.q_width * DType.BF16.itemsize
+        row_io = []
         for row, row_scratch in enumerate(decode_row_scratches):
-            query_ptr = scratch.full_query.ptr + row * query_row_nbytes
-            key_ptr = scratch.full_key.ptr + row * key_row_nbytes
-            value_ptr = scratch.full_v.ptr + row * kv_bf16_row_nbytes
-            gate_ptr = scratch.full_gate.ptr + row * gate_row_nbytes
-            context_ptr = scratch.full_query_raw.ptr + row * query_row_nbytes
-            gated_ptr = scratch.full_gated.ptr + row * gate_row_nbytes
             key_cache, value_cache = row_scratch.full_cache(layer_id)
-            qwen35_write_paged_kv_mixed_value_bf16_spans(
+            row_io.append(
+                (
+                    row_scratch,
+                    scratch.full_query.ptr + row * query_row_nbytes,
+                    scratch.full_key.ptr + row * key_row_nbytes,
+                    scratch.full_v.ptr + row * kv_bf16_row_nbytes,
+                    scratch.full_gate.ptr + row * gate_row_nbytes,
+                    scratch.full_query_raw.ptr + row * query_row_nbytes,
+                    scratch.full_gated.ptr + row * gate_row_nbytes,
+                    key_cache,
+                    value_cache,
+                )
+            )
+
+        batch_attn_fn = self._full_attn_decode_batch_shared_native_fn()
+        shared_batch = (
+            self._full_attn_shared_batch_spans(
+                layer_id,
+                decode_row_scratches,
+                rows=rows,
+                attention_context_limit=attention_context_limit,
+            )
+            if batch_attn_fn is not None
+            else None
+        )
+        if shared_batch is not None:
+            for (
+                row_scratch,
+                _query_ptr,
                 key_ptr,
                 value_ptr,
+                _gate_ptr,
+                _context_ptr,
+                _gated_ptr,
+                key_cache,
+                value_cache,
+            ) in row_io:
+                qwen35_write_paged_kv_mixed_value_bf16_spans(
+                    key_ptr,
+                    value_ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    row_scratch.append_spans,
+                    row_scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
+            batch_spans, key_cache, value_cache = shared_batch
+            batch_attn_fn(
+                scratch.full_query.ptr,
                 key_cache.ptr,
                 value_cache.ptr,
-                row_scratch.append_spans,
-                row_scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
-            qwen35_paged_full_attn_decode_context_bf16_spans(
-                query_ptr,
-                key_cache.ptr,
-                value_cache.ptr,
-                context_ptr,
-                row_scratch.decode_spans,
+                scratch.full_query_raw.ptr,
+                batch_spans,
+                rows,
                 attention_context_limit,
-                row_scratch.block_size,
+                decode_row_scratches[0].block_size,
                 cfg.head_count,
                 cfg.head_count_kv,
                 cfg.key_length,
@@ -4592,14 +4757,64 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
             qwen35_full_attn_gate_mul_bf16(
-                context_ptr,
-                gate_ptr,
-                gated_ptr,
-                self.q_width,
+                scratch.full_query_raw.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                rows * self.q_width,
                 stream=stream,
                 library=paged_attn_library,
                 runtime=runtime,
             )
+        else:
+            for (
+                row_scratch,
+                query_ptr,
+                key_ptr,
+                value_ptr,
+                gate_ptr,
+                context_ptr,
+                gated_ptr,
+                key_cache,
+                value_cache,
+            ) in row_io:
+                qwen35_write_paged_kv_mixed_value_bf16_spans(
+                    key_ptr,
+                    value_ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    row_scratch.append_spans,
+                    row_scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
+                qwen35_paged_full_attn_decode_context_bf16_spans(
+                    query_ptr,
+                    key_cache.ptr,
+                    value_cache.ptr,
+                    context_ptr,
+                    row_scratch.decode_spans,
+                    attention_context_limit,
+                    row_scratch.block_size,
+                    cfg.head_count,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    cfg.key_length ** -0.5,
+                    stream=stream,
+                    library=paged_attn_library,
+                    runtime=runtime,
+                )
+                qwen35_full_attn_gate_mul_bf16(
+                    context_ptr,
+                    gate_ptr,
+                    gated_ptr,
+                    self.q_width,
+                    stream=stream,
+                    library=paged_attn_library,
+                    runtime=runtime,
+                )
 
         launch_gguf_linear(
             layer.weight("attn_output"),

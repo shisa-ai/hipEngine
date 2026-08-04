@@ -345,7 +345,10 @@ __global__ void qwen35_full_attn_gate_mul_fp16_kernel(
 // offset once in shared memory and assigns adjacent value dimensions to each
 // active thread. The generic route keeps its existing dynamic launch geometry,
 // inline addressing, and one value dimension per thread.
-template <bool PRECOMPUTE_TOKEN_OFFSETS, int VALUE_VECTOR = 1>
+template <
+    bool PRECOMPUTE_TOKEN_OFFSETS,
+    int VALUE_VECTOR = 1,
+    bool SHARED_BLOCK_TABLE = false>
 __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     const float* query,
     const uint16_t* key_cache,
@@ -392,6 +395,8 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   const int64_t kv_group = num_q_heads / num_kv_heads;
   const int64_t kv_head = q_head / kv_group;
   const int64_t q_offset = (row * num_q_heads + q_head) * head_dim;
+  const int32_t* row_block_table =
+      block_table + (SHARED_BLOCK_TABLE ? 0 : row * block_table_len);
   const int lane_id = threadIdx.x % warpSize;
   const int warp_id = threadIdx.x / warpSize;
 
@@ -402,8 +407,8 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
       const int64_t logical_block = token / block_size;
       const int64_t block_offset = token - logical_block * block_size;
-      const int64_t physical_block = static_cast<int64_t>(
-          block_table[row * block_table_len + logical_block]);
+      const int64_t physical_block =
+          static_cast<int64_t>(row_block_table[logical_block]);
       token_offsets[token] =
           (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
     }
@@ -418,8 +423,8 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     } else {
       const int64_t logical_block = token / block_size;
       const int64_t block_offset = token - logical_block * block_size;
-      const int64_t physical_block = static_cast<int64_t>(
-          block_table[row * block_table_len + logical_block]);
+      const int64_t physical_block =
+          static_cast<int64_t>(row_block_table[logical_block]);
       token_offset =
           (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
     }
@@ -505,8 +510,8 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
         } else {
           const int64_t logical_block = token / block_size;
           const int64_t block_offset = token - logical_block * block_size;
-          const int64_t physical_block = static_cast<int64_t>(
-              block_table[row * block_table_len + logical_block]);
+          const int64_t physical_block =
+              static_cast<int64_t>(row_block_table[logical_block]);
           token_offset =
               (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
         }
@@ -535,8 +540,8 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
         } else {
           const int64_t logical_block = token / block_size;
           const int64_t block_offset = token - logical_block * block_size;
-          const int64_t physical_block = static_cast<int64_t>(
-              block_table[row * block_table_len + logical_block]);
+          const int64_t physical_block =
+              static_cast<int64_t>(row_block_table[logical_block]);
           token_offset =
               (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
         }
@@ -4950,6 +4955,60 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_
       sizeof(float);
   hipLaunchKernelGGL(
       (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<false, 1>),
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      out,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_shared_native_exact_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_paged_attn_shape(
+          max_context_len, block_size, block_table_len,
+          num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  // Native chain verification appends every candidate row to one resident
+  // request. Preserve the retained 256-thread generic arithmetic while making
+  // every query row read that one physical page table through its own live
+  // count. The ordinary batch entrypoint keeps one page table per row.
+  constexpr int threads = 256;
+  constexpr int max_warps = threads / 32;
+  constexpr int value_groups = 1;
+  const size_t shared_bytes = static_cast<size_t>(
+      max_context_len + max_warps + head_dim + value_groups * head_dim) *
+      sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<false, 1, true>),
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
       dim3(threads),
       shared_bytes,

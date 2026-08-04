@@ -454,6 +454,46 @@ def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
 
 
 @pytest.fixture
+def shared_full_attn_batch_calls() -> Iterator[list[tuple[int, ...]]]:
+    """Count exact shared-page verifier attention on real transactions."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "paged_attn_decode",
+        "gguf_q4_k_m",
+        "bf16_context_batch_shared_native_exact_spans",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, ...]] = []
+
+    def counted(*args, **kwargs):
+        spans = args[4]
+        calls.append(
+            (
+                int(args[5]),
+                int(args[7]),
+                int(args[8]),
+                int(args[9]),
+                int(args[10]),
+                int(spans.base_offsets.numel),
+                int(spans.live_counts.numel),
+            )
+        )
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+
+
+@pytest.fixture
 def q4_dual_rowtile_silu_calls() -> Iterator[list[tuple[int, int, int]]]:
     """Count the exact dense-FFN rowtile+SiLU owner on real transactions."""
 
@@ -489,6 +529,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
+    shared_full_attn_batch_calls: list[tuple[int, ...]],
     q4_dual_rowtile_silu_calls: list[tuple[int, int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
@@ -780,6 +821,16 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (num_k_heads, num_v_heads, head_k_dim, head_v_dim)
         for _, num_k_heads, num_v_heads, head_k_dim, head_v_dim in chain_journal_calls["gdn"]
     } == {(16, 48, 128, 128)}
+    assert shared_full_attn_batch_calls
+    # B2/rows3 is owned by the separate N2 bulk graph; this shared-page leaf
+    # owns the N1 native B1/B3 captures only.
+    assert {rows for rows, *_ in shared_full_attn_batch_calls} == {2, 4}
+    assert {
+        (block_size, num_q_heads, num_kv_heads, head_dim, table_blocks)
+        for _, block_size, num_q_heads, num_kv_heads, head_dim, table_blocks, _
+        in shared_full_attn_batch_calls
+    } == {(256, 24, 4, 256, 1)}
+    assert all(rows == live_rows for rows, *_, live_rows in shared_full_attn_batch_calls)
     assert q4_dual_rowtile_silu_calls
     assert {rows for rows, _, _ in q4_dual_rowtile_silu_calls} == {2, 3, 4}
     assert {
