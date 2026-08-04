@@ -203735,3 +203735,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `6cd4e5ab...d05`, `efd5c9d5...6425`, `4c672b7c...65d9`, and
   `1989beec...fb5`. This profile is diagnostic admission evidence, not a new
   benchmark topline.
+
+### D27-O3 staged exact linear projections — GREEN
+
+- RED adds a CPU scheduler boundary requiring dense c>1 linear attention to
+  invoke one staged chain owner rather than four scalar attention calls. After
+  fixing the test fixture's read-only `hidden_size` setup, the intended RED
+  failed with observed calls `[scalar, scalar, scalar, scalar, ffn]` instead of
+  `[staged, ffn]`. The same test requires MoE c>1 and dense c1 to retain the
+  scalar fallback.
+- Add `_run_linear_attention_attn_chain_rows_exact()` without changing kernels
+  or recurrence math. It computes independent row norms, QKV/gate, and
+  alpha/beta projections in row-bulk form; then invokes the existing decode Conv
+  and GDN kernels serially against one resident state, copying each exact
+  post-row Conv/GDN journal before the next row; finally it casts and projects
+  all staged recurrent outputs through exact row-bulk `ssm_out`. Dense c2-c4
+  selects this scheduler; MoE and c1 preserve `_run_linear_attention_attn_only()`.
+- Focused CPU command
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_native_spec_cycle.py -k 'not graph_matches_eager_hidden_state_and_kv'`
+  passes **10/10**. Ruff, py_compile, and diff checks pass.
+- Complete W7900 command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1**. B1-B3 full-logit controls, graph submission, B3
+  reject/partial/full selected Conv/GDN/KV/trunk-hidden commits, correction
+  logits, dynamic-position replays at 6/7/9, and natural B1 provider output all
+  remain exact. Freeze this correctness unit before a clean natural25 timing
+  claim; no speed is inferred from the 339.579-ms profile ceiling.
