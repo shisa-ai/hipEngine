@@ -72,6 +72,18 @@ def test_pack8_rowtile_registry_and_dispatch_contract() -> None:
         quant=key.quant,
         variant=key.variant,
     ) is gguf_q4_k_pack8_rowtile_bf16_bf16_out
+    full_k_batch_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k_m",
+        "pack8_full_k_grid_y_native_exact_bf16_bf16_out",
+    )
+    assert resolve(
+        backend=full_k_batch_key.backend,
+        layer=full_k_batch_key.layer,
+        quant=full_k_batch_key.quant,
+        variant=full_k_batch_key.variant,
+    ) is gguf_q4_k_pack8_gemv_bf16_bf16_out
 
     base = GGUFLinearDispatch(
         KernelKey(

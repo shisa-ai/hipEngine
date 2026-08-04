@@ -837,6 +837,25 @@ noise-flat at **-0.045%** and the separately owned N2 B2 row is diagnostic at
 state, 28.996-GiB peak, and teardown remain exact. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json`.
 
+The post-shared-attention trace exposes one more exact launch boundary inside
+that same staged full-attention owner: target K still issues **448** scalar
+K5120/N1024 resident-pack8 calls totaling **4.919 ms**. The existing generic
+local32 kernel already maps grid Y to independent rows without changing any
+row's K traversal, FP32 FMA/shuffle tree, or BF16 store. A dedicated
+`linear/gguf_q4_k_m/pack8_full_k_grid_y_native_exact_bf16_bf16_out` alias may
+therefore replace rows scalar calls with one rows-wide launch; a missing key
+retains the complete scalar loop.
+
+A production-shape GPU1 screen is BF16-byte exact at rows 2/3/4 and improves
+synchronized event time **1.849x/2.374x/2.620x** (wall
+**1.824x/2.338x/2.587x**). The routed W7900 B1-B3 transaction gate preserves
+full logits, reject/partial/full/rollback Conv/GDN/KV/hidden state, dynamic
+position reuse, correction logits, and natural provider output. Its registry
+census observes N1 owner rows exactly `{2,4}`; B2/rows3 remains with the
+separate N2 bulk graph. This admits the route for clean profiling and natural25
+qualification; the canonical **41.705 tok/s / 2.0474x** headline is unchanged
+until that gate completes.
+
 ---
 
 ## 7. Prioritized execution plan
