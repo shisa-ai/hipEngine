@@ -587,6 +587,14 @@ def _spec_for_tensor(
             allocation_names=allocation_names,
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
+        if decode_repack and _is_wide_rank2_q6_t16_tensor(slot_path, tensor):
+            return Qwen35GGUFWeightSpec(
+                slot_path=slot_path,
+                source=tensor,
+                quant_key="gguf_q6_k_t16_v1",
+                layout=LAYOUT_GGUF_Q6_K_T16,
+                allocation_names=("tiles",),
+            )
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
             if _gguf_selected_down_raw_enabled_for("q6") and _is_selected_down_expert_tensor(slot_path, tensor):
                 return Qwen35GGUFWeightSpec(
@@ -715,6 +723,19 @@ def _gguf_ssm_a_to_kernel_a_log(raw: object):
 
 def _is_token_embedding_slot(slot_path: str) -> bool:
     return slot_path == "root.token_embedding" or slot_path.endswith(".embed_tokens")
+
+
+def _is_wide_rank2_q6_t16_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select measured wide dense projections without regressing narrow V."""
+
+    return (
+        len(tensor.shape) == 2
+        and int(tensor.shape[0]) >= 5_120
+        and slot_path.endswith((".ffn_down", ".attn_qkv"))
+    )
 
 
 def _is_selected_expert_tensor(slot_path: str, tensor: GGUFTensorInfo) -> bool:

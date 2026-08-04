@@ -8,12 +8,14 @@ import pytest
 import hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
+import hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
 import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
@@ -122,6 +124,13 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
         activation_dtype=GGUF_ACTIVATION_F32,
         output_dtype=GGUF_OUTPUT_F32,
     ).key == KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out")
+    q6_t16 = _fake_weight(layout=LAYOUT_GGUF_Q6_K_T16, quant_key="gguf_q6_k_t16_v1")
+    assert resolve_gguf_linear_dispatch(q6_t16).key == KernelKey(
+        "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"
+    )
+    assert resolve_gguf_linear_dispatch(q6_t16, output_dtype=GGUF_OUTPUT_F32).key == KernelKey(
+        "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_f32_out"
+    )
     q8_t16 = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     assert resolve_gguf_linear_dispatch(q8_t16).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"
@@ -184,6 +193,114 @@ def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:
                 "library": "wmma-library",
             },
         )
+    ]
+
+
+def test_q6_t16_routes_decode_native_rowtile_and_dense_wmma() -> None:
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        quant_key="gguf_q6_k_t16_v1",
+    )
+    keys = {
+        "decode": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        ),
+        "rowtile": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_v1",
+            "t16_gemv_rowtile_bf16_bf16_out",
+        ),
+        "wmma": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_v1",
+            "t16_wmma_prefill_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        label: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+        for label, key in keys.items()
+    }
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def capture(label: str):
+        def fake_kernel(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake_kernel
+
+    for label, key in keys.items():
+        register(key, capture(label), replace=True)
+    try:
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=1,
+            in_features=5120,
+            out_features=10240,
+            stream=7,
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+        )
+        with native_batch_decode_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=101,
+                out_ptr=201,
+                rows=4,
+                in_features=5120,
+                out_features=10240,
+                stream=8,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+        launch_gguf_linear(
+            weight,
+            x_ptr=102,
+            out_ptr=202,
+            rows=64,
+            in_features=5120,
+            out_features=10240,
+            stream=9,
+            runtime="runtime-sentinel",
+            use_wmma_prefill=True,
+        )
+    finally:
+        for label, key in keys.items():
+            original = originals[label]
+            if original is None:
+                unregister(key)
+            else:
+                register(key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            "decode",
+            (100, 14, 200, 1, 5120, 10240),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
+        (
+            "rowtile",
+            (101, 14, 201, 4, 5120, 10240),
+            {"stream": 8, "runtime": "runtime-sentinel"},
+        ),
+        (
+            "wmma",
+            (102, 14, 202, 64, 5120, 10240),
+            {"stream": 9, "runtime": "runtime-sentinel"},
+        ),
     ]
 
 

@@ -205138,3 +205138,84 @@ Vulkan local sizes verbatim will close the measured gap.
   **31.3% of kernel sum / 24.5% of marker wall**. The next candidate must screen
   packed Q5/Q6 target projection economics while preserving the dense fallback,
   full category/state quality, and >=512 prefill performance.
+
+### D27-O3 selective dense rank-2 Q6T16 — CORRECTNESS ROUTED
+
+- Reconcile the `b888de605` trace and resident plan before coding. Qwen3.6-27B
+  has exactly 32 source-Q6 `ffn_down` tensors at K17,408/N5,120, 24 source-Q6
+  linear-attention `attn_qkv` tensors at K5,120/N10,240, and eight narrow
+  source-Q6 full-attention `attn_v` tensors at K5,120/N1,024. The 56 wide
+  tensors occupy **8,220,835,840 dense-BF16 bytes** versus
+  **3,371,827,200 byte-neutral Q6T16 bytes**, a projected resident reduction of
+  **4,849,008,640 bytes / 4.51599 GiB**.
+- First GPU1 actual-weight screen:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -u
+  /tmp/screen_qwen36_rank2_q6_t16.py --rows 2,3,4
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/qwen36-rank2-q6-t16-vs-dense-gpu1.json`.
+  The existing T16 rowtile is byte-exact to per-row T16 and beats production
+  dense BF16 for wide `ffn_down` by **1.5894x/1.4530x/1.2778x** and wide
+  `attn_qkv` by **1.7132x/1.6248x/1.5239x** at rows2/3/4. Narrow `attn_v`
+  loses at **0.5510x/0.5056x/0.4757x** and is excluded. Script/result SHA-256s
+  are `564362e6...4c575` / `e09128b4...de7d`.
+- Expanded c1/M64/M512 screen with actual weights confirms the ownership
+  boundary. Wide c1 event ratios are **1.5728x** for `ffn_down` and
+  **1.3410x/1.6111x** versus native-local128/ordinary-local256 `attn_qkv`.
+  Narrow `attn_v` is **0.4008x** at c1 and remains dense. The already-existing
+  one-expert direct T16 WMMA producer improves wide M64 **2.5095x/2.6595x** and
+  M512 **3.2204x/3.1824x**. Maximum component KL versus materialized dense BF16
+  is **4.7267e-5** and minimum top-1 is **0.984375**. Script/result SHA-256s are
+  `ffed94b1...99995` / `73610150...e66b2`.
+- RED freezes three independent boundaries: the decode-repack planner must
+  replace exactly the 32+24 wide layer weights while retaining all eight narrow
+  V tensors and the no-repack dense fallback; BF16 generic dispatch must resolve
+  c1, native c2-c6 rowtile, and rows>1 WMMA through Q6T16 four-axis keys; the
+  metadata-free dense WMMA leaf must pass the CPU-reference KL/top-1 gate. The
+  focused four-node command fails **4/4** on zero planned wide residents, absent
+  BF16 T16 dispatch, and missing rowtile/WMMA registrations.
+- GREEN plans only Q6 rank-2 `.ffn_down`/`.attn_qkv` with output width at least
+  5,120 as sole T16 residents under the existing `decode_repack` boundary.
+  Smaller Qwen3.5 tensors and narrow V remain dense. The generic linear
+  dispatcher adds BF16 Q6T16 support, resolves a registered same-quant rowtile
+  sibling for native c2-c6, and selects the registered T16 WMMA sibling for
+  bulk prefill. There is no backend/quant branch in model or engine code and no
+  new environment flag.
+- The new direct dense WMMA body is the metadata-free one-matrix specialization
+  of the already-screened selected-Q6 direct producer. A synthetic M17 fixture
+  is BF16-byte identical to that producer and passes the independent CPU Q6
+  oracle, KL <=0.05, and top-1 >=90%. Complete Q6 decode+rowtile tests pass
+  **10/10**; mapping+dispatch passes **73/73** with four additional
+  fixture-availability skips; pycompile, Ruff, and diff checks pass.
+- Re-screening the exact routed wrapper on GPU1 preserves output metrics and
+  improves wide M64 **2.5217x/2.6738x** and M512 **3.3321x/3.2513x**. Script
+  and result SHA-256s are `162930d4...e7ed0` / `62228e7e...e655cb`.
+- Cache-only GPU1 trace command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace
+  --output-format csv -d
+  /tmp/qwen36-q6t16-dense-wmma-rocprof-80d332eae --
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_dense_wmma_prefill_passes_cpu_quality_gate`.
+  It names `q6_k_t16_wmma_prefill_bf16_kernel` at **29,920 ns**, grid
+  `(512,2,1)`, local32, VGPR72, SGPR128, LDS0, scratch0. Trace SHA-256 is
+  `1e81ddbe...8fa5`.
+- Binding W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes **1/1**.
+  Natural provider/scalar output and complete B1-B3 reject/partial/full/rollback
+  Conv/GDN/KV/hidden state, dynamic positions, graph reuse, correction output,
+  ownership, and teardown remain green under the new common resident plan.
+- Commit this correctness unit before W7900 profiling. The prior
+  **43.240 tok/s / 2.1290x own-AR** result remains canonical until a clean trace
+  proves physical Q6T16 ownership and the complete natural25 category/prefill
+  quality gate is non-regressive.

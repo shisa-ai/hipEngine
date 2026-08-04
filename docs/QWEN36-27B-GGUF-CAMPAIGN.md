@@ -914,6 +914,37 @@ materialized as dense BF16 consume about **106.6 ms**, and Q5 `ssm_out` another
 Any packed replacement must preserve the unfused dense fallback, pass the full
 quality/state gate rather than one prompt, and keep >=512 prefill non-regressive.
 
+The first replacement screen qualifies a selective sole-resident Q6T16 route,
+but does not yet promote it. The 32 Q6 `ffn_down` and 24 Q6 `attn_qkv`
+projections occupy **8,220,835,840 bytes** as dense BF16 versus
+**3,371,827,200 bytes** in byte-neutral T16, a projected persistent saving of
+**4,849,008,640 bytes / 4.516 GiB**. The eight narrow Q6 `attn_v` projections
+remain dense: their actual K5,120/N1,024 c1 leaf is only **0.40x** as fast in
+T16. The role plus `N>=5,120` materialization boundary also leaves smaller
+Qwen3.5 tensors unchanged.
+
+On GPU1 actual weights, the wide c1 T16 leaf is **1.573x** faster for
+K17,408/N5,120 `ffn_down` and **1.341x/1.611x** faster than the current native
+local128/ordinary local256 K5,120/N10,240 `attn_qkv` owners. The existing exact
+T16 rowtile is **1.278-1.713x** faster at c2-c4. A new metadata-free dense WMMA
+wrapper is bit-identical to the screened one-expert selected producer and
+improves M64 by **2.522x/2.674x** and M512 by **3.332x/3.251x** for the two
+wide shapes. Across the actual-weight c1/M64/M512 screens, maximum KL versus
+materialized dense BF16 is **4.73e-5** and minimum top-1 agreement is
+**98.4375%**.
+
+The four-axis route now registers BF16 decode, c2-c6 exact rowtile, and dense
+WMMA prefill variants under `linear/gguf_q6_k_t16_v1`; optional sibling misses
+retain the scalar T16 chain, while `decode_repack=False` retains dense BF16.
+Cached GPU1 tracing names `q6_k_t16_wmma_prefill_bf16_kernel` at **29,920 ns**,
+grid `(512,2)`, local32,
+VGPR72, SGPR128, LDS0, and scratch0. The binding W7900 B1-B3 transaction gate
+passes with natural provider/scalar agreement and complete reject/partial/full/
+rollback state, dynamic positions, correction, graph reuse, ownership, and
+teardown checks. This is a correctness-routed candidate only: the prior
+**43.240 tok/s / 2.1290x own-AR** row remains canonical until a clean profile
+and the full category/prefill quality gate pass.
+
 ---
 
 ## 7. Prioritized execution plan
