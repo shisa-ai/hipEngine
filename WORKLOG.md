@@ -205638,3 +205638,50 @@ Vulkan local sizes verbatim will close the measured gap.
 - This is not yet a performance claim. Next gate is the hermetic cached W7900
   one-prompt B3 profile against clean `0439ecc3c`; only a physical-family and
   complete-wall win advances to natural25 and populated-prefill adjudication.
+- The hermetic cached W7900 B3 profile passes that gate. Command body is
+  `rocprofv3 --kernel-trace --marker-trace --memory-copy-trace` over
+  `scripts/qwen36_dense_gguf_suite.py --max-new-tokens 25
+  --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1
+  --no-warmup --roctx-markers --require-cached-build`, with an `env -i`
+  TheRock runtime and output root
+  `/tmp/hipengine-qwen36-27b/final-2dbf6abdd/profile-native-q4t16-single-mtp-b3-hermetic`.
+  It replaces exactly **1,008 pack8 single-Q4 calls / 81.460979 ms** with
+  **1,008 compact-T16 calls / 51.370363 ms (-36.939%, 1.5858x)**. Target
+  verify falls **452.948151 -> 423.243689 ms (-6.558%)**, kernel sum
+  **407.084853 -> 378.590523 ms (-7.000%)**, device span **547.354827 ->
+  515.120787 ms (-5.889%)**, and complete marker wall **548.103038 ->
+  515.593664 ms (-5.931%)**. Dispatches/copies remain **8,055/21**, and the
+  exact acceptance ledger remains `[3,3,2,3,3,0,3]`.
+- Clean natural25 uses
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1 ... scripts/qwen36_dense_gguf_suite.py
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl
+  --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native
+  --runs 1 --require-cached-build`. Against clean `0439ecc3c`, B1/B2/B3 move
+  **36.077942/42.878884/47.496234 ->
+  37.544045/45.634454/50.344003 tok/s
+  (+4.064%/+6.426%/+5.996%)**. B3 reaches **2.32599x own AR**, up **6.271%**.
+  Every 30 prompt-budget row improves (**+3.726% to +7.092%**), as does every
+  full/train/heldout/category scope (**+3.971% to +6.623%**). IDs,
+  acceptance, GPU/CPU summaries, and stage reconciliation remain exact. True
+  AR moves **21.700261 -> 21.644160 tok/s (-0.259%)** on the unchanged c1
+  route and is disclosed as one-run noise.
+- Campaign-standard populated controls use one discarded warmup plus three
+  measured resets of `scripts/qwen35_gguf_bench.py` at prompt lengths 512 and
+  4096, 128 graph steps, token 9707, bulk prefill, cached builds. Median
+  prefill moves **201.698050 -> 202.549626 tok/s (+0.422%)** and
+  **188.580025 -> 188.637331 (+0.030%)**; graph decode moves **20.909799 ->
+  20.939964 (+0.144%)** and **19.804052 -> 19.767545 (-0.184%)**. All six
+  final IDs are `9707`, and teardown returns to zero. Peak rises exactly
+  **4,194,959,360 bytes / 3.9069 GiB** at both shapes, to
+  **31.656/34.481 GiB**. This is noise-flat outside MTP and a disclosed
+  48-GiB residency tradeoff, not a 24-GiB-board claim.
+- Retain and promote the row-selective route. Selected B3 is now **50.344
+  tok/s / 2.3260x own AR**, **26.05% below** Vulkan's 68.082 tok/s. Evidence is
+  `benchmarks/results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json`;
+  the rollup, changelog, campaign status, and NativeSpecCycle status are
+  updated. Source hashes include natural `dc9cf99d...a3bb`, comparison
+  `9b38ff96...49a0`, profile trace `2e1d598a...6bf`, profile summary
+  `75487ba1...df8`, and populated rows `eacc3e37...3753` /
+  `1f4f64e0...24ce4`. Re-rank only `2dbf6abdd`; Q6T16 rowtiles are now the
+  largest remaining exact arithmetic family.
