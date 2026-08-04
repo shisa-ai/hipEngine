@@ -403,6 +403,37 @@ clean commits and execute in this order:
 These must be new model/layer/quant/variant registrations. They must not appear
 as `if model == deepseek4` or backend conditionals in generic dispatch.
 
+## No-action execution audit
+
+The 2026-08-04 post-experiment audit finds no rejected item whose premise has
+changed:
+
+- **Vulkan P/Psh remains consumer-specific.** hipEngine invokes a precompiled
+  AOTriton `attn_fwd`; there is no GLSL P-fragment loop or `Psh` storage to edit.
+  The head-major copy already removed the measured stride bottleneck without
+  reproducing a perf-neutral Vulkan layout change.
+- **Persistent head-major KV is not the next step.** At 64K the standalone copy
+  is **2.233 ms**, only **0.708%** of the **315.417-ms** copy-inclusive attention
+  sub-window. Even charging one copy to each of ten full-attention layers is
+  **22.329 ms**, about **0.032%** of the measured **68.815-s** full prefill. That
+  removable cost cannot justify changing every writer, decode reader, graph,
+  compactor, and `KVLiveSpans` consumer. Revisit only if a future consumer makes
+  the copy material.
+- **MMID negative experiments remain negative evidence.** Nathan's current scale
+  cache was disabled after 4%-20% regressions, `TILE16` increased expert-weight
+  re-streaming, and scalar packed-int MMID lost to cooperative F16. hipEngine's
+  independently qualified integer/T16 variants stay on their exact registry
+  keys; none makes these Vulkan implementations portable or promotable.
+- **Generic ubatch values remain superseded.** Current gfx1151 policy keeps the
+  same-device-qualified 256-row linear/MoE profile while full-attention chunks
+  remain shape/memory selected. Copying llama.cpp's generic 1024/2048 advice
+  would overwrite local evidence rather than extend it.
+- **RADV packaging and dev-release inference remain out of scope.** hipEngine
+  ships HIP, not a Vulkan ICD/Mesa stack. The pinned dev release is still only a
+  build/container smoke, so it supplies no performance or correctness row.
+
+No implementation or benchmark is warranted for these items.
+
 ## Final priority list
 
 1. **P0 — completed 2026-08-04:** head-contiguous BF16 AOTriton prefill scratch
@@ -431,6 +462,9 @@ as `if model == deepseek4` or backend conditionals in generic dispatch.
    indexer/sparse/gather/HC commits as references and start with the model/CPU-
    oracle admission unit above only after explicit approval; do not add Qwen or
    Laguna branches now.
-6. **No action:** Vulkan P/Psh source edits, persistent head-major KV before the
-   scratch A/B, MMID scale cache/TILE16/int-dot negatives, generic ubatch values,
-   RADV packaging, or any dev-release performance inference.
+6. **Completed/revalidated 2026-08-04 — no action:** Vulkan P/Psh source edits,
+   persistent head-major KV, MMID scale cache/TILE16/int-dot negatives, generic
+   ubatch values, RADV packaging, and dev-release performance inference remain
+   unsupported. The successful scratch A/B strengthens this decision: its 64K
+   copy is only **0.708%** of the candidate attention sub-window and at most
+   **0.032%** of full prefill across ten full-attention layers.

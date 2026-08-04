@@ -203261,3 +203261,26 @@ Vulkan local sizes verbatim will close the measured gap.
   checkpoint download, GPU run, or performance claim is justified. Validation is
   the clean registry/asset/source audit plus an end-to-end reread of the review
   document and `git diff --check`.
+
+## 2026-08-04 — Revalidate Nathan-review no-action decisions
+
+- Re-audit the final rejected/backend-specific set after completing the higher-
+  priority experiments. No premise changed: the production consumer remains
+  precompiled AOTriton rather than Nathan's GLSL P/Psh loop; gfx1151 retains its
+  same-device 256-row linear/MoE profile and shape/memory-selected full-attention
+  chunks; independently admitted T16/WMMA/integer variants do not make Nathan's
+  regressive Vulkan scale-cache, TILE16, or scalar-int implementations portable;
+  and a HIP package still has no RADV/Mesa distribution surface. The pinned dev
+  release remains compile/container-smoke evidence only.
+- Reject a persistent head-major KV rewrite on measured economics rather than
+  only invasiveness. At 64K, the accepted scratch artifact measures the copy at
+  **2.233 ms**, **0.708%** of the **315.417-ms** copy-inclusive attention
+  sub-window. Charging that copy to all ten Qwen3.6 full-attention layers is
+  **22.329 ms**, only **0.032%** of the measured **68.815-s** full prefill. This
+  removable wall is far below the risk of changing every paged writer, decode
+  reader, compactor, graph, and `KVLiveSpans` consumer.
+- Mark priority 6 completed/revalidated with no implementation or new benchmark.
+  Validation: recalculate both percentages directly from the accepted JSON,
+  inspect the live AOTriton/head-major dispatch, gfx1151 256-row profile, and
+  registry-qualified T16/WMMA paths; reread the review end-to-end; `git diff
+  --check` passes.
