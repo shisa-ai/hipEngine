@@ -985,6 +985,27 @@ verifier sidecar. Dense BF16 remains production and the larger Q4 verifier
 family becomes the next layout discriminator. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-q5-ssm-out-compressed-layouts-rejected.json`.
 
+That discriminator now admits exact compact-Q4T16 rowtiles without changing
+runtime ownership. The new single local32 and two-wave fused-FFN local64 bodies
+reuse each decoded T16 weight across rows 2-4 while retaining every row's
+contiguous-eight K traversal, FP32 FMA sequence, wave32 tree, zero-seeded BF16
+projection boundary, and unchanged SiLU expression. The complete 106-test T16
+bundle passes, and production-shape tracing confirms zero scratch: row four is
+VGPR144/SGPR128 with LDS0 for single and LDS512 for fused FFN.
+
+On actual layer-0 K5,120/N17,408 gate/up weights, all candidate outputs are
+BF16-bit exact to retained pack8. Single rows 2/3/4 improve
+**1.039x/1.309x/1.125x** and fused FFN improves
+**1.996x/1.740x/1.381x**. The current profile assigns **106.201 ms** to the
+qualified fused-FFN owner, so its row-four ratio projects **29.289 ms / 5.215%**
+complete-wall recovery. The separate **81.033-ms** single-Q4 bucket remains
+unqualified until every actual shape is screened. Runtime remains unwired during
+primitive admission. Next, route only the already-qualified FFN pair through a
+compact resident or sidecar with exact pack8 fallback; independently screen all
+actual single-Q4 shapes before broad ownership, then require W7900 transaction/
+profile/natural25 and populated-prefill gates. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-q4t16-rowtiles-admitted.json`.
+
 ---
 
 ## 7. Prioritized execution plan
