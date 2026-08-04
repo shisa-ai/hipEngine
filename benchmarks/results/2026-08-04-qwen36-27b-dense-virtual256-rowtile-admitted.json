@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "status": "admitted_exact_primitive_runtime_unwired",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_dense_virtual256_rowtile_gpu1",
+  "date": "2026-08-04",
+  "model_scope": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M with Q5_K/Q6_K materialized dense-BF16 projections",
+    "projection_shapes": [
+      "ffn_down: K17408/N5120",
+      "linear_qkv: K5120/N10240",
+      "ssm_out: K6144/N5120",
+      "full_v: K5120/N1024"
+    ]
+  },
+  "hardware": {
+    "gpu_index": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 24,
+    "rule": "same-GPU component ratios only; W7900 complete-path promotion remains required"
+  },
+  "software": {
+    "base_revision": "52337113d",
+    "candidate_state": "uncommitted exact primitive screen",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "backend": "hip_gfx1100",
+    "compiler_version_file": "/tmp/hipengine-qwen36-27b-hipcc-version.txt"
+  },
+  "change": {
+    "variant": "dense_gemv/bf16/virtual256_rowtile_out",
+    "symbol": "dense_gemv_virtual256_local128_rowtile_out_kernel<unsigned short,4>",
+    "summary": "Map each verifier row's existing 256 arithmetic partitions onto 128 physical threads while retaining cross-row weight reuse.",
+    "exactness_contract": "Keep both original virtual partials per row, perform the original s=128 add in registers, then reproduce s=64/s=32 and the 16..1 first-wave tree before the same BF16 store.",
+    "new_weight_layout": false,
+    "new_workspace": false,
+    "production_dispatch_changed": false
+  },
+  "red_green": {
+    "red": "tests/test_dense_gemv_plan.py failed collection on the missing dense_gemv_virtual256_rowtile_out_bf16 package export",
+    "green": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_dense_gemv_plan.py",
+      "tests": 27,
+      "passed": true,
+      "candidate_comparisons": 15,
+      "rows": [2, 3, 4],
+      "in_features": [1024, 5120, 6144, 10240, 17408],
+      "bit_mismatches": 0,
+      "cpu_gate": "existing rowtile CPU tolerance plus virtual256 KL<=0.05/top-1>=90% gates pass in the same module"
+    }
+  },
+  "screen": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/bench_dense_virtual256_rowtile.py",
+    "fixture": "deterministic nonuniform finite BF16 activation and weight bit patterns",
+    "protocol": {
+      "warmup_launch_pairs": 2000,
+      "samples_per_route": 11,
+      "launches_per_sample": 50,
+      "ordering": "alternating local256->local128 and local128->local256",
+      "timing": "synchronized HIP events"
+    },
+    "all_outputs_bit_exact": true,
+    "comparisons": 12,
+    "wins": 5,
+    "row_geomean_speedup": {
+      "2": 1.0697078162383125,
+      "3": 0.9921505430523455,
+      "4": 0.9507657769795154
+    },
+    "broad_policy": "rejected",
+    "qualified_policy": "K6144/N5120 ssm_out only",
+    "rows": [
+      {"rows": 2, "shape": "ffn_down", "k": 17408, "n": 5120, "local256_ms": 0.23709030151367189, "local128_ms": 0.22965024948120116, "speedup": 1.0323973174393601},
+      {"rows": 2, "shape": "linear_qkv", "k": 5120, "n": 10240, "local256_ms": 0.1456545352935791, "local128_ms": 0.12932722091674806, "speedup": 1.1262480880752974},
+      {"rows": 2, "shape": "ssm_out", "k": 6144, "n": 5120, "local256_ms": 0.04340347766876221, "local128_ms": 0.03588422060012817, "speedup": 1.2095421592800926},
+      {"rows": 2, "shape": "full_v", "k": 5120, "n": 1024, "local256_ms": 0.014932899475097657, "local128_ms": 0.016039299964904784, "speedup": 0.9310194028275538},
+      {"rows": 3, "shape": "ffn_down", "k": 17408, "n": 5120, "local256_ms": 0.2546160888671875, "local128_ms": 0.26912498474121094, "speedup": 0.9460886328039179},
+      {"rows": 3, "shape": "linear_qkv", "k": 5120, "n": 10240, "local256_ms": 0.15788585662841798, "local128_ms": 0.1622762870788574, "speedup": 0.9729447195922968},
+      {"rows": 3, "shape": "ssm_out", "k": 6144, "n": 5120, "local256_ms": 0.049623541831970215, "local128_ms": 0.04258187770843506, "speedup": 1.1653676282607959},
+      {"rows": 3, "shape": "full_v", "k": 5120, "n": 1024, "local256_ms": 0.01651370048522949, "local128_ms": 0.01828171968460083, "speedup": 0.9032903233462994},
+      {"rows": 4, "shape": "ffn_down", "k": 17408, "n": 5120, "local256_ms": 0.2563945198059082, "local128_ms": 0.27333383560180663, "speedup": 0.9380270073092025},
+      {"rows": 4, "shape": "linear_qkv", "k": 5120, "n": 10240, "local256_ms": 0.17869802474975585, "local128_ms": 0.18861810684204103, "speedup": 0.9474065228499362},
+      {"rows": 4, "shape": "ssm_out", "k": 6144, "n": 5120, "local256_ms": 0.055629181861877444, "local128_ms": 0.05169635772705078, "speedup": 1.0760754588474377},
+      {"rows": 4, "shape": "full_v", "k": 5120, "n": 1024, "local256_ms": 0.018019319772720338, "local128_ms": 0.021088159084320067, "speedup": 0.8544757131559416}
+    ],
+    "script_sha256": "3b0576e5e80be0b735789a98b1ae51d43f3d45e465f1302a4a5fa7f98cc91129",
+    "result_sha256": "73e37c533ded26d8d6a38a213ce1d25e5e60602a147d7184536162fbef420864"
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/trace-dense-virtual256-rowtile -o dense-rowtile -- /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/trace_dense_virtual256_rowtile.py",
+    "duration_ns_profiled": 211438,
+    "workgroup_x": 128,
+    "grid_x": 655360,
+    "vgpr": 32,
+    "sgpr": 128,
+    "lds_bytes": 2048,
+    "scratch_bytes": 0,
+    "profile_script_sha256": "a4081a7d8484bdb0d2ebc01f4835817bec5cb3df21d2691ab68ee0adb808327e",
+    "trace_csv_sha256": "0829a24cc86e867daa156ea68ba34d6f71d25a0ad8c14303e3e7aecfba93649f"
+  },
+  "admission": {
+    "authoritative_wall_ms": 676.5958399046212,
+    "dense_rowtile_ceiling_ms": 137.838925,
+    "ssm_out_profile_ms": 33.899401,
+    "row4_ssm_out_speedup": 1.0760754588474377,
+    "projected_saved_ms": 2.396590745123497,
+    "projected_complete_wall_percent": 0.3542130476979198,
+    "engineering_risk": "low",
+    "next_step": "route only native dense-BF16 rows 2-4 at K6144/N5120 through the registered leaf, fail closed on registry miss and every other shape, then run the exact W7900 transaction and natural25 gates"
+  },
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/linear/dense_gemv.hip": "4ef2e75ccfc467d0ff47c449f942317b2e20cdaecafd4876cb9f076d1f0db9aa",
+    "hipengine/kernels/hip_gfx1100/linear/dense_gemv.py": "d7f8504c526a79dcf2499f4894dc364b3be6540f08ddcc5fece1f882ca8e49b8",
+    "tests/test_dense_gemv_plan.py": "dc1421a5062dc886167164aaa1dc151f19cd02e84fb5d5cb82b6a032f3fa073f"
+  }
+}

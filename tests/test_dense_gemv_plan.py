@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.linear import (
     dense_gemv_out_fp16_wmma,
     dense_gemv_rowtile_out_bf16,
     dense_gemv_virtual256_out_bf16,
+    dense_gemv_virtual256_rowtile_out_bf16,
     plan_dense_gemv_build,
     register_dense_gemv_kernels,
 )
@@ -64,6 +65,15 @@ def test_dense_gemv_registers_bf16_fp16_and_w4_paro_variants() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="dense_gemv", quant="bf16", variant="virtual256_out")
         is dense_gemv_virtual256_out_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="dense_gemv",
+            quant="bf16",
+            variant="virtual256_rowtile_out",
+        )
+        is dense_gemv_virtual256_rowtile_out_bf16
     )
     assert (
         resolve(backend="hip_gfx1100", layer="dense_gemv", quant="f32", variant="bf16_hidden_bf16_out")
@@ -289,6 +299,68 @@ def test_dense_gemv_rowtile_is_bit_exact_to_c1_reduction_and_matches_cpu(rows: i
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", (2, 3, 4))
+@pytest.mark.parametrize("in_features", (1024, 5120, 6144, 10240, 17408))
+def test_dense_gemv_virtual256_rowtile_is_bit_exact_to_local256_rowtile(
+    rows: int,
+    in_features: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_dense_gemv(load=True)
+    out_features = 64
+    rng = np.random.default_rng(0xD270 + rows + in_features)
+    x_bits = float_array_to_bf16_bits(
+        (rng.standard_normal((rows, in_features), dtype=np.float32) * 0.125).astype(np.float32)
+    )
+    weight_bits = float_array_to_bf16_bits(
+        (rng.standard_normal((out_features, in_features), dtype=np.float32) * 0.0625).astype(np.float32)
+    )
+    baseline_bits = np.empty((rows, out_features), dtype=np.uint16)
+    candidate_bits = np.empty_like(baseline_bits)
+    buffers = []
+    try:
+        x_buf = malloc(x_bits.nbytes, runtime=runtime)
+        weight_buf = malloc(weight_bits.nbytes, runtime=runtime)
+        baseline_buf = malloc(baseline_bits.nbytes, runtime=runtime)
+        candidate_buf = malloc(candidate_bits.nbytes, runtime=runtime)
+        buffers.extend((x_buf, weight_buf, baseline_buf, candidate_buf))
+        copy_host_to_device(x_buf, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(weight_buf, host_array_ptr(weight_bits), runtime=runtime)
+        dense_gemv_rowtile_out_bf16(
+            x_buf.ptr,
+            weight_buf.ptr,
+            baseline_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=256,
+            library=library,
+            runtime=runtime,
+        )
+        dense_gemv_virtual256_rowtile_out_bf16(
+            x_buf.ptr,
+            weight_buf.ptr,
+            candidate_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=128,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(baseline_bits), baseline_buf, runtime=runtime)
+        copy_device_to_host(host_array_ptr(candidate_bits), candidate_buf, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(candidate_bits, baseline_bits)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
     "in_features,out_features",
     ((1024, 96), (5120, 128), (6144, 64), (10240, 32)),
@@ -378,6 +450,10 @@ def test_dense_gemv_wrapper_validates_before_gpu_load() -> None:
         dense_gemv_virtual256_out_bf16(0, 0, 0, 2, 16, 8)
     with pytest.raises(ValueError, match="threads must equal 128"):
         dense_gemv_virtual256_out_bf16(0, 0, 0, 1, 16, 8, threads=32)
+    with pytest.raises(ValueError, match="rows must be between 2 and 4"):
+        dense_gemv_virtual256_rowtile_out_bf16(0, 0, 0, 1, 16, 8)
+    with pytest.raises(ValueError, match="threads must equal 128"):
+        dense_gemv_virtual256_rowtile_out_bf16(0, 0, 0, 2, 16, 8, threads=256)
     with pytest.raises(ValueError, match="threads must be one of"):
         dense_gemv_out_f32(0, 0, 0, 1, 16, 8, threads=32)
     with pytest.raises(ValueError, match="threads must be one of"):

@@ -236,6 +236,117 @@ __global__ void dense_gemv_virtual256_local128_out_kernel(
   }
 }
 
+// Small-row sibling of virtual256_out. Four physical waves retain every one
+// of the local256 rowtile's arithmetic partitions for each row. The register
+// pair add is exactly s=128; LDS preserves s=64/32 before the unchanged first-
+// wave 16..1 tree. Weight values remain shared across verifier rows.
+template <typename scalar_t, int ROW_TILE>
+__launch_bounds__(128, 4)
+__global__ void dense_gemv_virtual256_local128_rowtile_out_kernel(
+    const scalar_t* __restrict__ x,
+    const scalar_t* __restrict__ weight,
+    scalar_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t w_base = out_col * in_features;
+  float acc_lo[ROW_TILE];
+  float acc_hi[ROW_TILE];
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+    acc_lo[row] = 0.0f;
+    acc_hi[row] = 0.0f;
+  }
+
+  constexpr int kVirtualThreads = 256;
+  constexpr int kValuesPerThread = 8;
+  constexpr int kVirtualStride = kVirtualThreads * kValuesPerThread;
+  const int64_t main_end = (in_features / kVirtualStride) * kVirtualStride;
+#pragma unroll
+  for (int virtual_half = 0; virtual_half < 2; ++virtual_half) {
+    const int64_t virtual_tid = tid + 128 * virtual_half;
+    float* __restrict__ partial = virtual_half == 0 ? acc_lo : acc_hi;
+    for (int64_t k_base = virtual_tid * kValuesPerThread;
+         k_base < main_end;
+         k_base += kVirtualStride) {
+      const scalar_t* __restrict__ w_ptr = weight + w_base + k_base;
+      const float w0 = scalar_to_float(w_ptr[0]);
+      const float w1 = scalar_to_float(w_ptr[1]);
+      const float w2 = scalar_to_float(w_ptr[2]);
+      const float w3 = scalar_to_float(w_ptr[3]);
+      const float w4 = scalar_to_float(w_ptr[4]);
+      const float w5 = scalar_to_float(w_ptr[5]);
+      const float w6 = scalar_to_float(w_ptr[6]);
+      const float w7 = scalar_to_float(w_ptr[7]);
+#pragma unroll
+      for (int row = 0; row < ROW_TILE; ++row) {
+        if (row < rows) {
+          const scalar_t* __restrict__ x_ptr =
+              x + static_cast<int64_t>(row) * in_features + k_base;
+          partial[row] = fmaf(scalar_to_float(x_ptr[0]), w0, partial[row]);
+          partial[row] = fmaf(scalar_to_float(x_ptr[1]), w1, partial[row]);
+          partial[row] = fmaf(scalar_to_float(x_ptr[2]), w2, partial[row]);
+          partial[row] = fmaf(scalar_to_float(x_ptr[3]), w3, partial[row]);
+          partial[row] = fmaf(scalar_to_float(x_ptr[4]), w4, partial[row]);
+          partial[row] = fmaf(scalar_to_float(x_ptr[5]), w5, partial[row]);
+          partial[row] = fmaf(scalar_to_float(x_ptr[6]), w6, partial[row]);
+          partial[row] = fmaf(scalar_to_float(x_ptr[7]), w7, partial[row]);
+        }
+      }
+    }
+    for (int64_t in_col = main_end + virtual_tid;
+         in_col < in_features;
+         in_col += kVirtualThreads) {
+      const float w = scalar_to_float(weight[w_base + in_col]);
+#pragma unroll
+      for (int row = 0; row < ROW_TILE; ++row) {
+        if (row < rows) {
+          partial[row] = fmaf(
+              scalar_to_float(x[static_cast<int64_t>(row) * in_features + in_col]),
+              w,
+              partial[row]);
+        }
+      }
+    }
+  }
+
+  __shared__ float sdata[ROW_TILE][128];
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+    sdata[row][tid] = acc_lo[row] + acc_hi[row];
+  }
+  __syncthreads();
+  if (tid < 64) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      sdata[row][tid] += sdata[row][tid + 64];
+    }
+  }
+  __syncthreads();
+  if (tid < 32) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      sdata[row][tid] += sdata[row][tid + 32];
+    }
+  }
+  __syncthreads();
+  if (tid < 32) {
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      float sum = sdata[row][tid];
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        sum += __shfl_down(sum, offset);
+      }
+      if (tid == 0 && row < rows) {
+        out[static_cast<int64_t>(row) * out_features + out_col] =
+            float_to_scalar<scalar_t>(sum);
+      }
+    }
+  }
+}
+
 
 template <typename scalar_t, int ROW_TILE>
 __global__ void dense_gemv_rowtile_out_kernel(
@@ -758,6 +869,33 @@ extern "C" int hipengine_dense_gemv_virtual256_out_bf16(
       x,
       weight,
       out,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_virtual256_rowtile_out_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows < 2 || rows > 4 || in_features <= 0 || out_features <= 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_virtual256_local128_rowtile_out_kernel<uint16_t, 4>),
+      dim3(static_cast<unsigned int>(out_features)),
+      dim3(128),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
       in_features,
       out_features);
   return static_cast<int>(hipGetLastError());

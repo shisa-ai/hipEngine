@@ -680,6 +680,17 @@ as an exact, low-risk extension of the already-open dominant dense family.
 GPU1 must compare rows 2/3/4 over all four real shapes before production routing;
 all losing K ranges and every unsupported row retain the current rowtile.
 
+The broad local128 policy is **rejected**, but one stable shape qualifies. All
+12 screen outputs are BF16 bit-exact; rowwise geometric speedups are
+**1.0697x / 0.9922x / 0.9508x**, so rows-four cannot use a blanket rewrite.
+`ssm_out` K6,144/N5,120 alone improves **1.2095x / 1.1654x / 1.0761x** across
+rows 2/3/4. FFN-down is mixed, QKV loses rows 3/4, and full V loses every row.
+The exact primitive is therefore admitted without production routing; the next
+RED may select only native dense-BF16 `ssm_out` rows 2-4 and must fail closed on
+every other shape or registry miss. The row-four subfamily projection is
+**2.397 ms / 0.354%** of current complete B3 wall. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-admitted.json`.
+
 ---
 
 ## 7. Prioritized execution plan
