@@ -5162,6 +5162,38 @@ resolution, so the canonical headline remains **52.652 tok/s / 2.4291x own
 AR / 22.66% below Vulkan**. Artifact:
 [`2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json`](results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json).
 
+#### Qwen3.6-27B byte-neutral planar-Q6T16 replacement, W7900/gfx1100
+
+Clean implementation `3728531ba` replaces the same 56 wide `ffn_down` and
+`attn_qkv` Q6T16 residents with exact 3,360-byte planar-qmicro records. Root
+lm-head, narrow V, gfx1151, explicit legacy plans, and registry misses keep the
+legacy layout. No sidecar, allocation, flag, or prompt/token condition is added.
+
+| Route | Legacy Q6T16 | Planar qmicro | Delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 21.676 tok/s | **23.031 tok/s** | **+6.252%** | 1.0000x | n/a |
+| B1 | 38.581 tok/s | **39.830 tok/s** | **+3.239%** | 1.7294x | **-3.416%** |
+| B2 | 48.712 tok/s | **49.848 tok/s** | **+2.331%** | 2.1644x | **-2.651%** |
+| **B3 (retained)** | 52.652 tok/s | **54.547 tok/s** | **+3.599%** | **2.3685x** | **-4.223%** |
+
+All 30 prompt-budget rows improve **+1.501% to +4.408%**, every
+full/train/heldout/category scope improves, and IDs/acceptance remain exact.
+Because c1 AR improves faster than verifier rows, B3/own-AR declines **2.4291x
+-> 2.3685x (-2.497%)**; only the absolute MTP win is claimed.
+
+A clean contemporaneous B3 trace records unchanged **8,055** dispatches. The
+392 wide-Q6 calls fall **59.876 -> 46.714 ms (-21.98%, 1.282x)**, total kernel
+sum falls **356.003 -> 343.678 ms (-3.46%)**, and complete wall falls **504.331
+-> 500.205 ms (-0.818%)**. The no-warmup first target pass rises, while steady
+passes 2-7 improve **47.742 -> 45.840 ms (-3.98%)**.
+
+Populated 512/4096 prefill improves **202.550/188.637 -> 207.022/192.528 tok/s
+(+2.208%/+2.062%)** and graph AR improves **20.940/19.768 -> 22.107/20.926
+(+5.572%/+5.859%)**. All final IDs are `9707`; peaks remain byte-identical at
+**31.656/34.481 GiB** and teardown returns to zero. Canonical B3 is now
+**19.88% below** llama.cpp Vulkan. Artifact:
+[`2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json`](results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5336,6 +5368,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B row-selective compact-Q4T16 projections](results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json),
 [Qwen3.6-27B exact Q6T16 col8 verifier rowtiles](results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json),
 [Qwen3.6-27B narrow Q4T16 col4 verifier rowtile](results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json),
+[Qwen3.6-27B byte-neutral planar-Q6T16 replacement](results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

@@ -1197,10 +1197,26 @@ execution rather than an unmeasured large rowtile.
 The adjacent bundle passes **145 tests with 4 environment skips**, actual
 materialization/free confirms unchanged **73,113,600 + 43,008,000-byte** sample
 payloads, cached tracing names c1/row4/WMMA with zero scratch, and the complete
-W7900 B1-B3 transaction/state/provider/teardown gate passes. This is still a
-correctness/admission checkpoint: run the binding hermetic B3 profile against
-`064219ec6`, then natural25 and populated 512/4K before changing the canonical
-**52.652 tok/s / 22.66%-below-Vulkan** status.
+W7900 B1-B3 transaction/state/provider/teardown gate passes.
+
+Clean, contemporaneous W7900 tracing against `064219ec6` then confirms the
+replacement. The 392 wide-Q6 calls fall **59.876 -> 46.714 ms (-21.98%)**,
+total kernel sum falls **356.003 -> 343.678 ms (-3.46%)**, and complete wall
+falls **504.331 -> 500.205 ms (-0.818%)** with unchanged **8,055** dispatches.
+The no-warmup first target pass is slower, but steady passes 2-7 fall **47.742
+-> 45.840 ms (-3.98%)**, separating one-time graph capture from retained
+arithmetic.
+
+Natural25 true AR advances **21.676 -> 23.031 tok/s (+6.252%)** and B1/B2/B3
+advance **38.581/48.712/52.652 -> 39.830/49.848/54.547 tok/s
+(+3.239/+2.331/+3.599%)**. All 30 prompt-budget rows and every aggregate scope
+improve with exact IDs and acceptance. AR improves faster, so B3/own-AR declines
+**2.4291x -> 2.3685x (-2.497%)**; only the absolute throughput win is claimed.
+Populated 512/4096 prefill advances **202.550/188.637 -> 207.022/192.528 tok/s
+(+2.208%/+2.062%)**, graph AR advances **20.940/19.768 -> 22.107/20.926
+(+5.572%/+5.859%)**, peaks are byte-identical, and teardown is clean. Canonical
+B3 is now **54.547 tok/s / 19.88% below Vulkan**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json`.
 
 ---
 
@@ -1213,10 +1229,10 @@ correctness/admission checkpoint: run the binding hermetic B3 profile against
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 established parity, selective Q6T16 now reaches 202.011/188.765 tok/s |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 20.910/19.804 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; eighteen wins retained, exact B3 reaches 52.652 tok/s / 2.4291x faster own AR |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `a821d571b`, with a 22.66% Vulkan B3 gap |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 plus planar Q6T16 reach 207.022/192.528 tok/s |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 22.107/20.926 tok/s and Vulkan remains beaten |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact B3 reaches 54.547 tok/s absolute, while faster AR lowers own-AR ratio to 2.3685x as disclosed |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank `3728531ba`, with a 19.88% Vulkan B3 gap |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
@@ -1366,6 +1382,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | 2026-08-04 | llama.cpp Vulkan `ee0445c99` | W7900 | stateful 512/128, 4K/128; natural25 B3 | 79.805 / 81.792 | 12.574 / 12.488; natural AR 12.546 | 68.082 engine / 36.122 client | 5.4265x engine / 3.7600x client | `[9707]*128` captured exact; all categories improve; 6/10 natural content hashes match AR | `benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json` |
 | 2026-08-04 | hipEngine `da6865f74`, exact/default dense GGUF | W7900 | 512/128, 4K/128; natural25 B1-B3 | 50.515 / 50.473 | 19.556 / 18.649; natural AR 20.361 | B1 17.128 (best), B2 16.005, B3 14.858 | 0.8412x / 0.7861x / 0.7297x | all repeated IDs deterministic; all 750 MTP-visible IDs exact vs AR; GPU/CPU accept exact; state transaction oracle green | `benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json` |
+| 2026-08-05 | hipEngine `3728531ba`, byte-neutral planar Q6T16 | W7900 | 512/128, 4K/128; natural25 B1-B3 | 207.022 / 192.528 | 22.107 / 20.926; natural AR 23.031 | B1 39.830, B2 49.848, B3 54.547 | 1.7294x / 2.1644x / 2.3685x | all 750 MTP IDs and acceptance exact; all 30 rows/scopes improve; populated IDs deterministic; byte-identical peaks and clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json` |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines
