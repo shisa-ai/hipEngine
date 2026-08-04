@@ -315,6 +315,27 @@ a reproduced stall rules out all disabled routes as individually necessary
 causes. Expect lower prefill throughput and do not use profile runs for
 performance claims.
 
+The 2026-08-04 conservative gate passes on kernel `7.1.3-2-cachyos`, ROCm
+7.15, and commit `931eff65f`: three independent cache-only warmup+3 processes
+complete all **12/12** 128K prefills without a host drain. Measured prefill is
+**306.825-307.683 tok/s**, decode is **29.631-29.658 tok/s**, every final token
+is 9707, all final logits are finite and identical, tracked allocation returns
+to zero, and the captured kernel journals contain no amdgpu/KFD fault, timeout,
+or reset. This qualifies the profile for split re-enablement; it does not yet
+identify which disabled family changes incidence.
+
+After `conservative` passes its three-process gate, isolate the two first-
+failure-era application families with the same gate:
+
+```bash
+--prefill-kernel-profile gdn_exact
+--prefill-kernel-profile q4_shared_x
+```
+
+`gdn_exact` changes only GDN `chain -> exact`; `q4_shared_x` changes only Q4
+selected prefill `baseline -> shared_x`. All other selectors remain pinned to
+the conservative map. These are independent commands, not a combined profile.
+
 ### Experimental host-drain containment
 
 To test whether bounding outstanding work avoids the queue-retirement state,
@@ -378,6 +399,7 @@ compact evidence is
 | Jul 16 | AMD oversubscription-timer / stream-topology audit | Exact CachyOS source submits timer 50; no override; failing prefill uses one application thread and default stream 0; experimental AOTriton stream is off | Disabled timer and current application multistream submission are not supported as necessary triggers; firmware field still lacks live readback |
 | Jul 16 | Non-HWS `sched_policy=2` boot | Exact 512/1 passes before and after; intervening 128K process aborts before prefill with CPF gfxhub fault at ring 24 / VMID 8 / PASID 31; coredump reaches `AqlQueue::ExecutePM4` during code-cache invalidation | Reject policy 2 on this stack; no conclusion about the original HWS stall because 128K never reaches prefill |
 | Aug 4 | Per-layer host-drain containment | Exact matched 512/4K/64K costs -1.79%/-0.24%/-0.86% prefill; three independent 128K warmup+3 processes complete 12/12 prefills with exact IDs, finite logits, normal telemetry, clean AMDGPU/KFD logs, and full cleanup | Qualifies an explicit slower containment path; underlying default-path stack bug remains open |
+| Aug 4 | Conservative device-kernel isolation | Exact 512 warmup+3 and 64K warmup+1 controls pass; three independent no-drain 128K warmup+3 processes complete 12/12 prefills at 306.825-307.683 tok/s, with exact IDs/logits, clean AMDGPU/KFD logs, and full cleanup | Exact GDN plus Q4 shared-X remain the two first-failure-era suspects; split re-enablement is required before retaining a kernel fallback |
 | Aug 4 | Kernel-fix chronology and live CWSR audit | Upstream removed incomplete `lr_compute_wa` and names gfx1151 VGPR-size correction `b42f3bf9536c` as the actual fix; captured source contains it, and live topology is exactly corrected at `19185664` bytes rather than old `13942784` | Reject restoring/testing the removed workaround; the captured stall survives the actual upstream fix |
 
 ## Flight-recorder localization

@@ -64,6 +64,18 @@ _CONSERVATIVE_PREFILL_KERNEL_SELECTORS = {
     "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA": "0",
 }
 
+_PREFILL_KERNEL_PROFILES = {
+    "conservative": _CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
+    "gdn_exact": {
+        **_CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+    },
+    "q4_shared_x": {
+        **_CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
+        "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "shared_x",
+    },
+}
+
 
 def _apply_prefill_kernel_profile(profile: str) -> dict[str, str]:
     """Apply one fail-closed GGUF prefill kernel-isolation profile."""
@@ -71,20 +83,22 @@ def _apply_prefill_kernel_profile(profile: str) -> dict[str, str]:
     normalized = str(profile).strip().lower()
     if normalized == "default":
         return {}
-    if normalized != "conservative":
+    selectors = _PREFILL_KERNEL_PROFILES.get(normalized)
+    if selectors is None:
         raise ValueError(
-            f"unsupported prefill kernel profile {profile!r}; expected default or conservative"
+            f"unsupported prefill kernel profile {profile!r}; expected default or one of "
+            f"{sorted(_PREFILL_KERNEL_PROFILES)}"
         )
 
-    for name, expected in _CONSERVATIVE_PREFILL_KERNEL_SELECTORS.items():
+    for name, expected in selectors.items():
         existing = os.environ.get(name)
         if existing is not None and existing.strip().lower() != expected:
             raise ValueError(
-                f"--prefill-kernel-profile conservative conflicts with {name}={existing!r}; "
+                f"--prefill-kernel-profile {normalized} conflicts with {name}={existing!r}; "
                 f"unset it or use the required value {expected!r}"
             )
-    os.environ.update(_CONSERVATIVE_PREFILL_KERNEL_SELECTORS)
-    return dict(_CONSERVATIVE_PREFILL_KERNEL_SELECTORS)
+    os.environ.update(selectors)
+    return dict(selectors)
 
 
 def main() -> int:
@@ -136,11 +150,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--prefill-kernel-profile",
-        choices=("default", "conservative"),
+        choices=("default", *sorted(_PREFILL_KERNEL_PROFILES)),
         default="default",
         help=(
-            "GGUF: default package routes or the pre-GPF unfused/baseline "
-            "kernel-isolation profile"
+            "GGUF: default package routes, the conservative kernel-isolation "
+            "profile, or a one-family split profile"
         ),
     )
     parser.add_argument("--use-expert-sidecar", action="store_true")

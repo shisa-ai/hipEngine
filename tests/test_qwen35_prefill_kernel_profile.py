@@ -18,6 +18,16 @@ CONSERVATIVE_SELECTORS = {
     "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA": "0",
 }
 
+GDN_EXACT_SELECTORS = {
+    **CONSERVATIVE_SELECTORS,
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+}
+
+Q4_SHARED_X_SELECTORS = {
+    **CONSERVATIVE_SELECTORS,
+    "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "shared_x",
+}
+
 
 def test_conservative_prefill_kernel_profile_sets_complete_selector_contract(
     monkeypatch: pytest.MonkeyPatch,
@@ -29,6 +39,27 @@ def test_conservative_prefill_kernel_profile_sets_complete_selector_contract(
 
     assert selectors == CONSERVATIVE_SELECTORS
     assert {name: os.environ[name] for name in selectors} == CONSERVATIVE_SELECTORS
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected"),
+    [
+        ("gdn_exact", GDN_EXACT_SELECTORS),
+        ("q4_shared_x", Q4_SHARED_X_SELECTORS),
+    ],
+)
+def test_split_prefill_kernel_profiles_reenable_exactly_one_family(
+    profile: str,
+    expected: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in CONSERVATIVE_SELECTORS:
+        monkeypatch.delenv(name, raising=False)
+
+    selectors = sweep._apply_prefill_kernel_profile(profile)
+
+    assert selectors == expected
+    assert {name: os.environ[name] for name in selectors} == expected
 
 
 def test_default_prefill_kernel_profile_does_not_mutate_environment(
