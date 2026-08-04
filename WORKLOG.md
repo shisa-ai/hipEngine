@@ -204659,3 +204659,31 @@ Vulkan local sizes verbatim will close the measured gap.
   headline. Re-rank the post-chain trace before selecting another candidate;
   the removed scalar producer and post-row-copy families are no longer valid
   targets.
+
+### D27-O3 raw-Q6 rowbatch replacement for dense verifier projections — REJECTED
+
+- The post-chain profile attributes **106.7 ms** across the two dense-BF16
+  rowtile families used by staged Q6_K verifier projections. Screen the
+  already-registered raw-Q6 rowbatch4 owner before considering runtime routing:
+  actual `blk.3.attn_v.weight` from Qwen3.6-27B Q4_K_M, shape
+  `(N=1024, K=5120)`, four nonuniform BF16 input rows, and the resident
+  dequantized-BF16 weight/output boundary as oracle.
+- RX 7900 XTX/GPU1 command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12
+  /tmp/screen_qwen36_q6_raw_rowbatch4.py --tensor blk.3.attn_v.weight
+  --rows 4 --warmup 100 --samples 15 --burst 50 --output
+  /tmp/qwen36-q6-raw-rowbatch4-attn-v-gpu1.json`.
+- The raw-Q6 path is neither exact nor faster. It differs in **1,734/4,096
+  BF16 values (42.3340%)**, with max absolute error **0.001953125** and distinct
+  output hashes. Counterbalanced medians are dense versus raw
+  **0.018934 -> 0.037673 ms event** and **0.019235 -> 0.038024 ms synchronized
+  wall**: raw is **0.5026x/0.5059x** as fast, approximately **1.99x slower**.
+  The lower raw storage footprint (**4,300,800 vs 10,485,760 bytes**) does not
+  offset either failed admission criterion.
+- Reject direct substitution and do not add a runtime route. This also confirms
+  that exactness here is defined by the materialized BF16 boundary, not merely
+  a close float result from the same GGUF source. SHA-256s: screen
+  `d890612f...201ce`; result `d5547faf...1c038`.
