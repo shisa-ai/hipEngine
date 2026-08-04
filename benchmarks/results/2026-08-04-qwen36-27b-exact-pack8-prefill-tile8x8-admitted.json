@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "status": "admitted_exact_primitive_runtime_unwired",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_resident_pack8_prefill_tile8x8_gpu1",
+  "date": "2026-08-04",
+  "model_scope": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "projection_shapes": "all dense Q4_K projection dimensions at M=512 and the M=1024 outer-prefill chunk"
+  },
+  "hardware": {
+    "gpu_index": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 24,
+    "rule": "same-GPU component ratios only; W7900 complete-path promotion remains required"
+  },
+  "software": {
+    "base_revision": "10b251594",
+    "candidate_state": "uncommitted exact primitive screen",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "backend": "hip_gfx1100",
+    "compiler_version_file": "/tmp/hipengine-qwen36-27b-hipcc-version.txt"
+  },
+  "change": {
+    "variant": "linear/gguf_q4_k/pack8_exact_prefill_tile8x8_bf16_bf16_out",
+    "symbol": "gguf_q4_k_pack8_exact_prefill_tiled_out_kernel<unsigned short,unsigned short,1,8>",
+    "summary": "One wave32 block keeps eight independent token-row accumulator sets for one resident output pack8, loading each qweight/scale/min stream once across the row tile.",
+    "exactness_contract": "For each output row and column, preserve the retained contiguous-8 K traversal, FP32 fmaf sequence, wave32 shuffle tree, zero-seeded final sum, and BF16 store.",
+    "new_weight_layout": false,
+    "new_workspace": false,
+    "production_dispatch_changed": false
+  },
+  "red_green": {
+    "red": "tests/test_gguf_q4_k_pack8_rowtile.py failed collection on the five missing bounded candidate wrappers",
+    "candidate_green": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_gguf_q4_k_pack8_rowtile.py",
+      "tests": 23,
+      "passed": true,
+      "candidate_tiles": ["8x2", "8x4", "8x8", "16x2", "16x4"],
+      "partial_rows": [5, 7],
+      "bit_mismatches": 0
+    },
+    "retained_green": {
+      "tests": 15,
+      "passed": true,
+      "retained_tile": "8x8",
+      "rejected_tiles_removed": ["8x2", "8x4", "16x2", "16x4"]
+    }
+  },
+  "screen": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/bench_qwen36_q4_pack8_exact_tiles.py",
+    "fixture": "nonuniform deterministic random BF16 activations plus packed Q4 nibbles and FP32 scale/min planes",
+    "balanced_samples_per_route": 7,
+    "shape_rows": 12,
+    "candidate_comparisons": 60,
+    "all_candidate_outputs_bit_exact": true,
+    "winner": "tile8x8",
+    "winner_count": 12,
+    "winner_geomean_speedup": 2.8605886608559703,
+    "other_candidate_geomean_speedups": {
+      "tile8x2": 1.8247367735064415,
+      "tile8x4": 2.310174222463923,
+      "tile16x2": 1.8477753019292136,
+      "tile16x4": 2.524440873365679
+    },
+    "rows": [
+      {"m": 512, "name": "ffn_gate_up", "k": 5120, "n": 17408, "control_ms": 79.79012792930007, "tile8x8_ms": 14.63035005144775, "speedup": 5.453740180427496},
+      {"m": 512, "name": "linear_qkv", "k": 5120, "n": 10240, "control_ms": 10.295193875208497, "tile8x8_ms": 4.058043006807566, "speedup": 2.5369849106916327},
+      {"m": 512, "name": "linear_gate", "k": 5120, "n": 6144, "control_ms": 5.923697026446462, "tile8x8_ms": 2.367740962654352, "speedup": 2.501834921927317},
+      {"m": 512, "name": "full_q", "k": 5120, "n": 12288, "control_ms": 15.300988918170333, "tile8x8_ms": 5.752085009589791, "speedup": 2.660076979505823},
+      {"m": 512, "name": "full_kv", "k": 5120, "n": 1024, "control_ms": 0.996273010969162, "tile8x8_ms": 0.4093949683010578, "speedup": 2.43352529490917},
+      {"m": 512, "name": "attention_output", "k": 6144, "n": 5120, "control_ms": 6.105639971792698, "tile8x8_ms": 2.384840976446867, "speedup": 2.560187464108984},
+      {"m": 1024, "name": "ffn_gate_up", "k": 5120, "n": 17408, "control_ms": 146.6705878265202, "tile8x8_ms": 29.492262983694673, "speedup": 4.973188659941411},
+      {"m": 1024, "name": "linear_qkv", "k": 5120, "n": 10240, "control_ms": 22.42184104397893, "tile8x8_ms": 9.069297928363085, "speedup": 2.4722796870370143},
+      {"m": 1024, "name": "linear_gate", "k": 5120, "n": 6144, "control_ms": 12.741355923935771, "tile8x8_ms": 4.6816610265523195, "speedup": 2.7215460178924555},
+      {"m": 1024, "name": "full_q", "k": 5120, "n": 12288, "control_ms": 26.094148866832256, "tile8x8_ms": 10.431615868583322, "speedup": 2.5014484041172813},
+      {"m": 1024, "name": "full_kv", "k": 5120, "n": 1024, "control_ms": 1.88593496568501, "tile8x8_ms": 0.7483400404453278, "speedup": 2.5201577675340125},
+      {"m": 1024, "name": "attention_output", "k": 6144, "n": 5120, "control_ms": 12.012777151539922, "tile8x8_ms": 4.841933026909828, "speedup": 2.4809878791749007}
+    ],
+    "script_sha256": "48852cd649e8f98e521761f77ce158079a70a8237f902dbc4d047753105ec50a",
+    "result_sha256": "9b9a9607b7f70775f5da0c451187db2c38d1ebd6db620dfbada6b3690b432f14"
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -d /tmp/qwen36-q4-pack8-exact-tile8x8-trace -o trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/profile_qwen36_q4_pack8_exact_tile8x8.py",
+    "duration_ns_profiled": 10139284,
+    "workgroup_x": 32,
+    "grid_x": 69632,
+    "grid_y": 64,
+    "vgpr": 144,
+    "sgpr": 128,
+    "lds_bytes": 256,
+    "scratch_bytes": 0,
+    "profile_script_sha256": "8a17c45b133d162cff26568efa12b23ceefb17ca9318d5ad772a50a546060138",
+    "trace_db_sha256": "2c59ce7c75b29290ab3022b31da527adc468bcec136677e98d0bdcaccb979162"
+  },
+  "admission": {
+    "ceiling_ms": 7815.869,
+    "conservative_reducible_fraction": 0.5,
+    "expected_saved_ms": 3907.9345,
+    "expected_complete_wall_percent": 39.29697953204436,
+    "engineering_risk": "low-to-medium",
+    "next_step": "route only resident Q4_K pack8 rows >=512 under the existing use_wmma_prefill contract, preserve all smaller/unsupported fallbacks, then run exact W7900 512/4096 state gates"
+  }
+}

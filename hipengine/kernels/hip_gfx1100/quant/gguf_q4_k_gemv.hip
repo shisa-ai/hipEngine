@@ -1094,6 +1094,154 @@ __global__ void gguf_q4_k_pack8_rowtile_out_kernel(
   }
 }
 
+// Exact populated-prefill extension of the small-B rowtile above. Each wave
+// owns COL_PACKS adjacent resident output packs and a fixed ROW_TILE token
+// chunk. Independent rows/columns are interleaved only around the retained
+// per-output arithmetic: every accumulator sees the same contiguous-8 K
+// traversal, FP32 fmaf sequence, wave32 tree, zero-seeded final sum, and BF16
+// store as gguf_q4_k_pack8_prefill_out_kernel.
+template <typename scalar_t, typename out_t, int COL_PACKS, int ROW_TILE>
+__launch_bounds__(32, 1)
+__global__ void gguf_q4_k_pack8_exact_prefill_tiled_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int32_t* __restrict__ qweight,
+    const float* __restrict__ scales,
+    const float* __restrict__ mins,
+    out_t* __restrict__ out,
+    int rows,
+    int in_features,
+    int out_features,
+    int out_packed) {
+  static_assert(COL_PACKS == 1 || COL_PACKS == 2, "bounded output-pack tile");
+  static_assert(
+      ROW_TILE == 2 || ROW_TILE == 4 || ROW_TILE == 8,
+      "bounded token-row tile");
+
+  const int out_pack_base = static_cast<int>(blockIdx.x) * COL_PACKS;
+  const int row_base = static_cast<int>(blockIdx.y) * ROW_TILE;
+  const int tid = threadIdx.x;
+  if (out_pack_base >= out_packed || row_base >= rows) return;
+
+  float acc[ROW_TILE][COL_PACKS][8];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r) {
+#pragma unroll
+    for (int p = 0; p < COL_PACKS; ++p) {
+#pragma unroll
+      for (int c = 0; c < 8; ++c) {
+        acc[r][p][c] = 0.0f;
+      }
+    }
+  }
+
+  constexpr int kValuesPerThread = 8;
+  constexpr int kStride = 32 * kValuesPerThread;
+  for (int64_t k_base = static_cast<int64_t>(tid) * kValuesPerThread;
+       k_base < in_features;
+       k_base += kStride) {
+    const int64_t group32 = k_base >> 5;
+    float scale_tile[COL_PACKS][8];
+    float min_tile[COL_PACKS][8];
+#pragma unroll
+    for (int p = 0; p < COL_PACKS; ++p) {
+      const int out_col = (out_pack_base + p) << 3;
+      const float* __restrict__ scale_ptr =
+          scales + group32 * out_features + out_col;
+      const float* __restrict__ min_ptr =
+          mins + group32 * out_features + out_col;
+#pragma unroll
+      for (int c = 0; c < 8; ++c) {
+        scale_tile[p][c] = scale_ptr[c];
+        min_tile[p][c] = min_ptr[c];
+      }
+    }
+
+#pragma unroll
+    for (int j = 0; j < kValuesPerThread; ++j) {
+      float x_tile[ROW_TILE];
+#pragma unroll
+      for (int r = 0; r < ROW_TILE; ++r) {
+        const int row = row_base + r;
+        const int safe_row = row < rows ? row : rows - 1;
+        x_tile[r] = scalar_to_float<scalar_t>(
+            x[static_cast<int64_t>(safe_row) * in_features + k_base + j]);
+      }
+#pragma unroll
+      for (int p = 0; p < COL_PACKS; ++p) {
+        const int out_pack = out_pack_base + p;
+        const int64_t q_index =
+            static_cast<int64_t>(out_pack) * in_features + k_base + j;
+        const uint32_t packed = static_cast<uint32_t>(qweight[q_index]);
+        float weight_tile[8];
+#pragma unroll
+        for (int c = 0; c < 8; ++c) {
+          const float q = static_cast<float>(
+              (packed >> pack8_shift_for_lane(c)) & 0x0Fu);
+          weight_tile[c] = q * scale_tile[p][c] - min_tile[p][c];
+        }
+#pragma unroll
+        for (int r = 0; r < ROW_TILE; ++r) {
+#pragma unroll
+          for (int c = 0; c < 8; ++c) {
+            acc[r][p][c] = fmaf(x_tile[r], weight_tile[c], acc[r][p][c]);
+          }
+        }
+      }
+    }
+  }
+
+  for (int offset = 16; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+#pragma unroll
+      for (int p = 0; p < COL_PACKS; ++p) {
+#pragma unroll
+        for (int c = 0; c < 8; ++c) {
+          acc[r][p][c] += __shfl_down(acc[r][p][c], offset);
+        }
+      }
+    }
+  }
+
+  __shared__ float xchg[ROW_TILE][COL_PACKS][8];
+  if (tid == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+#pragma unroll
+      for (int p = 0; p < COL_PACKS; ++p) {
+#pragma unroll
+        for (int c = 0; c < 8; ++c) {
+          xchg[r][p][c] = acc[r][p][c];
+        }
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      const int row = row_base + r;
+      if (row >= rows) continue;
+#pragma unroll
+      for (int p = 0; p < COL_PACKS; ++p) {
+        const int out_pack = out_pack_base + p;
+        if (out_pack >= out_packed) continue;
+        const int out_col = out_pack << 3;
+#pragma unroll
+        for (int c = 0; c < 8; ++c) {
+          float total = 0.0f;
+          total += xchg[r][p][c];
+          store_output<out_t>(
+              out,
+              static_cast<int64_t>(row) * out_features + out_col + c,
+              total);
+        }
+      }
+    }
+  }
+}
+
 template <typename scalar_t, bool kFuseSilu>
 __launch_bounds__(128, 2)
 __global__ void gguf_q4_k_pack8_dual_prefill_out_kernel(
@@ -1363,6 +1511,44 @@ int launch_gguf_q4_k_pack8_rowtile_out(
       return static_cast<int>(hipErrorInvalidValue);
   }
 #undef GGUF_Q4K_PACK8_ROWTILE_CASE
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t, typename out_t, int COL_PACKS, int ROW_TILE>
+int launch_gguf_q4_k_pack8_exact_prefill_tiled_out(
+    const scalar_t* x,
+    const int32_t* qweight,
+    const float* scales,
+    const float* mins,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  constexpr int kColTile = COL_PACKS * 8;
+  if (x == nullptr || qweight == nullptr || scales == nullptr || mins == nullptr ||
+      out == nullptr || rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % kColTile) != 0 ||
+      threads != 32) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t out_packed = out_features >> 3;
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_packed / COL_PACKS),
+      static_cast<unsigned int>((rows + ROW_TILE - 1) / ROW_TILE));
+  gguf_q4_k_pack8_exact_prefill_tiled_out_kernel<
+      scalar_t, out_t, COL_PACKS, ROW_TILE><<<grid, block, 0, stream>>>(
+      x,
+      qweight,
+      scales,
+      mins,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features),
+      static_cast<int>(out_packed));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1783,3 +1969,25 @@ extern "C" int hipengine_gguf_q4_k_pack8_rowtile_bf16_bf16_out(
   return launch_gguf_q4_k_pack8_rowtile_out<uint16_t, uint16_t>(
       x, qweight, scales, mins, out, rows, in_features, out_features, threads, stream);
 }
+
+#define HIPENGINE_Q4_PACK8_EXACT_PREFILL_EXPORT(NAME, COL_PACKS, ROW_TILE)    \
+  extern "C" int hipengine_gguf_q4_k_pack8_exact_prefill_##NAME##_bf16_bf16_out( \
+      const uint16_t* x,                                                      \
+      const int32_t* qweight,                                                 \
+      const float* scales,                                                    \
+      const float* mins,                                                      \
+      uint16_t* out,                                                          \
+      int64_t rows,                                                           \
+      int64_t in_features,                                                    \
+      int64_t out_features,                                                   \
+      int64_t threads,                                                        \
+      hipStream_t stream) {                                                   \
+    return launch_gguf_q4_k_pack8_exact_prefill_tiled_out<                   \
+        uint16_t, uint16_t, COL_PACKS, ROW_TILE>(                             \
+        x, qweight, scales, mins, out, rows, in_features, out_features,       \
+        threads, stream);                                                     \
+  }
+
+HIPENGINE_Q4_PACK8_EXACT_PREFILL_EXPORT(tile8x8, 1, 8)
+
+#undef HIPENGINE_Q4_PACK8_EXACT_PREFILL_EXPORT

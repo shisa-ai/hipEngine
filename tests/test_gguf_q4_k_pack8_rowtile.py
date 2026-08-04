@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_q4_k_pack8_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
+    gguf_q4_k_pack8_exact_prefill_tile8x8_bf16_bf16_out,
     gguf_q4_k_pack8_gemv_bf16_bf16_out,
     gguf_q4_k_pack8_rowtile_bf16_bf16_out,
 )
@@ -117,6 +118,24 @@ def test_pack8_rowtile_registry_and_dispatch_contract() -> None:
         )
         is base
     )
+
+
+_EXACT_PREFILL_CANDIDATES = (
+    (
+        "pack8_exact_prefill_tile8x8_bf16_bf16_out",
+        gguf_q4_k_pack8_exact_prefill_tile8x8_bf16_bf16_out,
+    ),
+)
+
+
+def test_pack8_exact_prefill_candidate_registry_contract() -> None:
+    for variant, wrapper in _EXACT_PREFILL_CANDIDATES:
+        assert resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q4_k",
+            variant=variant,
+        ) is wrapper
 
 
 def test_native_pack8_pair_uses_two_bounded_rowtiles(
@@ -263,6 +282,81 @@ def _run_projection(
         packed.mins,
     )
     return control, candidate, cpu
+
+
+def _run_exact_prefill_candidate(
+    candidate,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    raw = make_q4_k_weight(out_features, in_features)
+    packed = repack_gguf_q4_k_pack8(raw)
+    rng = np.random.default_rng(0xE27 + rows * 17 + in_features + out_features)
+    x_bits = _bf16_bits(
+        rng.normal(0.0, 0.15, size=(rows, in_features)).astype(np.float32)
+    )
+    control = np.empty((rows, out_features), dtype=np.uint16)
+    candidate_out = np.empty_like(control)
+    arrays = (x_bits, packed.qweight, packed.scales, packed.mins)
+    inputs = [malloc(array.nbytes) for array in arrays]
+    outputs = [malloc(control.nbytes), malloc(candidate_out.nbytes)]
+    library = build_gguf_q4_k_gemv(load=True)
+    try:
+        for array, allocation in zip(arrays, inputs, strict=True):
+            copy_host_to_device(allocation, host_array_ptr(array), array.nbytes)
+        x_d, q_d, s_d, m_d = inputs
+        control_d, candidate_d = outputs
+        common = (x_d.ptr, q_d.ptr, s_d.ptr, m_d.ptr)
+        gguf_q4_k_pack8_gemv_bf16_bf16_out(
+            *common,
+            control_d.ptr,
+            rows,
+            in_features,
+            out_features,
+            threads=32,
+            library=library,
+        )
+        candidate(
+            *common,
+            candidate_d.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+        )
+        for host, allocation in zip((control, candidate_out), outputs, strict=True):
+            copy_device_to_host(host_array_ptr(host), allocation, host.nbytes)
+    finally:
+        for allocation in (*outputs, *inputs):
+            free(allocation)
+    return control, candidate_out
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", (5, 7))
+@pytest.mark.parametrize(
+    "variant,candidate",
+    _EXACT_PREFILL_CANDIDATES,
+    ids=[
+        variant.removeprefix("pack8_exact_prefill_").removesuffix("_bf16_bf16_out")
+        for variant, _ in _EXACT_PREFILL_CANDIDATES
+    ],
+)
+def test_pack8_exact_prefill_candidates_are_bit_exact_for_partial_tiles(
+    variant: str,
+    candidate,
+    rows: int,
+) -> None:
+    del variant
+    control, candidate_out = _run_exact_prefill_candidate(
+        candidate,
+        rows=rows,
+        in_features=512,
+        out_features=64,
+    )
+    np.testing.assert_array_equal(candidate_out, control)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
