@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact compact proposal scoring] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: full-logit proposal **28.348/34.818/38.322 -> 28.878/35.712/39.610 tok/s (+1.87%/+2.57%/+3.36%)** by reusing the registered exact raw-Q6 pack-winner/final-top1 path and reading back only token/value; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, and B3 reaches **1.9422x** own AR for +248,328 bytes; `benchmarks/results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`.
+
 - [accepted exact staged full attention] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: staged-linear **27.734/33.544/36.652 -> 28.348/34.818/38.322 tok/s (+2.21%/+3.80%/+4.56%)** by bulking full-attention Q/V/O support around scalar K and unchanged serial KV/attention/gate; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, memory is unchanged, and B3 reaches **1.8821x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-staged-full-attention-retained.json`.
 
 - [accepted exact staged linear projections] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: reusable graph **23.225/24.820/25.193 -> 27.734/33.544/36.652 tok/s (+19.42%/+35.15%/+45.49%)** by bulking independent linear-attention projections around unchanged serial Conv/GDN and state journals; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, memory is unchanged, and B3 reaches **1.8047x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json`.

@@ -4773,6 +4773,31 @@ zero. B3 remains selected at **1.8821x** own AR, but is still 43.71% below
 Vulkan B3. Artifact:
 [`2026-08-04-qwen36-27b-staged-full-attention-retained.json`](results/2026-08-04-qwen36-27b-staged-full-attention-retained.json).
 
+#### Qwen3.6-27B exact compact proposal scoring, W7900/gfx1100
+
+Clean hipEngine `39509df39` reuses the registered exact BF16/raw-Q6 pack-winner
+and final-top1 primitive for production NextN proposals. Supported heads copy
+only the 8-byte token/value result to the host; explicit diagnostics and
+unsupported layouts retain full-vocabulary FP32 logits. No kernel arithmetic,
+sampling rule, prompt branch, or target-verification path changes.
+
+| Route | Full proposal logits | Compact exact top-1 | Decode delta | MTP / true AR | Proposal-wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 20.361 tok/s | **20.394 tok/s** | +0.160% | 1.0000x | n/a |
+| B1 | 28.348 tok/s | **28.878 tok/s** | **+1.87%** | **1.4160x** | **-16.41%** |
+| B2 | 34.818 tok/s | **35.712 tok/s** | **+2.57%** | **1.7511x** | **-16.74%** |
+| B3 | 38.322 tok/s | **39.610 tok/s** | **+3.36%** | **1.9422x** | **-17.87%** |
+
+All 30 prompt/budget rows improve (**+1.56% to +3.74%**), and every full,
+train, heldout, and category rollup improves (**+1.72% to +3.47%**). Draft
+IDs, target top-1 rows, acceptance/commit ledgers, all 250 visible IDs per
+budget, GPU/CPU summaries, graph submissions, stage reconciliations, and
+reject/partial/full plus changing-position state/KV/hidden oracles remain exact.
+The compact workspace raises tracked peak by exactly **248,328 bytes** to
+**28.996 GiB** and frees completely. B3 remains selected at **1.9422x** own AR,
+but is still 41.82% below Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json`](results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json).
+
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
@@ -4904,6 +4929,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact reusable native-verifier graph](results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json),
 [Qwen3.6-27B exact staged linear projections](results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json),
 [Qwen3.6-27B exact staged full attention](results/2026-08-04-qwen36-27b-staged-full-attention-retained.json),
+[Qwen3.6-27B exact compact proposal scoring](results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
 [current W7900 hipEngine `llama-compat` baseline](results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json),
