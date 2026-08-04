@@ -14,6 +14,18 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Qwen3.6 dense Q4T16 FFN dual residency
+
+- Added 2026-08-05 for the retained exact dense-verifier FFN route. Exactly 64
+  gate and 64 up tensors retain pack8 for populated prefill/fallback and add
+  compact-T16 decode sidecars, costing **6,595,543,040 bytes / 6.143 GiB**.
+- Remove the duplicate pack8 residents only after a source-Q4-preserving T16
+  prefill owner passes the campaign's exact 512/4096 logits/state gate and is
+  non-regressive at both populated shapes. The replacement must also preserve
+  exact c1 and rows-2-4 fallbacks before T16 can become sole-resident.
+- Until then, keep pack8 as the required unfused/prefill fallback and disclose
+  that the retained W7900 route is not claimed to fit the 24-GiB component GPU.
+
 ## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 
 - Added 2026-07-31 as a gfx1151 default plus

@@ -1027,6 +1027,32 @@ measured shape/row policy rather than blanket ownership. Clean W7900 profile,
 natural25, and populated-prefill gates remain required before retaining the
 sidecars.
 
+Those gates now retain the sidecars. The hermetic W7900 B3 trace replaces
+exactly **448 pack8 fused-FFN launches / 106.201 ms** with **448 compact-T16
+launches / 76.440 ms (-28.02%, 1.389x)**. Target verification falls **469.671
+-> 452.948 ms (-3.56%)**, kernel sum falls **436.018 -> 407.085 ms (-6.64%)**,
+and complete marker wall falls **561.644 -> 548.050 ms (-2.42%)** with the same
+8,055 dispatches and exact acceptance ledger.
+
+Clean natural25 advances B1/B2/B3 **33.456/40.067/44.886 ->
+36.078/42.879/47.496 tok/s (+7.84%/+7.02%/+5.81%)** and selected B3 own-AR
+**2.0652x -> 2.1887x (+5.98%)**. Every one of 30 prompt-budget rows and every
+full/train/heldout/category scope improves; IDs and acceptance remain exact.
+True AR is byte-identical and moves **-0.161%** within one-run noise. Populated
+512/4096 prefill is likewise noise-flat at **201.698/188.580 tok/s
+(-0.155%/-0.098%)**, while graph decode is **+0.065%/+0.101%** and every final
+ID remains `9707`.
+
+The speed win costs exactly **6.143 GiB** because pack8 remains required for
+prefill/fallback: natural peak becomes **28.985 GiB**, and 512/4096 peaks become
+**27.749/30.574 GiB** before clean teardown. This is retained for the 48-GiB
+W7900 campaign target and is not claimed to fit the 24-GiB component board.
+Selected B3 is now **30.24%** below Vulkan. Re-rank only `0439ecc3c`; its top
+families are single-Q4 pack8 rowtiles **81.461 ms**, Q6T16 rowtiles **80.372
+ms**, retained compact FFN **76.440 ms**, and dense Q5 `ssm_out` **36.982 ms**.
+Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1039,9 +1065,9 @@ sidecars.
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 established parity, selective Q6T16 now reaches 202.011/188.765 tok/s |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; common Q6T16 raises graph AR to 20.896/19.784 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; fourteen wins retained, quality-gated B3 reaches 44.886 tok/s / 2.0652x faster own AR |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `c44e32ff6`, with a 34.07% Vulkan B3 gap |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 20.910/19.804 tok/s and Vulkan remains beaten |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; fifteen wins retained, exact B3 reaches 47.496 tok/s / 2.1887x faster own AR |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `0439ecc3c`, with a 30.24% Vulkan B3 gap |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule

@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-04**
+Last updated: **2026-08-05**
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
@@ -5027,6 +5027,45 @@ Each populated row has three measured resets after warmup; all six final IDs
 remain `9707`, and prefill/decode variation is at most 1.29%/0.26%. Selected
 B3 is now **34.07%** below llama.cpp Vulkan. Artifact:
 [`2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json`](results/2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json).
+
+#### Qwen3.6-27B exact compact-Q4T16 dense FFN sidecars, W7900/gfx1100
+
+Clean hipEngine `0439ecc3c` retains the exact pack8 prefill/fallback residents
+and adds compact-T16 decode sidecars to exactly 64 dense `ffn_gate` plus 64
+`ffn_up` weights. Existing exact T16 fusion owns c1; the new registered
+weight-reuse fusion owns native rows 2-4. Missing sidecars/keys, unsupported
+shapes, non-native sessions, and `decode_repack=false` retain pack8.
+
+| Route | Selective-Q6 baseline | Compact Q4T16 FFN | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 21.735 tok/s | 21.700 tok/s | -0.161% noise | 1.0000x | n/a |
+| B1 | 33.456 tok/s | **36.078 tok/s** | **+7.837%** | **1.6626x** | **-8.419%** |
+| B2 | 40.067 tok/s | **42.879 tok/s** | **+7.017%** | **1.9760x** | **-7.879%** |
+| **B3 (retained)** | 44.886 tok/s | **47.496 tok/s** | **+5.814%** | **2.1887x** | **-6.630%** |
+
+Every one of 30 prompt-budget rows improves **+5.333% to +8.261%**, and every
+full/train/heldout/category aggregate improves **+5.668% to +8.001%**. IDs,
+acceptance, cycle ledgers, GPU/CPU checks, and complete transaction state remain
+exact. True AR is byte-identical and its one-run movement is disclosed as
+noise.
+
+The hermetic B3 trace confirms exact ownership: **448 pack8 fused-FFN calls /
+106.201 ms** become **448 compact-T16 calls / 76.440 ms (-28.02%, 1.389x)**.
+Target verification falls **469.671 -> 452.948 ms (-3.56%)**, kernel sum falls
+**436.018 -> 407.085 ms (-6.64%)**, and complete marker wall falls **561.644 ->
+548.050 ms (-2.42%)** with the same 8,055 dispatches.
+
+| Shape | Selective-Q6 baseline | Compact Q4T16 FFN | Prefill delta | Graph AR decode | Tracked peak |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 202.011 tok/s | 201.698 tok/s | -0.155% noise | 20.896 -> **20.910 tok/s (+0.065%)** | 21.607 -> **27.749 GiB** |
+| 4096/128 | 188.765 tok/s | 188.580 tok/s | -0.098% noise | 19.784 -> **19.804 tok/s (+0.101%)** | 24.431 -> **30.574 GiB** |
+
+All six populated final IDs remain `9707`. The speed win adds exactly
+**6,595,543,040 bytes / 6.143 GiB** because pack8 remains required for
+prefill/fallback; teardown returns to zero. This is retained for the 48-GiB
+W7900 campaign target and is not claimed to fit the 24-GiB component board.
+Selected B3 is now **30.24%** below llama.cpp Vulkan. Artifact:
+[`2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json`](results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json).
 
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 

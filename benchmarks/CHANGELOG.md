@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-05
+
+- [accepted exact compact-Q4T16 dense FFN sidecars] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: **33.456/40.067/44.886 -> 36.078/42.879/47.496 tok/s (+7.837%/+7.017%/+5.814%)** and selected own-AR **2.0652x -> 2.1887x (+5.984%)** by adding exact compact-T16 decode sidecars to 64 gate plus 64 up tensors; all 30 prompt-budget rows and every aggregate scope improve, tracing confirms fused FFN **106.201 -> 76.440 ms (-28.02%)**, populated prefill/decode are noise-flat, and peak rises exactly **6,595,543,040 bytes**; `benchmarks/results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json`.
+
 ## 2026-08-04
 
 - [accepted quality-gated selective source-Q6 T16 projections] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 plus 512/4096 prefill / W7900: **30.719/38.627/43.240 -> 33.456/40.067/44.886 tok/s (+8.910%/+3.727%/+3.807%)** and **152.910/144.308 -> 202.011/188.765 prefill tok/s (+32.11%/+30.81%)** by keeping 56 wide `ffn_down`/`attn_qkv` source-Q6 tensors solely in T16 form; all 30 prompt-budget rows improve, natural output agrees **249/250** tokens with one fluent near-synonym, graph AR improves **6.80%/5.79%**, tracing confirms the wide family **104.936 -> 79.719 ms (-24.03%)**, and peak falls exactly **4,849,008,640 bytes**; `benchmarks/results/2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json`.
