@@ -204593,3 +204593,69 @@ Vulkan local sizes verbatim will close the measured gap.
 - Freeze this correctness-only route before a clean cached W7900 named trace.
   The **4,704-dispatch / 34.17%** figure remains an Amdahl projection until the
   profiler confirms physical removal and measures complete cycle wall.
+
+### D27-O3 exact dense verifier Conv/GDN chain journals — RETAINED
+
+- Hermetic W7900 profile command: cached TheRock Python under
+  `rocprofv3 --kernel-trace --marker-trace --memory-copy-trace`, running
+  `scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1
+  --no-warmup --roctx-markers --compiler-version-file
+  /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build` at clean
+  routing commit `d4616f120`.
+- Against the immediately preceding clean `98114138e` profile, the physical
+  ownership prediction is exact. Complete dispatches fall
+  **13,767 -> 9,063 (-4,704 / -34.1687%)**. State-sized `copyBuffer` calls fall
+  **3,360 -> 672 (-2,688)**; scalar Conv/GDN calls fall **2,688 -> 0** and are
+  replaced by **672** exact chain calls, for **2,016** net producer removals.
+  Scalar+chain producer kernel sum falls **19.882465 -> 16.133080 ms
+  (-18.8577%)** and all `copyBuffer` kernel sum falls
+  **12.921489 -> 5.821001 ms (-54.9510%)**.
+- Complete marker wall falls **662.664406 -> 635.545221 ms (-4.0920%)**;
+  harness complete wall agrees at **662.705117 -> 635.592831 ms (-4.0912%)**.
+  Target-verify host wall falls **561.455199 -> 530.455101 ms (-5.5214%)**,
+  device activity falls **4.0920%**, kernel sum falls **2.3537%**, and the
+  queue-gap/copy-overlap bucket falls **174.794304 -> 159.168724 ms
+  (-8.9394%)**. Exact IDs/GPU-vs-CPU acceptance and ledger
+  `[3,3,2,3,3,0,3]` are unchanged.
+- Canonical promotion command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-d4616f120/natural25-native-chain-journal-b1-b3.json`.
+- Versus immediate `98114138e`, B1/B2/B3 improve
+  **29.282014/35.849632/39.614459 -> 30.129640/37.357143/41.439767 tok/s
+  (+2.8947%/+4.2051%/+4.6077%)**; complete walls fall
+  **2.8133%/4.0354%/4.4047%** and target verify falls
+  **3.1088%/4.7122%/5.2924%**. All 30 prompt/budget rows improve
+  (**+2.5269% to +5.7524%**) and every full/train/heldout/category scope
+  improves (**+2.7060% to +4.7880%**).
+- Versus the prior canonical `4a4a615a8`, B1/B2/B3 improve
+  **28.978937/35.825958/39.713781 -> 30.129640/37.357143/41.439767 tok/s
+  (+3.9708%/+4.2740%/+4.3461%)**. True AR is unchanged within noise at
+  **20.365540 tok/s**; B3 reaches **2.034798x own AR**. The gap to the
+  68.082480-tok/s llama.cpp Vulkan B3 row narrows **41.6681% -> 39.1330%**.
+- All visible IDs, accepted/proposed counts, cycle ledgers, GPU/CPU acceptance,
+  stage reconciliation, and the prior full state transaction oracle remain
+  exact. Tracked peak is byte-identical at **31,134,260,776 bytes / 28.996
+  GiB**, and all allocations free after close.
+- SHA-256s: natural packet `3a571f97...311e`; natural stdout
+  `8aadfd69...157f`; immediate/canonical comparisons `be03acae...8464 /
+  95274eb2...d7ab`; profile summary `eaa50a2d...e554`; candidate
+  kernel/marker/copy/suite traces `d6be3de2...28e / 6f1f58e9...728 /
+  c3a19ff6...278 / f7dc5af0...57d`. Retained artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-chain-journals-retained.json`
+  (`14b8b340...7b44` before documentation commit).
+- Promote this exact registry route and new **41.440 tok/s / 2.0348x** B3
+  headline. Re-rank the post-chain trace before selecting another candidate;
+  the removed scalar producer and post-row-copy families are no longer valid
+  targets.

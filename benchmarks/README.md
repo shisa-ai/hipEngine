@@ -4855,6 +4855,37 @@ same-device leaf, launch-count, queue-gap, and cycle-wall evidence, but do not
 advance the canonical **39.714 tok/s / 1.9511x own-AR** headline. Artifact:
 [`2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`](results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json).
 
+#### Qwen3.6-27B exact dense verifier chain journals, W7900/gfx1100
+
+Clean hipEngine `d4616f120` reuses the registered exact Conv and c1-association
+GDN t-loops for dense native rows 2-4. One launch per family writes every
+post-row journal directly while leaving resident initial state immutable;
+deferred verification performs no resident write. Missing either registry key,
+c1, MoE, absent journals, and ordinary prefill retain the complete scalar
+producer/copy chain.
+
+| Route | Immediate predecessor | Exact chain journals | Decode delta | MTP / true AR | Complete-wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR (c1 route unchanged) | 20.363 tok/s | 20.366 tok/s | +0.013% noise | 1.0000x | -0.013% |
+| B1 | 29.282 tok/s | **30.130 tok/s** | **+2.895%** | **1.4794x** | **-2.813%** |
+| B2 | 35.850 tok/s | **37.357 tok/s** | **+4.205%** | **1.8343x** | **-4.035%** |
+| B3 | 39.614 tok/s | **41.440 tok/s** | **+4.608%** | **2.0348x** | **-4.405%** |
+
+The hermetic one-prompt B3 trace confirms the predeclared ownership exactly:
+**13,767 -> 9,063 dispatches (-4,704 / -34.17%)**. State-sized copy kernels
+fall **3,360 -> 672**, scalar Conv/GDN producers are replaced by **672** chain
+launches, and complete cycle wall falls **662.664 -> 635.545 ms (-4.09%)**;
+target-verify host wall falls **5.52%** and queue-gap/copy-overlap wall falls
+**8.94%** with an unchanged acceptance ledger.
+
+All 30 prompt/budget rows improve against the immediate predecessor
+(**+2.53% to +5.75%**), and every full/train/heldout/category rollup improves
+(**+2.71% to +4.79%**). IDs, acceptance/cycle ledgers, transaction state,
+tracked peak (**28.996 GiB**), and teardown remain exact. Versus the prior
+canonical row, B3 advances **39.714 -> 41.440 tok/s (+4.346%)** and crosses
+2x own AR; it remains **39.13%** below llama.cpp Vulkan B3. Artifact:
+[`2026-08-04-qwen36-27b-chain-journals-retained.json`](results/2026-08-04-qwen36-27b-chain-journals-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5020,6 +5051,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact compact proposal scoring](results/2026-08-04-qwen36-27b-compact-proposal-scoring-retained.json),
 [Qwen3.6-27B exact dense `ssm_out` local128 rowtile](results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-retained.json),
 [Qwen3.6-27B exact Q4 dual-rowtile SiLU cycle wall](results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json),
+[Qwen3.6-27B exact dense verifier chain journals](results/2026-08-04-qwen36-27b-chain-journals-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
