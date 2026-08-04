@@ -132,6 +132,19 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     assert resolve_gguf_linear_dispatch(q6_t16, output_dtype=GGUF_OUTPUT_F32).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_f32_out"
     )
+    q6_qmicro = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    assert resolve_gguf_linear_dispatch(
+        q6_qmicro,
+        output_dtype=GGUF_OUTPUT_F32,
+    ).key == KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_gemv_decode_bf16_f32_out",
+    )
     q8_t16 = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     assert resolve_gguf_linear_dispatch(q8_t16).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"

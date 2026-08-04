@@ -646,8 +646,9 @@ GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # Three Q6T16 down layers use the independently gated exact sibling at C8.
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
-# Dense Qwen3.6 planar-qmicro ownership is W7900-only until gfx1151 receives
-# independent c1/small-row/prefill and complete-model gates.
+# Dense Qwen3.6 planar-qmicro projection/root ownership is W7900-only until
+# gfx1151 receives independent c1/small-row/top-1/prefill and complete-model
+# gates.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = False
 # Physical-C8 Q6T16 lm-head uses the exact 5+3 rowtile partition.
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 5
@@ -740,15 +741,19 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         # Dense planar-qmicro Q6 is W7900-only pending a separate gfx1151 gate.
         *(
             (
-                "linear",
+                layer,
                 "gguf_q6_k_t16_qmicro_planar_v1",
                 variant,
             )
-            for variant in (
-                "t16_gemv_decode_bf16_bf16_out",
-                "t16_gemv_rowtile_bf16_bf16_out",
-                "t16_gemv_rowtile_col8_bf16_bf16_out",
-                "t16_wmma_prefill_bf16_bf16_out",
+            for layer, variant in (
+                ("linear", "t16_gemv_decode_bf16_bf16_out"),
+                ("linear", "t16_gemv_decode_bf16_f32_out"),
+                ("linear", "t16_gemv_rowtile_bf16_bf16_out"),
+                ("linear", "t16_gemv_rowtile_col8_bf16_bf16_out"),
+                ("linear", "t16_gemv_rowtile_bf16_f32_out"),
+                ("linear", "t16_wmma_prefill_bf16_bf16_out"),
+                ("linear+argmax", "t16_gemv_decode_bf16_f32_top1_stage1"),
+                ("linear+argmax", "proposal_top1_exact_bf16"),
             )
         ),
         # Exact single-page and P2 split attention are W7900-only until gfx1151

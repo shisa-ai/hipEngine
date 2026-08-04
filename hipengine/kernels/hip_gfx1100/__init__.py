@@ -171,9 +171,10 @@ GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # Q5T16 selected-down pair reuse also requires an independent W7900 gate.
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
-# Byte-neutral planar qmicro is the W7900 owner for Qwen3.6 wide rank-2 Q6.
-# Exact actual-weight c1, rows2-4, and M64/M512 gates all improve; peer
-# backends keep legacy T16 until independently admitted.
+# Byte-neutral planar qmicro owns the measured Qwen3.6 wide rank-2 Q6 family
+# and K5,120/N248,320 root head on W7900. Exact actual-weight c1, rows2-4,
+# top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
+# legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X

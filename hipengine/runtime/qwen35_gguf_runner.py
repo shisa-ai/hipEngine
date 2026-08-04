@@ -18583,7 +18583,7 @@ class Qwen35GGUFResidentSession:
         """Weight-amortized small-B (rows 2-6) verify lm-head GEMV.
 
         Reads the Q6_K t16 lm-head tiles ONCE across all block rows instead of
-        re-reading the 417MB head per row (the per-row decode kernel's small-B
+        re-reading the full head per row (the per-row decode kernel's small-B
         over-read). Bit-exact vs the per-row decode kernel
         (tests/test_gguf_q6_k_t16_rowtile_gemv.py). Returns True if it handled the
         GEMV; False means the caller should fall back to launch_gguf_linear.
@@ -18595,9 +18595,6 @@ class Qwen35GGUFResidentSession:
             GGUF_ACTIVATION_BF16,
             resolve_gguf_linear_dispatch,
         )
-        from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
-            gguf_q6_k_t16_gemv_rowtile_bf16_f32_out,
-        )
 
         weight = self.runner.weights.root("lm_head")
         try:
@@ -18605,14 +18602,29 @@ class Qwen35GGUFResidentSession:
                 weight,
                 activation_dtype=GGUF_ACTIVATION_BF16,
                 output_dtype=GGUF_OUTPUT_F32,
+                backend=self.runner.backend,
                 rows=rows,
             )
-            if dispatch.key.quant != "gguf_q6_k_t16_v1" or dispatch.abi != "t16":
+            if dispatch.abi != "t16":
                 return False
+            rowtile_key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "t16_gemv_rowtile_bf16_f32_out",
+            )
+            if not is_registered(rowtile_key):
+                return False
+            rowtile = resolve(
+                backend=rowtile_key.backend,
+                layer=rowtile_key.layer,
+                quant=rowtile_key.quant,
+                variant=rowtile_key.variant,
+            )
             tiles_ptr = weight.allocation("tiles").tensor.ptr
         except Exception:
             return False
-        gguf_q6_k_t16_gemv_rowtile_bf16_f32_out(
+        rowtile(
             hidden_ptr,
             tiles_ptr,
             out_ptr,

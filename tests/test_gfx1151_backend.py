@@ -349,16 +349,20 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q6_qmicro() -> None:
         "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
         False,
     )
-    for variant in (
-        "t16_gemv_decode_bf16_bf16_out",
-        "t16_gemv_rowtile_bf16_bf16_out",
-        "t16_gemv_rowtile_col8_bf16_bf16_out",
-        "t16_wmma_prefill_bf16_bf16_out",
+    for layer, variant in (
+        ("linear", "t16_gemv_decode_bf16_bf16_out"),
+        ("linear", "t16_gemv_decode_bf16_f32_out"),
+        ("linear", "t16_gemv_rowtile_bf16_bf16_out"),
+        ("linear", "t16_gemv_rowtile_col8_bf16_bf16_out"),
+        ("linear", "t16_gemv_rowtile_bf16_f32_out"),
+        ("linear", "t16_wmma_prefill_bf16_bf16_out"),
+        ("linear+argmax", "t16_gemv_decode_bf16_f32_top1_stage1"),
+        ("linear+argmax", "proposal_top1_exact_bf16"),
     ):
         assert not is_registered(
             KernelKey(
                 "hip_gfx1151",
-                "linear",
+                layer,
                 "gguf_q6_k_t16_qmicro_planar_v1",
                 variant,
             )

@@ -78,6 +78,62 @@ def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12) is False
 
 
+def test_verify_lm_head_rowtile_resolves_planar_qmicro_sibling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    quant_key = "gguf_q6_k_t16_qmicro_planar_v1"
+    weight = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(layout=quant_key, quant_key=quant_key),
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=0x2200))
+        if name == "tiles"
+        else (_ for _ in ()).throw(KeyError(name)),
+    )
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        hidden_size=5120,
+        vocab_size=248320,
+        weights=SimpleNamespace(root=lambda slot: weight),
+    )
+    runtime = SimpleNamespace()
+    expected_key = runner_mod.KernelKey(
+        "hip_gfx1100",
+        "linear",
+        quant_key,
+        "t16_gemv_rowtile_bf16_f32_out",
+    )
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    monkeypatch.setattr(runner_mod, "is_registered", lambda key: key == expected_key)
+
+    def fake_resolve(**kwargs):
+        assert runner_mod.KernelKey(**kwargs) == expected_key
+
+        def kernel(*args, **kernel_kwargs):
+            calls.append((args, kernel_kwargs))
+
+        return kernel
+
+    monkeypatch.setattr(runner_mod, "resolve", fake_resolve)
+
+    handled = session._verify_lm_head_rowtile(
+        0x1000,
+        0x2000,
+        4,
+        stream=7,
+        runtime=runtime,
+    )
+
+    assert handled is True
+    assert calls == [
+        (
+            (0x1000, 0x2200, 0x2000, 4, 5120, 248320),
+            {"stream": 7, "runtime": runtime},
+        )
+    ]
+
+
 def _session_with_lm_head_x8() -> SimpleNamespace:
     weight = SimpleNamespace(
         allocation=lambda name="raw": SimpleNamespace(tensor=SimpleNamespace(ptr=0x2200))
