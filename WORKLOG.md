@@ -203918,3 +203918,48 @@ Vulkan local sizes verbatim will close the measured gap.
   independently recomputed throughput/wall/verify/own-AR deltas;
   `git diff --check`; `python3 scripts/sync_benchmark_readme.py --check`; and
   `python3 -m pytest -q tests/test_benchmark_readme_sync.py` (**6/6**).
+
+### D27-O3 post-full-attention profile and compact proposal-head admission
+
+- Re-profile retained commit `db5a76f8f` on GPU0 W7900 with the same hermetic
+  TheRock/HSA 1.21 environment, cached-only JIT, one-prompt native B3 leaf, no
+  warmup, and nested ROCTX markers. Exact profiler/workload suffix after the
+  recorded hermetic environment prefix:
+  ```bash
+  ROOT=/tmp/hipengine-qwen36-27b/final-db5a76f8f/profile-native-staged-full-mtp-b3-hermetic
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 \
+    HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt \
+    HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH="$PWD" \
+    rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv -d "$ROOT" -o mtp-b3 -- \
+    /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py \
+      --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m \
+      --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 \
+      --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup \
+      --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt \
+      --require-cached-build --output "$ROOT/suite.json" > "$ROOT/suite.stdout"
+  ```
+  The row remains exact with accepted counts `[3,3,2,3,3,0,3]` and 7/7 native
+  graph submissions.
+- Versus the staged-linear profile, complete wall falls
+  **742.080 -> 693.517 ms (-6.54%)**, target verify
+  **621.704 -> 568.742 ms (-8.52%)**, complete kernels
+  **520.568 -> 500.475 ms (-3.86%)**, and dispatches
+  **16,965 -> 14,613 (-13.86%)**. Queue-gap/copy-overlap falls
+  **221.034 -> 192.507 ms (-12.91%)**.
+- The largest untried exact boundary is now proposal scoring. Proposal owns
+  **112.621 ms / 16.24%** of complete wall and **88.636 ms** of kernels. Its raw
+  Q6_K family is **73.493 ms**; the full-vocabulary FP32 LM head alone is
+  **67.138 ms / 25 launches / 9.68% complete wall**. Each draft step then drains
+  and copies the full logits row to host for NumPy argmax, despite the existing
+  registered exact BF16 x raw-Q6 top-1 primitive already proving identical
+  winner/value semantics.
+- Admit compact exact proposal scoring: for supported raw-Q6 heads and
+  `return_logits=False`, produce only pack winners plus the final token/value,
+  with the existing full-logit route retained for diagnostics and unsupported
+  weights. Ceiling is the measured **67.138 ms / 9.68%** kernel bucket plus
+  full-logit drain/readback; engineering/risk is low because no arithmetic or
+  kernel body changes. GPU1 may screen the component; promotion remains a clean
+  same-GPU W7900 natural25 B1-B3 gate.
+- Kernel/marker/copy/summary/suite SHA-256s are `1c3f59e5...a445`,
+  `3ac34206...e60`, `52596e14...5b0`, `8c324ed9...17b`, and
+  `d232df4a...080`.
