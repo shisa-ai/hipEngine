@@ -205761,3 +205761,47 @@ Vulkan local sizes verbatim will close the measured gap.
   provenance explicitly records that profiling/natural25 used the exact
   five-file patch subsequently committed unchanged; no expensive equivalent
   suite is rerun after the atomic source commit.
+
+## 2026-08-05 — Reject raw-Q5/Q8_1 integer-dot `ssm_out` row reuse
+
+- The matched post-`a821d571b` module comparison puts dense Q5 `ssm_out` at
+  **37.315653 ms / 336 calls** in hipEngine versus **15.12 ms** in Vulkan. The
+  direct raw-Q5 and float Q5T16 ownership paths were already closed, but the
+  existing selected raw-Q5 + Q8_1 + RDNA3 `sudot4` POC was a materially
+  different compute mechanism and reread the same weight once per verifier
+  row. Admit only a GPU1 component screen; no materializer/runtime change.
+- RED first adds a four-axis `linear/gguf_q5_k` rowtile contract and fails
+  collection on the absent wrapper. The temporary local128 col4 body reuses
+  each decoded Q5 pack and scale/min coefficients across rows 2-4. Its focused
+  rows-2/3/4 fixture is BF16-bit exact to the established selected DP4A
+  primitive and its CPU Q8_1 oracle passes. No-ROCm skip behavior is inherited
+  from the existing test module.
+- Actual `blk.0.ssm_out.weight` is K6,144/N5,120 and **21,626,880 bytes** raw
+  versus **62,914,560 bytes** dense BF16. The row-separated selected DP4A dot
+  costs roughly **94/137/170 us** at rows 2/3/4. Weight reuse cuts that to the
+  53-60-us range, but does not beat dense.
+- Screen all eight useful `(column tile, threads)` geometries on GPU1:
+  `(1,32)`, `(2,64)`, `(2,128)`, `(4,64)`, `(4,128)`, `(4,256)`, `(8,128)`,
+  and `(8,256)`, with rows 2/3/4, seven counterbalanced samples, 30 warmups,
+  and 30-launch HIP-event bursts. Every geometry loses after Q8_1
+  quantization; no row-selective policy qualifies.
+- Binding 11-sample col4 adjudication uses 50 warmups and 50-launch bursts.
+  Local128 rows 2/3/4 measure dense **34.560/40.016/47.838 us**, candidate dot
+  **53.302/53.038/55.929 us**, and quantize+dot
+  **53.463/56.330/59.929 us**: only **0.646x/0.710x/0.798x**, with **0/11**
+  paired wins. Local64 is also negative at **0.640x/0.713x/0.790x**. Actual
+  output passes quality with maximum KL **0.001697**, top-1 **100%**, and
+  maximum absolute delta **0.125** versus dense. This is a compute-economics
+  rejection, not a correctness failure.
+- A direct Q5T16/Q8_1 DP4A control at its best 64-thread setting is likewise
+  negative: rows 2/3/4 reach **0.605x/0.510x/0.479x** dense. This does not yet
+  adjudicate a new T16 integer-dot row-reuse body; that is the only remaining
+  Q5 layout/compute combination worth one bounded screen.
+- Remove the temporary HIP body, Python wrapper, registry key, tests, and all
+  geometry selectors. `git diff` confirms production/test source is exactly
+  back to `7a440960d`; no allocation, flag, runtime route, or refactor debt
+  remains. Compact rejection evidence:
+  `benchmarks/results/2026-08-05-qwen36-27b-raw-q5-q8-1-dp4a-rowreuse-rejected.json`
+  (SHA-256 `df7bca0d...a4f8694`). Raw harness/final hashes are
+  `f5339cf6...6fb9` / `11fc9c37...8c43`; the temporary final JIT key is
+  `09d3a5be...e0d72`.

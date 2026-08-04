@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "status": "rejected_raw_q5_q8_1_dp4a_ssm_out_rowreuse",
+  "performance_claim": false,
+  "performance_claim_scope": "GPU1 component-only actual-weight rows 2-4 admission screen; no runtime owner, allocation, end-to-end benchmark, or scoreboard change.",
+  "correctness_claim": true,
+  "correctness_scope": "Synthetic candidate output is BF16-bit exact to the existing raw-Q5 selected Q8_1/dp4a primitive at the retained local128 geometry; actual-weight outputs pass the project KL/top-1 component gate versus dense BF16.",
+  "kind": "qwen36_27b_q5_ssm_out_raw_q8_1_dp4a_rowreuse_screen",
+  "timestamp": "2026-08-05T03:40:11+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "tensor": "blk.0.ssm_out.weight",
+    "source_qtype": "Q5_K",
+    "shape": "K6144/N5120",
+    "production_tensor_count": 48
+  },
+  "hardware": {
+    "gpu_index": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100"
+  },
+  "software": {
+    "base_commit": "7a440960dd3a9aeb417e84a9ba6ab0d4c0c0df56",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "python_version": "3.12.9",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "candidate_build_cache_key": "09d3a5be965be9eb3ac5dee474370c67546f0edb36fe62cf2e527b57beee0d72",
+    "candidate_source_retained": false
+  },
+  "production_context": {
+    "authoritative_profile_commit": "a821d571b",
+    "complete_marker_wall_ms": 492.172453,
+    "ssm_out_family_ms": 37.315653,
+    "ssm_out_calls": 336,
+    "b3_cycles": 7,
+    "retained_owner": "dense_bf16",
+    "vulkan_ssm_out_ms": 15.12,
+    "vulkan_comparison_note": "Matched module attribution only; all retained performance ratios still require W7900 end-to-end measurement."
+  },
+  "residency": {
+    "per_tensor_dense_bf16_bytes": 62914560,
+    "per_tensor_raw_q5_bytes": 21626880,
+    "dense_bf16_total_bytes": 3019898880,
+    "raw_q5_total_bytes": 1038090240,
+    "projected_replacement_saving_bytes": 1981808640,
+    "note": "The projected replacement saving is rejected; no raw-Q5 device allocation is retained."
+  },
+  "protocol": {
+    "activation": "deterministic synthetic BF16 rows, normal scale 0.55",
+    "quantization": "GGML-compatible Q8_1 activation blocks",
+    "dot": "RDNA3 __builtin_amdgcn_sudot4 over raw Q5_K",
+    "timing": "counterbalanced HIP-event bursts",
+    "geometry_screen": {
+      "samples": 7,
+      "warmup": 30,
+      "burst": 30,
+      "rows": [2, 3, 4],
+      "column_tile_threads": [[1, 32], [2, 64], [2, 128], [4, 64], [4, 128], [4, 256], [8, 128], [8, 256]]
+    },
+    "final_adjudication": {
+      "samples": 11,
+      "warmup": 50,
+      "burst": 50,
+      "rows": [2, 3, 4],
+      "column_tile_threads": [[4, 64], [4, 128]]
+    },
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-qwen36-27b-hipcc-version.txt",
+      "require_cached_build": true
+    }
+  },
+  "quality": {
+    "synthetic_local128_bf16_exact_to_existing_selected_dp4a": true,
+    "actual_max_kl_vs_dense": 0.001697218377964136,
+    "actual_min_top1_agreement": 1.0,
+    "actual_max_abs_delta": 0.125,
+    "gate_passed": true
+  },
+  "existing_selected_raw_dp4a": {
+    "note": "The existing row-separate selected primitive validates the integer-dot mechanism but rereads the same 21.6-MiB weight for every verifier row.",
+    "best_final_dot_us": [93.819942, 137.150784, 170.080681],
+    "rows": [2, 3, 4]
+  },
+  "final_col4": [
+    {
+      "rows": 2,
+      "threads": 64,
+      "dense_event_us": 36.041861,
+      "candidate_dot_event_us": 53.469200,
+      "quantize_plus_dot_event_us": 56.309142,
+      "speedup_over_dense": 0.640071,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 2,
+      "threads": 128,
+      "dense_event_us": 34.559500,
+      "candidate_dot_event_us": 53.302040,
+      "quantize_plus_dot_event_us": 53.462820,
+      "speedup_over_dense": 0.646421,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 3,
+      "threads": 64,
+      "dense_event_us": 42.349162,
+      "candidate_dot_event_us": 55.949278,
+      "quantize_plus_dot_event_us": 59.358101,
+      "speedup_over_dense": 0.713452,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 3,
+      "threads": 128,
+      "dense_event_us": 40.016341,
+      "candidate_dot_event_us": 53.038039,
+      "quantize_plus_dot_event_us": 56.330080,
+      "speedup_over_dense": 0.710390,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 4,
+      "threads": 64,
+      "dense_event_us": 50.242839,
+      "candidate_dot_event_us": 60.238938,
+      "quantize_plus_dot_event_us": 63.558941,
+      "speedup_over_dense": 0.790492,
+      "candidate_wins": "0/11"
+    },
+    {
+      "rows": 4,
+      "threads": 128,
+      "dense_event_us": 47.838020,
+      "candidate_dot_event_us": 55.929279,
+      "quantize_plus_dot_event_us": 59.928522,
+      "speedup_over_dense": 0.798251,
+      "candidate_wins": "0/11"
+    }
+  ],
+  "t16_dp4a_direct_diagnostic": {
+    "status": "row_separate_control_rejected",
+    "threads": 64,
+    "rows": [2, 3, 4],
+    "dense_event_us": [33.563, 40.642, 48.556],
+    "quantize_plus_dot_event_us": [55.459, 79.742, 101.312],
+    "speedup_over_dense": [0.6052, 0.5097, 0.4793],
+    "note": "This control does not adjudicate a new T16 integer-dot row-reuse body."
+  },
+  "decision": {
+    "runtime_changed": false,
+    "repository_kernel_changed": false,
+    "resident_plan_changed": false,
+    "retained_owner": "dense_bf16",
+    "reason": "Weight reuse cuts the existing raw integer-dot kernel by roughly 2-3x, but all eight screened geometries and every final paired sample still lose dense BF16. Best final rows 2/3/4 reach only 0.646x/0.713x/0.798x including Q8_1 quantization.",
+    "candidate_removed_after_rejection": true,
+    "next_gate": "A T16 integer-dot row-reuse body is the only unadjudicated Q5 compute/layout combination; admit it only if a component screen beats dense at every production row."
+  },
+  "commands": {
+    "geometry_screen": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/screen_qwen36_q5_ssm_out_raw_dp4a.py --column-tile <1|2|4|8> --threads <screened> --samples 7 --warmup 30 --burst 30 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output <result>",
+    "final": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/screen_qwen36_q5_ssm_out_raw_dp4a.py --column-tile 4 --threads 64,128 --samples 11 --warmup 50 --burst 50 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-q5-ssm-out-raw-dp4a-final-adjudication-gpu1.json"
+  },
+  "raw_evidence_sha256": {
+    "harness": "f5339cf66a17adcd8fcd75793148aa9ccc94948997806e60f6f992b742b46fb9",
+    "geometry_col1": "f57b11c6f4bf936a275f16b4278581575269b0fb10c9d2d8b45e29b8ec3dad2a",
+    "geometry_col2": "fa1d4daa85d15e3fb7409a8ab672ae7be505166e72cfe52e4e5a61f4c93194f0",
+    "geometry_col4": "99ca4a79c8724ce387c9c4e3f175ad62a1d0658cf232ec2f6d61c2cd32c99b74",
+    "geometry_col8": "67270be6433b51b523c87c408c9124bcd062231fffdc79f20cddee72298cafc4",
+    "final": "11fc9c378e4c59f6e1d750d7994b3843274fdcaa2ce3c7418fa2ad833d418c43",
+    "t16_direct_harness": "b5c2a9518a2e5e52d3d3f2d45e4f2ea82ffc601a5f2c400fbc43579b6efbe45e",
+    "t16_direct_threads64": "c751d11ceb10f318f8e5a11bc81c1d4d0517efe4210af50e8dbdb472bf83dd61"
+  }
+}
