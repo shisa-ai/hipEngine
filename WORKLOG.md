@@ -204770,3 +204770,78 @@ Vulkan local sizes verbatim will close the measured gap.
   **672-dispatch** B3 reduction remains a projection until the named trace
   confirms 448 scalar attention plus 448 scalar gates became 112 plus 112 and
   measures complete cycle wall; the **41.440 tok/s** headline is unchanged.
+
+### D27-O3 full-attention post-write shared-page batching — RETAINED
+
+- Correctness route committed as `9c2f33b9916df3e261314e431ae9dc4c7bf075ec`.
+  The worktree was tracked-clean for both performance runs. No broad validation
+  was repeated: the preceding focused, GPU1 page-indirection/CPU-oracle, and
+  complete W7900 B1-B3 transaction gates remain the correctness authority.
+- Hermetic W7900 profile command: cached TheRock Python under
+  `rocprofv3 --kernel-trace --marker-trace --memory-copy-trace`, running
+  `scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1
+  --no-warmup --roctx-markers --compiler-version-file
+  /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build` on GPU0.
+  Root:
+  `/tmp/hipengine-qwen36-27b/final-9c2f33b99/profile-native-full-attn-shared-batch-mtp-b3-hermetic`.
+- The physical schedule prediction is exact. Complete dispatches fall
+  **9,063 -> 8,391 (-672 / -7.4148%)** and target dispatches
+  **8,310 -> 7,638**. Total scalar attention falls **473 -> 25** (the 25
+  proposal calls are unchanged), with **112** new shared-table target batches.
+  Gate launches fall **473 -> 137**: 25 proposal rows plus 112 whole-target
+  batches. Target ownership is therefore exactly **448 scalar attention + 448
+  scalar gates -> 112 batch attention + 112 batch gates**.
+- Attention+gate kernel sum falls **7.930432 -> 4.477902 ms (-3.452530 ms)**.
+  The batch symbol runs 112 times at grid `(6144,4,1)`, local256, VGPR40,
+  SGPR128, LDS0, and scratch0. Complete kernel sum is
+  **475.934741 -> 474.067192 ms (-0.3924%)**.
+- Complete marker wall measures **635.545221 -> 608.945596 ms (-4.1853%)**;
+  harness complete wall agrees at **635.592831 -> 608.986116 ms (-4.1861%)**.
+  Target host wall measures **530.455101 -> 508.483359 ms (-4.1421%)** and
+  queue-gap/copy-overlap **159.168724 -> 134.410868 ms (-15.5545%)**. Unchanged
+  proposal and commit phases also moved by approximately -4% between profile
+  processes, so do not attribute all 26.6 ms of complete wall to this route;
+  physical call removal, selected-family kernel time, and unprofiled natural25
+  are the binding evidence. IDs, GPU/CPU acceptance, and ledger
+  `[3,3,2,3,3,0,3]` remain exact.
+- Canonical W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-9c2f33b99/natural25-native-full-attn-shared-batch-b1-b3.json`.
+- Selected B3 improves **41.439767 -> 41.705389 tok/s (+0.64098%)**;
+  complete decode wall falls **5.791538 -> 5.754652 s (-0.63690%)**, target
+  verify falls **4.820705 -> 4.774089 s (-0.96698%)**, and MTP/own-AR improves
+  **2.034798x -> 2.047353x (+0.61699%)**. True AR is flat at
+  **20.370395 tok/s (+0.02384%)**.
+- Every selected-B3 prompt improves (**+0.09669% to +0.83933%**) and every B3
+  full/train/heldout/category aggregate improves (**+0.48965% to +0.76068%**).
+  B1 is noise-flat at **30.129640 -> 30.116206 tok/s (-0.04459%)**. B2 is
+  intentionally not owned by this route and measures **37.357143 -> 37.447308
+  tok/s (+0.24136%)** with mixed diagnostic scopes. Promote only the selected
+  B3 headline; do not make an all-budget/30-row speed claim.
+- All visible IDs, accepted/proposed counts, cycle ledgers, GPU/CPU acceptance,
+  stage reconciliation, and the prior complete state transaction remain exact.
+  Tracked peak is byte-identical at **31,134,260,776 bytes / 28.996 GiB** and
+  all allocations free after close. B3 remains **38.7428%** below the
+  68.082480-tok/s llama.cpp Vulkan row.
+- SHA-256s: natural packet `817c203d...3356e`; natural comparison
+  `d4c0b6f1...d7cb9`; kernel/marker/copy/profile-suite/profile-comparison
+  `3debcb45...060 / 3823e1fc...131 / 3ed15176...b05 / 4b9bd24a...cd5a /
+  7b74ebfc...451a`. Retained artifact:
+  `benchmarks/results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json`.
+- Promote the exact shared-page owner and new **41.705 tok/s / 2.0474x** B3
+  headline. Re-profile from this retained route before choosing the next
+  D27-O3 candidate; scalar attention/gate counts in older traces are no longer
+  valid targets.

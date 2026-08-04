@@ -1,0 +1,277 @@
+{
+  "schema": 1,
+  "status": "retained_exact_selected_b3_shared_attention_batch",
+  "performance_claim": true,
+  "performance_claim_scope": "Selected B3 only: canonical ten-prompt W7900 natural25 complete decode wall plus a hermetic one-prompt B3 kernel/marker/copy trace. B1 and the separately owned N2 B2 rows are reported as diagnostics, not speed claims.",
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_exact_full_attention_shared_page_batch_w7900",
+  "timestamp": "2026-08-04T08:55:15.444381+00:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "scanner_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vram_gib_marketing": 48,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "routing_commit": "9c2f33b9916df3e261314e431ae9dc4c7bf075ec",
+    "immediate_predecessor_commit": "d4616f1207d00e4f0fff3eba3e0854cdcf5962fe",
+    "tracked_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    }
+  },
+  "change": {
+    "registry_key": [
+      "hip_gfx1100",
+      "paged_attn_decode",
+      "gguf_q4_k_m",
+      "bf16_context_batch_shared_native_exact_spans"
+    ],
+    "scope": "Dense N1 native B1/B3 verifier rows 2-4 with one resident BF16 cache, one physical page table, contiguous per-row live counts, and the exact key present. B2 rows=3 remains owned by the separate N2 bulk graph.",
+    "summary": "Retire all row K/V writes first, then replace four scalar paged-attention calls plus four scalar gate calls with one shared-table batch attention plus one whole-batch gate per full-attention layer.",
+    "causality": "Each query consumes its own device live_count, so later written rows remain outside earlier rows' logical context.",
+    "fallback": "Missing key, nonuniform or non-BF16 spans, different cache/table owners, noncontiguous metadata, c1, MoE, and ordinary prefill keep the complete scalar write-attention-gate chain.",
+    "new_allocation": false,
+    "new_copy": false,
+    "new_environment_flag": false,
+    "approximation": false
+  },
+  "correctness": {
+    "focused_red_green": "2/2",
+    "adjacent_native_cycle_cpu_fake": "12/12",
+    "paged_attention_plan_gpu_file": "9/9",
+    "gpu1_production_fixture": "Reversed physical pages at live254-257; FP32 byte exact to four scalar launches and independent CPU attention oracle",
+    "gpu1_context_ranges": [
+      "125-128",
+      "253-256",
+      "510-513",
+      "1021-1024"
+    ],
+    "w7900_transaction_test": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+    "w7900_transaction_passed": true,
+    "runtime_owner_rows": [
+      2,
+      4
+    ],
+    "runtime_non_owner": "B2 rows=3 uses N2 bulk graph",
+    "transaction_scope": "B1-B3 full logits; reject/partial/full/rollback and positions 6/7/9 Conv/GDN/KV/hidden state; graph reuse; correction logits; natural provider output",
+    "natural_ids_exact": true,
+    "natural_acceptance_exact": true,
+    "natural_gpu_accept_match_cpu": true,
+    "natural_stage_reconciled": true,
+    "candidate_active_allocations_after_close": 0
+  },
+  "protocol": {
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-9c2f33b99/natural25-native-full-attn-shared-batch-b1-b3.json",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "visible_outputs": 250,
+    "timed_transitions": 240,
+    "warmups": 1,
+    "repetitions": 1,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "target_verify_mode": "native",
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "timing": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual"
+  },
+  "natural25": {
+    "true_ar": {
+      "baseline_tok_s": 20.365540164086873,
+      "candidate_tok_s": 20.37039522114481,
+      "delta_percent": 0.02383956928626585
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 30.12964049983793,
+        "candidate_tok_s": 30.11620645781328,
+        "tok_s_delta_percent": -0.04458746205325825,
+        "decode_wall_delta_percent": 0.04460735133910987,
+        "target_verify_delta_percent": -0.0009112355432883135,
+        "candidate_mtp_vs_true_ar": 1.478430149776974,
+        "claim": "noise-flat diagnostic"
+      },
+      "2": {
+        "baseline_tok_s": 37.35714314388581,
+        "candidate_tok_s": 37.44730829939949,
+        "tok_s_delta_percent": 0.24135987906355183,
+        "decode_wall_delta_percent": -0.24077873579800846,
+        "target_verify_delta_percent": -0.5619507360494436,
+        "candidate_mtp_vs_true_ar": 1.8383201647716956,
+        "claim": "diagnostic; N2 owns rows=3"
+      },
+      "3": {
+        "baseline_decode_seconds": 5.791538307676092,
+        "candidate_decode_seconds": 5.754652054747567,
+        "baseline_tok_s": 41.43976733813614,
+        "candidate_tok_s": 41.705388565065526,
+        "tok_s_delta_percent": 0.6409814629555921,
+        "decode_wall_delta_percent": -0.6368990580557177,
+        "baseline_target_verify_seconds": 4.820704601239413,
+        "candidate_target_verify_seconds": 4.774089268408716,
+        "target_verify_delta_percent": -0.9669817316479534,
+        "baseline_mtp_vs_true_ar": 2.034798340935347,
+        "candidate_mtp_vs_true_ar": 2.04735294098637,
+        "ratio_delta_percent": 0.6169948047653806,
+        "accepted_draft_tokens": 168,
+        "proposed_draft_tokens": 222,
+        "cycles": 77,
+        "claim": "retained selected budget"
+      }
+    },
+    "b3_scopes": {
+      "full_delta_percent": 0.6409814629555921,
+      "train_delta_percent": 0.5582578480588962,
+      "heldout_delta_percent": 0.7458400813539434,
+      "code_delta_percent": 0.6093443658997666,
+      "general_en_delta_percent": 0.7344327316447075,
+      "general_ja_delta_percent": 0.48964961053512557,
+      "mixed_ja_en_delta_percent": 0.7606815563809821
+    },
+    "b3_prompt_delta_percent": {
+      "code_merge_intervals": 0.2796619851517912,
+      "code_topological_sort": 0.795475006909574,
+      "code_lru_cache": 0.7877655054694621,
+      "code_markdown_table": 0.5782762784801943,
+      "general_en_plan": 0.6816001367725422,
+      "general_en_explain": 0.7711620402469643,
+      "general_ja_plan": 0.09669283869004897,
+      "general_ja_explain": 0.8393258790117875,
+      "mixed_ja_en_translate": 0.7628431161356808,
+      "mixed_ja_en_review": 0.7587952363045103
+    },
+    "b3_all_prompts_improve": true,
+    "b3_all_scopes_improve": true,
+    "all_budget_packet_claim": false,
+    "baseline_peak_bytes": 31134260776,
+    "candidate_peak_bytes": 31134260776
+  },
+  "profile": {
+    "command_scope": "Hermetic cached W7900 rocprofv3 kernel+marker+memory-copy trace, natural25 prompt limit=1, B3, no warmup",
+    "correctness": {
+      "exact_greedy": true,
+      "gpu_accept_match_cpu": true,
+      "accepted_counts": [
+        3,
+        3,
+        2,
+        3,
+        3,
+        0,
+        3
+      ],
+      "cycles": 7,
+      "target_rows": 28
+    },
+    "window": {
+      "baseline_host_wall_ms": 635.5928310658783,
+      "candidate_host_wall_ms": 608.986116014421,
+      "host_wall_delta_percent": -4.186125731915236,
+      "baseline_marker_span_ms": 635.545221,
+      "candidate_marker_span_ms": 608.945596,
+      "baseline_kernel_sum_ms": 475.934741,
+      "candidate_kernel_sum_ms": 474.067192,
+      "kernel_sum_delta_percent": -0.39239602389101735,
+      "baseline_queue_gap_copy_overlap_ms": 159.168724,
+      "candidate_queue_gap_copy_overlap_ms": 134.410868,
+      "queue_gap_copy_overlap_delta_percent": -15.554472874960034,
+      "baseline_dispatches": 9063,
+      "candidate_dispatches": 8391,
+      "dispatch_delta": -672,
+      "dispatch_delta_percent": -7.414763323402851,
+      "attribution_note": "Unchanged proposal and commit phases also moved about four percent between profile processes, so the complete profile wall ratio is not attributed wholly to this route. Physical owner counts, selected-family kernel time, and natural25 B3 are the binding evidence."
+    },
+    "target_verify": {
+      "baseline_host_ms": 530.4551008157432,
+      "candidate_host_ms": 508.4833591245115,
+      "host_delta_percent": -4.14205493687273,
+      "baseline_kernel_ms": 401.430228,
+      "candidate_kernel_ms": 399.277184,
+      "baseline_dispatches": 8310,
+      "candidate_dispatches": 7638
+    },
+    "ownership": {
+      "baseline_scalar_attention_total": 473,
+      "candidate_scalar_attention_total": 25,
+      "candidate_batch_attention_total": 112,
+      "baseline_gate_total": 473,
+      "candidate_gate_total": 137,
+      "target_scalar_attention": "448 -> 0",
+      "target_batch_attention": "0 -> 112",
+      "target_gate": "448 scalar-row launches -> 112 whole-batch launches",
+      "baseline_attention_gate_kernel_ms": 7.930432,
+      "candidate_attention_gate_kernel_ms": 4.477902,
+      "attention_gate_kernel_delta_ms": -3.45253
+    },
+    "candidate_kernel": {
+      "name": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<false,1,true>",
+      "dispatches": 112,
+      "duration_ms": 3.663419,
+      "grid": [
+        6144,
+        4,
+        1
+      ],
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "vgpr": 40,
+      "sgpr": 128,
+      "lds": 0,
+      "scratch": 0
+    }
+  },
+  "comparison": {
+    "llamacpp_vulkan_b3_tok_s": 68.08248,
+    "candidate_gap_percent": -38.74284755040427
+  },
+  "sha256": {
+    "natural25_candidate": "817c203d062d15a948bf15d061609e10acf7e99161f7283e73c9dcdf19f3356e",
+    "natural25_comparison": "d4c0b6f1ec7ba093a1a5c06aa53895c7efb45b42d7c40d9bf4f14748a3ed7cb9",
+    "natural25_stdout": "76b14a0cf4ed7dc34cb1da8669a823da175568fd57a38e43c7901b510c55ab05",
+    "profile_kernel_trace": "3debcb45f622c1147ba32ce217d7df80a31578823e7a1579dc138efd9f8aa060",
+    "profile_marker_trace": "3823e1fc67d054bcee7a6248d6ccc099abf39dbc8c17c4e29444d26ae0c00131",
+    "profile_memory_copy_trace": "3ed151760973b5054b3c28c5c19ff19f269f33bd4a5ed8216a62a76e40d4eb05",
+    "profile_suite": "4b9bd24a87518193a166b33e9599e2a3aaacae244fea8dcd9793d21bba71cd5a",
+    "profile_comparison": "7b74ebfc675f7239f3fe4e0a5e3f73181600126df2451b3abd6ab4498c2b451a",
+    "gpu1_primitive_trace": "1d86dd7a45d8de177377eb3f0f368e5ee70984b7658798609735476df7988449"
+  }
+}

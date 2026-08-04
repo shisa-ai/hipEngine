@@ -819,9 +819,23 @@ scalar and passes the CPU oracle; cached tracing names the new shared-table
 specialization at local256/VGPR40/scratch0. The W7900 transaction remains exact
 and observes the N1 owner at physical rows `{2,4}`. B2/rows3 intentionally stays
 with the separate N2 bulk graph rather than crossing transaction ownership.
-The B3 profile ceiling remains **672 fewer dispatches** (448 attention plus 448
-gate calls becoming 112 plus 112); named production tracing and natural25
-performance are still pending, so the **41.440 tok/s** headline is unchanged.
+
+The hermetic W7900 B3 trace confirms the schedule exactly: **9,063 -> 8,391
+dispatches (-672 / -7.41%)**. Target scalar attention becomes **448 -> 0**,
+replaced by 112 shared-table batches, while **448** row gates become **112**
+whole-batch gates. Attention+gate kernel sum falls **7.930 -> 4.478 ms**.
+Complete marker wall measures **635.545 -> 608.946 ms (-4.19%)**, although
+unchanged proposal/commit phases also shifted about 4%, so that full profile
+ratio is not attributed solely to the route.
+
+Clean natural25 retains the selected B3 result at **41.440 -> 41.705 tok/s
+(+0.641%)**, target verify **-0.967%**, and **2.0474x own AR**. All ten B3
+prompts and every B3 full/train/heldout/category rollup improve
+(**+0.097% to +0.839%** prompts; **+0.490% to +0.761%** scopes). B1 is
+noise-flat at **-0.045%** and the separately owned N2 B2 row is diagnostic at
+**+0.241%**; neither is claimed as a speed win. IDs, acceptance, transaction
+state, 28.996-GiB peak, and teardown remain exact. Artifact:
+`benchmarks/results/2026-08-04-qwen36-27b-full-attention-shared-batch-retained.json`.
 
 ---
 
@@ -836,7 +850,7 @@ performance are still pending, so the **41.440 tok/s** headline is unchanged.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 reaches 152.910/144.308 tok/s and beats matched Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; ten wins retained, exact B3 reaches 41.440 tok/s / 2.0348x AR |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; eleven wins retained, exact B3 reaches 41.705 tok/s / 2.0474x AR |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O2-O3; dense BF16 prefill is queued AR target |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
