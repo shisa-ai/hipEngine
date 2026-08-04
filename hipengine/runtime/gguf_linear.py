@@ -129,6 +129,10 @@ _DENSE_BF16_ROWTILE_MAX_ROWS = 4
 # The exact local128 virtual-partition schedule wins through K=10,240 on
 # gfx1100, then loses to the retained local256 block from K=12,288 onward.
 _DENSE_BF16_VIRTUAL256_MAX_IN_FEATURES = 10_240
+# The small-row local128 screen is positive at every row only for the exact
+# Qwen3.6 linear-attention output projection shape.
+_DENSE_BF16_VIRTUAL256_ROWTILE_IN_FEATURES = 6_144
+_DENSE_BF16_VIRTUAL256_ROWTILE_OUT_FEATURES = 5_120
 _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_EXACT_PREFILL_MIN_ROWS = 512
@@ -848,6 +852,7 @@ def _dense_bf16_rowtile_dispatch(
     *,
     rows: int,
     in_features: int,
+    out_features: int,
     enabled: bool,
     native_batch: bool,
 ) -> GGUFLinearDispatch:
@@ -867,6 +872,19 @@ def _dense_bf16_rowtile_dispatch(
         _DENSE_BF16_ROWTILE_MIN_ROWS <= rows <= _DENSE_BF16_ROWTILE_MAX_ROWS
         and dispatch.key.variant == "prefill_out"
     ):
+        if (
+            native_batch
+            and in_features == _DENSE_BF16_VIRTUAL256_ROWTILE_IN_FEATURES
+            and out_features == _DENSE_BF16_VIRTUAL256_ROWTILE_OUT_FEATURES
+        ):
+            candidate_key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                "virtual256_rowtile_out",
+            )
+            if is_registered(candidate_key):
+                return GGUFLinearDispatch(candidate_key, dispatch.abi)
         variant = "rowtile_out"
     else:
         return dispatch
@@ -1347,6 +1365,7 @@ def launch_gguf_linear(
             dispatch,
             rows=rows,
             in_features=in_features,
+            out_features=out_features,
             enabled=not use_wmma,
             native_batch=_native_batch_decode_session_enabled,
         )

@@ -204331,3 +204331,29 @@ Vulkan local sizes verbatim will close the measured gap.
   local256 for every other shape/session, and fail closed on a missing registry
   key. Artifact:
   `benchmarks/results/2026-08-04-qwen36-27b-dense-virtual256-rowtile-admitted.json`.
+
+### D27-O3 dense-BF16 `ssm_out` rowtile runtime routing — GREEN
+
+- Public-dispatch RED requires native rows 2/3/4 at exactly K6,144/N5,120 to
+  select `virtual256_rowtile_out`; ordinary prefill, K5,120/N10,240 QKV,
+  K17,408/N5,120 FFN-down, K5,120/N1,024 full V, and a missing candidate key
+  must retain `rowtile_out`. The focused node initially fails only because all
+  small-row shapes still choose local256.
+- GREEN passes the measured output shape into the existing dense-BF16 rewrite
+  and selects the registered candidate only while the native-batch owner is
+  active. The exact-key `is_registered` check fails closed before changing the
+  fallback. No model/layer/quant branch, environment flag, workspace, weight,
+  or kernel math changed.
+- GPU1 cached focused validation passes **96/96** across
+  `tests/test_dense_gemv_plan.py` and `tests/test_gguf_linear_dispatch.py`;
+  focused Ruff, py_compile, and diff checks pass.
+- The mandatory W7900 real transaction command
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`
+  passes **1/1**. Its registry counter observes candidate rows exactly
+  `{2,3,4}` and shape only `(6144,5120)`, while B1-B3 full logits, reject/
+  partial/full/rollback and positions 6/7/9 Conv/GDN/KV/hidden transactions,
+  graph reuse, correction logits, and natural provider output remain scalar-
+  exact.
+- Freeze this routing/correctness unit before timing. The clean W7900 natural25
+  B1-B3 comparison against retained `2929faa38` remains the promotion gate; no
+  complete-path speed or benchmark-rollup claim is made yet.
