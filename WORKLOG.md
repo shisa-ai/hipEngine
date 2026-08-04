@@ -204041,3 +204041,40 @@ Vulkan local sizes verbatim will close the measured gap.
   changed campaign/milestone docs re-read end-to-end; `git diff --check`;
   `python3 scripts/sync_benchmark_readme.py --check`; and
   `python3 -m pytest -q tests/test_benchmark_readme_sync.py` (**6/6**).
+
+### D27-O1 resident-pack8 WMMA prefill routing — ADMITTED
+
+- With the first D27-O3 pass retained, return to the higher campaign blocker:
+  the unchanged clean p512 trace assigns **7,815.869 ms / 78.86%** of its
+  reconciled 9,944.618-ms wall to 216 resident-Q4_K pack8 projections. The
+  exact `pack8_wmma_prefill_bf16_bf16_out` leaf already consumes the resident
+  qweight/F32-scale/F32-min planes, so this is a dispatch/tile-policy unit with
+  no new kernel body, sidecar, or model allocation.
+- Initial GPU1 7900 XTX screen command:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/bench_qwen36_q4_pack8_wmma_prefill.py | tee /tmp/bench_qwen36_q4_pack8_wmma_prefill.jsonl`.
+  Real dense M512/K5120/N17408 gate/up improves **74.997 -> 5.149 ms
+  (14.57x)** and M512/K6144/N5120 output improves **5.698 -> 1.077 ms
+  (5.29x)** at 32x32, with both BF16 outputs byte-exact. Script/result hashes
+  are `e48a4477...9057` and `0648d2a5...e804`.
+- Expanded GPU1 command uses the same environment with
+  `/tmp/bench_qwen36_q4_pack8_wmma_tiles.py`, seven synchronized samples per
+  leaf and all six supported tiles. It covers FFN gate/up, linear QKV/gate,
+  full Q/K/V, and attention output at both M512 and the 4K route's M1024
+  chunk. Every one of **72/72** tile/shape comparisons is BF16 bit-exact.
+- M512 control -> best medians: FFN pair **75.058 -> 4.485 ms (16.73x)**;
+  linear QKV **9.540 -> 1.458 ms (6.54x)**; linear gate **5.843 -> 0.911 ms
+  (6.41x)**; full Q **12.839 -> 1.663 ms (7.72x)**; K/V **0.941 -> 0.198 ms
+  (4.76x)**; attention output **5.605 -> 0.949 ms (5.90x)**. M1024 spans
+  **5.01-17.28x**. Best tiles are stable at both row counts: 32x32 for wide
+  K5120 outputs, 32x16 for K5120/N1024, and 16x32 for K6144/N5120.
+  Expanded script/result hashes are `229bc18b...6d25` and
+  `728c349b...0528`.
+- Admit routing under the existing `use_wmma_prefill` contract: rows>=16
+  resident-pack8 singletons select the registered WMMA leaf; qualifying wide
+  pairs return false from the legacy dual owner so callers emit two WMMA
+  singletons. WMMA-off, rows<16, unsupported shapes, and missing registry keys
+  retain the current exact paths. Ceiling is the measured **7,815.869 ms** Q4
+  bucket; a conservative 75% recovery is **5,861.901 ms / 58.94%** of p512
+  complete wall. Engineering/risk is low. Promotion still requires clean
+  W7900 512/128 and 4096/128 exact AR, unchanged decode, and expected traced
+  WMMA symbols.
