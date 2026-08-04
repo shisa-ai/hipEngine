@@ -1101,6 +1101,34 @@ single-Q4 (**51.370 ms**), proposal Q6T16 top-1 stage1 (**39.973 ms**), and
 dense `ssm_out` (**37.160 ms**). Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json`.
 
+The next refreshed leader is also retained. An exact local128 Q6T16 sibling
+splits each sixteen-column slab into two eight-column blocks while preserving
+all K partitions, FMA order, wave32 trees, ordered four-wave reduction, and
+BF16/F32 output bits. GPU1 actual-weight screening qualifies BF16 rows 2-5 and
+FP32 rows 3-4 only; row 6, FP32 rows 2/5/6, and every unsupported shape retain
+col16. The materially different exact col4 control loses all nine rows-2-4
+actual-shape cases and is removed.
+
+The hermetic W7900 B3 trace observes exactly **399** col8 launches and unchanged
+**8,055** total dispatches. Q6 rowtiles fall **99.135 -> 75.244 ms (-24.10%,
+1.318x)**, target-verify host wall falls **423.244 -> 399.282 ms (-5.66%)**,
+kernel sum falls **378.591 -> 356.972 ms (-5.71%)**, and complete wall falls
+**515.594 -> 492.172 ms (-4.54%)**. B3 resources fall from 136 VGPR / 1,024 B
+LDS to 80 VGPR / 512 B LDS, with zero scratch in both paths.
+
+Clean-protocol natural25 advances B1/B2/B3 **37.544/45.634/50.344 ->
+38.581/48.712/52.652 tok/s (+2.76%/+6.74%/+4.59%)** and selected own-AR
+**2.3260x -> 2.4291x (+4.43%)**. All 30 prompt-budget rows and every aggregate
+scope improve; all IDs, acceptance, transaction state, and teardown remain
+exact, with byte-identical **32.892-GiB** peak. The selector cannot execute in
+populated 512/4096 or c1 graph AR, so those controls are not repeated; unchanged
+true AR and the complete transaction gate bind non-regression. B3 is now
+**22.66%** below Vulkan. Re-rank only `a821d571b`: compact Q4 dual+SiLU leads
+at **76.444 ms**, Q6T16 col8 follows at **75.244 ms**, compact single-Q4 is
+**52.287 ms**, proposal Q6T16 top-1 is **40.466 ms**, and dense `ssm_out` is
+**37.316 ms**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1114,8 +1142,8 @@ dense `ssm_out` (**37.160 ms**). Artifact:
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 established parity, selective Q6T16 now reaches 202.011/188.765 tok/s |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 20.910/19.804 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; sixteen wins retained, exact B3 reaches 50.344 tok/s / 2.3260x faster own AR |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `2dbf6abdd`, with a 26.05% Vulkan B3 gap |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | continue; seventeen wins retained, exact B3 reaches 52.652 tok/s / 2.4291x faster own AR |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O2-O3; re-rank only `a821d571b`, with a 22.66% Vulkan B3 gap |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule

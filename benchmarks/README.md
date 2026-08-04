@@ -5108,6 +5108,43 @@ is a 48-GiB W7900 route and is not claimed to fit the 24-GiB component board.
 Selected B3 is now **26.05%** below llama.cpp Vulkan. Artifact:
 [`2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json`](results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json).
 
+#### Qwen3.6-27B exact Q6T16 col8 verifier rowtiles, W7900/gfx1100
+
+Retained implementation `a821d571b` splits each exact local128 Q6T16 verifier
+slab from sixteen to eight output columns while preserving all 128 K
+partitions, each FP32 FMA, the wave32 trees, the ordered four-wave sum, and the
+BF16/F32 store. Production selects col8 only for BF16 rows 2-5 and FP32 rows
+3-4; screened flat or losing rows retain col16. No allocation, environment
+flag, or prompt/token condition is added.
+
+| Route | Prior col16 rowtile | Exact col8 rowtile | Decode delta | MTP / true AR | Target-verify delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 21.644 tok/s | 21.676 tok/s | +0.145% noise | 1.0000x | n/a |
+| B1 | 37.544 tok/s | **38.581 tok/s** | **+2.762%** | **1.7799x** | **-3.734%** |
+| B2 | 45.634 tok/s | **48.712 tok/s** | **+6.745%** | **2.2473x** | **-8.319%** |
+| **B3 (retained)** | 50.344 tok/s | **52.652 tok/s** | **+4.585%** | **2.4291x** | **-6.277%** |
+
+Every one of 30 prompt-budget rows improves **+1.839% to +7.321%**, and every
+full/train/heldout/category aggregate improves **+2.588% to +7.049%**. All 750
+MTP IDs, 250 AR IDs, acceptance ledgers, GPU/CPU summaries, stage accounting,
+B1-B3 transaction state, ownership, and teardown remain exact. Peak is
+byte-identical at **35,317,648,936 bytes / 32.892 GiB**.
+
+Hermetic B3 tracing observes exactly **399** col8 launches and unchanged
+**8,055** total dispatches. Q6 rowtiles fall **99.135 -> 75.244 ms (-24.10%,
+1.318x)**: BF16 output falls **80.906 -> 60.253 ms (-25.53%)** and FP32 output
+falls **18.229 -> 14.991 ms (-17.76%)**. Target-verify host wall falls
+**423.244 -> 399.282 ms (-5.66%)**, kernel sum falls **378.591 -> 356.972 ms
+(-5.71%)**, and complete wall falls **515.594 -> 492.172 ms (-4.54%)**. The
+candidate uses 80 VGPR / 512 B LDS / zero scratch versus 136 / 1,024 / zero.
+
+The rows-2-5-only selector cannot execute in populated 512/4096 prefill or c1
+graph decode, so those expensive controls were not repeated; unchanged
+natural25 true AR and the complete transaction gate are the binding controls.
+The measured candidate was the exact five-file patch committed unchanged as
+`a821d571b`. Selected B3 is now **22.66%** below llama.cpp Vulkan. Artifact:
+[`2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json`](results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5280,6 +5317,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B selective source-Q6 T16 projections](results/2026-08-04-qwen36-27b-selective-q6t16-projections-retained.json),
 [Qwen3.6-27B compact-Q4T16 FFN sidecars](results/2026-08-05-qwen36-27b-q4t16-ffn-sidecars-retained.json),
 [Qwen3.6-27B row-selective compact-Q4T16 projections](results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json),
+[Qwen3.6-27B exact Q6T16 col8 verifier rowtiles](results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
