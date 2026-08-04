@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-04
 
+- [accepted exact staged full attention] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: staged-linear **27.734/33.544/36.652 -> 28.348/34.818/38.322 tok/s (+2.21%/+3.80%/+4.56%)** by bulking full-attention Q/V/O support around scalar K and unchanged serial KV/attention/gate; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, memory is unchanged, and B3 reaches **1.8821x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-staged-full-attention-retained.json`.
+
 - [accepted exact staged linear projections] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: reusable graph **23.225/24.820/25.193 -> 27.734/33.544/36.652 tok/s (+19.42%/+35.15%/+45.49%)** by bulking independent linear-attention projections around unchanged serial Conv/GDN and state journals; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, memory is unchanged, and B3 reaches **1.8047x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-staged-linear-projections-retained.json`.
 
 - [accepted exact reusable native-verifier graph] Qwen3.6-27B Q4_K_M / natural25 B1/B2/B3 / W7900: exact dense local128 **20.846/22.102/21.840 -> 23.225/24.820/25.193 tok/s (+11.41%/+12.30%/+15.35%)** by replaying each target bucket through one graph with live device position/`KVLiveSpans` metadata; all prompt/full/train/heldout/category rows improve, IDs/state/acceptance remain exact, and B3 becomes selected at **1.2362x** own AR; `benchmarks/results/2026-08-04-qwen36-27b-native-verifier-graph-retained.json`.
