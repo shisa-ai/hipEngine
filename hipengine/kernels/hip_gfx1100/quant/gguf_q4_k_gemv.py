@@ -490,6 +490,16 @@ def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q4_k_pack8_gemv_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_m",
+            "pack8_full_k_grid_y_native_exact_bf16_bf16_out",
+        ),
+        gguf_q4_k_pack8_gemv_bf16_bf16_out,
+        replace=replace,
+    )
     for variant, fn in _EXTRA_Q4_K_WRAPPERS.items():
         register(KernelKey("hip_gfx1100", "linear", "gguf_q4_k", variant), fn, replace=replace)
     register(

@@ -568,9 +568,16 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         def __init__(self, name: str, ptr: int):
             self.name = name
             self.ptr = ptr
+            self.allocations = {
+                "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr + 0x10)),
+                "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr + 0x20)),
+                "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=ptr + 0x30)),
+            }
 
-        def allocation(self):
-            return SimpleNamespace(tensor=SimpleNamespace(ptr=self.ptr))
+        def allocation(self, name: str | None = None):
+            if name is None:
+                return SimpleNamespace(tensor=SimpleNamespace(ptr=self.ptr))
+            return self.allocations[name]
 
     weights = {
         name: Weight(name, 0xA000 + index * 0x100)
@@ -795,6 +802,75 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         128,
     )
     assert cache_calls[4] == ("gate", 0x5000, 0x6000, 0xA000, 24)
+
+    def batch_k(
+        x,
+        qweight,
+        scales,
+        mins,
+        out,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    ):
+        calls.append(
+            (
+                "k_batch",
+                x,
+                qweight,
+                scales,
+                mins,
+                out,
+                rows,
+                in_features,
+                out_features,
+                kwargs["stream"],
+            )
+        )
+
+    monkeypatch.setattr(
+        runner,
+        "_full_attn_k_grid_y_batch_fn",
+        lambda: batch_k,
+        raising=False,
+    )
+    calls.clear()
+    runner._run_full_attention_attn_chain_rows_exact(
+        7,
+        0xF000,
+        0x11000,
+        scratch,
+        rows=3,
+        decode_row_scratches=tuple(row_scratches),
+        start_position=11,
+        hidden_f32_ptr=0x12000,
+        attention_context_limit=128,
+    )
+    assert [call for call in calls if call[0] == "linear"] == [
+        ("linear", "attn_q", 0x1000, 0x2000, 3),
+        ("linear", "attn_v", 0x1000, 0x4000, 3),
+        ("linear", "attn_output", 0xA000, 0x11000, 3),
+    ]
+    assert [call for call in calls if call[0] == "k_batch"] == [
+        (
+            "k_batch",
+            0x1000,
+            weights["attn_k"].ptr + 0x10,
+            weights["attn_k"].ptr + 0x20,
+            weights["attn_k"].ptr + 0x30,
+            0x3000,
+            3,
+            16,
+            4,
+            0,
+        )
+    ]
+    assert [
+        call[0]
+        for call in calls
+        if call[0] in {"write", "attn", "attn_batch", "gate"}
+    ] == ["write", "write", "write", "attn_batch", "gate"]
 
     bad_context = Tensor.from_handle(0xD280, (1,), DType.INT64, device)
     row_scratches[1].decode_spans = KVLiveSpans.paged_uniform(

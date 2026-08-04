@@ -1958,6 +1958,7 @@ class Qwen35GGUFFullStackRunner:
         self.__dict__.pop("_gguf_gdn_decode_output_cast_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_batch_native_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_batch_shared_native_fn_cache", None)
+        self.__dict__.pop("_gguf_full_attn_k_grid_y_batch_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
 
     def _gdn_decode_output_cast_fn(self):
@@ -2032,6 +2033,23 @@ class Qwen35GGUFFullStackRunner:
                 missing="none",
             )
             self._gguf_full_attn_decode_batch_shared_native_fn_cache = fn
+        return fn
+
+    def _full_attn_k_grid_y_batch_fn(self):
+        """Resolve the exact full-attention K grid-y projection leaf."""
+
+        missing = object()
+        fn = getattr(self, "_gguf_full_attn_k_grid_y_batch_fn_cache", missing)
+        if fn is missing:
+            quant = getattr(self, "_gguf_prefill_quant", "gguf_qwen35")
+            fn = resolve(
+                backend=self.backend,
+                layer="linear",
+                quant=quant,
+                variant="pack8_full_k_grid_y_native_exact_bf16_bf16_out",
+                missing="none",
+            )
+            self._gguf_full_attn_k_grid_y_batch_fn_cache = fn
         return fn
 
     def _full_attn_prefill_native_fn(self):
@@ -4560,11 +4578,11 @@ class Qwen35GGUFFullStackRunner:
     ) -> None:
         """Stage independent full-attention work around exact cache reads.
 
-        Q, V, split, rotary, and output work is independent across verifier
-        rows. K deliberately keeps its faster scalar Q4 launch. An exact
-        registry leaf may attend all rows after their shared-cache writes using
-        row-specific live counts; otherwise the c1 write/attention/gate order is
-        retained unchanged.
+        Q, K, V, split, rotary, and output work is independent across verifier
+        rows. An exact registry leaf may project K on a grid-y batch and another
+        may attend all rows after their shared-cache writes using row-specific
+        live counts. Either missing owner retains its corresponding scalar c1
+        fallback unchanged.
         """
 
         assert self.weights is not None
@@ -4621,17 +4639,33 @@ class Qwen35GGUFFullStackRunner:
         )
         norm_row_nbytes = self.hidden_size * DType.BF16.itemsize
         kv_bf16_row_nbytes = self.kv_width * DType.BF16.itemsize
-        for row in range(rows):
-            launch_gguf_linear(
-                layer.weight("attn_k"),
-                scratch.norm.ptr + row * norm_row_nbytes,
-                scratch.full_k.ptr + row * kv_bf16_row_nbytes,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=self.kv_width,
+        k_weight = layer.weight("attn_k")
+        k_batch_fn = self._full_attn_k_grid_y_batch_fn()
+        if k_batch_fn is not None:
+            k_batch_fn(
+                scratch.norm.ptr,
+                k_weight.allocation("qweight").tensor.ptr,
+                k_weight.allocation("scales").tensor.ptr,
+                k_weight.allocation("mins").tensor.ptr,
+                scratch.full_k.ptr,
+                rows,
+                self.hidden_size,
+                self.kv_width,
                 stream=stream,
                 runtime=runtime,
             )
+        else:
+            for row in range(rows):
+                launch_gguf_linear(
+                    k_weight,
+                    scratch.norm.ptr + row * norm_row_nbytes,
+                    scratch.full_k.ptr + row * kv_bf16_row_nbytes,
+                    rows=1,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
         launch_gguf_linear(
             layer.weight("attn_v"),
             scratch.norm.ptr,

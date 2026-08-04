@@ -494,6 +494,35 @@ def shared_full_attn_batch_calls() -> Iterator[list[tuple[int, ...]]]:
 
 
 @pytest.fixture
+def full_attn_k_grid_y_calls() -> Iterator[list[tuple[int, int, int]]]:
+    """Count exact full-attention K grid-y batches on real transactions."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q4_k_m",
+        "pack8_full_k_grid_y_native_exact_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, int, int]] = []
+
+    def counted(*args, **kwargs):
+        calls.append((int(args[5]), int(args[6]), int(args[7])))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+
+
+@pytest.fixture
 def q4_dual_rowtile_silu_calls() -> Iterator[list[tuple[int, int, int]]]:
     """Count the exact dense-FFN rowtile+SiLU owner on real transactions."""
 
@@ -530,6 +559,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
+    full_attn_k_grid_y_calls: list[tuple[int, int, int]],
     q4_dual_rowtile_silu_calls: list[tuple[int, int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
@@ -831,6 +861,12 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         in shared_full_attn_batch_calls
     } == {(256, 24, 4, 256, 1)}
     assert all(rows == live_rows for rows, *_, live_rows in shared_full_attn_batch_calls)
+    assert full_attn_k_grid_y_calls
+    assert {rows for rows, _, _ in full_attn_k_grid_y_calls} == {2, 4}
+    assert {
+        (in_features, out_features)
+        for _, in_features, out_features in full_attn_k_grid_y_calls
+    } == {(5120, 1024)}
     assert q4_dual_rowtile_silu_calls
     assert {rows for rows, _, _ in q4_dual_rowtile_silu_calls} == {2, 3, 4}
     assert {

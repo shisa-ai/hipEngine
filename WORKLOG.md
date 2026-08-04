@@ -204845,3 +204845,49 @@ Vulkan local sizes verbatim will close the measured gap.
   headline. Re-profile from this retained route before choosing the next
   D27-O3 candidate; scalar attention/gate counts in older traces are no longer
   valid targets.
+
+### D27-O3 exact full-attention K grid-y batching — GREEN
+
+- Start from retained shared-page revision `53fdf457a`. Reconcile its hermetic
+  target window before selecting another candidate: the generic
+  `gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>` still
+  runs **448** K5120/N1024 scalar target calls at grid4096/local32 totaling
+  **4.918712 ms**. These are the four K rows in each of 112 full-attention
+  batches. One existing grid-y launch can remove **336 dispatches / 4.00%** of
+  the 8,391-dispatch complete trace without a new device body.
+- Screen the retained generic pack8 wrapper on GPU1 RX 7900 XTX/gfx1100 at the
+  exact production K/N shape, comparing rows scalar launches against one grid-y
+  launch with 250 warmup pairs, 15 samples in each counter-order, and 50-launch
+  bursts. Rows 2/3/4 are BF16-byte exact (`0/2,048`, `0/3,072`, and `0/4,096`
+  mismatches). Event speedups are **1.848745x / 2.373503x / 2.620196x** and
+  synchronized-wall speedups **1.823984x / 2.338132x / 2.587058x**. This
+  exposes row parallelism while preserving each scalar block unchanged; it
+  does not reopen the rejected weight-reusing rowtile. Script/result SHA-256s
+  are `3f7d4122...9612` / `42f578eb...2b29`.
+- Freeze RED in
+  `tests/test_gguf_q4_k_pack8_rowtile.py::test_pack8_rowtile_registry_and_dispatch_contract`
+  and
+  `tests/test_gguf_native_spec_cycle.py::test_staged_full_attention_batches_shared_cache_only_with_exact_owner`.
+  It fails **2/2** only on the missing quant-specific key and still-scalar K
+  schedule. GREEN registers
+  `linear/gguf_q4_k_m/pack8_full_k_grid_y_native_exact_bf16_bf16_out` as an
+  alias of the existing exact wrapper, resolves it through the selected quant
+  axis, launches once with resident qweight/scale/min pointers, and preserves
+  the complete scalar loop on a missing key. Focused tests pass **2/2**; Ruff,
+  pycompile, and diff checks pass.
+- Extend the complete W7900 transaction census around the exact key. Command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q
+  tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes **1/1**.
+  The new owner sees exactly rows `{2,4}` at K5120/N1024; B2/rows3 remains in
+  the separate N2 bulk graph. B1-B3 logits, reject/partial/full/rollback
+  Conv/GDN/KV/hidden state, dynamic positions 6/7/9, graph reuse, correction
+  logits, and natural provider output remain exact.
+- Commit this correctness route before profiling. The canonical selected B3
+  remains **41.705 tok/s / 2.0474x own AR** until a clean W7900 trace proves
+  physical **448 -> 112** K ownership and the full natural25 gate is
+  non-regressive.
