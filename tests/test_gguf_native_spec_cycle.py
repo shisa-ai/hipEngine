@@ -375,6 +375,84 @@ def test_native_b3_target_reuses_one_dynamic_native_graph_across_positions(monke
     assert session._native_spec_b3_target_graph is graph
 
 
+def test_native_linear_chain_scheduler_stages_all_rows_once(monkeypatch) -> None:
+    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+
+    runner = object.__new__(Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(hidden_size=16, is_moe=False)
+    )
+    runner.runtime = SimpleNamespace()
+    calls: list[tuple[object, ...]] = []
+
+    def staged(*args, **kwargs):
+        calls.append(("staged", *args, kwargs))
+
+    def scalar(*args, **kwargs):
+        calls.append(("scalar", *args, kwargs))
+
+    def ffn(*args, **kwargs):
+        calls.append(("ffn", *args, kwargs))
+
+    monkeypatch.setattr(
+        runner,
+        "_run_linear_attention_attn_chain_rows_exact",
+        staged,
+        raising=False,
+    )
+    monkeypatch.setattr(runner, "_run_linear_attention_attn_only", scalar)
+    monkeypatch.setattr(runner, "_run_post_attention_ffn_rows", ffn)
+    scratch = SimpleNamespace(attn_out=SimpleNamespace(ptr=0x5000))
+    decode_scratch = SimpleNamespace()
+
+    runner._run_native_attention_bulk_ffn_layer_rows(
+        7,
+        LINEAR_ATTENTION,
+        0x1000,
+        0x2000,
+        scratch,
+        rows=4,
+        decode_scratch=decode_scratch,
+        start_position=11,
+        hidden_f32_ptr=0x3000,
+        out_f32_ptr=0x4000,
+    )
+
+    assert [call[0] for call in calls] == ["staged", "ffn"]
+    staged_call = calls[0]
+    assert staged_call[1:5] == (7, 0x1000, 0x5000, scratch)
+    assert staged_call[-1]["rows"] == 4
+    assert staged_call[-1]["decode_scratch"] is decode_scratch
+    assert staged_call[-1]["hidden_f32_ptr"] == 0x3000
+
+    calls.clear()
+    runner.weights.config.is_moe = True
+    runner._run_native_attention_bulk_ffn_layer_rows(
+        7,
+        LINEAR_ATTENTION,
+        0x1000,
+        0x2000,
+        scratch,
+        rows=4,
+        decode_scratch=decode_scratch,
+    )
+    assert [call[0] for call in calls] == ["scalar"] * 4 + ["ffn"]
+
+    calls.clear()
+    runner.weights.config.is_moe = False
+    runner._run_native_attention_bulk_ffn_layer_rows(
+        7,
+        LINEAR_ATTENTION,
+        0x1000,
+        0x2000,
+        scratch,
+        rows=1,
+        decode_scratch=decode_scratch,
+    )
+    assert [call[0] for call in calls] == ["scalar", "ffn"]
+
+
 def test_native_b2_target_falls_back_before_capture_when_provider_key_is_missing(
     monkeypatch,
 ) -> None:

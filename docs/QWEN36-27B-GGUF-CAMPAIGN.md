@@ -499,6 +499,14 @@ state-journal boundary, then bulk exact `ssm_out`. A conservative 50% recovery
 is 169.790 ms / 15.79% of wall. Full-attention staging is deferred until this
 narrower transaction gate passes.
 
+The staged dense linear scheduler is now correctness-green before timing. It
+bulks only the independent projections, then runs the unchanged Conv/GDN decode
+kernels and each state-row copy in token order before one exact row-bulk
+`ssm_out`. CPU scheduling coverage proves MoE and c1 retain the scalar fallback.
+The complete W7900 oracle preserves B1-B3 full logits, reject/partial/full and
+positions 6/7/9 state/KV/hidden transactions, graph submission, correction
+logits, and natural provider output. Clean natural25 remains the promotion gate.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -512,7 +520,7 @@ narrower transaction gate passes.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | ready; Q4_K pack8 78.86%, BF16 GEMM 20.05% |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | ready but lower urgency; Vulkan already beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | four wins retained; exact graph B3 1.2362x AR; staged linear projections admitted |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout MTP/true-AR ratio improves; no category or acceptance regression. | four wins retained; exact graph B3 1.2362x AR; staged linear projections correctness green |
 | 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by O1-O3 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 

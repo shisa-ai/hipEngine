@@ -4148,6 +4148,180 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _run_linear_attention_attn_chain_rows_exact(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        decode_scratch,
+        linear_state_rows: tuple[object, object] | None = None,
+        hidden_f32_ptr: int | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Stage independent projections around the exact serial recurrence.
+
+        Every verifier row enters the layer together, so normalization and
+        QKV/gate/alpha/beta projections can reuse each weight across rows. Conv
+        and GDN still consume those staged rows in token order against the same
+        resident state, and each post-row state is journaled before the next
+        row mutates it. The final ``ssm_out`` projection is independent once all
+        recurrent outputs are materialized and is therefore row-bulk as well.
+        """
+
+        assert self.weights is not None
+        rows = int(rows)
+        if rows <= 1:
+            raise ValueError("staged linear-attention chain requires rows > 1")
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        conv_state = decode_scratch.layer_conv_states[layer_id]
+        recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
+        if conv_state is None or recurrent_state is None:
+            raise ValueError(f"layer {layer_id} has no linear-attention state")
+
+        attn_norm_f32_ptr = self._run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+            out_ptr=scratch.norm.ptr,
+            out_f32_ptr=(
+                scratch.post_norm_f32.ptr
+                if hasattr(scratch, "post_norm_f32")
+                else None
+            ),
+            rows=rows,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not launch_gguf_linear_pair(
+            layer.weight("attn_qkv"),
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        self._run_linear_attention_alpha_beta_rows(
+            layer,
+            scratch.norm.ptr,
+            attn_norm_f32_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            runtime=runtime,
+        )
+
+        qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
+        z_row_nbytes = cfg.ssm_inner_size * DType.BF16.itemsize
+        ab_row_nbytes = cfg.ssm_time_step_rank * DType.BF16.itemsize
+        conv_row_nbytes = self.linear_qkv_width * DType.FP32.itemsize
+        recurrent_row_nbytes = cfg.ssm_inner_size * DType.FP32.itemsize
+        for row in range(rows):
+            qwen35_linear_attn_conv_decode_bf16(
+                scratch.linear_qkv.ptr + row * qkv_row_nbytes,
+                conv_state.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr + row * conv_row_nbytes,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
+            qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+                scratch.conv_out.ptr + row * conv_row_nbytes,
+                scratch.linear_z.ptr + row * z_row_nbytes,
+                scratch.linear_alpha.ptr + row * ab_row_nbytes,
+                scratch.linear_beta.ptr + row * ab_row_nbytes,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_out.ptr + row * recurrent_row_nbytes,
+                cfg.rms_norm_eps,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+            if linear_state_rows is not None:
+                conv_state_rows, recurrent_state_rows = linear_state_rows
+                runtime.memcpy_async(
+                    conv_state_rows.ptr + row * int(conv_state.nbytes),
+                    conv_state.ptr,
+                    int(conv_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
+                    recurrent_state.ptr,
+                    int(recurrent_state.nbytes),
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+
+        ssm_out_weight = layer.weight("ssm_out")
+        ssm_out_input_ptr = scratch.recurrent_out.ptr
+        ssm_out_activation_dtype = GGUF_ACTIVATION_F32
+        output_cast = self._gdn_decode_output_cast_for_weight(
+            ssm_out_weight,
+            rows=rows,
+        )
+        if output_cast is not None:
+            output_cast(
+                scratch.recurrent_out.ptr,
+                scratch.recurrent_bf16.ptr,
+                rows * cfg.ssm_inner_size,
+                stream=stream,
+                library=self._cast_library(),
+                runtime=runtime,
+            )
+            ssm_out_input_ptr = scratch.recurrent_bf16.ptr
+            ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
+        launch_gguf_linear(
+            ssm_out_weight,
+            ssm_out_input_ptr,
+            attn_out_ptr,
+            rows=rows,
+            in_features=cfg.ssm_inner_size,
+            out_features=self.hidden_size,
+            activation_dtype=ssm_out_activation_dtype,
+            stream=stream,
+            runtime=runtime,
+        )
+
     def _run_linear_attention_attn_rows_indexed_exact(
         self,
         layer_id: int,
@@ -4854,12 +5028,11 @@ class Qwen35GGUFFullStackRunner:
         attention_context_limit: int | None = None,
         stream: int = 0,
     ) -> None:
-        """Run row-serial attention followed by the row-bulk GGUF FFN/MoE path.
+        """Run exact serial attention cores with row-bulk independent work.
 
-        This parity-safe scheduler preserves the resident token-serial attention
-        kernels/state updates while still exercising the multi-row MoE path. It
-        is slower than the fully bulk prefill scheduler, but gives a correctness
-        baseline for qwen35moe GGUF bulk MoE work.
+        Dense linear-attention rows stage projection inputs/outputs around the
+        token-serial Conv/GDN recurrence. Full attention and MoE linear attention
+        retain the scalar core scheduler. Every path keeps the row-bulk FFN.
         """
 
         if rows <= 0:
@@ -4867,65 +5040,90 @@ class Qwen35GGUFFullStackRunner:
         start_position = int(start_position)
         if start_position < 0:
             raise ValueError("start_position must be non-negative")
+        assert self.weights is not None
         row_nbytes = self.hidden_size * DType.BF16.itemsize
         row_f32_nbytes = self.hidden_size * DType.FP32.itemsize
         runtime = self.runtime or get_hip_runtime()
         if decode_row_scratches is not None and len(decode_row_scratches) != rows:
             raise ValueError("native decode row scratch count must match verifier rows")
-        for row in range(rows):
-            position = start_position + row
-            row_decode_scratch = (
-                decode_scratch
-                if decode_row_scratches is None
-                else decode_row_scratches[row]
+        staged_dense_linear = (
+            layer_type == LINEAR_ATTENTION
+            and rows > 1
+            and not bool(self.weights.config.is_moe)
+        )
+        if staged_dense_linear:
+            self._run_linear_attention_attn_chain_rows_exact(
+                layer_id,
+                hidden_ptr,
+                scratch.attn_out.ptr,
+                scratch,
+                rows=rows,
+                decode_scratch=decode_scratch,
+                linear_state_rows=linear_state_rows,
+                hidden_f32_ptr=hidden_f32_ptr,
+                stream=stream,
             )
-            hidden_row = hidden_ptr + row * row_nbytes
-            hidden_f32_row = None if hidden_f32_ptr is None else int(hidden_f32_ptr) + row * row_f32_nbytes
-            attn_row = scratch.attn_out.ptr + row * row_nbytes
-            if layer_type == LINEAR_ATTENTION:
-                self._run_linear_attention_attn_only(
-                    layer_id,
-                    hidden_row,
-                    attn_row,
-                    row_decode_scratch,
-                    hidden_f32_ptr=hidden_f32_row,
-                    stream=stream,
+        else:
+            for row in range(rows):
+                position = start_position + row
+                row_decode_scratch = (
+                    decode_scratch
+                    if decode_row_scratches is None
+                    else decode_row_scratches[row]
                 )
-                if linear_state_rows is not None:
-                    conv_state = row_decode_scratch.layer_conv_states[layer_id]
-                    recurrent_state = row_decode_scratch.layer_recurrent_states[layer_id]
-                    if conv_state is None or recurrent_state is None:
-                        raise ValueError(f"layer {layer_id} has no linear-attention state")
-                    conv_state_rows, recurrent_state_rows = linear_state_rows
-                    runtime.memcpy_async(
-                        conv_state_rows.ptr + row * int(conv_state.nbytes),
-                        conv_state.ptr,
-                        int(conv_state.nbytes),
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-                    runtime.memcpy_async(
-                        recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
-                        recurrent_state.ptr,
-                        int(recurrent_state.nbytes),
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-            elif layer_type == FULL_ATTENTION:
-                if decode_row_scratches is None:
-                    row_decode_scratch.set_full_attention_position(position, runtime)
-                self._run_full_attention_attn_only(
-                    layer_id,
-                    hidden_row,
-                    attn_row,
-                    row_decode_scratch,
-                    position=position,
-                    hidden_f32_ptr=hidden_f32_row,
-                    stream=stream,
-                    attention_max_context_len=attention_context_limit,
+                hidden_row = hidden_ptr + row * row_nbytes
+                hidden_f32_row = (
+                    None
+                    if hidden_f32_ptr is None
+                    else int(hidden_f32_ptr) + row * row_f32_nbytes
                 )
-            else:
-                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                attn_row = scratch.attn_out.ptr + row * row_nbytes
+                if layer_type == LINEAR_ATTENTION:
+                    self._run_linear_attention_attn_only(
+                        layer_id,
+                        hidden_row,
+                        attn_row,
+                        row_decode_scratch,
+                        hidden_f32_ptr=hidden_f32_row,
+                        stream=stream,
+                    )
+                    if linear_state_rows is not None:
+                        conv_state = row_decode_scratch.layer_conv_states[layer_id]
+                        recurrent_state = row_decode_scratch.layer_recurrent_states[layer_id]
+                        if conv_state is None or recurrent_state is None:
+                            raise ValueError(
+                                f"layer {layer_id} has no linear-attention state"
+                            )
+                        conv_state_rows, recurrent_state_rows = linear_state_rows
+                        runtime.memcpy_async(
+                            conv_state_rows.ptr + row * int(conv_state.nbytes),
+                            conv_state.ptr,
+                            int(conv_state.nbytes),
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                        runtime.memcpy_async(
+                            recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
+                            recurrent_state.ptr,
+                            int(recurrent_state.nbytes),
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                elif layer_type == FULL_ATTENTION:
+                    if decode_row_scratches is None:
+                        row_decode_scratch.set_full_attention_position(position, runtime)
+                    self._run_full_attention_attn_only(
+                        layer_id,
+                        hidden_row,
+                        attn_row,
+                        row_decode_scratch,
+                        position=position,
+                        hidden_f32_ptr=hidden_f32_row,
+                        stream=stream,
+                        attention_max_context_len=attention_context_limit,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
