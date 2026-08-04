@@ -610,6 +610,16 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_attn_chain_conv_decode",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop",
+        ),
+        qwen35_linear_attn_chain_conv_decode_bf16_tloop,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "f32"),
         qwen35_linear_attn_conv_prefill_f32,
         replace=replace,

@@ -204539,3 +204539,57 @@ Vulkan local sizes verbatim will close the measured gap.
   `61fc3d12...45 / ba9a494c...d5 / c21eb859...769 / c6626dea...148 /
   c89ef529...201`. Artifact:
   `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`.
+
+### D27-O3 exact dense verifier Conv/GDN chain journals — RED
+
+- The refreshed retained B3 trace contains **3,360** state-sized
+  `__amd_rocclr_copyBuffer` dispatches across seven target passes: each pass has
+  48 linear-attention layers x one initial Conv/GDN snapshot plus four
+  post-row Conv/GDN journals. The staged recurrence also launches scalar Conv
+  and GDN four times per layer, or **1,344** calls of each family.
+- The already-landed BF16 chain Conv and c1-exact chain GDN t-loops preserve the
+  scalar row order, write every row state directly, and leave their initial
+  states immutable. In the native deferred-commit transaction, replacing four
+  scalar producers plus four journal copies with one chain producer per family
+  projects **2,688 fewer copies + 2,016 fewer producers = 4,704 fewer target
+  dispatches**, **34.17%** of the complete 13,767-dispatch profile. Initial
+  rollback snapshots and the selected-row commit remain unchanged.
+- Freeze fail-closed four-axis ownership under exact GGUF chain-journal keys.
+  Missing either key, absent row journals, c1, MoE, and ordinary prefill retain
+  the current scalar chain. Non-deferred callers must copy only the final chain
+  row back to resident state; native deferred verification must not mutate it.
+- RED command:
+  `PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_linear_attn_chain_journal.py tests/test_gguf_native_spec_cycle.py -k 'chain_journal or native_linear_chain_scheduler'`.
+  It fails only at the three intended boundaries: missing registry key, missing
+  chain-journal owner, and missing deferred-commit parameter. The same run's
+  two GPU production-shape rows `{2,4}` already prove every Conv/GDN FP32
+  output bit, every 160-KiB/3-MiB row-state bit, and immutable initial states
+  against the scalar decode+copy oracle.
+
+### D27-O3 exact dense verifier Conv/GDN chain journals — GREEN
+
+- Register the existing BF16 chain Conv and c1-exact chain GDN under exact
+  `gguf_qwen35/bf16_c1_exact_state_rows_tloop` keys. The staged dense native
+  scheduler resolves both exact keys before rewriting; if either is absent it
+  enters the original scalar Conv/GDN plus per-row-copy loop unchanged.
+- With row journals available, one Conv and one GDN chain call materialize all
+  rows. `commit_final_linear_state=false` leaves resident state untouched for
+  the native selected-row commit. Non-deferred callers issue only two final-row
+  D2D copies. c1, MoE, absent journals, and ordinary prefill ownership are
+  unchanged; no kernel body, arithmetic, allocation, env flag, or backend/quant
+  model branch was added.
+- Focused GREEN passes **5/5**. Explicit GPU1 production-shape coverage passes
+  **4/4**, including rows 2/4 byte identity for every Conv/GDN output and every
+  160-KiB/3-MiB journal row plus immutable initial state. The adjacent native
+  scheduler + Conv/GDN plan bundle passes **19/19**. Ruff, py_compile, lineage,
+  and diff checks pass.
+- Mandatory W7900 transaction command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`.
+  The instrumented final run passes **1/1** and observes both owners at rows
+  exactly `{2,3,4}`; Conv shape is only `(10240,4)` and GDN only
+  `(16,48,128,128)`. B1-B3 full logits, reject/partial/full/rollback and
+  positions 6/7/9 Conv/GDN/KV/hidden transactions, graph reuse, correction
+  logits, and natural provider output remain scalar-exact.
+- Freeze this correctness-only route before a clean cached W7900 named trace.
+  The **4,704-dispatch / 34.17%** figure remains an Amdahl projection until the
+  profiler confirms physical removal and measures complete cycle wall.

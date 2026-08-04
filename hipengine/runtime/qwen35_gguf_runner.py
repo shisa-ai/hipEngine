@@ -4149,6 +4149,80 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _try_run_linear_attention_chain_journal_rows_exact(
+        self,
+        layer,
+        scratch,
+        conv_state,
+        recurrent_state,
+        *,
+        rows: int,
+        linear_state_rows: tuple[object, object],
+        commit_final_linear_state: bool,
+        stream: int,
+        runtime,
+    ) -> bool:
+        """Write exact Conv/GDN row journals through registered chain owners."""
+
+        rows = int(rows)
+        if rows <= 1:
+            return False
+        plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
+        if not plan.available:
+            return False
+        assert self.weights is not None
+        cfg = self.weights.config
+        conv_state_rows, recurrent_state_rows = linear_state_rows
+        plan.conv(
+            scratch.linear_qkv.ptr,
+            conv_state.ptr,
+            conv_state_rows.ptr,
+            layer.weight("ssm_conv1d").allocation().tensor.ptr,
+            scratch.conv_out.ptr,
+            rows,
+            self.linear_qkv_width,
+            cfg.ssm_conv_kernel,
+            stream=stream,
+            runtime=runtime,
+        )
+        plan.gdn(
+            scratch.conv_out.ptr,
+            scratch.linear_z.ptr,
+            scratch.linear_alpha.ptr,
+            scratch.linear_beta.ptr,
+            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+            layer.weight("ssm_a").allocation().tensor.ptr,
+            layer.weight("ssm_norm").allocation().tensor.ptr,
+            recurrent_state.ptr,
+            recurrent_state_rows.ptr,
+            scratch.recurrent_out.ptr,
+            scratch.recurrent_out.ptr,
+            cfg.rms_norm_eps,
+            rows,
+            cfg.ssm_group_count,
+            cfg.ssm_time_step_rank,
+            cfg.ssm_state_size,
+            self.ssm_value_dim,
+            stream=stream,
+            runtime=runtime,
+        )
+        if commit_final_linear_state:
+            runtime.memcpy_async(
+                conv_state.ptr,
+                conv_state_rows.ptr + (rows - 1) * int(conv_state.nbytes),
+                int(conv_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                recurrent_state.ptr,
+                recurrent_state_rows.ptr + (rows - 1) * int(recurrent_state.nbytes),
+                int(recurrent_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        return True
+
     def _run_linear_attention_attn_chain_rows_exact(
         self,
         layer_id: int,
@@ -4160,6 +4234,7 @@ class Qwen35GGUFFullStackRunner:
         decode_scratch,
         linear_state_rows: tuple[object, object] | None = None,
         hidden_f32_ptr: int | None = None,
+        commit_final_linear_state: bool = True,
         stream: int = 0,
     ) -> None:
         """Stage independent projections around the exact serial recurrence.
@@ -4167,9 +4242,10 @@ class Qwen35GGUFFullStackRunner:
         Every verifier row enters the layer together, so normalization and
         QKV/gate/alpha/beta projections can reuse each weight across rows. Conv
         and GDN still consume those staged rows in token order against the same
-        resident state, and each post-row state is journaled before the next
-        row mutates it. The final ``ssm_out`` projection is independent once all
-        recurrent outputs are materialized and is therefore row-bulk as well.
+        resident state. Registered exact chain owners write row journals
+        directly; registry misses retain the scalar producer-plus-copy chain.
+        The final ``ssm_out`` projection is independent once all recurrent
+        outputs are materialized and is therefore row-bulk as well.
         """
 
         assert self.weights is not None
@@ -4242,56 +4318,71 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
-        qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
-        z_row_nbytes = cfg.ssm_inner_size * DType.BF16.itemsize
-        ab_row_nbytes = cfg.ssm_time_step_rank * DType.BF16.itemsize
-        conv_row_nbytes = self.linear_qkv_width * DType.FP32.itemsize
-        recurrent_row_nbytes = cfg.ssm_inner_size * DType.FP32.itemsize
-        for row in range(rows):
-            qwen35_linear_attn_conv_decode_bf16(
-                scratch.linear_qkv.ptr + row * qkv_row_nbytes,
-                conv_state.ptr,
-                layer.weight("ssm_conv1d").allocation().tensor.ptr,
-                scratch.conv_out.ptr + row * conv_row_nbytes,
-                self.linear_qkv_width,
-                cfg.ssm_conv_kernel,
+        used_chain_journal = bool(
+            linear_state_rows is not None
+            and self._try_run_linear_attention_chain_journal_rows_exact(
+                layer,
+                scratch,
+                conv_state,
+                recurrent_state,
+                rows=rows,
+                linear_state_rows=linear_state_rows,
+                commit_final_linear_state=bool(commit_final_linear_state),
                 stream=stream,
                 runtime=runtime,
             )
-            qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
-                scratch.conv_out.ptr + row * conv_row_nbytes,
-                scratch.linear_z.ptr + row * z_row_nbytes,
-                scratch.linear_alpha.ptr + row * ab_row_nbytes,
-                scratch.linear_beta.ptr + row * ab_row_nbytes,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                recurrent_state.ptr,
-                scratch.recurrent_out.ptr + row * recurrent_row_nbytes,
-                cfg.rms_norm_eps,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-            if linear_state_rows is not None:
-                conv_state_rows, recurrent_state_rows = linear_state_rows
-                runtime.memcpy_async(
-                    conv_state_rows.ptr + row * int(conv_state.nbytes),
+        )
+        if not used_chain_journal:
+            qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
+            z_row_nbytes = cfg.ssm_inner_size * DType.BF16.itemsize
+            ab_row_nbytes = cfg.ssm_time_step_rank * DType.BF16.itemsize
+            conv_row_nbytes = self.linear_qkv_width * DType.FP32.itemsize
+            recurrent_row_nbytes = cfg.ssm_inner_size * DType.FP32.itemsize
+            for row in range(rows):
+                qwen35_linear_attn_conv_decode_bf16(
+                    scratch.linear_qkv.ptr + row * qkv_row_nbytes,
                     conv_state.ptr,
-                    int(conv_state.nbytes),
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
+                    layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                    scratch.conv_out.ptr + row * conv_row_nbytes,
+                    self.linear_qkv_width,
+                    cfg.ssm_conv_kernel,
+                    stream=stream,
+                    runtime=runtime,
                 )
-                runtime.memcpy_async(
-                    recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
+                qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+                    scratch.conv_out.ptr + row * conv_row_nbytes,
+                    scratch.linear_z.ptr + row * z_row_nbytes,
+                    scratch.linear_alpha.ptr + row * ab_row_nbytes,
+                    scratch.linear_beta.ptr + row * ab_row_nbytes,
+                    layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                    layer.weight("ssm_a").allocation().tensor.ptr,
+                    layer.weight("ssm_norm").allocation().tensor.ptr,
                     recurrent_state.ptr,
-                    int(recurrent_state.nbytes),
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
+                    scratch.recurrent_out.ptr + row * recurrent_row_nbytes,
+                    cfg.rms_norm_eps,
+                    cfg.ssm_group_count,
+                    cfg.ssm_time_step_rank,
+                    cfg.ssm_state_size,
+                    self.ssm_value_dim,
+                    stream=stream,
+                    runtime=runtime,
                 )
+                if linear_state_rows is not None:
+                    conv_state_rows, recurrent_state_rows = linear_state_rows
+                    runtime.memcpy_async(
+                        conv_state_rows.ptr + row * int(conv_state.nbytes),
+                        conv_state.ptr,
+                        int(conv_state.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                    runtime.memcpy_async(
+                        recurrent_state_rows.ptr + row * int(recurrent_state.nbytes),
+                        recurrent_state.ptr,
+                        int(recurrent_state.nbytes),
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
 
         ssm_out_weight = layer.weight("ssm_out")
         ssm_out_input_ptr = scratch.recurrent_out.ptr
@@ -5221,6 +5312,7 @@ class Qwen35GGUFFullStackRunner:
         decode_scratch,
         start_position: int = 0,
         linear_state_rows: tuple[object, object] | None = None,
+        commit_final_linear_state: bool = True,
         hidden_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
         decode_row_scratches: tuple[object, ...] | None = None,
@@ -5274,6 +5366,7 @@ class Qwen35GGUFFullStackRunner:
                 decode_scratch=decode_scratch,
                 linear_state_rows=linear_state_rows,
                 hidden_f32_ptr=hidden_f32_ptr,
+                commit_final_linear_state=commit_final_linear_state,
                 stream=stream,
             )
         elif staged_dense_full:
@@ -13547,6 +13640,9 @@ class Qwen35GGUFResidentSession:
                                     if capture_linear_state_rows
                                     else None
                                 ),
+                                commit_final_linear_state=not bool(
+                                    defer_linear_state_commit
+                                ),
                                 hidden_f32_ptr=src_f32_chunk_ptr,
                                 out_f32_ptr=dst_f32_chunk_ptr,
                                 decode_row_scratches=_native_decode_row_scratches,
@@ -20773,6 +20869,18 @@ _GDN_DECODE_INDEXED_SINGLETON_BF16_KEY = KernelKey(
     "gguf_qwen35",
     "bf16_indexed_singleton",
 )
+_LINEAR_ATTN_CHAIN_CONV_JOURNAL_BF16_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_chain_conv_decode",
+    "gguf_qwen35",
+    "bf16_c1_exact_state_rows_tloop",
+)
+_GDN_CHAIN_JOURNAL_BF16_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_chain_recurrent_rmsnorm_gate",
+    "gguf_qwen35",
+    "bf16_c1_exact_state_rows_tloop",
+)
 _GDN_PREFILL_PREPARE_KEY = KernelKey(
     "hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"
 )
@@ -21020,6 +21128,18 @@ class _GGUFLinearAttentionDecodeBatchPlan:
         if callable(self.gdn_segments):
             return "segments"
         return "unavailable"
+
+
+@dataclass(frozen=True)
+class _GGUFLinearAttentionChainJournalPlan:
+    """Exact row-journal producers resolved without registry fallback."""
+
+    conv: object | None
+    gdn: object | None
+
+    @property
+    def available(self) -> bool:
+        return callable(self.conv) and callable(self.gdn)
 
 
 @dataclass(frozen=True)
@@ -21410,6 +21530,27 @@ def _gguf_full_attention_split_gate_bf16_fn(
         if _gguf_paged_attn_warp_split_enabled():
             return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
     return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
+
+
+def _resolve_gguf_linear_attention_chain_journal_plan(
+    backend: str = "hip_gfx1100",
+) -> _GGUFLinearAttentionChainJournalPlan:
+    def _resolve_exact(key: KernelKey):
+        backend_key = KernelKey(backend, key.layer, key.quant, key.variant)
+        if not is_registered(backend_key):
+            return None
+        return resolve(
+            backend=backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+
+    return _GGUFLinearAttentionChainJournalPlan(
+        conv=_resolve_exact(_LINEAR_ATTN_CHAIN_CONV_JOURNAL_BF16_KEY),
+        gdn=_resolve_exact(_GDN_CHAIN_JOURNAL_BF16_KEY),
+    )
 
 
 def _resolve_gguf_linear_attention_decode_batch_plan(

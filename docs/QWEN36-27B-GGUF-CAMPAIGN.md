@@ -766,6 +766,25 @@ queue-gap wall, and a shorter cycle window; disclose the mixed aggregate and
 continue D27-O3 from the refreshed trace. Artifact:
 `benchmarks/results/2026-08-04-qwen36-27b-q4-dual-rowtile-silu-retained.json`.
 
+The refreshed trace then exposes a larger launch-and-traffic boundary: each of
+seven B3 target passes issues 48 linear layers x four serial Conv/GDN producers
+and four post-row copies of both the 160-KiB Conv and 3-MiB recurrent state.
+The already-landed c1-exact chain t-loops are production-shape byte-identical to
+that scalar+copy chain at rows 2/4 and write every journal row directly while
+leaving the initial state immutable. The new exact registry keys therefore own
+only dense native c2-c4 row capture. Deferred target verification performs no
+resident write; non-deferred use copies only the final row; a missing key keeps
+the complete scalar chain.
+
+The W7900 B1-B3 transaction gate observes both chain owners exactly at rows
+`{2,3,4}` and only Conv/GDN shapes `(10240,4)` and `(16,48,128,128)`. Full
+logits, reject/partial/full/rollback Conv/GDN/KV/hidden state, dynamic graph
+reuse, correction logits, and natural provider output remain scalar-exact.
+This correctness-only route projects removal of **2,688 journal copies + 2,016
+serial producers = 4,704 target dispatches**, **34.17%** of the refreshed
+13,767-dispatch profile. Retained performance and named trace remain the next
+gate; no speed claim is made yet.
+
 ---
 
 ## 7. Prioritized execution plan

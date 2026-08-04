@@ -404,6 +404,56 @@ def dense_virtual256_rowtile_calls() -> Iterator[list[tuple[int, int, int]]]:
 
 
 @pytest.fixture
+def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
+    """Count exact dense native Conv/GDN chain-journal ownership."""
+
+    specs = {
+        "conv": (
+            KernelKey(
+                "hip_gfx1100",
+                "linear_attn_chain_conv_decode",
+                "gguf_qwen35",
+                "bf16_c1_exact_state_rows_tloop",
+            ),
+            (5, 6, 7),
+        ),
+        "gdn": (
+            KernelKey(
+                "hip_gfx1100",
+                "gdn_chain_recurrent_rmsnorm_gate",
+                "gguf_qwen35",
+                "bf16_c1_exact_state_rows_tloop",
+            ),
+            (12, 13, 14, 15, 16),
+        ),
+    }
+    calls: dict[str, list[tuple[int, ...]]] = {name: [] for name in specs}
+    originals = {
+        name: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for name, (key, _indices) in specs.items()
+    }
+
+    for name, (key, indices) in specs.items():
+        original = originals[name]
+
+        def counted(*args, _name=name, _indices=indices, _original=original, **kwargs):
+            calls[_name].append(tuple(int(args[index]) for index in _indices))
+            return _original(*args, **kwargs)
+
+        register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        for name, (key, _indices) in specs.items():
+            register(key, originals[name], replace=True)
+
+
+@pytest.fixture
 def q4_dual_rowtile_silu_calls() -> Iterator[list[tuple[int, int, int]]]:
     """Count the exact dense-FFN rowtile+SiLU owner on real transactions."""
 
@@ -438,6 +488,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     monkeypatch: pytest.MonkeyPatch,
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
+    chain_journal_calls: dict[str, list[tuple[int, ...]]],
     q4_dual_rowtile_silu_calls: list[tuple[int, int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
@@ -717,6 +768,18 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (in_features, out_features)
         for _, in_features, out_features in dense_virtual256_rowtile_calls
     } == {(6144, 5120)}
+    assert chain_journal_calls["conv"]
+    assert {rows for rows, _, _ in chain_journal_calls["conv"]} == {2, 3, 4}
+    assert {
+        (channels, kernel_size)
+        for _, channels, kernel_size in chain_journal_calls["conv"]
+    } == {(10240, 4)}
+    assert chain_journal_calls["gdn"]
+    assert {rows for rows, *_ in chain_journal_calls["gdn"]} == {2, 3, 4}
+    assert {
+        (num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+        for _, num_k_heads, num_v_heads, head_k_dim, head_v_dim in chain_journal_calls["gdn"]
+    } == {(16, 48, 128, 128)}
     assert q4_dual_rowtile_silu_calls
     assert {rows for rows, _, _ in q4_dual_rowtile_silu_calls} == {2, 3, 4}
     assert {
