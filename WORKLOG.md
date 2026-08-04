@@ -206160,3 +206160,53 @@ Vulkan local sizes verbatim will close the measured gap.
 - Runtime correctness admission is complete. Commit this unit before the
   canonical tracked-clean W7900 one-prompt B3 profile against `d858cb7de`;
   natural25 and populated 512/4K gates remain mandatory before publication.
+
+## 2026-08-05 — Retain the planar-Q6 root-head runtime owner
+
+- Runtime/correctness ownership is commit `094941175`. Compare tracked-clean,
+  cached W7900 one-prompt B3 traces from `3728531ba` and `094941175` under the
+  same `--limit 1 --no-warmup --candidate-budgets 3 --roctx-markers` protocol.
+  Both retain token hash `0e257ed1...aafe`, acceptance **17/21**, and exactly
+  **8,055** dispatches.
+- The intended root work falls **55.638144 -> 48.851292 ms (-12.198%)**.
+  Proposal top-1 stage1 falls **40.606361 -> 37.126874 ms (-8.569%)** and the
+  seven target FP32 rowtile calls fall **15.031783 -> 11.724418 ms (-22.002%)**.
+  Total kernel sum falls **343.677576 -> 337.735663 ms (-1.729%)**, device span
+  **499.813 -> 477.927 ms (-4.379%)**, and complete wall **500.205 -> 478.361
+  ms (-4.367%)**. The unchanged 392-call wide-Q6 family moves **+0.435%** in
+  process noise.
+- The no-warmup first target marker moves **132.944 -> 116.897 ms**, so it is
+  not attributed as steady arithmetic. Passes 2-7 improve only **45.840 ->
+  45.553 ms (-0.627%)**. Proposal host wall falls **80.439 -> 76.260 ms
+  (-5.196%)**; the physical root kernels and unprofiled suite remain the
+  binding evidence.
+- Run the required tracked-clean W7900 ten-prompt natural25 command with true
+  AR and native B1-B3. True AR advances **23.030766 -> 23.069075 tok/s
+  (+0.166%)**; B1/B2/B3 advance **39.830391/49.848002/54.547370 ->
+  40.179035/50.812633/55.898940 tok/s (+0.875/+1.935/+2.478%)**. B3/own-AR
+  rises **2.3685x -> 2.4231x (+2.308%)**. Every full/train/heldout/category
+  scope improves, all B2/B3 prompts improve, and IDs, acceptance, GPU/CPU
+  summaries, and stage ledgers remain exact. Disclose one noisy B1 cell:
+  `code_merge_intervals` is **-0.653%**; no 30/30-row claim is made.
+- Run populated 512/128 and 4096/128 with one warmup, three measured resets,
+  persistent bulk prefill, WMMA, graph decode, and cache-only builds. Prefill
+  advances **207.022147 -> 207.864082 tok/s (+0.407%)** and **192.527666 ->
+  193.001454 (+0.246%)**; graph AR advances **22.106737 -> 22.207639 (+0.456%)**
+  and **20.925791 -> 21.017389 (+0.438%)**. All IDs are `9707`, tracked peaks
+  are byte-identical at **31.656/34.481 GiB**, and teardown returns to zero.
+- Retain and publish the byte-neutral shape-qualified root default. Canonical
+  B3 is now **55.899 tok/s / 2.4231x own AR / 17.90% below** llama.cpp Vulkan's
+  **68.082 tok/s**. Artifact:
+  `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json`
+  (SHA-256 `14397337...ba3d`). Natural candidate/comparison SHA-256s are
+  `cd75fc29...167a` / `2e8969b3...d9ee`; candidate profile kernel/marker hashes
+  are `090fbfd3...fbe` / `94d9d646...9c6`.
+- The matched arithmetic ledger now has one dominant gap: dense Q5 `ssm_out`
+  is **37.393 vs 15.119 ms** in Vulkan, but raw Q5, Q5T16, raw-Q5/Q8_1, and
+  Q5T16/Q8_1 exact representations are exhausted and closed. Compact Q4
+  gate/up+SiLU is already ahead (**76.648 vs 89.534 ms**). Wide Q6 is
+  **46.917 vs 41.486 ms**, proposal head stage1 is directionally **37.127 vs
+  31.873 ms** with differing 25/22 call counts, and target head is **11.724 vs
+  9.170 ms**. Any next high-leverage attempt must introduce a materially new
+  Q5 representation/compute mechanism; remaining exact gaps are individually
+  second-order.
