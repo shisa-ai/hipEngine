@@ -205312,3 +205312,31 @@ Vulkan local sizes verbatim will close the measured gap.
   the five passing nodes and rerun only
   `test_root_readme_benchmark_blocks_match_canonical_scoreboard`, which passes;
   a final `--check` reports synchronized blocks.
+
+## 2026-08-04 — Reject compressed Q5 `ssm_out` residency
+
+- Re-rank only the clean `c44e32ff6` B3 profile. Dense-BF16 `ssm_out` remains
+  **37.371834 ms / 336 calls** across seven cycles. The actual source-Q5 tensor
+  is K6,144/N5,120; each dense/Q5T16/raw resident is
+  **62,914,560/22,118,400/21,626,880 bytes**.
+- The cache-only GPU1 Q5T16 screen uses 11 counterbalanced samples, 50 decode
+  warmups and launches/sample, and 5 prefill warmups with 3 launches/sample.
+  Component quality passes at maximum KL **0.0004873**, minimum top-1
+  **99.8047%**, and maximum absolute delta **0.0625** versus dense. WMMA wins
+  M64/M512 **2.3732x/3.3824x**, but best c1-c4 decode reaches only
+  **0.5158x/0.5310x/0.4050x/0.4483x**. Decode binds the target verifier, so
+  Q5T16 cannot replace the dense resident.
+- The matching raw-Q5 screen exhausts the existing pack8, local32 fixed/SWAR,
+  rowtile, rowbatch4/8/16/32, and coltile2/4 controls. All raw variants are
+  BF16-bit exact to one another; quality passes at max KL **7.681e-5** and
+  top-1 **100%**. Nevertheless the best c1-c4 rows are only
+  **0.8275x/0.3613x/0.3116x/0.2819x** dense, and best M64/M512 is only
+  **0.6025x/0.5647x**. Reject both sole-resident and sidecar raw routes.
+- No kernel, registry, materialization, runtime, flag, default, or scoreboard
+  changed. T16/raw result SHA-256 values are `d26dba93...10fc` and
+  `9968d823...cf64`; harnesses are `40e3c0f0...4f` and `6303105f...09bd`.
+  Compact rejection evidence:
+  `benchmarks/results/2026-08-04-qwen36-27b-q5-ssm-out-compressed-layouts-rejected.json`.
+  Continue MTP optimization from the larger exact Q4 rowtile family; first
+  screen the already-landed compact-Q4T16 controls before implementing a new
+  compact rowtile.
