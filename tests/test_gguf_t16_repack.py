@@ -79,6 +79,7 @@ def _raw_q8_0_bytes(*, out_features: int, blocks_per_row: int) -> np.ndarray:
         ("gguf_q4_k_t16_v1", "gguf_t16_gemv"),
         ("gguf_q5_k_t16_v1", "gguf_t16_gemv"),
         ("gguf_q6_k_t16_v1", "gguf_t16_gemv"),
+        ("gguf_q6_k_t16_qmicro_planar_v1", "gguf_t16_gemv"),
         ("gguf_q8_0_t16_v1", "gguf_t16_gemv"),
     ],
 )
@@ -87,7 +88,8 @@ def test_t16_quant_keys_are_registered(name: str, family: str) -> None:
 
     assert plugin.name == name
     assert plugin.kernel_family == family
-    assert plugin.weight_storage.endswith("t16_v1")
+    assert "t16" in plugin.weight_storage
+    assert plugin.weight_storage.endswith("_v1")
 
 
 def test_q5_k_tile16_roundtrips_raw_bytes_and_dequantizes_equivalently() -> None:

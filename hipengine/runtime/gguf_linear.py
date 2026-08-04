@@ -85,6 +85,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q6_K_T16,
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
@@ -185,6 +186,7 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q6_k": 256,
     # Dense T16 WMMA consumers keep the source quant's K-block alignment.
     "gguf_q6_k_t16_v1": 256,
+    "gguf_q6_k_t16_qmicro_planar_v1": 256,
     "gguf_q8_0_t16_v1": 32,
 }
 
@@ -486,6 +488,19 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     ),
     (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_f32_out"),
+        "t16",
+    ),
+    (
+        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        GGUF_ACTIVATION_BF16,
+        GGUF_OUTPUT_BF16,
+    ): GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        ),
         "t16",
     ),
     (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
@@ -3268,7 +3283,6 @@ def _dispatch_can_use_t16_wmma_prefill(
         and dispatch.abi == "t16"
         and dispatch.key.variant.startswith("t16_gemv_decode_")
         and dispatch.key.quant in _WMMA_PREFILL_QUANT_BLOCKS
-        and dispatch.key.quant.endswith("_t16_v1")
         and _wmma_prefill_shape_supported(dispatch.key.quant, in_features)
     )
 

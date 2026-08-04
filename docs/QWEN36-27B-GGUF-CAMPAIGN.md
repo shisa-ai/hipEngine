@@ -1178,6 +1178,30 @@ natural25 headline; the campaign remains at **52.652 tok/s / 2.4291x own AR /
 22.66% below Vulkan**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json`.
 
+The next admitted arithmetic candidate replaces the same 56 wide Q6T16
+residents with byte-neutral planar-qmicro records; it does not add another
+sidecar to the already 32.892-GiB route. On GPU1 actual weights, all rows-2/3/4
+FFN-down and QKV leaves are BF16-bit exact and improve **1.146-1.272x** and
+**1.181-1.264x**, respectively. Weighting row 4 by the retained 224/168-call
+profile projects about **12.67 ms / 2.57%** complete-wall recovery.
+
+The complete replacement contract also clears before runtime admission. C1
+improves **1.424x/1.598x**, while an aligned-record WMMA decoder improves
+M64/M512 by **1.143x/1.163x** for FFN-down and **1.178x/1.172x** for QKV; all
+six cells are exact and win 11/11 pairs. The first scalar-record WMMA attempt
+lost and is superseded. gfx1100 now selects the distinct four-axis qmicro key
+through a package capability; root lm-head, narrow V, gfx1151, and explicit
+legacy plans retain legacy T16. Rows 5-6 fail closed to exact per-row planar
+execution rather than an unmeasured large rowtile.
+
+The adjacent bundle passes **145 tests with 4 environment skips**, actual
+materialization/free confirms unchanged **73,113,600 + 43,008,000-byte** sample
+payloads, cached tracing names c1/row4/WMMA with zero scratch, and the complete
+W7900 B1-B3 transaction/state/provider/teardown gate passes. This is still a
+correctness/admission checkpoint: run the binding hermetic B3 profile against
+`064219ec6`, then natural25 and populated 512/4K before changing the canonical
+**52.652 tok/s / 22.66%-below-Vulkan** status.
+
 ---
 
 ## 7. Prioritized execution plan

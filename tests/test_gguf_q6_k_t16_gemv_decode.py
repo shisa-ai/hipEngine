@@ -21,12 +21,18 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1,
     gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out,
     gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out,
+    gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     plan_gguf_q6_k_t16_gemv_build,
     register_gguf_q6_k_t16_gemv_kernels,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
-from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16
+from hipengine.quant.gguf_t16 import (
+    repack_gguf_q6_k_tile16,
+    repack_gguf_q6_k_tile16_qmicro_planar,
+)
 from tests._gguf_synthetic_weights import make_q6_k_weight
 
 
@@ -118,6 +124,30 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_v1",
         variant="t16_gemv_rowtile_col8_bf16_f32_out",
     ) is t16_mod.gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_decode_bf16_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_rowtile_bf16_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_rowtile_col8_bf16_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_wmma_prefill_bf16_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
     dense_wmma = getattr(
         t16_mod,
         "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
@@ -278,6 +308,125 @@ def test_q6_t16_rowtile_col8_is_bit_exact_to_t16_decode(
         in_features,
         out_features,
         out_dtype,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_c1_is_bit_exact_to_legacy(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 1, 512, 256
+    rng = np.random.default_rng(0x6A10)
+    qweight = make_q6_k_weight(out_features, in_features)
+    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    expected = _run_single(
+        t16_mod.gguf_q6_k_t16_gemv_decode_bf16_bf16_out,
+        x,
+        legacy_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6])
+def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
+    rows,
+    q6_t16_library,
+) -> None:
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(0x6A11 + rows)
+    qweight = make_q6_k_weight(out_features, in_features)
+    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    expected = _run_single(
+        gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out,
+        x,
+        legacy_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_wmma_is_bit_exact_to_legacy_wmma(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 17, 512, 256
+    rng = np.random.default_rng(0x6A17)
+    qweight = make_q6_k_weight(out_features, in_features)
+    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    expected = _run_single(
+        t16_mod.gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
+        x,
+        legacy_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
         q6_t16_library,
     )
 

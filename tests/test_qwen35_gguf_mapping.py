@@ -16,6 +16,7 @@ from hipengine.loading.qwen35_gguf import (
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_GGUF_Q6_K_T16,
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_Q4_K_PACK8,
     plan_qwen35_gguf_materialization,
 )
@@ -138,8 +139,14 @@ def test_qwen36_dense_decode_repack_replaces_only_wide_rank2_q6() -> None:
 
     legacy = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
     plan = plan_qwen35_gguf_materialization(model_map, decode_repack=True)
+    qmicro_plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q6_qmicro_planar=True,
+    )
     legacy_by_slot = {spec.slot_path: spec for spec in legacy.specs}
     plan_by_slot = {spec.slot_path: spec for spec in plan.specs}
+    qmicro_by_slot = {spec.slot_path: spec for spec in qmicro_plan.specs}
 
     wide_slots = {
         spec.slot_path
@@ -157,6 +164,15 @@ def test_qwen36_dense_decode_repack_replaces_only_wide_rank2_q6() -> None:
         assert spec.allocation_names == ("tiles",)
         assert legacy_by_slot[slot].layout == LAYOUT_DENSE_BF16
         assert legacy_by_slot[slot].allocation_names == ("raw",)
+        assert qmicro_by_slot[slot].layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+        assert qmicro_by_slot[slot].quant_key == "gguf_q6_k_t16_qmicro_planar_v1"
+        assert qmicro_by_slot[slot].allocation_names == ("tiles",)
+
+    assert sum(
+        spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+        for spec in qmicro_plan.specs
+    ) == 56
+    assert qmicro_plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16
 
     narrow_v = [
         spec

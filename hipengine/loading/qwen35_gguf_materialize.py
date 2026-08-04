@@ -11,6 +11,7 @@ from typing import Iterable, Mapping
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
@@ -28,6 +29,7 @@ from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_t
 from hipengine.quant.gguf_t16 import (
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
+    repack_gguf_q6_k_tile16_qmicro_planar,
     repack_gguf_q8_0_tile16,
 )
 from hipengine.quant.gguf_x8 import repack_gguf_q4_k_x8, repack_gguf_q5_k_x8, repack_gguf_q6_k_x8
@@ -41,6 +43,7 @@ LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
 LAYOUT_GGUF_Q4_K_X8 = "gguf_q4_k_x8_v1"
 LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
 LAYOUT_GGUF_Q6_K_T16 = "gguf_q6_k_t16_v1"
+LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR = "gguf_q6_k_t16_qmicro_planar_v1"
 LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
 LAYOUT_GGUF_Q5_K_X8 = "gguf_q5_k_x8_v1"
 LAYOUT_GGUF_Q6_K_X8 = "gguf_q6_k_x8_v1"
@@ -180,6 +183,7 @@ def plan_qwen35_gguf_materialization(
     model_map: Qwen35GGUFModelMap,
     *,
     decode_repack: bool | None = None,
+    dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFMaterializationPlan:
     requested_decode_repack = gguf_decode_repack_enabled(decode_repack)
     contract_q3_f32_linear = any(
@@ -202,6 +206,7 @@ def plan_qwen35_gguf_materialization(
             tensor,
             decode_repack=use_decode_repack,
             contract_f32_linear=contract_q3_f32_linear,
+            dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
         )
         for slot, tensor in model_map.root_tensors.items()
     }
@@ -210,6 +215,7 @@ def plan_qwen35_gguf_materialization(
             layer,
             decode_repack=use_decode_repack,
             contract_f32_linear=contract_q3_f32_linear,
+            dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
         )
         for layer in model_map.layers
     )
@@ -269,7 +275,17 @@ def materialize_qwen35_gguf_weights(
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=decode_repack)
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=decode_repack,
+        dense_q6_qmicro_planar=bool(
+            backend_package_capability(
+                backend,
+                "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+                False,
+            )
+        ),
+    )
     selected = None if selected_slots is None else set(selected_slots)
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
     try:
@@ -325,6 +341,7 @@ def _plan_layer(
     *,
     decode_repack: bool,
     contract_f32_linear: bool = False,
+    dense_q6_qmicro_planar: bool = False,
 ) -> dict[str, Qwen35GGUFWeightSpec]:
     return {
         slot: _spec_for_tensor(
@@ -332,6 +349,7 @@ def _plan_layer(
             tensor,
             decode_repack=decode_repack,
             contract_f32_linear=contract_f32_linear,
+            dense_q6_qmicro_planar=dense_q6_qmicro_planar,
         )
         for slot, tensor in layer.tensors.items()
     }
@@ -465,10 +483,16 @@ def plan_qwen35_gguf_weight_spec(
     tensor: GGUFTensorInfo,
     *,
     decode_repack: bool = False,
+    dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFWeightSpec:
     """Plan one canonical GGUF weight for AR or draft-model materialization."""
 
-    return _spec_for_tensor(slot_path, tensor, decode_repack=bool(decode_repack))
+    return _spec_for_tensor(
+        slot_path,
+        tensor,
+        decode_repack=bool(decode_repack),
+        dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
+    )
 
 
 def _spec_for_tensor(
@@ -477,6 +501,7 @@ def _spec_for_tensor(
     *,
     decode_repack: bool,
     contract_f32_linear: bool = False,
+    dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
@@ -601,8 +626,16 @@ def _spec_for_tensor(
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
                 source=tensor,
-                quant_key="gguf_q6_k_t16_v1",
-                layout=LAYOUT_GGUF_Q6_K_T16,
+                quant_key=(
+                    "gguf_q6_k_t16_qmicro_planar_v1"
+                    if dense_q6_qmicro_planar
+                    else "gguf_q6_k_t16_v1"
+                ),
+                layout=(
+                    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+                    if dense_q6_qmicro_planar
+                    else LAYOUT_GGUF_Q6_K_T16
+                ),
                 allocation_names=("tiles",),
             )
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
@@ -914,6 +947,7 @@ def _materialize_spec(
         LAYOUT_GGUF_Q4_K_X8,
         LAYOUT_GGUF_Q5_K_T16,
         LAYOUT_GGUF_Q6_K_T16,
+        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
         LAYOUT_GGUF_Q8_0_T16,
         LAYOUT_GGUF_Q5_K_X8,
         LAYOUT_GGUF_Q6_K_X8,
@@ -926,6 +960,10 @@ def _materialize_spec(
             packed = repack_gguf_q5_k_tile16(raw)
         elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
             packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+        elif spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR:
+            packed = repack_gguf_q6_k_tile16_qmicro_planar(
+                raw if raw.ndim == 3 else raw[None, ...]
+            )
         elif spec.layout == LAYOUT_GGUF_Q5_K_X8:
             packed = repack_gguf_q5_k_x8(raw)
         elif spec.layout == LAYOUT_GGUF_Q6_K_X8:
@@ -1027,6 +1065,7 @@ __all__ = [
     "LAYOUT_GGUF_Q5_K_T16",
     "LAYOUT_GGUF_Q5_K_X8",
     "LAYOUT_GGUF_Q6_K_T16",
+    "LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR",
     "LAYOUT_GGUF_Q6_K_X8",
     "LAYOUT_GGUF_Q8_0_T16",
     "LAYOUT_Q4_K_PACK8",
