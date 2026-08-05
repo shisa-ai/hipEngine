@@ -204046,3 +204046,29 @@ Vulkan local sizes verbatim will close the measured gap.
   Runtime, kernel, benchmark, and test sources match `3e836edea`; the artifact
   records this precise qualification rather than claiming a globally clean
   worktree. Advance immediately to cumulative SH-D1 attribution/parity.
+
+## 2026-08-06 — Refresh cumulative SH-D1 512 attribution
+
+- Ran the SH-C0 role collector at measured commit `1a4c6b9ce` for the 512/128
+  row only: one discarded warmup plus three eager measurements, a cached-only
+  eight-token `rocprofv3` kernel/HIP-API/ROCTX role trace, and 10-ms whole-GTT.
+  The sole tracked source difference is unrelated `docs/ROCM-AI.md`; runtime,
+  kernel, benchmark, and test sources match the commit.
+- Exact eager samples are **53.535/53.501/53.549 tok/s** (median **53.535**) or
+  **18.6792 ms/token**. Tracked peak/close are **21.4800 GiB / 0 B** and
+  whole-GTT peak is **21.9160 GiB**, unchanged from SH-C0 at this shape.
+- Profiled GPU falls **17.5958 -> 17.3591 ms/token (-0.2367 ms)** versus SH-C0.
+  Selected-down falls **1.6028 -> 1.3933 ms/token (-0.2095 ms)**, directly
+  confirming the retained Q5 leaf. The other leading roles remain GDN input
+  **4.1132 ms**, selected Q4 gate/up **2.3154 ms**, Q6 lm-head **1.8310 ms**,
+  full-attention core **1.5809 ms**, and GDN output **1.4465 ms**.
+- Cumulative SH-D1 still fails both stop targets: current **18.6792 ms/token**
+  is **1.4868 ms/token** short of C1 and **3.2132 ms/token** short of fork-F16
+  parity. GDN input and selected-Q4 exact ladders are closed; prior dense-Q8
+  col8 and LM-head tile-max evidence is below admission. The next materially
+  open leaf is exact Q6T16 c1 LM-head tile8 at K2048/N248320.
+- Freeze its gate before implementation: full FP32 logits/top-1 exact, named
+  cached scratch-free trace, complete resident matrix traffic, and either
+  **>=1.15x** projection speedup or **>=0.5 ms/token** projection before any
+  full-model route. Publish the checkpoint as
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json`.

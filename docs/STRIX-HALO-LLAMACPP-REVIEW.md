@@ -336,7 +336,7 @@ tracked/owned comparison.
 | ID | Priority | Hypothesis and experiment | Promotion / stop rule |
 | --- | --- | --- | --- |
 | **SH-C0 — matched attribution freeze** | **Completed 2026-08-05** | Role-resolved HIP correlation traces, separate fork F16/Q8_0 logger runs, 10-ms same-scope GTT, and owned allocation/lifetime census now cover 512/4K/32K/64K. | No production change. GDN input, selected experts, long-context attention, and 4,096-row scratch all clear admission; see the execution update and artifact. |
-| **SH-D1 — exact row-1 weight-kernel redesign** | **P0; Q5 tile8 retained, Q6/GDN/selected-Q4 ladders closed 2026-08-06; cumulative gate next** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. GDN tops out at **1.0648x** and selected Q4 at **1.1466x**, both below admission. Exact selected-Q5 tile8 passes; committed revision `3e836edea` confirms **34.876 us / 1.1715x / projected 0.2212 ms/token** and 512/128 eager **53.027 -> 53.557 tok/s (+0.998%)**; Q6 tile8/tile4 miss and are removed. Proceed to cumulative attribution/parity headroom. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
+| **SH-D1 — exact row-1 weight-kernel redesign** | **P0; Q5 tile8 retained, Q6/GDN/selected-Q4 ladders closed 2026-08-06; Q6 lm-head tile8 next** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. GDN tops out at **1.0648x** and selected Q4 at **1.1466x**, both below admission. Exact selected-Q5 tile8 passes; committed revision `3e836edea` confirms **34.876 us / 1.1715x / projected 0.2212 ms/token** and 512/128 eager **53.027 -> 53.557 tok/s (+0.998%)**; Q6 tile8/tile4 miss and are removed. Cumulative 512 decode is **53.535 tok/s**, still **1.487 ms/token** short of C1; screen exact Q6T16 lm-head tile8 next. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
 | **SH-M1 — query-row Pareto screen** | **Completed/rejected 2026-08-05** | The explicit 4,096 -> 1,024 query-row A/B saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, with exact cleanup and neutral decode. | Reject q1024 and close 2,048/768 row-only retries: q1024 changes exact state/logits at 4K+ and loses **1.603%-11.835%** prefill. Keep q4096. |
 | **SH-M2 — exact scratch-liveness aliases** | P0, parallel with D1 | Keep every 4,096-row execution shape fixed. Build a route/stage liveness map for the currently `dedicated` scratch, beginning with the 256-MiB `moe_down_out_f32` and three 128-MiB owners; alias only fields proven non-overlapping across the isolated AOTriton stream and linear/full-attention/MoE phases. | Require byte-exact logits/hidden/Conv/GDN/KV state at 512/4K/32K/64K, zero tracked close delta, <=**1%** prefill/decode loss, and >=**1.0 GiB** tracked plus same-direction whole-GTT saving. Do not claim fork memory parity until the exact alias and strict-KV stack beats both fork rows. |
 | **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |
@@ -471,6 +471,26 @@ regresses to **44.817 us / 0.9325x**. Both are exact, but their wrappers, C ABI
 symbols, registry keys, exports, and tests are removed. Production Q6 remains
 unchanged. SH-D1 now advances to cumulative attribution and remaining measured
 parity headroom rather than stopping at this retained leaf.
+
+#### SH-D1 cumulative 512 checkpoint
+
+The post-retention role refresh is frozen in
+[`2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json).
+Non-profiled 512/128 is **53.535 tok/s / 18.6792 ms/token**, exact across all
+three runs, while cached role attribution is **17.3591 ms/token** over the same
+628 dispatches/token. Selected-down falls **1.6028 -> 1.3933 ms/token**, a
+**0.2095-ms** role saving that accounts for most of the **0.2367-ms** profiled
+total reduction versus SH-C0.
+
+This still misses C1 by **1.4868 ms/token** and fork-F16 parity by **3.2132
+ms/token**. The largest roles remain GDN input (**4.1132 ms**) and selected Q4
+gate/up (**2.3154 ms**), but their exact ladders are closed under admission.
+The next untested ownership point is the **1.8310-ms/token** Q6T16 lm-head:
+screen a c1 K2048/N248320 tile8 owner once, preserving each FP32 logit's exact
+K/FMA/reduction/store order and charging the complete 417-MiB-class matrix.
+The older producer-owned tile-max fusion saves only **6.853 us** and is below
+SH-D1 admission by itself. Do not run a full-model route unless tile8 reaches
+**1.15x** or projects **0.5 ms/token**.
 
 ### Campaign guardrails and closed retries
 

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [diagnostic SH-D1 cumulative 512 checkpoint; continue] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV: after retained Q5 tile8, exact 512/128 is **53.535 tok/s / 18.6792 ms/token**, selected-down attribution falls **1.6028 -> 1.3933 ms/token**, and total profiled GPU falls **17.5958 -> 17.3591 ms/token**, but C1 remains **1.4868 ms/token** away; screen the open exact Q6T16 lm-head tile8 owner next; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json`.
+
 - [retained SH-D1 selected-down Q5 tile8; committed same-revision checkpoint] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / c1/top8 Q5T16 K512->N2048: exact tile8 confirms **40.855 -> 34.876 us** (**1.1715x**, projected **0.2212 ms/token**) and 512/128 eager **53.027 -> 53.557 tok/s (+0.998%)** at implementation `3e836edea`, with complete 512/4K/32K/64K plus 18-prompt natural/heldout state exactness; gfx1151 defaults tile8, while Q6 tile8/tile4 miss admission and are removed; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json`.
 
 - [diagnostic rejected SH-D1 selected-Q4 tile ladder, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / c1/top8 Q4T16 gate/up+SiLU: exact tile8 moves **57.824 -> 50.429 us** (**1.1466x**, projected **0.2958 ms/token**) but misses the frozen 1.15x gate by **0.292%** and the 0.5-ms alternative; tile4 reaches only **52.915 us / 1.0915x**; remove both transient owners and advance to Q5/Q6 selected down; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-q4-tile-ladder-rejected.json`.
