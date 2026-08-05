@@ -207003,3 +207003,44 @@ Vulkan local sizes verbatim will close the measured gap.
   node and the changed rounded-boundary file were rerun; no broad suite repeat
   was necessary. Commit this correctness unit before the tracked-clean W7900 B3
   marker/kernel profile against the selective `4bbe8eef8` source baseline.
+
+## 2026-08-05 — Retain rounded dense next-RMSNorm physical default; topline unchanged
+
+- The tracked-clean `fda35418e` W7900 B3 trace preserves the exact **17/21**
+  acceptance ledger and executes **441** rounded cross-layer leaves. Against the
+  immediate selective `4bbe8eef8` baseline, target host/kernel move
+  **364.984885/257.289449 -> 349.140794/256.720748 ms
+  (-4.341%/-0.221%)** and complete marker/kernel move
+  **448.386136/313.140897 -> 431.236057/312.507349 ms
+  (-3.825%/-0.202%)**. Net target/complete dispatches fall **6070 -> 5853** and
+  **6807 -> 6590** (**-217**): all 63 inter-layer boundaries use the rounded
+  owner, while the 31 Q6 boundaries each lose one node over seven target passes
+  and the Q4 producer substitution is launch-neutral. Peak remains exactly
+  **32,723,577,074 bytes** and teardown returns to zero. Comparison/suite/kernel
+  SHA-256 values are `347cffdb...40c9`, `0bbe416c...6294`, and
+  `d7e77e5f...74d2`.
+- The binding ten-prompt natural25 packet keeps every token, acceptance count,
+  GPU/CPU decision, stage reconciliation, state transaction, peak byte, and
+  teardown exact. Immediate B1/B2/B3 moves
+  **43.922179/55.196239/59.950696 -> 43.741013/55.332321/60.012224 tok/s
+  (-0.412%/+0.247%/+0.103%)**. B1 prompt/scope ranges are
+  **-1.255%..+0.540% / -0.727%..-0.124%** and target verify is **+0.335%**;
+  B2 is route-inactive N2 timing variance; B3 prompt/scope ranges are
+  **-0.661%..+1.060% / -0.078%..+0.431%** and target verify is **-0.090%**.
+  True AR cannot execute the route and its **+0.238%** movement is noise. Peak
+  is byte-identical at **32,723,997,740 bytes** and current allocation is zero
+  after close. Candidate/comparison SHA-256 values are `3e57c22e...7d41` and
+  `74015aaf...943`.
+- Retain the exact gfx1100 route under the physical-sub-window/dispatch policy,
+  but do not advance the broad headline. Candidate B3 is **60.012 tok/s**, or
+  **0.414%** below the canonical **60.262 tok/s / 2.4991x own AR / 11.49%
+  below Vulkan** packet. Publish
+  `benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json`
+  plus benchmark README/changelog, campaign, NativeSpecCycle, and kernel-catalog
+  updates.
+- Re-rank launch topology next. The retained shared-page full-attention graph
+  already batches four-row attention and gate arithmetic, but still executes
+  **448 scalar KV writes** in the seven-pass B3 target window. An exact
+  shared-cache batch append can remove three writes per 16 full-attention layers
+  per pass, a ceiling of **336 dispatches**, without changing the BF16
+  conversion or page-address arithmetic. Screen this on GPU1 before source RED.

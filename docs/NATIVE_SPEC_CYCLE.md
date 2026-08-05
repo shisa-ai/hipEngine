@@ -178,22 +178,33 @@ rollback. It removes the final seven snapshot launches and **635,437,056 peak
 bytes**, saves **1.593 ms** in the direct profiled family, and improves natural25
 target verify **0.140%/0.296%/0.506%** at B1/B2/B3.
 
-The current selective default then folds the already-rounded FFN-down result and
+The next selective default folds the already-rounded FFN-down result and
 standalone BF16 residual add into registered planar-Q6 rows 2-3 and compact-Q4
 rows 2-4 producers. The exact projection-plus-add fallback remains available.
 The all-row policy is rejected because planar-Q6 row4 raises its profiled family
 **18.46%** and makes natural B3 **1.341%** slower. The selective profile removes
 **224 B3 dispatches** and improves complete marker **0.677%** plus target host
 **0.265%**. Natural B1/B2 improve **0.825%/0.213%**; mixed B3 is **0.214%**
-lower, so neither this nor the preceding sub-percent complete-wall variance
-creates a new topline. The canonical clean packet remains
+lower.
+
+The current exact physical default leaves FFN-down on its ordinary owner and
+instead fuses the explicitly rounded residual add with the following layer's
+RMSNorm across all 63 native N1 B1/B3 boundaries. B2's N2 graph and every
+unsupported policy/key/backend retain the unfused chain. GPU1 actual Q6/Q4
+boundaries preserve both BF16 surfaces and save **2.543-4.320 us/layer**. The
+W7900 B3 trace removes a net **217 graph nodes**, cuts target host/kernel
+**4.341%/0.221%**, and cuts complete marker/kernel **3.825%/0.202%**. Immediate
+natural B1/B2/B3 moves **-0.412%/+0.247%/+0.103%** to
+**43.741/55.332/60.012 tok/s**; B2 cannot execute the route and the mixed packet
+creates no new topline. The canonical clean packet remains
 **43.792/55.254/60.262 tok/s**, with selected B3 at **2.4991x** own AR and
 **11.49% below** llama.cpp Vulkan. Every transaction gate, including an explicit
 failure after selected-state commit, remains exact. These dense results are
 separate from the accuracy-traded llama-compat scoreboard row. Artifacts:
 [`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
-[`producer-folded rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json), and
-[`selective FFN-down residual fusion`](../benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json).
+[`producer-folded rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
+[`selective FFN-down residual fusion`](../benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json), and
+[`rounded next-RMSNorm`](../benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json).
 
 ### N2 — device acceptance and selected-state commit
 

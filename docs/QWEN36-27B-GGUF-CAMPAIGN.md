@@ -1429,13 +1429,34 @@ under the physical-sub-window policy but does not replace the canonical
 **60.262 tok/s / 11.49%-below-Vulkan** headline. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json`.
 
-The next distinct exact boundary is already component-positive: leave each
-FFN-down projection unchanged and replace standalone rounded add plus next-layer
-RMSNorm with one rounded `add+rmsnorm` owner. On GPU1 actual Q6/Q4 weights, all
-rows 2-4 preserve both residual and normalized BF16 bits and save
-**2.543-4.320 us per layer** versus the current selective route, with
-**22-30/31** paired wins. Admit this two-launch successor to RED before another
-arithmetic residual is reopened.
+The rounded successor is now the retained exact physical default. The explicit
+gfx1100 `add+rmsnorm/gguf_f32_weight/rounded_bf16_out` owner leaves FFN-down
+unchanged, rounds the BF16 residual sum exactly as the standalone add, and feeds
+that rounded value through the unchanged RMSNorm tree. It owns all 63
+inter-layer boundaries only in native N1 B1/B3 rows2/4; B2's N2 graph, c1,
+prefill, F32 residuals, unsupported policies/backends, and every key miss retain
+projection -> add -> RMSNorm. GPU1 actual Q6/Q4 boundaries preserve both output
+surfaces and save **2.543-4.320 us/layer**, with **22-30/31** paired wins.
+
+The tracked-clean W7900 B3 profile executes **441** rounded leaves and removes
+**217 graph dispatches**. Target host/kernel move **364.985 -> 349.141 ms
+(-4.341%)** and **257.289 -> 256.721 ms (-0.221%)**; complete marker/kernel move
+**448.386 -> 431.236 ms (-3.825%)** and **313.141 -> 312.507 ms (-0.202%)**.
+The exact **17/21** ledger, peak bytes, and teardown are unchanged. Natural25 is
+mixed against the immediate selective route: B1/B2/B3 move
+**43.922/55.196/59.951 -> 43.741/55.332/60.012 tok/s
+(-0.412%/+0.247%/+0.103%)**. B2 cannot execute the route; B1 aggregate scopes
+are negative, and B3 prompt/scope timing straddles zero. Retain the exact
+physical/launch contraction without replacing canonical **60.262 tok/s /
+11.49%-below-Vulkan**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json`.
+
+The refreshed launch census next targets full-attention KV append. Native B3
+already batches attention and gate work over four rows but still submits four
+shared-cache BF16 KV writes per full-attention layer. A shared-page batch append
+can preserve the same conversion/address arithmetic while removing up to
+**336 dispatches** in the one-prompt seven-pass B3 trace; screen that boundary
+before reopening any closed arithmetic family.
 
 ---
 
@@ -1450,8 +1471,8 @@ arithmetic residual is reopened.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; producer-folded rollback removes 7 launches/635,437,056 peak bytes, and selective FFN-down residual fusion removes another 224 B3 launches with a 0.677% marked-wall win; mixed natural B3 does not replace the canonical 43.792/55.254/60.262 tok/s packet |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; selective `4bbe8eef8` is the exact default while canonical B3 remains 60.262 tok/s / 11.49% below Vulkan; next admit the exact rounded add+next-RMSNorm successor that saves 2.543-4.320 us/layer on GPU1 |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm now removes 217 B3 graph nodes and cuts target host/kernel plus complete marker/kernel, while mixed natural25 leaves the canonical 43.792/55.254/60.262 tok/s packet unchanged |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; next screen shared-page verifier KV append batching for up to 336 fewer one-prompt B3 dispatches |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
