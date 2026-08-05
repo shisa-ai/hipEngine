@@ -207307,3 +207307,44 @@ Vulkan local sizes verbatim will close the measured gap.
   scalar production topology and require target host plus complete marked wall
   to improve before natural25; do not infer the runtime result from the strong
   GPU1 screen.
+
+## 2026-08-05 — Reject alpha/beta plus snapshot-Conv runtime ownership
+
+- Profile tracked-clean correctness commit `95fff80d3` against the immutable
+  `fda35418e` scalar-alpha/beta plus snapshot-Conv baseline on the W7900. The
+  one-prompt natural B3 workload retains exact greedy IDs, GPU/CPU acceptance,
+  **17/21** accepted proposals, cycle ledger `[3,3,2,3,3,0,3]`, byte-identical
+  **32,723,577,074-byte** peak allocation, and zero live bytes after teardown.
+- The intended physical contraction succeeds. Two scalar dense-F32 projections
+  plus snapshot chain-Conv fall **1,008 launches / 5.469564 ms -> 336 /
+  3.221938 ms (-41.09%)**, removing **672** dispatches. Target dispatches fall
+  **5,853 -> 5,181** and target kernels improve **256.720748 -> 254.112820 ms
+  (-1.016%)**. Complete dispatches fall **6,590 -> 5,918** and complete kernels
+  improve **312.507349 -> 309.745421 ms (-0.884%)**.
+- The frozen complete-path gate fails. Target host rises **349.140794 ->
+  351.048748 ms (+0.546%)**, and complete marked wall rises **431.236057 ->
+  438.260045 ms (+1.629%)**. The profiler-suite sample correspondingly moves
+  **55.649 -> 54.756 tok/s (-1.605%)**. Do not move the gate after measurement
+  and do not spend natural25 or populated-AR time on an ineligible route.
+  Suite/kernel/marker/copy/comparison SHA-256 values are
+  `6bbd2cd8...35207`, `f9717a3b...ecd2c`, `cc4cff9f...0dc`,
+  `a473c32e...dccae`, and `9bbae91e...ab289`.
+- Retain the exact gfx1100 registry primitive, wrapper/body, rows1-4 scalar/CPU
+  gate, named trace, and explicit gfx1151 exclusion. Remove the generic GGUF
+  dispatch helper and all runner `conv_ready` ownership so production again
+  executes two scalar alpha/beta leaves plus the registered snapshot Conv.
+  Both runtime files are byte-identical to parent `7a821bfb9`. Replace positive
+  ownership tests with a primitive-only closure contract and restore the real
+  transaction census expectation for snapshot Conv.
+- Post-unroute validation on GPU1 passes **122/122** across the focused
+  primitive, dense pair, chain journal, GGUF linear dispatch/cache, and gfx1151
+  bundle. Per focused-repair policy, do not repeat the multi-minute W7900
+  transaction: routed candidate execution was exact, while final runtime bytes
+  are the already-gated scalar topology. Targeted lint/compile/diff checks are
+  recorded with the atomic rejection commit.
+- Publish rejected-runtime artifact
+  `benchmarks/results/2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json`
+  at SHA-256 `f7477f75...caf1b`. Canonical B3 remains **60.262 tok/s / 2.4991x
+  own AR / 11.49% below Vulkan**. Re-rank only the restored three-leaf trace;
+  reopen this family only with a materially different schedule that improves
+  both target host and complete marked wall.

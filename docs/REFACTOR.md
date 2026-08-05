@@ -28,6 +28,20 @@ should be removed or collapsed.
   next Qwen3.6 kernel-catalog cleanup, delete the registry key, wrapper/export,
   body, gfx1151 exclusion, and dedicated test together.
 
+## Qwen3.6 alpha/beta plus snapshot-Conv composite primitive
+
+- Added 2026-08-05 after the exact rows1-4 primitive passed scalar/CPU oracles,
+  all-48-layer GPU1 component timing, cache-only tracing, and the W7900 B1-B3
+  transaction. Its production route is removed: although the three-leaf family
+  improves **41.09%** and 672 dispatches disappear, target host and complete
+  marked wall regress **0.546%/1.629%**.
+- Retain only the gfx1100 registry wrapper/body and direct regression fixture
+  while investigating a materially different graph/scheduling representation.
+  Reopen runtime ownership only if a tracked-clean W7900 trace improves both
+  target host and complete marked wall. If no such consumer is admitted by the
+  next Qwen3.6 kernel-catalog cleanup, delete the registry key, wrapper/export,
+  body, gfx1151 exclusion, and dedicated test together.
+
 ## Qwen3.6 dense Q4T16 FFN dual residency
 
 - Added 2026-08-05 for the retained exact dense-verifier FFN route. Exactly 64

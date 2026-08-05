@@ -1481,8 +1481,26 @@ Do not run natural25 or populated AR. Remove generic pair dispatch ownership and
 restore the two scalar leaves; retain only the measured primitive. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json`.
 
+A materially different alpha/beta plus snapshot-Conv composite is likewise
+correct but runtime-rejected. Its gfx1100 one-grid primitive preserves both
+scalar dense-F32 reduction trees and the registered rollback-safe Conv body.
+All 48 real layers are bit-exact at rows1-4; GPU1 event medians improve
+**2.028x/1.949x/1.892x/1.731x**, synchronized wall agrees, and every cell wins
+**21/21**. Routed commit `95fff80d3` passes the complete W7900 B1-B3 state and
+output transaction.
+
+Tracked-clean B3 profiling cuts the three-leaf family **1,008 / 5.469564 ms ->
+336 / 3.221938 ms (-41.09%)**, removes **672** target/complete dispatches, and
+improves target/complete kernel sums **1.016%/0.884%**. The frozen complete-path
+gate still fails: target host rises **0.546%** and complete marked wall rises
+**1.629%**. Do not run natural25 or populated AR. Remove generic dispatch and
+runner ownership; production again uses two scalar projections plus snapshot
+Conv. Retain only the measured primitive. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json`.
+
 Re-rank the refreshed scalar-write baseline rather than reopening a closed
-arithmetic family or treating either rejected 336-dispatch projection as savings.
+arithmetic family or treating any rejected launch contraction as retained
+savings.
 
 ---
 
@@ -1497,8 +1515,8 @@ arithmetic family or treating either rejected 336-dispatch projection as savings
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default; shared-KV and dense-F32 alpha/beta batching are primitive-only after each removes 336 dispatches but fails complete marked wall; canonical 43.792/55.254/60.262 tok/s unchanged |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank the scalar-write trace without counting either rejected 336-dispatch projection |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default; shared-KV, dense-F32 alpha/beta, and alpha/beta+Conv contractions remain primitive-only after their complete marked-wall gates fail; canonical 43.792/55.254/60.262 tok/s unchanged |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank the restored three-leaf trace without counting any rejected launch contraction |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
