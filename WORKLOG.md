@@ -204342,3 +204342,80 @@ uv run pytest -q tests/test_kv_dispatch.py tests/test_kvcache_policy.py \
   tests/test_qwen35_resident_batch_layout.py --tb=short
 .venv/bin/python scripts/check_fixtures.py
 ```
+
+## 2026-08-06 — Close SH-A1 page-internal head-major decode screen
+
+- Freeze the bounded prerequisite before any persistent-cache rewrite: compare
+  current BF16 `[physical_block, token, kv_head, D]` against page-internal
+  `[physical_block, kv_head, token, D]` using the production Qwen shape
+  (16 Q heads, 2 KV heads, D256, block/split 256). The transient converter
+  consumes complete `KVLiveSpans` base/count/position/eviction metadata. The
+  candidate grouped-GQA producer changes only K/V physical addressing and uses
+  the unchanged BF16 sigmoid-gated reducer. No runner, graph, compactor, or
+  persistent writer plumbing is changed.
+- Follow RED/GREEN. RED is **2 expected collection failures** because the
+  bounded screen module does not exist. GREEN is **2 passed**, including native
+  dense `[0,1,2]`, permuted `[2,0,3]`, and stale/evicted-unreferenced
+  `[4,0,3]` page maps at context 513. Every copy and current-versus-candidate
+  BF16 output has zero bit mismatches; max absolute error versus NumPy is
+  **1.49e-8**. The timed 512/4K/32K/64K outputs are also byte-exact.
+- Run five warmups and 21 HIP-event repetitions for append, page conversion,
+  current attention+reducer, candidate attention+reducer, and both complete
+  composed scopes. The candidate loses before conversion: current versus page-
+  head attention+reducer is **0.0650 -> 0.1131 ms (0.575x)** at 512,
+  **0.0693 -> 0.1196 ms (0.579x)** at 4K, **0.4563 -> 0.6033 ms (0.756x)**
+  at 32K, and **0.8406 -> 1.0554 ms (0.797x)** at 64K.
+- Charge the same current append and the complete live-cache copy as required.
+  Current versus candidate composed wall is **0.0669 -> 0.1094 ms (0.612x)**,
+  **0.0718 -> 0.1722 ms (0.417x)**, **0.4593 -> 1.6606 ms (0.277x)**, and
+  **0.8421 -> 3.1988 ms (0.263x)**. Across ten full-attention layers, the
+  32K/64K result projects **-58.3%/-97.8%** whole decode rather than the
+  required >=1% saving. It fails the >=1.10x leaf gate by a wide margin.
+- Cached full-process `rocprofv3` tracing names six current and six candidate
+  producers plus six copies and twelve shared reducers across the 32K/64K
+  child. Both producers are local256/LDS0/scratch0; current uses **72 VGPR** and
+  candidate **80 VGPR**. The converter is local256/VGPR16/LDS0/scratch0.
+  Profile CSV SHA-256 is `98e0a71e...cf46`; screen JSON is
+  `565d61a8...f403`; the combined transient source hash is
+  `78c8cfac...fd74`.
+- Reject runtime plumbing. Hash then remove the page converter, page-head
+  producer, wrappers, registry keys, screen, and RED/GREEN test. Production
+  attention/KV sources return byte-for-byte to parent `72ba9fdd6`. Post-removal
+  validation passes **23 tests** across the existing head-major/paged-attention
+  plan files plus the `qwen35-paged-attn-gqa-hip` smoke (GQA max abs
+  `8.2e-08`, parallel gated BF16 mismatches zero), JSON parsing, and
+  `git diff --check`.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json`
+  and update the review, GGUF status, benchmark rollup, and changelog. Keep
+  token-major BF16 KV plus the current grouped-GQA producer/reducer. The full
+  persistent head-major rewrite remains closed. Advance immediately to SH-G;
+  SH-A1 closes only this package, not the campaign.
+
+Commands:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  PYTHONPATH=. .venv/bin/python \
+  scripts/qwen35_page_internal_head_major_decode_screen.py \
+  --contexts 512,4096,32768,65536 --warmups 5 --repetitions 21 \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-sh-a1-page-head-screen.json
+
+HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace \
+  -d /tmp/hipengine-sh-a1-rocprof -o sh-a1 -f csv -- \
+  env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python \
+  scripts/qwen35_page_internal_head_major_decode_screen.py \
+  --contexts 32768,65536 --warmups 0 --repetitions 1 --skip-oracles \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-sh-a1-profile-child.json
+
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_qwen35_paged_kv_head_major.py \
+  tests/test_qwen35_paged_attn_decode_plan.py --tb=short
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
+  .venv/bin/python scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build
+```

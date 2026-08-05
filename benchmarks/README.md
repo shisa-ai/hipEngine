@@ -4061,8 +4061,20 @@ though, decode changes **-0.436%/-0.670%** and live ownership saves only
 tracked peak **0.0640/0.1274 GiB** and whole-GTT **0.0703/0.1328 GiB**.
 Cached traces name 10 direct grouped-GQA INT8 producers at each depth, averaging
 **454.6/802.5 us** at local256, VGPR80, LDS0, scratch0. Reject default
-promotion, keep BF16 plus SH-M2 owner slots, and advance to SH-A1; production
-therefore remains **0.801/0.667 GiB** above fork F16 at 32K/64K.
+promotion and keep BF16 plus SH-M2 owner slots; production therefore remains
+**0.801/0.667 GiB** above fork F16 at 32K/64K.
+
+The [SH-A1 page-internal head-major decode screen](results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json)
+closes the remaining layout hypothesis without runtime plumbing. Dense,
+permuted, and stale/evicted-unreferenced page fixtures have zero copy/output-bit
+mismatches and max abs **1.49e-8** versus NumPy. The candidate is slower even
+before conversion: attention plus the unchanged reducer is only
+**0.756x/0.797x** current at 32K/64K. Charging append and the complete live-cache
+copy yields only **0.277x/0.263x**, projecting **-58.3%/-97.8%** whole-decode
+change across ten full-attention layers. Cached tracing names local256,
+LDS0/scratch0 producers and shows candidate **80 VGPR** versus current **72**.
+All transient surfaces are removed; token-major BF16 remains production and the
+campaign advances to SH-G final recertification.
 
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
@@ -4110,6 +4122,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-A1 page-internal head-major BF16 decode screen | 2026-08-06 | parent `72ba9fdd6`; transient exact converter and grouped-GQA page-head producer; complete dense/permuted/evicted-page `KVLiveSpans` oracle; 5-warmup/21-repeat 512/4K/32K/64K HIP-event component/composed wall; cached 32K/64K trace | **Diagnostic rejected; production unchanged:** attention+reducer is only **0.756x/0.797x** current at 32K/64K; append+complete-copy-inclusive is **0.277x/0.263x**, projecting **-58.3%/-97.8%** decode. Correctness is exact, but candidate raises producer VGPR **72 -> 80**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json). | No — misses both >=1.10x leaf and >=1% whole-decode gates | Candidate removed; keep token-major BF16 and proceed to SH-G final retained-campaign recertification. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-K1 strict compact-KV frontier | 2026-08-06 | commit `f9bde8190`; fixed `0-7` BF16/`8-9` per-token/head INT8 K+V; forced 65,792-token no-mirror quality allocation; complete 11-prompt category+heldout gate; one-warmup/three-run 32K/64K wall; allocator plus 10-ms GTT; cached full-process traces | **Diagnostic quality pass / default rejected:** quality is **3.344e-5 mean KL, 7.875e-4 max KL, 100% aggregate/min-prompt top-1**, but decode changes **-0.436%/-0.670%** and prefill-oracle high water raises tracked peak **0.0640/0.1274 GiB** plus whole-GTT **0.0703/0.1328 GiB**. BF16 stays default. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json). | No — repeated decode and peak-memory gates fail despite strict quality and valid direct-consumer traces | Do not repeat closed formats or this 8/2 map unless oracle lifetime changes; advance immediately to SH-A1. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-M2 exact scratch owner slots | 2026-08-06 | implementation `7b675670a`; BF16 KV; fixed q4096; one-warmup/three-run 512/4K/32K/64K eager A/B; D->L->L->D and committed 4K confirmations; 10-ms whole-GTT; complete byte-state children | **Retained/default on gfx1151:** 21 owner slots save **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row. Full state and lifecycle are exact; committed 4K confirms prefill **1409.035 -> 1417.186 tok/s (+0.578%)** and decode **+0.271%**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json). | Yes — exact memory/wall gates and committed checkpoint pass | A/B seam removed; SH-K1 later fails to add a compact-KV peak win, so retain BF16 owner slots and advance to SH-A1. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 Q6T16 LM-head tile8 closure | 2026-08-06 | parent `786422891`; transient exact cached gfx1151 object; c1/K2048/N248320; complete 417,177,600-byte resident matrix; FP32-logit/top-1 equality; cached named trace | **Diagnostic rejected; production unchanged:** tile8 reduces **72 -> 48 VGPR** with scratch0 but regresses **1.83174 -> 1.83575 ms (0.99782x, -0.218%)**. All transient surfaces are removed; SH-D1 closes **1.4868 ms/token** short of C1. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-q6-lm-head-tile8-rejected.json). | No — fails frozen leaf admission | Advance immediately to SH-M2 exact scratch aliases; do not repeat closed SH-D1 ownership schedules. |
