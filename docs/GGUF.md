@@ -3240,3 +3240,28 @@ state is byte-identical, tracked close delta is zero, prefill/decode stay within
 1%, and simultaneous whole-GTT falls **1.4043 GiB** at every 4K+ row. The
 retained evidence and exact commands are in
 [`2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json).
+
+## gfx1151 page-internal BF16 KV decode screen (SH-A1, 2026-08-06)
+
+The bounded SH-A1 screen does **not** justify changing GGUF's persistent paged
+KV layout. A transient exact converter compared current
+`[physical_block, token, kv_head, D]` storage with
+`[physical_block, kv_head, token, D]`, then ran an arithmetic-identical split-K
+grouped-GQA producer followed by the unchanged BF16 gated reducer. Complete
+`KVLiveSpans` dense, permuted, and stale/evicted-page fixtures have zero copy or
+output-bit mismatches and maximum absolute error **1.49e-8** versus NumPy.
+
+Performance is negative before runtime plumbing. At 32K/64K, candidate
+attention+reducer is only **0.756x/0.797x** current. Charging the existing append
+and complete live-cache conversion yields **0.277x/0.263x**, projecting a
+**58.3%/97.8% decode regression** across ten full-attention layers rather than
+the required >=1% saving. Cached tracing also raises producer VGPR from
+**72 to 80** at unchanged local256/LDS0/scratch0.
+
+All transient candidate kernels, wrappers, registry keys, tests, and screen
+code were removed after hashing the evidence. Keep the current token-major BF16
+layout, grouped-GQA producer/reducer, writers, compactors, and graph ABI. Do not
+reopen a full persistent head-major rewrite unless a materially different
+consumer first passes the same copy/append-inclusive >=1.10x bounded gate.
+Evidence:
+[`2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json).

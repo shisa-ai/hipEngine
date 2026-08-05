@@ -403,6 +403,45 @@ allocator, trace, primitive, and validation evidence is in
 The campaign advances immediately to SH-A1 rather than inventing another
 already-closed compact format.
 
+### SH-A1 page-internal head-major decode update (2026-08-06)
+
+SH-A1 implements only the predeclared bounded leaf: current BF16
+`[physical_block, token, kv_head, D]` versus page-internal
+`[physical_block, kv_head, token, D]`. A transient converter consumes complete
+`KVLiveSpans` page, position, and eviction metadata; the candidate grouped-GQA
+producer changes only K/V addressing and retains the production BF16 gated
+reducer. No writer, compactor, graph, or runtime dispatch is rewritten before
+the continuation gate.
+
+Dense, permuted, and stale/evicted-unreferenced physical-page fixtures are
+exact: copy mismatches are **0**, candidate-versus-current gated BF16 output
+mismatches are **0**, and maximum absolute error versus NumPy is
+**1.49e-8**. All four timed contexts are also byte-exact. Correctness therefore
+does not explain the performance result.
+
+| Context | Current attention+reducer | Page-head attention+reducer | attention speedup | complete page copy | current append-inclusive | candidate copy+append-inclusive | inclusive speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | **0.0650 ms** | 0.1131 ms | **0.575x** | 0.0149 ms | **0.0669 ms** | 0.1094 ms | **0.612x** |
+| 4K | **0.0693 ms** | 0.1196 ms | **0.579x** | 0.0550 ms | **0.0718 ms** | 0.1722 ms | **0.417x** |
+| 32K | **0.4563 ms** | 0.6033 ms | **0.756x** | 1.1651 ms | **0.4593 ms** | 1.6606 ms | **0.277x** |
+| 64K | **0.8406 ms** | 1.0554 ms | **0.797x** | 2.2347 ms | **0.8421 ms** | 3.1988 ms | **0.263x** |
+
+Thus the candidate misses the required **1.10x** continuation threshold even
+before conversion. Charging current append plus complete live-cache conversion
+projects a ten-full-attention-layer decode change of **-58.3% at 32K** and
+**-97.8% at 64K**, rather than the required >=1% saving. The cached trace names
+both producers at identical local256/LDS0/scratch0 geometry; current uses
+**72 VGPR**, while page-head rises to **80 VGPR**. The converter is
+local256/VGPR16/LDS0/scratch0.
+
+Reject runtime plumbing and remove the converter, producer, wrappers, registry
+keys, screen, and test after hashing the transient evidence. Production remains
+on token-major BF16 KV plus the current grouped-GQA producer/reducer. The full
+persistent head-major rewrite stays closed because its bounded prerequisite
+fails by a wide margin. Complete measurements and hashes are in
+[`2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json).
+SH-G final retained-campaign recertification is now the only remaining package.
+
 ### Cumulative decode targets
 
 These are reporting/stop targets, never license to specialize to the repeated-
@@ -432,7 +471,7 @@ tracked/owned comparison.
 | **SH-M1 — query-row Pareto screen** | **Completed/rejected 2026-08-05** | The explicit 4,096 -> 1,024 query-row A/B saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, with exact cleanup and neutral decode. | Reject q1024 and close 2,048/768 row-only retries: q1024 changes exact state/logits at 4K+ and loses **1.603%-11.835%** prefill. Keep q4096. |
 | **SH-M2 — exact scratch-liveness aliases** | **Completed/retained 2026-08-06** | Keep every 4,096-row execution shape fixed and graph-color route/stage-disjoint fields into 21 independent allocator-owned slots. Rows below 4,096, diagnostics, unvalidated routes, and peer backends keep dedicated owners. | Exact state and lifecycle pass at 512/4K/32K/64K. The default saves **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row; prefill/decode remain within 1%. Contiguous and split arenas are rejected. SH-K1 later fails to stack another peak-memory win. |
 | **SH-K1 — strict compact-KV frontier** | **Completed/rejected for default 2026-08-06** | The fixed `0-7` BF16 / `8-9` per-token/head INT8 K+V map passes the actual no-mirror 65,792-capacity category+heldout gate at **3.344e-5 mean KL, 7.875e-4 max KL, and 100% aggregate/min-prompt top-1**. Broader and key-only/block formats remain closed by prior evidence. | Reject default promotion: 32K/64K decode changes **-0.436%/-0.670%**, live ownership saves only **0.0620/0.1235 GiB**, and layer-local BF16 prefill oracles instead raise tracked peak **0.0640/0.1274 GiB** plus whole-GTT **0.0703/0.1328 GiB**. Named direct-consumer traces pass; BF16 remains default and SH-A1 is next. |
-| **SH-A1 — page-internal head-major decode screen** | P2, only if C0 leaves BF16 attention material | Microbenchmark the current `[block, token, kv_head, D]` layout against a page-internal `[block, kv_head, token, D]` variant with complete `KVLiveSpans`, charging append/copy and reducer wall. Do not first rewrite every writer/compactor/graph. | Proceed to runtime plumbing only if copy/append-inclusive attention improves >=**1.10x**, projected whole decode saves >=**1%**, memory does not grow, and dense/permuted/evicted page oracles are exact. The fork's F16 lane being only 1.27%-1.79% above vanilla makes this a bounded screen, not P0. |
+| **SH-A1 — page-internal head-major decode screen** | **Completed/rejected 2026-08-06** | The bounded current-vs-page-head grouped-GQA leaf is exact on dense/permuted/evicted page fixtures, but candidate attention+reducer is only **0.756x/0.797x** at 32K/64K before conversion. | Reject runtime plumbing: append+copy-inclusive speedup is only **0.277x/0.263x**, projecting **-58.3%/-97.8%** decode across ten full-attention layers. Remove every transient surface and keep token-major BF16 KV. |
 | **SH-G — retained recertification** | Required after each retained unit | Re-run hipEngine one-warmup/three-measurement 512/4K/32K/64K rows, exact natural/heldout prompts, allocator/GTT sampling, and the applicable cached kernel trace. Re-run the five-repetition fork comparator only at a campaign milestone, not after every micro-change. | Publish an own-engine A/B only when exact and non-regressive. Keep the external row diagnostic until timing ownership, dtype, and output oracle align. Update artifact, benchmark rollup, changelog, and worklog for every retained performance unit. |
 
 #### SH-D1 GDN-input audit update

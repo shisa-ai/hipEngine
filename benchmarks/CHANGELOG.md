@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [closed SH-A1 page-internal head-major decode screen; runtime rewrite rejected] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K/32K/64K: exact page-head attention+reducer is only **0.575x/0.579x/0.756x/0.797x** current, and charging append plus complete live-cache copy yields **0.612x/0.417x/0.277x/0.263x**, projecting **-58.3%/-97.8%** decode at 32K/64K; dense/permuted/evicted-page oracles pass, transient surfaces are removed, and token-major BF16 remains production; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json`.
+
 - [closed SH-K1 strict compact-KV frontier; default rejected] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / fixed 8-BF16/2-INT8 K+V: forced 65,792-token no-mirror quality passes **11/11 prompts, 187/187 positions, mean/max KL 3.344e-5/7.875e-4, 100% aggregate/min-prompt top-1**, but 32K/64K decode changes **-0.436%/-0.670%** and the prefill oracle turns **0.0620/0.1235-GiB** live savings into tracked-peak **+0.0640/+0.1274 GiB** and whole-GTT **+0.0703/+0.1328 GiB**; named direct-consumer traces pass, BF16 stays default, and SH-A1 is next; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`.
 
 - [retained SH-M2 committed checkpoint] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 4K/128: implementation `7b675670a` reproduces owner-slot prefill **1409.035 -> 1417.186 tok/s (+0.578%)**, decode **+0.271%**, tracked **-1.4086 GiB**, whole-GTT **-1.4043 GiB**, and exact state/lifecycle; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`.
