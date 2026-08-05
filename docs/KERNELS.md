@@ -57,6 +57,16 @@ cache-only gfx1151 trace reports QK/RoPE/KV-write at local32/VGPR24/scratch0,
 **5,771 ns**, and attention at local32/VGPR16/scratch0, **3,607 ns** on the tiny
 fixture.
 
+`hipengine/kernels/hip_gfx1100/moe/maple_moe.{hip,py}` supplies the unfused MoE
+control/tail around selected ternary GEMV: BF16-hidden/BF16-weight router logits
+with FP32 accumulation, all-expert softmax, stable top-k, and selected
+renormalization; trained clamp-7 SwiGLU; and selected weighted sum plus residual
+with both published BF16 boundaries. Tiny gfx1151 fixtures preserve selected IDs,
+weights (`atol=rtol=2e-6`), and BF16 activation/residual bytes. Cache-only tracing
+reports router local256/VGPR8/LDS3584/scratch0 at **19,156 ns**, clamp-7
+local256/VGPR32/scratch0 at **2,605 ns**, and weighted residual
+local256/VGPR16/scratch0 at **2,885 ns**.
+
 ### Laguna gfx1151 decode transfer screen
 
 The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16
