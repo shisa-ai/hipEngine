@@ -1861,10 +1861,12 @@ def launch_gguf_linear_q8_1(
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
     has_residual = residual_ptr is not None
+    available_allocations = tuple(sorted(getattr(weight, "allocations", ())))
     cache_key = (
         generation(),
         weight.spec.layout,
         weight.spec.quant_key,
+        available_allocations,
         resolved_backend,
         has_residual,
         rows,
@@ -1874,42 +1876,55 @@ def launch_gguf_linear_q8_1(
     cached = _Q8_1_DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
         layer = "linear_q8_1+residual" if has_residual else "linear_q8_1"
-        variant = (
+        t16_variant = (
             "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out"
             if has_residual
             else "t16_q8_1_dp4a_gemv_bf16_bf16_out"
         )
-        key = KernelKey(
-            resolved_backend,
-            layer,
-            weight.spec.quant_key,
-            variant,
-        )
-        if not is_registered(key):
-            _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = False
-            return False
-        dispatch = resolve_gguf_linear_dispatch(
-            weight,
-            backend=resolved_backend,
-            rows=1,
-        )
-        allocation_name = {"t16": "tiles"}.get(dispatch.abi)
-        if allocation_name is None:
-            _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = False
-            return False
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-        supports = getattr(fn, "_hipengine_supports", None)
-        if callable(supports) and not bool(
-            supports(rows, in_features, out_features)
-        ):
-            _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = False
-            return False
-        cached = (fn, allocation_name, key.quant, key.variant)
+        candidates: list[tuple[str, str | None]] = []
+        if not has_residual and rows == 1:
+            candidates.append(
+                ("x8_sidecar_q8_1_dp4a_gemv_bf16_bf16_out", "x8")
+            )
+        candidates.append((t16_variant, None))
+        for candidate_variant, candidate_allocation in candidates:
+            key = KernelKey(
+                resolved_backend,
+                layer,
+                weight.spec.quant_key,
+                candidate_variant,
+            )
+            if not is_registered(key):
+                continue
+            allocation_name = candidate_allocation
+            if allocation_name is None:
+                dispatch = resolve_gguf_linear_dispatch(
+                    weight,
+                    backend=resolved_backend,
+                    rows=1,
+                )
+                allocation_name = {"t16": "tiles"}.get(dispatch.abi)
+                if allocation_name is None:
+                    continue
+            try:
+                weight.allocation(allocation_name)
+            except KeyError:
+                continue
+            fn = resolve(
+                backend=key.backend,
+                layer=key.layer,
+                quant=key.quant,
+                variant=key.variant,
+            )
+            supports = getattr(fn, "_hipengine_supports", None)
+            if callable(supports) and not bool(
+                supports(rows, in_features, out_features)
+            ):
+                continue
+            cached = (fn, allocation_name, key.quant, key.variant)
+            break
+        if cached is None:
+            cached = False
         _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = cached
     if cached is False:
         return False

@@ -868,7 +868,7 @@ __global__ void gguf_q4_x8_selected_dual_q8_1_dp4a_gemv_kernel(
   }
 }
 
-template <typename out_t, int qtype>
+template <typename out_t, int qtype, bool dense = false>
 __launch_bounds__(256, 2)
 __global__ void gguf_x8_selected_q8_1_dp4a_gemv_kernel(
     const gguf_q8_1_block* __restrict__ xq,
@@ -887,10 +887,10 @@ __global__ void gguf_x8_selected_q8_1_dp4a_gemv_kernel(
   const int tid = threadIdx.x;
   if (row >= rows) return;
 
-  const int64_t expert_id = selected[row];
+  const int64_t expert_id = dense ? 0 : selected[row];
   if (expert_id < 0 || expert_id >= num_experts) return;
   const int lanes_per_x_row = rows / x_rows;
-  const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int x_row = dense ? row : ((x_rows == 1) ? 0 : (row / lanes_per_x_row));
   const gguf_q8_1_block* __restrict__ xq_row = xq + static_cast<int64_t>(x_row) * q8_blocks_per_row;
 
   float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
@@ -1078,6 +1078,41 @@ int launch_x8_selected_direct(
                      static_cast<int>(x_rows),
                      static_cast<int>(rows),
                      static_cast<int>(num_experts),
+                     static_cast<int>(in_features),
+                     static_cast<int>(out_features),
+                     static_cast<int>(q8_blocks_per_row));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t, int qtype>
+int launch_x8_dense_direct(
+    const void* xq,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (!xq || !tiles || !out || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % X8_COLS) != 0 ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(static_cast<unsigned int>(out_features / X8_COLS),
+                  static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL((gguf_x8_selected_q8_1_dp4a_gemv_kernel<out_t, qtype, true>),
+                     grid, block, 0, stream,
+                     reinterpret_cast<const gguf_q8_1_block*>(xq),
+                     static_cast<const int64_t*>(nullptr),
+                     reinterpret_cast<const uint8_t*>(tiles),
+                     reinterpret_cast<out_t*>(out),
+                     static_cast<int>(rows),
+                     static_cast<int>(rows),
+                     1,
                      static_cast<int>(in_features),
                      static_cast<int>(out_features),
                      static_cast<int>(q8_blocks_per_row));
@@ -1316,6 +1351,14 @@ extern "C" int hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out(
   return launch_x8_selected_direct<float, 6>(
       xq, selected, tiles, out, x_rows, rows, num_experts, in_features,
       out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out(
+    const void* xq, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads,
+    hipStream_t stream) {
+  return launch_x8_dense_direct<uint16_t, 6>(
+      xq, tiles, out, rows, in_features, out_features, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out(

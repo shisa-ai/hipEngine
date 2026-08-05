@@ -27,7 +27,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
     build_gguf_x8_selected_gemv,
+    gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q6_k_x8_q8_1_threads,
     gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out,
+    register_gguf_x8_selected_gemv_kernels,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro_planar
@@ -75,7 +78,7 @@ def _run_planar_and_x8(
     threads: int,
     residual: np.ndarray | None = None,
     libraries,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     from hipengine.core.hip import get_hip_runtime
 
     q6_library, q4_library, x8_library = libraries
@@ -87,6 +90,7 @@ def _run_planar_and_x8(
     selected = np.zeros(rows, dtype=np.int64)
     candidate = np.zeros((rows, out_features), dtype=np.uint16)
     oracle = np.zeros_like(candidate)
+    dense_oracle = np.zeros_like(candidate) if rows == 1 else None
     buffers = []
     try:
         def upload(value: np.ndarray):
@@ -112,7 +116,14 @@ def _run_planar_and_x8(
         )
         candidate_buf = malloc(candidate.nbytes, runtime=runtime)
         oracle_buf = malloc(oracle.nbytes, runtime=runtime)
+        dense_oracle_buf = (
+            malloc(dense_oracle.nbytes, runtime=runtime)
+            if dense_oracle is not None
+            else None
+        )
         buffers.extend((xq_buf, candidate_buf, oracle_buf))
+        if dense_oracle_buf is not None:
+            buffers.append(dense_oracle_buf)
         gguf_q4_k_quantize_bf16_q8_1(
             x_buf.ptr,
             xq_buf.ptr,
@@ -160,6 +171,18 @@ def _run_planar_and_x8(
             library=x8_library,
             runtime=runtime,
         )
+        if dense_oracle_buf is not None:
+            gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out(
+                xq_buf.ptr,
+                x8_buf.ptr,
+                dense_oracle_buf.ptr,
+                rows,
+                in_features,
+                out_features,
+                threads=threads,
+                library=x8_library,
+                runtime=runtime,
+            )
         runtime.device_synchronize()
         copy_device_to_host(
             host_array_ptr(candidate),
@@ -173,7 +196,14 @@ def _run_planar_and_x8(
             oracle.nbytes,
             runtime=runtime,
         )
-        return candidate, oracle
+        if dense_oracle is not None and dense_oracle_buf is not None:
+            copy_device_to_host(
+                host_array_ptr(dense_oracle),
+                dense_oracle_buf,
+                dense_oracle.nbytes,
+                runtime=runtime,
+            )
+        return candidate, oracle, dense_oracle
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
@@ -181,12 +211,19 @@ def _run_planar_and_x8(
 
 def test_planar_q8_1_registry_and_shape_policy() -> None:
     register_gguf_q6_k_t16_gemv_kernels()
+    register_gguf_x8_selected_gemv_kernels()
     assert resolve(
         backend="hip_gfx1100",
         layer="linear_q8_1",
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="t16_q8_1_dp4a_gemv_bf16_bf16_out",
     ) is gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear_q8_1",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="x8_sidecar_q8_1_dp4a_gemv_bf16_bf16_out",
+    ) is gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear_q8_1+residual",
@@ -213,6 +250,10 @@ def test_planar_q8_1_registry_and_shape_policy() -> None:
         ) == 64
     assert gguf_q6_k_t16_qmicro_planar_q8_1_threads(5, 17_408, 5_120) == 0
     assert gguf_q6_k_t16_qmicro_planar_q8_1_threads(4, 5_120, 248_320) == 0
+    assert gguf_q6_k_x8_q8_1_threads(1, 17_408, 5_120) == 256
+    assert gguf_q6_k_x8_q8_1_threads(1, 5_120, 10_240) == 64
+    assert gguf_q6_k_x8_q8_1_threads(2, 17_408, 5_120) == 0
+    assert gguf_q6_k_x8_q8_1_threads(1, 512, 256) == 0
 
 
 def test_planar_q8_1_wrappers_validate_contract() -> None:
@@ -250,13 +291,18 @@ def test_planar_q8_1_matches_x8_arithmetic_and_cpu_quality(
         rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
         + 0.002
     )
-    candidate, x8_oracle = _run_planar_and_x8(
+    candidate, x8_oracle, dense_x8_oracle = _run_planar_and_x8(
         x_bits,
         qweight,
         threads=threads,
         libraries=libraries,
     )
     np.testing.assert_array_equal(candidate, x8_oracle)
+    if rows == 1:
+        assert dense_x8_oracle is not None
+        np.testing.assert_array_equal(dense_x8_oracle, x8_oracle)
+    else:
+        assert dense_x8_oracle is None
 
     x_f32 = _bf16_to_f32(x_bits)
     x_rows = np.arange(rows, dtype=np.int64)
@@ -288,13 +334,13 @@ def test_planar_q8_1_residual_matches_unfused_approximate_chain(libraries) -> No
     residual = _bf16_bits(
         rng.normal(0.0, 0.2, size=(rows, out_features)).astype(np.float32)
     )
-    projected, _ = _run_planar_and_x8(
+    projected, _, _ = _run_planar_and_x8(
         x_bits,
         qweight,
         threads=threads,
         libraries=libraries,
     )
-    fused, _ = _run_planar_and_x8(
+    fused, _, _ = _run_planar_and_x8(
         x_bits,
         qweight,
         threads=threads,

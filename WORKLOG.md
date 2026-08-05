@@ -207792,3 +207792,37 @@ Vulkan local sizes verbatim will close the measured gap.
   while B3 remains exact at **67.334 tok/s**, **17/21** acceptance. Do not repeat
   the broad suite yet: rotating all 56 production weights is the representative
   discriminator for the remaining c1 layout question.
+- The full ten-prompt exact-zero/candidate packet quantifies the split:
+  true AR **23.271 -> 21.821 tok/s (-6.235%)**, while B1/B2/B3 improve
+  **43.963/55.487/60.263 -> 44.788/56.101/61.658 tok/s**
+  (**+1.875%/+1.106%/+2.315%**). IDs, acceptance, category/heldout summaries,
+  memory teardown, and the complete transaction remain exact. Do not promote
+  planar c1; preserve its rows2-4 gains while replacing only c1 residency.
+- A cache-representative X8-sidecar screen rotates all 32 FFN-down and 24 QKV
+  weights (**3,371,827,200 bytes per layout**) and charges one Q8_1 quantizer
+  per weight. Against exact planar c1 it wins all **21/21** pairs on GPU1 at
+  **5.283 -> 4.717 ms (1.120x)** and on W7900 at **6.269 -> 5.803 ms (1.080x)**.
+  Aggregate quality is **54/56 top-1 (96.43%)**, max KL **9.71e-6**. Harness,
+  GPU1 result, and W7900 result SHA-256 values are `08496cbe...bb6e79a`,
+  `b908a02a...6c3c`, and `dc9f53a9...52bc7b`.
+- RED freezes exactly 56 sidecars, excludes root/narrow-V, requires c1-only X8
+  dispatch precedence, keeps rows2-4 planar, and requires the selector-free
+  dense entry point to match the selected-X8 oracle bit-for-bit. GREEN adds
+  `HIPENGINE_GGUF_Q6_X8_C1_SIDECAR`, equal-size X8 allocations beside planar
+  residents, a registry-owned dense Q6X8 c1 wrapper, and allocation-aware cached
+  fallback selection without a model-code quant/backend branch. Host contract
+  tests pass; the GPU1 correctness file passes **11/11**, including both local64
+  and local256 dense-vs-selected bit equality. One actual K17,408/N5,120 down
+  materializes planar+X8 at **73,113,600 bytes each** and frees cleanly.
+  Cached rocprof names
+  `gguf_x8_selected_q8_1_dp4a_gemv_kernel<unsigned short, 6, true>` at
+  **3.720 us**, local64, VGPR72, LDS512 B, scratch0; trace SHA-256 is
+  `96907ec6...fefaf3f`. Both selectors remain default-off until the W7900
+  transaction and full category/populated gates pass.
+- The sidecar W7900 transaction passes at the raised 36-GiB admission threshold.
+  Its census observes both qualified shapes through X8 only at c1 and through
+  planar projection/residual owners at rows2-4. Full target/reference logits,
+  GPU/CPU acceptance, reject/partial/full commit, forced post-commit rollback,
+  dynamic graph positions/reuse, correction output, natural provider IDs,
+  memory lifecycle, and teardown remain green. Commit this default-off candidate
+  before the matched one-prompt and ten-prompt performance gates.
