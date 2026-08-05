@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "status": "retained_exact_target_window_and_memory_headline_unchanged",
+  "performance_claim": true,
+  "performance_claim_scope": "Exact GPU1 B1-B3 production-shape producer screen plus tracked-clean W7900 B3 target-kernel and natural25 target-verify sub-window improvements. The noisy complete natural25 packet is disclosed and does not replace the prior 60.262 tok/s headline.",
+  "correctness_claim": true,
+  "correctness_scope": "Producer-captured rollback rows are byte exact; the W7900 B1-B3 transaction covers logits, acceptance, selected-state commit, post-commit failure rollback, dynamic graph reuse, provider output, lifecycle, and teardown.",
+  "kind": "qwen36_27b_gguf_producer_folded_rollback_snapshot_w7900",
+  "timestamp": "2026-08-05T15:14:03+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "82a7f869156dba0a40a4f355fcf9d40316e35fee",
+    "baseline_implementation_commit": "01291b066708fee6cd8ab2327de0b655cfdc35e9",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Fold the immutable initial Conv/GDN rollback-row capture into the exact deferred chain producers that already read every original state element, while preserving selected-state commit and post-commit rollback.",
+    "registry_keys": [
+      "linear_attn_chain_conv_decode+snapshot/gguf_qwen35/bf16_c1_exact_state_rows_tloop",
+      "gdn_chain_recurrent_rmsnorm_gate+snapshot/gguf_qwen35/bf16_c1_exact_state_rows_tloop",
+      "gdn_chain_recurrent_rmsnorm_gate+cast+snapshot/gguf_q5_k_t16_v1/bf16_c1_exact_state_rows_tloop_f32_bf16_out"
+    ],
+    "ownership": "The native verifier borrows one session-owned rollback row only after both exact producer families resolve. It performs no pre-verify state copy and marks the producer snapshot restorable only after the complete target block retires. Serial mode and every backend, registry, shape, or paired-owner miss retain the five-row journal plus registered pointer-table copy fallback; gfx1151 deliberately misses.",
+    "full_journal_bytes": 794296320,
+    "producer_snapshot_bytes": 158859264,
+    "resident_bytes_removed": 635437056,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false,
+    "ar_reachable": false
+  },
+  "correctness": {
+    "red_green": "The three focused producer-key, fail-closed route, and post-commit rollback nodes failed 3/3 before implementation and passed 3/3 after it. The adjacent native-cycle/snapshot/commit/chain bundle passed 20/20.",
+    "gpu1_component": "Rows 2/3/4 preserve every original Conv/GDN snapshot bit, every output-state row, every FP32 output, and every fused BF16 handoff bit against retained producers.",
+    "w7900_transaction": "One cached dense-Q4 B1-B3 transaction passed. It proves sole producer ownership for rows 2/3/4, exact logits and GPU/CPU acceptance, reject/partial/full selected state, correction, dynamic graph reuse, provider output, and zero-allocation teardown. A selected-state commit followed by a forced scheduler failure restores all 96 original Conv/GDN buffers plus hidden state exactly.",
+    "natural25": {
+      "true_ar_tokens_exact": true,
+      "mtp_tokens_exact": {
+        "1": true,
+        "2": true,
+        "3": true
+      },
+      "acceptance_exact": {
+        "1": true,
+        "2": true,
+        "3": true
+      },
+      "all_candidate_exact_greedy": true,
+      "all_candidate_gpu_accept_match_cpu": true,
+      "stage_reconciled": true,
+      "candidate_memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 32723997740,
+        "total_allocated_bytes": 33534431358,
+        "total_freed_bytes": 33534431358,
+        "active_allocations": 0,
+        "peak_allocations": 2418
+      }
+    }
+  },
+  "component_screen": {
+    "protocol": "GPU1 real 48-layer Conv/GDN geometry, rows 2/3/4, 31 counterbalanced synchronized event samples per shape.",
+    "added_producer_store_us_per_layer": {
+      "2": 2.478,
+      "3": 2.922,
+      "4": 3.714
+    },
+    "retained_one_launch_snapshot_us": 436.108,
+    "projected_saved_us_per_cycle": {
+      "2": 317.167,
+      "3": 295.850,
+      "4": 257.839
+    },
+    "trace": {
+      "kernels": [
+        "qwen35_linear_attn_chain_conv_decode_lowp_snapshot_tloop_kernel<unsigned short>",
+        "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short,true,true>"
+      ],
+      "semantic_grids": [
+        10240,
+        6144
+      ],
+      "local_x": [
+        256,
+        128
+      ],
+      "vgpr": [
+        32,
+        64
+      ],
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "instrumented_duration_us": [
+        10.280,
+        92.800
+      ]
+    }
+  },
+  "profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy trace; one natural25 prompt; B3; no warmup; clean 01291b066 baseline and clean 82a7f8691 candidate.",
+    "exact_prompt": {
+      "token_ids_equal": true,
+      "gpu_accept_matches_cpu": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "cycle_accepted_counts": [
+        3,
+        3,
+        2,
+        3,
+        3,
+        0,
+        3
+      ]
+    },
+    "snapshot_family": {
+      "baseline": {
+        "dispatches": 7,
+        "duration_ms": 3.457868
+      },
+      "candidate": {
+        "dispatches": 0,
+        "duration_ms": 0.0
+      }
+    },
+    "producer_families": {
+      "baseline": {
+        "dispatches": 672,
+        "duration_ms": 17.078567
+      },
+      "candidate": {
+        "dispatches": 672,
+        "duration_ms": 18.943346
+      },
+      "added_duration_ms": 1.864779
+    },
+    "direct_target_family": {
+      "saved_ms": 1.593089,
+      "calculation": "3.457868 ms removed snapshot - 1.864779 ms added producer stores"
+    },
+    "target_verify": {
+      "host_ms": {
+        "baseline": 357.778074,
+        "candidate": 365.953957,
+        "delta_percent": 2.2851827974231798
+      },
+      "kernel_ms": {
+        "baseline": 258.895501,
+        "candidate": 255.870362,
+        "delta_percent": -1.1684787832601295
+      },
+      "dispatches": {
+        "baseline": 6301,
+        "candidate": 6294,
+        "delta": -7
+      }
+    },
+    "complete_window": {
+      "marker_span_ms": {
+        "baseline": 438.030988,
+        "candidate": 451.442236,
+        "delta_percent": 3.0617121544834536
+      },
+      "kernel_sum_ms": {
+        "baseline": 314.705277,
+        "candidate": 311.728676,
+        "delta_percent": -0.9458376511430444
+      },
+      "dispatches": {
+        "baseline": 7038,
+        "candidate": 7031,
+        "delta": -7
+      }
+    },
+    "peak_tracked_bytes": {
+      "baseline": 33359014130,
+      "candidate": 32723577074,
+      "delta_bytes": -635437056
+    },
+    "interpretation": "The seven snapshot launches disappear and the direct target family, total target kernels, complete kernel sum, and memory all improve exactly. The one-prompt marker host wall is noise-negative and is not used as a throughput claim."
+  },
+  "natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-82a7f8691/natural25-native-producer-snapshot-b1-b3.json",
+    "true_ar": {
+      "baseline_tok_s": 24.11377551783828,
+      "candidate_tok_s": 24.33586223807031,
+      "delta_percent": 0.9209952214564554
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 43.792176855996814,
+        "candidate_tok_s": 43.562736426605525,
+        "complete_delta_percent": -0.5239301762635984,
+        "target_verify_seconds": {
+          "baseline": 4.848730824654922,
+          "candidate": 4.8419304164126515,
+          "delta_percent": -0.14025130468557911
+        },
+        "accepted_draft_tokens": 115,
+        "proposed_draft_tokens": 127,
+        "prompt_delta_percent_range": [
+          -1.3112683074637532,
+          0.18406915795063927
+        ],
+        "scope_delta_percent_range": [
+          -0.5948563731069112,
+          -0.3946078600108871
+        ]
+      },
+      "2": {
+        "baseline_tok_s": 55.25420093867832,
+        "candidate_tok_s": 55.07873897590986,
+        "complete_delta_percent": -0.31755406790371365,
+        "target_verify_seconds": {
+          "baseline": 3.6468417118303478,
+          "candidate": 3.636044012615457,
+          "delta_percent": -0.29608357225549
+        },
+        "accepted_draft_tokens": 151,
+        "proposed_draft_tokens": 182,
+        "prompt_delta_percent_range": [
+          -0.7640483942066068,
+          0.10448056091083568
+        ],
+        "scope_delta_percent_range": [
+          -0.5056915327180334,
+          -0.20693763583392588
+        ]
+      },
+      "3": {
+        "baseline_tok_s": 60.26190653283626,
+        "candidate_tok_s": 60.07940674871761,
+        "complete_delta_percent": -0.3028443582666962,
+        "target_verify_seconds": {
+          "baseline": 3.229917784454301,
+          "candidate": 3.2135755294002593,
+          "delta_percent": -0.5059650475531474
+        },
+        "accepted_draft_tokens": 169,
+        "proposed_draft_tokens": 219,
+        "prompt_delta_percent_range": [
+          -1.2408303575870083,
+          0.7020179322826614
+        ],
+        "scope_delta_percent_range": [
+          -0.6020077457891126,
+          0.024808424895228498
+        ]
+      }
+    },
+    "variance_disclosure": "The route cannot execute during true AR, proposal, acceptance, or target commit. Those unrelated stages move +2.6% to +17.9% in this one-run packet and outweigh target-verify wins at every budget. Retain the exact target-window and 606.0-MiB memory improvement, but do not advance the broad throughput headline."
+  },
+  "decision": {
+    "action": "retain_default_as_exact_target_window_and_memory_improvement",
+    "headline_advanced": false,
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_b3_vs_vulkan_percent": -11.486910387464954,
+    "reason": "Both gfx1100 boards prove byte-exact producer ownership and rollback. W7900 tracing removes the complete snapshot family, saves 1.593 ms directly and 3.025 ms in target kernels, while the full ten-prompt gate improves target verify at B1/B2/B3 and removes exactly 635,437,056 peak bytes. Complete one-run movement is uniformly sub-percent and attributable to unrelated timing variance, so no new topline is claimed.",
+    "limitations": [
+      "Complete natural25 B1/B2/B3 are 0.524%/0.318%/0.303% below the prior clean packet.",
+      "The one-prompt profiled marker wall is 3.062% higher even though target and complete kernel sums improve.",
+      "Best exact canonical B3 remains 60.262 tok/s, 2.4991x own AR, and 11.49% below llama.cpp Vulkan B3."
+    ]
+  },
+  "next_target": "Re-rank the 82a7f8691 target trace without treating profiler queue gaps as production savings. The largest matched arithmetic residuals remain Q5T16 ssm_out (+7.792 ms), wide Q6 FFN-down/QKV (+6.084 ms), and target root FP32 rows (+2.628 ms) versus Vulkan; admit only a materially new exact representation, hardware primitive, or cross-family fusion with credible complete-wall impact.",
+  "source_artifacts": {
+    "profile_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-82a7f8691/profile-native-producer-snapshot-mtp-b3-hermetic/profile-comparison.json",
+      "sha256": "17a8a468517f8163a963a005a110ff708599079406acb3a6a8d5e8731110a646"
+    },
+    "profile_candidate_suite": {
+      "path": "/tmp/hipengine-qwen36-27b/final-82a7f8691/profile-native-producer-snapshot-mtp-b3-hermetic/suite.json",
+      "sha256": "967e76624997ec7903856ea10f52168a07f84c6c5480892410a6d07d2294d667"
+    },
+    "profile_kernel_trace": {
+      "path": "/tmp/hipengine-qwen36-27b/final-82a7f8691/profile-native-producer-snapshot-mtp-b3-hermetic/mtp-b3_kernel_trace.csv",
+      "sha256": "c22f580437e755785b4509f72d695e3be0533f5ccb9c7150269c1369de41e8dd"
+    },
+    "profile_marker_trace": {
+      "path": "/tmp/hipengine-qwen36-27b/final-82a7f8691/profile-native-producer-snapshot-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv",
+      "sha256": "598e48995ee701a52b7a55903638818fc4a07cbbdf58a911ccb586f668467fee"
+    },
+    "profile_memory_copy_trace": {
+      "path": "/tmp/hipengine-qwen36-27b/final-82a7f8691/profile-native-producer-snapshot-mtp-b3-hermetic/mtp-b3_memory_copy_trace.csv",
+      "sha256": "5c1b8d88ee4bc74eae560ae846ca1d54d6a5938726b3743cbd2dd4611426250f"
+    },
+    "natural_candidate": {
+      "path": "/tmp/hipengine-qwen36-27b/final-82a7f8691/natural25-native-producer-snapshot-b1-b3.json",
+      "sha256": "7c66ec7cc525a7169a7d551501d18453a2bd4a0fa142e711aec5c228d0e709b0"
+    },
+    "natural_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-82a7f8691/natural25-producer-snapshot-vs-01291b066.json",
+      "sha256": "299e439535dc8994dc30c29ecd68dd05eba5abc0ef4fc28f99f2057c547f3776"
+    },
+    "component_screen": {
+      "path": "/tmp/qwen36-producer-snapshot-gpu1.json",
+      "sha256": "1912e3424ef49ae7239523e953ea1033747df5e400766c54d91f2f410cb63d9d"
+    },
+    "component_trace": {
+      "path": "/tmp/qwen36-producer-snapshot-trace-gpu1/epyc/2162323_kernel_trace.csv",
+      "sha256": "d7f42b14aaa51b72a7fea3c6e4f3196f497045879ad5d05e46b2fc12406dc873"
+    }
+  }
+}

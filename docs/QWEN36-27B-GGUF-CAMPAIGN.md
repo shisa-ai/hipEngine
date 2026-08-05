@@ -1362,11 +1362,35 @@ state, and teardown remain exact. The MTP-only route cannot affect AR, whose
 Canonical B3 is now **11.49% below Vulkan**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json`.
 
-The next exact boundary is now narrower. Registered chain Conv/GDN producers
-read resident state through const pointers and, under deferred commit, write
-only row journals. Prove that read-only contract fail-closed before launch,
-then omit the redundant initial state copy and native-only snapshot allocation;
-the retained pointer-copy path remains the fallback for every miss.
+The rollback-safe version of that boundary is retained in `82a7f8691`.
+Registered gfx1100 chain producers now store the immutable resident Conv/GDN
+input bits into one rollback row while writing their ordinary output-row
+journals. The journal publishes that snapshot only after the complete native
+block retires, so prepare failures cannot restore a partial image while a later
+failure after selected-state commit still restores all 96 buffers. Serial mode
+and every paired-owner, shape, registry, or backend miss retain the five-row
+journal and pointer-copy fallback; gfx1151 deliberately misses.
+
+GPU1 rows 2/3/4 are bit exact and show only **2.478/2.922/3.714 us per layer**
+of added store cost. The binding W7900 transaction includes an explicit
+post-commit forced failure and restores every original state byte. Tracing
+removes all **7 snapshot launches / 3.458 ms**; producers rise only **17.079 ->
+18.943 ms**, directly saving **1.593 ms**, while target/complete kernel sums
+fall **3.025/2.977 ms** and peak allocation falls exactly **635,437,056 bytes**.
+Natural25 target verify improves **0.140%/0.296%/0.506%** at B1/B2/B3. Unrelated
+proposal/commit/host variance makes complete B1/B2/B3
+**-0.524/-0.318/-0.303%**, so the route is retained as an exact physical and
+memory win without advancing the canonical **60.262 tok/s / 11.49%-below-
+Vulkan** headline. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json`.
+
+Re-rank only the clean `82a7f8691` trace next. Do not treat profiler queue gaps
+as production savings. The largest matched arithmetic residuals remain Q5T16
+`ssm_out` (**+7.792 ms**), wide Q6 FFN-down/QKV (**+6.084 ms**), and target
+root FP32 rows (**+2.628 ms**) versus Vulkan; their previous representation and
+row-reuse ladders are closed, so reopening requires a materially new exact
+representation, hardware primitive, or cross-family fusion with credible
+complete-wall impact.
 
 ---
 
@@ -1381,8 +1405,8 @@ the retained pointer-copy path remains the fallback for every miss.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; one-launch rollback snapshots raise B1/B2/B3 to 43.792/55.254/60.262 tok/s; all 30 prompt-budget rows/scopes and all state/acceptance checks improve or remain exact; faster noisy AR lowers B3/AR to 2.4991x as disclosed |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; `01291b066` reaches 60.262 tok/s / 11.49% below Vulkan; next prove native deferred chain journals leave resident Conv/GDN state read-only, then omit the redundant initial snapshot and native-only snapshot storage while retaining fail-closed copy fallback |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; producer-folded rollback capture removes 7 snapshot launches and 635,437,056 peak bytes while improving target verify at every budget; noisy complete movement does not replace the canonical 43.792/55.254/60.262 tok/s packet |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; `82a7f8691` is the exact default while canonical B3 remains 60.262 tok/s / 11.49% below Vulkan; re-rank only its clean trace and reopen a residual solely for a materially new exact representation, primitive, or cross-family fusion |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
