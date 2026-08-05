@@ -206775,3 +206775,26 @@ Vulkan local sizes verbatim will close the measured gap.
   representation ladders for each are closed; reopen only for a materially new
   exact representation, hardware primitive, or cross-family fusion with a
   credible complete-wall ceiling.
+
+## 2026-08-05 — Reject dense small-row Q6 integer-WMMA
+
+- Test a materially different hardware primitive before reopening the wide-Q6
+  residual: reuse the qualified planar-Q6 signed-integer WMMA body at the actual
+  dense verifier shapes, but charge its required BF16-to-D4 activation pack in
+  every timed sample. The out-of-tree GPU1 command is
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 ... python3.12 -u
+  /tmp/qwen36_q6_integer_wmma_smallrow_screen.py`; it runs 31 counterbalanced
+  HIP-event samples for rows 2/3/4 on real `blk.0.attn_qkv.weight`
+  (K5,120/N10,240) and `blk.0.ffn_down.weight` (K17,408/N5,120).
+- The candidate is decisively speed-ineligible. Inclusive integer-WMMA versus
+  retained direct BF16 T16 is **0.417x/0.412x/0.477x** for QKV and
+  **0.273x/0.273x/0.279x** for FFN-down at rows 2/3/4, with **0/31** candidate
+  wins in every cell. Quality would pass the project component gate (maximum KL
+  **0.0008801**, top-1 **100%**) but does not waive the 2.10-3.66x latency
+  regression.
+- Reject before any source, registry, materializer, sidecar, W7900 profile, or
+  natural25 gate. The script/log SHA-256 values are
+  `128370b6...c80c` / `eb6ca111...a8ce`. The next credible exact cross-family
+  screen is target-root Q6 rowtile plus per-row top-1 publication, which can
+  avoid the current rows-by-vocabulary FP32 surface and separate argmax while
+  preserving the full-logit fallback.
