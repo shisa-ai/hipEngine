@@ -203546,3 +203546,39 @@ Vulkan local sizes verbatim will close the measured gap.
   matches a known gfx1151 erratum and which next artifact would be most useful.
   The verified public comment is
   https://github.com/ROCm/ROCm/issues/6437#issuecomment-5186301232.
+
+## 2026-08-05 — Add SH-C0 role and memory attribution tooling
+
+- Audit the existing GGUF profilers before changing runtime behavior. The
+  synchronized decode-step trace already supplies symbol families, resources,
+  dispatches, and host/device wall, but symbols cannot distinguish full-attn
+  Q/K/V/O, GDN projections, selected experts, or shared experts. The GGUF bench
+  already supplies tracked/owned weight, decode-scratch, KV, and coarse session
+  components, while its bulk-prefill arena fields/lifetimes and continuous
+  whole-GTT peak were not exposed. The Vulkan perf-log parser is sufficient for
+  separate fork F16/Q8 operation controls.
+- Extend `scripts/gguf_decode_rocprof.py` with profiler-only nested ROCTX role
+  wrappers. They do not synchronize or alter launch arguments. `rocprofv3`
+  now captures HIP API rows and joins host role ranges to asynchronous kernel
+  rows by `Correlation_Id`, resolving full-attention QKV/output, GDN input/
+  decay/output, selected gate-up/down, shared gate-up/down, attention core,
+  router/combine, and lm-head ownership. Child artifacts now include the
+  existing GGUF tracked/owned memory snapshots.
+- Add `scripts/gguf_sh_c0_profile.py`, which runs fresh per-context non-profiled
+  eager baselines under the existing 10-ms sysfs GTT sampler and independent
+  cached-only kernel+HIP-API+ROCTX profiles. It reports non-profiled wall,
+  profiled host-minus-device wall, roles, kernel resources, owned components,
+  complete commands/hashes, and exact token checks for 512/4K/32K/64K.
+- Extend the bulk-prefill memory census with physical owner bytes, logical field
+  sizes, row scaling, liveness-arena offsets, and route/stage lifetimes while
+  keeping head-major K/V separately attributed. Aliased logical views are
+  explicitly not counted as additional physical residency.
+- RED: the focused tests failed collection on the missing role/correlation and
+  scratch-census contracts. GREEN: `python3 -m py_compile` passes for all three
+  changed scripts; the profiler/memory/Vulkan-summary bundle passes **133/133**;
+  and `git diff --check` passes.
+- Run a cached gfx1151 8-token/1-step mechanical smoke through the new complete
+  parent. It attributes **583/628** decode-window kernels, reports
+  **16.291 ms/token** GPU kernel wall, **45.435 tok/s** non-profiled wall, and
+  **21.650 GiB** whole-GTT peak. This is tooling validation only, not a retained
+  performance row; raw output is under `/tmp/hipengine-sh-c0-smoke*`.

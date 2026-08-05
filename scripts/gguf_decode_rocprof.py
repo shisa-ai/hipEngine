@@ -21,6 +21,7 @@ import argparse
 import collections
 import csv
 import ctypes
+import functools
 import hashlib
 import inspect
 import json
@@ -48,8 +49,152 @@ DEFAULT_BEFORE_COMMIT = "74b11dbc3e75e2a50332907d13b882a063f7c56b"
 DEFAULT_AFTER_COMMIT = "4499fb132cabd1da7364d8d6f48e080a1352c074"
 DEFAULT_ROUTE_CHANGE_COMMIT = "e8521a2a3d8d4b5fe0f1078fd90eccafac29b55b"
 MARKER_PREFIX = "hipengine_gguf_eager_decode_step_"
+ROLE_MARKER_PREFIX = "hipengine_gguf_decode_role:"
 KIND = "hipengine_gguf_eager_decode_audit"
 SCHEMA_VERSION = 2
+
+
+def _weight_role(weight: object) -> str:
+    """Return the decode projection role carried by one resident GGUF weight."""
+
+    spec = getattr(weight, "spec", None)
+    slot_path = str(getattr(spec, "slot_path", ""))
+    slot = slot_path.rsplit(".", 1)[-1]
+    if slot in {"attn_q", "attn_k", "attn_v"}:
+        return "full_attention_qkv"
+    if slot == "attn_output":
+        return "full_attention_output"
+    if slot in {"attn_qkv", "attn_gate"}:
+        return "gdn_input_projections"
+    if slot in {"ssm_alpha", "ssm_beta"}:
+        return "gdn_decay_projections"
+    if slot == "ssm_out":
+        return "gdn_output_projection"
+    if slot in {"lm_head", "output"}:
+        return "lm_head"
+    if slot in {"ffn_gate_shexp", "ffn_up_shexp"}:
+        return "shared_expert_gate_up"
+    if slot == "ffn_down_shexp":
+        return "shared_expert_down"
+    if slot in {"ffn_gate_exps", "ffn_up_exps"}:
+        return "selected_expert_gate_up"
+    if slot == "ffn_down_exps":
+        return "selected_expert_down"
+    return f"weight_other:{slot or 'unknown'}"
+
+
+def _combined_weight_role(weights: Sequence[object]) -> str:
+    roles = tuple(dict.fromkeys(_weight_role(weight) for weight in weights))
+    return roles[0] if len(roles) == 1 else "+".join(roles)
+
+
+class _DecodeRoleMarkerPatches:
+    """Profiler-only ROCTX wrappers around existing decode launch owners.
+
+    Wrappers enqueue exactly the original work and add no synchronization. The
+    role attribution later joins HIP launch API correlation IDs to kernel rows,
+    so asynchronous execution does not need to fit inside the host marker time.
+    """
+
+    def __init__(self, session: object, marker: "_Roctx") -> None:
+        self._session = session
+        self._marker = marker
+        self._patches: list[tuple[object, str, object]] = []
+
+    def _patch(self, owner: object, name: str, role_fn) -> None:
+        original = getattr(owner, name, None)
+        if original is None:
+            return
+
+        @functools.wraps(original)
+        def wrapped(*args, **kwargs):
+            role = str(role_fn(args, kwargs))
+            self._marker.push(f"{ROLE_MARKER_PREFIX}{role}")
+            try:
+                return original(*args, **kwargs)
+            finally:
+                self._marker.pop()
+
+        self._patches.append((owner, name, original))
+        setattr(owner, name, wrapped)
+
+    def install(self) -> None:
+        runner = getattr(self._session, "runner", None)
+        if runner is None:
+            raise RuntimeError("GGUF decode role markers require a live runner")
+        module = sys.modules[type(runner).__module__]
+        runner_type = type(runner)
+        session_type = type(self._session)
+
+        self._patch(
+            runner_type,
+            "_run_linear_attention_attn_only",
+            lambda _args, _kwargs: "gdn_attention_core",
+        )
+        self._patch(
+            runner_type,
+            "_run_full_attention_attn_only",
+            lambda _args, _kwargs: "full_attention_core",
+        )
+        self._patch(
+            runner_type,
+            "_run_post_attention_moe_c1",
+            lambda _args, _kwargs: "moe_router_combine",
+        )
+        self._patch(
+            runner_type,
+            "_run_post_attention_moe_c1_unfused_selected_ffn",
+            lambda _args, _kwargs: "selected_expert_other",
+        )
+        self._patch(
+            session_type,
+            "_sample_device_from_hidden",
+            lambda _args, _kwargs: "lm_head",
+        )
+
+        for name, count in (
+            ("launch_gguf_linear", 1),
+            ("launch_gguf_linear_pair", 2),
+            ("launch_gguf_linear_pair_concat", 2),
+            ("launch_gguf_linear_triple", 3),
+        ):
+            self._patch(
+                module,
+                name,
+                lambda args, _kwargs, count=count: _combined_weight_role(args[:count]),
+            )
+        for name in (
+            "_launch_selected_raw_gguf_moe_pair_silu",
+            "_launch_selected_raw_gguf_moe_pair",
+        ):
+            self._patch(
+                module,
+                name,
+                lambda _args, _kwargs: "selected_expert_gate_up",
+            )
+        for name in (
+            "_launch_selected_raw_gguf_moe_linear",
+            "_launch_weighted_selected_raw_gguf_moe_linear",
+        ):
+            self._patch(
+                module,
+                name,
+                lambda args, _kwargs: _weight_role(args[0]),
+            )
+        for name in (
+            "_try_run_post_attention_moe_c1_fused_ffn",
+            "_try_run_post_attention_moe_c1_compact_gemv",
+        ):
+            self._patch(
+                module,
+                name,
+                lambda _args, _kwargs: "selected_expert_fused",
+            )
+
+    def restore(self) -> None:
+        for owner, name, original in reversed(self._patches):
+            setattr(owner, name, original)
+        self._patches.clear()
 
 
 class _Roctx:
@@ -220,8 +365,16 @@ def _run_child(args: argparse.Namespace) -> int:
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
 
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import reset_memory_stats
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from scripts.qwen35_gguf_bench import _memory_snapshot, _memory_summary
 
+    runtime = get_hip_runtime()
+    reset_memory_stats()
+    memory_snapshots: dict[str, Any] = {
+        "before_load": _memory_snapshot("before_load", runtime)
+    }
     prompt_ids = [int(args.prompt_token_id)] * int(args.prompt_length)
     max_sequence_length = int(
         args.max_seq
@@ -239,43 +392,58 @@ def _run_child(args: argparse.Namespace) -> int:
         backend=str(args.backend),
     )
     with Qwen35GGUFResidentSession(args.model, **session_kwargs) as session:
-        if args.child_mode == "warmbuild":
-            measured_runs.append(
-                _run_eager_once(
-                    session,
-                    prompt_ids=prompt_ids,
-                    warmup_steps=int(args.warmup_steps),
-                    steps=max(1, int(args.steps)),
-                    expected_token_id=int(args.expected_token_id),
-                )
-            )
-        else:
-            for _ in range(int(args.benchmark_warmups)):
-                warmup_runs.append(
-                    _run_eager_once(
-                        session,
-                        prompt_ids=prompt_ids,
-                        warmup_steps=int(args.warmup_steps),
-                        steps=int(args.steps),
-                        expected_token_id=int(args.expected_token_id),
-                    )
-                )
-            repetitions = 1 if args.child_mode == "profile" else int(args.repetitions)
-            for _ in range(repetitions):
+        memory_snapshots["after_load"] = _memory_snapshot(
+            "after_load", runtime, session
+        )
+        role_patches = None
+        if marker is not None:
+            role_patches = _DecodeRoleMarkerPatches(session, marker)
+            role_patches.install()
+        try:
+            if args.child_mode == "warmbuild":
                 measured_runs.append(
                     _run_eager_once(
                         session,
                         prompt_ids=prompt_ids,
                         warmup_steps=int(args.warmup_steps),
-                        steps=int(args.steps),
+                        steps=max(1, int(args.steps)),
                         expected_token_id=int(args.expected_token_id),
-                        marker=marker,
                     )
                 )
+            else:
+                for _ in range(int(args.benchmark_warmups)):
+                    warmup_runs.append(
+                        _run_eager_once(
+                            session,
+                            prompt_ids=prompt_ids,
+                            warmup_steps=int(args.warmup_steps),
+                            steps=int(args.steps),
+                            expected_token_id=int(args.expected_token_id),
+                        )
+                    )
+                repetitions = 1 if args.child_mode == "profile" else int(args.repetitions)
+                for _ in range(repetitions):
+                    measured_runs.append(
+                        _run_eager_once(
+                            session,
+                            prompt_ids=prompt_ids,
+                            warmup_steps=int(args.warmup_steps),
+                            steps=int(args.steps),
+                            expected_token_id=int(args.expected_token_id),
+                            marker=marker,
+                        )
+                    )
+        finally:
+            if role_patches is not None:
+                role_patches.restore()
         resolved_backend = str(getattr(session.runner, "backend", str(args.backend)))
         target_arch = str(getattr(session.runner, "target_arch", os.environ["HIPENGINE_HIP_ARCH"]))
         effective_wmma = bool(getattr(session, "use_wmma_prefill", False))
         effective_gemv = bool(getattr(session, "use_gemv_decode", False))
+        memory_snapshots["before_close"] = _memory_snapshot(
+            "before_close", runtime, session
+        )
+    memory_snapshots["after_close"] = _memory_snapshot("after_close", runtime)
 
     payload = {
         "kind": "hipengine_gguf_eager_decode_child",
@@ -317,6 +485,10 @@ def _run_child(args: argparse.Namespace) -> int:
         },
         "warmup_runs": warmup_runs,
         "measured_runs": measured_runs,
+        "memory": {
+            "summary": _memory_summary(memory_snapshots),
+            "snapshots": memory_snapshots,
+        },
     }
     _validate_child_payload(payload, expected_token_id=int(args.expected_token_id))
     if args.child_json is not None:
@@ -391,6 +563,145 @@ def _read_marker_windows(path: Path, prefix: str) -> list[tuple[int, int, int]]:
     return windows
 
 
+def _read_role_windows(path: Path, prefix: str) -> list[dict[str, Any]]:
+    windows: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            name = (
+                row.get("Function")
+                or row.get("Marker_Name")
+                or row.get("Marker_Text")
+                or row.get("Name")
+                or ""
+            ).strip()
+            if not name.startswith(prefix):
+                continue
+            try:
+                start = int(float(row["Start_Timestamp"]))
+                end = int(float(row["End_Timestamp"]))
+            except (KeyError, ValueError):
+                continue
+            if end < start:
+                continue
+            windows.append(
+                {
+                    "role": name.removeprefix(prefix),
+                    "thread_id": _optional_int(row.get("Thread_Id")),
+                    "start_ns": start,
+                    "end_ns": end,
+                }
+            )
+    windows.sort(key=lambda item: (int(item["start_ns"]), -int(item["end_ns"])))
+    return windows
+
+
+def _read_hip_launches(path: Path) -> list[dict[str, Any]]:
+    launches: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            function = str(row.get("Function") or "")
+            if "LaunchKernel" not in function and "ExtLaunch" not in function:
+                continue
+            try:
+                correlation_id = int(float(row["Correlation_Id"]))
+                start = int(float(row["Start_Timestamp"]))
+                end = int(float(row["End_Timestamp"]))
+            except (KeyError, ValueError):
+                continue
+            if end < start:
+                continue
+            launches.append(
+                {
+                    "function": function,
+                    "thread_id": _optional_int(row.get("Thread_Id")),
+                    "correlation_id": correlation_id,
+                    "start_ns": start,
+                    "end_ns": end,
+                }
+            )
+    launches.sort(key=lambda item: int(item["start_ns"]))
+    return launches
+
+
+def _annotate_kernel_roles(
+    rows: Sequence[dict[str, Any]],
+    *,
+    launches: Sequence[dict[str, Any]],
+    windows: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join asynchronous kernel rows to the innermost host role range."""
+
+    by_thread: dict[int | None, list[dict[str, Any]]] = collections.defaultdict(list)
+    for window in windows:
+        by_thread[window.get("thread_id")].append(window)
+    correlation_roles: dict[int, str] = {}
+    for launch in launches:
+        start = int(launch["start_ns"])
+        end = int(launch["end_ns"])
+        candidates = [
+            window
+            for window in by_thread.get(launch.get("thread_id"), ())
+            if int(window["start_ns"]) <= start and end <= int(window["end_ns"])
+        ]
+        if not candidates and launch.get("thread_id") is not None:
+            candidates = [
+                window
+                for window in by_thread.get(None, ())
+                if int(window["start_ns"]) <= start and end <= int(window["end_ns"])
+            ]
+        if not candidates:
+            continue
+        innermost = min(
+            candidates,
+            key=lambda window: (
+                int(window["end_ns"]) - int(window["start_ns"]),
+                -int(window["start_ns"]),
+            ),
+        )
+        correlation_roles[int(launch["correlation_id"])] = str(innermost["role"])
+
+    output: list[dict[str, Any]] = []
+    for row in rows:
+        annotated = dict(row)
+        correlation_id = _optional_int(row.get("correlation_id"))
+        annotated["role"] = correlation_roles.get(correlation_id, "unattributed")
+        output.append(annotated)
+    return output
+
+
+def _summarize_role_rows(
+    rows: Sequence[dict[str, Any]], *, steps: int
+) -> list[dict[str, Any]]:
+    if steps <= 0:
+        raise ValueError("steps must be positive")
+    total_ns = sum(int(row["duration_ns"]) for row in rows)
+    by_role: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
+    for row in rows:
+        role = str(row.get("role") or "unattributed")
+        by_role[role][0] += 1
+        by_role[role][1] += int(row["duration_ns"])
+    output = []
+    for role, (calls, duration_ns) in sorted(
+        by_role.items(), key=lambda item: (-item[1][1], item[0])
+    ):
+        share = duration_ns / total_ns if total_ns else 0.0
+        output.append(
+            {
+                "name": role,
+                "calls": calls,
+                "calls_per_token": calls / steps,
+                "total_us": duration_ns / 1e3,
+                "gpu_us_per_token": duration_ns / steps / 1e3,
+                "share_pct": share * 100.0,
+                "us_per_call": duration_ns / calls / 1e3 if calls else 0.0,
+                "amdahl_speedup_if_2x": _amdahl_speedup(share, 2.0),
+                "amdahl_speedup_if_4x": _amdahl_speedup(share, 4.0),
+                "amdahl_speedup_if_infinite": _amdahl_speedup(share, float("inf")),
+            }
+        )
+    return output
+
+
 def _optional_int(value: object) -> int | None:
     if value in (None, ""):
         return None
@@ -426,6 +737,7 @@ def _read_kernels(path: Path) -> list[dict[str, Any]]:
                     "start_ns": start,
                     "end_ns": end,
                     "duration_ns": end - start,
+                    "correlation_id": _optional_int(row.get("Correlation_Id")),
                     "vgpr": _optional_int(row.get("VGPR_Count")),
                     "scratch": _optional_int(row.get("Scratch_Size")),
                 }
@@ -933,6 +1245,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         str(args.rocprofv3),
         "--kernel-trace",
         "--marker-trace",
+        "--hip-trace",
         "--output-format",
         "csv",
         "-d",
@@ -949,6 +1262,7 @@ def _run_parent(args: argparse.Namespace) -> int:
     profile_child = _load_child(profile_json, expected_token_id=int(args.expected_token_id))
     kernel_csv = _single_file(trace_dir, "*_kernel_trace.csv")
     marker_csv = _single_file(trace_dir, "*_marker_api_trace.csv")
+    hip_api_csv = _single_file(trace_dir, "*_hip_api_trace.csv")
     windows = _read_marker_windows(marker_csv, MARKER_PREFIX)
     expected_indices = list(range(int(args.profile_steps)))
     if [index for index, _start, _end in windows] != expected_indices:
@@ -960,8 +1274,24 @@ def _run_parent(args: argparse.Namespace) -> int:
     selected_kernels = _filter_kernels_by_windows(
         all_kernels, [(start, end) for _index, start, end in windows]
     )
+    role_windows = _read_role_windows(marker_csv, ROLE_MARKER_PREFIX)
+    hip_launches = _read_hip_launches(hip_api_csv)
+    role_kernels = _annotate_kernel_roles(
+        selected_kernels,
+        launches=hip_launches,
+        windows=role_windows,
+    )
     profile_summary = _summarize_rows(
-        selected_kernels, steps=int(args.profile_steps), top=int(args.top)
+        role_kernels, steps=int(args.profile_steps), top=int(args.top)
+    )
+    profile_summary["roles"] = _summarize_role_rows(
+        role_kernels,
+        steps=int(args.profile_steps),
+    )
+    profile_summary["role_marker_windows"] = len(role_windows)
+    profile_summary["hip_kernel_launch_apis"] = len(hip_launches)
+    profile_summary["role_attributed_kernels"] = sum(
+        row["role"] != "unattributed" for row in role_kernels
     )
     profile_wall = _summarize_wall_runs(
         profile_child["measured_runs"], expected_token_id=int(args.expected_token_id)
@@ -1028,6 +1358,7 @@ def _run_parent(args: argparse.Namespace) -> int:
             "marker_prefix": MARKER_PREFIX,
             "kernel_trace_sha256": _sha256(kernel_csv),
             "marker_trace_sha256": _sha256(marker_csv),
+            "hip_api_trace_sha256": _sha256(hip_api_csv),
         },
     )
     measurement_valid = (
@@ -1035,6 +1366,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         and baseline_summary["all_tokens_exact"]
         and revision["classification"] == "first_performance_changing_revision_found"
         and profile_summary["marker_windows"] == int(args.profile_steps)
+        and profile_summary["role_attributed_kernels"] > 0
         and bool(correctness_gate["classification"]["passed"])
     )
     artifact = {
@@ -1079,8 +1411,9 @@ def _run_parent(args: argparse.Namespace) -> int:
         "revision_bisect": revision,
         "layer_family_amdahl": {
             "protocol": (
-                "rocprofv3 kernel+marker trace; one ROCTX range per synchronized eager step; "
-                "prefill and warmup excluded by timestamp containment"
+                "rocprofv3 kernel+marker+HIP API trace; one ROCTX range per synchronized eager step; "
+                "prefill and warmup excluded by timestamp containment; nested decode roles joined "
+                "to asynchronous kernels through HIP launch correlation IDs"
             ),
             "summary": profile_summary,
             "child": profile_child,
@@ -1090,6 +1423,8 @@ def _run_parent(args: argparse.Namespace) -> int:
                 "kernel_csv_sha256": _sha256(kernel_csv),
                 "marker_csv": str(marker_csv),
                 "marker_csv_sha256": _sha256(marker_csv),
+                "hip_api_csv": str(hip_api_csv),
+                "hip_api_csv_sha256": _sha256(hip_api_csv),
             },
         },
         "provenance": provenance,
@@ -1153,7 +1488,6 @@ def main() -> int:
     for name in (
         "prompt_length",
         "steps",
-        "warmup_steps",
         "repetitions",
         "baseline_steps",
         "baseline_repetitions",
@@ -1163,7 +1497,13 @@ def main() -> int:
     ):
         if int(getattr(args, name)) <= 0:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
-    for name in ("benchmark_warmups", "baseline_warmup_steps", "baseline_warmups", "profile_warmup_steps"):
+    for name in (
+        "warmup_steps",
+        "benchmark_warmups",
+        "baseline_warmup_steps",
+        "baseline_warmups",
+        "profile_warmup_steps",
+    ):
         if int(getattr(args, name)) < 0:
             raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
     return _run_child(args) if args.child_mode is not None else _run_parent(args)
