@@ -744,6 +744,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_t16_v1",
             "dense_rowtile_col4_bf16_bf16_out",
         ),
+        # Qwen3.6 dense F32 alpha/beta pair is W7900-only pending an
+        # independent gfx1151 occupancy and full-model gate.
+        (
+            "linear_pair",
+            "f32",
+            "bf16_hidden_bf16_out",
+        ),
         # Qwen3.6 dense down+residual and rounded next-input RMSNorm fusions
         # are W7900-only pending independent gfx1151 boundary/model gates.
         (

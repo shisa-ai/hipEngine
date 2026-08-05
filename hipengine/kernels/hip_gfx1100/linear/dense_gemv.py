@@ -15,6 +15,11 @@ _ARGTYPES_DENSE_GEMV_SINGLE = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_features, threads
     ctypes.c_void_p,                                          # stream
 )
+_ARGTYPES_DENSE_GEMV_F32W_PAIR = (
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # x, w_a, w_b, out_a, out_b
+    ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_features, threads
+    ctypes.c_void_p,
+)
 _ARGTYPES_DENSE_GEMV_DUAL = (
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,  # x, w_a, w_b, out
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,  # rows, in_features, out_a, out_b, threads
@@ -43,6 +48,10 @@ _SYMBOL_BF16_VIRTUAL256_OUT = "hipengine_dense_gemv_virtual256_out_bf16"
 _SYMBOL_BF16_VIRTUAL256_ROWTILE_OUT = "hipengine_dense_gemv_virtual256_rowtile_out_bf16"
 _SYMBOL_BF16_ROWTILE_OUT = "hipengine_dense_gemv_rowtile_out_bf16"
 _SYMBOL_BF16_F32W_BF16_OUT = "hipengine_dense_gemv_bf16_f32w_bf16_out"
+_SYMBOL_BF16_F32W_PAIR_BF16_OUT = "hipengine_dense_pair_gemv_bf16_f32w_bf16_out"
+_SYMBOL_BF16_F32W_PAIR_ROWTILE2_BF16_OUT = (
+    "hipengine_dense_pair_gemv_bf16_f32w_bf16_out_rowtile2"
+)
 _SYMBOL_FP16_OUT = "hipengine_dense_gemv_out_fp16"
 _SYMBOL_F32_OUT = "hipengine_dense_gemv_out_f32"
 _SYMBOL_DENSE_PREFILL_BF16_OUT = "hipengine_dense_prefill_gemm_out_bf16"
@@ -250,6 +259,60 @@ def dense_gemv_bf16_f32w_bf16_out(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_F32W_BF16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_pair_gemv_bf16_f32w_bf16_out(
+    x_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact small-row dense-F32 pair selected on gfx1100."""
+
+    if rows < 1 or rows > 4:
+        raise ValueError("rows must be between 1 and 4 for dense F32 pair")
+    if in_features <= 0:
+        raise ValueError("in_features must be positive")
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if threads != 256:
+        raise ValueError("threads must equal 256 for dense F32 pair")
+    library = library or build_dense_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    symbol = (
+        _SYMBOL_BF16_F32W_PAIR_ROWTILE2_BF16_OUT
+        if rows == 4
+        else _SYMBOL_BF16_F32W_PAIR_BF16_OUT
+    )
+    fn = signed_kernel_fn(
+        library,
+        symbol,
+        _ARGTYPES_DENSE_GEMV_F32W_PAIR,
+        ctypes.c_int,
+    )
+    err = fn(
+        x_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream,
+    )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
@@ -618,6 +681,11 @@ def register_dense_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out"),
         dense_gemv_out_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_pair", "f32", "bf16_hidden_bf16_out"),
+        dense_pair_gemv_bf16_f32w_bf16_out,
         replace=replace,
     )
     register(

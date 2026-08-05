@@ -382,6 +382,35 @@ def dense_virtual256_calls() -> Iterator[list[tuple[int, int, int]]]:
 
 
 @pytest.fixture
+def dense_f32_pair_calls() -> Iterator[list[tuple[int, int, int]]]:
+    """Count real dense alpha/beta pair ownership across verifier buckets."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "f32",
+        "bf16_hidden_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, int, int]] = []
+
+    def counted(*args, **kwargs):
+        calls.append((int(args[5]), int(args[6]), int(args[7])))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+
+
+@pytest.fixture
 def dense_virtual256_rowtile_calls() -> Iterator[list[tuple[int, int, int]]]:
     """Count the shape-qualified small-row local128 launches."""
 
@@ -875,6 +904,7 @@ def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_calls: list[tuple[int, int, int]],
+    dense_f32_pair_calls: list[tuple[int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
     q5_t16_ssm_out_calls: dict[str, list[tuple[int, int, int]]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
@@ -1289,6 +1319,12 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
+    assert dense_f32_pair_calls
+    assert {rows for rows, _, _ in dense_f32_pair_calls} == {1, 2, 3, 4}
+    assert {
+        (in_features, out_features)
+        for _, in_features, out_features in dense_f32_pair_calls
+    } == {(5_120, 48)}
     assert not dense_virtual256_rowtile_calls
     assert q5_t16_ssm_out_calls["decode"]
     assert {rows for rows, _, _ in q5_t16_ssm_out_calls["decode"]} == {1}

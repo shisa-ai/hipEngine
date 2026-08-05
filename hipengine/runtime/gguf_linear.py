@@ -2241,6 +2241,36 @@ def launch_gguf_linear_pair(
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
 
+    if pair_kind == "dense_f32_pair":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "f32",
+            "bf16_hidden_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
+
     if pair_kind == "q4_raw_dual_wmma":
         gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
             x_ptr,
@@ -2736,6 +2766,24 @@ def _resolve_gguf_linear_pair_kind(
         rows=rows,
         out_features=out_features_b,
     )
+    dense_f32_pair = KernelKey(
+        backend,
+        "linear_pair",
+        "f32",
+        "bf16_hidden_bf16_out",
+    )
+    if (
+        activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and 1 <= rows <= 4
+        and out_features_b == out_features
+        and dispatch_a.abi == dispatch_b.abi == "dense_bf16"
+        and dispatch_a.key.quant == dispatch_b.key.quant == "f32"
+        and dispatch_a.key.variant == dispatch_b.key.variant == "bf16_hidden_bf16_out"
+        and is_registered(dense_f32_pair)
+    ):
+        return "dense_f32_pair"
+
     if use_wmma and rows > 1:
         # A populated resident-pack8 pair has no exact fused tile owner. Decline
         # only when the registered singleton rewrite is available; callers then
