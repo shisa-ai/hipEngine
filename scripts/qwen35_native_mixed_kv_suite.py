@@ -81,6 +81,34 @@ def _read_compiler_version(path: Path | None) -> str | None:
     return text
 
 
+def _parse_layer_indices(value: str | None) -> list[int] | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        raise ValueError("layer-index expression must not be empty")
+    indices: list[int] = []
+    for part in text.split(","):
+        token = part.strip()
+        if not token:
+            raise ValueError(f"invalid empty layer-index term in {value!r}")
+        if "-" in token:
+            bounds = token.split("-")
+            if len(bounds) != 2 or not all(bound.isdigit() for bound in bounds):
+                raise ValueError(f"invalid layer-index range {token!r}")
+            start, end = (int(bound) for bound in bounds)
+            if end < start:
+                raise ValueError(f"descending layer-index range {token!r}")
+            indices.extend(range(start, end + 1))
+        elif token.isdigit():
+            indices.append(int(token))
+        else:
+            raise ValueError(f"invalid layer index {token!r}")
+    if len(indices) != len(set(indices)):
+        raise ValueError(f"layer-index expression contains duplicates: {value!r}")
+    return sorted(indices)
+
+
 def _checked_logits(logits: np.ndarray, label: str) -> np.ndarray:
     values = np.asarray(logits, dtype=np.float32).reshape(-1)
     if values.size == 0 or not np.all(np.isfinite(values)):
@@ -106,7 +134,14 @@ def _teacher_inputs(run: PromptRun, decode_steps: int) -> list[int]:
     return [int(token) for token in run.generated_token_ids[:decode_steps]]
 
 
-def _gguf_layout_audit(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
+def _gguf_layout_audit(
+    session: Qwen35GGUFResidentSession,
+    *,
+    policy: ResolvedKVPolicy,
+    expected_bf16_layers: Sequence[int] | None = None,
+    expected_int8_layers: Sequence[int] | None = None,
+    require_no_bf16_mirror: bool = False,
+) -> dict[str, Any]:
     scratch = session.scratch
     if scratch is None:
         raise RuntimeError("GGUF mixed-KV audit requires resident scratch")
@@ -148,29 +183,65 @@ def _gguf_layout_audit(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
             mirror_bytes += int(key.nbytes)
         if value is not None:
             mirror_bytes += int(value.nbytes)
-    expected_int8 = list(range(max(0, full_index - 4), full_index))
-    expected_bf16 = list(range(max(0, full_index - 4)))
+
+    if expected_bf16_layers is None and policy.requested_storage == "tail4_hadamard_group32":
+        expected_bf16_layers = list(range(max(0, full_index - 4)))
+        expected_int8_layers = list(range(max(0, full_index - 4), full_index))
+    expected_bf16 = (
+        None
+        if expected_bf16_layers is None
+        else [int(value) for value in expected_bf16_layers]
+    )
+    expected_int8 = (
+        None
+        if expected_int8_layers is None
+        else [int(value) for value in expected_int8_layers]
+    )
+    fixed_layer_policy_passed = bool(
+        expected_bf16 is None
+        or (bf16_indices == expected_bf16 and int8_indices == expected_int8)
+    )
+    complete_partition = bool(
+        sorted((*bf16_indices, *int8_indices)) == list(range(full_index))
+        and not set(bf16_indices).intersection(int8_indices)
+    )
+    expected_layout = (
+        "tail4_hadamard_group32"
+        if policy.requested_storage == "tail4_hadamard_group32"
+        else "uniform"
+    )
+    expected_granularity = str(policy.scale_granularity)
+    scale_granularity_passed = all(
+        metadata is None or metadata.granularity == expected_granularity
+        for metadata in scratch.full_kv_scale_metadata
+    )
     oracle_buffers = len(getattr(session, "_int8_prefill_oracle_buffers", {}))
+    mirror_requirement_passed = not require_no_bf16_mirror or mirror_bytes == 0
     passed = bool(
-        getattr(scratch, "kv_storage_layout", "uniform") == "tail4_hadamard_group32"
-        and bf16_indices == expected_bf16
-        and int8_indices == expected_int8
-        and mirror_bytes == 0
+        getattr(scratch, "kv_storage_layout", "uniform") == expected_layout
+        and complete_partition
+        and fixed_layer_policy_passed
+        and scale_granularity_passed
+        and mirror_requirement_passed
         and oracle_buffers == 0
-        and all(
-            metadata is None or metadata.granularity == "hadamard_group32"
-            for metadata in scratch.full_kv_scale_metadata
-        )
     )
     return {
         "passed": passed,
         "storage_layout": getattr(scratch, "kv_storage_layout", "uniform"),
         "bf16_full_attention_indices": bf16_indices,
         "int8_full_attention_indices": int8_indices,
+        "expected_bf16_full_attention_indices": expected_bf16,
+        "expected_int8_full_attention_indices": expected_int8,
+        "fixed_layer_policy_passed": fixed_layer_policy_passed,
+        "complete_layer_partition": complete_partition,
+        "scale_granularity": expected_granularity,
+        "scale_granularity_passed": scale_granularity_passed,
         "primary_kv_bytes": primary_bytes,
         "scale_bytes": scale_bytes,
         "total_kv_bytes": primary_bytes + scale_bytes,
         "bf16_mirror_bytes": mirror_bytes,
+        "require_no_bf16_mirror": bool(require_no_bf16_mirror),
+        "bf16_mirror_requirement_passed": mirror_requirement_passed,
         "int8_prefill_oracle_buffer_count": oracle_buffers,
     }
 
@@ -185,6 +256,9 @@ def _run_gguf_policy(
     compiler_version: str | None,
     require_cached_build: bool,
     teacher_runs: dict[str, PromptRun] | None = None,
+    expected_bf16_layers: Sequence[int] | None = None,
+    expected_int8_layers: Sequence[int] | None = None,
+    require_no_bf16_mirror: bool = False,
 ) -> PolicyRun:
     prompts: dict[str, PromptRun] = {}
     started = time.perf_counter()
@@ -242,8 +316,14 @@ def _run_gguf_policy(
                 elapsed_seconds=time.perf_counter() - case_started,
             )
         layout_audit = (
-            _gguf_layout_audit(session)
-            if policy.requested_storage == "tail4_hadamard_group32"
+            _gguf_layout_audit(
+                session,
+                policy=policy,
+                expected_bf16_layers=expected_bf16_layers,
+                expected_int8_layers=expected_int8_layers,
+                require_no_bf16_mirror=require_no_bf16_mirror,
+            )
+            if policy.requested_storage != "bf16"
             else {"passed": True, "required": False}
         )
     gc.collect()
@@ -445,6 +525,14 @@ def _command(args: argparse.Namespace) -> str:
         f" --kl-threshold {args.kl_threshold}"
         f" --top1-threshold {args.top1_threshold}"
     )
+    if args.max_sequence_length:
+        command += f" --max-sequence-length {args.max_sequence_length}"
+    if args.require_no_bf16_mirror:
+        command += " --require-no-bf16-mirror"
+    if args.expected_bf16_full_layers is not None:
+        command += f" --expected-bf16-full-layers {args.expected_bf16_full_layers}"
+    if args.expected_int8_full_layers is not None:
+        command += f" --expected-int8-full-layers {args.expected_int8_full_layers}"
     if args.compiler_version_file is not None:
         command += f" --compiler-version-file {args.compiler_version_file}"
     if args.require_cached_build:
@@ -457,6 +545,20 @@ def _command(args: argparse.Namespace) -> str:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.prompt_length <= 0 or args.decode_steps < 0:
         raise ValueError("prompt length must be positive and decode steps non-negative")
+    minimum_sequence_length = int(args.prompt_length) + int(args.decode_steps) + 2
+    if args.max_sequence_length < 0:
+        raise ValueError("max sequence length must be non-negative")
+    if args.max_sequence_length and args.max_sequence_length < minimum_sequence_length:
+        raise ValueError(
+            f"max sequence length {args.max_sequence_length} is below required "
+            f"{minimum_sequence_length}"
+        )
+    if args.require_no_bf16_mirror and args.engine not in {"gguf", "both"}:
+        raise ValueError("--require-no-bf16-mirror requires a GGUF engine run")
+    expected_bf16_layers = _parse_layer_indices(args.expected_bf16_full_layers)
+    expected_int8_layers = _parse_layer_indices(args.expected_int8_full_layers)
+    if (expected_bf16_layers is None) != (expected_int8_layers is None):
+        raise ValueError("expected BF16 and INT8 layer expressions must be supplied together")
     compiler_version = _read_compiler_version(args.compiler_version_file)
     prompt_rows = load_prompt_rows(args.prompts)
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(load_gguf_index(args.gguf_model))
@@ -467,7 +569,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         include_mixed_v1=True,
         heldout_ids=DEFAULT_HELDOUT_PROMPT_IDS,
     )
-    max_sequence_length = int(args.prompt_length) + int(args.decode_steps) + 2
+    max_sequence_length = int(args.max_sequence_length or minimum_sequence_length)
     reference_policy = resolve_kv_policy("bf16")
     candidate_policy = resolve_kv_policy(
         args.candidate_kv_storage,
@@ -502,6 +604,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 compiler_version=compiler_version,
                 require_cached_build=args.require_cached_build,
                 teacher_runs=gguf_reference.prompts,
+                expected_bf16_layers=expected_bf16_layers,
+                expected_int8_layers=expected_int8_layers,
+                require_no_bf16_mirror=args.require_no_bf16_mirror,
             )
             engines["gguf"] = _engine_summary(
                 engine="gguf",
@@ -564,6 +669,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "compiler_version_first_line": (
                 None if compiler_version is None else compiler_version.splitlines()[0]
             ),
+            "hipengine_gguf_int8_kv_bf16_prefix_full_layers": os.environ.get(
+                "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS"
+            ),
+            "hipengine_gguf_int8_kv_bf16_full_layers": os.environ.get(
+                "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS"
+            ),
+            "hipengine_gguf_int8_kv_allow_unverified_long": os.environ.get(
+                "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG"
+            ),
         },
         "gguf_model": str(args.gguf_model),
         "paro_model": str(args.paro_model),
@@ -600,6 +714,28 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--decode-steps", type=int, default=8)
+    parser.add_argument(
+        "--max-sequence-length",
+        type=int,
+        default=0,
+        help=(
+            "Resident capacity; 0 uses prompt length plus decode steps. "
+            "Use >8192 to force GGUF long/no-mirror policy."
+        ),
+    )
+    parser.add_argument(
+        "--require-no-bf16-mirror",
+        action="store_true",
+        help="Fail the candidate layout audit if persistent BF16 mirror bytes remain.",
+    )
+    parser.add_argument(
+        "--expected-bf16-full-layers",
+        help="Required zero-based BF16 full-attention indices, e.g. 0-7.",
+    )
+    parser.add_argument(
+        "--expected-int8-full-layers",
+        help="Required zero-based INT8 full-attention indices, e.g. 8,9.",
+    )
     parser.add_argument(
         "--candidate-kv-storage",
         choices=("int8_per_token_head", "tail4_hadamard_group32"),
