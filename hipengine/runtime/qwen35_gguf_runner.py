@@ -284,7 +284,6 @@ from hipengine.runtime.gguf_linear import (
     gguf_gemv_decode_enabled,
     gguf_wmma_prefill_enabled,
     launch_gguf_linear,
-    launch_gguf_linear_q8_1,
     launch_gguf_linear_residual,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
@@ -3515,66 +3514,6 @@ class Qwen35GGUFFullStackRunner:
             )
             return None
 
-    def _run_linear_attention_qkv_gate_rows(
-        self,
-        layer,
-        scratch,
-        *,
-        rows: int,
-        stream: int,
-        runtime: HipRuntime,
-    ) -> str:
-        """Launch transaction-consistent QKV plus the exact gate projection."""
-
-        qkv_q8_1_ready = launch_gguf_linear_q8_1(
-            layer.weight("attn_qkv"),
-            scratch.norm.ptr,
-            _dense_q8_workspace_ptr(scratch, rows, self.hidden_size) or 0,
-            scratch.linear_qkv.ptr,
-            rows,
-            self.hidden_size,
-            self.linear_qkv_width,
-            stream=stream,
-            runtime=runtime,
-            enabled=_gguf_q6_planar_q8_1_enabled(),
-        )
-        if not qkv_q8_1_ready and launch_gguf_linear_pair(
-            layer.weight("attn_qkv"),
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.linear_qkv.ptr,
-            scratch.linear_z.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.linear_qkv_width,
-            out_features_b=self.weights.config.ssm_inner_size,
-            stream=stream,
-            runtime=runtime,
-        ):
-            return "pair"
-        if not qkv_q8_1_ready:
-            launch_gguf_linear(
-                layer.weight("attn_qkv"),
-                scratch.norm.ptr,
-                scratch.linear_qkv.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=self.linear_qkv_width,
-                stream=stream,
-                runtime=runtime,
-            )
-        launch_gguf_linear(
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.linear_z.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.weights.config.ssm_inner_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        return "q6_planar_q8_1" if qkv_q8_1_ready else "fallback"
-
     def _run_linear_attention_alpha_beta_rows(
         self,
         layer,
@@ -4225,13 +4164,40 @@ class Qwen35GGUFFullStackRunner:
             if int(input_norm_ptr) != int(scratch.norm.ptr):
                 raise ValueError("prefused linear-attention input norm must use scratch.norm")
             attn_norm_f32_ptr = None
-        self._run_linear_attention_qkv_gate_rows(
-            layer,
-            scratch,
+        pair_fused = launch_gguf_linear_pair(
+            layer.weight("attn_qkv"),
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
             rows=1,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
         )
+        if not pair_fused:
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
         self._run_linear_attention_alpha_beta_rows(
@@ -4535,13 +4501,39 @@ class Qwen35GGUFFullStackRunner:
             if int(input_norm_ptr) != int(scratch.norm.ptr):
                 raise ValueError("prefused linear-attention input norm must use scratch.norm")
             attn_norm_f32_ptr = None
-        self._run_linear_attention_qkv_gate_rows(
-            layer,
-            scratch,
+        if not launch_gguf_linear_pair(
+            layer.weight("attn_qkv"),
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
             rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         self._run_linear_attention_alpha_beta_rows(
             layer,
             scratch.norm.ptr,
@@ -5135,13 +5127,40 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        self._run_linear_attention_qkv_gate_rows(
-            layer,
-            scratch,
+        pair_fused = launch_gguf_linear_pair(
+            layer.weight("attn_qkv"),
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
             rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
         )
+        if not pair_fused:
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         self._run_linear_attention_alpha_beta_rows(
             layer,
             scratch.norm.ptr,
@@ -5397,13 +5416,39 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        self._run_linear_attention_qkv_gate_rows(
-            layer,
-            scratch,
+        if not launch_gguf_linear_pair(
+            layer.weight("attn_qkv"),
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
             rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
-        )
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
 
         # Keep the scalar dense reduction association on the two rank-16
         # projections; the indexed GDN ABI consumes separate row-major arrays.
@@ -6051,14 +6096,41 @@ class Qwen35GGUFFullStackRunner:
             if pair_fused:
                 qkv_gate_route = "dense_q8_dp4a"
         if not pair_fused:
-            qkv_gate_route = self._run_linear_attention_qkv_gate_rows(
-                layer,
-                scratch,
+            pair_fused = launch_gguf_linear_pair(
+                layer.weight("attn_qkv"),
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                scratch.linear_z.ptr,
                 rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                out_features_b=cfg.ssm_inner_size,
                 stream=stream,
                 runtime=runtime,
             )
-            pair_fused = True
+        if not pair_fused:
+            qkv_gate_route = "fallback"
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         if use_f32_linear_projections:
             if not linear_qkv_f32_ready:
                 bf16_to_f32(
@@ -7390,67 +7462,33 @@ class Qwen35GGUFFullStackRunner:
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_silu")
-        q8_1_workspace_ptr = (
-            _dense_q8_workspace_ptr(scratch, rows, self.ffn_size) or 0
-        )
-        q6_planar_q8_1_enabled = (
-            _gguf_q6_planar_q8_1_enabled() and not f32_residual
-        )
         down_residual_fused = (
             next_norm_weight_ptr is None
             and not f32_residual
             and rows > 1
-            and (
-                launch_gguf_linear_q8_1(
-                    layer.weight("ffn_down"),
-                    scratch.ffn_intermediate.ptr,
-                    q8_1_workspace_ptr,
-                    out_ptr,
-                    rows,
-                    self.ffn_size,
-                    self.hidden_size,
-                    residual_ptr=scratch.residual.ptr,
-                    stream=stream,
-                    runtime=runtime,
-                    enabled=q6_planar_q8_1_enabled,
-                )
-                or launch_gguf_linear_residual(
-                    layer.weight("ffn_down"),
-                    scratch.ffn_intermediate.ptr,
-                    scratch.residual.ptr,
-                    out_ptr,
-                    rows,
-                    self.ffn_size,
-                    self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            )
-        )
-        if not down_residual_fused:
-            down_q8_1_ready = launch_gguf_linear_q8_1(
+            and launch_gguf_linear_residual(
                 layer.weight("ffn_down"),
                 scratch.ffn_intermediate.ptr,
-                q8_1_workspace_ptr,
-                scratch.ffn_down.ptr,
+                scratch.residual.ptr,
+                out_ptr,
                 rows,
                 self.ffn_size,
                 self.hidden_size,
                 stream=stream,
                 runtime=runtime,
-                enabled=q6_planar_q8_1_enabled,
             )
-            if not down_q8_1_ready:
-                launch_gguf_linear(
-                    layer.weight("ffn_down"),
-                    scratch.ffn_intermediate.ptr,
-                    scratch.ffn_down.ptr,
-                    rows=rows,
-                    in_features=self.ffn_size,
-                    out_features=self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
+        )
+        if not down_residual_fused:
+            launch_gguf_linear(
+                layer.weight("ffn_down"),
+                scratch.ffn_intermediate.ptr,
+                scratch.ffn_down.ptr,
+                rows=rows,
+                in_features=self.ffn_size,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
             if f32_residual:
                 count = rows * self.hidden_size
                 gguf_f32_bf16_add_out_f32(
@@ -8830,7 +8868,6 @@ _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 _GGUF_DENSE_Q8_DP4A_SHARED_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"
 _GGUF_DENSE_Q8_DP4A_F32_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"
-_GGUF_Q6_PLANAR_Q8_1_ENV = "HIPENGINE_GGUF_Q6_PLANAR_Q8_1"
 _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
@@ -9373,12 +9410,6 @@ def _gguf_dense_q8_dp4a_shared_enabled() -> bool:
 
 def _gguf_dense_q8_dp4a_f32_enabled() -> bool:
     return _env_flag(_GGUF_DENSE_Q8_DP4A_F32_ENV, False)
-
-
-def _gguf_q6_planar_q8_1_enabled() -> bool:
-    """Quality-gated wide-Q6 candidate; exact arithmetic is the fallback."""
-
-    return _env_flag(_GGUF_Q6_PLANAR_Q8_1_ENV, False)
 
 
 def _gguf_row_compact_gemv_enabled() -> bool:

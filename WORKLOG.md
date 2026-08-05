@@ -207826,3 +207826,27 @@ Vulkan local sizes verbatim will close the measured gap.
   dynamic graph positions/reuse, correction output, natural provider IDs,
   memory lifecycle, and teardown remain green. Commit this default-off candidate
   before the matched one-prompt and ten-prompt performance gates.
+- The committed `e7c0edeca` same-commit one-prompt gate rejects that rescue before
+  broad work. Exact-zero versus planar-rows2-4+X8-c1 preserves AR/MTP token IDs,
+  **17/21** acceptance, GPU/CPU agreement, and clean teardown. B3 improves
+  **65.896 -> 67.592 tok/s (+2.573%)**, with proposal **65.629 -> 64.315 ms** and
+  target verify **291.109 -> 283.464 ms**, but true AR regresses **24.194 ->
+  22.533 tok/s (-6.867%)**. Peak residency rises exactly **3,371,827,200 bytes**,
+  from **32,723,587,314 -> 36,095,414,514 bytes**. Control/candidate SHA-256s are
+  `6ef244d0...777751` and `a97e5f13...b0886` under
+  `/tmp/hipengine-qwen36-27b/final-e7c0edeca/`.
+- Honor the frozen AR+B3 gate: do not run the ten-prompt or populated-AR suites.
+  Remove the 3.140-GiB X8 allocation/helper/registry/adapter seam and its env/tests
+  together. The earlier full category result also rejects planar-Q8 runtime c1,
+  so remove its dense-runner ownership and env selector while retaining only the
+  registered planar projection/residual primitive, generic q8-input adapter, and
+  focused diagnostic fixtures. Exact planar Q6 remains the production owner.
+  Compact rejection artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json`.
+- Post-removal validation is green without repeating the expensive transaction:
+  `git diff` proves the dense runner/transaction fixture exactly match
+  `0f6e48658^` and all sidecar implementation/test files exactly match
+  `e7c0edeca^`; Python compilation passes. GPU1 planar leaf/dispatch/mapping is
+  **89 passed / 4 skipped**, and the focused runner/target/graph bundle is
+  **30 passed / 9 skipped**. The prior complete W7900 exact-parent evidence
+  therefore remains the applicable broad gate.

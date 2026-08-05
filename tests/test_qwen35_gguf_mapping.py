@@ -14,13 +14,11 @@ from hipengine.loading.qwen35_gguf import (
     validate_qwen35_gguf_tensor_map,
 )
 from hipengine.loading.qwen35_gguf_materialize import (
-    HIPENGINE_GGUF_Q6_X8_C1_SIDECAR_ENV,
     LAYOUT_DENSE_BF16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_Q4_K_PACK8,
-    gguf_q6_x8_c1_sidecar_enabled,
     plan_qwen35_gguf_materialization,
 )
 
@@ -148,36 +146,6 @@ def test_qwen36_dense_untied_gguf_tensor_map_uses_output_weight() -> None:
     assert set(model_map.tensor_names) == {
         tensor.name for tensor in info.tensors if not tensor.name.startswith("blk.64.")
     }
-
-
-def test_qwen36_dense_qmicro_plan_can_keep_only_qualified_x8_c1_sidecars(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    if not DENSE_UNTIED_MODEL.exists():
-        pytest.skip(f"local GGUF fixture not found: {DENSE_UNTIED_MODEL}")
-    monkeypatch.setenv(HIPENGINE_GGUF_Q6_X8_C1_SIDECAR_ENV, "1")
-    model_map = build_qwen35_gguf_tensor_map(GGUFReader(DENSE_UNTIED_MODEL).info)
-
-    assert gguf_q6_x8_c1_sidecar_enabled()
-    plan = plan_qwen35_gguf_materialization(
-        model_map,
-        decode_repack=True,
-        dense_q6_qmicro_planar=True,
-    )
-    sidecars = [spec for spec in plan.specs if "x8" in spec.allocation_names]
-
-    assert len(sidecars) == 56
-    assert sum(spec.slot_path.endswith(".ffn_down") for spec in sidecars) == 32
-    assert sum(spec.slot_path.endswith(".attn_qkv") for spec in sidecars) == 24
-    assert all(spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR for spec in sidecars)
-    assert all(spec.quant_key == "gguf_q6_k_t16_qmicro_planar_v1" for spec in sidecars)
-    assert all(spec.allocation_names == ("tiles", "x8") for spec in sidecars)
-    assert plan.root_specs["lm_head"].allocation_names == ("tiles",)
-    assert all(
-        "x8" not in spec.allocation_names
-        for spec in plan.specs
-        if spec.slot_path.endswith(".attn_v")
-    )
 
 
 def test_qwen36_dense_decode_repack_replaces_wide_rank2_q6_and_root_head() -> None:
