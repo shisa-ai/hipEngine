@@ -206236,3 +206236,61 @@ Vulkan local sizes verbatim will close the measured gap.
   dynamic graph positions, physical ownership, lifecycle, and teardown. This
   is correctness admission only; a tracked-clean profile and natural25 gate
   decide the performance promotion.
+
+## 2026-08-05 — Retain discarded NextN tail-score elimination
+
+- Compare tracked-clean cached W7900 one-prompt B3 traces from `094941175` and
+  `e15d85d1c` under the same `--limit 1 --no-warmup --candidate-budgets 3
+  --roctx-markers` protocol. IDs, acceptance **17/21**, and cycle sequence
+  `[3,3,2,3,3,0,3]` remain exact. Exactly four non-final catch-up stage-1
+  heads and four reducers disappear; all **21** scored proposal heads remain.
+  Clarification after re-reading the dense executor: the trailing NextN block is
+  full-attention, so its persistent draft state is K/V; Conv/GDN recurrent state
+  belongs to the target stack and is not part of this catch-up.
+- Proposal-update kernels fall **9.730729 -> 3.615143 ms (-62.848%)**, update
+  host wall falls **12.747199 -> 7.189769 ms (-43.597%)**, and update dispatches
+  fall **112 -> 96**. Total top-1 stage1 falls **37.126874 ms / 25 calls ->
+  31.191773 ms / 21 calls (-15.986%)**. The ordinary proposal body is flat at
+  **48.671292 -> 48.657994 ms (-0.027%)** of kernels; target dispatches remain
+  **7,302**. Complete marker wall falls **478.319377 -> 464.237877 ms
+  (-2.944%)**, kernel sum **337.735663 -> 328.505145 ms (-2.733%)**, and total
+  dispatches **8,055 -> 8,039**. Only the named removed subwindow is attributed.
+- Binding natural25 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100
+  HIPENGINE_GGUF_DECODE_REPACK=1
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-e15d85d1c/natural25-native-state-only-tail-b1-b3.json`.
+- True AR is a non-executing noise control at **23.069075 -> 23.217170 tok/s
+  (+0.642%)**. B1/B2/B3 advance **40.179035/50.812633/55.898940 ->
+  41.511904/51.974122/56.802246 tok/s (+3.317/+2.286/+1.616%)**. Proposal wall
+  falls **24.994%/13.564%/7.354%**. All 30 prompt-budget cells improve
+  (**+0.465% to +4.491%**) and every full/train/heldout/category scope improves
+  (**+1.080% to +3.663%**). IDs, acceptance, GPU/CPU summaries, stage ledgers,
+  peak **35,317,648,936 bytes**, and teardown remain exact. Populated controls
+  are not repeated because this NextN-only path cannot execute in AR/prefill;
+  true AR plus the complete transaction gate bind non-regression.
+- Retain and publish. B3 reaches **2.4466x own AR** and is now **16.57% below**
+  llama.cpp Vulkan's **68.082 tok/s**. Artifact:
+  `benchmarks/results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json`.
+  Natural baseline/candidate/comparison SHA-256s are `cd75fc29...167a`,
+  `34e05cf4...b46656`, and `85bf1e8a...f14`; candidate profile suite/kernel/
+  marker hashes are `feef3508...f2496b`, `dcf1bd36...06cd`, and
+  `6a102e67...ce3`.
+- Reopen the dominant dense-Q5 target after correcting a cache-biased screen.
+  Prior leaves repeatedly reused one 60-MiB dense BF16 plane inside the 96-MiB
+  cache; production rotates 48 `ssm_out` planes / **2.813 GiB** each pass. A
+  GPU1 48-weight counterbalanced rotation measures Q5T16 speedups
+  **1.666x/1.581x/1.523x/1.573x** at rows 1/2/3/4, every cell **11/11** wins,
+  and projects **1,958,215,680 bytes** less residency. Aggregate component
+  quality is **7.38e-5 max KL / 99.79% top-1**, with one disclosed row-4
+  single-layer cell at 75%. Source summary SHA-256 is `a9a07c32...b2082`.
+  Next restore a shape-qualified Q5T16 owner and require transaction/state,
+  named W7900 profile, full natural25, and populated 512/4096 gates before any
+  retention claim.

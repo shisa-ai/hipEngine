@@ -5229,6 +5229,35 @@ at **31.656/34.481 GiB** and teardown returns to zero. Canonical B3 is now
 **17.90% below** llama.cpp Vulkan. Artifact:
 [`2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json`](results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json).
 
+#### Qwen3.6-27B exact NextN state-only full-accept tail, W7900/gfx1100
+
+Clean implementation `e15d85d1c` keeps the same embedding/fusion and complete
+full-attention+dense-FFN NextN block, including its draft K/V write, in a
+non-final full-accept catch-up, but omits its discarded final RMSNorm and
+248,320-row lm-head score. Scored proposals, partial accepts, target
+verification, transactions, candidates, and acceptance are unchanged.
+
+| Route | Planar-root baseline | + state-only tail | Delta | MTP / true AR | Proposal delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR control | 23.069 tok/s | **23.217 tok/s** | +0.642% noise | 1.0000x | path cannot execute |
+| B1 | 40.179 tok/s | **41.512 tok/s** | **+3.317%** | 1.7880x | **-24.99%** |
+| B2 | 50.813 tok/s | **51.974 tok/s** | **+2.286%** | 2.2386x | **-13.56%** |
+| **B3 (retained)** | 55.899 tok/s | **56.802 tok/s** | **+1.616%** | **2.4466x** | **-7.35%** |
+
+All 30 prompt-budget rows and every full/train/heldout/category scope improve;
+IDs, acceptance, GPU/CPU summaries, complete transaction state, the
+**32.892-GiB** peak, and teardown remain exact. Populated AR/prefill are not
+repeated because this path is NextN-only and true AR plus the transaction gate
+bind non-regression.
+
+The tracked-clean one-prompt B3 trace removes exactly four unused stage-1 heads,
+four reducers, and **16 dispatches**. Proposal-update kernels fall **9.731 ->
+3.615 ms (-62.85%)**, update host wall **12.747 -> 7.190 ms (-43.60%)**, and
+complete marker wall **478.319 -> 464.238 ms (-2.94%)**. The ordinary scored
+proposal body is flat at **48.671 -> 48.658 ms** of kernels. Canonical B3 is now
+**16.57% below** llama.cpp Vulkan. Artifact:
+[`2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json`](results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5405,6 +5434,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B narrow Q4T16 col4 verifier rowtile](results/2026-08-05-qwen36-27b-q4t16-col4-shape-policy.json),
 [Qwen3.6-27B byte-neutral planar-Q6T16 replacement](results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json),
 [Qwen3.6-27B byte-neutral planar-Q6T16 root head](results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json),
+[Qwen3.6-27B exact NextN state-only full-accept tail](results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

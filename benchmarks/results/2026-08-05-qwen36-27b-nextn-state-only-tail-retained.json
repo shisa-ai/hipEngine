@@ -1,0 +1,292 @@
+{
+  "schema": 1,
+  "status": "retained_exact_nextn_full_accept_state_only_tail",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical W7900 ten-prompt natural25 true-AR plus B1-B3 complete decode wall and one-prompt B3 kernel/marker trace.",
+  "correctness_claim": true,
+  "correctness_scope": "Focused provider state-only contracts, exact cached W7900 B1-B3 transaction/state/provider output, exact natural25 IDs and GPU/CPU acceptance summaries, and clean teardown.",
+  "kind": "qwen36_27b_gguf_nextn_state_only_full_accept_tail_w7900",
+  "timestamp": "2026-08-05T08:59:41+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "e15d85d1c8bc030a34e1ef69a08ec87c2552f167",
+    "baseline_implementation_commit": "09494117538a6ca7487b9265a5c4192d4a5da691",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Advance the NextN full-attention K/V state after a non-final full accept without scoring the discarded tail token.",
+    "before": "Each full-accept catch-up ran embedding/fusion, the full NextN block including its draft K/V write, final shared RMSNorm, the 248,320-row root lm-head, and top-1 reduction even though its token and hidden result were discarded.",
+    "after": "The production executor runs the same embedding/fusion and full NextN block, synchronizes completion, and omits only final normalization and lm-head scoring. Compatible external executors retain the prior run_step fallback.",
+    "scope": "Complete accepted draft chains only; partial accepts, scored proposals, target verification, acceptance, commit, rollback, and final-cycle behavior are unchanged.",
+    "new_allocation_bytes": 0,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "model_math_changed": false
+  },
+  "correctness": {
+    "red_green": "RED failed collection on the absent state-advance contract; GREEN passed the two new focused nodes and the complete non-real provider bundle (8 passed).",
+    "static": "Changed-file Ruff, Python compilation, and git diff --check passed before the implementation commit.",
+    "w7900_transaction": "The cached dense Q4_K_M NextN transaction test passed exact B1-B3 target/provider trajectories, reject/partial/full/rollback state, dynamic graph reuse, physical ownership, lifecycle, and teardown.",
+    "profile_prompt": {
+      "token_ids_exact": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3]
+    },
+    "natural25": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "all_30_prompt_budget_rows_improve": true,
+      "all_full_train_heldout_category_scopes_improve": true
+    },
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 35317648936,
+      "total_allocated_bytes": 36128082554,
+      "total_freed_bytes": 36128082554,
+      "active_allocations": 0,
+      "peak_allocations": 2415
+    }
+  },
+  "profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy traces; one natural25 prompt; B3; no warmup; clean 094941175 baseline and clean e15d85d1c candidate.",
+    "complete_window": {
+      "suite_wall_ms": {
+        "baseline": 478.3614769112319,
+        "candidate": 464.27692705765367,
+        "delta_percent": -2.9443319609517515
+      },
+      "marker_span_ms": {
+        "baseline": 478.319377,
+        "candidate": 464.237877,
+        "delta_percent": -2.9439534915600807
+      },
+      "kernel_sum_ms": {
+        "baseline": 337.735663,
+        "candidate": 328.505145,
+        "delta_percent": -2.7330599078605355
+      },
+      "dispatches": {
+        "baseline": 8055,
+        "candidate": 8039,
+        "removed": 16
+      }
+    },
+    "proposal_update": {
+      "host_ms": {
+        "baseline": 12.747199,
+        "candidate": 7.189769,
+        "delta_percent": -43.59726399501569
+      },
+      "kernel_ms": {
+        "baseline": 9.730729,
+        "candidate": 3.615143,
+        "delta_percent": -62.84817920630612
+      },
+      "dispatches": {
+        "baseline": 112,
+        "candidate": 96,
+        "removed": 16
+      }
+    },
+    "proposal_root_top1": {
+      "stage1": {
+        "baseline_calls": 25,
+        "candidate_calls": 21,
+        "baseline_ms": 37.126874,
+        "candidate_ms": 31.191773,
+        "delta_percent": -15.985997097412508
+      },
+      "stage2": {
+        "baseline_calls": 25,
+        "candidate_calls": 21,
+        "baseline_ms": 0.518364,
+        "candidate_ms": 0.437361,
+        "delta_percent": -15.62666388869598
+      },
+      "interpretation": "All 21 scored proposal heads remain. Exactly four discarded full-accept catch-up heads and reducers disappear; per-scored-call arithmetic is unchanged."
+    },
+    "unchanged_phase_disclosure": {
+      "proposal_body_host_ms": {
+        "baseline": 62.627009,
+        "candidate": 63.334552,
+        "delta_percent": 1.1297729387012678
+      },
+      "proposal_body_kernel_ms": {
+        "baseline": 48.671292,
+        "candidate": 48.657994,
+        "delta_percent": -0.027322060815637705
+      },
+      "target_verify_dispatches": {
+        "baseline": 7302,
+        "candidate": 7302
+      },
+      "note": "Unchanged proposal and target phases moved within profile noise; only the named update subwindow and removed physical heads are attributed."
+    }
+  },
+  "natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-e15d85d1c/natural25-native-state-only-tail-b1-b3.json",
+    "true_ar": {
+      "baseline_tok_s": 23.06907477796356,
+      "candidate_tok_s": 23.217170002114365,
+      "delta_percent": 0.6419642988555019,
+      "interpretation": "Noise-only control: the NextN tail path cannot execute in true AR."
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 40.17903540463996,
+        "candidate_tok_s": 41.5119039982628,
+        "delta_percent": 3.317323525066307,
+        "candidate_mtp_vs_true_ar": 1.7879829451428557,
+        "proposal_seconds": {
+          "baseline": 0.6960179200395942,
+          "candidate": 0.5220561497844756,
+          "delta_percent": -24.993863698972362
+        },
+        "prompt_delta_percent_range": [2.7145707777213257, 4.4908064645518],
+        "scope_delta_percent_range": [2.8848596566607654, 3.663111872662883]
+      },
+      "2": {
+        "baseline_tok_s": 50.81263300778421,
+        "candidate_tok_s": 51.97412217996428,
+        "delta_percent": 2.2858275657593685,
+        "candidate_mtp_vs_true_ar": 2.238607124607825,
+        "proposal_seconds": {
+          "baseline": 0.7279129417147487,
+          "candidate": 0.6291767254006118,
+          "delta_percent": -13.56428916918876
+        },
+        "prompt_delta_percent_range": [1.4837295019580532, 3.1065405113155364],
+        "scope_delta_percent_range": [1.983472153123711, 2.622735866434023]
+      },
+      "3": {
+        "baseline_tok_s": 55.89894007943694,
+        "candidate_tok_s": 56.80224585759689,
+        "delta_percent": 1.6159622648949545,
+        "candidate_mtp_vs_true_ar": 2.4465619992627854,
+        "proposal_seconds": {
+          "baseline": 0.7559395097196102,
+          "candidate": 0.7003507248591632,
+          "delta_percent": -7.353602258607417
+        },
+        "prompt_delta_percent_range": [0.465377934701805, 2.8452788214700764],
+        "scope_delta_percent_range": [1.0801117023116147, 2.0428393274737777]
+      }
+    },
+    "acceptance_and_work": {
+      "1": {"accepted_draft_tokens": 115, "proposed_draft_tokens": 126, "cycles": 126},
+      "2": {"accepted_draft_tokens": 151, "proposed_draft_tokens": 184, "cycles": 92},
+      "3": {"accepted_draft_tokens": 168, "proposed_draft_tokens": 222, "cycles": 77}
+    }
+  },
+  "matched_module_rerank": {
+    "protocol_note": "Profiler-only directional matched-shape ledger; Vulkan query logging and rocprof perturb execution differently. Topline speed uses unprofiled natural25.",
+    "dense_q5_ssm_out": {
+      "hipengine_ms": 37.39343899999999,
+      "vulkan_ms": 15.1194,
+      "gap_ms": 22.274038999999988,
+      "status": "largest remaining arithmetic gap; reopened by a cache-representative 48-weight rotation screen"
+    },
+    "q4_ffn_gate_up_plus_silu": {
+      "hipengine_ms": 76.648,
+      "vulkan_ms": 89.534,
+      "gap_ms": -12.886,
+      "status": "hipEngine ahead"
+    },
+    "wide_q6_ffn_down_plus_qkv": {
+      "hipengine_ms": 46.917,
+      "vulkan_ms": 41.486,
+      "gap_ms": 5.431,
+      "status": "second-order residual"
+    },
+    "proposal_root_stage1": {
+      "hipengine_ms": 31.191773,
+      "vulkan_ms": 31.8732,
+      "gap_ms": -0.681427,
+      "call_counts": {"hipengine": 21, "vulkan": 22},
+      "status": "hipEngine is directionally ahead after removing discarded heads; call counts remain disclosed"
+    },
+    "target_root_f32_rows": {
+      "hipengine_ms": 11.713377,
+      "vulkan_ms": 9.17016,
+      "gap_ms": 2.543217,
+      "status": "second-order residual"
+    }
+  },
+  "comparison": {
+    "llamacpp_vulkan_natural25_b3_tok_s": 68.08247965468567,
+    "baseline_b3_tok_s": 55.89894007943694,
+    "candidate_b3_tok_s": 56.80224585759689,
+    "candidate_below_vulkan_percent": 16.568482602722646,
+    "vulkan_over_candidate_ratio": 1.198587813329922,
+    "candidate_vs_own_true_ar": 2.4465619992627854
+  },
+  "next_target_screen": {
+    "status": "reopened_component_candidate_cache_representative_rotation",
+    "summary": "Prior Q5 screens repeatedly reused one 60-MiB dense BF16 plane that can remain in the 96-MiB cache. Rotating all 48 production ssm_out weights changes dense residency to 2.813 GiB and reopens sole-resident Q5T16.",
+    "resident_bytes": {
+      "dense_bf16": 3019898880,
+      "q5_t16": 1061683200,
+      "saving": 1958215680
+    },
+    "gpu": "AMD Radeon RX 7900 XTX / GPU1 / gfx1100",
+    "speedups_rows_1_to_4": [1.6656547674138344, 1.5811378395199955, 1.5233848394154208, 1.5731569850326659],
+    "paired_wins_each": 11,
+    "quality": {
+      "max_kl": 0.00007384656883927584,
+      "aggregate_top1_agreement": 0.9979166666666667,
+      "minimum_single_layer_top1_agreement_disclosure": 0.75
+    },
+    "admission": "Component quality passes, but runtime transaction/state, natural25, populated 512/4096, and W7900 physical profile remain mandatory before retention."
+  },
+  "sources": {
+    "paths": {
+      "natural_baseline": "/tmp/hipengine-qwen36-27b/final-094941175/natural25-native-q6-qmicro-root-b1-b3.json",
+      "natural_candidate": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/natural25-native-state-only-tail-b1-b3.json",
+      "natural_comparison": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/natural25-state-only-tail-vs-094941175.json",
+      "profile_baseline_suite": "/tmp/hipengine-qwen36-27b/final-094941175/profile-native-q6-qmicro-root-mtp-b3-hermetic/suite.json",
+      "profile_candidate_suite": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/profile-native-state-only-tail-mtp-b3-hermetic-v2/suite.json",
+      "profile_baseline_kernel_csv": "/tmp/hipengine-qwen36-27b/final-094941175/profile-native-q6-qmicro-root-mtp-b3-hermetic/mtp-b3_kernel_trace.csv",
+      "profile_candidate_kernel_csv": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/profile-native-state-only-tail-mtp-b3-hermetic-v2/mtp-b3_kernel_trace.csv",
+      "profile_baseline_marker_csv": "/tmp/hipengine-qwen36-27b/final-094941175/profile-native-q6-qmicro-root-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv",
+      "profile_candidate_marker_csv": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/profile-native-state-only-tail-mtp-b3-hermetic-v2/mtp-b3_marker_api_trace.csv",
+      "q5_rotating_reopen": "/tmp/qwen36-q5t16-ssm-out-rotating-cache-reopen.json"
+    },
+    "sha256": {
+      "natural_baseline": "cd75fc298e6558a74488129e736095995c7dc2639022fa201b709996a9f2167a",
+      "natural_candidate": "34e05cf40eb3e4cfcbf9d0b0a09468ea874de8294d1f500e80f87292d2b46656",
+      "natural_comparison": "85bf1e8aac5038a8adcc663263592dffd72ef141679272d6d5ce443cd4191f14",
+      "profile_baseline_suite": "954042511a8e127a1941f1929c6dbce0e68b2d2cf210f6e3bb1e3525987fe6f6",
+      "profile_candidate_suite": "feef3508e0d84f509a455e5318df74d92abfb918bd6dc0b2a23e9b7307f2496b",
+      "profile_baseline_kernel_csv": "090fbfd3ed5001f93f36481e04bc7115e93c7499594697c02dbd43736505cfbe",
+      "profile_candidate_kernel_csv": "dcf1bd36a1c0c3feb7d9570481ee1337262b946a8ff11aadd93c262215bc06cd",
+      "profile_baseline_marker_csv": "94d9d646900350fb393925b64e942ab7b494f075166fefa4a86096d4578379c6",
+      "profile_candidate_marker_csv": "6a102e673e3f8bd51fc2048f95e894875c06d377861894bef8aa0773578d2cda",
+      "q5_rotating_reopen": "a9a07c32f8b21fe0b296e962429adbd9dcd7d931862305b020f32006752b2082"
+    }
+  },
+  "decision": {
+    "action": "retain_and_promote_state_only_full_accept_tail",
+    "reason": "The intended physical heads disappear, complete unprofiled B1-B3 wall improves, every prompt-budget row and aggregate scope improves, correctness and memory are unchanged, and no prompt/token policy or approximation is introduced.",
+    "next": "Reopen dense Q5 ssm_out with a cache-representative sole-resident Q5T16 route; require exact/default transaction quality and full W7900 gates before promotion."
+  }
+}
