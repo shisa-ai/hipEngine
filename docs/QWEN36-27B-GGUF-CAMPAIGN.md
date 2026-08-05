@@ -1339,13 +1339,34 @@ is noise-flat and peaks are unchanged. B3 is now **12.18% below Vulkan**.
 Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json`.
 
-The refreshed exact launch ledger now exposes the next larger boundary: every
-B3 target pass still copies the final 160-KiB Conv and 3-MiB recurrent journal
-row back into resident state. That is **672 dispatches / 4.528 ms** of kernels
-per seven-cycle profile before queue cost, even though both producers already
-hold every final-state value in registers. Fusing only the non-deferred final
-write into registered producer variants is next; deferred rollback capture and
-ordinary copy fallback remain mandatory.
+The subsequent attribution audit corrects that ledger before another kernel is
+admitted: those **672 dispatches / 4.528 ms** are seven pre-verify rollback
+snapshots of 48 Conv plus 48 recurrent resident states, not selected-row commits.
+Native row journals are deferred, so the screened non-deferred direct-final
+producer would never execute in production and is removed before W7900 timing.
+
+The retained replacement gives `_StateJournal` immutable live/snapshot pointer
+tables and reuses the registered 64-KiB-chunked pair-copy body. Each 96-copy
+snapshot becomes one launch; registry, shape, layer-pair, and backend misses
+retain the original chain. GPU1 production-shape wall improves **656.504 ->
+436.108 us (1.505x)** with every forward/rollback byte exact. The W7900 trace
+changes **672 copies / 4.528 ms -> 7 launches / 3.458 ms**, removes **665
+dispatches**, and cuts target host and complete marker wall **0.683%/1.555%**.
+An independent exact no-marker profile also improves **53.932 -> 54.315 tok/s**.
+
+Natural25 B1/B2/B3 improves **43.357/54.678/59.790 ->
+43.792/55.254/60.262 tok/s (+1.004/+1.053/+0.789%)**. All 30 prompt-budget
+rows and every full/train/heldout/category aggregate improve; IDs, acceptance,
+state, and teardown remain exact. The MTP-only route cannot affect AR, whose
+**+1.533%** timing movement lowers the same-session B3 ratio to **2.4991x**.
+Canonical B3 is now **11.49% below Vulkan**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json`.
+
+The next exact boundary is now narrower. Registered chain Conv/GDN producers
+read resident state through const pointers and, under deferred commit, write
+only row journals. Prove that read-only contract fail-closed before launch,
+then omit the redundant initial state copy and native-only snapshot allocation;
+the retained pointer-copy path remains the fallback for every miss.
 
 ---
 
@@ -1360,8 +1381,8 @@ ordinary copy fallback remain mandatory.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact GDN handoff raises B3 to 59.790 tok/s / 2.5175x own AR; all tokens/acceptance are exact, target verify improves at every budget, and sub-0.6% timing negatives are disclosed |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; re-rank `a5f25c9ad` at a 12.18% Vulkan B3 gap; the 672 copies are pre-verify rollback snapshots, not final commits, and the exact one-launch pointer-table replacement is component-admitted pending W7900 profile |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; one-launch rollback snapshots raise B1/B2/B3 to 43.792/55.254/60.262 tok/s; all 30 prompt-budget rows/scopes and all state/acceptance checks improve or remain exact; faster noisy AR lowers B3/AR to 2.4991x as disclosed |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; `01291b066` reaches 60.262 tok/s / 11.49% below Vulkan; next prove native deferred chain journals leave resident Conv/GDN state read-only, then omit the redundant initial snapshot and native-only snapshot storage while retaining fail-closed copy fallback |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
@@ -1514,6 +1535,8 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | 2026-08-05 | hipEngine `3728531ba`, byte-neutral planar Q6T16 | W7900 | 512/128, 4K/128; natural25 B1-B3 | 207.022 / 192.528 | 22.107 / 20.926; natural AR 23.031 | B1 39.830, B2 49.848, B3 54.547 | 1.7294x / 2.1644x / 2.3685x | all 750 MTP IDs and acceptance exact; all 30 rows/scopes improve; populated IDs deterministic; byte-identical peaks and clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json` |
 | 2026-08-05 | hipEngine `094941175`, planar Q6T16 root head | W7900 | 512/128, 4K/128; natural25 B1-B3 | 207.864 / 193.001 | 22.208 / 21.017; natural AR 23.069 | B1 40.179, B2 50.813, B3 55.899 | 1.7417x / 2.2026x / 2.4231x | all IDs/acceptance exact; all aggregate scopes and all B2/B3 prompt rows improve; one B1 prompt -0.653% disclosed; byte-identical peaks and clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json` |
 | 2026-08-05 | hipEngine `24fef47da`, sole-resident Q5T16 `ssm_out` | W7900 | 512/128, 4K/128; natural25 B1-B3 | 234.014 / 215.771 | 23.241 / 21.841; natural AR 24.049 | B1 43.170, B2 54.621, B3 59.551 | 1.7951x / 2.2712x / 2.4762x | aggregate Q5 quality 7.38e-5 KL / 99.79% top-1; candidate MTP exact vs own AR; all scopes and all B2/B3 prompts improve; one B1 timing and one fluent prior-route trajectory change disclosed; peaks -1.824 GiB | `benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json` |
+| 2026-08-05 | hipEngine `a5f25c9ad`, exact GDN BF16 handoff | W7900 | 512/128, 4K/128; natural25 B1-B3 | 234.580 / 215.127 | 23.284 / 21.903; natural AR 23.750 | B1 43.357, B2 54.678, B3 59.790 | 1.8256x / 2.3023x / 2.5175x | all IDs/acceptance/state exact; 336 casts removed; target physical windows improve; marker-wall variance disclosed | `benchmarks/results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json` |
+| 2026-08-05 | hipEngine `01291b066`, one-launch rollback snapshots | W7900 | inherited unchanged 512/128, 4K/128; natural25 B1-B3 | 234.580 / 215.127 | 23.284 / 21.903; natural AR 24.114 | B1 43.792, B2 55.254, B3 60.262 | 1.8161x / 2.2914x / 2.4991x | all 30 prompt-budget rows and scopes improve; IDs/acceptance/state exact; 665 launches removed; +1,540 bytes; clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json` |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

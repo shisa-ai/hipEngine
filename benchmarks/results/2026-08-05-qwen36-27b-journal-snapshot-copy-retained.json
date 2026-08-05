@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "status": "retained_exact_journal_snapshot_copy",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical W7900 ten-prompt natural25 B1-B3 complete decode wall, two tracked-clean one-prompt B3 profiles, and a same-GPU production-shape component screen.",
+  "correctness_claim": true,
+  "correctness_scope": "The pointer-table snapshot and reverse rollback are byte exact; the W7900 B1-B3 transaction, all natural25 AR/MTP tokens and acceptance, dynamic graph reuse, rollback/commit state, and teardown are exact.",
+  "kind": "qwen36_27b_gguf_journal_snapshot_copy_w7900",
+  "timestamp": "2026-08-05T13:30:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "01291b066708fee6cd8ab2327de0b655cfdc35e9",
+    "baseline_implementation_commit": "a5f25c9ad06058de59b69c24095bbec692f62356",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Replace each 48-layer Conv/GDN pre-verify rollback snapshot from 96 hipMemcpyAsync submissions with one registered raw-pointer chunked pair-copy launch.",
+    "registry_key": "linear_state_pair_copy/f32/chunked_i32",
+    "ownership": "_StateJournal owns immutable live/snapshot pointer tables and a device row-zero scalar. gfx1100 uses one forward or reverse launch; registry, shape, layer-pair, and backend misses preserve the original per-state memcpy chain. Per-row journals are unchanged and gfx1151 deliberately misses.",
+    "corrected_attribution": "The 672 profiled copies were seven pre-verify rollback snapshots, not final journal-to-resident commits. The rejected direct-final producer candidate was removed before W7900 timing because deferred native journals would never select it.",
+    "new_environment_flag": false,
+    "new_resident_bytes": 1540,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false,
+    "ar_reachable": false
+  },
+  "component_screen": {
+    "protocol": "GPU1 production 48-layer geometry with 163840-byte Conv rows and 3145728-byte recurrent rows; 158859264 bytes per snapshot; fifteen counterbalanced synchronized wall samples with twenty operations per sample.",
+    "baseline_us": 656.504,
+    "candidate_us": 436.108,
+    "saved_us": 220.396,
+    "speedup": 1.505,
+    "correctness": "Bidirectional whole-buffer and integrated _StateJournal snapshot/zero/rollback checks preserve every state and hidden byte.",
+    "trace": {
+      "kernel": "linear_state_pair_commit_chunked_i32_kernel",
+      "semantic_grid": [48, 2, 48],
+      "local_x": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "instrumented_duration_ms": 2.233759
+    }
+  },
+  "correctness": {
+    "focused_tests": "Snapshot and adjacent commit contracts: 6 passed; planning/fail-closed/backend coverage and pycompile/diff checks pass. Binding cached W7900 B1-B3 transaction: 1 passed.",
+    "w7900_transaction": "Full logits, reject/partial/full/rollback Conv/GDN/KV/hidden state, dynamic graph positions/reuse, correction logits, provider output, GPU/CPU acceptance, lifecycle, and teardown pass against the actual _StateJournal owner.",
+    "natural25": {
+      "true_ar_tokens_exact": true,
+      "mtp_tokens_exact": {"1": true, "2": true, "3": true},
+      "acceptance_exact": {"1": true, "2": true, "3": true},
+      "all_candidate_exact_greedy": true,
+      "all_candidate_gpu_accept_match_cpu": true,
+      "all_prompt_budget_rows_improve": true,
+      "all_full_train_heldout_category_scopes_improve": true,
+      "candidate_memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 33359434796,
+        "total_allocated_bytes": 34169868414,
+        "total_freed_bytes": 34169868414,
+        "active_allocations": 0,
+        "peak_allocations": 2418
+      }
+    }
+  },
+  "profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy trace; one natural25 prompt; B3; no warmup; clean a5f25c9ad baseline and clean 01291b066 candidate. A first exact candidate run without the SDK marker overlay is an independent complete-suite diagnostic.",
+    "exact_prompt": {
+      "token_ids_equal": true,
+      "gpu_accept_matches_cpu": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3]
+    },
+    "snapshot_family": {
+      "baseline": {"dispatches": 672, "duration_ms": 4.52784},
+      "candidate": {"dispatches": 7, "duration_ms": 3.457868},
+      "dispatch_delta": -665,
+      "duration_delta_ms": -1.069972,
+      "duration_delta_percent": -23.63098
+    },
+    "target_verify": {
+      "host_ms": {"baseline": 360.239139, "candidate": 357.778074, "delta_percent": -0.6831753503608096},
+      "kernel_ms": {"baseline": 259.182248, "candidate": 258.895501, "delta_percent": -0.11063527776794535},
+      "dispatches": {"baseline": 6966, "candidate": 6301, "delta_percent": -9.546368073499856}
+    },
+    "complete_window": {
+      "marker_span_ms": {"baseline": 444.949446, "candidate": 438.030988, "delta_percent": -1.5548863049938633},
+      "kernel_sum_ms": {"baseline": 315.112352, "candidate": 314.705277, "delta_percent": -0.1291840822539303},
+      "dispatches": {"baseline": 7703, "candidate": 7038, "delta_percent": -8.633000129819546}
+    },
+    "suite_tok_s": {
+      "baseline": 53.932127862301726,
+      "candidate_marker": 54.78514466127068,
+      "marker_delta_percent": 1.581648699541116,
+      "candidate_independent_no_marker": 54.31544173573109,
+      "independent_delta_percent": 0.7107
+    }
+  },
+  "natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-01291b066/natural25-native-journal-snapshot-copy-b1-b3.json",
+    "true_ar": {"baseline_tok_s": 23.749617780652855, "candidate_tok_s": 24.11377551783828, "delta_percent": 1.5333204119271304},
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 43.35699039413802,
+        "candidate_tok_s": 43.792176855996814,
+        "delta_percent": 1.0037284827722592,
+        "candidate_mtp_vs_true_ar": 1.816064714693945,
+        "accepted_draft_tokens": 115,
+        "proposed_draft_tokens": 127,
+        "cycles": 127,
+        "target_verify_delta_percent": -0.8755751340598916,
+        "prompt_delta_percent_range": [0.30128406764287075, 1.7941902141195065],
+        "scope_delta_percent_range": [0.751642158882615, 1.4126874255499633]
+      },
+      "2": {
+        "baseline_tok_s": 54.678427343172515,
+        "candidate_tok_s": 55.25420093867832,
+        "delta_percent": 1.0530178417388347,
+        "candidate_mtp_vs_true_ar": 2.2913956753808113,
+        "accepted_draft_tokens": 151,
+        "proposed_draft_tokens": 182,
+        "cycles": 91,
+        "target_verify_delta_percent": -0.803214274841757,
+        "prompt_delta_percent_range": [0.3526065191144845, 1.675005686700426],
+        "scope_delta_percent_range": [0.8452823120282726, 1.3807049243790503]
+      },
+      "3": {
+        "baseline_tok_s": 59.790280281614,
+        "candidate_tok_s": 60.26190653283626,
+        "delta_percent": 0.788800870310169,
+        "candidate_mtp_vs_true_ar": 2.499065585488976,
+        "accepted_draft_tokens": 169,
+        "proposed_draft_tokens": 219,
+        "cycles": 76,
+        "target_verify_delta_percent": -0.7468496974137318,
+        "prompt_delta_percent_range": [0.14898694867151452, 1.5261610133806558],
+        "scope_delta_percent_range": [0.23544314489931661, 1.2394965175984707]
+      }
+    },
+    "variance_disclosure": "The MTP-only route cannot execute in true AR; the +1.533% AR movement is timing variance. It makes the same-session MTP/AR ratios numerically lower despite every absolute MTP row improving. Populated AR was not repeated because _StateJournal is unreachable outside MTP."
+  },
+  "vulkan_comparison": {
+    "llama_cpp_vulkan_b3_tok_s": 68.08248,
+    "hipengine_b3_tok_s": 60.26190653283626,
+    "hipengine_gap_percent": -11.486910387464954,
+    "hipengine_b3_vs_own_ar": 2.499065585488976
+  },
+  "next_target": "The registered native chain Conv/GDN journal producers read resident state through const pointers and, with deferred commit, write only row journals. Prove this read-only contract fail-closed, then omit the now-redundant initial state copy and native-only snapshot allocation while retaining the pointer-copy fallback for every miss.",
+  "source_artifacts": {
+    "profile_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-01291b066/profile-native-journal-snapshot-copy-mtp-b3-hermetic/profile-comparison.json", "sha256": "d52f6e83ad980fbe071a05fe04e97acd58fa9271839c4cb2d12804aa9699ee06"},
+    "profile_candidate_marker_suite": {"path": "/tmp/hipengine-qwen36-27b/final-01291b066/profile-native-journal-snapshot-copy-mtp-b3-hermetic/suite.json", "sha256": "cf21718cce5ade17f31a113bd683d039280718c53db88d136f28361c41c4040b"},
+    "profile_candidate_independent_suite": {"path": "/tmp/hipengine-qwen36-27b/final-01291b066/profile-native-journal-snapshot-copy-mtp-b3-no-marker/suite.json", "sha256": "c8a72d3f1d162f99ba18127a140698a8c3eb030d465e1b7f89339302548ac21b"},
+    "natural_candidate": {"path": "/tmp/hipengine-qwen36-27b/final-01291b066/natural25-native-journal-snapshot-copy-b1-b3.json", "sha256": "323c5a8fe58773616d52453834e2770214ba78188efe8d08997241c2cfff1b60"},
+    "natural_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-01291b066/natural25-journal-snapshot-copy-vs-a5f25c9ad.json", "sha256": "2ee70ef66d2b049bfe9eddaeb10519647ec5e7c60f7e3fa96aa43b2106621198"},
+    "component_screen": {"path": "/tmp/qwen36-linear-state-snapshot-copy-async-gpu1.json", "sha256": "95217fca09ec777df01953bbb50c453342661e7a473f8fed10970402de55c8ed"},
+    "component_trace": {"path": "/tmp/qwen36-linear-state-snapshot-copy-trace-gpu1/epyc/1900392_kernel_trace.csv", "sha256": "166b1e83eeec256a40558cd5339df2afc745c9804f0ab6e4833c1705cc2f6a44"}
+  }
+}
