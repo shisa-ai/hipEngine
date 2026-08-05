@@ -6,6 +6,7 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
@@ -21,6 +22,9 @@ _SYMBOL_CHAIN_BF16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_
 _SYMBOL_CHAIN_BF16_SNAPSHOT_TLOOP = (
     "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop"
 )
+_SYMBOL_ALPHA_BETA_CHAIN_CONV_SNAPSHOT_BF16_F32W = (
+    "hipengine_qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w"
+)
 _SYMBOL_CHAIN_F32_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop"
 _SYMBOL_CHAIN_FP16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
@@ -29,6 +33,26 @@ _SYMBOL_PREFILL_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_f32_
 _SYMBOL_PREFILL_FP16 = "hipengine_qwen35_linear_attn_conv_prefill_fp16"
 _SYMBOL_PREFILL_SEGMENTS_F32 = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32"
 _SYMBOL_PREFILL_SEGMENTS_F32_STATE_ROWS = "hipengine_qwen35_linear_attn_conv_prefill_segments_f32_state_rows"
+
+_ARGTYPES_ALPHA_BETA_CHAIN_CONV_SNAPSHOT = (
+    ctypes.c_void_p,  # norm
+    ctypes.c_void_p,  # weight_a
+    ctypes.c_void_p,  # weight_b
+    ctypes.c_void_p,  # out_a
+    ctypes.c_void_p,  # out_b
+    ctypes.c_void_p,  # hidden_states
+    ctypes.c_void_p,  # base_conv_state
+    ctypes.c_void_p,  # chain_conv_state
+    ctypes.c_void_p,  # initial_conv_state_snapshot
+    ctypes.c_void_p,  # conv_weight
+    ctypes.c_void_p,  # conv_out
+    ctypes.c_int64,   # rows
+    ctypes.c_int64,   # in_features
+    ctypes.c_int64,   # out_features
+    ctypes.c_int64,   # channels
+    ctypes.c_int64,   # kernel_size
+    ctypes.c_void_p,  # stream
+)
 
 
 def plan_qwen35_linear_attn_conv_build(
@@ -332,6 +356,75 @@ def qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop(
         library=library,
         runtime=runtime,
     )
+
+
+def qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_tloop(
+    norm_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    chain_conv_state_ptr: int,
+    initial_conv_state_snapshot_ptr: int,
+    conv_weight_ptr: int,
+    conv_out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact dense alpha/beta plus rollback-safe chain Conv once."""
+
+    if rows < 1 or rows > 4:
+        raise ValueError("rows must be between 1 and 4 for alpha/beta chain Conv")
+    if in_features != 5120:
+        raise ValueError("in_features must equal 5120 for alpha/beta chain Conv")
+    if out_features != 48:
+        raise ValueError("out_features must equal 48 for alpha/beta chain Conv")
+    if channels != 10240:
+        raise ValueError("channels must equal 10240 for alpha/beta chain Conv")
+    if kernel_size != 4:
+        raise ValueError("kernel_size must equal 4 for alpha/beta chain Conv")
+    if threads != 256:
+        raise ValueError("threads must equal 256 for alpha/beta chain Conv")
+    if int(initial_conv_state_snapshot_ptr) <= 0:
+        raise ValueError("initial_conv_state_snapshot_ptr must be non-zero")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_ALPHA_BETA_CHAIN_CONV_SNAPSHOT_BF16_F32W,
+        _ARGTYPES_ALPHA_BETA_CHAIN_CONV_SNAPSHOT,
+        ctypes.c_int,
+    )
+    err = fn(
+        norm_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        hidden_states_ptr,
+        base_conv_state_ptr,
+        chain_conv_state_ptr,
+        initial_conv_state_snapshot_ptr,
+        conv_weight_ptr,
+        conv_out_ptr,
+        rows,
+        in_features,
+        out_features,
+        channels,
+        kernel_size,
+        stream,
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_linear_attn_chain_conv_decode_f32_tloop(
@@ -664,6 +757,16 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
             "bf16_c1_exact_state_rows_tloop",
         ),
         qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_attn_alpha_beta+chain_conv+snapshot",
+            "f32",
+            "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop",
+        ),
+        qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_tloop,
         replace=replace,
     )
     register(

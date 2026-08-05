@@ -411,6 +411,35 @@ def dense_f32_pair_calls() -> Iterator[list[tuple[int, int, int]]]:
 
 
 @pytest.fixture
+def dense_f32_pair_chain_conv_calls() -> Iterator[list[tuple[int, int, int, int, int]]]:
+    """Count one-grid alpha/beta plus snapshot-Conv ownership."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_attn_alpha_beta+chain_conv+snapshot",
+        "f32",
+        "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, int, int, int, int]] = []
+
+    def counted(*args, **kwargs):
+        calls.append(tuple(int(value) for value in args[11:16]))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+
+
+@pytest.fixture
 def dense_virtual256_rowtile_calls() -> Iterator[list[tuple[int, int, int]]]:
     """Count the shape-qualified small-row local128 launches."""
 
@@ -905,6 +934,7 @@ def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_f32_pair_calls: list[tuple[int, int, int]],
+    dense_f32_pair_chain_conv_calls: list[tuple[int, int, int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
     q5_t16_ssm_out_calls: dict[str, list[tuple[int, int, int]]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
@@ -1319,9 +1349,17 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
-    # The exact dense alpha/beta pair remains registry-accessible but is not a
-    # production owner after its W7900 complete marked-wall gate regressed.
+    # The standalone dense alpha/beta pair remains registry-accessible but is
+    # not a production owner after its W7900 complete marked-wall regression.
+    # The materially different cross-family owner absorbs snapshot Conv once.
     assert not dense_f32_pair_calls
+    assert dense_f32_pair_chain_conv_calls
+    assert {rows for rows, *_ in dense_f32_pair_chain_conv_calls} == {2, 3, 4}
+    assert {
+        (in_features, out_features, channels, kernel_size)
+        for _, in_features, out_features, channels, kernel_size
+        in dense_f32_pair_chain_conv_calls
+    } == {(5120, 48, 10240, 4)}
     assert not dense_virtual256_rowtile_calls
     assert q5_t16_ssm_out_calls["decode"]
     assert {rows for rows, _, _ in q5_t16_ssm_out_calls["decode"]} == {1}
@@ -1335,14 +1373,8 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert not chain_journal_calls["conv"]
     assert not chain_journal_calls["gdn_unfused"]
     assert not chain_journal_calls["gdn_fused"]
-    assert chain_journal_calls["conv_snapshot"]
-    assert {
-        rows for rows, _, _ in chain_journal_calls["conv_snapshot"]
-    } == {2, 3, 4}
-    assert {
-        (channels, kernel_size)
-        for _, channels, kernel_size in chain_journal_calls["conv_snapshot"]
-    } == {(10240, 4)}
+    # Snapshot Conv is physically owned by the alpha/beta composite above.
+    assert not chain_journal_calls["conv_snapshot"]
     assert not chain_journal_calls["gdn_snapshot"]
     assert chain_journal_calls["gdn_fused_snapshot"]
     assert {
