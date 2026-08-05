@@ -738,36 +738,6 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
     assert serial_calls[9] == ("write", 0x9030, 0x4018, 0xE000, 0xF000, "verify_chain")
     assert [call[-1] for call in serial_calls if call[0] == "attn"] == [128] * 4
 
-    def batch_write(
-        key,
-        value,
-        key_cache,
-        value_cache,
-        spans,
-        rows,
-        block_size,
-        num_kv_heads,
-        head_dim,
-        **kwargs,
-    ):
-        calls.append(
-            (
-                "write_batch",
-                key,
-                value,
-                key_cache,
-                value_cache,
-                spans.base_offsets.ptr,
-                spans.live_counts.ptr,
-                spans.row_positions.ptr,
-                rows,
-                block_size,
-                num_kv_heads,
-                head_dim,
-                kwargs["stream"],
-            )
-        )
-
     def batch_attn(
         query,
         key_cache,
@@ -799,12 +769,6 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         lambda: batch_attn,
         raising=False,
     )
-    monkeypatch.setattr(
-        runner,
-        "_full_attn_kv_write_shared_batch_fn",
-        lambda: batch_write,
-        raising=False,
-    )
     calls.clear()
     runner._run_full_attention_attn_chain_rows_exact(
         7,
@@ -819,27 +783,29 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
     )
 
     cache_calls = [
-        call
-        for call in calls
-        if call[0] in {"write", "write_batch", "attn", "attn_batch", "gate"}
+        call for call in calls if call[0] in {"write", "attn", "attn_batch", "gate"}
     ]
-    assert [call[0] for call in cache_calls] == ["write_batch", "attn_batch", "gate"]
+    assert [call[0] for call in cache_calls] == ["write"] * 4 + [
+        "attn_batch",
+        "gate",
+    ]
     assert cache_calls[0] == (
-        "write_batch",
+        "write",
         0x9000,
         0x4000,
         0xE000,
         0xF000,
-        0xD000,
-        0xD100,
-        0xD100,
-        4,
-        256,
-        1,
-        4,
-        0,
+        "verify_chain",
     )
-    assert cache_calls[1] == (
+    assert cache_calls[3] == (
+        "write",
+        0x9030,
+        0x4018,
+        0xE000,
+        0xF000,
+        "verify_chain",
+    )
+    assert cache_calls[4] == (
         "attn_batch",
         0x8000,
         0xE000,
@@ -850,35 +816,7 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         4,
         128,
     )
-    assert cache_calls[2] == ("gate", 0x5000, 0x6000, 0xA000, 32)
-
-    monkeypatch.setattr(
-        runner,
-        "_full_attn_kv_write_shared_batch_fn",
-        lambda: None,
-        raising=False,
-    )
-    calls.clear()
-    runner._run_full_attention_attn_chain_rows_exact(
-        7,
-        0xF000,
-        0x11000,
-        scratch,
-        rows=4,
-        decode_row_scratches=tuple(row_scratches),
-        start_position=11,
-        hidden_f32_ptr=0x12000,
-        attention_context_limit=128,
-    )
-    key_miss_calls = [
-        call
-        for call in calls
-        if call[0] in {"write", "write_batch", "attn", "attn_batch", "gate"}
-    ]
-    assert [call[0] for call in key_miss_calls] == ["write"] * 4 + [
-        "attn_batch",
-        "gate",
-    ]
+    assert cache_calls[5] == ("gate", 0x5000, 0x6000, 0xA000, 32)
 
     def batch_k(
         x,
@@ -910,12 +848,6 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         runner,
         "_full_attn_k_grid_y_batch_fn",
         lambda: batch_k,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        runner,
-        "_full_attn_kv_write_shared_batch_fn",
-        lambda: batch_write,
         raising=False,
     )
     calls.clear()
@@ -952,8 +884,8 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
     assert [
         call[0]
         for call in calls
-        if call[0] in {"write", "write_batch", "attn", "attn_batch", "gate"}
-    ] == ["write_batch", "attn_batch", "gate"]
+        if call[0] in {"write", "attn", "attn_batch", "gate"}
+    ] == ["write"] * 4 + ["attn_batch", "gate"]
 
     bad_context = Tensor.from_handle(0xD280, (1,), DType.INT64, device)
     row_scratches[1].decode_spans = KVLiveSpans.paged_uniform(
@@ -977,9 +909,7 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         attention_context_limit=128,
     )
     fallback_calls = [
-        call
-        for call in calls
-        if call[0] in {"write", "write_batch", "attn", "attn_batch", "gate"}
+        call for call in calls if call[0] in {"write", "attn", "attn_batch", "gate"}
     ]
     assert [call[0] for call in fallback_calls] == ["write", "attn", "gate"] * 4
 

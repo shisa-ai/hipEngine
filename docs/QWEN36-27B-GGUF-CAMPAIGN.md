@@ -1451,12 +1451,22 @@ physical/launch contraction without replacing canonical **60.262 tok/s /
 11.49%-below-Vulkan**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json`.
 
-The refreshed launch census next targets full-attention KV append. Native B3
-already batches attention and gate work over four rows but still submits four
-shared-cache BF16 KV writes per full-attention layer. A shared-page batch append
-can preserve the same conversion/address arithmetic while removing up to
-**336 dispatches** in the one-prompt seven-pass B3 trace; screen that boundary
-before reopening any closed arithmetic family.
+The next shared-cache KV append candidate is exact but rejected as a runtime
+default. Its gfx1100 rows2/4 primitive preserves scalar K/V cache bits across a
+reversed physical-page boundary and improves GPU1 graph medians
+**1.762x/3.172x**. Routed commit `e3adc89fa` passes the complete W7900 B1-B3
+transaction and delivers the intended B3 physical contraction: target writers
+fall **448 / 1.083574 ms -> 112 / 0.378642 ms (-65.05%)**, target/complete
+dispatches each fall **336**, and target/complete kernel sums improve
+**0.832%/0.675%**. The predeclared complete-path gate fails, however: target
+host rises **1.405%** and complete marked wall rises **2.786%**. Do not move the
+gate or spend natural25 on an ineligible route. The runner is restored to scalar
+writes; retain only the exact measured primitive. The canonical physical
+default remains `fda35418e` and the headline remains **60.262 tok/s / 11.49%
+below Vulkan**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json`.
+Re-rank the refreshed scalar-write baseline rather than reopening a closed
+arithmetic family or treating the rejected 336-dispatch projection as savings.
 
 ---
 
@@ -1471,8 +1481,8 @@ before reopening any closed arithmetic family.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm now removes 217 B3 graph nodes and cuts target host/kernel plus complete marker/kernel, while mixed natural25 leaves the canonical 43.792/55.254/60.262 tok/s packet unchanged |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; next screen shared-page verifier KV append batching for up to 336 fewer one-prompt B3 dispatches |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default, while exact shared-KV batching is primitive-only after target host/complete marked wall regress 1.405%/2.786%; canonical 43.792/55.254/60.262 tok/s unchanged |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank the scalar-write trace after rejecting the 336-dispatch KV batch default |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule

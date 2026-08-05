@@ -5452,6 +5452,25 @@ without replacing canonical **60.262 tok/s / 2.4991x own AR / 11.49% below
 Vulkan**. Artifact:
 [`2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json`](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json).
 
+#### Qwen3.6-27B shared-cache KV batch primitive, runtime rejected
+
+Correctness commit `e3adc89fa` adds a gfx1100-only rows2/4 shared-page BF16 KV
+writer. Each grid-Y row preserves the scalar FP32-K/BF16-V conversion and store
+arithmetic while indexing one common physical page table. The reversed-page
+positions-255..258 fixture is byte-exact to scalar launches and the direct CPU
+cache oracle; the routed W7900 B1-B3 transaction is also exact. GPU1 component
+graph medians improve **1.762x/3.172x**, and cache-only tracing records the
+rows4 body at **6.240 us**, local256, VGPR8, scratch0.
+
+The production route fails its predeclared W7900 complete-path gate. Target
+writers improve **448 / 1.083574 ms -> 112 / 0.378642 ms (-65.05%)**,
+target/complete dispatches each fall **336**, and target/complete kernel sums
+improve **0.832%/0.675%**. Target host and complete marked wall nevertheless
+regress **1.405%/2.786%**. The runner is restored to scalar writes and natural25
+is not run; retain only the measured exact primitive. The canonical **60.262
+tok/s / 2.4991x own AR / 11.49% below Vulkan** headline is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json`](results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5635,6 +5654,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact producer-folded rollback snapshot](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
 [Qwen3.6-27B selective FFN-down residual fusion](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
 [Qwen3.6-27B rounded residual plus next-RMSNorm](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json),
+[Qwen3.6-27B shared-cache KV batch runtime rejection](results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

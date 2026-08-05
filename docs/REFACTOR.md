@@ -14,6 +14,20 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Qwen3.6 shared-cache verifier KV batch primitive
+
+- Added 2026-08-05 after the exact rows2/4 primitive passed reversed-page CPU
+  and scalar cache oracles, GPU1 component timing, cache-only tracing, and the
+  W7900 B1-B3 transaction. Its production route is already removed: although
+  writers improve **65.05%** and 336 dispatches disappear, target host and
+  complete marked wall regress **1.405%/2.786%**.
+- Retain only the gfx1100 registry wrapper/body and focused regression fixture
+  while investigating a materially different graph/scheduling representation.
+  Reopen runtime ownership only if a tracked-clean W7900 trace improves both
+  target host and complete marked wall. If no such consumer is admitted by the
+  next Qwen3.6 kernel-catalog cleanup, delete the registry key, wrapper/export,
+  body, gfx1151 exclusion, and dedicated test together.
+
 ## Qwen3.6 dense Q4T16 FFN dual residency
 
 - Added 2026-08-05 for the retained exact dense-verifier FFN route. Exactly 64
