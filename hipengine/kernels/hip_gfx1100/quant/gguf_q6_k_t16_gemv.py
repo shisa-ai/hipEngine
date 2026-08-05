@@ -45,6 +45,10 @@ _Q6_T16_QMICRO_PLANAR_BF16_F32_TOP1_STAGE1 = (
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_RESIDUAL_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
+    "bf16_residual_bf16_out"
+)
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_F32 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out"
 )
@@ -602,6 +606,38 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
     )
 
 
+def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact planar-Q6 FFN-down plus rounded-BF16 residual for rows 2-4."""
+
+    if rows < 2 or rows > 4:
+        raise ValueError("qmicro planar down-residual requires rows in [2, 4]")
+    _launch_residual(
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_RESIDUAL_BF16,
+        x_ptr,
+        tiles_ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -630,6 +666,52 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out(
         library=library,
         runtime=runtime,
     )
+
+
+def _launch_residual(
+    symbol: str,
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if in_features <= 0 or in_features % _QK_K != 0:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    library = library or build_gguf_q6_k_t16_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(residual_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def _launch(
@@ -773,6 +855,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear+residual",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_bf16_residual_bf16_out",
+        ),
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_gemv_rowtile_bf16_f32_out",
@@ -858,6 +950,7 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",

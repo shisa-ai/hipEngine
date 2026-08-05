@@ -13,6 +13,9 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
     weighted_sum_out_bf16_f32w,
 )
+from hipengine.kernels.hip_gfx1100.quant import (
+    gguf_t16_selected_gemv as selected_t16_mod,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     build_gguf_q4_k_gemv,
     gguf_q4_k_pack8_dual_rowtile_silu_bf16_bf16_out,
@@ -648,6 +651,43 @@ def _run_dense_single(
             free(buf)
 
 
+def _run_dense_residual(
+    fn,
+    x_dev,
+    tiles,
+    residual,
+    out_features,
+    library,
+) -> np.ndarray:
+    rows, in_features = x_dev.shape
+    buffers = []
+    try:
+        device = []
+        for value in (x_dev, tiles, residual):
+            buffer = malloc(value.nbytes)
+            buffers.append(buffer)
+            device.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(value), value.nbytes)
+        out = np.zeros((rows, out_features), dtype=np.uint16)
+        out_buffer = malloc(out.nbytes)
+        buffers.append(out_buffer)
+        fn(
+            device[0].ptr,
+            device[1].ptr,
+            device[2].ptr,
+            out_buffer.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out), out_buffer, out.nbytes)
+        return out
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
 def _run_pack8_single(
     x_dev,
     packed,
@@ -856,6 +896,45 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
         expected_single,
         **_TOL,
     )
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4])
+def test_q4_t16_dense_down_residual_is_bit_exact(
+    rows: int,
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260806 + rows)
+    in_features = 512
+    out_features = 32
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    residual = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, out_features)).astype(np.float32)
+    )
+    projected = _run_dense_single(
+        gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    expected = _f32_to_bf16_u16(
+        _bf16_u16_to_f32(residual) + _bf16_u16_to_f32(projected)
+    )
+    candidate = _run_dense_residual(
+        selected_t16_mod.gguf_q4_k_t16_dense_rowtile_bf16_residual_bf16_out,
+        x_bf16,
+        tiles,
+        residual,
+        out_features,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, expected)
 
 
 @pytest.mark.parametrize("rows", [1, 2, 3, 4])
@@ -1225,6 +1304,12 @@ def test_p9_h3d_registry_keys_resolve() -> None:
         quant="gguf_q4_k_t16_v1",
         variant="dense_rowtile_bf16_bf16_out",
     ) is gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear+residual",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_rowtile_bf16_residual_bf16_out",
+    ) is selected_t16_mod.gguf_q4_k_t16_dense_rowtile_bf16_residual_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear_pair_silu",

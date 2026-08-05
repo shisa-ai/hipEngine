@@ -2437,6 +2437,52 @@ void q4_k_t16_dense_rowtile_gemv_kernel(
   }
 }
 
+// Exact compact-Q4 FFN-down plus rounded-BF16 residual owner. The producer
+// keeps the established dot/reduction and first BF16 boundary, then consumes
+// BF16 residual bits and performs the same FP32 add/final BF16 rounding as the
+// standalone primitive.
+template <typename scalar_t, int ROW_TILE>
+__global__ __launch_bounds__(32, 1)
+void q4_k_t16_dense_rowtile_residual_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    const scalar_t* __restrict__ residual,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int kTileCols = 8;
+  const int64_t out_group = blockIdx.x;
+  const int lane = threadIdx.x;
+  float acc[ROW_TILE][kTileCols];
+  q4_k_t16_dense_rowtile_accumulate<scalar_t, ROW_TILE, kTileCols>(
+      x, tiles, lane, in_features, out_group, acc);
+
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      GGUF_T16_WAVE_REDUCE(acc[row][local_col]);
+    }
+  }
+  if (lane == 0) {
+    const int64_t out_base = out_group * kTileCols;
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        const int64_t idx =
+            static_cast<int64_t>(row) * out_features +
+            out_base + local_col;
+        const scalar_t projected =
+            float_to_scalar<scalar_t>(0.0f + acc[row][local_col]);
+        out[idx] = float_to_scalar<scalar_t>(
+            scalar_to_float<scalar_t>(residual[idx]) +
+            scalar_to_float<scalar_t>(projected));
+      }
+    }
+  }
+}
+
 // Exact dense Q5T16 small-B rowtile. The 128-thread arithmetic partitions,
 // per-thread K sequence, wave32 tree, and ordered wave-0..3 reduction match the
 // one-expert direct producer. Four-column groups reuse decoded weights across
@@ -4719,6 +4765,44 @@ int launch_q4_dense_rowtile(
 }
 
 template <typename scalar_t>
+int launch_q4_dense_rowtile_residual(
+    const void* x,
+    const void* tiles,
+    const void* residual,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !residual || !out || rows < 2 || rows > 4 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(32);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+#define Q4_T16_DENSE_ROWTILE_RESIDUAL_CASE(N)                               \
+  case N:                                                                    \
+    hipLaunchKernelGGL(                                                       \
+        (q4_k_t16_dense_rowtile_residual_gemv_kernel<scalar_t, N>),          \
+        grid, block, 0, stream,                                               \
+        reinterpret_cast<const scalar_t*>(x),                                \
+        reinterpret_cast<const uint8_t*>(tiles),                             \
+        reinterpret_cast<const scalar_t*>(residual),                         \
+        reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
+    break
+  switch (rows) {
+    Q4_T16_DENSE_ROWTILE_RESIDUAL_CASE(2);
+    Q4_T16_DENSE_ROWTILE_RESIDUAL_CASE(3);
+    Q4_T16_DENSE_ROWTILE_RESIDUAL_CASE(4);
+    default:
+      return hipErrorInvalidValue;
+  }
+#undef Q4_T16_DENSE_ROWTILE_RESIDUAL_CASE
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_dense_dual_rowtile_silu(
     const void* x,
     const void* tiles_a,
@@ -5254,6 +5338,15 @@ hipengine_gguf_q4_k_t16_dense_rowtile_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_dense_rowtile<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_rowtile_gemv_bf16_residual_bf16_out(
+    const void* x, const void* tiles, const void* residual, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_rowtile_residual<uint16_t>(
+      x, tiles, residual, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int

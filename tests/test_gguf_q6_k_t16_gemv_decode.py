@@ -92,6 +92,35 @@ def _run_single(fn, x, tiles, rows, in_features, out_features, out_dtype, librar
             free(b)
 
 
+def _run_residual(fn, x, tiles, residual, rows, in_features, out_features, library):
+    buffers = []
+    try:
+        device = []
+        for value in (x, tiles, residual):
+            buffer = malloc(value.nbytes)
+            buffers.append(buffer)
+            device.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(value), value.nbytes)
+        out = np.zeros((rows, out_features), dtype=np.uint16)
+        out_buffer = malloc(out.nbytes)
+        buffers.append(out_buffer)
+        fn(
+            device[0].ptr,
+            device[1].ptr,
+            device[2].ptr,
+            out_buffer.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out), out_buffer, out.nbytes)
+        return out
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
 def test_p9_h3_q6_t16_registry_key_resolves() -> None:
     register_gguf_q6_k_t16_gemv_kernels()
     assert resolve(
@@ -142,6 +171,12 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="t16_gemv_rowtile_col8_bf16_bf16_out",
     ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear+residual",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_rowtile_bf16_residual_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear",
@@ -431,6 +466,49 @@ def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
     )
 
     np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [2, 3, 4])
+def test_q6_t16_qmicro_planar_down_residual_is_bit_exact(
+    rows,
+    q6_t16_library,
+) -> None:
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(0x6A18 + rows)
+    qweight = make_q6_k_weight(out_features, in_features)
+    tiles = repack_gguf_q6_k_tile16_qmicro_planar(qweight[None, ...]).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    residual = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, out_features)).astype(np.float32)
+    )
+    projected = _run_single(
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+        x,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    expected = _f32_to_bf16_u16(
+        _bf16_u16_to_f32(residual) + _bf16_u16_to_f32(projected)
+    )
+    candidate = _run_residual(
+        t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out,
+        x,
+        tiles,
+        residual,
+        rows,
+        in_features,
+        out_features,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(candidate, expected)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

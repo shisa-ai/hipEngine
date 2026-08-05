@@ -355,6 +355,12 @@ def test_dense_runner_consumes_native_dual_rowtile_silu(
     )
     monkeypatch.setattr(
         qwen35_runner,
+        "launch_gguf_linear_residual",
+        lambda *args, **kwargs: False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
         "launch_gguf_linear",
         lambda *args, **kwargs: calls.append(("linear", args, kwargs)),
     )
@@ -389,6 +395,54 @@ def test_dense_runner_consumes_native_dual_rowtile_silu(
     assert calls[2][1][1:3] == (700, 800)
 
 
+def test_dense_runner_fuses_down_residual_when_candidate_accepts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_dense_runner()
+    calls: list[tuple[str, tuple, dict]] = []
+    monkeypatch.setattr(qwen35_runner, "gguf_add_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_pair_silu",
+        lambda *args, **kwargs: calls.append(("pair_silu", args, kwargs)) or True,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_residual",
+        lambda *args, **kwargs: calls.append(("down_residual", args, kwargs)) or True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear",
+        lambda *args, **kwargs: pytest.fail("fused down-residual must skip projection fallback"),
+    )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "gguf_bf16_add",
+        lambda *args, **kwargs: pytest.fail("fused down-residual must skip standalone add"),
+    )
+
+    runner._run_post_attention_ffn_rows(
+        0,
+        hidden_ptr=100,
+        attn_out_ptr=200,
+        out_ptr=900,
+        scratch=scratch,
+        rows=4,
+    )
+
+    assert [name for name, _args, _kwargs in calls] == [
+        "pair_silu",
+        "down_residual",
+    ]
+    fused_args = calls[1][1]
+    fused_kwargs = calls[1][2]
+    assert fused_args[1:4] == (700, 500, 900)
+    assert fused_args[4:] == (4, 17_408, 5_120)
+    assert fused_kwargs["runtime"] is runner.runtime
+
+
 def test_dense_runner_multirow_retains_unfused_chain_when_candidate_declines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -410,6 +464,12 @@ def test_dense_runner_multirow_retains_unfused_chain_when_candidate_declines(
         "silu_mul_separate_out_bf16",
         lambda *args, **kwargs: calls.append("silu"),
     )
+    monkeypatch.setattr(
+        qwen35_runner,
+        "launch_gguf_linear_residual",
+        lambda *args, **kwargs: calls.append("down_residual") or False,
+        raising=False,
+    )
     monkeypatch.setattr(qwen35_runner, "launch_gguf_linear", lambda *a, **k: calls.append("down"))
     monkeypatch.setattr(qwen35_runner, "gguf_bf16_add", lambda *a, **k: calls.append("add"))
 
@@ -422,7 +482,7 @@ def test_dense_runner_multirow_retains_unfused_chain_when_candidate_declines(
         rows=4,
     )
 
-    assert calls == ["pair_silu", "pair", "silu", "down", "add"]
+    assert calls == ["pair_silu", "pair", "silu", "down_residual", "down", "add"]
 
 
 def test_dense_runner_c1_retains_unfused_chain(monkeypatch: pytest.MonkeyPatch) -> None:
