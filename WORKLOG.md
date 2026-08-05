@@ -203534,3 +203534,15 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json`;
   update the benchmark rollup, changelog, kernel catalog, stall runbook, and
   refactor ledger in the same logical unit.
+
+## 2026-08-05 — Report isolated gfx1151 trigger to AMD
+
+- Update ROCm/ROCm#6437 as the issue author with the controlled four-arm 128K
+  matrix, frozen AQL retirement cursor, telemetry signature, exact shared-X
+  registry/host/device symbols, passing baseline fallback, and the limitation
+  that route-level isolation does not yet distinguish device code, compiler,
+  firmware, or runtime/MES behavior.
+- Ask AMD whether the two-live-WMMA-accumulator/shared-activation pattern
+  matches a known gfx1151 erratum and which next artifact would be most useful.
+  The verified public comment is
+  https://github.com/ROCm/ROCm/issues/6437#issuecomment-5186301232.
