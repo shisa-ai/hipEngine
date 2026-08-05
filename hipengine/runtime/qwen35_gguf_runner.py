@@ -7820,7 +7820,6 @@ _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_T16_SELECTED_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE"
 _GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE"
-_GGUF_Q5_T16_SELECTED_QWEN_TILE8_ENV = "HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8"
 _GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE"
 _gguf_t16_selected_pairreuse_min_rows_session: int | None = None
 _gguf_t16_selected_down_pairreuse_min_rows_session: int | None = None
@@ -8415,8 +8414,6 @@ def _gguf_t16_selected_down_pairreuse_enabled() -> bool:
 
 
 def _gguf_q5_t16_selected_qwen_tile8_enabled(backend: str | None) -> bool:
-    if _env_value(_GGUF_Q5_T16_SELECTED_QWEN_TILE8_ENV) is not None:
-        return _env_flag(_GGUF_Q5_T16_SELECTED_QWEN_TILE8_ENV, False)
     if backend is None:
         return False
     return bool(
