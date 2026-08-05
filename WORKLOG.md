@@ -206531,3 +206531,52 @@ Vulkan local sizes verbatim will close the measured gap.
   seven-cycle B3 profile, before queue cost. Next test registered non-deferred
   producer variants that write the final row directly while retaining deferred
   rollback journals and ordinary copy fallbacks.
+
+## 2026-08-05 — Collapse the actual GGUF rollback snapshot boundary
+
+- Correct the preceding attribution before profiling another candidate. The
+  target-window copy families are 336 recurrent copies at **3.743514 ms** plus
+  336 Conv copies at **0.784326 ms**, but they are not final
+  journal-to-resident commits: they are 48 Conv + 48 recurrent copies in
+  `_StateJournal.capture_initial()` before each of seven verifier cycles. The
+  native rows are deferred, so a screened direct-final producer would never
+  execute in production; remove that dead candidate rather than taking it to
+  W7900.
+- Register the existing raw-pointer 64-KiB chunked pair-copy leaf separately as
+  `linear_state_pair_copy/f32/chunked_i32`. `_StateJournal` allocates immutable
+  combined live/snapshot pointer tables plus a device row-zero once (**1,540
+  bytes**), then uses one launch for the initial snapshot and one reverse launch
+  only when rollback restores that boundary. Per-row journal capture remains
+  the ordinary read-only memcpy chain. Registry, layer-pair, row-size, and
+  backend misses retain the original path; gfx1151 intentionally omits this
+  GGUF alias pending an independent gate.
+- RED/GREEN fake-runtime tests prove exact gfx1100 registration, gfx1151 miss,
+  table contents, one-launch forward/reverse ownership, stream propagation,
+  allocation lifetime, untouched per-row capture, and memcpy fallback. The
+  focused snapshot/adjacent commit bundle passes **6/6**; pycompile and
+  `git diff --check` pass. `scripts/check_lineage.py --kind kernel --diff stat`
+  still reports only the four catalogued upstream drift entries because this
+  reuses an in-tree body.
+- On GPU1 (RX 7900 XTX), the complete Qwen3.6-27B production shape uses 48
+  layers, 163,840-B Conv rows, 3,145,728-B recurrent rows, and **158,859,264
+  bytes/snapshot**. Bidirectional full-buffer checks are byte exact. Fifteen
+  counterbalanced synchronized wall samples with 20 operations/sample improve
+  the production-style 96 async-copy submissions **656.504 -> 436.108 us**,
+  saving **220.396 us (1.505x)**. Raw screen:
+  `/tmp/qwen36-linear-state-snapshot-copy-async-gpu1.json`
+  (`95217fca...c8ed`).
+  A second integrated `_StateJournal` production-shape smoke also passes exact
+  snapshot + zero + rollback for every state and hidden byte.
+- Cached GPU1 `rocprofv3 --kernel-trace` names
+  `linear_state_pair_commit_chunked_i32_kernel` at semantic grid `(48,2,48)`,
+  local256, VGPR16, SGPR128, LDS/scratch 0; instrumentation stretches the cold
+  launch to 2.233759 ms. Trace:
+  `/tmp/qwen36-linear-state-snapshot-copy-trace-gpu1/epyc/1900392_kernel_trace.csv`
+  (`166b1e83...6a44`).
+- The binding cached W7900 dense-Q4 B1-B3 transaction passes **1/1** against the
+  actual journal route. It preserves full logits; reject/partial/full commit and
+  rollback state; correction logits; dynamic-position graph reuse; natural
+  provider output; exact GPU/CPU acceptance; and clean teardown. This remains a
+  correctness/component unit, not a topline claim. Commit it, then profile the
+  same hermetic one-prompt natural25 B3 window against clean `a5f25c9ad`; retain
+  only if the 672 copies disappear and target/complete physical windows win.

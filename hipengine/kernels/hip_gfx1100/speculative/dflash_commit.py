@@ -294,6 +294,14 @@ def register_dflash_commit_kernels(*, replace: bool = True) -> None:
         linear_state_pair_commit_chunked_i32,
         replace=replace,
     )
+    # The same raw-pointer leaf copies row zero between per-layer FP32 state
+    # tables for GGUF rollback snapshots.  Keep that ownership explicit in the
+    # four-axis registry instead of dispatching through the PARO quant key.
+    register(
+        KernelKey("hip_gfx1100", "linear_state_pair_copy", "f32", "chunked_i32"),
+        linear_state_pair_commit_chunked_i32,
+        replace=replace,
+    )
 
 
 class _CommitShape:
