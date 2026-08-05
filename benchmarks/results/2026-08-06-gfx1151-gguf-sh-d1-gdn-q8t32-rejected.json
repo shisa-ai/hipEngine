@@ -1,0 +1,240 @@
+{
+  "schema_version": "hipengine.gguf.sh_d1_gdn_q8t32_rejected.v1",
+  "date": "2026-08-06",
+  "kind": "diagnostic_kernel_rejection",
+  "status": "rejected_leaf_gate",
+  "performance_claim": false,
+  "summary": "The byte-neutral paired-Q8T32 first object is exact and improves the cycling GDN leaf, with the best two-team non-temporal+DPP body reaching 1.0648x and projecting 0.2487 ms/token. It still remains 7.94% slower than the frozen continuation target; the register-wide sibling regresses and all transient Q8T32 surfaces are removed.",
+  "platform": {
+    "system": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "compiler": "HIP 7.15.0 / AMD clang 23.0.0git aa451e1f",
+    "hardware_queues": 1
+  },
+  "model_role": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "role": "linear-attention attn_qkv[2048->8192] + attn_gate[2048->4096]",
+    "calls_per_token": 30,
+    "sh_c0_gpu_ms_per_token_range": [4.11311925, 4.166025375],
+    "source_audit": "benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json",
+    "prior_same_layout_decision": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json"
+  },
+  "layout": {
+    "name": "byte-neutral paired Q8T32",
+    "source_layout": "[out_tiles16, blocks_per_row, d16[16] + q[32,16]]",
+    "candidate_layout": "[out_tiles32, blocks_per_row, d16[32] + q[32,32]]",
+    "source_block_bytes": 544,
+    "candidate_block_bytes": 1088,
+    "resident_byte_delta": 0,
+    "diagnostic_packer": "pair adjacent Q8T16 scales and per-K-lane q payloads without numeric conversion",
+    "runtime_materializer_or_dispatch": "not implemented because the first object failed leaf admission"
+  },
+  "candidates": {
+    "two_team_cached": {
+      "change": "One local256/eight-wave workgroup owns one T32 tile as two independent four-wave/T16-equivalent teams; cached vector loads and the production bpermute tree remain.",
+      "registered_variant": "linear/gguf_q8_0_t32_v1/t32_dual_gemv_decode_bf16_bf16_out",
+      "code_bytes": 3316,
+      "metadata": {
+        "max_flat_workgroup_size": 256,
+        "vgpr_count": 51,
+        "sgpr_count": 28,
+        "group_segment_fixed_size": 512,
+        "private_segment_fixed_size": 0,
+        "vgpr_spill_count": 0,
+        "sgpr_spill_count": 0
+      },
+      "static_instruction_facts": {
+        "global_load_b128": 3,
+        "global_load_b128_slc_dlc": 0,
+        "v_permlanex16_b32": 0,
+        "v_add_f32_dpp": 0,
+        "ds_bpermute_b32": 80,
+        "v_fma_mix_f32": 16,
+        "v_fmac_f32": 16,
+        "s_waitcnt": 60,
+        "s_barrier": 1
+      },
+      "symbol_slice_sha256": "570812d597fb037d895aed83933e999ea48ddea35e147eb92fcbcbf83ed68ce6"
+    },
+    "two_team_nontemporal_dpp": {
+      "change": "Keep the exact two-team association while adding three cache-bypassing vector loads and the exact permlanex16/direct-DPP tree.",
+      "registered_variant": "linear/gguf_q8_0_t32_v1/t32_dual_gemv_decode_nontemporal_dpp_bf16_bf16_out",
+      "code_bytes": 3064,
+      "metadata": {
+        "max_flat_workgroup_size": 256,
+        "vgpr_count": 53,
+        "sgpr_count": 27,
+        "group_segment_fixed_size": 512,
+        "private_segment_fixed_size": 0,
+        "vgpr_spill_count": 0,
+        "sgpr_spill_count": 0
+      },
+      "static_instruction_facts": {
+        "global_load_b128_slc_dlc": 3,
+        "v_permlanex16_b32": 16,
+        "v_add_f32_dpp": 64,
+        "ds_bpermute_b32": 0,
+        "v_fma_mix_f32": 16,
+        "v_fmac_f32": 16,
+        "s_waitcnt": 19,
+        "s_barrier": 1
+      },
+      "symbol_slice_sha256": "f7d9e59804c3880b397f1bd5af8721b70532c07fd8311543969a2817bd1ce761"
+    },
+    "wide_nontemporal_dpp": {
+      "change": "One local128/four-wave workgroup owns all 32 columns and reuses each activation across both former T16 halves.",
+      "registered_variant": "linear/gguf_q8_0_t32_v1/t32_dual_gemv_decode_wide_nontemporal_dpp_bf16_bf16_out",
+      "code_bytes": 5368,
+      "metadata": {
+        "max_flat_workgroup_size": 128,
+        "vgpr_count": 91,
+        "sgpr_count": 27,
+        "group_segment_fixed_size": 512,
+        "private_segment_fixed_size": 0,
+        "vgpr_spill_count": 0,
+        "sgpr_spill_count": 0
+      },
+      "static_instruction_facts": {
+        "global_load_b128_slc_dlc": 6,
+        "v_permlanex16_b32": 32,
+        "v_add_f32_dpp": 128,
+        "ds_bpermute_b32": 0,
+        "v_fma_mix_f32": 32,
+        "v_fmac_f32": 32,
+        "s_waitcnt": 36,
+        "s_barrier": 1
+      },
+      "screen": {
+        "production_us": 135.93,
+        "two_team_stack_us": 128.04,
+        "wide_stack_us": 142.67,
+        "wide_regression_vs_production_pct": 4.9584344883,
+        "wide_regression_vs_two_team_stack_pct": 11.4261168385
+      },
+      "symbol_slice_sha256": "f669d0c1b73065ade4d91a42f599cd0e56b889cb9c0ec483d58b8965c0c40c19"
+    },
+    "scope": "transient separately registered BF16 first objects; never production-dispatched",
+    "parent_commit": "c822880b9",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
+    "transient_source_sha256": "6d3d8ddf930c4ae8ae391cb86b132d02d33ff1832812d501e877c2de3c032a6c",
+    "transient_wrapper_sha256": "b3ecb323119c3f02faecd4e197fcbbd4e5a7e4dbab7515532c592ee7162fba63",
+    "transient_test_sha256": "007cdfdc8d0130aad149d923b18260370aed6ee484ac9148ab4f9e46ef1f70ee",
+    "transient_microbench_sha256": "9b797c85a3f66772977c227c818f0acbe6affb62522393140e31b3bbfc26562d",
+    "build_artifact": "/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-54c15257992349b0/gguf_q8_0_t16_gemv.so",
+    "build_artifact_sha256": "7cd09cfa16b7d8dd020ec289f1da5d16763c1135f2a34767b52edfe5c07a85d3",
+    "code_object": "/tmp/sh-d1-q8t32-isa/q8t32-gfx1151.co",
+    "code_object_sha256": "65dba6d45f01d46d59e86d366a19ac9eb572c3d6f09d0986530b67c734271ed7",
+    "disposition": "all Q8T32 siblings, diagnostic packer, wrappers, registry keys, tests, and microbench modes removed after leaf rejection"
+  },
+  "correctness": {
+    "red": "Focused test collection failed because paired-Q8T32 wrappers did not exist.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest -q tests/test_gguf_q8_0_t32_gemv_decode.py",
+    "green_result": "10 passed",
+    "shapes": [
+      "32 -> 32+64",
+      "256 -> 64+128",
+      "2048 -> 8192+4096"
+    ],
+    "requirements": {
+      "all_candidates_production_bf16_byte_identity": true,
+      "all_candidates_cpu_gguf_q8_0_oracle": true,
+      "all_registry_resolutions": true,
+      "candidate_bytes_equal_t16_bytes": true
+    },
+    "full_model_gate": "not run because every first object failed the earlier frozen leaf continuation gate"
+  },
+  "named_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/sh-d1-q8t32-trace -- python3 scripts/gguf_q8_0_t16_pair_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 1 --threads 128 --modes t32,t32_stack,t32_wide_stack --iters 1 --warmup 1 --mall-bytes 33554432 --peak-gbs 256 --json /tmp/sh-d1-q8t32-trace.json",
+    "csv": "/tmp/sh-d1-q8t32-trace/gfx1151/3700640_kernel_trace.csv",
+    "csv_sha256": "2fb14934e1bf03ec65aae79a3f37ac88c16778561aa5309a6a0528aed588b155",
+    "dispatches_per_candidate": 2,
+    "scratch_size": 0,
+    "two_team_workgroup_size": 256,
+    "two_team_grid_size_x_threads": 98304,
+    "wide_workgroup_size": 128,
+    "wide_grid_size_x_threads": 49152,
+    "two_team_cached_duration_ns": [205264, 39474],
+    "two_team_stack_duration_ns": [131606, 127798],
+    "wide_stack_duration_ns": [139900, 140221],
+    "note": "Trace is launch/name/resource proof only; profiler timings are excluded from the cycling-leaf decision."
+  },
+  "cycling_leaf": {
+    "shape": {
+      "rows": 1,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096
+    },
+    "matrix_mb": 26.739,
+    "pool_copies": 3,
+    "pool_mb": 80.2,
+    "warmup_launches_per_variant": 80,
+    "measured_launches_per_variant": 400,
+    "raw_runs": [
+      {
+        "path": "/tmp/sh-d1-q8t32-screen-1.json",
+        "sha256": "91a57f410e02b5bba80497ca3ef595dd6dd864b30b5713fa8a36ea93d6ad36f6",
+        "order": ["exact", "t32", "t32_stack"],
+        "exact_us": 136.25,
+        "t32_us": 130.79,
+        "t32_stack_us": 127.77
+      },
+      {
+        "path": "/tmp/sh-d1-q8t32-screen-2.json",
+        "sha256": "fe5d60e0b7857be6b602f40d35227483e2e0fb06e20aaabe1ab56a4784f6bd7e",
+        "order": ["t32_stack", "t32", "exact"],
+        "exact_us": 136.19,
+        "t32_us": 130.89,
+        "t32_stack_us": 128.96
+      },
+      {
+        "path": "/tmp/sh-d1-q8t32-screen-3.json",
+        "sha256": "a1c5b38066ec4ee4bd89eb44ddb8666758269ca126270c01cd9fee38095ca1a9",
+        "order": ["t32", "exact", "t32_stack"],
+        "exact_us": 135.79,
+        "t32_us": 131.23,
+        "t32_stack_us": 127.9
+      }
+    ],
+    "medians": {
+      "production_us": 136.19,
+      "t32_us": 130.89,
+      "t32_speedup": 1.0404920162,
+      "t32_projected_saving_ms_per_token": 0.159,
+      "t32_stack_us": 127.9,
+      "t32_stack_speedup": 1.0648162627,
+      "t32_stack_latency_reduction_pct": 6.0870842206,
+      "t32_stack_saving_us_per_call": 8.29,
+      "t32_stack_projected_saving_ms_per_token": 0.2487,
+      "t32_stack_effective_matrix_read_gb_s": 209.1
+    },
+    "frozen_gates": {
+      "projected_half_ms_target_us": 118.493333,
+      "independent_1_15x_target_us": 117.530435,
+      "best_candidate_miss_vs_half_ms_target_us": 9.406667,
+      "best_candidate_slower_than_half_ms_target_pct": 7.9385622481,
+      "passed_projected_half_ms_gate": false,
+      "passed_1_15x_gate": false
+    },
+    "commands": [
+      "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_q8_0_t16_pair_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 1 --threads 128 --modes exact,t32,t32_stack --iters 400 --warmup 80 --mall-bytes 33554432 --peak-gbs 256 --json /tmp/sh-d1-q8t32-screen-1.json",
+      "Same command with --modes t32_stack,t32,exact and output /tmp/sh-d1-q8t32-screen-2.json",
+      "Same command with --modes t32,exact,t32_stack and output /tmp/sh-d1-q8t32-screen-3.json"
+    ]
+  },
+  "decision": {
+    "result": "reject",
+    "reason": "All first objects pass byte exactness, CPU-oracle, ISA, resource, and named-launch gates, but the best two-team stacked median misses the earlier continuation threshold by 7.94%; 8.29 us/call projects only 0.2487 ms/token over 30 calls. The register-wide sibling regresses production by 4.96% at 91 VGPR.",
+    "production_change": false,
+    "next": "GDN same-layout and byte-neutral paired-layout headroom are exhausted under the predeclared gate. Close GDN layout work and continue SH-D1 with the measured selected-expert gate/up+down target, then cumulative decode, SH-M2, SH-K1, SH-A1, and SH-G."
+  },
+  "provenance": {
+    "tracked_state_during_measurement": "candidate-only modifications to the Q8T16 HIP source/wrapper and microbench plus one new focused test",
+    "unrelated_untracked_paths": 258,
+    "qualification": "Diagnostic rejection only. No retained performance/topline claim and no production source change."
+  }
+}

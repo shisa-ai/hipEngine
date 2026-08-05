@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [diagnostic rejected SH-D1 GDN paired-Q8T32 ladder, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: production Q8T16 **136.19 us -> 127.90 us** with exact byte-neutral local256 Q8T32+DPP+non-temporal (**1.0648x**, projected **0.2487 ms/token**), but best remains **7.94%** above the frozen **118.493-us** gate and register-wide Q8T32 regresses **4.96%** at 91 VGPR; remove all transient Q8T32 surfaces, close GDN layout work, and advance to selected experts; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json`.
+
 - [diagnostic rejected SH-D1 GDN same-layout ladder, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: production **135.26 us -> 131.56 us** with cache-bypassing Q8T16 loads and **-> 130.11 us** when stacked with exact DPP (**1.0396x**, projected **0.1545 ms/token**), but best remains **9.80%** above the frozen **118.493-us** gate; remove both transient siblings and bound the next screen to paired Q8T32; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json`.
 
 - [diagnostic rejected SH-D1 exact GDN DPP leaf, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: production **135.20 us -> 132.77 us** median (**1.0183x**, projected **0.0729 ms/token**) with byte-exact output and **80 bpermutes -> 16 permlanex16 + 64 DPP adds**, but the result is **12.05%** slower than the frozen **118.493-us** continuation target; remove the transient sibling and screen same-layout non-temporal loads next; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json`.
