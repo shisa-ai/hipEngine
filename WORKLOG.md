@@ -202818,3 +202818,21 @@ Vulkan local sizes verbatim will close the measured gap.
   scratch0, and **3,527 ns** duration. The first profiler attempt never reached
   HIP because `/tmp` script resolution lacked `PYTHONPATH`; rerun with
   `PYTHONPATH=$PWD` is the retained evidence.
+
+## 2026-08-05 — Land Maple KVLiveSpans attention kernels
+
+- Add the unfused attention chain under the complete `KVLiveSpans` ABI: device
+  ring-span publication; per-head direct-weight RMSNorm; SWA-only rotate-half
+  partial RoPE; same-kernel BF16 K/V append; and online-softmax grouped-query
+  decode. SWA and bounded-global policies differ only by ring capacity, while
+  nonidentity `base_offsets`, absolute `token_positions`, and `evict_mask`
+  validate every physical access.
+- The predeclared RED test initially fails at import. After implementation, all
+  metadata after a six-position wrap, Q/K output, physical K/V bytes, and GQA
+  attention output are BF16-bit exact to the NumPy oracle. Focused attention +
+  CPU coverage passes **11/11**; Ruff, pycompile, build-plan, and gfx1151
+  registry checks pass.
+- Cache-only gfx1151 tracing observes `maple_kv_span_update_kernel` at **3,326
+  ns**, `maple_qknorm_rope_kv_write_kernel` at local32/VGPR24/scratch0 and
+  **5,771 ns**, and `maple_attention_decode_kernel` at local32/VGPR16/scratch0
+  and **3,607 ns** on the tiny deterministic fixture.
