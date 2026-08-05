@@ -215,6 +215,50 @@ __global__ void gguf_add_rmsnorm_bf16_f32_weight_kernel(
   }
 }
 
+// Exact replacement for a standalone BF16 add followed by F32-weight
+// RMSNorm. Both the residual output and the norm reduction consume the same
+// explicitly rounded BF16 sum.
+__launch_bounds__(256, 1)
+__global__ void gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel(
+    const uint16_t* __restrict__ residual,
+    const uint16_t* __restrict__ add,
+    const float* __restrict__ weight,
+    uint16_t* __restrict__ norm_out,
+    uint16_t* __restrict__ residual_out,
+    float eps,
+    int64_t hidden_size) {
+  extern __shared__ float partial[];
+  const int64_t tid = static_cast<int64_t>(threadIdx.x);
+  const int64_t row_base = static_cast<int64_t>(blockIdx.x) * hidden_size;
+  float sum = 0.0f;
+  for (int64_t idx = tid; idx < hidden_size; idx += 256) {
+    const float raw = bf16_bits_to_float(residual[row_base + idx]) +
+        bf16_bits_to_float(add[row_base + idx]);
+    const uint16_t rounded_bits = float_to_bf16_bits(raw);
+    const float value = bf16_bits_to_float(rounded_bits);
+    sum += value * value;
+  }
+  partial[tid] = sum;
+  __syncthreads();
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms =
+      rsqrtf(partial[0] / static_cast<float>(hidden_size) + eps);
+  for (int64_t idx = tid; idx < hidden_size; idx += 256) {
+    const float raw = bf16_bits_to_float(residual[row_base + idx]) +
+        bf16_bits_to_float(add[row_base + idx]);
+    const uint16_t rounded_bits = float_to_bf16_bits(raw);
+    const float value = bf16_bits_to_float(rounded_bits);
+    residual_out[row_base + idx] = rounded_bits;
+    norm_out[row_base + idx] =
+        float_to_bf16_bits(value * inv_rms * weight[idx]);
+  }
+}
+
 __launch_bounds__(256, 1)
 __global__ void gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256_kernel(
     const uint16_t* __restrict__ x,
@@ -752,6 +796,29 @@ extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight(
       static_cast<size_t>(threads) * sizeof(float),
       stream>>>(x, add, weight, norm_out, residual_out, eps, hidden_size);
   return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight(
+    const uint16_t* residual,
+    const uint16_t* add,
+    const float* weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t rows,
+    int64_t hidden_size,
+    float eps,
+    int64_t threads,
+    hipStream_t stream) {
+  if (residual == nullptr || add == nullptr || weight == nullptr ||
+      norm_out == nullptr || residual_out == nullptr || rows < 2 || rows > 4 ||
+      hidden_size <= 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel<<<
+      dim3(static_cast<unsigned int>(rows)), dim3(256),
+      256 * sizeof(float), stream>>>(
+      residual, add, weight, norm_out, residual_out, eps, hidden_size);
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256(

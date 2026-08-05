@@ -744,12 +744,17 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q4_k_t16_v1",
             "dense_rowtile_col4_bf16_bf16_out",
         ),
-        # Qwen3.6 dense down+residual fusion is W7900-only pending an
-        # independent gfx1151 boundary and complete-model gate.
+        # Qwen3.6 dense down+residual and rounded next-input RMSNorm fusions
+        # are W7900-only pending independent gfx1151 boundary/model gates.
         (
             "linear+residual",
             "gguf_q4_k_t16_v1",
             "dense_rowtile_bf16_residual_bf16_out",
+        ),
+        (
+            "add+rmsnorm",
+            "gguf_f32_weight",
+            "rounded_bf16_out",
         ),
         # Dense Q5T16 ssm_out is W7900-only pending a separate gfx1151 gate.
         *(
