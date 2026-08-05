@@ -21,7 +21,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
+    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out,
     register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.kernels.registry import KernelKey, register, resolve, unregister
@@ -113,6 +115,24 @@ def test_chain_journal_exact_producers_are_registered() -> None:
         )
         is qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_recurrent_rmsnorm_gate+cast",
+            quant="gguf_q5_k_t16_v1",
+            variant="bf16_lowp_f32_bf16_out",
+        )
+        is qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_chain_recurrent_rmsnorm_gate+cast",
+            quant="gguf_q5_k_t16_v1",
+            variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        )
+        is qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out
+    )
 
 
 def test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership() -> None:
@@ -177,6 +197,7 @@ def test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership() -> 
         linear_alpha=SimpleNamespace(ptr=0x4000),
         linear_beta=SimpleNamespace(ptr=0x5000),
         recurrent_out=SimpleNamespace(ptr=0x7000),
+        recurrent_bf16=SimpleNamespace(ptr=0x7100),
     )
     conv_state = SimpleNamespace(ptr=0x8000, nbytes=80)
     recurrent_state = SimpleNamespace(ptr=0x9000, nbytes=96)
@@ -243,6 +264,30 @@ def test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership() -> 
 
         calls.clear()
         runtime.copies.clear()
+
+        def fused_gdn(*args, **kwargs):
+            calls.append(("gdn_fused", args, kwargs))
+
+        assert runner._try_run_linear_attention_chain_journal_rows_exact(
+            layer,
+            scratch,
+            conv_state,
+            recurrent_state,
+            rows=4,
+            linear_state_rows=(conv_rows, recurrent_rows),
+            commit_final_linear_state=False,
+            stream=21,
+            runtime=runtime,
+            gdn_output_fusion=fused_gdn,
+        )
+        assert [name for name, _args, _kwargs in calls] == [
+            "conv",
+            "gdn_fused",
+        ]
+        assert calls[1][1][11] == 0x7100
+        assert runtime.copies == []
+
+        calls.clear()
         unregister(gdn_key)
         assert not runner._try_run_linear_attention_chain_journal_rows_exact(
             layer,
@@ -317,9 +362,17 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
     a_log_d = device(a_log)
     norm_weight_d = device(norm_weight)
     recurrent_scalar_d = device(recurrent_initial)
+    recurrent_dual_d = device(recurrent_initial)
     recurrent_chain_d = device(recurrent_initial)
     recurrent_out_scalar_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
+    recurrent_out_dual_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
+    recurrent_out_dual_bf16_d = empty(
+        rows * num_v_heads * head_v_dim * np.dtype(np.uint16).itemsize
+    )
     recurrent_out_chain_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
+    recurrent_out_chain_bf16_d = empty(
+        rows * num_v_heads * head_v_dim * np.dtype(np.uint16).itemsize
+    )
     recurrent_rows_scalar_d = empty(rows * recurrent_initial.nbytes)
     recurrent_rows_chain_d = empty(rows * recurrent_initial.nbytes)
     acc_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
@@ -384,7 +437,25 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 0,
             )
-        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
+            qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out(
+                conv_out_scalar_d.ptr + row * conv_out_row_nbytes,
+                gate_d.ptr + row * gate_row_nbytes,
+                alpha_d.ptr + row * ab_row_nbytes,
+                beta_d.ptr + row * ab_row_nbytes,
+                dt_bias_d.ptr,
+                a_log_d.ptr,
+                norm_weight_d.ptr,
+                recurrent_dual_d.ptr,
+                recurrent_out_dual_d.ptr + row * recurrent_out_row_nbytes,
+                recurrent_out_dual_bf16_d.ptr + row * gate_row_nbytes,
+                1.0e-6,
+                num_k_heads,
+                num_v_heads,
+                head_k_dim,
+                head_v_dim,
+                runtime=runtime,
+            )
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out(
             conv_out_chain_d.ptr,
             gate_d.ptr,
             alpha_d.ptr,
@@ -396,6 +467,7 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
             recurrent_rows_chain_d.ptr,
             acc_d.ptr,
             recurrent_out_chain_d.ptr,
+            recurrent_out_chain_bf16_d.ptr,
             1.0e-6,
             rows,
             num_k_heads,
@@ -423,10 +495,25 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
             (rows, num_v_heads, head_v_dim),
             np.float32,
         )
+        recurrent_out_dual = _from_device(
+            recurrent_out_dual_d,
+            (rows, num_v_heads, head_v_dim),
+            np.float32,
+        )
+        recurrent_out_dual_bf16 = _from_device(
+            recurrent_out_dual_bf16_d,
+            (rows, num_v_heads, head_v_dim),
+            np.uint16,
+        )
         recurrent_out_chain = _from_device(
             recurrent_out_chain_d,
             (rows, num_v_heads, head_v_dim),
             np.float32,
+        )
+        recurrent_out_chain_bf16 = _from_device(
+            recurrent_out_chain_bf16_d,
+            (rows, num_v_heads, head_v_dim),
+            np.uint16,
         )
         recurrent_rows_scalar = _from_device(
             recurrent_rows_scalar_d,
@@ -439,6 +526,16 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
             np.float32,
         )
         conv_chain_base = _from_device(conv_chain_d, conv_initial.shape, np.float32)
+        recurrent_scalar_base = _from_device(
+            recurrent_scalar_d,
+            recurrent_initial.shape,
+            np.float32,
+        )
+        recurrent_dual_base = _from_device(
+            recurrent_dual_d,
+            recurrent_initial.shape,
+            np.float32,
+        )
         recurrent_chain_base = _from_device(
             recurrent_chain_d,
             recurrent_initial.shape,
@@ -448,8 +545,24 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
         assert np.array_equal(conv_out_chain.view(np.uint32), conv_out_scalar.view(np.uint32))
         assert np.array_equal(conv_rows_chain.view(np.uint32), conv_rows_scalar.view(np.uint32))
         assert np.array_equal(
+            recurrent_out_dual.view(np.uint32),
+            recurrent_out_scalar.view(np.uint32),
+        )
+        assert np.array_equal(
+            recurrent_out_dual_bf16,
+            _f32_to_bf16_u16(recurrent_out_scalar),
+        )
+        assert np.array_equal(
+            recurrent_dual_base.view(np.uint32),
+            recurrent_scalar_base.view(np.uint32),
+        )
+        assert np.array_equal(
             recurrent_out_chain.view(np.uint32),
             recurrent_out_scalar.view(np.uint32),
+        )
+        assert np.array_equal(
+            recurrent_out_chain_bf16,
+            _f32_to_bf16_u16(recurrent_out_scalar),
         )
         assert np.array_equal(
             recurrent_rows_chain.view(np.uint32),

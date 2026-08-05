@@ -1995,6 +1995,44 @@ class Qwen35GGUFFullStackRunner:
             return f32_to_bf16
         return None
 
+    def _gdn_decode_output_fusion_for_weight(self, weight):
+        """Resolve a weight-plugin scalar GDN FP32+BF16 boundary owner."""
+
+        quant = str(weight.spec.quant_key)
+        cache = self.__dict__.setdefault(
+            "_gguf_gdn_decode_output_fusion_fn_cache",
+            {},
+        )
+        cache_key = (str(self.backend), quant)
+        if cache_key not in cache:
+            cache[cache_key] = resolve(
+                backend=self.backend,
+                layer="gdn_recurrent_rmsnorm_gate+cast",
+                quant=quant,
+                variant="bf16_lowp_f32_bf16_out",
+                missing="none",
+            )
+        return cache[cache_key]
+
+    def _gdn_chain_output_fusion_for_weight(self, weight):
+        """Resolve a weight-plugin chain GDN FP32+BF16 boundary owner."""
+
+        quant = str(weight.spec.quant_key)
+        cache = self.__dict__.setdefault(
+            "_gguf_gdn_chain_output_fusion_fn_cache",
+            {},
+        )
+        cache_key = (str(self.backend), quant)
+        if cache_key not in cache:
+            cache[cache_key] = resolve(
+                backend=self.backend,
+                layer="gdn_chain_recurrent_rmsnorm_gate+cast",
+                quant=quant,
+                variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+                missing="none",
+            )
+        return cache[cache_key]
+
     def _full_attn_decode_batch_native_fn(self):
         """Return the exact compact-row attention leaf on the quant axis."""
 
@@ -4144,7 +4182,11 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+        ssm_out_weight = layer.weight("ssm_out")
+        gdn_output_fusion = self._gdn_decode_output_fusion_for_weight(
+            ssm_out_weight
+        )
+        gdn_args = (
             scratch.conv_out.ptr,
             scratch.linear_z.ptr,
             linear_alpha_ptr,
@@ -4154,19 +4196,37 @@ class Qwen35GGUFFullStackRunner:
             layer.weight("ssm_norm").allocation().tensor.ptr,
             recurrent_state.ptr,
             scratch.recurrent_out.ptr,
-            cfg.rms_norm_eps,
-            cfg.ssm_group_count,
-            cfg.ssm_time_step_rank,
-            cfg.ssm_state_size,
-            self.ssm_value_dim,
-            stream=stream,
-            runtime=runtime,
         )
-        ssm_out_weight = layer.weight("ssm_out")
+        if gdn_output_fusion is None:
+            qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+                *gdn_args,
+                cfg.rms_norm_eps,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            gdn_output_fusion(
+                *gdn_args,
+                scratch.recurrent_bf16.ptr,
+                cfg.rms_norm_eps,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
         ssm_out_input_ptr = scratch.recurrent_out.ptr
         ssm_out_activation_dtype = GGUF_ACTIVATION_F32
         output_cast = self._gdn_decode_output_cast_for_weight(ssm_out_weight)
-        if output_cast is not None:
+        if gdn_output_fusion is not None:
+            ssm_out_input_ptr = scratch.recurrent_bf16.ptr
+            ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
+        elif output_cast is not None:
             output_cast(
                 scratch.recurrent_out.ptr,
                 scratch.recurrent_bf16.ptr,
@@ -4201,6 +4261,7 @@ class Qwen35GGUFFullStackRunner:
         commit_final_linear_state: bool,
         stream: int,
         runtime,
+        gdn_output_fusion=None,
     ) -> bool:
         """Write exact Conv/GDN row journals through registered chain owners."""
 
@@ -4225,7 +4286,7 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        plan.gdn(
+        gdn_args = (
             scratch.conv_out.ptr,
             scratch.linear_z.ptr,
             scratch.linear_alpha.ptr,
@@ -4237,15 +4298,32 @@ class Qwen35GGUFFullStackRunner:
             recurrent_state_rows.ptr,
             scratch.recurrent_out.ptr,
             scratch.recurrent_out.ptr,
-            cfg.rms_norm_eps,
-            rows,
-            cfg.ssm_group_count,
-            cfg.ssm_time_step_rank,
-            cfg.ssm_state_size,
-            self.ssm_value_dim,
-            stream=stream,
-            runtime=runtime,
         )
+        if gdn_output_fusion is None:
+            plan.gdn(
+                *gdn_args,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            gdn_output_fusion(
+                *gdn_args,
+                scratch.recurrent_bf16.ptr,
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
         if commit_final_linear_state:
             runtime.memcpy_async(
                 conv_state.ptr,
@@ -4358,6 +4436,10 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+        ssm_out_weight = layer.weight("ssm_out")
+        gdn_output_fusion = self._gdn_chain_output_fusion_for_weight(
+            ssm_out_weight
+        )
         used_chain_journal = bool(
             linear_state_rows is not None
             and self._try_run_linear_attention_chain_journal_rows_exact(
@@ -4370,8 +4452,10 @@ class Qwen35GGUFFullStackRunner:
                 commit_final_linear_state=bool(commit_final_linear_state),
                 stream=stream,
                 runtime=runtime,
+                gdn_output_fusion=gdn_output_fusion,
             )
         )
+        gdn_bf16_ready = used_chain_journal and gdn_output_fusion is not None
         if not used_chain_journal:
             qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
             z_row_nbytes = cfg.ssm_inner_size * DType.BF16.itemsize
@@ -4424,14 +4508,16 @@ class Qwen35GGUFFullStackRunner:
                         stream,
                     )
 
-        ssm_out_weight = layer.weight("ssm_out")
         ssm_out_input_ptr = scratch.recurrent_out.ptr
         ssm_out_activation_dtype = GGUF_ACTIVATION_F32
         output_cast = self._gdn_decode_output_cast_for_weight(
             ssm_out_weight,
             rows=rows,
         )
-        if output_cast is not None:
+        if gdn_bf16_ready:
+            ssm_out_input_ptr = scratch.recurrent_bf16.ptr
+            ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
+        elif output_cast is not None:
             output_cast(
                 scratch.recurrent_out.ptr,
                 scratch.recurrent_bf16.ptr,

@@ -23,9 +23,11 @@ import pytest
 from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q8_0_T16,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_nonvolatile_f32,
@@ -52,6 +54,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16,
     qwen35_linear_attn_prefill_prepare_compact_scales_f32_bf16,
@@ -78,13 +81,21 @@ def test_default_q4_prefill_native_resolver_skips_cpu_reference_fallback() -> No
     )
 
 
-def test_gdn_output_cast_falls_back_for_bf16_resident_ssm_out() -> None:
+def test_gdn_output_boundary_is_selected_by_ssm_out_weight_plugin() -> None:
+    register_qwen35_linear_attn_gdn_kernels()
     runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
     runner.backend = "hip_gfx1100"
     runner._gguf_prefill_quant = "gguf_q4_k_m"
     dense_bf16 = SimpleNamespace(
         backend="hip_gfx1100",
         spec=SimpleNamespace(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q5_k"),
+    )
+    q5_t16 = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(
+            layout=LAYOUT_GGUF_Q5_K_T16,
+            quant_key="gguf_q5_k_t16_v1",
+        ),
     )
     q8_t16 = SimpleNamespace(
         backend="hip_gfx1100",
@@ -95,7 +106,18 @@ def test_gdn_output_cast_falls_back_for_bf16_resident_ssm_out() -> None:
     )
 
     assert runner._gdn_decode_output_cast_for_weight(dense_bf16) is f32_to_bf16
+    assert runner._gdn_decode_output_cast_for_weight(q5_t16) is f32_to_bf16
     assert runner._gdn_decode_output_cast_for_weight(q8_t16) is None
+    assert (
+        runner._gdn_decode_output_fusion_for_weight(q5_t16)
+        is qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out
+    )
+    assert (
+        runner._gdn_chain_output_fusion_for_weight(q5_t16)
+        is qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out
+    )
+    assert runner._gdn_decode_output_fusion_for_weight(dense_bf16) is None
+    assert runner._gdn_chain_output_fusion_for_weight(dense_bf16) is None
 
 
 def test_q3_decode_output_width_policy_is_registry_selected() -> None:

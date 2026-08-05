@@ -13,11 +13,18 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gdn.hip")
 _OUTPUT_NAME = "qwen35_linear_attn_gdn.so"
 _SYMBOL_LOWP = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16"
+_SYMBOL_LOWP_F32_BF16 = (
+    "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out"
+)
 _SYMBOL_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16"
 _SYMBOL_TREE_TLOOP_BF16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_bf16"
 _SYMBOL_TREE_TLOOP_FP16 = "hipengine_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_CHAIN_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_bf16"
 _SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16"
+_SYMBOL_CHAIN_C1_EXACT_TLOOP_F32_BF16 = (
+    "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_"
+    "c1_exact_tloop_f32_bf16_out"
+)
 _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
@@ -232,6 +239,52 @@ def qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
     _check_launch(runtime, err)
 
 
+def qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    out_bf16_ptr: int,
+    eps: float,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch recurrent GDN with exact FP32 and rounded BF16 outputs."""
+
+    _launch_gdn_recurrent_rmsnorm_gate_lowp(
+        _SYMBOL_LOWP_F32_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        eps,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        out_bf16_ptr=out_bf16_ptr,
+    )
+
+
 def qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(
     conv_out_ptr: int,
     gate_ptr: int,
@@ -296,21 +349,26 @@ def _launch_gdn_recurrent_rmsnorm_gate_lowp(
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
+    out_bf16_ptr: int | None = None,
 ) -> None:
     _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
+    pointer_args = [
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+    ]
+    if out_bf16_ptr is not None:
+        pointer_args.append(out_bf16_ptr)
+    fn.argtypes = [ctypes.c_void_p] * len(pointer_args) + [
         ctypes.c_float,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -320,15 +378,7 @@ def _launch_gdn_recurrent_rmsnorm_gate_lowp(
     ]
     fn.restype = ctypes.c_int
     err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(norm_weight_ptr),
-        ctypes.c_void_p(recurrent_state_ptr),
-        ctypes.c_void_p(out_ptr),
+        *(ctypes.c_void_p(value) for value in pointer_args),
         ctypes.c_float(eps),
         ctypes.c_int64(num_k_heads),
         ctypes.c_int64(num_v_heads),
@@ -540,6 +590,58 @@ def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16(
         stream=stream,
         library=library,
         runtime=runtime,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    out_bf16_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact chain GDN with FP32 and rounded BF16 row outputs."""
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_C1_EXACT_TLOOP_F32_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        out_bf16_ptr=out_bf16_ptr,
     )
 
 
@@ -3083,6 +3185,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
+            "bf16_lowp_f32_bf16_out",
+        ),
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "gdn_recurrent_rmsnorm_gate", "w4_paro", "fp16_lowp"),
         qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
         replace=replace,
@@ -3100,6 +3212,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "bf16_c1_exact_state_rows_tloop",
         ),
         qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_chain_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
+            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        ),
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out,
         replace=replace,
     )
     register(
@@ -3620,6 +3742,7 @@ def _launch_gdn_chain_tloop(
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
+    out_bf16_ptr: int | None = None,
 ) -> None:
     _check_positive(max_nodes, "max_nodes")
     _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
@@ -3628,18 +3751,22 @@ def _launch_gdn_chain_tloop(
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
+    pointer_args = [
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+    ]
+    if out_bf16_ptr is not None:
+        pointer_args.append(out_bf16_ptr)
+    fn.argtypes = [ctypes.c_void_p] * len(pointer_args) + [
         ctypes.c_float,
         ctypes.c_int64,
         ctypes.c_int64,
@@ -3650,17 +3777,7 @@ def _launch_gdn_chain_tloop(
     ]
     fn.restype = ctypes.c_int
     err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(norm_weight_ptr),
-        ctypes.c_void_p(base_recurrent_state_ptr),
-        ctypes.c_void_p(leaf_recurrent_state_ptr),
-        ctypes.c_void_p(acc_buf_ptr),
-        ctypes.c_void_p(out_ptr),
+        *(ctypes.c_void_p(value) for value in pointer_args),
         ctypes.c_float(eps),
         ctypes.c_int64(max_nodes),
         ctypes.c_int64(num_k_heads),

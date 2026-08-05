@@ -206429,3 +206429,47 @@ Vulkan local sizes verbatim will close the measured gap.
   F32-input Q5T16 consumer to remove **336** standalone cast launches and
   **0.606 ms** of cast kernels, while preserving the explicit cast plus
   ordinary Q5T16 chain as the unfused fallback.
+
+## 2026-08-05 — Admit producer-side GDN-to-Q5T16 BF16 handoff
+
+- Freeze the explicit `GDN FP32 -> f32_to_bf16 -> Q5T16` boundary as RED for
+  both c1 and dense native rows 2-4. A temporary exact F32-input Q5T16 direct
+  and rowtile implementation removes the cast but loses its budget: on GPU1,
+  c2/c3/c4 rise **99.0/105.4/112.6 -> 101.1/112.5/121.7 us** while the removed
+  cast costs only **2.9-4.8 us**. Remove all consumer symbols, dispatch keys,
+  tests, and gfx1151 exclusions; this rejected route is not retained.
+- Add quant-axis producer owners instead:
+  `gdn_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/
+  bf16_lowp_f32_bf16_out` for scalar decode and
+  `gdn_chain_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/
+  bf16_c1_exact_state_rows_tloop_f32_bf16_out` for verifier rows. Both preserve
+  the ordinary FP32 output/state and write the exact RNE BF16 handoff from the
+  same final register. The runner resolves by the resident `ssm_out` weight
+  plugin; missing keys retain ordinary GDN + explicit cast + BF16 Q5T16. The
+  gfx1151 package intentionally aliases neither unvalidated key.
+- Focused planning/fail-closed/backend tests pass **4/4**; the adjacent GDN
+  plan/routing/backend plus chain-journal bundle passes **60/60**. Cached GPU1
+  production-shape rows 2/4 pass **2/2** with every scalar/chain FP32 output,
+  recurrent state, and BF16 handoff bit equal to the ordinary producer plus
+  explicit cast. The binding cached W7900 B1-B3 transaction passes **1/1** and
+  observes Q5T16 BF16 c1/rows 2-4, scalar plus chain dual-output GDN ownership,
+  zero unfused chain GDN ownership, full logits, reject/partial/full/rollback
+  state, dynamic positions/graph reuse, correction logits, natural provider
+  output, and clean teardown. `scripts/check_lineage.py --kind kernel --diff
+  stat` reports only the four already-catalogued upstream drift entries; this
+  producer-boundary specialization is in-tree work, not a new external port.
+- Counterbalanced GPU1 event medians for complete GDN-plus-handoff c1/c2/c3/c4
+  improve **14.270/22.570/29.770/37.066 ->
+  11.287/19.582/26.762/34.064 us**, saving **2.983/2.988/3.008/3.002 us**
+  (**1.264x/1.153x/1.112x/1.088x**). Raw screen:
+  `/tmp/qwen36-gdn-bf16-handoff-gpu1.json`.
+- Cached GPU1 `rocprofv3 --kernel-trace` on the c4 production fixture names
+  scalar and chain `qwen35_gdn_*<unsigned short,true>` kernels. The chain leaf
+  uses global grid 6,144, local128, 3,072-B LDS, and zero private segment; its
+  profiler-instrumented duration is 83,680 ns. Database:
+  `/tmp/qwen36-gdn-bf16-handoff-trace-gpu1/epyc/1709181_results.db`.
+- This is correctness/component admission, not a W7900 topline claim. Next
+  commit the validated kernel/runtime unit, then run the hermetic one-prompt B3
+  profile against `24fef47da`; retain only if the standalone cast family
+  disappears and the target/complete windows are non-regressive before
+  natural25 and populated controls.

@@ -757,6 +757,16 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 "t16_wmma_prefill_bf16_bf16_out",
             )
         ),
+        (
+            "gdn_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
+            "bf16_lowp_f32_bf16_out",
+        ),
+        (
+            "gdn_chain_recurrent_rmsnorm_gate+cast",
+            "gguf_q5_k_t16_v1",
+            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        ),
         # Dense planar-qmicro Q6 is W7900-only pending a separate gfx1151 gate.
         *(
             (

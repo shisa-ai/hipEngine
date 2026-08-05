@@ -395,6 +395,24 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
                 variant,
             )
         )
+    for layer, variant in (
+        (
+            "gdn_recurrent_rmsnorm_gate+cast",
+            "bf16_lowp_f32_bf16_out",
+        ),
+        (
+            "gdn_chain_recurrent_rmsnorm_gate+cast",
+            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        ),
+    ):
+        assert not is_registered(
+            KernelKey(
+                "hip_gfx1151",
+                layer,
+                "gguf_q5_k_t16_v1",
+                variant,
+            )
+        )
 
 
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
