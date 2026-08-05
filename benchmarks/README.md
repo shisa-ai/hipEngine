@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-05**
+Last updated: **2026-08-06**
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
@@ -5535,6 +5535,25 @@ snapshot Conv, and snapshot+cast GDN. Post-unroute coverage passes **129/129**.
 Retain only the measured primitive; canonical **60.262 tok/s / 2.4991x own AR /
 11.49% below Vulkan** is unchanged. Artifact:
 [`2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json).
+
+#### Qwen3.6-27B native target-graph split, runtime rejected
+
+The restored B3 profile contains three apparent **5.736-5.799 ms** idle gaps
+exactly 256 dispatches apart, but unprofiled graph experiments show they are
+profiler instrumentation. Explicit graph upload changes first launch only. An
+exact cloned 836-node GPU1 graph is slightly slower when split four ways.
+
+The decisive W7900 test topologically partitions the actual one-stream B3
+target DAG from **816 nodes** into four exact **204-node** executables and
+submits them on the same stream with one synchronization. Tokens, hidden and
+pre-output rows, and every captured Conv/GDN state-row byte remain identical.
+Across 21 alternating same-state pairs, submit medians move only **40.563484 ->
+40.500983 ms (1.00154x)** and complete call medians **40.983989 -> 40.918268
+ms (1.00161x)**. The paired median saving is **0.089741 ms** inside a ~3.2-ms
+range—not the profiler-implied ~17.2 ms. No source route or natural25 run is
+admitted. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan** is
+unchanged. Artifact:
+[`2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`](results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json).
 
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
