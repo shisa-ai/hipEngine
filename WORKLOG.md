@@ -207146,3 +207146,57 @@ Vulkan local sizes verbatim will close the measured gap.
   the already-gated rounded baseline. Publish a rejected-runtime artifact
   (`a2a4c985...02f6f`); the canonical **60.262 tok/s / 11.49%-below-Vulkan**
   headline remains unchanged.
+
+## 2026-08-05 — Admit dense F32 alpha/beta pair to RED
+
+- Re-rank the restored `fda35418e` scalar-write B3 trace rather than counting
+  the rejected KV-batch projection. The next exact independent launch boundary
+  is the same-input `ssm_alpha` plus `ssm_beta` pair in each of 48
+  linear-attention layers. The current native target executes **672**
+  `dense_gemv_bf16_f32w_bf16_out` launches / **3.573 ms** over seven passes.
+  One pair launch per layer can remove **336 dispatches**; a two-row tile at B3
+  can additionally halve F32 weight traffic while retaining 192 blocks.
+- Screen all 48 real `(48,5120)` F32 weight pairs on GPU1. Every rows1-4
+  candidate output is BF16-bit exact to the two registered scalar leaves. A
+  flat pair is the selected rows1-3 policy and improves 48-layer event medians
+  **0.5071 -> 0.2864 ms (1.771x)**, **0.4935 -> 0.2763 ms (1.786x)**, and
+  **0.4588 -> 0.2497 ms (1.837x)**. The flat rows4 body is rejected at
+  **0.713x**; a two-row pair tile instead improves **0.4444 -> 0.2848 ms
+  (1.560x)**. Synchronized wall agrees at **1.769x/1.783x/1.833x/1.559x**,
+  and every selected cell wins **21/21** pairs. The blanket four-row tile is
+  also superseded. HIP/script/result SHA-256 values are
+  `d8df1783...4b4`, `f3afa6f2...af7`, and `8ca59ddd...69f`.
+- Admit RED for an explicit registered dense-F32 pair owner: rows1-3 use the
+  flat pair, row4 uses tile2. Require scalar/CPU byte and KL/top-1 gates,
+  gfx1151 exclusion, pair-dispatch ownership with scalar key/shape fallback,
+  and the full W7900 B1-B3 transaction before profiling. The unfused pair of
+  dense F32-weight GEMVs remains mandatory on every miss.
+- RED is established before source changes:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q
+  tests/test_dense_f32_pair.py --tb=short` -> **8 failed**, covering the absent
+  wrapper/key, row-policy selection, dispatch/fallback contract, validation,
+  and four rows of scalar/CPU device correctness.
+- GREEN adds `linear_pair/f32/bf16_hidden_bf16_out` only on gfx1100. Rows1-3
+  use a two-grid flat owner; row4 uses two rows/block. Both write separate alpha
+  and beta outputs while retaining every singleton K/FMA/reduction/BF16 bit.
+  Equal F32 layouts/widths and rows1-4 resolve the pair; any key/backend/layout/
+  width/span miss returns `False` for the existing two-singleton fallback.
+  gfx1151 explicitly excludes the new key.
+- Validation:
+  - the RED file becomes **8/8 green** on GPU1, including scalar BF16 byte
+    equality and independent CPU KL <=0.05 / top-1 >=90% at rows1-4;
+  - adjacent dispatch/gfx1151 files pass **99/99**;
+  - the cached W7900 binding
+    `test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes
+    exact B1-B3 logits, reject/partial/full/rollback state, dynamic graph reuse,
+    provider output, lifecycle, and teardown. Its physical census sees only
+    K5,120/N48 pair launches and all intended rows `{1,2,3,4}`;
+  - cached GPU1 tracing names
+    `dense_pair_gemv_bf16_f32w_bf16_out_rowtile2_kernel` at grid workgroups
+    `(96,2,1)`, local256, VGPR24, SGPR128, LDS2,048 B, scratch0, and
+    **12,080 ns**. Trace/test/HIP SHA-256s are `a5eb93e8...12f47`,
+    `5932180b...57efb7`, and `b308be38...10e7d`.
+- This is correctness admission only. Commit the implementation before the
+  tracked-clean W7900 profile; compare against the restored scalar-write
+  `fda35418e` topology and require complete marked wall to improve before
+  natural25.

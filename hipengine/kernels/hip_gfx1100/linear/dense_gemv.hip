@@ -479,6 +479,156 @@ __global__ void dense_gemv_bf16_f32w_bf16_out_kernel(
   }
 }
 
+// Same-input dense-F32 pair for Qwen3.6 linear-attention alpha/beta. Each
+// output block preserves the scalar kernel's 256-way FMA and reduction tree;
+// combining the two independent grids changes only launch ownership.
+__global__ void dense_pair_gemv_bf16_f32w_bf16_out_kernel(
+    const uint16_t* __restrict__ x,
+    const float* __restrict__ weight_a,
+    const float* __restrict__ weight_b,
+    uint16_t* __restrict__ out_a,
+    uint16_t* __restrict__ out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t pair_col = blockIdx.x;
+  const bool use_b = pair_col >= out_features;
+  const int64_t out_col = use_b ? pair_col - out_features : pair_col;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const float* __restrict__ weight = use_b ? weight_b : weight_a;
+  uint16_t* __restrict__ out = use_b ? out_b : out_a;
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const uint16_t* __restrict__ x_ptr = x + x_base + k_base;
+    const float* __restrict__ w_ptr = weight + w_base + k_base;
+    acc = fmaf(bf16_bits_to_float(x_ptr[0]), w_ptr[0], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[1]), w_ptr[1], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[2]), w_ptr[2], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[3]), w_ptr[3], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[4]), w_ptr[4], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[5]), w_ptr[5], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[6]), w_ptr[6], acc);
+    acc = fmaf(bf16_bits_to_float(x_ptr[7]), w_ptr[7], acc);
+  }
+  for (int64_t in_col = main_end + tid;
+       in_col < in_features;
+       in_col += blockDim.x) {
+    acc = fmaf(
+        bf16_bits_to_float(x[x_base + in_col]),
+        weight[w_base + in_col],
+        acc);
+  }
+
+  __shared__ float sdata[256];
+  sdata[tid] = acc;
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    out[row * out_features + out_col] = float_to_bf16_bits(sdata[0]);
+  }
+}
+
+// Four verifier rows underfill gfx1100 when all rows share one output block.
+// Two rows per block retain 192 production blocks across both 48-column
+// matrices while halving each F32 weight stream. Every row keeps the scalar
+// kernel's K traversal and local256 reduction order.
+__global__ void dense_pair_gemv_bf16_f32w_bf16_out_rowtile2_kernel(
+    const uint16_t* __restrict__ x,
+    const float* __restrict__ weight_a,
+    const float* __restrict__ weight_b,
+    uint16_t* __restrict__ out_a,
+    uint16_t* __restrict__ out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t pair_col = blockIdx.x;
+  const bool use_b = pair_col >= out_features;
+  const int64_t out_col = use_b ? pair_col - out_features : pair_col;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 2;
+  const int tid = threadIdx.x;
+  const float* __restrict__ weight = use_b ? weight_b : weight_a;
+  uint16_t* __restrict__ out = use_b ? out_b : out_a;
+  const int64_t w_base = out_col * in_features;
+
+  float acc[2] = {0.0f, 0.0f};
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const float* __restrict__ w_ptr = weight + w_base + k_base;
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        const uint16_t* __restrict__ x_ptr = x + row * in_features + k_base;
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[0]), w_ptr[0], acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[1]), w_ptr[1], acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[2]), w_ptr[2], acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[3]), w_ptr[3], acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[4]), w_ptr[4], acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[5]), w_ptr[5], acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[6]), w_ptr[6], acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[7]), w_ptr[7], acc[local_row]);
+      }
+    }
+  }
+  for (int64_t in_col = main_end + tid;
+       in_col < in_features;
+       in_col += blockDim.x) {
+    const float w = weight[w_base + in_col];
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        acc[local_row] = fmaf(
+            bf16_bits_to_float(x[row * in_features + in_col]),
+            w,
+            acc[local_row]);
+      }
+    }
+  }
+
+  __shared__ float sdata[2][256];
+#pragma unroll
+  for (int local_row = 0; local_row < 2; ++local_row) {
+    sdata[local_row][tid] = acc[local_row];
+  }
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+#pragma unroll
+      for (int local_row = 0; local_row < 2; ++local_row) {
+        sdata[local_row][tid] += sdata[local_row][tid + s];
+      }
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        out[row * out_features + out_col] =
+            float_to_bf16_bits(sdata[local_row][0]);
+      }
+    }
+  }
+}
+
 
 template <typename scalar_t, int TILE_M, int TILE_N, int TILE_K>
 __global__ void dense_prefill_gemm_out_kernel(
@@ -949,6 +1099,70 @@ extern "C" int hipengine_dense_gemv_bf16_f32w_bf16_out(
       x,
       weight,
       out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_pair_gemv_bf16_f32w_bf16_out(
+    const uint16_t* x,
+    const float* weight_a,
+    const float* weight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows < 1 || rows > 3 || in_features <= 0 || out_features <= 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dense_pair_gemv_bf16_f32w_bf16_out_kernel,
+      dim3(
+          static_cast<unsigned int>(out_features * 2),
+          static_cast<unsigned int>(rows)),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out_a,
+      out_b,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_pair_gemv_bf16_f32w_bf16_out_rowtile2(
+    const uint16_t* x,
+    const float* weight_a,
+    const float* weight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows != 4 || in_features <= 0 || out_features <= 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dense_pair_gemv_bf16_f32w_bf16_out_rowtile2_kernel,
+      dim3(static_cast<unsigned int>(out_features * 2), 2),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out_a,
+      out_b,
       rows,
       in_features,
       out_features);
