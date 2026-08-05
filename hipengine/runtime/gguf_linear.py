@@ -24,6 +24,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_rowtile_bf16_bf16_out,
+    gguf_q4_k_quantize_bf16_q8_1,
     register_gguf_q4_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
@@ -1821,6 +1822,114 @@ def _launch_registered_linear_residual(
         out_features,
         **kwargs,
     )
+    return True
+
+
+def launch_gguf_linear_q8_1(
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    q8_1_workspace_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    residual_ptr: int | None = None,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    enabled: bool = True,
+) -> bool:
+    """Launch a registered BF16->Q8_1 plus compressed linear alternative.
+
+    The caller supplies reusable workspace and retains the ordinary registered
+    BF16 linear (plus BF16 add, when requested) as the fail-closed fallback.
+    No quant or backend identity is selected here: the weight's four-axis key
+    must independently register the q8-input primitive.
+    """
+
+    if (
+        not enabled
+        or not q8_1_workspace_ptr
+        or rows < 1
+        or rows > 4
+        or (residual_ptr is not None and rows < 2)
+    ):
+        return False
+    resolved_backend = _weight_backend(weight, backend=backend)
+    layer = "linear_q8_1" if residual_ptr is None else "linear_q8_1+residual"
+    variant = (
+        "t16_q8_1_dp4a_gemv_bf16_bf16_out"
+        if residual_ptr is None
+        else "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out"
+    )
+    key = KernelKey(
+        resolved_backend,
+        layer,
+        weight.spec.quant_key,
+        variant,
+    )
+    if not is_registered(key):
+        return False
+    dispatch = resolve_gguf_linear_dispatch(
+        weight,
+        backend=resolved_backend,
+        rows=1,
+    )
+    allocation_name = {"t16": "tiles"}.get(dispatch.abi)
+    if allocation_name is None:
+        return False
+    try:
+        allocation = weight.allocation(allocation_name)
+    except KeyError:
+        return False
+    fn = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    supports = getattr(fn, "_hipengine_supports", None)
+    if callable(supports) and not bool(supports(rows, in_features, out_features)):
+        return False
+    gguf_q4_k_quantize_bf16_q8_1(
+        x_ptr,
+        q8_1_workspace_ptr,
+        rows,
+        in_features,
+        stream=stream,
+        runtime=runtime,
+    )
+    kwargs = {"stream": stream, "runtime": runtime}
+    if libraries is not None:
+        library = libraries.get(
+            f"{key.quant}:{key.variant}",
+            libraries.get(key.quant),
+        )
+        if library is not None:
+            kwargs["library"] = library
+    if residual_ptr is None:
+        fn(
+            q8_1_workspace_ptr,
+            allocation.tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+    else:
+        fn(
+            q8_1_workspace_ptr,
+            allocation.tensor.ptr,
+            residual_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
     return True
 
 
@@ -3761,6 +3870,7 @@ __all__ = [
     "Q5F32ResidentPlane",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
+    "launch_gguf_linear_q8_1",
     "launch_gguf_linear_residual",
     "launch_gguf_linear_moe_tail_host_batch",
     "launch_gguf_linear_pair",

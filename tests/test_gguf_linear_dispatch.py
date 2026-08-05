@@ -282,6 +282,132 @@ def test_launch_gguf_linear_residual_routes_registered_q6_and_q4_owners() -> Non
     ]
 
 
+def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launch = getattr(gguf_linear_module, "launch_gguf_linear_q8_1", None)
+    assert callable(launch)
+    projection_key = KernelKey(
+        "hip_gfx1100",
+        "linear_q8_1",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_q8_1_dp4a_gemv_bf16_bf16_out",
+    )
+    residual_key = KernelKey(
+        "hip_gfx1100",
+        "linear_q8_1+residual",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (projection_key, residual_key)
+    }
+    quantize_calls = []
+    kernel_calls = []
+
+    def quantize(*args, **kwargs):
+        quantize_calls.append((args, kwargs))
+
+    def capture(label):
+        def fake(*args, **kwargs):
+            kernel_calls.append((label, args, kwargs))
+
+        return fake
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        quantize,
+        raising=False,
+    )
+
+    def reject_global_registry_restore(_key):
+        raise AssertionError("optional q8-input misses must not rewrite the registry")
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_ensure_linear_kernel_registered",
+        reject_global_registry_restore,
+    )
+    register(projection_key, capture("projection"), replace=True)
+    register(residual_key, capture("residual"), replace=True)
+    q6 = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    q5 = _fake_weight(
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        quant_key="gguf_q5_k_t16_v1",
+    )
+    try:
+        assert launch(
+            q6,
+            100,
+            200,
+            300,
+            1,
+            5_120,
+            10_240,
+            stream=7,
+            runtime="runtime-sentinel",
+            enabled=True,
+        )
+        assert launch(
+            q6,
+            101,
+            201,
+            301,
+            4,
+            17_408,
+            5_120,
+            residual_ptr=401,
+            stream=8,
+            runtime="runtime-sentinel",
+            enabled=True,
+        )
+        assert not launch(q5, 100, 200, 300, 4, 17_408, 5_120, enabled=True)
+        assert not launch(q6, 100, 200, 300, 5, 17_408, 5_120, enabled=True)
+        assert not launch(q6, 100, 0, 300, 4, 17_408, 5_120, enabled=True)
+        assert not launch(q6, 100, 200, 300, 4, 17_408, 5_120, enabled=False)
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert quantize_calls == [
+        (
+            (100, 200, 1, 5_120),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
+        (
+            (101, 201, 4, 17_408),
+            {"stream": 8, "runtime": "runtime-sentinel"},
+        ),
+    ]
+    assert kernel_calls == [
+        (
+            "projection",
+            (200, 14, 300, 1, 5_120, 10_240),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
+        (
+            "residual",
+            (201, 14, 401, 301, 4, 17_408, 5_120),
+            {"stream": 8, "runtime": "runtime-sentinel"},
+        ),
+    ]
+
+    # The restored production leaf must fail closed before quantization when a
+    # registered planar weight has no measured shape policy.
+    assert not launch(q6, 102, 202, 302, 4, 512, 256, enabled=True)
+    assert len(quantize_calls) == 2
+
+
 def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:
     weight = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
     key = KernelKey(

@@ -14,6 +14,22 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Qwen3.6 planar-Q6 Q8_1 scalar-dot candidate
+
+- Added 2026-08-06 as default-off
+  `HIPENGINE_GGUF_Q6_PLANAR_Q8_1` while the quality-gated wide-Q6 route moves
+  through W7900 transaction/profile/category admission. It reuses the sole
+  planar-qmicro resident bytes and the existing Q8_1 workspace; rows above
+  four, unsupported shapes/backends, registry misses, and explicit zero retain
+  the exact T16/WMMA path.
+- If the complete multi-category plus heldout gate or either matched W7900
+  target/complete performance window regresses, remove runtime ownership and
+  the flag while retaining the separately registered primitive and correctness
+  fixture for diagnostics. If admitted, promote selector-unset production and
+  keep zero only through one later regression/bisection cycle; then remove the
+  env branch while preserving the exact registered linear/add fallback required
+  by project policy.
+
 ## Qwen3.6 shared-cache verifier KV batch primitive
 
 - Added 2026-08-05 after the exact rows2/4 primitive passed reversed-page CPU

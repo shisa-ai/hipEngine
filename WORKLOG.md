@@ -207678,3 +207678,89 @@ Vulkan local sizes verbatim will close the measured gap.
   generated root block changes. This is publication repair, not a new
   performance result, and canonical B3 remains **60.262 tok/s / 11.49% below
   Vulkan**.
+
+## 2026-08-06 — Audit residual Vulkan gaps and qualify planar-Q6 integer dot
+
+- Treat the requested module sweep as a residual coverage audit, not permission
+  to rerun closed experiments. Q5 `ssm_out` already covers dense BF16, raw Q5,
+  Q5T16, exact row reuse, raw/T16 Q8_1 `sudot4`, WMMA, rotating sole residency,
+  and producer handoff; its retained cache route already moved **37.004 ->
+  22.911 ms** and leaves only a **1.8%** complete-wall perfect-parity ceiling.
+  Exact target-root Q6 likewise covers legacy/col8/col4, planar qmicro,
+  tile-winner contraction, and runtime gates; its **11.798 vs 9.170 ms** gap is
+  only **0.6%** wall. Do not reopen either family without a materially new
+  primitive.
+- The one genuinely uncovered design is dense one-expert Q6 plus Q8_1 scalar
+  `sudot4`. An actual-weight GPU1 X8 screen charges activation quantization in
+  every candidate. Wide rows 2-4 improve **1.384-1.822x**, every selected cell
+  wins **31/31**, all **18/18** wide top-1 rows agree, max KL is **1.10e-6**,
+  and the row-reuse body is bit-identical to the already-tested direct X8
+  arithmetic in all 27 shape/row/thread cells. The root arithmetic is faster
+  but fails its local floor at **8/9 top-1 (88.9%)**, so exact planar root
+  ownership remains unchanged.
+- The required serial sibling also qualifies: inclusive c1 quantize+dot
+  improves FFN-down **2.244x** and QKV **1.737x**; 64 quality rows give
+  **63/64 top-1 (98.44%)** and max KL **2.89e-5**. Do not switch residency to
+  X8: it lacks the retained exact WMMA prefill consumer.
+- Instead consume the current byte-neutral planar-qmicro bytes directly. The
+  temporary kernel reconstructs each output column's four unsigned Q6 bytes
+  from two aligned low-plane dwords plus one high-plane dword, then uses the
+  same Q8_1 scale, `sudot4`, `-32*sum(x)` correction, coefficient product,
+  per-row accumulation, wave tree, ordered wave sum, and BF16 store as the X8
+  oracle. Across c1/rows2-4, both wide shapes, and 64/128/256 threads it has
+  **zero X8-output bit mismatches**, **20/20 top-1**, and max KL **1.00e-5**.
+- Freeze transaction-consistent thread policies at local256 for FFN-down and
+  local64 for QKV. Inclusive c1/rows2/3/4 speedups are
+  **2.523/2.170/1.873/1.643x** and **1.878/1.727/1.620/1.475x** respectively;
+  all event and wall cells win **31/31**. At row 4 and the retained 224/168
+  call model, the GPU1 arithmetic projection is about **44.82 -> 28.23 ms
+  (-16.59 ms, -37.0%)**. This clears RED-first in-tree admission while keeping
+  planar residency and exact WMMA prefill; model transaction, quality, trace,
+  and W7900 gates remain binding.
+- Temporary X8 source/harness/result SHA-256 values are `779de53a...c20676`,
+  `d945dd9c...e73af`, and `90d8af97...0c014`; c1 harness/result are
+  `64fe7061...f87e3` / `733db7c2...9854`; planar source/harness/result are
+  `fb862b83...bd3c`, `0240600b...0678`, and `f66fcbbe...fcf92`.
+- RED freezes two registered q8-input leaves, the transaction-consistent shape
+  policy, X8-bit arithmetic equality, CPU-reference quality, approximate
+  projection-plus-residual equivalence, and generic registry-driven launch
+  fallback. `py_compile` passes; focused pytest fails at collection only on the
+  absent planar-Q8 wrapper import, as intended. Implement the kernel/adapter
+  without adding resident bytes or a model-code backend/quant branch.
+- GREEN adds the planar-resident Q8_1 `sudot4` c1/rows2-4 leaf plus its rounded
+  residual sibling, generic registered dispatch with pre-quantization shape
+  rejection, and one shared QKV/gate route used by serial, verifier-chain,
+  indexed-batch, native-batch, and small-prefill execution. FFN-down uses the
+  same registered approximation before the retained exact projection/add
+  fallbacks; rows above four and every unsupported shape retain exact
+  T16/WMMA ownership. GPU1 focused leaf/dispatch tests pass **12/12**, and the
+  adjacent dispatch/native-graph/packed-layout/rounded-boundary bundle passes
+  **146/146**. A cached W7900 B1-B3 state/provider transaction is now running;
+  do not profile or publish the candidate unless that gate observes QKV and
+  FFN-down rows `{1,2,3,4}` and remains exact against its serial sibling.
+- The production wrapper independently repeats the actual-weight GPU1 gate at
+  the frozen local256/local64 policies. Inclusive c1/rows2/3/4 event speedups
+  are **2.600/2.208/1.877/1.643x** for FFN-down and
+  **1.866/1.695/1.665/1.498x** for QKV, all **11/11** wins. Both policies remain
+  X8-bit exact across all 20 rows, top-1 is **20/20**, and max KL is
+  **1.00e-5**. Harness/result SHA-256 values are `bc06e15d...084b9` and
+  `3735fb63...2ff3e`.
+- The first W7900 transaction execution passed every substantive logits,
+  accept/commit, forced-post-commit rollback, dynamic-graph, correction, and
+  provider oracle, then failed only at the final Q4 ownership census. Root
+  cause: probing an intentionally absent Q4 `linear_q8_1` key called the generic
+  global registry-restoration helper and overwrote instrumented owners. This is
+  a real fail-closed bug, not a math failure. Optional q8-input dispatch now
+  performs a side-effect-free exact-key miss; a focused regression forbids
+  global registry restoration. Rerun only the failed W7900 transaction node.
+- The focused W7900 rerun passes. The candidate observes QKV and FFN-down at
+  transaction-consistent rows `{1,2,3,4}` and only the qualified
+  K5,120/N10,240 and K17,408/N5,120 shapes; exact Q4 owners remain visible, and
+  the old exact planar-Q6 residual owner is absent only where the approximate
+  sibling owns the same boundary. Full B1-B3 logits, GPU/CPU acceptance,
+  reject/partial/full commit, forced post-commit rollback, dynamic positions,
+  correction logits, natural provider output, graph reuse, memory lifecycle,
+  and teardown all pass against serial execution. Keep the candidate
+  **default-off** until a tracked-clean W7900 one-prompt target/complete screen
+  wins; only then spend the full ten-prompt category/heldout and populated-AR
+  gates. Exact zero remains the control.
