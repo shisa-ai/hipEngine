@@ -202748,3 +202748,18 @@ Vulkan local sizes verbatim will close the measured gap.
   prefill-publication/native-batch tests. Python compile-all, staged whitespace,
   conflict-marker, and WORKLOG union checks are clean. Untracked benchmark
   artifacts remain untouched.
+
+## 2026-08-05 — Pin Maple-Preview ternary model contract
+
+- Create branch `maple` for `deepgrove/maple-preview-2bit-mlx` bring-up and
+  download the official **5.31 GB** snapshot at
+  `361db5da5e74ff6fcdd852d478e1f266ce11013a` into the HF cache.
+- Add the `MapleForCausalLM` model plugin and a strict config parser for the
+  official 24-layer, hidden-2048, 16Q/4KV, SWA-512 3:1, 256-expert top-8
+  contract. Resolve partial RoPE from `layer_types` (18 SWA layers use
+  rotary-dim 64; six full-attention layers are NoPE), matching the shipped MLX
+  model rather than its unused legacy `nope_on_global_attention` field.
+- Pin checkpoint storage metadata: projection weights are 2-bit/group-128
+  ternary with per-row alpha, while embeddings and exact lm-head are affine
+  4-bit/group-64. Validation passes **16/16** focused model/import tests; Ruff,
+  pycompile, and parsing the downloaded live `config.json` are clean.
