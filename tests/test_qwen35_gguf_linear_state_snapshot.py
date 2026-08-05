@@ -206,6 +206,117 @@ def test_state_journal_initial_snapshot_and_rollback_use_one_pointer_table_launc
         unregister(key)
 
 
+def test_state_journal_producer_capture_preserves_post_commit_rollback(monkeypatch) -> None:
+    backend = "test_state_journal_producer_capture"
+    key = KernelKey(backend, "linear_state_pair_copy", "f32", "chunked_i32")
+    allocated: list[DeviceBuffer] = []
+    freed: list[int] = []
+    launches: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    lifecycle: list[str] = []
+
+    def fake_malloc(nbytes: int, *, runtime) -> DeviceBuffer:
+        _ = runtime
+        buffer = DeviceBuffer(0xA000 + len(allocated) * 0x1000, int(nbytes))
+        allocated.append(buffer)
+        return buffer
+
+    def fake_free(buffer: DeviceBuffer, *, runtime) -> None:
+        _ = runtime
+        freed.append(int(buffer.ptr))
+
+    def fake_copy_host_to_device(_buffer, _host_ptr: int, _nbytes: int, *, runtime) -> None:
+        _ = runtime
+
+    def fake_copy(*args, **kwargs) -> None:
+        launches.append((args, kwargs))
+
+    target = _fake_target(backend=backend)
+    conv_states = target._target_scratch_owner.layer_conv_states
+    recurrent_states = target._target_scratch_owner.layer_recurrent_states
+    conv_capture = (
+        (0, conv_states[0], DeviceBuffer(0x21000, 64)),
+        (2, conv_states[2], DeviceBuffer(0x22000, 64)),
+    )
+    recurrent_capture = (
+        (0, recurrent_states[0], DeviceBuffer(0x23000, 128)),
+        (2, recurrent_states[2], DeviceBuffer(0x24000, 128)),
+    )
+    target._acquire_verify_initial_state_capture = lambda: (
+        lifecycle.append("acquire") or (conv_capture, recurrent_capture)
+    )
+    target._release_verify_initial_state_capture = lambda: lifecycle.append("release")
+
+    monkeypatch.setattr(mtp_module, "malloc", fake_malloc)
+    monkeypatch.setattr(mtp_module, "free", fake_free)
+    monkeypatch.setattr(mtp_module, "copy_host_to_device", fake_copy_host_to_device)
+    register(key, fake_copy, replace=True)
+    try:
+        journal = _StateJournal.allocate(
+            target,
+            max_rows=4,
+            producer_capture_initial_state=True,
+        )
+        assert journal.producer_capture_initial_state
+        assert lifecycle == ["acquire"]
+        assert [buffer.nbytes for buffer in allocated] == [8, 32, 32, 32, 4]
+        assert [(state.ptr, snapshot.ptr) for state, snapshot in journal.state_rows] == [
+            (0x1000, 0x21000),
+            (0x2000, 0x22000),
+            (0x3000, 0x23000),
+            (0x4000, 0x24000),
+        ]
+
+        journal.capture_initial(stream=7)
+        assert target.runtime.memcpy_async_calls == [
+            (0xA000, 0x5000, 8, mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        ]
+        assert launches == []
+
+        # A prepare failure before every producer retires must not restore a
+        # partial snapshot over the still-immutable resident state.
+        journal.restore_initial(stream=8)
+        assert launches == []
+        assert target.runtime.memcpy_async_calls[-1] == (
+            0x6000,
+            0xA000,
+            8,
+            mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE,
+            8,
+        )
+
+        target.runtime.memcpy_async_calls.clear()
+        journal.capture_initial(stream=9)
+        journal.mark_initial_state_captured()
+        journal.restore_initial(stream=10)
+        assert len(launches) == 1
+        restore_args, restore_kwargs = launches[0]
+        assert restore_args == (
+            0xD000,
+            0xC000,
+            64,
+            0xD000 + 2 * np.dtype(np.uint64).itemsize,
+            0xC000 + 2 * np.dtype(np.uint64).itemsize,
+            128,
+            0xE000,
+            2,
+        )
+        assert restore_kwargs["stream"] == 10
+        assert target.runtime.memcpy_async_calls[-1] == (
+            0x6000,
+            0xA000,
+            8,
+            mtp_module.HipMemcpyKind.DEVICE_TO_DEVICE,
+            10,
+        )
+
+        journal.close()
+        assert lifecycle == ["acquire", "release"]
+        assert freed == [0xE000, 0xD000, 0xC000, 0xB000, 0xA000]
+        assert not ({0x21000, 0x22000, 0x23000, 0x24000} & set(freed))
+    finally:
+        unregister(key)
+
+
 def test_state_journal_snapshot_copy_registry_miss_preserves_memcpy_fallback(monkeypatch) -> None:
     allocated: list[DeviceBuffer] = []
 

@@ -582,7 +582,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel(
   }
 }
 
-template <typename scalar_t, bool write_bf16 = false>
+template <typename scalar_t, bool write_bf16 = false, bool write_snapshot = false>
 __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
     const float* __restrict__ conv_out,
     const scalar_t* __restrict__ gate,
@@ -593,6 +593,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
     const float* __restrict__ norm_weight,
     const float* __restrict__ base_recurrent_state,
     float* __restrict__ tree_recurrent_state,
+    float* __restrict__ initial_recurrent_state_snapshot,
     const int64_t* __restrict__ parent_ids,
     float* __restrict__ out,
     uint16_t* __restrict__ out_bf16,
@@ -745,14 +746,34 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
         const int64_t so5 = state_col + (idx + 5) * head_v_dim;
         const int64_t so6 = state_col + (idx + 6) * head_v_dim;
         const int64_t so7 = state_col + (idx + 7) * head_v_dim;
-        const float ns0 = recurrent_state[so0] * decay + k_norm0 * delta;
-        const float ns1 = recurrent_state[so1] * decay + k_norm1 * delta;
-        const float ns2 = recurrent_state[so2] * decay + k_norm2 * delta;
-        const float ns3 = recurrent_state[so3] * decay + k_norm3 * delta;
-        const float ns4 = recurrent_state[so4] * decay + k_norm4 * delta;
-        const float ns5 = recurrent_state[so5] * decay + k_norm5 * delta;
-        const float ns6 = recurrent_state[so6] * decay + k_norm6 * delta;
-        const float ns7 = recurrent_state[so7] * decay + k_norm7 * delta;
+        const float old0 = recurrent_state[so0];
+        const float old1 = recurrent_state[so1];
+        const float old2 = recurrent_state[so2];
+        const float old3 = recurrent_state[so3];
+        const float old4 = recurrent_state[so4];
+        const float old5 = recurrent_state[so5];
+        const float old6 = recurrent_state[so6];
+        const float old7 = recurrent_state[so7];
+        if constexpr (write_snapshot) {
+          if (t == 0) {
+            initial_recurrent_state_snapshot[so0] = old0;
+            initial_recurrent_state_snapshot[so1] = old1;
+            initial_recurrent_state_snapshot[so2] = old2;
+            initial_recurrent_state_snapshot[so3] = old3;
+            initial_recurrent_state_snapshot[so4] = old4;
+            initial_recurrent_state_snapshot[so5] = old5;
+            initial_recurrent_state_snapshot[so6] = old6;
+            initial_recurrent_state_snapshot[so7] = old7;
+          }
+        }
+        const float ns0 = old0 * decay + k_norm0 * delta;
+        const float ns1 = old1 * decay + k_norm1 * delta;
+        const float ns2 = old2 * decay + k_norm2 * delta;
+        const float ns3 = old3 * decay + k_norm3 * delta;
+        const float ns4 = old4 * decay + k_norm4 * delta;
+        const float ns5 = old5 * decay + k_norm5 * delta;
+        const float ns6 = old6 * decay + k_norm6 * delta;
+        const float ns7 = old7 * decay + k_norm7 * delta;
         node_state[so0] = ns0;
         node_state[so1] = ns1;
         node_state[so2] = ns2;
@@ -768,7 +789,13 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
         const float q_norm = q_shared[idx] * q_scale;
         const float k_norm = k_shared[idx] * k_scale;
         const int64_t state_offset = state_col + idx * head_v_dim;
-        const float new_state = recurrent_state[state_offset] * decay + k_norm * delta;
+        const float old_state = recurrent_state[state_offset];
+        if constexpr (write_snapshot) {
+          if (t == 0) {
+            initial_recurrent_state_snapshot[state_offset] = old_state;
+          }
+        }
+        const float new_state = old_state * decay + k_norm * delta;
         node_state[state_offset] = new_state;
         out_acc += q_norm * new_state;
       }
@@ -4395,6 +4422,7 @@ int launch_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop(
         norm_weight,
         base_recurrent_state,
         tree_recurrent_state,
+        nullptr,
         parent_ids,
         out,
         nullptr,
@@ -4493,6 +4521,7 @@ int launch_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop(
         norm_weight,
         base_recurrent_state,
         leaf_recurrent_state,
+        nullptr,
         nullptr,
         out,
         nullptr,
@@ -4723,6 +4752,7 @@ extern "C" int hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_t
       base_recurrent_state,
       leaf_recurrent_state,
       nullptr,
+      nullptr,
       out,
       nullptr,
       eps,
@@ -4779,6 +4809,124 @@ hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_o
       norm_weight,
       base_recurrent_state,
       leaf_recurrent_state,
+      nullptr,
+      nullptr,
+      out,
+      out_bf16,
+      eps,
+      max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_bf16(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* leaf_recurrent_state,
+    float* initial_recurrent_state_snapshot,
+    float* /* acc_buf */,
+    float* out,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!initial_recurrent_state_snapshot || max_nodes <= 0 ||
+      !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim) ||
+      head_k_dim > 256 || (head_k_dim % 64) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>(
+      (2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<
+          uint16_t, false, true>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      leaf_recurrent_state,
+      initial_recurrent_state_snapshot,
+      nullptr,
+      out,
+      nullptr,
+      eps,
+      max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f32_bf16_out(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* leaf_recurrent_state,
+    float* initial_recurrent_state_snapshot,
+    float* /* acc_buf */,
+    float* out,
+    uint16_t* out_bf16,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!initial_recurrent_state_snapshot || !out_bf16 || max_nodes <= 0 ||
+      !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim) ||
+      head_k_dim > 256 || (head_k_dim % 64) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>(
+      (2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<
+          uint16_t, true, true>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      leaf_recurrent_state,
+      initial_recurrent_state_snapshot,
       nullptr,
       out,
       out_bf16,

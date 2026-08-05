@@ -18,6 +18,9 @@ _SYMBOL_FP16 = "hipengine_qwen35_linear_attn_conv_decode_fp16"
 _SYMBOL_TREE_BF16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_bf16_tloop"
 _SYMBOL_TREE_FP16_TLOOP = "hipengine_qwen35_linear_attn_tree_conv_decode_fp16_tloop"
 _SYMBOL_CHAIN_BF16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_tloop"
+_SYMBOL_CHAIN_BF16_SNAPSHOT_TLOOP = (
+    "hipengine_qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop"
+)
 _SYMBOL_CHAIN_F32_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_f32_tloop"
 _SYMBOL_CHAIN_FP16_TLOOP = "hipengine_qwen35_linear_attn_chain_conv_decode_fp16_tloop"
 _SYMBOL_PREFILL_F32 = "hipengine_qwen35_linear_attn_conv_prefill_f32"
@@ -286,6 +289,40 @@ def qwen35_linear_attn_chain_conv_decode_bf16_tloop(
         hidden_states_ptr,
         base_conv_state_ptr,
         chain_conv_state_ptr,
+        conv_weight_ptr,
+        out_ptr,
+        max_nodes,
+        channels,
+        kernel_size,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop(
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    chain_conv_state_ptr: int,
+    initial_conv_state_snapshot_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    max_nodes: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Write exact chain rows plus the immutable initial Conv state."""
+
+    _launch_chain_conv_snapshot_tloop(
+        _SYMBOL_CHAIN_BF16_SNAPSHOT_TLOOP,
+        hidden_states_ptr,
+        base_conv_state_ptr,
+        chain_conv_state_ptr,
+        initial_conv_state_snapshot_ptr,
         conv_weight_ptr,
         out_ptr,
         max_nodes,
@@ -620,6 +657,16 @@ def register_qwen35_linear_attn_conv_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_attn_chain_conv_decode+snapshot",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop",
+        ),
+        qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_attn_conv_prefill", "w4_paro", "f32"),
         qwen35_linear_attn_conv_prefill_f32,
         replace=replace,
@@ -795,6 +842,59 @@ def _launch_chain_conv_tloop(
         ctypes.c_void_p(hidden_states_ptr),
         ctypes.c_void_p(base_conv_state_ptr),
         ctypes.c_void_p(chain_conv_state_ptr),
+        ctypes.c_void_p(conv_weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(max_nodes),
+        ctypes.c_int64(channels),
+        ctypes.c_int64(kernel_size),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_chain_conv_snapshot_tloop(
+    symbol: str,
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    chain_conv_state_ptr: int,
+    initial_conv_state_snapshot_ptr: int,
+    conv_weight_ptr: int,
+    out_ptr: int,
+    max_nodes: int,
+    channels: int,
+    kernel_size: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(max_nodes, "max_nodes")
+    _check_conv_shape(channels, kernel_size)
+    if kernel_size < 2 or kernel_size > 8:
+        raise ValueError("chain conv requires 2 <= kernel_size <= 8")
+    if int(initial_conv_state_snapshot_ptr) <= 0:
+        raise ValueError("initial_conv_state_snapshot_ptr must be non-zero")
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_states_ptr),
+        ctypes.c_void_p(base_conv_state_ptr),
+        ctypes.c_void_p(chain_conv_state_ptr),
+        ctypes.c_void_p(initial_conv_state_snapshot_ptr),
         ctypes.c_void_p(conv_weight_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(max_nodes),

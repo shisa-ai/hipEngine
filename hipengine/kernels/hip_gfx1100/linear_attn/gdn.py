@@ -25,6 +25,14 @@ _SYMBOL_CHAIN_C1_EXACT_TLOOP_F32_BF16 = (
     "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_"
     "c1_exact_tloop_f32_bf16_out"
 )
+_SYMBOL_CHAIN_C1_EXACT_SNAPSHOT_TLOOP_BF16 = (
+    "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_"
+    "c1_exact_snapshot_tloop_bf16"
+)
+_SYMBOL_CHAIN_C1_EXACT_SNAPSHOT_TLOOP_F32_BF16 = (
+    "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_"
+    "c1_exact_snapshot_tloop_f32_bf16_out"
+)
 _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
@@ -641,6 +649,112 @@ def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out(
         stream=stream,
         library=library,
         runtime=runtime,
+        out_bf16_ptr=out_bf16_ptr,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_bf16(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    initial_recurrent_state_snapshot_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Write exact chain rows plus the immutable initial recurrent state."""
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_C1_EXACT_SNAPSHOT_TLOOP_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        initial_state_snapshot_ptr=initial_recurrent_state_snapshot_ptr,
+    )
+
+
+def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f32_bf16_out(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    initial_recurrent_state_snapshot_ptr: int,
+    acc_buf_ptr: int,
+    out_ptr: int,
+    out_bf16_ptr: int,
+    eps: float,
+    max_nodes: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Write the initial state and exact FP32/BF16 chain outputs."""
+
+    _launch_gdn_chain_tloop(
+        _SYMBOL_CHAIN_C1_EXACT_SNAPSHOT_TLOOP_F32_BF16,
+        conv_out_ptr,
+        gate_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        acc_buf_ptr,
+        out_ptr,
+        eps,
+        max_nodes,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        initial_state_snapshot_ptr=initial_recurrent_state_snapshot_ptr,
         out_bf16_ptr=out_bf16_ptr,
     )
 
@@ -3227,6 +3341,26 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "gdn_chain_recurrent_rmsnorm_gate+snapshot",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop",
+        ),
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+            "gguf_q5_k_t16_v1",
+            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        ),
+        qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f32_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "gdn_recurrent_rmsnorm_gate",
             "gguf_qwen35",
             "bf16_indexed_singleton",
@@ -3742,6 +3876,7 @@ def _launch_gdn_chain_tloop(
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
+    initial_state_snapshot_ptr: int | None = None,
     out_bf16_ptr: int | None = None,
 ) -> None:
     _check_positive(max_nodes, "max_nodes")
@@ -3761,9 +3896,12 @@ def _launch_gdn_chain_tloop(
         norm_weight_ptr,
         base_recurrent_state_ptr,
         leaf_recurrent_state_ptr,
-        acc_buf_ptr,
-        out_ptr,
     ]
+    if initial_state_snapshot_ptr is not None:
+        if int(initial_state_snapshot_ptr) <= 0:
+            raise ValueError("initial_state_snapshot_ptr must be non-zero")
+        pointer_args.append(initial_state_snapshot_ptr)
+    pointer_args.extend((acc_buf_ptr, out_ptr))
     if out_bf16_ptr is not None:
         pointer_args.append(out_bf16_ptr)
     fn.argtypes = [ctypes.c_void_p] * len(pointer_args) + [

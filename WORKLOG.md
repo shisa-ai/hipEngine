@@ -206660,3 +206660,65 @@ Vulkan local sizes verbatim will close the measured gap.
   fold the initial-state store into the existing chain producers or move it onto
   an honestly timed concurrent stream. A happy-path-only snapshot omission is
   permanently inadmissible.
+
+## 2026-08-05 — Begin rollback-safe producer-folded state capture
+
+- Replace the rejected omission with a transaction-safe boundary. The exact
+  deferred Conv/GDN chain producers already read every original resident-state
+  element while leaving that state immutable. New gfx1100-only producer variants
+  will store those already-loaded original bits into a one-row rollback buffer
+  while writing the existing output-row journals. A selected-row commit may then
+  mutate resident state; any later KV/finalize failure still restores the exact
+  producer-captured original. A failure before all producers retire restores only
+  hidden/cursors because resident Conv/GDN state is still untouched.
+- Current native `_StateJournal` storage is five rows per state
+  (**794,296,320 bytes**) even though native output rows are separately owned by
+  the resident session. The safe design retains one rollback row
+  (**158,859,264 bytes**) and can remove **635,437,056 bytes**. Its physical
+  ceiling is the retained seven-launch pre-verify copy family at **3.457868 ms**
+  per seven-cycle B3 profile; producer stores add write traffic, so leaf timing
+  must adjudicate the net rather than assuming the ceiling is recovered.
+- Establish RED before device/runtime edits. New contracts require: exact
+  gfx1100 snapshot-producer keys with gfx1151 misses; fail-closed paired
+  Conv/GDN selection before either launch; producer snapshots byte-exact to the
+  original Conv/GDN inputs while all output/state/BF16 bits remain identical;
+  and journal rollback that skips partial producer snapshots before prepare
+  succeeds but restores them after a selected-state commit. Focused RED is the
+  expected **3/3 failures**: keys, runner argument/plan, and producer-capture
+  journal lifecycle do not yet exist. Exact command:
+  `python3 -m pytest -q tests/test_qwen35_linear_attn_chain_journal.py::test_chain_journal_exact_producers_are_registered tests/test_qwen35_linear_attn_chain_journal.py::test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership tests/test_qwen35_gguf_linear_state_snapshot.py::test_state_journal_producer_capture_preserves_post_commit_rollback`.
+- GREEN the fail-closed host contract (**3/3**) and the adjacent native-cycle /
+  snapshot / commit / chain bundle (**20/20**). Native verifier construction
+  borrows session-owned one-row rollback buffers only after every exact Conv/GDN
+  producer resolves. It performs no pre-verify state copy, marks the snapshot
+  restorable only after the complete native target block retires, includes those
+  addresses in reusable-graph identity, and releases the binding at verifier
+  teardown. Serial mode and every backend/registry/shape miss retain the full
+  five-row journal plus registered pointer-table copy fallback.
+- GPU1 production-shape rows 2/3/4 pass bit-exact comparison against retained
+  scalar/chain producers for every initial Conv/GDN bit, every output-state row,
+  every FP32 output, and every fused BF16 handoff (**2/2** parametrized cases).
+  A 31-sample counterbalanced event screen measures added producer-store cost at
+  **2.478/2.922/3.714 us per layer**. Against the retained **436.108 us**
+  one-launch snapshot, the 48-layer net projection is
+  **317.167/295.850/257.839 us saved per B1/B2/B3 cycle**. Screen:
+  `/tmp/qwen36-producer-snapshot-gpu1.json` (`1912e342...d9d`).
+- Cached GPU1 `rocprofv3 --kernel-trace` names the snapshot Conv and fused GDN
+  bodies at semantic grids 10,240/6,144, local256/128, VGPR32/64, SGPR128,
+  LDS/scratch 0, and instrumented durations **10.280/92.800 us**. Trace:
+  `/tmp/qwen36-producer-snapshot-trace-gpu1/epyc/2162323_kernel_trace.csv`
+  (`d7f42b14...873`). `scripts/check_lineage.py --kind kernel --diff stat`
+  still reports only the four catalogued upstream drift entries.
+- The binding cached W7900 dense-Q4 B1-B3 transaction passes **1/1**. It proves
+  the new producer keys exclusively own rows `{2,3,4}`, initial storage is one
+  exact row (**158,859,264 bytes**, **635,437,056 bytes removed**), and full
+  logits/acceptance, reject/partial/full selected state, correction, dynamic
+  graph reuse, natural provider output, and teardown remain exact. The added
+  failure-boundary transaction commits a selected state, verifies resident bytes
+  changed, then rolls back and restores all 96 Conv/GDN buffers plus hidden bits
+  exactly. The first run failed only because this newly earlier B3 transaction
+  legitimately owned graph capture; after correcting that stale telemetry
+  assertion, the focused same-node rerun passed. Pycompile and `git diff --check`
+  pass. Freeze this correctness unit, then run the same hermetic natural25 B3
+  marker profile against retained `01291b066`; only physical target/complete
+  improvement admits a full ten-prompt promotion gate.

@@ -767,12 +767,28 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k_t16_v1",
             "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
         ),
-        # GGUF rollback snapshot collapse is W7900-only until gfx1151 receives
-        # an independent transaction and launch-overhead gate.
+        # GGUF rollback snapshot collapse and producer-folded capture are
+        # W7900-only until gfx1151 receives independent transaction and
+        # launch-overhead gates.
         (
             "linear_state_pair_copy",
             "f32",
             "chunked_i32",
+        ),
+        (
+            "linear_attn_chain_conv_decode+snapshot",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop",
+        ),
+        (
+            "gdn_chain_recurrent_rmsnorm_gate+snapshot",
+            "gguf_qwen35",
+            "bf16_c1_exact_state_rows_tloop",
+        ),
+        (
+            "gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+            "gguf_q5_k_t16_v1",
+            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
         ),
         # Dense planar-qmicro Q6 is W7900-only pending a separate gfx1151 gate.
         *(

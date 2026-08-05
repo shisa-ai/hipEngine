@@ -491,6 +491,33 @@ def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
             ),
             (13, 14, 15, 16, 17),
         ),
+        "conv_snapshot": (
+            KernelKey(
+                "hip_gfx1100",
+                "linear_attn_chain_conv_decode+snapshot",
+                "gguf_qwen35",
+                "bf16_c1_exact_state_rows_tloop",
+            ),
+            (6, 7, 8),
+        ),
+        "gdn_snapshot": (
+            KernelKey(
+                "hip_gfx1100",
+                "gdn_chain_recurrent_rmsnorm_gate+snapshot",
+                "gguf_qwen35",
+                "bf16_c1_exact_state_rows_tloop",
+            ),
+            (13, 14, 15, 16, 17),
+        ),
+        "gdn_fused_snapshot": (
+            KernelKey(
+                "hip_gfx1100",
+                "gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+                "gguf_q5_k_t16_v1",
+                "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+            ),
+            (14, 15, 16, 17, 18),
+        ),
     }
     calls: dict[str, list[tuple[int, ...]]] = {name: [] for name in specs}
     originals = {
@@ -762,6 +789,19 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
             quant="gguf_q4_k_m",
             target_verify_mode="native",
         ) as verifier:
+            assert verifier.journal.producer_capture_initial_state
+            assert not verifier.journal.initial_state_captured
+            assert int(target._verify_linear_initial_snapshot_users) == 1
+            assert len(verifier.journal.state_rows) == 96
+            assert sum(
+                int(snapshot.nbytes)
+                for _state, snapshot in verifier.journal.state_rows
+            ) == 158_859_264
+            assert all(
+                int(state.nbytes) == int(snapshot.nbytes)
+                for state, snapshot in verifier.journal.state_rows
+            )
+
             for budget in (1, 2, 3):
                 target.reset()
                 reference.reset()
@@ -810,6 +850,96 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 reference.prefill(prompt, use_bulk=False, return_logits=False)
                 _assert_committed_state_matches(target, reference)
 
+            # Simulate the real outer failure boundary: selected-state commit
+            # succeeds, then scheduler/KV finalization throws. Rollback must use
+            # the producer-folded original row, not merely restore cursors.
+            target.reset()
+            reference.reset()
+            root = int(target.prefill(prompt, use_bulk=False, return_logits=False).token_id)
+            assert root == int(
+                reference.prefill(prompt, use_bulk=False, return_logits=False).token_id
+            )
+            rollback_candidates: list[int] = []
+            current = root
+            for _ in range(3):
+                current = int(reference.step(current, return_logits=False).token_id)
+                rollback_candidates.append(current)
+            owner = target._target_scratch_owner
+            assert owner is not None
+            resident_states = tuple(
+                state
+                for state in (
+                    *owner.layer_conv_states,
+                    *owner.layer_recurrent_states,
+                )
+                if state is not None
+            )
+            original_states = tuple(_copy_buffer(state) for state in resident_states)
+            original_hidden = _copy_buffer(
+                DeviceBuffer(
+                    target.last_target_hidden.ptr,
+                    target.last_target_hidden.shape[1] * 2,
+                )
+            )
+            rollback_batch = _target_batch(
+                root,
+                len(prompt),
+                tuple(rollback_candidates),
+            )
+            rollback_prepared = verifier.prepare(
+                rollback_batch,
+                transaction_id=90,
+                graph_bucket=verifier.graph_bucket(
+                    ("dense-post-commit-rollback", 3),
+                    rollback_batch,
+                ),
+                remaining_decode=(4,),
+                return_logits=False,
+            )
+            assert verifier.journal.initial_state_captured
+            assert rollback_prepared.native_graph_submitted
+            assert rollback_prepared.native_graph_capture_ms > 0.0
+            rollback_plan = TargetCommitPlan(
+                transaction_id=90,
+                request_ids=rollback_batch.request_ids,
+                accepted_counts=rollback_prepared.summary.accepted_counts,
+                commit_rows=rollback_prepared.summary.commit_rows,
+                commit_tokens=rollback_prepared.summary.commit_tokens,
+                commit_positions=rollback_prepared.summary.commit_positions,
+                next_tokens=rollback_prepared.summary.next_tokens,
+                candidate_counts=rollback_batch.candidate_counts,
+                draft_depth=rollback_batch.draft_depth,
+                tree_shape=rollback_batch.tree_shape,
+                mode=rollback_batch.mode,
+            )
+            verifier.commit(rollback_prepared, rollback_plan)
+            committed_states = tuple(_copy_buffer(state) for state in resident_states)
+            assert any(
+                not np.array_equal(before, after)
+                for before, after in zip(
+                    original_states,
+                    committed_states,
+                    strict=True,
+                )
+            )
+            verifier.rollback(rollback_prepared)
+            assert target.position == len(prompt)
+            for state, expected in zip(
+                resident_states,
+                original_states,
+                strict=True,
+            ):
+                np.testing.assert_array_equal(_copy_buffer(state), expected)
+            np.testing.assert_array_equal(
+                _copy_buffer(
+                    DeviceBuffer(
+                        target.last_target_hidden.ptr,
+                        target.last_target_hidden.shape[1] * 2,
+                    )
+                ),
+                original_hidden,
+            )
+
             for case, accepted_count in (("reject", 0), ("partial", 1), ("full", 3)):
                 target.reset()
                 reference.reset()
@@ -843,10 +973,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 assert target.last_native_spec_target_submitted
                 assert target.last_native_spec_target_fallback_reason is None
                 assert prepared.native_graph_submitted
-                if case == "reject":
-                    assert prepared.native_graph_capture_ms > 0.0
-                else:
-                    assert prepared.native_graph_capture_ms == 0.0
+                # The post-commit rollback case above owns the first reusable
+                # B3 capture; reject/partial/full all reuse that executable.
+                assert prepared.native_graph_capture_ms == 0.0
                 assert prepared.native_graph_submit_ms > 0.0
                 assert prepared.native_graph_readback_ms > 0.0
                 assert prepared.native_graph_fallback_reason is None
@@ -924,6 +1053,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 verifier.rollback(dynamic_prepared)
                 assert target.position == dynamic_start
 
+        assert int(target._verify_linear_initial_snapshot_users) == 0
         natural_prompt = (
             7734,
             264,
@@ -1047,19 +1177,26 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for calls in q5_t16_ssm_out_calls.values()
         for _, in_features, out_features in calls
     } == {(6_144, 5_120)}
-    assert chain_journal_calls["conv"]
-    assert {rows for rows, _, _ in chain_journal_calls["conv"]} == {2, 3, 4}
+    assert not chain_journal_calls["conv"]
+    assert not chain_journal_calls["gdn_unfused"]
+    assert not chain_journal_calls["gdn_fused"]
+    assert chain_journal_calls["conv_snapshot"]
+    assert {
+        rows for rows, _, _ in chain_journal_calls["conv_snapshot"]
+    } == {2, 3, 4}
     assert {
         (channels, kernel_size)
-        for _, channels, kernel_size in chain_journal_calls["conv"]
+        for _, channels, kernel_size in chain_journal_calls["conv_snapshot"]
     } == {(10240, 4)}
-    assert not chain_journal_calls["gdn_unfused"]
-    assert chain_journal_calls["gdn_fused"]
-    assert {rows for rows, *_ in chain_journal_calls["gdn_fused"]} == {2, 3, 4}
+    assert not chain_journal_calls["gdn_snapshot"]
+    assert chain_journal_calls["gdn_fused_snapshot"]
+    assert {
+        rows for rows, *_ in chain_journal_calls["gdn_fused_snapshot"]
+    } == {2, 3, 4}
     assert {
         (num_k_heads, num_v_heads, head_k_dim, head_v_dim)
         for _, num_k_heads, num_v_heads, head_k_dim, head_v_dim
-        in chain_journal_calls["gdn_fused"]
+        in chain_journal_calls["gdn_fused_snapshot"]
     } == {(16, 48, 128, 128)}
     assert gdn_decode_output_fusion_calls
     assert set(gdn_decode_output_fusion_calls) == {(16, 48, 128, 128)}
