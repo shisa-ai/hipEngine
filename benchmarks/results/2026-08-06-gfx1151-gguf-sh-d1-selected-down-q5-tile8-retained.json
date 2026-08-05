@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "hipengine_gfx1151_gguf_sh_d1_selected_down_q5_tile8_retained",
   "created_at": "2026-08-06T03:20:00+09:00",
-  "status": "retained_exact_default_pending_clean_publication",
+  "status": "retained_exact_default_committed_same_revision",
   "passed": true,
   "performance_claim": true,
   "claim_scope": "exact Qwen c1/top8 Q5T16 selected-down leaf and repeated-token 512/128 eager decode on Radeon 8060S gfx1151; Q6 ownership siblings rejected and removed",
@@ -17,7 +17,8 @@
   },
   "software": {
     "parent_commit": "0ab9309709f0894187a6ba80be631656211c4fd0",
-    "candidate_provenance": "dirty tracked candidate over the committed parent; runtime-source diff is limited to this SH-D1 unit, while docs/ROCM-AI.md is unrelated concurrent work and excluded",
+    "implementation_commit": "3e836edead25306d450fcb7d37f65e0b3c657c13",
+    "candidate_provenance": "Initial complete gates used the final dirty candidate over the committed parent; the post-commit leaf and eager checkpoint runs both use implementation commit 3e836edea. The only tracked worktree difference during the checkpoint was unrelated docs/ROCM-AI.md; runtime/kernel/test sources matched the commit.",
     "hip": "7.15.0-0000000",
     "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
     "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
@@ -177,6 +178,37 @@
     "control_raw_sha256": "b965c12b0821cf181413dd8746a585ea91bc78301e4b777325a3430ade1712ce",
     "candidate_raw_sha256": "d3b915d14c366123da5a6756060a805fe018db926523f3d9126a23fad71e1315"
   },
+  "committed_same_revision_checkpoint": {
+    "implementation_commit": "3e836edead25306d450fcb7d37f65e0b3c657c13",
+    "source_qualification": "Runtime, kernel, benchmark, and test sources match the implementation commit; the source recorder reports dirty only because unrelated docs/ROCM-AI.md and pre-existing untracked benchmark files remain in the shared worktree.",
+    "leaf": {
+      "control_us": [40.612802505493164, 40.86076259613037, 40.85525035858154],
+      "candidate_us": [34.88058567047119, 34.87557649612427, 34.865050315856934],
+      "control_median_us": 40.85525035858154,
+      "candidate_median_us": 34.87557649612427,
+      "speedup": 1.1714573481852493,
+      "projected_saving_ms_per_token": 0.22124793291091918,
+      "exact": true,
+      "raw_sha256": "28c96f66af0b8792521e60de7a644c68aa8438a664265fec74018cfbd49895ba"
+    },
+    "eager_512_128": {
+      "control_tok_s": [53.035312795670315, 53.02732551898443, 52.977438516883694],
+      "candidate_tok_s": [53.528499648173685, 53.57334120996499, 53.556580681880426],
+      "control_median_tok_s": 53.02732551898443,
+      "candidate_median_tok_s": 53.556580681880426,
+      "speedup": 1.009980800610178,
+      "delta_percent": 0.9980800610178031,
+      "control_median_ms_per_token": 18.8582016953125,
+      "candidate_median_ms_per_token": 18.671841765625,
+      "saving_ms_per_token": 0.18635992968749804,
+      "all_candidate_samples_above_all_control_samples": true,
+      "all_tokens_exact": true,
+      "tracked_close_bytes_control": 0,
+      "tracked_close_bytes_candidate": 0,
+      "control_raw_sha256": "83fc697861e9de3ab6c9dfb6f08ad9a7f240d08675da06a863a3d82286fa8e68",
+      "candidate_raw_sha256": "d70a2270ace64fec702b7b48651e2a074da1b4fb3a99ef3df1ce1c9b20623539"
+    }
+  },
   "q6_rejected_removed": {
     "tile8": {
       "control_median_us": 41.53400897979736,
@@ -200,10 +232,10 @@
     "decision": "Keep production Q6T16 16-column direct GEMV."
   },
   "limitations": [
-    "The retained eager performance comparison uses the committed parent plus a dirty candidate and is marked pending clean publication; all runtime-source changes are captured by this unit and unrelated docs/ROCM-AI.md is excluded.",
+    "The shared worktree cannot report globally clean because unrelated docs/ROCM-AI.md and pre-existing untracked benchmark files remain; the committed checkpoint explicitly verifies that all runtime/kernel/test sources match implementation commit 3e836edea.",
     "The leaf uses deterministic synthetic values but charges the exact full Qwen selected-matrix byte count over a >2x-MALL pool; CPU and production-byte gates are independent of timing values.",
     "gfx1100 remains disabled pending an independent W7900 transfer.",
     "Q6 exact tile8/tile4 misses admission and is removed."
   ],
-  "next": "Commit the retained Q5 default, publish a clean same-revision checkpoint, then complete cumulative SH-D1 attribution before continuing SH-M2/SH-K1/SH-A1/SH-G."
+  "next": "Complete cumulative SH-D1 attribution and remaining measured parity headroom before continuing SH-M2/SH-K1/SH-A1/SH-G."
 }

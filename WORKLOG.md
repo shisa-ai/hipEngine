@@ -204024,3 +204024,25 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json`.
   Continue SH-D1 immediately with cumulative attribution/parity headroom; this
   retained leaf is not the campaign stopping point.
+
+## 2026-08-06 — Publish SH-D1 Q5 tile8 committed checkpoint
+
+- Committed the retained exact gfx1151 Q5T16 tile8 default as `3e836edea`,
+  explicitly excluding the unrelated concurrent `docs/ROCM-AI.md` edit. The
+  targeted selected-T16/routing/backend bundle passes **151 tests**, pycompile
+  and JSON validation pass, and `git diff --check` is clean.
+- Re-ran the immutable >2x-MALL leaf from the committed source with cached
+  builds: production **40.855 us**, tile8 **34.876 us**, **1.17146x**, exact
+  BF16 bytes, and projected **0.22125 ms/token** saving across 37 Q5 layers.
+  Raw SHA-256 is `28c96f66af0b8792521e60de7a644c68aa8438a664265fec74018cfbd49895ba`.
+- Re-ran the independent one-warmup/three-measurement 512/128 A/B at the same
+  commit. Control samples are **53.035/53.027/52.977 tok/s** (median
+  **53.027**); architecture-default tile8 samples are
+  **53.528/53.573/53.557 tok/s** (median **53.557**), a **+0.998%** win and
+  **0.18636 ms/token** saving. Every sample is exact and tracked close bytes
+  are zero; raw hashes are `83fc6978...8e68` and `d70a2270...3539`.
+- The source recorder remains globally dirty only because the shared tree has
+  unrelated `docs/ROCM-AI.md` plus pre-existing untracked benchmark files.
+  Runtime, kernel, benchmark, and test sources match `3e836edea`; the artifact
+  records this precise qualification rather than claiming a globally clean
+  worktree. Advance immediately to cumulative SH-D1 attribution/parity.
