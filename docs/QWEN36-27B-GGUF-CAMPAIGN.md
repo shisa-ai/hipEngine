@@ -1245,20 +1245,51 @@ made. Populated 512/4096 prefill advances **+0.407%/+0.246%** to
 **2.4231x own AR** and is now **17.90% below Vulkan**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json`.
 
+The proposal call-count audit then finds four non-final full-accept catch-ups
+that must advance the draft's full-attention K/V state but discard their final
+shared RMSNorm, 248,320-row head score, token, and output hidden. The retained
+state-only executor preserves the complete embedding/fusion and NextN block,
+including its draft K/V write, and omits only that unused final scoring. Partial
+accepts, scored proposals, target work, acceptance, and transaction semantics
+are unchanged; compatible external executors retain the old full-step fallback.
+
+The tracked-clean one-prompt B3 trace removes exactly four stage-1 heads, four
+reducers, and **16 dispatches**. Proposal-update kernel time falls **9.731 ->
+3.615 ms (-62.85%)**, update host wall **12.747 -> 7.190 ms (-43.60%)**, and
+complete marker wall **478.319 -> 464.238 ms (-2.94%)**. The ordinary 21-head
+proposal body is unchanged at **48.671 -> 48.658 ms** of kernels; only the
+named discarded-tail subwindow is attributed.
+
+Natural25 B1/B2/B3 advances **40.179/50.813/55.899 ->
+41.512/51.974/56.802 tok/s (+3.317/+2.286/+1.616%)** and proposal wall falls
+**24.99%/13.56%/7.35%**. All 30 prompt-budget rows and every
+full/train/heldout/category scope improve, while IDs, acceptance, complete
+state transactions, the **32.892-GiB** peak, and teardown remain exact. True AR
+moves **+0.642%** in one-run noise; the NextN tail path cannot execute there.
+B3 reaches **2.4466x own AR** and is now **16.57% below Vulkan**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json`.
+
 The refreshed profiler-only matched-module ledger is now:
 
 | Module | hipEngine | llama.cpp Vulkan | Directional gap / status |
 | --- | ---: | ---: | --- |
-| Dense Q5 `ssm_out` | 37.393 ms | 15.119 ms | +22.274 ms; largest gap, but all exact raw/T16/Q8_1 representations are closed |
+| Dense Q5 `ssm_out` | 37.393 ms | 15.119 ms | +22.274 ms; largest gap, reopened by cache-representative rotation |
 | Q4 FFN gate/up + SiLU | 76.648 ms | 89.534 ms | hipEngine ahead 12.886 ms |
 | Wide Q6 FFN-down + QKV | 46.917 ms | 41.486 ms | +5.431 ms; retained planar owner, second-order residual |
-| Proposal root stage1 | 37.127 ms / 25 calls | 31.873 ms / 22 calls | directional only; call counts differ |
-| Target root FP32 rows | 11.724 ms | 9.170 ms | +2.554 ms; second-order residual |
+| Proposal root stage1 | 31.192 ms / 21 calls | 31.873 ms / 22 calls | hipEngine ahead 0.681 ms; call counts disclosed |
+| Target root FP32 rows | 11.713 ms | 9.170 ms | +2.543 ms; second-order residual |
 
-These are synchronized-profiler ranking values, not toplines. Dense Q5 remains
-the only high-leverage arithmetic gap, but another exact compressed-layout
-retry is not admissible without a materially new representation or compute
-mechanism.
+These are synchronized-profiler ranking values, not toplines. Dense Q5 is the
+only high-leverage arithmetic gap. Its earlier rejection repeatedly reused one
+60-MiB dense plane that can remain in the 96-MiB cache, whereas production
+rotates 48 planes / **2.813 GiB** per pass. A GPU1 48-weight rotation reverses
+the result: Q5T16 improves rows 1/2/3/4 by
+**1.666x/1.581x/1.523x/1.573x**, every cell with **11/11** paired wins, while
+projecting **1,958,215,680 bytes** less residency. Aggregate component quality
+passes at **7.38e-5 max KL / 99.79% top-1** (one disclosed single-layer row-4
+cell is 75%); runtime transaction/state and full W7900 gates remain mandatory.
+This cache-representative reinterpretation, rather than another hot single-
+weight microkernel, is the next admitted D27-O3 candidate.
 
 ---
 
@@ -1273,8 +1304,8 @@ mechanism.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 plus planar Q6T16 reach 207.864/193.001 tok/s |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 22.208/21.017 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact B3 reaches 55.899 tok/s / 2.4231x own AR, with every aggregate scope positive |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O3; re-rank `094941175`, with a 17.90% Vulkan B3 gap and only closed dense-Q5 above second-order exact residuals |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact B3 reaches 56.802 tok/s / 2.4466x own AR, with every prompt-budget row and aggregate scope positive; cache-representative Q5T16 is reopened next |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O3; re-rank `e15d85d1c`, with a 16.57% Vulkan B3 gap and one reopened dense-Q5 candidate above second-order residuals |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
