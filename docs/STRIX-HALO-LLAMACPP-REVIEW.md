@@ -336,7 +336,7 @@ tracked/owned comparison.
 | ID | Priority | Hypothesis and experiment | Promotion / stop rule |
 | --- | --- | --- | --- |
 | **SH-C0 — matched attribution freeze** | **Completed 2026-08-05** | Role-resolved HIP correlation traces, separate fork F16/Q8_0 logger runs, 10-ms same-scope GTT, and owned allocation/lifetime census now cover 512/4K/32K/64K. | No production change. GDN input, selected experts, long-context attention, and 4,096-row scratch all clear admission; see the execution update and artifact. |
-| **SH-D1 — exact row-1 weight-kernel redesign** | **P0; same-layout ladder rejected 2026-08-06** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. Exact DPP, non-temporal, and stacked DPP+non-temporal GDN-input siblings all pass byte/ISA/trace gates but best reaches only **130.11 us / 1.0396x**; all were removed. Screen the bounded byte-neutral paired-Q8T32 first object next, then selected experts. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
+| **SH-D1 — exact row-1 weight-kernel redesign** | **P0; GDN layout ladder closed 2026-08-06** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. Same-layout candidates top out at **1.0396x**; byte-neutral paired-Q8T32 reaches **127.90 us / 1.0648x / projected 0.2487 ms/token**, still below admission. All transient GDN siblings are removed; proceed to the **3.912-3.925-ms/token selected-expert** target. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
 | **SH-M1 — query-row Pareto screen** | **Completed/rejected 2026-08-05** | The explicit 4,096 -> 1,024 query-row A/B saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, with exact cleanup and neutral decode. | Reject q1024 and close 2,048/768 row-only retries: q1024 changes exact state/logits at 4K+ and loses **1.603%-11.835%** prefill. Keep q4096. |
 | **SH-M2 — exact scratch-liveness aliases** | P0, parallel with D1 | Keep every 4,096-row execution shape fixed. Build a route/stage liveness map for the currently `dedicated` scratch, beginning with the 256-MiB `moe_down_out_f32` and three 128-MiB owners; alias only fields proven non-overlapping across the isolated AOTriton stream and linear/full-attention/MoE phases. | Require byte-exact logits/hidden/Conv/GDN/KV state at 512/4K/32K/64K, zero tracked close delta, <=**1%** prefill/decode loss, and >=**1.0 GiB** tracked plus same-direction whole-GTT saving. Do not claim fork memory parity until the exact alias and strict-KV stack beats both fork rows. |
 | **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |
@@ -384,9 +384,28 @@ production is **135.44/135.26/135.23 us**, non-temporal is
 The best **130.11-us / 1.0396x** median saves **5.15 us/call**, projecting only
 **0.1545 ms/token**. It remains **9.80% slower** than the 118.493-us gate and
 misses 1.15x, so both siblings are removed before full-model work. Same-layout
-communication/cache-policy headroom is now exhausted. SH-D1 next runs a bounded
-byte-neutral paired-Q8T32 first-object screen; if that physical object cannot
-reach the same leaf gate, GDN layout work closes and selected-expert work begins.
+communication/cache-policy headroom is now exhausted.
+
+The bounded replacement-layout result is frozen in
+[`2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json).
+The diagnostic packer pairs adjacent Q8T16 scales and per-K-lane payloads into a
+byte-neutral 1,088-byte Q8T32 record. A local256/eight-wave first object keeps
+two independent production-equivalent four-wave teams; its best sibling stacks
+cache-bypassing loads and exact DPP at 53 VGPR with zero spills. Three cycling
+triples measure production **136.25/136.19/135.79 us**, cached Q8T32
+**130.79/130.89/131.23 us**, and stacked Q8T32
+**127.77/128.96/127.90 us**. A local128 register-wide sibling reaches 91 VGPR
+and regresses production **4.96%**, so it is physically closed.
+
+The best paired result is **127.90 us / 1.0648x**, saving **8.29 us/call** and
+projecting **0.2487 ms/token**. It remains **7.94% slower** than the 118.493-us
+continuation target and misses 1.15x. All candidates pass byte identity, CPU
+Q8_0 oracles, zero-scratch ISA, and named traces, but all kernels, diagnostic
+packer, wrappers, registry keys, tests, and modes are removed before runtime
+materialization or full-model timing. Production stays Q8T16. GDN same-layout
+and byte-neutral paired-layout headroom are now exhausted under the frozen gate;
+SH-D1 advances to the measured **3.912-3.925-ms/token selected gate/up+down**
+role instead of stopping the campaign.
 
 ### Campaign guardrails and closed retries
 

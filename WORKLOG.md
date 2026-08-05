@@ -203877,3 +203877,35 @@ Vulkan local sizes verbatim will close the measured gap.
   with a bounded byte-neutral paired-Q8T32 first-object screen; if it cannot
   reach leaf admission, close GDN layout work and move immediately to selected
   experts rather than stopping the overall campaign.
+
+## 2026-08-06 — Reject paired Q8T32 and close SH-D1 GDN layout work
+
+- RED collection fails before Q8T32 wrappers exist. Build a diagnostic byte-
+  neutral packer that pairs adjacent Q8T16 scales and each K lane's q payload
+  into 1,088-byte T32 records without numeric conversion. Register three
+  transient `gguf_q8_0_t32_v1` first objects: local256 cached two-team,
+  local256 non-temporal+DPP two-team, and local128 register-wide
+  non-temporal+DPP. No production materializer or dispatch is added.
+- GREEN focused coverage passes **10/10**. Every body matches production BF16
+  bytes and the CPU GGUF Q8_0 oracle at 32->32+64, 256->64+128, and full
+  2048->8192+4096; packed T32 bytes equal T16 bytes exactly. Cached traces name
+  all three expected kernels with zero scratch.
+- Physical results: cached local256 is 3,316 bytes / 51 VGPR; stacked local256
+  is 3,064 bytes / 53 VGPR with three `global_load_b128 ... slc dlc`, 16
+  permlanex16, 64 DPP adds, zero bpermutes, and 19 waitcnts. The register-wide
+  local128 body is 5,368 bytes / **91 VGPR**, doubles the vector/FMA/DPP work,
+  and regresses production **4.96%** (**142.67 vs 135.93 us**), closing it.
+- Run three order-balanced row-1 cycling triples with the frozen 80.2-MB pool,
+  80 warmups, and 400 launches. Production is **136.25/136.19/135.79 us**;
+  cached Q8T32 is **130.79/130.89/131.23 us**; stacked Q8T32 is
+  **127.77/128.96/127.90 us**.
+- Reject before runtime/full-model work. Best median is **127.90 us / 1.0648x**,
+  saving **8.29 us/call** and projecting **0.2487 ms/token**, but remains
+  **7.94%** slower than the frozen 118.493-us gate and misses 1.15x. Remove all
+  transient kernels, diagnostic packer, wrappers, registry keys, tests, and
+  microbench modes; production stays Q8T16. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json`.
+- GDN same-layout and byte-neutral paired-layout headroom is exhausted under the
+  predeclared gate. Continue the campaign immediately at the measured selected
+  gate/up+down role (**3.912-3.925 ms/token**), then cumulative SH-D1,
+  SH-M2/SH-K1/SH-A1/SH-G.
