@@ -207044,3 +207044,75 @@ Vulkan local sizes verbatim will close the measured gap.
   shared-cache batch append can remove three writes per 16 full-attention layers
   per pass, a ceiling of **336 dispatches**, without changing the BF16
   conversion or page-address arithmetic. Screen this on GPU1 before source RED.
+
+## 2026-08-05 — Admit shared-cache verifier KV append batch to RED
+
+- Screen the existing shared-cache prompt-write arithmetic out of tree on GPU1
+  at production KV width (four heads x 256), page size 256, and native N1
+  verifier widths rows2/4. The first oversized repeated-graph attempt timed out
+  after ten minutes without a valid timing result; it is a harness failure, not
+  a candidate rejection. The corrected 16-layer graph replicates only the
+  control block-table metadata required by that existing kernel and compares
+  the resulting single shared K/V cache byte-for-byte.
+- Shared-cache K/V is exact. Eleven-sample, 16-layer graph medians improve B1
+  rows2 from **12.537 -> 7.115 us/layer (1.762x, 11/11)** and B3 rows4 from
+  **22.505 -> 7.095 us/layer (3.172x, 11/11)**. Synchronized wall agrees at
+  **1.651x/2.868x**. Script/result SHA-256 values are
+  `0a649b96...5f475` / `90766c37...72580`.
+- Admit an explicit gfx1100
+  `paged_kv_write/gguf_q4_k_m/mixed_bf16_shared_batch_spans` leaf. It will read
+  one resident physical page table plus contiguous append positions and write
+  all independent row K/V inputs in one grid-y launch. Production ownership is
+  only the already-admitted shared-page N1 B1/B3 graph; B2's N2 graph remains
+  separate. Any attention owner, KV key, span, cache, dtype, or peer-backend
+  miss must retain scalar writes. The one-prompt ceiling is **112 B1** or
+  **336 B3** fewer write dispatches.
+- Establish RED before source changes. The registry/wrapper, gfx1151 exclusion,
+  rows4 one-call schedule, key/span scalar fallbacks, and reversed-physical-page
+  CPU/scalar byte oracle produce five expected failures; two unrelated plan
+  nodes remain green:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q
+  tests/test_qwen35_paged_kv_write_plan.py
+  tests/test_qwen36_gguf_shared_kv_write.py
+  tests/test_gguf_native_spec_cycle.py::test_staged_full_attention_batches_shared_cache_only_with_exact_owner
+  --tb=short` -> **5 failed, 2 passed**.
+
+## 2026-08-05 — GREEN exact shared-cache verifier KV append batching
+
+- Add the dedicated
+  `qwen35_write_paged_kv_mixed_value_shared_batch_position_tensor_kernel` and
+  raw-pointer wrapper. Grid Y owns independent verifier rows, each input row
+  preserves the scalar FP32-K/BF16-V conversion and store arithmetic, and every
+  row indexes one common physical page table. The wrapper accepts only rows
+  `{2,4}`, one-dimensional BF16 `verify_chain` spans, exactly one contiguous
+  append position per row, and aliased `live_counts`/`row_positions` metadata.
+  The ordinary row-table-major batch and prompt ABIs are unchanged.
+- Register only
+  `hip_gfx1100/paged_kv_write/gguf_q4_k_m/mixed_bf16_shared_batch_spans`;
+  gfx1151 explicitly excludes the generic source-key alias. The dense runner
+  resolves this key through the selected quant plugin only after its existing
+  shared-attention binder proves native N1 rows2/4, common cache/table identity,
+  contiguous decode and append metadata, BF16 storage, and capacity. A KV-key
+  miss executes scalar writes before the retained batch attention; any span,
+  cache, attention-owner, row, or policy miss executes the complete scalar
+  `[write, attention, gate] * rows` fallback. B2's N2 row3 graph is untouched.
+- The RED command turns **7/7** green; the complete adjacent native-cycle,
+  wrapper/registry, and device-oracle bundle passes **19/19** on GPU1. The new
+  reversed-page fixture crosses positions 255-258 with physical table `[1,0]`
+  at rows2/4 and matches both independent scalar launches and the direct CPU
+  cache layout byte-for-byte for K and V.
+- Prebuild the pinned gfx1100 object outside profiling, then run a cache-only
+  GPU1 `rocprofv3 --kernel-trace` leaf. It names
+  `qwen35_write_paged_kv_mixed_value_shared_batch_position_tensor_kernel<unsigned short>`
+  at **6.240 us**, grid `(1024,4,1)`, local256, VGPR8, SGPR128, LDS0, scratch0.
+  Kernel/agent/driver SHA-256 values are `cb69c646...3e244`,
+  `1ba18fbf...dc00`, and `846a4f6e...cb91`.
+- The binding cached W7900 B1-B3 transaction passes **1/1** with exact natural
+  provider/scalar output, reject/partial/full/rollback Conv/GDN/KV/hidden state,
+  dynamic positions and graph reuse, GPU/CPU acceptance, correction output,
+  lifecycle, and teardown. Its census observes the new append owner only at
+  rows `{2,4}`, page size 256, four KV heads x 256, one shared physical table,
+  and aliased append-position metadata. Commit this correctness unit before the
+  tracked-clean B3 profile against `fda35418e`; promotion still requires the
+  exact 336-dispatch contraction plus target-kernel, target-host, and complete
+  marked-wall wins before the full natural25 gate.

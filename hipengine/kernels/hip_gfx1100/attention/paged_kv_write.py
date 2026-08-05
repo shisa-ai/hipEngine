@@ -15,6 +15,9 @@ _SOURCE = Path(__file__).with_name("paged_kv_write.hip")
 _OUTPUT_NAME = "qwen35_paged_kv_write.so"
 _SYMBOL_MIXED_BF16 = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_spans"
 _SYMBOL_MIXED_BF16_BATCH = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_batch_spans"
+_SYMBOL_MIXED_BF16_SHARED_BATCH = (
+    "hipengine_qwen35_write_paged_kv_mixed_value_bf16_shared_batch_spans"
+)
 _SYMBOL_MIXED_FP16 = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_spans"
 _SYMBOL_MIXED_FP16_BATCH = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_batch_spans"
 _SYMBOL_MIXED_BF16_PROMPT = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
@@ -140,6 +143,45 @@ def qwen35_write_paged_kv_mixed_value_bf16_batch_spans(
 
     _launch_write_batch(
         _SYMBOL_MIXED_BF16_BATCH,
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_mixed_value_bf16_shared_batch_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append verifier rows into one shared paged BF16 KV cache.
+
+    Unlike the ordinary row-major batch ABI, ``spans.base_offsets`` contains
+    one resident physical page table. ``spans.live_counts`` and
+    ``spans.row_positions`` are the same contiguous per-row append positions.
+    """
+
+    _launch_write_shared_batch(
+        _SYMBOL_MIXED_BF16_SHARED_BATCH,
         key_ptr,
         value_ptr,
         key_cache_ptr,
@@ -788,6 +830,16 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_kv_write",
+            "gguf_q4_k_m",
+            "mixed_bf16_shared_batch_spans",
+        ),
+        qwen35_write_paged_kv_mixed_value_bf16_shared_batch_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_kv_write", "gguf_qwen35", "mixed_bf16_prompt_spans"),
         qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
         replace=replace,
@@ -940,6 +992,64 @@ def _launch_write_batch(
     runtime: HipRuntime | None,
 ) -> None:
     block_table_len = _check_write_batch_shape(spans, rows, block_size, num_kv_heads, head_dim)
+    library = library or build_qwen35_paged_kv_write(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_write_shared_batch(
+    symbol: str,
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    block_table_len = _check_write_shared_batch_shape(
+        spans,
+        rows,
+        block_size,
+        num_kv_heads,
+        head_dim,
+    )
     library = library or build_qwen35_paged_kv_write(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
@@ -1267,6 +1377,34 @@ def _check_write_batch_shape(
     if spans.max_live_count >= block_size * block_table_len:
         raise ValueError("max_live_count must fit within each row block table")
     return block_table_len
+
+
+def _check_write_shared_batch_shape(
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> int:
+    _check_write_shape(spans, block_size, num_kv_heads, head_dim)
+    if rows not in (2, 4):
+        raise ValueError("rows must be 2 or 4 for shared-cache verifier KV write")
+    if len(spans.base_offsets.shape) != 1:
+        raise ValueError("shared-cache base_offsets must be one physical page table")
+    if spans.live_counts.numel != rows:
+        raise ValueError("live_counts must contain exactly one append position per row")
+    positions = spans.row_positions
+    if positions is None:
+        raise ValueError("shared-cache verifier KV write requires row_positions")
+    if positions.dtype != DType.INT64 or positions.numel != rows:
+        raise ValueError("row_positions must contain one int64 append position per row")
+    if positions.ptr != spans.live_counts.ptr:
+        raise ValueError("row_positions must alias live_counts for shared-cache append")
+    if spans.span_role != "verify_chain":
+        raise ValueError("shared-cache verifier KV write requires verify_chain spans")
+    if spans.scale_metadata is not None:
+        raise ValueError("shared-cache BF16 verifier KV write does not use scale metadata")
+    return _block_table_len(spans)
 
 
 def _check_int8_common_shape(

@@ -575,6 +575,50 @@ def gdn_decode_output_fusion_calls() -> Iterator[list[tuple[int, ...]]]:
 
 
 @pytest.fixture
+def shared_kv_write_calls() -> Iterator[list[tuple[int, ...]]]:
+    """Count exact shared-page verifier KV appends on real transactions."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "paged_kv_write",
+        "gguf_q4_k_m",
+        "mixed_bf16_shared_batch_spans",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, ...]] = []
+
+    def counted(*args, **kwargs):
+        spans = args[4]
+        row_positions = spans.row_positions
+        calls.append(
+            (
+                int(args[5]),
+                int(args[6]),
+                int(args[7]),
+                int(args[8]),
+                int(spans.base_offsets.numel),
+                int(spans.live_counts.numel),
+                int(
+                    row_positions is not None
+                    and row_positions.ptr == spans.live_counts.ptr
+                ),
+            )
+        )
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+
+
+@pytest.fixture
 def shared_full_attn_batch_calls() -> Iterator[list[tuple[int, ...]]]:
     """Count exact shared-page verifier attention on real transactions."""
 
@@ -835,6 +879,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     q5_t16_ssm_out_calls: dict[str, list[tuple[int, int, int]]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
     gdn_decode_output_fusion_calls: list[tuple[int, ...]],
+    shared_kv_write_calls: list[tuple[int, ...]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
     q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
@@ -1277,6 +1322,17 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     } == {(16, 48, 128, 128)}
     assert gdn_decode_output_fusion_calls
     assert set(gdn_decode_output_fusion_calls) == {(16, 48, 128, 128)}
+    assert shared_kv_write_calls
+    assert {rows for rows, *_ in shared_kv_write_calls} == {2, 4}
+    assert {
+        (block_size, num_kv_heads, head_dim, table_blocks)
+        for _, block_size, num_kv_heads, head_dim, table_blocks, _, _
+        in shared_kv_write_calls
+    } == {(256, 4, 256, 1)}
+    assert all(
+        rows == live_rows and positions_alias_live == 1
+        for rows, *_, live_rows, positions_alias_live in shared_kv_write_calls
+    )
     assert shared_full_attn_batch_calls
     # B2/rows3 is owned by the separate N2 bulk graph; this shared-page leaf
     # owns the N1 native B1/B3 captures only.
