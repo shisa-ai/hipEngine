@@ -45,6 +45,18 @@ expert outputs; affine4 FP32 logits pass at `atol=rtol=2e-4`. A cache-only
 `maple_ternary_gemv_kernel` at grid 128/local32, VGPR32, SGPR128, LDS0,
 scratch0, and **3,527 ns** duration on Radeon 8060S/gfx1151.
 
+`hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
+unfused attention/KV chain: device span publication, per-head standard
+QK-RMSNorm plus rotate-half partial RoPE, BF16 K/V append, and online-softmax
+GQA decode. Both write and attention consume all required `KVLiveSpans`
+pointers (`base_offsets`, `live_counts`, `token_positions`, `evict_mask`) plus
+`row_positions`; the same token-granular ring represents SWA-512 and bounded
+global cache by capacity. Span wrap, nonidentity physical offsets, Q/K values,
+K/V bytes, and attention output are BF16-bit exact to the NumPy oracle. The
+cache-only gfx1151 trace reports QK/RoPE/KV-write at local32/VGPR24/scratch0,
+**5,771 ns**, and attention at local32/VGPR16/scratch0, **3,607 ns** on the tiny
+fixture.
+
 ### Laguna gfx1151 decode transfer screen
 
 The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16

@@ -1458,6 +1458,7 @@ _GFX1151_OVERRIDES = {
 }
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
+    "hipengine.kernels.hip_gfx1100.attention.maple_attention",
     "hipengine.kernels.hip_gfx1100.convert",
     "hipengine.kernels.hip_gfx1100.fused",
     "hipengine.kernels.hip_gfx1100.linear",
