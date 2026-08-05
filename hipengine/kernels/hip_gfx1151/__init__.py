@@ -1464,6 +1464,7 @@ _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.linear",
     "hipengine.kernels.hip_gfx1100.linear_attn",
     "hipengine.kernels.hip_gfx1100.moe",
+    "hipengine.kernels.hip_gfx1100.moe.maple_moe",
     "hipengine.kernels.hip_gfx1100.norm",
     "hipengine.kernels.hip_gfx1100.quant",
     "hipengine.kernels.hip_gfx1100.quant.maple_ternary",

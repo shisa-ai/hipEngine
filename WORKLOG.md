@@ -202836,3 +202836,18 @@ Vulkan local sizes verbatim will close the measured gap.
   ns**, `maple_qknorm_rope_kv_write_kernel` at local32/VGPR24/scratch0 and
   **5,771 ns**, and `maple_attention_decode_kernel` at local32/VGPR16/scratch0
   and **3,607 ns** on the tiny deterministic fixture.
+
+## 2026-08-05 — Land Maple router and MoE-tail kernels
+
+- Add the unfused selected-MoE control/tail: dense BF16 router GEMV with FP32
+  accumulation, all-256 softmax, stable top-k and selected renormalization;
+  trained clamp-7 SwiGLU; and weighted top-8 combine plus residual with both
+  BF16 boundaries. Selected gate/up and down remain the separately gated
+  checkpoint-native ternary family.
+- The predeclared RED test initially fails at import. After implementation,
+  selected IDs match exactly, fp32 router weights pass `atol=rtol=2e-6`, and
+  activation/residual outputs are BF16-bit exact. The focused MoE gate passes
+  **4/4**; Ruff, pycompile, build-plan, and gfx1151 registry checks pass.
+- Cache-only gfx1151 tracing observes router local256/VGPR8/LDS3584/scratch0 at
+  **19,156 ns**, clamp-7 local256/VGPR32/scratch0 at **2,605 ns**, and weighted
+  residual local256/VGPR16/scratch0 at **2,885 ns** on the tiny fixture.

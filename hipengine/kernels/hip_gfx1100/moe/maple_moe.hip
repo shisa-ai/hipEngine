@@ -1,0 +1,220 @@
+// Net-new Maple MoE kernels from the public DeepGrove inference contract.
+
+#include <hip/hip_runtime.h>
+#include <stdint.h>
+#include <math.h>
+
+namespace {
+
+__device__ inline float bf16_to_float(uint16_t value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
+__device__ inline uint16_t float_to_bf16(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+__global__ void maple_router_topk_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    int32_t* __restrict__ selected_experts,
+    float* __restrict__ selected_weights,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k) {
+  const int tid = static_cast<int>(threadIdx.x);
+  __shared__ float logits[256];
+  __shared__ float probabilities[256];
+  __shared__ float reduction[256];
+  __shared__ uint8_t selected_mask[256];
+
+  float logit = -INFINITY;
+  if (tid < num_experts) {
+    logit = 0.0f;
+    const uint16_t* row = weight + static_cast<int64_t>(tid) * hidden_size;
+    for (int64_t idx = 0; idx < hidden_size; ++idx) {
+      logit += bf16_to_float(x[idx]) * bf16_to_float(row[idx]);
+    }
+  }
+  logits[tid] = logit;
+  reduction[tid] = logit;
+  selected_mask[tid] = 0;
+  __syncthreads();
+
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      reduction[tid] = fmaxf(reduction[tid], reduction[tid + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_logit = reduction[0];
+  const float exponential = tid < num_experts ? expf(logits[tid] - max_logit) : 0.0f;
+  probabilities[tid] = exponential;
+  reduction[tid] = exponential;
+  __syncthreads();
+  for (int stride = 128; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      reduction[tid] += reduction[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid < num_experts) {
+    probabilities[tid] /= reduction[0];
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    float selected_sum = 0.0f;
+    for (int64_t rank = 0; rank < top_k; ++rank) {
+      int best_id = -1;
+      float best_probability = -1.0f;
+      for (int expert = 0; expert < num_experts; ++expert) {
+        const float probability = probabilities[expert];
+        if (!selected_mask[expert]
+            && (probability > best_probability
+                || (probability == best_probability && expert < best_id))) {
+          best_probability = probability;
+          best_id = expert;
+        }
+      }
+      selected_experts[rank] = best_id;
+      selected_weights[rank] = best_probability;
+      selected_mask[best_id] = 1;
+      selected_sum += best_probability;
+    }
+    for (int64_t rank = 0; rank < top_k; ++rank) {
+      selected_weights[rank] /= selected_sum + 1.0e-20f;
+    }
+  }
+}
+
+__global__ void maple_clamped_swiglu_kernel(
+    const uint16_t* __restrict__ gate,
+    const uint16_t* __restrict__ up,
+    uint16_t* __restrict__ out,
+    int64_t elements) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < elements;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const float gate_value = fminf(bf16_to_float(gate[idx]), 7.0f);
+    const float up_value = fminf(fmaxf(bf16_to_float(up[idx]), -7.0f), 7.0f);
+    const float silu = gate_value / (1.0f + expf(-gate_value));
+    out[idx] = float_to_bf16(silu * up_value);
+  }
+}
+
+__global__ void maple_weighted_residual_kernel(
+    const uint16_t* __restrict__ residual,
+    const uint16_t* __restrict__ expert_outputs,
+    const float* __restrict__ routing_weights,
+    uint16_t* __restrict__ out,
+    int64_t top_k,
+    int64_t hidden_size) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < hidden_size;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    float combined = 0.0f;
+    for (int64_t route = 0; route < top_k; ++route) {
+      combined += routing_weights[route]
+          * bf16_to_float(expert_outputs[route * hidden_size + idx]);
+    }
+    const uint16_t combined_bits = float_to_bf16(combined);
+    out[idx] = float_to_bf16(
+        bf16_to_float(residual[idx]) + bf16_to_float(combined_bits));
+  }
+}
+
+}  // namespace
+
+extern "C" int hipengine_maple_router_topk_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    int32_t* selected_experts,
+    float* selected_weights,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k,
+    hipStream_t stream) {
+  if (hidden_size <= 0 || num_experts <= 0 || num_experts > 256
+      || top_k <= 0 || top_k > 16 || top_k > num_experts) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      maple_router_topk_kernel,
+      dim3(1),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight,
+      selected_experts,
+      selected_weights,
+      hidden_size,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_clamped_swiglu_bf16(
+    const uint16_t* gate,
+    const uint16_t* up,
+    uint16_t* out,
+    int64_t rows,
+    int64_t features,
+    hipStream_t stream) {
+  if (rows <= 0 || features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t elements = rows * features;
+  const int blocks = static_cast<int>((elements + 255) / 256);
+  hipLaunchKernelGGL(
+      maple_clamped_swiglu_kernel,
+      dim3(blocks),
+      dim3(256),
+      0,
+      stream,
+      gate,
+      up,
+      out,
+      elements);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_weighted_residual_bf16(
+    const uint16_t* residual,
+    const uint16_t* expert_outputs,
+    const float* routing_weights,
+    uint16_t* out,
+    int64_t top_k,
+    int64_t hidden_size,
+    hipStream_t stream) {
+  if (top_k <= 0 || hidden_size <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int blocks = static_cast<int>((hidden_size + 255) / 256);
+  hipLaunchKernelGGL(
+      maple_weighted_residual_kernel,
+      dim3(blocks),
+      dim3(256),
+      0,
+      stream,
+      residual,
+      expert_outputs,
+      routing_weights,
+      out,
+      top_k,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
