@@ -252,15 +252,64 @@ experts are **0.934-0.959 ms/token** above, and BF16 full-attention is
 SH-D1 therefore starts with the 4.11-4.17-ms GDN input role, then the selected
 pair. SH-A1 remains gated but is now admitted as material at 32K/64K.
 
-SH-M1 also has a concrete first screen. The physically owned bulk-prefill
-scratch is **1.756/1.785/1.818 GiB** at 4K/32K/64K with 4,096 rows. A 1,024-row
-screen is predicted to remove about **1.32-1.36 GiB** and is the first candidate;
-2,048 rows cannot reliably clear the campaign's 1-GiB target. Prediction is not
-promotion: the copy-inclusive four-context prefill gate still decides.
+SH-M1's first screen is now decided. Reducing only full-attention query rows
+from 4,096 to 1,024 does remove the predicted **1.335-1.338 GiB tracked** and
+**1.351-1.355 GiB whole-GTT** at 4K+, but it changes exact state/logits from 4K
+onward and loses **1.603%/7.997%/11.835%** prefill at 4K/32K/64K. Keep 4,096
+rows. The 2,048/768 row-only sweep is closed: 2,048 cannot clear the 1-GiB gate,
+and 1,024 already proves that deeper slicing is the wrong exact/performance
+tradeoff.
 
-Complete commands, role resources, GTT samples, owned components, fork logs,
-and raw hashes are in
+Complete SH-C0 commands, role resources, GTT samples, owned components, fork
+logs, and raw hashes are in
 [`2026-08-05-gfx1151-gguf-sh-c0-attribution.json`](../benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json).
+
+### SH-M1 query-row execution update (2026-08-05)
+
+Each policy ran in an independent right-sized process with one discarded run,
+three measured prefill/decode runs, cached builds, one hardware queue, and
+10-ms whole-GTT sampling. All five chunk controls are explicit; only
+`full_attn_query` changes. Tracked allocations return exactly to process
+baseline after close.
+
+| Context | q4096 prefill | q1024 prefill | q1024 delta | q4096 decode | q1024 decode | q1024 delta |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 1359.472 | **1360.721** | **+0.092%** | 52.891 | **52.898** | **+0.013%** |
+| 4K | **1438.860** | 1415.795 | **-1.603%** | 55.462 | **55.525** | **+0.113%** |
+| 32K | **1154.435** | 1062.115 | **-7.997%** | **46.121** | 46.054 | **-0.144%** |
+| 64K | **931.596** | 821.344 | **-11.835%** | 38.732 | **39.458** | **+1.876%** |
+
+| Context | q4096 tracked | q1024 tracked | saving | q4096 whole-GTT | q1024 whole-GTT | saving |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 21.480 | 21.480 | 0.000 GiB | 21.916 | 21.916 | 0.000 GiB |
+| 4K | 23.007 | 21.672 | **1.335 GiB** | 23.552 | 22.201 | **1.351 GiB** |
+| 32K | 23.654 | 22.317 | **1.337 GiB** | 24.204 | 22.849 | **1.355 GiB** |
+| 64K | 24.392 | 23.054 | **1.338 GiB** | 24.943 | 23.587 | **1.355 GiB** |
+
+The 512 state is byte-exact because both right-sized sessions resolve only 768
+scratch rows. At 4K/32K/64K, q1024 changes prefill logits, final hidden state,
+37 layer outputs, 54 Conv/GDN state parts, 18 later-layer K/V parts, the first
+fixed-input decode logit row, and final decode state. The sampled ID remains
+9707, which is not sufficient for the exact contract. The first changed layer
+output is layer 3, where the new full-attention chunk boundary changes F32
+association; later state then inherits the difference.
+
+Even if it were admissible, q1024 whole-GTT would remain **0.716-1.040 GiB**
+above fork F16 and **0.948-1.348 GiB** above fork Q8_0 at 4K+. Beating the
+memory row therefore requires a stack, not a smaller query chunk: first alias
+mutually-exclusive dedicated 4,096-row linear/full-attention/MoE fields without
+changing execution shape, then combine that exact saving with a strict compact-
+KV result. The current dedicated scratch's largest owners are
+`moe_down_out_f32` (**256 MiB**) and `conv_out`, `linear_qkv_f32`, and
+`moe_down_out` (**128 MiB each**).
+
+The complete diagnostic, commands, raw hashes, exact-state summary, and
+provenance qualification are in
+[`2026-08-05-gfx1151-gguf-sh-m1-q1024-rejected.json`](../benchmarks/results/2026-08-05-gfx1151-gguf-sh-m1-q1024-rejected.json).
+The aggregate collector saw unrelated untracked files, so this is not a
+retainable performance claim; staged and unstaged tracked source were clean at
+`e6eb49628`, and the candidate independently fails both correctness and prefill
+stop rules.
 
 ### Cumulative decode targets
 
@@ -288,7 +337,8 @@ tracked/owned comparison.
 | --- | --- | --- | --- |
 | **SH-C0 — matched attribution freeze** | **Completed 2026-08-05** | Role-resolved HIP correlation traces, separate fork F16/Q8_0 logger runs, 10-ms same-scope GTT, and owned allocation/lifetime census now cover 512/4K/32K/64K. | No production change. GDN input, selected experts, long-context attention, and 4,096-row scratch all clear admission; see the execution update and artifact. |
 | **SH-D1 — exact row-1 weight-kernel redesign** | P0 | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. For the largest role, test one gfx1151-specific replacement-layout consumer at a time: better coalesced tile traversal, one reusable activation representation across existing pair/triple groups, or a larger selected-down/combine owner only when the trace proves intermediate traffic is material. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
-| **SH-M1 — prefill-scratch/lifetime Pareto** | P0, parallel after C0 | Add a component/lifetime census for the 4,096-row bulk scratch. Sweep full-attention query rows **4096/2048/1024/768** while keeping the qualified gfx1151 linear/MoE policy and head-major consumer fixed, then alias only the largest proven-mutually-exclusive buffers. Measure 512/4K/32K/64K prefill, decode, tracked peak, whole-GTT peak, and close-to-baseline reclamation. | Default promotion requires exact state, decode neutrality, >=**1.0 GiB** lower 4K+ tracked peak, and <=**1%** prefill loss. If the Pareto point trades more speed, expose it only as an explicit memory profile; do not silently weaken the winning prefill default. |
+| **SH-M1 — query-row Pareto screen** | **Completed/rejected 2026-08-05** | The explicit 4,096 -> 1,024 query-row A/B saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, with exact cleanup and neutral decode. | Reject q1024 and close 2,048/768 row-only retries: q1024 changes exact state/logits at 4K+ and loses **1.603%-11.835%** prefill. Keep q4096. |
+| **SH-M2 — exact scratch-liveness aliases** | P0, parallel with D1 | Keep every 4,096-row execution shape fixed. Build a route/stage liveness map for the currently `dedicated` scratch, beginning with the 256-MiB `moe_down_out_f32` and three 128-MiB owners; alias only fields proven non-overlapping across the isolated AOTriton stream and linear/full-attention/MoE phases. | Require byte-exact logits/hidden/Conv/GDN/KV state at 512/4K/32K/64K, zero tracked close delta, <=**1%** prefill/decode loss, and >=**1.0 GiB** tracked plus same-direction whole-GTT saving. Do not claim fork memory parity until the exact alias and strict-KV stack beats both fork rows. |
 | **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |
 | **SH-A1 — page-internal head-major decode screen** | P2, only if C0 leaves BF16 attention material | Microbenchmark the current `[block, token, kv_head, D]` layout against a page-internal `[block, kv_head, token, D]` variant with complete `KVLiveSpans`, charging append/copy and reducer wall. Do not first rewrite every writer/compactor/graph. | Proceed to runtime plumbing only if copy/append-inclusive attention improves >=**1.10x**, projected whole decode saves >=**1%**, memory does not grow, and dense/permuted/evicted page oracles are exact. The fork's F16 lane being only 1.27%-1.79% above vanilla makes this a bounded screen, not P0. |
 | **SH-G — retained recertification** | Required after each retained unit | Re-run hipEngine one-warmup/three-measurement 512/4K/32K/64K rows, exact natural/heldout prompts, allocator/GTT sampling, and the applicable cached kernel trace. Re-run the five-repetition fork comparator only at a campaign milestone, not after every micro-change. | Publish an own-engine A/B only when exact and non-regressive. Keep the external row diagnostic until timing ownership, dtype, and output oracle align. Update artifact, benchmark rollup, changelog, and worklog for every retained performance unit. |
