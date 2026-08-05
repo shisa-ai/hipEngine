@@ -203781,3 +203781,36 @@ Vulkan local sizes verbatim will close the measured gap.
   `linear_qkv_f32`, and `moe_down_out`, then stack any exact saving with strict
   compact KV. q1024 alone would still remain **0.716-1.040 GiB** above fork F16
   and **0.948-1.348 GiB** above fork Q8_0 at 4K+.
+
+## 2026-08-05 — Select SH-D1 exact GDN-input DPP reduction
+
+- Resume the complete Strix Halo campaign at SH-D1 rather than treating SH-M1
+  closure as campaign completion. SH-C0 shows the row-1 Q8T16
+  `attn_qkv[2048->8192] + attn_gate[2048->4096]` pair runs once in each of 30
+  linear-attention layers and owns **4.113-4.166 ms/token** across
+  512/4K/32K/64K (**137.104-138.868 us/call**).
+- Run the cached gfx1151 three-copy cycling leaf with an 80.2-MB weight pool,
+  80 warmups, and 400 measured launches. Production is **135.16 us/call** and
+  **197.8 GB/s** effective matrix reads. Exact command and raw hash are frozen
+  in
+  `benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json`.
+- Extract the active gfx1151 code object outside profiling. The named BF16
+  dual-split body is 4,608 bytes, 50 VGPR / 29 SGPR, 256 B LDS, zero private
+  bytes/spills, and already uses three `global_load_b128` plus one d16 load.
+  Its remaining exact communication seam is the 16-column wave tree: **80
+  `ds_bpermute_b32`**, **67 `s_waitcnt`**, and one barrier.
+- Select a separately registered exact permlanex16/DPP-add sibling. It must
+  preserve the existing Q8T16 allocation, 128-thread/four-wave K partition,
+  every FMA, lane-0 LDS publication, one barrier, serial wave0..3 accumulation,
+  BF16 bytes, ABI, and production fallback. The candidate must emit 16
+  permlanex16 plus 64 direct DPP adds and zero bpermutes, remain spill-free, and
+  match production bytes plus the CPU GGUF Q8_0 oracle.
+- Freeze the continuation gate before implementation: the cycling leaf must be
+  **<=118.493 us** to project >=0.5 ms/token saving; **<=117.530 us** clears the
+  independent 1.15x rule. Only then run natural-prompt full state and the
+  512/4K/32K/64K model matrix. Non-temporal loads and a byte-neutral paired
+  Q8T32 layout are deferred until this same-layout reduction is measured.
+- Broad lineage reporting is mechanically blocked by absent manifest checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; the relevant pinned
+  `llama.cpp-hip` MMQ source is clean at `1ebf790cd`. No external body is being
+  ported; the exact DPP mechanism is already independently validated in-tree.
