@@ -33,7 +33,10 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _gguf_aotriton_head_major_kv_enabled,
     _try_allocate_gguf_aotriton_head_major_kv_scratch,
 )
-from scripts.qwen35_gguf_bench import _session_buffer_breakdown
+from scripts.qwen35_gguf_bench import (
+    _bulk_prefill_scratch_census,
+    _session_buffer_breakdown,
+)
 
 
 def _hip_available() -> bool:
@@ -114,6 +117,37 @@ def test_head_major_scratch_is_reported_separately_from_bulk_scratch() -> None:
     assert breakdown["by_component_bytes"]["aotriton_head_major_kv_scratch"] == 40
     assert breakdown["aotriton_head_major_kv_capacity"] == 16
     assert breakdown["by_component_bytes"]["session_buffer_other"] == 0
+
+
+def test_bulk_prefill_scratch_census_exposes_logical_aliases_and_lifetimes() -> None:
+    arena = DeviceBuffer(0x1000, 100)
+    scratch = SimpleNamespace(
+        rows=8,
+        max_positions=16,
+        allocation_mode="liveness_aliased",
+        allocation_offsets={"field_a": (0, 80), "field_b": (0, 80)},
+        allocation_lifetimes={
+            "field_a": (("linear", 0, 1),),
+            "field_b": (("full", 1, 2),),
+        },
+        field_a=DeviceBuffer(0x1000, 80),
+        field_b=DeviceBuffer(0x1000, 80),
+        metadata=DeviceBuffer(0x1050, 20),
+        buffers=(arena,),
+        head_major_key_cache=None,
+        head_major_value_cache=None,
+    )
+
+    census = _bulk_prefill_scratch_census(scratch)
+
+    assert census["physical_owner_bytes"] == 100
+    assert census["logical_field_bytes"] == 180
+    assert census["logical_alias_overhead_bytes"] == 80
+    assert census["by_field_bytes"]["field_a"] == 80
+    assert census["allocation_offsets"]["field_b"] == {"offset_bytes": 0, "nbytes": 80}
+    assert census["allocation_lifetimes"]["field_a"] == [
+        {"route": "linear", "start_stage": 0, "end_stage": 1}
+    ]
 
 
 def test_head_major_scratch_allocation_denial_frees_partial_and_falls_back(monkeypatch) -> None:

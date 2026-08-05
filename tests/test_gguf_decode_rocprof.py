@@ -7,14 +7,20 @@ import pytest
 
 from scripts.gguf_decode_rocprof import (
     MARKER_PREFIX,
+    ROLE_MARKER_PREFIX,
     _amdahl_speedup,
+    _annotate_kernel_roles,
     _build_child_command,
     _filter_kernels_by_windows,
+    _read_hip_launches,
     _read_kernels,
     _read_marker_windows,
+    _read_role_windows,
     _session_kwargs,
+    _summarize_role_rows,
     _summarize_rows,
     _summarize_wall_runs,
+    _weight_role,
 )
 
 
@@ -54,6 +60,100 @@ def test_marker_windows_filter_exact_decode_region(tmp_path: Path) -> None:
 
     assert windows == [(0, 100, 200), (1, 300, 410)]
     assert [row["family"] for row in selected] == ["q8_0_t16_gemv", "q6_k_t16_gemv"]
+
+
+def test_role_windows_map_hip_launch_correlation_to_innermost_role(tmp_path: Path) -> None:
+    markers = tmp_path / "trace_marker_api_trace.csv"
+    hip_api = tmp_path / "trace_hip_api_trace.csv"
+    _write_csv(
+        markers,
+        ["Function", "Thread_Id", "Start_Timestamp", "End_Timestamp"],
+        [
+            {
+                "Function": f"{ROLE_MARKER_PREFIX}full_attention_core",
+                "Thread_Id": 7,
+                "Start_Timestamp": 100,
+                "End_Timestamp": 300,
+            },
+            {
+                "Function": f"{ROLE_MARKER_PREFIX}full_attention_qkv",
+                "Thread_Id": 7,
+                "Start_Timestamp": 120,
+                "End_Timestamp": 180,
+            },
+        ],
+    )
+    _write_csv(
+        hip_api,
+        ["Function", "Thread_Id", "Correlation_Id", "Start_Timestamp", "End_Timestamp"],
+        [
+            {
+                "Function": "hipModuleLaunchKernel",
+                "Thread_Id": 7,
+                "Correlation_Id": 41,
+                "Start_Timestamp": 130,
+                "End_Timestamp": 140,
+            },
+            {
+                "Function": "hipLaunchKernel",
+                "Thread_Id": 7,
+                "Correlation_Id": 42,
+                "Start_Timestamp": 210,
+                "End_Timestamp": 220,
+            },
+            {
+                "Function": "hipMemcpy",
+                "Thread_Id": 7,
+                "Correlation_Id": 43,
+                "Start_Timestamp": 230,
+                "End_Timestamp": 240,
+            },
+        ],
+    )
+    kernels = [
+        {"correlation_id": 41, "duration_ns": 60, "family": "q8", "bucket": "dense", "kernel": "q8"},
+        {"correlation_id": 42, "duration_ns": 40, "family": "attn", "bucket": "attn", "kernel": "attn"},
+        {"correlation_id": 99, "duration_ns": 10, "family": "other", "bucket": "other", "kernel": "other"},
+    ]
+
+    annotated = _annotate_kernel_roles(
+        kernels,
+        launches=_read_hip_launches(hip_api),
+        windows=_read_role_windows(markers, ROLE_MARKER_PREFIX),
+    )
+
+    assert [row["role"] for row in annotated] == [
+        "full_attention_qkv",
+        "full_attention_core",
+        "unattributed",
+    ]
+    summary = _summarize_role_rows(annotated, steps=2)
+    assert summary[0]["name"] == "full_attention_qkv"
+    assert summary[0]["gpu_us_per_token"] == pytest.approx(0.03)
+    assert summary[-1]["name"] == "unattributed"
+
+
+def test_weight_role_separates_dense_projection_owners() -> None:
+    class Source:
+        name = "blk.3.attn_q.weight"
+
+    class Spec:
+        slot_path = "layers.3.attn_q"
+        source = Source()
+        quant_key = "gguf_q8_0_t16_v1"
+
+    class Weight:
+        spec = Spec()
+
+    assert _weight_role(Weight()) == "full_attention_qkv"
+    Spec.slot_path = "layers.3.ssm_out"
+    assert _weight_role(Weight()) == "gdn_output_projection"
+    Spec.slot_path = "layers.3.ffn_gate_shexp"
+    assert _weight_role(Weight()) == "shared_expert_gate_up"
+    Spec.slot_path = "layers.3.ffn_down_exps"
+    assert _weight_role(Weight()) == "selected_expert_down"
+    Spec.slot_path = "root.lm_head"
+    assert _weight_role(Weight()) == "lm_head"
 
 
 def test_layer_family_summary_emits_per_token_and_amdahl_ceiling() -> None:
