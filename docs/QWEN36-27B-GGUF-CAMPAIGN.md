@@ -1392,6 +1392,16 @@ row-reuse ladders are closed, so reopening requires a materially new exact
 representation, hardware primitive, or cross-family fusion with credible
 complete-wall impact.
 
+The first such hardware-primitive screen is negative. On GPU1, the qualified
+planar-Q6 integer-WMMA body plus its required D4 activation pack reaches only
+**0.412-0.477x** retained direct BF16 T16 for QKV and **0.273-0.279x** for
+FFN-down across rows 2-4, with **0/31** candidate wins in every production
+cell. Maximum KL is **0.0008801** and top-1 is **100%**, so speed—not quality—
+closes this route before source/runtime work or a W7900 gate. The next admitted
+cross-family screen is target-root Q6 rowtile plus per-row top-1 publication;
+it must beat the current full-FP32-row-plus-argmax chain while preserving that
+chain as the requested-logits fallback.
+
 ---
 
 ## 7. Prioritized execution plan
