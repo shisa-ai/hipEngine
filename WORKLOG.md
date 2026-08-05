@@ -204072,3 +204072,31 @@ Vulkan local sizes verbatim will close the measured gap.
   **>=1.15x** projection speedup or **>=0.5 ms/token** projection before any
   full-model route. Publish the checkpoint as
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json`.
+
+## 2026-08-06 — Reject Q6T16 LM-head tile8 and close SH-D1
+
+- RED collection fails on the intentionally absent dense-Q6 tile8 wrapper.
+  The transient exact implementation splits each 16-column T16 tile into two
+  independent eight-column local128 workgroups while preserving every FP32
+  logit's K/FMA/wave32/serial-wave/store order. GREEN passes all **9** focused
+  Q6T16 tests, including exact production bits and the CPU Q6_K oracle.
+- The immutable actual-model leaf charges the complete **417,177,600-byte**
+  K2048/N248320 resident matrix per launch (**12.43x** assumed 32-MiB MALL),
+  with 5 warmups, 11 counterbalanced pairs, and 8 launches/sample. Production
+  is **1.831744 ms**; tile8 is **1.835747 ms**, **0.99782x / -0.218%**, losing
+  **0.004003 ms/token**. Full logits and top-1 are exact at token **142091**.
+- Cached-only tracing names production at local128/grid1,986,560/VGPR72 and
+  tile8 at local128/grid3,973,120/**VGPR48**; both use 128 SGPR, 512 B LDS, and
+  scratch0. No compiler spawned under profiling. The trace's one cold pair is
+  structural only; the 11-pair HIP-event screen owns the rejection.
+- Reject before runtime/full-model work under the predeclared **1.15x or 0.5
+  ms/token** gate. Remove the candidate body, C ABI wrapper, Python wrapper,
+  registry key, test, and microbench; the three production Q6 files are restored
+  byte-for-byte. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-q6-lm-head-tile8-rejected.json`.
+- Close SH-D1 with one retained exact Q5 leaf and explicit failure to reach
+  parity. GDN input, selected-Q4/Q6, Q6 LM-head, and dense-Q8 ownership ladders
+  are now retained or below admission. Cumulative 512 remains **53.535 tok/s**,
+  **1.4868 ms/token** short of C1 and **3.2132 ms/token** short of fork F16.
+  Attention/layout remains assigned to SH-A1. Continue immediately to SH-M2,
+  then SH-K1/SH-A1/SH-G; this closes only SH-D1, not the campaign.
