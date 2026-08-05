@@ -3013,6 +3013,9 @@ runtime, row-5 kernel, test, and harness changes are removed; B1-B3 remains
 production. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**
 is unchanged. Artifact:
 [`2026-08-06-qwen36-27b-dense-b4-budget-rejected.json`](results/2026-08-06-qwen36-27b-dense-b4-budget-rejected.json).
+The final model/platform, correctness, anti-gaming, module-coverage,
+source-cleanup, validation, publication, and active-state checklist is
+[`2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`](results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json).
 
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
