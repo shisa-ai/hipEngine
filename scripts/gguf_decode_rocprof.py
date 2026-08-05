@@ -675,15 +675,32 @@ def _summarize_role_rows(
     if steps <= 0:
         raise ValueError("steps must be positive")
     total_ns = sum(int(row["duration_ns"]) for row in rows)
-    by_role: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
+    by_role: dict[str, dict[str, Any]] = collections.defaultdict(
+        lambda: {
+            "calls": 0,
+            "duration_ns": 0,
+            "families": set(),
+            "vgpr": set(),
+            "scratch": set(),
+        }
+    )
     for row in rows:
         role = str(row.get("role") or "unattributed")
-        by_role[role][0] += 1
-        by_role[role][1] += int(row["duration_ns"])
+        record = by_role[role]
+        record["calls"] += 1
+        record["duration_ns"] += int(row["duration_ns"])
+        if row.get("family"):
+            record["families"].add(str(row["family"]))
+        if row.get("vgpr") is not None:
+            record["vgpr"].add(int(row["vgpr"]))
+        if row.get("scratch") is not None:
+            record["scratch"].add(int(row["scratch"]))
     output = []
-    for role, (calls, duration_ns) in sorted(
-        by_role.items(), key=lambda item: (-item[1][1], item[0])
+    for role, record in sorted(
+        by_role.items(), key=lambda item: (-int(item[1]["duration_ns"]), item[0])
     ):
+        calls = int(record["calls"])
+        duration_ns = int(record["duration_ns"])
         share = duration_ns / total_ns if total_ns else 0.0
         output.append(
             {
@@ -694,6 +711,9 @@ def _summarize_role_rows(
                 "gpu_us_per_token": duration_ns / steps / 1e3,
                 "share_pct": share * 100.0,
                 "us_per_call": duration_ns / calls / 1e3 if calls else 0.0,
+                "kernel_families": sorted(record["families"]),
+                "vgpr_counts": sorted(record["vgpr"]),
+                "scratch_sizes": sorted(record["scratch"]),
                 "amdahl_speedup_if_2x": _amdahl_speedup(share, 2.0),
                 "amdahl_speedup_if_4x": _amdahl_speedup(share, 4.0),
                 "amdahl_speedup_if_infinite": _amdahl_speedup(share, float("inf")),

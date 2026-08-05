@@ -203582,3 +203582,12 @@ Vulkan local sizes verbatim will close the measured gap.
   **16.291 ms/token** GPU kernel wall, **45.435 tok/s** non-profiled wall, and
   **21.650 GiB** whole-GTT peak. This is tooling validation only, not a retained
   performance row; raw output is under `/tmp/hipengine-sh-c0-smoke*`.
+
+## 2026-08-05 — Complete SH-C0 per-role resource rows
+
+- Preserve each role's exact kernel-family set plus observed VGPR and scratch
+  values in the correlation summary, completing the campaign's per-role
+  duration/dispatch/resource contract without changing capture or generation.
+- RED: the focused nested-role fixture lacked `kernel_families`, `vgpr_counts`,
+  and `scratch_sizes`. GREEN: `tests/test_gguf_decode_rocprof.py` passes **8/8**,
+  pycompile and `git diff --check` pass.
