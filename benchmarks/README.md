@@ -4018,6 +4018,25 @@ hardware, and phase shapes match, but KV dtype, timing owner, and output-oracle
 protocol do not. In particular, llama-bench does not establish cross-engine
 token/logit equality.
 
+The follow-up [SH-C0 role/memory freeze](results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json)
+now measures both engines' whole-device GTT at the same 10-ms scope and profiles
+them separately. Fresh hipEngine eager decode is
+**52.857/55.389/46.004/39.419 tok/s** at 512/4K/32K/64K. Its whole-GTT peak is
+**21.916/23.552/24.204/24.943 GiB**, exceeding fork F16 by
+**1.085/2.391/2.205/2.071 GiB** and fork Q8_0 by
+**1.084/2.299/2.575/2.704 GiB**. Thus the memory gap is real rather than an
+artifact of tracked-versus-GTT scope.
+
+The correlation trace identifies the implementation targets rather than treating
+all Q8T16 work alike. GDN input projection owns **4.113-4.166 ms/token**;
+selected gate/up plus down owns **3.912-3.925 ms/token**; full-attention core
+grows to **4.533/8.041 ms/token** at 32K/64K. The fork logger puts selected
+Q4+Q5 at **2.965-2.978 ms/token**, F16 FA at **3.401/6.390**, and Q8 FA at
+**1.930/3.595** for those long contexts. Separately, hipEngine's physically
+owned 4,096-row prefill scratch is **1.756-1.818 GiB** at 4K+; SH-M1 therefore
+screens 1,024 rows first, while SH-D1 starts with GDN input. Profiled totals are
+diagnostics, not cross-engine throughput ratios.
+
 The fork's published Q8-KV `pp512/tg32 at depth` command was also rerun with our
 exact GGUF at `-b 512 -ub 512`, three repetitions:
 
@@ -4039,6 +4058,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-C0 decode-role and same-scope memory freeze | 2026-08-05 | hipEngine production `a2541162d`, role tooling `359b967fd`/`133239a4d`; Nathan fork `b7b85da9`; exact same GGUF/hardware; hipEngine one-warmup/three-run eager wall plus cached 8-token kernel/HIP-API/ROCTX trace; fork F16/Q8 Vulkan logger; both engines sampled at 10-ms whole-GTT | **Diagnostic retained:** hipEngine whole-GTT is **1.084-2.704 GiB** above the fork. GDN input is the largest short/mid exact role at **4.113-4.166 ms/token**; selected experts are **3.912-3.925 ms/token**; attention reaches **8.041 ms/token** at 64K. The 4K+ 4,096-row scratch owns **1.756-1.818 GiB**, selecting 1,024 rows for SH-M1. [`artifact`](results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json). | No — attribution and campaign target selection | Rerun after a retained SH-D1, SH-M1, or SH-A1 unit; profiled totals never replace non-profiled toplines. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M local Nathan Strix Halo fork comparator | 2026-08-04 | hipEngine accepted implementation `d5e95d1c9`, BF16 KV; Nathan fork `b7b85da9` build 10283, bundled Mesa `d18d598e2`, F16/Q8_0 KV; exact same GGUF and hardware; five fork repetitions per split phase plus three claim-protocol repetitions; explicit Vulkan/RADV backend and build gates | **Diagnostic retained, no strict cross-engine claim:** hipEngine wins all eight full-prompt prefill comparisons; the fork wins all eight tg128 decode comparisons. Fork whole-device GTT is descriptively **0.648-2.153 GiB** below hipEngine tracked peak, with non-comparable scopes. Its exact-model claim-protocol rerun exceeds the published different-model d0/d32K/d64K rows. [`artifact`](results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json). | No — external diagnostic comparator | Rerun after either engine, fork payload/toolchain, model bytes, KV policy, timing protocol, or memory scope changes; require a shared output oracle before a strict ratio. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M head-major BF16 AOTriton prefill | 2026-08-04 | candidate parent `f8d49a25a`; TheRock HIP 7.15; BF16 KV; one warmup plus three right-sized runs at 512/4K/32K/64K, byte-exact full-model state, forced allocation denial, copy-inclusive sub-window screen, and cached kernel trace | **Accepted bounded production default:** one reusable tracked K/V pair removes AOTriton's token-major head stride through the validated 65,792-token allocation class. Same-protocol prefill moves **1395.168/1463.311/1133.272/890.033 -> 1394.772/1472.330/1171.610/952.348 tok/s (-0.028%/+0.616%/+3.383%/+7.001%)** with exact hidden/GDN/KV/logits and neutral decode. [`artifact`](results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json). | Yes for gfx1151 Qwen3.x GGUF BF16-KV AOTriton prefill through 65,792-token resident capacity | Rerun after AOTriton, KV layout/spans, scratch ownership, compiler/runtime, or capacity policy changes; require a new 128K gate before broadening. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact long-global GQA6/D32 decode | 2026-08-01 | production `5849759cf`, post-profile `8e28afdd6`; TheRock HIP 7.15; BF16 KV; byte-exact dense/evicted primitive, cached-only four-depth trace, focused 66-test gate, directional 4K/16K/64K/128K sweep, tracked-clean 16K confirmation, and 127-transition post-profile | **Accepted production default:** live16,448 exact global attention is **16.293 ms/token**, down from **86.240**. Clean d16K improves **7.732 -> 16.756 tok/s (+116.72%)**; directional d4K/d64K/d128K improve to **21.662/9.079/5.603 tok/s**, with exact trajectories/lifecycle. Post-profile global is **3.660 score + 3.371 normalize + 9.261 PV ms/token** and explains **98.081%** of the remaining device gap. [`production/profile`](results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json). | Yes for gfx1151 gated global 48Q/8KV/D128 decode above 6,000 live slots | Context-parallelize PV/merge, then normalization, while moving 4K/16K/64K and gating 128K toward <=5-ms global. |

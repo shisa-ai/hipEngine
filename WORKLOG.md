@@ -203591,3 +203591,50 @@ Vulkan local sizes verbatim will close the measured gap.
 - RED: the focused nested-role fixture lacked `kernel_families`, `vgpr_counts`,
   and `scratch_sizes`. GREEN: `tests/test_gguf_decode_rocprof.py` passes **8/8**,
   pycompile and `git diff --check` pass.
+
+## 2026-08-05 — Freeze SH-C0 decode roles and same-scope memory
+
+- Run the clean tracked-source gfx1151 matrix with:
+  `PYTHONPATH=. python3 scripts/gguf_sh_c0_profile.py --workloads 512 4K
+  32K 64K --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root
+  /tmp/hipengine-sh-c0-20260805 --out
+  /tmp/hipengine-sh-c0-20260805.json`. Each context uses one discarded full
+  run, three non-profiled 128-token eager runs, a separate cached-only 8-token
+  kernel/HIP-API/ROCTX trace, one hardware queue, and 10-ms whole-GTT sampling.
+- Fresh non-profiled decode is
+  **52.857/55.389/46.004/39.419 tok/s** at 512/4K/32K/64K. All generated IDs
+  remain 9707. Profiled kernel totals are
+  **17.596/16.950/20.613/24.106 ms/token**, with **4,664/5,024** dispatches
+  role-attributed at every context; same-profile host-minus-kernel is
+  **4.658/3.985/2.161/2.042 ms/token** and remains profiler-only.
+- hipEngine whole-GTT peaks are **21.916/23.552/24.204/24.943 GiB** versus
+  tracked **21.480/23.007/23.654/24.392 GiB**. Against the existing matched fork
+  samples, same-scope hipEngine-minus-fork is
+  **+1.085/+2.391/+2.205/+2.071 GiB** for F16 and
+  **+1.084/+2.299/+2.575/+2.704 GiB** for Q8_0. The memory gap is therefore not
+  a tracked-versus-GTT artifact.
+- Run the pinned fork `b7b85da9` separately for F16 and Q8_0 at all four depths
+  with `GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1
+  /tmp/hipengine-nathan-fork-compare/vulkan/llama-bench -m <exact GGUF> -ngl
+  99 -fa 1 -ctk <dtype> -ctv <dtype> -b 1024 -ub 1024 -p 0 -n 128 -d
+  <depth> -r 1 -o json -dev Vulkan0`; retain only the final 128 sections with
+  `scripts/llamacpp_vulkan_perf_summary.py`. All eight runs report build
+  `b7b85da9`/10283, Vulkan/RADV STRIX_HALO, and the requested KV dtype.
+- hipEngine dense Q8 roles total **8.384-8.429 ms/token** versus fork logged
+  dense Q8 **7.507-7.562**; selected gate/up+down total **3.912-3.925** versus
+  fork selected Q4+Q5 **2.965-2.978**. The largest exact short/mid leaf is GDN
+  input at **4.113-4.166 ms/token**, selecting it for SH-D1 before the selected
+  pair. BF16 full-attention is **4.533/8.041 ms/token** at 32K/64K versus fork
+  **3.401/6.390**; fork Q8 falls to **1.930/3.595**. SH-A1 remains ordered after
+  D1 but is now materially admitted at long context.
+- The physically owned 4,096-row bulk-prefill scratch is
+  **1.756/1.785/1.818 GiB** at 4K/32K/64K. A 1,024-row screen is the first SH-M1
+  candidate because linear sizing predicts **1.32-1.36 GiB** saved; 2,048 rows
+  cannot reliably clear the 1-GiB campaign gate. Prediction is not a retained
+  memory claim until the four-context copy-inclusive prefill screen passes.
+- Publish compact diagnostic
+  `benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json` and update
+  the Strix Halo review, benchmark diagnostic rollup, and changelog. Raw traces
+  and fork logs remain under `/tmp/hipengine-sh-c0-20260805/` and
+  `/tmp/hipengine-nathan-sh-c0-perf/`.
