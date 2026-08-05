@@ -206294,3 +206294,28 @@ Vulkan local sizes verbatim will close the measured gap.
   Next restore a shape-qualified Q5T16 owner and require transaction/state,
   named W7900 profile, full natural25, and populated 512/4096 gates before any
   retention claim.
+
+## 2026-08-05 — Restore dense Q5T16 physical consumers
+
+- Reopen only the existing bit-lossless Q5T16 representation after the
+  cache-representative 48-weight rotation reversed the prior one-weight screen.
+  The source-lineage drift audit was rerun before editing; its unrelated
+  nano-vllm DRIFT rows remain reference-only and no external tree was copied or
+  changed.
+- Restore a fixed col4/local128 rows-2-4 dense rowtile, not the old geometry
+  sweep or environment knobs. It preserves the selected Q5T16 producer's 128
+  K partitions, per-thread K order, FMA stream, wave32 tree, ordered wave-0..3
+  sum, and BF16 store. Add a metadata-free one-expert direct sibling plus a
+  dense WMMA sibling whose FP16 operands, WMMA accumulation, and BF16 stores
+  are identical to the existing one-expert selected producer.
+- RED fails collection on the absent direct/rowtile/WMMA wrappers. GREEN passes
+  all four direct/rowtile widths on GPU1 with BF16-bit equality to selected
+  production plus the CPU oracle. The dense M17 WMMA fixture is bit-identical
+  to the selected one-expert producer and passes the project KL/top-1 gate.
+  Registry and argument contracts pass. No runtime owner, materialization
+  policy, backend capability, geometry flag, or performance claim is part of
+  this physical-consumer unit.
+- Update the kernel catalog to mark the old hot-cache rejection as superseded
+  by the rotating-cache reopening. Runtime ownership remains pending the full
+  W7900 B1-B3 transaction, named profile, natural25, and populated 512/4096
+  gates.

@@ -41,6 +41,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
+    gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
     gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
@@ -143,6 +144,34 @@ def test_gguf_k_t16_selected_wmma_registry_and_build_plan(
     lb4 = plan_gguf_k_t16_selected_prefill_build(compiler_version="test-compiler")
     assert "-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS=4" in lb4.flags
     assert lb4.cache_key != artifact.cache_key
+
+
+def test_q5_t16_dense_wmma_registry_and_contract() -> None:
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="t16_wmma_prefill_bf16_bf16_out",
+    ) is gguf_q5_k_t16_wmma_prefill_bf16_bf16_out
+
+    kwargs = dict(
+        x_ptr=1,
+        tiles_ptr=2,
+        out_ptr=3,
+        rows=17,
+        in_features=256,
+        out_features=32,
+    )
+    with pytest.raises(ValueError, match="rows"):
+        gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(**{**kwargs, "rows": 0})
+    with pytest.raises(ValueError, match="block size 256"):
+        gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
+            **{**kwargs, "in_features": 128}
+        )
+    with pytest.raises(ValueError, match="multiple of 16"):
+        gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
+            **{**kwargs, "out_features": 24}
+        )
 
 
 @pytest.mark.parametrize("quant", list(_EXPERT_MAJOR_COMP_WRAPPERS))
@@ -409,6 +438,49 @@ def _run_selected_t16_gpu(fixture: CompactT16Fixture) -> np.ndarray:
     return _decode_output(host_out, fixture.dtype)
 
 
+def _run_dense_q5_t16_wmma_gpu(fixture: CompactT16Fixture) -> np.ndarray:
+    from hipengine.core.hip import get_hip_runtime
+
+    if fixture.quant != "gguf_q5_k_t16_v1" or fixture.dtype != "bf16":
+        raise ValueError("dense Q5T16 helper requires a BF16 Q5 fixture")
+    if fixture.num_experts != 1:
+        raise ValueError("dense Q5T16 helper requires exactly one expert")
+
+    runtime = get_hip_runtime()
+    library = build_gguf_k_t16_selected_prefill(load=True)
+    host_out = np.zeros(
+        (fixture.compact_rows, fixture.out_features), dtype=np.uint16
+    )
+    bufs = []
+    try:
+        for arr in (fixture.x_host, fixture.tiles):
+            dev = malloc(arr.nbytes, runtime=runtime)
+            copy_host_to_device(
+                dev,
+                host_array_ptr(np.ascontiguousarray(arr)),
+                runtime=runtime,
+            )
+            bufs.append(dev)
+        out_dev = malloc(host_out.nbytes, runtime=runtime)
+        bufs.append(out_dev)
+        gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
+            bufs[0].ptr,
+            bufs[1].ptr,
+            out_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
+            fixture.out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+    return _decode_output(host_out, "bf16")
+
+
 def _run_expert_major_comp_gpu(fixture: CompactT16Fixture) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -479,6 +551,24 @@ _SELECTED_CASES = [
     pytest.param([7, 18, 0, 33], 512, 32, id="empty-third-aligned-out32"),
     pytest.param([32, 0, 0, 17], 768, 48, id="multi-block-empty-tail-out48"),
 ]
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q5_t16_dense_wmma_matches_one_expert_selected_bits_and_quality_gate() -> None:
+    fixture = _build_compact_t16_fixture(
+        quant="gguf_q5_k_t16_v1",
+        counts=[17],
+        in_features=512,
+        out_features=64,
+        dtype="bf16",
+        seed=23,
+    )
+    selected = _run_selected_t16_gpu(fixture)
+    dense = _run_dense_q5_t16_wmma_gpu(fixture)
+
+    np.testing.assert_array_equal(dense, selected)
+    assert _max_softmax_kl(fixture.reference, dense) <= 0.05
+    assert np.mean(fixture.reference.argmax(axis=-1) == dense.argmax(axis=-1)) >= 0.9
+
 
 _TOLERANCES = {
     ("gguf_q4_k_t16_v1", "bf16"): {"rtol": 2.0e-2, "atol": 5.0e-1},
