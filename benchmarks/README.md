@@ -5559,7 +5559,8 @@ unchanged. Artifact:
 
 A completion audit found that the shared MTP ABI and trailing NextN provider
 support budgets `(1,2,3,5)`, while this dense GGUF route had only measured
-B1-B3. B4 remains unsupported. The initial exact ten-prompt B3/B5 run confirms
+B1-B3. At this B5 checkpoint B4 was still unsupported; the closing section
+below audits it separately. The initial exact ten-prompt B3/B5 run confirms
 that B5 improves acceptance (**169 -> 184**) and reduces cycles (**76 -> 61**),
 but missing six-row owners collapse throughput **59.942 -> 23.523 tok/s**.
 
@@ -5579,6 +5580,39 @@ predeclared screen fails; all row-6/runtime changes are removed and B1-B3 stays
 production. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**
 is unchanged. Artifact:
 [`2026-08-06-qwen36-27b-dense-b5-budget-rejected.json`](results/2026-08-06-qwen36-27b-dense-b5-budget-rejected.json).
+
+#### Qwen3.6-27B exact B4 interpolating budget, runtime rejected
+
+A final completion audit found that B4—five target rows—had never been screened
+between production B3 and rejected B5. Temporary RED-first support admitted
+budget 4 across metadata, provider, verifier, reusable graph, suite, and the
+complete W7900 transaction while keeping N2 device accept/commit bounded to
+B1/B2. The initial graph defect localized to five-row dense-BF16 full-attention
+V: its generic prefill reduction differed by one BF16 bit from five retained c1
+launches. A `ROW_TILE=5` sibling restores bit equality across hidden output and
+all 96 Conv/GDN state buffers.
+
+GPU1 gates and cached traces then qualify scratch-free row-5 dense-BF16, Q4
+pack8 single/dual, and Q5T16 siblings. The resulting W7900 transaction passes
+B1-B4 eager/graph logits, GPU/CPU acceptance, reject/partial/full commit, forced
+rollback, correction, dynamic positions/reuse, provider output, ownership,
+memory lifecycle, and teardown. The first optimized one-prompt screen remains
+negative: B4 is **51.419 tok/s** versus same-process B3 **57.309 tok/s**, with
+**79.116 ms/target pass**.
+
+One diagnostic trace finds the only remaining direct fallback: row-5 planar Q6
+costs **127.897 ms across five passes**. Extending the existing exact col8
+template to row 5 raises B4 **51.419 -> 63.199 tok/s (+22.91%)**, makes that
+fixed-prompt sample **11.89% faster** than same-process B3 **56.481 tok/s**, and
+cuts target cost to **61.957 ms/pass**. It nevertheless misses the frozen
+**50.3-ms** full-suite ceiling by **23.18%**. Its directional **7.17%** gap to
+Vulkan's aggregate **68.082 tok/s** is cross-scope and not a topline.
+
+No ten-prompt run is spent after the predeclared gate fails. All temporary B4
+runtime, row-5 kernel, test, and harness changes are removed; B1-B3 remains
+production. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**
+is unchanged. Artifact:
+[`2026-08-06-qwen36-27b-dense-b4-budget-rejected.json`](results/2026-08-06-qwen36-27b-dense-b4-budget-rejected.json).
 
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 

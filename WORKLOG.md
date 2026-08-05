@@ -207876,3 +207876,105 @@ Vulkan local sizes verbatim will close the measured gap.
   profiled production reproducer with a credible >=5%-wall ceiling. Compact
   audit artifact:
   `benchmarks/results/2026-08-06-qwen36-27b-residual-tuning-coverage-audit.json`.
+
+## 2026-08-06 — Reopen omitted dense B4 algorithmic cell
+
+- The completion audit found one unsupported interpolation rather than a new
+  kernel family: dense GGUF exposed B1-B3 while the shared speculative ABI and
+  prior experiment jumped to B5. Freeze B4 as five target rows and a **50.3
+  ms/pass** preliminary ceiling, interpolated from the retained B3 and fully
+  optimized/rejected B5 traces. Do not repeat the ten-prompt suite unless a
+  one-prompt exact B4 path clears that ceiling and has credible Vulkan-parity
+  economics.
+- RED covered metadata/compiler/provider admission, dense suite parsing,
+  transactional verifier/decode capacity, Python graph validation, the host-only
+  C++ graph shim, and the real reject/partial/full/dynamic-position transaction.
+  GREEN admits budget 4 / rows 5 only; N2 device accept/commit remains bounded
+  to B1/B2 and no row-5 Q4/Q5/Q6 arithmetic specialization has changed.
+- The first W7900 transaction passed B1-B4 eager logits exactly, then exposed a
+  stale enqueue-only rows2-4 guard. After widening that graph boundary, the B4
+  graph captured and replayed, but reject-row commit diverged from scalar state.
+  A labeled discriminator proves eager B4 row 0 is bit-identical across all 96
+  Conv/GDN states and hidden bits, while graph B4 first diverges after full-
+  attention layer 3 and then propagates through layers 4-62. Disabling the
+  shared-page attention batch leaves the mismatch signature unchanged; direct
+  rows4/5 shared-attention and pack8 grid-y primitive gates are exact on GPU1.
+  Continue the graph full-attention projection/path bisect before any timing or
+  row-5 kernel work.
+- Replacing only the five-row staged full-attention body with its scalar sibling
+  makes the graph bit-identical, exonerating shared attention, K grid-y, rotary,
+  Conv/GDN snapshots, and selected-row commit. Leaf screening identifies the
+  first divergent arithmetic owner: B4's dense-BF16 full-attention V projection
+  falls into generic prefill reduction, while B1-B3 select exact rowtiles only
+  through row 4. The production K5,120/N128 generic row-5 result differs from
+  five retained c1 launches by one BF16 bit. Decomposing V into five c1 launches
+  restores `hidden_mismatches=0` and `state_mismatch_total=0` across all 96
+  Conv/GDN buffers.
+- That correctness-only c1-V fallback is economically unusable. On W7900
+  `code_merge_intervals` natural25, true AR is **23.881 tok/s**; B3 is **59.836
+  tok/s**, **17/21** accepted, and **46.852 ms/pass**; B4 is **31.866 tok/s**,
+  **20/20** accepted, and **136.737 ms/pass**. Raw log SHA-256 is
+  `1866e3ae...28bfc3ed`; this is a diagnostic, not a retained row.
+- Add temporary RED-first `ROW_TILE=5` siblings from existing exact template
+  lineage. GPU1 dense K5,120/N128 and virtual256 K6,144/N64 gates pass, followed
+  by the complete dense file **33/33**. Production-shape Q4 pack8 single/dual
+  and Q5T16 row-5 gates pass; adjacent Q4/Q5/dispatch bundles pass after
+  separating the unchanged compact-Q4 T16 rows2-4 ceiling from the widened
+  pack8 route. Cached traces name dense row-5 at **19.560/21.200 us**, Q4
+  single/dual at **48.680/36.480 us**, and Q5T16 at **38.881 us**, all scratch0.
+  Trace SHA-256s are `ffcceb35...bc45af1` and `c029479d...39adced`.
+- The focused W7900 transaction is fully GREEN: B1-B4 eager/graph logits, all 96
+  state buffers, GPU/CPU acceptance, reject/partial/full commit, forced
+  post-commit rollback, correction, dynamic-position graph reuse, provider
+  output, ownership census, memory lifecycle, and teardown pass. Observed B4
+  owners include row-5 dense BF16, Q4 pack8 single/dual, Q5T16, shared attention,
+  full-K, and Conv/GDN chains; compact-Q4 T16 remains rows2-4. Exact command:
+  `D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 LD_LIBRARY_PATH="$D:$D/rocm_sysdeps/lib:/opt/rocm/lib" PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`.
+- The first specialized admission run is still negative: AR **24.535**, B3
+  **57.309 tok/s / 48.490 ms/pass**, and exact B4 **51.419 tok/s / 79.116
+  ms/pass**. A single cached marked profile is justified only to distinguish a
+  remaining direct fallback. It records target **408.380 ms host / 308.800 ms
+  kernels / 4,583 dispatches** across five passes and finds planar-qmicro Q6 row
+  5 still on the direct body for **127.897 ms total / 25.579 ms/pass**. The B5
+  experiment had specialized row 6 while intentionally leaving unsupported row
+  5 untouched; this is a concrete B4 implementation omission, not inherent row
+  cost.
+- Extend only the existing exact planar-Q6 col8 template/routing to row 5. GPU1
+  BF16/FP32 outputs are byte-identical to the retained legacy rowtile oracle;
+  cached traces name both row-5 col8 bodies at **40.841/31.160 us**, VGPR88,
+  scratch0 (`6b8a7372...920c085b`). The final W7900 command is:
+
+  ```bash
+  D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_GGUF_DECODE_REPACK=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt \
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+  LD_LIBRARY_PATH="$D:$D/rocm_sysdeps/lib:/opt/rocm/lib" PYTHONPATH=. \
+  /home/lhl/mambaforge/envs/therock/bin/python3.12 \
+    scripts/qwen36_dense_gguf_suite.py \
+    --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m \
+    --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+    --max-new-tokens 25 --candidate-budgets 3,4 --target-verify-mode native \
+    --runs 1 --limit 1 --no-warmup \
+    --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt \
+    --require-cached-build \
+    --output /tmp/hipengine-qwen36-27b/b4-row5-optimized/oneprompt-b3-b4-q6row5.json
+  ```
+
+  It remains exact and moves B4 **51.419 -> 63.199 tok/s (+22.91%)**. B4 is
+  **11.89% above** same-process B3 **56.481 tok/s**, but target cost is still
+  **61.957 ms/pass**, **23.18% above** the frozen **50.3-ms** full-suite gate.
+  The fixed-prompt sample is directionally **7.17% below** aggregate Vulkan B3
+  **68.082 tok/s**, but that cross-scope comparison is not a topline.
+- Reject B4 without moving the gate or gaming a ten-prompt run. Save the scoped
+  implementation patch (`7d1e2502...0687cf5`), then remove every B4 runtime,
+  row-5 kernel, test, and harness change. Restored B1-B3 cap coverage passes
+  **8/8**; compileall and `git diff --check` pass, and the source/test tree is
+  byte-restored over base `20835954d`. Canonical exact/default remains B3
+  **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**. Compact artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-dense-b4-budget-rejected.json`.
+  Reopen only for a materially different speculative schedule, proposer-quality
+  shift, or hardware primitive with credible five-row cost below 50.3 ms/pass.
+  Campaign, canonical benchmark README/root export, and changelog are
+  synchronized; no optimization or benchmark process remains active.

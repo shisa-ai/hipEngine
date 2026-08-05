@@ -1,0 +1,201 @@
+{
+  "schema": 1,
+  "status": "rejected_dense_b4_runtime_default",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_dense_exact_b4_budget_rejection",
+  "timestamp": "2026-08-06T08:35:51+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": {
+    "binding_gpu": "AMD Radeon Pro W7900, GPU0, gfx1100",
+    "component_gpu": "AMD Radeon RX 7900 XTX, GPU1, gfx1100",
+    "binding_runtime": "TheRock HIP 7.15.0 compiler-version contract",
+    "component_compiler": "HIP 7.2.53211-3d9ef42, AMD clang f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "software": {
+    "experiment_base_commit": "20835954de1e8a9cd25efabdbdfde69bf899bce3",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "backend": "hip_gfx1100",
+    "measurement_tree_clean": false,
+    "measurement_tree_note": "B4 graph admission and row-5 exact-template instantiations were isolated uncommitted changes over the recorded base. Every runtime, kernel, test, and script change was removed before publication; only evidence and documentation remain."
+  },
+  "audit_finding": {
+    "shared_mtp_candidate_budgets_before_audit": [1, 2, 3, 5],
+    "dense_gguf_production_budgets_before_audit": [1, 2, 3],
+    "omitted_algorithmic_cell": 4,
+    "target_rows": 5,
+    "reason_for_screen": "The prior completion pass measured B1-B3 and then B5, but never admitted the interpolating B4 verifier graph. B4 was a materially different speculative schedule rather than another closed arithmetic micro-optimization."
+  },
+  "admission_policy": {
+    "correctness": "B1-B4 logits, transaction state, GPU acceptance, reject/partial/full commit, forced rollback, correction, dynamic positions, provider output, memory lifecycle, and teardown must match scalar execution.",
+    "suite": "Promotion requires non-regressive absolute throughput on the full ten-prompt train/heldout/category suite. A favorable single fixed prompt is diagnostic only.",
+    "preliminary_target_pass_ceiling_ms": 50.3,
+    "rule": "Do not run the full category suite unless an exact one-prompt B4 path clears 50.3 ms per target pass. Do not move the gate after observing the fixed code prompt."
+  },
+  "graph_and_correctness_validation": {
+    "admission": "Budget 4 / five target rows was admitted across metadata, compiler/provider, transactional verifier/decode capacity, Python graph validation, and the host-only C++ graph shim. N2 device accept/commit remained limited to B1/B2.",
+    "first_graph_failure": "The initial B4 graph first diverged after full-attention layer 3. Shared attention, K grid-y, rotary, Conv/GDN snapshots, and selected-row commit were independently exonerated.",
+    "root_cause": "Dense-BF16 row-5 full-attention V used a prefill reduction that differed by one BF16 bit from the retained c1 arithmetic. A ROW_TILE=5 sibling restored bit equality.",
+    "w7900_transaction": {
+      "passed": true,
+      "scope": "B1-B4 eager and graph logits; all 96 Conv/GDN state buffers; GPU/CPU accept; reject/partial/full commit; forced post-commit rollback; correction; dynamic-position reuse; natural provider; clean teardown",
+      "observed_b4_owners": [
+        "dense-BF16 ROW_TILE=5",
+        "Q4 pack8 single ROW_TILE=5",
+        "Q4 pack8 dual+SiLU ROW_TILE=5",
+        "Q5T16 col4 ROW_TILE=5",
+        "shared-page attention rows=5",
+        "full-K grid-y rows=5",
+        "Conv/GDN snapshot chains rows=5"
+      ]
+    },
+    "final_q6_specialization": "Planar-qmicro Q6 BF16 and FP32 ROW_TILE=5 outputs were byte-identical to the retained legacy rowtile oracle on GPU1; the final one-prompt W7900 run remained exact with GPU/CPU acceptance agreement.",
+    "post_rejection_cap_gate": "8/8 restored B1-B3 compiler/graph/suite/Q5-dispatch tests passed; compileall and git diff --check passed."
+  },
+  "optimization_progression": {
+    "exact_c1_v_fallback": {
+      "workload": "code_merge_intervals, natural25, same-process AR/B3/B4, W7900",
+      "ar_tok_s": 23.88126117617013,
+      "b3_tok_s": 59.83557214211896,
+      "b3_accepted_drafts": 17,
+      "b3_proposed_drafts": 21,
+      "b3_target_verify_ms_per_pass": 46.85228663895811,
+      "b4_tok_s": 31.86557477262399,
+      "b4_accepted_drafts": 20,
+      "b4_proposed_drafts": 20,
+      "b4_target_verify_ms_per_pass": 136.7370163090527,
+      "interpretation": "Correctness-only five-c1 V decomposition; not a retainable implementation."
+    },
+    "dense_q4_q5_row5_specialized_before_q6": {
+      "workload": "code_merge_intervals, natural25, same-process AR/B3/B4, W7900",
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "ar_tok_s": 24.534974844630483,
+      "b3_tok_s": 57.308508628375385,
+      "b3_target_verify_ms_per_pass": 48.4895690211228,
+      "b4_tok_s": 51.41944591162414,
+      "b4_vs_b3_percent": -10.2760704434653,
+      "b4_target_verify_ms_per_pass": 79.11642463877797,
+      "admission_result": "failed; profile once to distinguish another direct fallback from inherent row cost"
+    },
+    "final_planar_q6_row5_specialized": {
+      "workload": "code_merge_intervals, natural25, same-process AR/B3/B4, W7900",
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "ar_tok_s": 24.55068635422187,
+      "b3": {
+        "decode_tok_s": 56.48090572882704,
+        "accepted_drafts": 17,
+        "proposed_drafts": 21,
+        "cycles": 7,
+        "target_verify_ms": 346.40977112576365,
+        "target_verify_ms_per_pass": 49.48711016082338
+      },
+      "b4": {
+        "decode_tok_s": 63.19887571066214,
+        "accepted_drafts": 20,
+        "proposed_drafts": 20,
+        "cycles": 5,
+        "target_verify_ms": 309.78663405403495,
+        "target_verify_ms_per_pass": 61.95732681080699
+      },
+      "b4_vs_b3_tok_s_percent": 11.894232033191976,
+      "b4_vs_vulkan_68_082_tok_s_percent": -7.17241604144686,
+      "b4_target_pass_over_50_3_ms_percent": 23.175600021485064,
+      "q6_specialization_delta": {
+        "b4_tok_s_percent": 22.90851173169699,
+        "target_verify_percent": -21.688414139433508
+      },
+      "admission_result": "failed: 61.957 ms/pass exceeds the frozen 50.3-ms full-suite ceiling despite the favorable fixed code prompt"
+    }
+  },
+  "pre_q6_profile": {
+    "workload": "code_merge_intervals, natural25 B4 only, one profiled run, W7900",
+    "correctness": {
+      "exact_greedy_match": true,
+      "gpu_accept_match_cpu": true,
+      "accepted_drafts": 20,
+      "proposed_drafts": 20
+    },
+    "complete_marker_span_ms": 487.490188,
+    "target_verify": {
+      "passes": 5,
+      "host_ms": 408.379966,
+      "kernel_dispatches": 4583,
+      "kernel_ms": 308.800179,
+      "copy_count": 15,
+      "copy_ms": 0.154442
+    },
+    "concrete_remaining_fallback": {
+      "family": "planar-qmicro Q6 row 5",
+      "direct_kernel_ms_across_five_passes": 127.896999,
+      "direct_kernel_ms_per_pass": 25.5793998,
+      "interpretation": "The earlier B5 experiment had specialized row 6 while intentionally leaving unsupported row 5 on the direct body. This was a real remaining B4 implementation omission and justified one final exact ROW_TILE=5 extension."
+    },
+    "largest_already_specialized_families_ms": {
+      "q4_pack8_dual_row5": 72.971,
+      "q4_pack8_single_row5_total": 52.148,
+      "q5_t16_row5": 18.649,
+      "gdn": 14.976
+    }
+  },
+  "gpu1_physical_row5_traces": {
+    "all_expected_symbols_observed": true,
+    "scratch_bytes": 0,
+    "dense_bf16": {
+      "duration_us": [19.56, 21.2],
+      "vgpr": [24, 32],
+      "symbols": ["dense_gemv_rowtile_out_kernel<unsigned short, 5>", "dense_gemv_virtual256_local128_rowtile_out_kernel<unsigned short, 5>"]
+    },
+    "q4_q5": {
+      "duration_us": [48.68, 36.48, 38.881],
+      "vgpr": [104, 112, 64],
+      "symbols": ["gguf_q4_k_pack8_rowtile_out_kernel<unsigned short, unsigned short, 5>", "gguf_q4_k_pack8_dual_rowtile_silu_out_kernel<unsigned short, 5>", "q5_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 5>"]
+    },
+    "planar_q6": {
+      "duration_us": [40.841, 31.16],
+      "vgpr": [88, 88],
+      "symbols": ["q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 5>", "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 5>"]
+    }
+  },
+  "decision": {
+    "runtime_default_retained": false,
+    "row5_template_changes_retained": false,
+    "optimized_full_suite_run": false,
+    "reason": "The frozen preliminary gate failed after the final measured fallback was replaced. The one favorable fixed prompt cannot authorize promotion or a category-suite run under the anti-gaming policy.",
+    "production_candidate_budgets": [1, 2, 3],
+    "canonical_budget": 3,
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_gap_vs_vulkan_percent": -11.4869,
+    "reopen_condition": "A materially different speculative algorithm, proposer-quality improvement, or hardware primitive that credibly lowers five-row target cost below 50.3 ms/pass; not another rearrangement of the closed exact rowtile families."
+  },
+  "commands": {
+    "c1_v_fallback_admission": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/run_b4_serial_v_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3,4 --target-verify-mode native --runs 1 --limit 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/b4-audit/one-prompt-b3-b4-serial-v.json",
+    "complete_b1_b4_transaction": "D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 LD_LIBRARY_PATH=\"$D:$D/rocm_sysdeps/lib:/opt/rocm/lib\" PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+    "pre_q6_admission": "D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 LD_LIBRARY_PATH=\"$D:$D/rocm_sysdeps/lib:/opt/rocm/lib\" PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3,4 --target-verify-mode native --runs 1 --limit 1 --no-warmup --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/b4-row5-optimized/oneprompt-b3-b4.json",
+    "pre_q6_profile": "ROOT=/tmp/hipengine-qwen36-27b/b4-row5-optimized/profile-b4; D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 LD_LIBRARY_PATH=\"/tmp/hipengine-roctx-sdk-override-qwen36-dense:$D:$D/rocm_sysdeps/lib:/opt/rocm/lib\" PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --marker-trace --output-format csv --output-file mtp-b4 --output-directory \"$ROOT\" -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 4 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output \"$ROOT/suite.json\"",
+    "final_q6_admission": "D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 LD_LIBRARY_PATH=\"$D:$D/rocm_sysdeps/lib:/opt/rocm/lib\" PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3,4 --target-verify-mode native --runs 1 --limit 1 --no-warmup --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/b4-row5-optimized/oneprompt-b3-b4-q6row5.json"
+  },
+  "raw_evidence": {
+    "implementation_patch_sha256": "7d1e2502858dab291d72c8b58fca8c25e98e40bfb0ac7995483f5fbbe0687cf5",
+    "w7900_transaction_log_sha256": "423b1d0e014eb1eab96f4420f7b344c2615be505dd574b756ac884826ca74f2d",
+    "exact_c1_v_fallback_log_sha256": "1866e3aeec7d5c815f76e7eace59c4a4991e0ec922cff3e67f3b728bfc3ed28b",
+    "pre_q6_one_prompt_json": "/tmp/hipengine-qwen36-27b/b4-row5-optimized/oneprompt-b3-b4.json",
+    "pre_q6_one_prompt_json_sha256": "5ef598d371b172954469bdf1eab9040ee7eb6e45c32a4e26abfb474fe68f7f3d",
+    "pre_q6_profile_suite_sha256": "c935ed4197ccbcc89cf1106d69b3aa2ea4ecba2557de8de1dc2a8649cda49789",
+    "pre_q6_profile_summary_sha256": "3c0bf74262870ae39b6cb0fc52a73bfe2eb9b3c2e2ad1e94ad29a3991fc78b89",
+    "pre_q6_kernel_trace_sha256": "5a59725c0a185b8bbeb8d41fb9b3701b2da101046e405f5258ff541bf51fe702",
+    "pre_q6_marker_trace_sha256": "a7809c5b426add44663e6a3b1cb2f6e91657b12be5213baf48d1914939f2021e",
+    "pre_q6_copy_trace_sha256": "203f4db5bf798e6152f16097c0c44c950b9679ae3bf8f992655fa04c124025dd",
+    "final_one_prompt_json": "/tmp/hipengine-qwen36-27b/b4-row5-optimized/oneprompt-b3-b4-q6row5.json",
+    "final_one_prompt_json_sha256": "0137a865ae85c877b1ed536dbbb4afbf156d340c369c4cf34fdfd02b0749ec1e",
+    "dense_row5_trace_sha256": "ffcceb35fa5ff8d16fadabf14b168b27fbd11e8739b8a1e12f7e0bdf4bc45af1",
+    "q4_q5_row5_trace_sha256": "c029479d3114bc43d67c80427804f8d0b5e55dac11e18078c8e4622b239adced",
+    "q6_row5_trace_sha256": "6b8a7372f71475a51ecbdf5f1c085df97945058c1f5c297caf063a57290c085b"
+  }
+}
