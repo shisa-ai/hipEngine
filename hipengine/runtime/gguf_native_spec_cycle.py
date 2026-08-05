@@ -497,7 +497,13 @@ def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
     for name in (
         "_verify_linear_conv_state_rows",
         "_verify_linear_recurrent_state_rows",
+        "_verify_linear_conv_initial_snapshots",
+        "_verify_linear_recurrent_initial_snapshots",
     ):
+        if "initial_snapshots" in name and int(
+            getattr(session, "_verify_linear_initial_snapshot_users", 0)
+        ) <= 0:
+            continue
         for value in getattr(session, name, ()):
             add(value)
     return tuple(pointers)

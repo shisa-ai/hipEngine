@@ -2033,6 +2033,25 @@ class Qwen35GGUFFullStackRunner:
             )
         return cache[cache_key]
 
+    def _gdn_chain_snapshot_output_fusion_for_weight(self, weight):
+        """Resolve the rollback-capturing sibling of a fused chain GDN."""
+
+        quant = str(weight.spec.quant_key)
+        cache = self.__dict__.setdefault(
+            "_gguf_gdn_chain_snapshot_output_fusion_fn_cache",
+            {},
+        )
+        cache_key = (str(self.backend), quant)
+        if cache_key not in cache:
+            cache[cache_key] = resolve(
+                backend=self.backend,
+                layer="gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+                quant=quant,
+                variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+                missing="none",
+            )
+        return cache[cache_key]
+
     def _full_attn_decode_batch_native_fn(self):
         """Return the exact compact-row attention leaf on the quant axis."""
 
@@ -4249,6 +4268,25 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _deferred_linear_state_snapshot_producers_available(self) -> bool:
+        """Require every producer needed before omitting the initial copy."""
+
+        if self.weights is None:
+            return False
+        plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
+        if not plan.available or not plan.snapshot_available:
+            return False
+        for layer_id, layer_type in enumerate(self.weights.config.layer_types):
+            if layer_type != LINEAR_ATTENTION:
+                continue
+            ssm_out_weight = self.weights.layer(layer_id).weight("ssm_out")
+            if self._gdn_chain_output_fusion_for_weight(ssm_out_weight) is not None:
+                if not callable(
+                    self._gdn_chain_snapshot_output_fusion_for_weight(ssm_out_weight)
+                ):
+                    return False
+        return True
+
     def _try_run_linear_attention_chain_journal_rows_exact(
         self,
         layer,
@@ -4260,8 +4298,10 @@ class Qwen35GGUFFullStackRunner:
         linear_state_rows: tuple[object, object],
         commit_final_linear_state: bool,
         stream: int,
+        initial_state_snapshot: tuple[object, object] | None = None,
         runtime,
         gdn_output_fusion=None,
+        gdn_initial_state_output_fusion=None,
     ) -> bool:
         """Write exact Conv/GDN row journals through registered chain owners."""
 
@@ -4274,18 +4314,44 @@ class Qwen35GGUFFullStackRunner:
         assert self.weights is not None
         cfg = self.weights.config
         conv_state_rows, recurrent_state_rows = linear_state_rows
-        plan.conv(
-            scratch.linear_qkv.ptr,
-            conv_state.ptr,
-            conv_state_rows.ptr,
-            layer.weight("ssm_conv1d").allocation().tensor.ptr,
-            scratch.conv_out.ptr,
-            rows,
-            self.linear_qkv_width,
-            cfg.ssm_conv_kernel,
-            stream=stream,
-            runtime=runtime,
-        )
+        conv_producer = plan.conv
+        gdn_producer = gdn_output_fusion if gdn_output_fusion is not None else plan.gdn
+        if initial_state_snapshot is not None:
+            conv_producer = plan.conv_snapshot
+            gdn_producer = (
+                gdn_initial_state_output_fusion
+                if gdn_output_fusion is not None
+                else plan.gdn_snapshot
+            )
+            if not callable(conv_producer) or not callable(gdn_producer):
+                return False
+            conv_initial_snapshot, recurrent_initial_snapshot = initial_state_snapshot
+            conv_producer(
+                scratch.linear_qkv.ptr,
+                conv_state.ptr,
+                conv_state_rows.ptr,
+                conv_initial_snapshot.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                rows,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            conv_producer(
+                scratch.linear_qkv.ptr,
+                conv_state.ptr,
+                conv_state_rows.ptr,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr,
+                rows,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
         gdn_args = (
             scratch.conv_out.ptr,
             scratch.linear_z.ptr,
@@ -4299,7 +4365,22 @@ class Qwen35GGUFFullStackRunner:
             scratch.recurrent_out.ptr,
             scratch.recurrent_out.ptr,
         )
-        if gdn_output_fusion is None:
+        if initial_state_snapshot is not None:
+            gdn_producer(
+                *gdn_args[:9],
+                recurrent_initial_snapshot.ptr,
+                *gdn_args[9:],
+                *((scratch.recurrent_bf16.ptr,) if gdn_output_fusion is not None else ()),
+                cfg.rms_norm_eps,
+                rows,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif gdn_output_fusion is None:
             plan.gdn(
                 *gdn_args,
                 cfg.rms_norm_eps,
@@ -4351,6 +4432,7 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         decode_scratch,
         linear_state_rows: tuple[object, object] | None = None,
+        initial_state_snapshot: tuple[object, object] | None = None,
         hidden_f32_ptr: int | None = None,
         commit_final_linear_state: bool = True,
         stream: int = 0,
@@ -4440,6 +4522,11 @@ class Qwen35GGUFFullStackRunner:
         gdn_output_fusion = self._gdn_chain_output_fusion_for_weight(
             ssm_out_weight
         )
+        gdn_initial_state_output_fusion = (
+            self._gdn_chain_snapshot_output_fusion_for_weight(ssm_out_weight)
+            if initial_state_snapshot is not None
+            else None
+        )
         used_chain_journal = bool(
             linear_state_rows is not None
             and self._try_run_linear_attention_chain_journal_rows_exact(
@@ -4452,9 +4539,15 @@ class Qwen35GGUFFullStackRunner:
                 commit_final_linear_state=bool(commit_final_linear_state),
                 stream=stream,
                 runtime=runtime,
+                initial_state_snapshot=initial_state_snapshot,
                 gdn_output_fusion=gdn_output_fusion,
+                gdn_initial_state_output_fusion=gdn_initial_state_output_fusion,
             )
         )
+        if initial_state_snapshot is not None and not used_chain_journal:
+            raise RuntimeError(
+                "deferred initial-state capture lost an exact Conv/GDN producer"
+            )
         gdn_bf16_ready = used_chain_journal and gdn_output_fusion is not None
         if not used_chain_journal:
             qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
@@ -5647,6 +5740,7 @@ class Qwen35GGUFFullStackRunner:
         decode_scratch,
         start_position: int = 0,
         linear_state_rows: tuple[object, object] | None = None,
+        initial_state_snapshot: tuple[object, object] | None = None,
         commit_final_linear_state: bool = True,
         hidden_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
@@ -5700,6 +5794,7 @@ class Qwen35GGUFFullStackRunner:
                 rows=rows,
                 decode_scratch=decode_scratch,
                 linear_state_rows=linear_state_rows,
+                initial_state_snapshot=initial_state_snapshot,
                 hidden_f32_ptr=hidden_f32_ptr,
                 commit_final_linear_state=commit_final_linear_state,
                 stream=stream,
@@ -10782,6 +10877,9 @@ class Qwen35GGUFResidentSession:
     _verify_linear_conv_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_recurrent_state_rows: tuple[object | None, ...] = field(default=(), init=False)
     _verify_linear_state_rows_capacity: int = field(default=0, init=False)
+    _verify_linear_conv_initial_snapshots: tuple[object | None, ...] = field(default=(), init=False)
+    _verify_linear_recurrent_initial_snapshots: tuple[object | None, ...] = field(default=(), init=False)
+    _verify_linear_initial_snapshot_users: int = field(default=0, init=False)
     _verify_linear_state_src_conv_table_buf: object | None = field(default=None, init=False)
     _verify_linear_state_src_recurrent_table_buf: object | None = field(default=None, init=False)
     _verify_linear_state_dst_conv_table_buf: object | None = field(default=None, init=False)
@@ -13973,6 +14071,20 @@ class Qwen35GGUFResidentSession:
                                 linear_state_rows=(
                                     self._verify_linear_state_row_pair(layer_id)
                                     if capture_linear_state_rows
+                                    else None
+                                ),
+                                initial_state_snapshot=(
+                                    self._verify_linear_initial_snapshot_pair(layer_id)
+                                    if capture_linear_state_rows
+                                    and defer_linear_state_commit
+                                    and int(
+                                        getattr(
+                                            self,
+                                            "_verify_linear_initial_snapshot_users",
+                                            0,
+                                        )
+                                    )
+                                    > 0
                                     else None
                                 ),
                                 commit_final_linear_state=not bool(
@@ -17334,6 +17446,152 @@ class Qwen35GGUFResidentSession:
             return None
         return conv_rows, recurrent_rows
 
+    def _free_verify_linear_initial_snapshot_buffers(
+        self,
+        *,
+        runtime: HipRuntime,
+    ) -> None:
+        for buffer in (
+            *self._verify_linear_recurrent_initial_snapshots,
+            *self._verify_linear_conv_initial_snapshots,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._verify_linear_conv_initial_snapshots = ()
+        self._verify_linear_recurrent_initial_snapshots = ()
+        self._verify_linear_initial_snapshot_users = 0
+
+    def _ensure_verify_linear_initial_snapshot_buffers(
+        self,
+        *,
+        runtime: HipRuntime,
+    ) -> None:
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        conv_states = tuple(self.scratch.layer_conv_states)
+        recurrent_states = tuple(self.scratch.layer_recurrent_states)
+        ready = (
+            len(self._verify_linear_conv_initial_snapshots) == len(conv_states)
+            and len(self._verify_linear_recurrent_initial_snapshots)
+            == len(recurrent_states)
+            and all(
+                snapshot is None
+                if state is None
+                else snapshot is not None
+                and int(snapshot.nbytes) == int(state.nbytes)
+                for state, snapshot in zip(
+                    conv_states,
+                    self._verify_linear_conv_initial_snapshots,
+                    strict=True,
+                )
+            )
+            and all(
+                snapshot is None
+                if state is None
+                else snapshot is not None
+                and int(snapshot.nbytes) == int(state.nbytes)
+                for state, snapshot in zip(
+                    recurrent_states,
+                    self._verify_linear_recurrent_initial_snapshots,
+                    strict=True,
+                )
+            )
+        )
+        if ready:
+            return
+        if self._verify_linear_initial_snapshot_users:
+            raise RuntimeError("cannot replace an active initial-state snapshot binding")
+        self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
+        allocated: list[object] = []
+        conv_snapshots: list[object | None] = []
+        recurrent_snapshots: list[object | None] = []
+        try:
+            for conv_state, recurrent_state in zip(
+                conv_states,
+                recurrent_states,
+                strict=True,
+            ):
+                if conv_state is None or recurrent_state is None:
+                    if conv_state is not None or recurrent_state is not None:
+                        raise RuntimeError("linear-attention state families are not paired")
+                    conv_snapshots.append(None)
+                    recurrent_snapshots.append(None)
+                    continue
+                conv_snapshot = malloc(int(conv_state.nbytes), runtime=runtime)
+                allocated.append(conv_snapshot)
+                recurrent_snapshot = malloc(
+                    int(recurrent_state.nbytes),
+                    runtime=runtime,
+                )
+                allocated.append(recurrent_snapshot)
+                conv_snapshots.append(conv_snapshot)
+                recurrent_snapshots.append(recurrent_snapshot)
+        except BaseException:
+            for buffer in reversed(allocated):
+                free(buffer, runtime=runtime)
+            raise
+        self._verify_linear_conv_initial_snapshots = tuple(conv_snapshots)
+        self._verify_linear_recurrent_initial_snapshots = tuple(
+            recurrent_snapshots
+        )
+
+    def _verify_linear_initial_snapshot_pair(
+        self,
+        layer_id: int,
+    ) -> tuple[object, object] | None:
+        if (
+            not self._verify_linear_conv_initial_snapshots
+            or not self._verify_linear_recurrent_initial_snapshots
+        ):
+            return None
+        conv_snapshot = self._verify_linear_conv_initial_snapshots[int(layer_id)]
+        recurrent_snapshot = self._verify_linear_recurrent_initial_snapshots[
+            int(layer_id)
+        ]
+        if conv_snapshot is None or recurrent_snapshot is None:
+            return None
+        return conv_snapshot, recurrent_snapshot
+
+    def _acquire_verify_initial_state_capture(self):
+        """Borrow one-row rollback buffers only for an exact producer plan."""
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if not self.runner._deferred_linear_state_snapshot_producers_available():
+            return None
+        runtime = self.runtime or get_hip_runtime()
+        self._ensure_verify_linear_initial_snapshot_buffers(runtime=runtime)
+        conv_rows: list[tuple[int, object, object]] = []
+        recurrent_rows: list[tuple[int, object, object]] = []
+        for layer_id, (conv_state, recurrent_state) in enumerate(
+            zip(
+                self.scratch.layer_conv_states,
+                self.scratch.layer_recurrent_states,
+                strict=True,
+            )
+        ):
+            if conv_state is None or recurrent_state is None:
+                continue
+            snapshots = self._verify_linear_initial_snapshot_pair(layer_id)
+            if snapshots is None:
+                raise RuntimeError(
+                    f"layer {layer_id} is missing initial-state snapshot storage"
+                )
+            conv_snapshot, recurrent_snapshot = snapshots
+            conv_rows.append((layer_id, conv_state, conv_snapshot))
+            recurrent_rows.append((layer_id, recurrent_state, recurrent_snapshot))
+        if not conv_rows or tuple(row[0] for row in conv_rows) != tuple(
+            row[0] for row in recurrent_rows
+        ):
+            return None
+        self._verify_linear_initial_snapshot_users += 1
+        return tuple(conv_rows), tuple(recurrent_rows)
+
+    def _release_verify_initial_state_capture(self) -> None:
+        if self._verify_linear_initial_snapshot_users <= 0:
+            raise RuntimeError("initial-state snapshot capture is not acquired")
+        self._verify_linear_initial_snapshot_users -= 1
+
     def packed_workspace_nbytes(self) -> int:
         """Return owner-only packed workspace bytes retained by this session."""
 
@@ -19427,6 +19685,7 @@ class Qwen35GGUFResidentSession:
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
         self._free_verify_linear_state_row_buffers(runtime=runtime)
+        self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
         self._free_packed_verify_workspace(runtime=runtime)
         for buffer in reversed(self._buffers):
             if buffer is not None:
@@ -21228,6 +21487,18 @@ _GDN_CHAIN_JOURNAL_BF16_KEY = KernelKey(
     "gguf_qwen35",
     "bf16_c1_exact_state_rows_tloop",
 )
+_LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_chain_conv_decode+snapshot",
+    "gguf_qwen35",
+    "bf16_c1_exact_state_rows_tloop",
+)
+_GDN_CHAIN_SNAPSHOT_BF16_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_chain_recurrent_rmsnorm_gate+snapshot",
+    "gguf_qwen35",
+    "bf16_c1_exact_state_rows_tloop",
+)
 _GDN_PREFILL_PREPARE_KEY = KernelKey(
     "hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"
 )
@@ -21483,10 +21754,16 @@ class _GGUFLinearAttentionChainJournalPlan:
 
     conv: object | None
     gdn: object | None
+    conv_snapshot: object | None
+    gdn_snapshot: object | None
 
     @property
     def available(self) -> bool:
         return callable(self.conv) and callable(self.gdn)
+
+    @property
+    def snapshot_available(self) -> bool:
+        return callable(self.conv_snapshot) and callable(self.gdn_snapshot)
 
 
 @dataclass(frozen=True)
@@ -21897,6 +22174,8 @@ def _resolve_gguf_linear_attention_chain_journal_plan(
     return _GGUFLinearAttentionChainJournalPlan(
         conv=_resolve_exact(_LINEAR_ATTN_CHAIN_CONV_JOURNAL_BF16_KEY),
         gdn=_resolve_exact(_GDN_CHAIN_JOURNAL_BF16_KEY),
+        conv_snapshot=_resolve_exact(_LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY),
+        gdn_snapshot=_resolve_exact(_GDN_CHAIN_SNAPSHOT_BF16_KEY),
     )
 
 

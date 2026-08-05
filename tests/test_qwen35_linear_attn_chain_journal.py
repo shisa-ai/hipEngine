@@ -14,6 +14,8 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kernels.hip_gfx1100.linear_attn import conv as conv_module
+from hipengine.kernels.hip_gfx1100.linear_attn import gdn as gdn_module
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_chain_conv_decode_bf16_tloop,
     qwen35_linear_attn_conv_decode_bf16,
@@ -30,6 +32,9 @@ from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 
 _CHAIN_CONV_VARIANT = "bf16_c1_exact_state_rows_tloop"
 _CHAIN_GDN_VARIANT = "bf16_c1_exact_state_rows_tloop"
+_CHAIN_CONV_SNAPSHOT_LAYER = "linear_attn_chain_conv_decode+snapshot"
+_CHAIN_GDN_SNAPSHOT_LAYER = "gdn_chain_recurrent_rmsnorm_gate+snapshot"
+_CHAIN_GDN_CAST_SNAPSHOT_LAYER = "gdn_chain_recurrent_rmsnorm_gate+cast+snapshot"
 
 
 def _hip_available() -> bool:
@@ -133,6 +138,61 @@ def test_chain_journal_exact_producers_are_registered() -> None:
         )
         is qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer=_CHAIN_CONV_SNAPSHOT_LAYER,
+            quant="gguf_qwen35",
+            variant=_CHAIN_CONV_VARIANT,
+        )
+        is getattr(
+            conv_module,
+            "qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop",
+        )
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer=_CHAIN_GDN_SNAPSHOT_LAYER,
+            quant="gguf_qwen35",
+            variant=_CHAIN_GDN_VARIANT,
+        )
+        is getattr(
+            gdn_module,
+            "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_bf16",
+        )
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer=_CHAIN_GDN_CAST_SNAPSHOT_LAYER,
+            quant="gguf_q5_k_t16_v1",
+            variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        )
+        is getattr(
+            gdn_module,
+            "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f32_bf16_out",
+        )
+    )
+    for layer, quant, variant in (
+        (_CHAIN_CONV_SNAPSHOT_LAYER, "gguf_qwen35", _CHAIN_CONV_VARIANT),
+        (_CHAIN_GDN_SNAPSHOT_LAYER, "gguf_qwen35", _CHAIN_GDN_VARIANT),
+        (
+            _CHAIN_GDN_CAST_SNAPSHOT_LAYER,
+            "gguf_q5_k_t16_v1",
+            "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+        ),
+    ):
+        assert (
+            resolve(
+                backend="hip_gfx1151",
+                layer=layer,
+                quant=quant,
+                variant=variant,
+                missing="none",
+            )
+            is None
+        )
 
 
 def test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership() -> None:
@@ -203,9 +263,31 @@ def test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership() -> 
     recurrent_state = SimpleNamespace(ptr=0x9000, nbytes=96)
     conv_rows = SimpleNamespace(ptr=0xA000)
     recurrent_rows = SimpleNamespace(ptr=0xB000)
+    conv_snapshot = SimpleNamespace(ptr=0xC000)
+    recurrent_snapshot = SimpleNamespace(ptr=0xD000)
+    conv_snapshot_key = KernelKey(
+        backend,
+        _CHAIN_CONV_SNAPSHOT_LAYER,
+        "gguf_qwen35",
+        _CHAIN_CONV_VARIANT,
+    )
+    gdn_snapshot_key = KernelKey(
+        backend,
+        _CHAIN_GDN_SNAPSHOT_LAYER,
+        "gguf_qwen35",
+        _CHAIN_GDN_VARIANT,
+    )
+
+    def conv_with_snapshot(*args, **kwargs):
+        calls.append(("conv_snapshot", args, kwargs))
+
+    def gdn_with_snapshot(*args, **kwargs):
+        calls.append(("gdn_snapshot", args, kwargs))
 
     register(conv_key, conv, replace=True)
     register(gdn_key, gdn, replace=True)
+    register(conv_snapshot_key, conv_with_snapshot, replace=True)
+    register(gdn_snapshot_key, gdn_with_snapshot, replace=True)
     try:
         assert runner._try_run_linear_attention_chain_journal_rows_exact(
             layer,
@@ -288,6 +370,99 @@ def test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership() -> 
         assert runtime.copies == []
 
         calls.clear()
+        assert runner._try_run_linear_attention_chain_journal_rows_exact(
+            layer,
+            scratch,
+            conv_state,
+            recurrent_state,
+            rows=4,
+            linear_state_rows=(conv_rows, recurrent_rows),
+            initial_state_snapshot=(conv_snapshot, recurrent_snapshot),
+            commit_final_linear_state=False,
+            stream=22,
+            runtime=runtime,
+        )
+        assert [name for name, _args, _kwargs in calls] == [
+            "conv_snapshot",
+            "gdn_snapshot",
+        ]
+        assert calls[0][1][:6] == (
+            0x1000,
+            0x8000,
+            0xA000,
+            0xC000,
+            0x6000,
+            0x2000,
+        )
+        assert calls[1][1][7:11] == (0x9000, 0xB000, 0xD000, 0x7000)
+        assert runtime.copies == []
+
+        calls.clear()
+
+        def fused_snapshot_gdn(*args, **kwargs):
+            calls.append(("gdn_fused_snapshot", args, kwargs))
+
+        assert runner._try_run_linear_attention_chain_journal_rows_exact(
+            layer,
+            scratch,
+            conv_state,
+            recurrent_state,
+            rows=4,
+            linear_state_rows=(conv_rows, recurrent_rows),
+            initial_state_snapshot=(conv_snapshot, recurrent_snapshot),
+            commit_final_linear_state=False,
+            stream=22,
+            runtime=runtime,
+            gdn_output_fusion=fused_gdn,
+            gdn_initial_state_output_fusion=fused_snapshot_gdn,
+        )
+        assert [name for name, _args, _kwargs in calls] == [
+            "conv_snapshot",
+            "gdn_fused_snapshot",
+        ]
+        assert calls[1][1][7:13] == (
+            0x9000,
+            0xB000,
+            0xD000,
+            0x7000,
+            0x7000,
+            0x7100,
+        )
+
+        calls.clear()
+        assert not runner._try_run_linear_attention_chain_journal_rows_exact(
+            layer,
+            scratch,
+            conv_state,
+            recurrent_state,
+            rows=4,
+            linear_state_rows=(conv_rows, recurrent_rows),
+            initial_state_snapshot=(conv_snapshot, recurrent_snapshot),
+            commit_final_linear_state=False,
+            stream=22,
+            runtime=runtime,
+            gdn_output_fusion=fused_gdn,
+            gdn_initial_state_output_fusion=None,
+        )
+        assert calls == []
+
+        unregister(gdn_snapshot_key)
+        assert not runner._try_run_linear_attention_chain_journal_rows_exact(
+            layer,
+            scratch,
+            conv_state,
+            recurrent_state,
+            rows=4,
+            linear_state_rows=(conv_rows, recurrent_rows),
+            initial_state_snapshot=(conv_snapshot, recurrent_snapshot),
+            commit_final_linear_state=False,
+            stream=22,
+            runtime=runtime,
+        )
+        assert calls == []
+        register(gdn_snapshot_key, gdn_with_snapshot, replace=True)
+
+        calls.clear()
         unregister(gdn_key)
         assert not runner._try_run_linear_attention_chain_journal_rows_exact(
             layer,
@@ -305,6 +480,8 @@ def test_chain_journal_route_is_fail_closed_and_preserves_commit_ownership() -> 
     finally:
         unregister(conv_key)
         unregister(gdn_key)
+        unregister(conv_snapshot_key)
+        unregister(gdn_snapshot_key)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
@@ -314,6 +491,14 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
 
     rng = np.random.default_rng(80427 + rows)
     runtime = get_hip_runtime()
+    conv_snapshot_kernel = getattr(
+        conv_module,
+        "qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop",
+    )
+    gdn_snapshot_kernel = getattr(
+        gdn_module,
+        "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f32_bf16_out",
+    )
     kernel_size = 4
     channels = 10240
     num_k_heads = 16
@@ -351,10 +536,14 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
     conv_weight_d = device(conv_weight)
     conv_scalar_d = device(conv_initial)
     conv_chain_d = device(conv_initial)
+    conv_snapshot_base_d = device(conv_initial)
+    conv_initial_snapshot_d = empty(conv_initial.nbytes)
     conv_out_scalar_d = empty(rows * channels * np.dtype(np.float32).itemsize)
     conv_out_chain_d = empty(rows * channels * np.dtype(np.float32).itemsize)
+    conv_out_snapshot_d = empty(rows * channels * np.dtype(np.float32).itemsize)
     conv_rows_scalar_d = empty(rows * conv_initial.nbytes)
     conv_rows_chain_d = empty(rows * conv_initial.nbytes)
+    conv_rows_snapshot_d = empty(rows * conv_initial.nbytes)
     gate_d = device(gate)
     alpha_d = device(alpha)
     beta_d = device(beta)
@@ -364,6 +553,8 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
     recurrent_scalar_d = device(recurrent_initial)
     recurrent_dual_d = device(recurrent_initial)
     recurrent_chain_d = device(recurrent_initial)
+    recurrent_snapshot_base_d = device(recurrent_initial)
+    recurrent_initial_snapshot_d = empty(recurrent_initial.nbytes)
     recurrent_out_scalar_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
     recurrent_out_dual_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
     recurrent_out_dual_bf16_d = empty(
@@ -375,7 +566,15 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
     )
     recurrent_rows_scalar_d = empty(rows * recurrent_initial.nbytes)
     recurrent_rows_chain_d = empty(rows * recurrent_initial.nbytes)
+    recurrent_rows_snapshot_d = empty(rows * recurrent_initial.nbytes)
+    recurrent_out_snapshot_d = empty(
+        rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize
+    )
+    recurrent_out_snapshot_bf16_d = empty(
+        rows * num_v_heads * head_v_dim * np.dtype(np.uint16).itemsize
+    )
     acc_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
+    snapshot_acc_d = empty(rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize)
 
     try:
         hidden_row_nbytes = channels * np.dtype(np.uint16).itemsize
@@ -406,6 +605,18 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
             conv_rows_chain_d.ptr,
             conv_weight_d.ptr,
             conv_out_chain_d.ptr,
+            rows,
+            channels,
+            kernel_size,
+            runtime=runtime,
+        )
+        conv_snapshot_kernel(
+            hidden_d.ptr,
+            conv_snapshot_base_d.ptr,
+            conv_rows_snapshot_d.ptr,
+            conv_initial_snapshot_d.ptr,
+            conv_weight_d.ptr,
+            conv_out_snapshot_d.ptr,
             rows,
             channels,
             kernel_size,
@@ -476,6 +687,28 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
             head_v_dim,
             runtime=runtime,
         )
+        gdn_snapshot_kernel(
+            conv_out_snapshot_d.ptr,
+            gate_d.ptr,
+            alpha_d.ptr,
+            beta_d.ptr,
+            dt_bias_d.ptr,
+            a_log_d.ptr,
+            norm_weight_d.ptr,
+            recurrent_snapshot_base_d.ptr,
+            recurrent_rows_snapshot_d.ptr,
+            recurrent_initial_snapshot_d.ptr,
+            snapshot_acc_d.ptr,
+            recurrent_out_snapshot_d.ptr,
+            recurrent_out_snapshot_bf16_d.ptr,
+            1.0e-6,
+            rows,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
 
         conv_out_scalar = _from_device(conv_out_scalar_d, (rows, channels), np.float32)
@@ -488,6 +721,21 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
         conv_rows_chain = _from_device(
             conv_rows_chain_d,
             (rows, channels, kernel_size),
+            np.float32,
+        )
+        conv_out_snapshot = _from_device(
+            conv_out_snapshot_d,
+            (rows, channels),
+            np.float32,
+        )
+        conv_rows_snapshot = _from_device(
+            conv_rows_snapshot_d,
+            (rows, channels, kernel_size),
+            np.float32,
+        )
+        conv_initial_snapshot = _from_device(
+            conv_initial_snapshot_d,
+            conv_initial.shape,
             np.float32,
         )
         recurrent_out_scalar = _from_device(
@@ -525,6 +773,26 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
             (rows, *recurrent_shape),
             np.float32,
         )
+        recurrent_out_snapshot = _from_device(
+            recurrent_out_snapshot_d,
+            (rows, num_v_heads, head_v_dim),
+            np.float32,
+        )
+        recurrent_out_snapshot_bf16 = _from_device(
+            recurrent_out_snapshot_bf16_d,
+            (rows, num_v_heads, head_v_dim),
+            np.uint16,
+        )
+        recurrent_rows_snapshot = _from_device(
+            recurrent_rows_snapshot_d,
+            (rows, *recurrent_shape),
+            np.float32,
+        )
+        recurrent_initial_snapshot = _from_device(
+            recurrent_initial_snapshot_d,
+            recurrent_initial.shape,
+            np.float32,
+        )
         conv_chain_base = _from_device(conv_chain_d, conv_initial.shape, np.float32)
         recurrent_scalar_base = _from_device(
             recurrent_scalar_d,
@@ -544,6 +812,9 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
 
         assert np.array_equal(conv_out_chain.view(np.uint32), conv_out_scalar.view(np.uint32))
         assert np.array_equal(conv_rows_chain.view(np.uint32), conv_rows_scalar.view(np.uint32))
+        assert np.array_equal(conv_out_snapshot.view(np.uint32), conv_out_scalar.view(np.uint32))
+        assert np.array_equal(conv_rows_snapshot.view(np.uint32), conv_rows_scalar.view(np.uint32))
+        assert np.array_equal(conv_initial_snapshot.view(np.uint32), conv_initial.view(np.uint32))
         assert np.array_equal(
             recurrent_out_dual.view(np.uint32),
             recurrent_out_scalar.view(np.uint32),
@@ -567,6 +838,22 @@ def test_chain_journal_production_shape_is_byte_exact_to_scalar_decode(rows: int
         assert np.array_equal(
             recurrent_rows_chain.view(np.uint32),
             recurrent_rows_scalar.view(np.uint32),
+        )
+        assert np.array_equal(
+            recurrent_out_snapshot.view(np.uint32),
+            recurrent_out_scalar.view(np.uint32),
+        )
+        assert np.array_equal(
+            recurrent_out_snapshot_bf16,
+            _f32_to_bf16_u16(recurrent_out_scalar),
+        )
+        assert np.array_equal(
+            recurrent_rows_snapshot.view(np.uint32),
+            recurrent_rows_scalar.view(np.uint32),
+        )
+        assert np.array_equal(
+            recurrent_initial_snapshot.view(np.uint32),
+            recurrent_initial.view(np.uint32),
         )
         assert np.array_equal(conv_chain_base.view(np.uint32), conv_initial.view(np.uint32))
         assert np.array_equal(

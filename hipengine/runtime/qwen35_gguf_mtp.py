@@ -171,10 +171,18 @@ class _StateJournal:
     initial_hidden: DeviceBuffer
     row_hidden: DeviceBuffer
     initial_state_copy: _InitialStatePairCopy | None
+    producer_capture_initial_state: bool
+    initial_state_captured: bool
     buffers: tuple[DeviceBuffer, ...]
 
     @classmethod
-    def allocate(cls, target: Qwen35GGUFResidentSession, *, max_rows: int) -> "_StateJournal":
+    def allocate(
+        cls,
+        target: Qwen35GGUFResidentSession,
+        *,
+        max_rows: int,
+        producer_capture_initial_state: bool = False,
+    ) -> "_StateJournal":
         owner = target._target_scratch_owner
         if owner is None or target.runner is None:
             raise RuntimeError("GGUF target session is closed")
@@ -185,28 +193,48 @@ class _StateJournal:
         buffers: list[DeviceBuffer] = []
         conv_rows: list[tuple[int, DeviceBuffer, DeviceBuffer]] = []
         recurrent_rows: list[tuple[int, DeviceBuffer, DeviceBuffer]] = []
-        for family_rows, states in (
-            (conv_rows, owner.layer_conv_states),
-            (recurrent_rows, owner.layer_recurrent_states),
-        ):
-            for layer_id, state in enumerate(states):
-                if state is None:
-                    continue
-                snapshots = malloc(int(max_rows + 1) * int(state.nbytes), runtime=runtime)
-                buffers.append(snapshots)
-                family_rows.append((int(layer_id), state, snapshots))
-        hidden_nbytes = int(target.runner.hidden_size) * DType.BF16.itemsize
-        initial_hidden = malloc(hidden_nbytes, runtime=runtime)
-        row_hidden = malloc(int(max_rows) * hidden_nbytes, runtime=runtime)
-        buffers.extend((initial_hidden, row_hidden))
-        initial_state_copy = cls._allocate_initial_state_copy(
-            target,
-            conv_rows=conv_rows,
-            recurrent_rows=recurrent_rows,
-            runtime=runtime,
-        )
-        if initial_state_copy is not None:
-            buffers.extend(initial_state_copy.buffers)
+        producer_capture_active = False
+        if producer_capture_initial_state:
+            acquire = getattr(target, "_acquire_verify_initial_state_capture", None)
+            captured = acquire() if callable(acquire) else None
+            if captured is not None:
+                conv_rows = list(captured[0])
+                recurrent_rows = list(captured[1])
+                producer_capture_active = True
+        try:
+            if not producer_capture_active:
+                for family_rows, states in (
+                    (conv_rows, owner.layer_conv_states),
+                    (recurrent_rows, owner.layer_recurrent_states),
+                ):
+                    for layer_id, state in enumerate(states):
+                        if state is None:
+                            continue
+                        snapshots = malloc(
+                            int(max_rows + 1) * int(state.nbytes),
+                            runtime=runtime,
+                        )
+                        buffers.append(snapshots)
+                        family_rows.append((int(layer_id), state, snapshots))
+            hidden_nbytes = int(target.runner.hidden_size) * DType.BF16.itemsize
+            initial_hidden = malloc(hidden_nbytes, runtime=runtime)
+            buffers.append(initial_hidden)
+            row_hidden = malloc(int(max_rows) * hidden_nbytes, runtime=runtime)
+            buffers.append(row_hidden)
+            initial_state_copy = cls._allocate_initial_state_copy(
+                target,
+                conv_rows=conv_rows,
+                recurrent_rows=recurrent_rows,
+                runtime=runtime,
+            )
+            if initial_state_copy is not None:
+                buffers.extend(initial_state_copy.buffers)
+        except BaseException:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+            if producer_capture_active:
+                target._release_verify_initial_state_capture()
+            raise
         return cls(
             target=target,
             max_rows=int(max_rows),
@@ -217,6 +245,8 @@ class _StateJournal:
             initial_hidden=initial_hidden,
             row_hidden=row_hidden,
             initial_state_copy=initial_state_copy,
+            producer_capture_initial_state=producer_capture_active,
+            initial_state_captured=False,
             buffers=tuple(buffers),
         )
 
@@ -301,10 +331,21 @@ class _StateJournal:
         return int(self.initial_hidden.nbytes)
 
     def capture_initial(self, *, stream: int = 0) -> None:
+        self.initial_state_captured = False
         hidden = self.target.last_target_hidden
         self._copy_d2d(self.initial_hidden.ptr, hidden.ptr, self.hidden_nbytes, stream=stream)
+        if self.producer_capture_initial_state:
+            return
         if not self._copy_initial_state(restore=False, stream=stream):
             self._capture_state_index(0, stream=stream)
+        self.initial_state_captured = True
+
+    def mark_initial_state_captured(self) -> None:
+        """Publish a fully retired producer-folded rollback snapshot."""
+
+        if not self.producer_capture_initial_state:
+            raise RuntimeError("initial state is not owned by producer capture")
+        self.initial_state_captured = True
 
     def capture_row(self, row: int, *, stream: int = 0) -> None:
         row = int(row)
@@ -338,8 +379,9 @@ class _StateJournal:
         )
 
     def restore_initial(self, *, stream: int = 0) -> None:
-        if not self._copy_initial_state(restore=True, stream=stream):
-            self._restore_state_index(0, stream=stream)
+        if self.initial_state_captured:
+            if not self._copy_initial_state(restore=True, stream=stream):
+                self._restore_state_index(0, stream=stream)
         self._restore_hidden(self.initial_hidden.ptr, stream=stream)
 
     def restore_row(self, row: int, *, stream: int = 0) -> None:
@@ -374,8 +416,13 @@ class _StateJournal:
 
     def close(self) -> None:
         runtime = self.target.runtime
-        for buffer in reversed(self.buffers):
-            free(buffer, runtime=runtime)
+        try:
+            for buffer in reversed(self.buffers):
+                free(buffer, runtime=runtime)
+        finally:
+            if self.producer_capture_initial_state:
+                self.target._release_verify_initial_state_capture()
+                self.producer_capture_initial_state = False
 
     def _copy_initial_state(self, *, restore: bool, stream: int) -> bool:
         plan = self.initial_state_copy
@@ -477,7 +524,11 @@ class Qwen35GGUFTransactionalVerifier:
         self.quant = str(quant)
         self.target_verify_mode = selected_verify_mode
         self.workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=target.runtime)
-        self.journal = _StateJournal.allocate(target, max_rows=self.max_candidate_budget + 1)
+        self.journal = _StateJournal.allocate(
+            target,
+            max_rows=self.max_candidate_budget + 1,
+            producer_capture_initial_state=(selected_verify_mode == "native"),
+        )
         self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
         self._prepared: Qwen35GGUFPreparedVerify | None = None
         self._accept_kernel = resolve(
@@ -597,6 +648,8 @@ class Qwen35GGUFTransactionalVerifier:
                     raise RuntimeError("native GGUF target verifier produced no host result")
                 if int(block.start_position) != initial_position:
                     raise RuntimeError("native GGUF target verifier changed the declared root position")
+                if self.journal.producer_capture_initial_state:
+                    self.journal.mark_initial_state_captured()
                 if block.pre_output_norm_hidden is None:
                     raise RuntimeError("native GGUF target verifier did not capture trunk hidden rows")
                 top1.extend(int(token) for token in block.token_ids)
