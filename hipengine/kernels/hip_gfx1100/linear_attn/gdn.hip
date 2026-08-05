@@ -828,6 +828,357 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
 }
 
 
+template <typename scalar_t, bool write_bf16 = false, bool write_snapshot = false>
+__global__ void qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_kernel(
+    const uint16_t* __restrict__ norm,
+    const float* __restrict__ alpha_weight,
+    const float* __restrict__ beta_weight,
+    uint16_t* __restrict__ alpha_out,
+    uint16_t* __restrict__ beta_out,
+    int64_t in_features,
+    const float* __restrict__ conv_out,
+    const scalar_t* __restrict__ gate,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a_log,
+    const float* __restrict__ norm_weight,
+    const float* __restrict__ base_recurrent_state,
+    float* __restrict__ tree_recurrent_state,
+    float* __restrict__ initial_recurrent_state_snapshot,
+    const int64_t* __restrict__ parent_ids,
+    float* __restrict__ out,
+    uint16_t* __restrict__ out_bf16,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  extern __shared__ float shared[];
+  float* projection_partial = shared;
+  float* q_shared = projection_partial + 8 * blockDim.x;
+  float* k_shared = q_shared + head_k_dim;
+  float* q_partial = k_shared + head_k_dim;
+  float* k_partial = q_partial + blockDim.x;
+  float* out_shared = k_partial + blockDim.x;
+  float* norm_partial = out_shared + head_v_dim;
+
+  __shared__ uint16_t alpha_shared[4];
+  __shared__ uint16_t beta_shared[4];
+
+  const int64_t v_head = blockIdx.x;
+  if (v_head >= num_v_heads) {
+    return;
+  }
+
+  // Reproduce both scalar local256 dense-F32 GEMV trees for every verifier row,
+  // but load each alpha/beta weight once across the rows. The rounded BF16 bits
+  // are written for surface parity and consumed directly by this same head.
+  float alpha_acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float beta_acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+  constexpr int kValuesPerThread = 8;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * kValuesPerThread;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  const int64_t weight_base = v_head * in_features;
+  for (int64_t k_base = static_cast<int64_t>(threadIdx.x) * kValuesPerThread;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const float* __restrict__ alpha_w = alpha_weight + weight_base + k_base;
+    const float* __restrict__ beta_w = beta_weight + weight_base + k_base;
+#pragma unroll
+    for (int local_row = 0; local_row < 4; ++local_row) {
+      if (local_row < max_nodes) {
+        const uint16_t* __restrict__ x = norm +
+            static_cast<int64_t>(local_row) * in_features + k_base;
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[0]), alpha_w[0], alpha_acc[local_row]);
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[1]), alpha_w[1], alpha_acc[local_row]);
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[2]), alpha_w[2], alpha_acc[local_row]);
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[3]), alpha_w[3], alpha_acc[local_row]);
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[4]), alpha_w[4], alpha_acc[local_row]);
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[5]), alpha_w[5], alpha_acc[local_row]);
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[6]), alpha_w[6], alpha_acc[local_row]);
+        alpha_acc[local_row] = fmaf(bf16_bits_to_float(x[7]), alpha_w[7], alpha_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[0]), beta_w[0], beta_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[1]), beta_w[1], beta_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[2]), beta_w[2], beta_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[3]), beta_w[3], beta_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[4]), beta_w[4], beta_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[5]), beta_w[5], beta_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[6]), beta_w[6], beta_acc[local_row]);
+        beta_acc[local_row] = fmaf(bf16_bits_to_float(x[7]), beta_w[7], beta_acc[local_row]);
+      }
+    }
+  }
+  for (int64_t in_col = main_end + threadIdx.x;
+       in_col < in_features;
+       in_col += blockDim.x) {
+    const float alpha_w = alpha_weight[weight_base + in_col];
+    const float beta_w = beta_weight[weight_base + in_col];
+#pragma unroll
+    for (int local_row = 0; local_row < 4; ++local_row) {
+      if (local_row < max_nodes) {
+        const float x = bf16_bits_to_float(
+            norm[static_cast<int64_t>(local_row) * in_features + in_col]);
+        alpha_acc[local_row] = fmaf(x, alpha_w, alpha_acc[local_row]);
+        beta_acc[local_row] = fmaf(x, beta_w, beta_acc[local_row]);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int local_row = 0; local_row < 4; ++local_row) {
+    projection_partial[(2 * local_row + 0) * blockDim.x + threadIdx.x] =
+        alpha_acc[local_row];
+    projection_partial[(2 * local_row + 1) * blockDim.x + threadIdx.x] =
+        beta_acc[local_row];
+  }
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+#pragma unroll
+      for (int local_row = 0; local_row < 4; ++local_row) {
+        if (local_row < max_nodes) {
+          projection_partial[(2 * local_row + 0) * blockDim.x + threadIdx.x] +=
+              projection_partial[(2 * local_row + 0) * blockDim.x + threadIdx.x + stride];
+          projection_partial[(2 * local_row + 1) * blockDim.x + threadIdx.x] +=
+              projection_partial[(2 * local_row + 1) * blockDim.x + threadIdx.x + stride];
+        }
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+#pragma unroll
+    for (int local_row = 0; local_row < 4; ++local_row) {
+      if (local_row < max_nodes) {
+        const uint16_t alpha_bits = float_to_bf16_bits(
+            projection_partial[(2 * local_row + 0) * blockDim.x]);
+        const uint16_t beta_bits = float_to_bf16_bits(
+            projection_partial[(2 * local_row + 1) * blockDim.x]);
+        alpha_shared[local_row] = alpha_bits;
+        beta_shared[local_row] = beta_bits;
+        alpha_out[static_cast<int64_t>(local_row) * num_v_heads + v_head] = alpha_bits;
+        beta_out[static_cast<int64_t>(local_row) * num_v_heads + v_head] = beta_bits;
+      }
+    }
+  }
+  __syncthreads();
+
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
+  const int64_t key_dim = num_k_heads * head_k_dim;
+  const int64_t value_dim = num_v_heads * head_v_dim;
+  const int64_t conv_stride = (2 * key_dim) + value_dim;
+  const int64_t state_stride = num_v_heads * head_k_dim * head_v_dim;
+  const int64_t state_head_base = v_head * head_k_dim * head_v_dim;
+  const float a_log_v = a_log[v_head];
+  const float dt_bias_v = dt_bias[v_head];
+
+  for (int64_t t = 0; t < max_nodes; ++t) {
+    const int64_t parent = parent_ids == nullptr ? (t - 1) : parent_ids[t];
+    const float* recurrent_state = parent < 0
+        ? base_recurrent_state
+        : tree_recurrent_state + parent * state_stride;
+    float* node_state = tree_recurrent_state + t * state_stride;
+    const int64_t conv_row = t * conv_stride;
+    const int64_t q_base = conv_row + k_head * head_k_dim;
+    const int64_t k_base = conv_row + key_dim + k_head * head_k_dim;
+    const int64_t value_offset = conv_row + 2 * key_dim + v_head * head_v_dim;
+
+    float q_sum = 0.0f;
+    float k_sum = 0.0f;
+    for (int64_t idx = threadIdx.x * 8; idx + 7 < head_k_dim; idx += blockDim.x * 8) {
+      const float q0 = conv_out[q_base + idx + 0];
+      const float q1 = conv_out[q_base + idx + 1];
+      const float q2 = conv_out[q_base + idx + 2];
+      const float q3 = conv_out[q_base + idx + 3];
+      const float q4 = conv_out[q_base + idx + 4];
+      const float q5 = conv_out[q_base + idx + 5];
+      const float q6 = conv_out[q_base + idx + 6];
+      const float q7 = conv_out[q_base + idx + 7];
+      const float k0 = conv_out[k_base + idx + 0];
+      const float k1 = conv_out[k_base + idx + 1];
+      const float k2 = conv_out[k_base + idx + 2];
+      const float k3 = conv_out[k_base + idx + 3];
+      const float k4 = conv_out[k_base + idx + 4];
+      const float k5 = conv_out[k_base + idx + 5];
+      const float k6 = conv_out[k_base + idx + 6];
+      const float k7 = conv_out[k_base + idx + 7];
+      q_shared[idx + 0] = q0;
+      q_shared[idx + 1] = q1;
+      q_shared[idx + 2] = q2;
+      q_shared[idx + 3] = q3;
+      q_shared[idx + 4] = q4;
+      q_shared[idx + 5] = q5;
+      q_shared[idx + 6] = q6;
+      q_shared[idx + 7] = q7;
+      k_shared[idx + 0] = k0;
+      k_shared[idx + 1] = k1;
+      k_shared[idx + 2] = k2;
+      k_shared[idx + 3] = k3;
+      k_shared[idx + 4] = k4;
+      k_shared[idx + 5] = k5;
+      k_shared[idx + 6] = k6;
+      k_shared[idx + 7] = k7;
+      q_sum += q0*q0 + q1*q1 + q2*q2 + q3*q3 + q4*q4 + q5*q5 + q6*q6 + q7*q7;
+      k_sum += k0*k0 + k1*k1 + k2*k2 + k3*k3 + k4*k4 + k5*k5 + k6*k6 + k7*k7;
+    }
+    for (int64_t idx = (head_k_dim & ~7) + threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+      const float q_value = conv_out[q_base + idx];
+      const float k_value = conv_out[k_base + idx];
+      q_shared[idx] = q_value;
+      k_shared[idx] = k_value;
+      q_sum += q_value * q_value;
+      k_sum += k_value * k_value;
+    }
+    if (threadIdx.x < 128) {
+      q_partial[threadIdx.x] = q_sum;
+      k_partial[threadIdx.x] = k_sum;
+    }
+    __syncthreads();
+
+    for (int stride = 64; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
+        k_partial[threadIdx.x] += k_partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+
+    const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = 1.0f / fmaxf(sqrtf(k_partial[0]), 1.0e-6f);
+    const float beta = sigmoid_f32(bf16_bits_to_float(beta_shared[t]));
+    const float decay = expf(-expf(a_log_v) *
+        softplus_f32(bf16_bits_to_float(alpha_shared[t]) + dt_bias_v));
+
+    const int64_t value_idx = threadIdx.x;
+    float out_acc = 0.0f;
+    if (value_idx < head_v_dim) {
+      const int64_t state_col = state_head_base + value_idx;
+      float kv_mem = 0.0f;
+      for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
+        kv_mem += k_shared[idx + 0] * k_scale * recurrent_state[state_col + (idx + 0) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 1] * k_scale * recurrent_state[state_col + (idx + 1) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 2] * k_scale * recurrent_state[state_col + (idx + 2) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 3] * k_scale * recurrent_state[state_col + (idx + 3) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 4] * k_scale * recurrent_state[state_col + (idx + 4) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 5] * k_scale * recurrent_state[state_col + (idx + 5) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 6] * k_scale * recurrent_state[state_col + (idx + 6) * head_v_dim] * decay;
+        kv_mem += k_shared[idx + 7] * k_scale * recurrent_state[state_col + (idx + 7) * head_v_dim] * decay;
+      }
+      for (int64_t idx = (head_k_dim & ~7); idx < head_k_dim; ++idx) {
+        const float k_norm = k_shared[idx] * k_scale;
+        const float state_value = recurrent_state[state_col + idx * head_v_dim] * decay;
+        kv_mem += k_norm * state_value;
+      }
+
+      const float value = conv_out[value_offset + value_idx];
+      const float delta = (value - kv_mem) * beta;
+      for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
+        const float q_norm0 = q_shared[idx + 0] * q_scale;
+        const float q_norm1 = q_shared[idx + 1] * q_scale;
+        const float q_norm2 = q_shared[idx + 2] * q_scale;
+        const float q_norm3 = q_shared[idx + 3] * q_scale;
+        const float q_norm4 = q_shared[idx + 4] * q_scale;
+        const float q_norm5 = q_shared[idx + 5] * q_scale;
+        const float q_norm6 = q_shared[idx + 6] * q_scale;
+        const float q_norm7 = q_shared[idx + 7] * q_scale;
+        const float k_norm0 = k_shared[idx + 0] * k_scale;
+        const float k_norm1 = k_shared[idx + 1] * k_scale;
+        const float k_norm2 = k_shared[idx + 2] * k_scale;
+        const float k_norm3 = k_shared[idx + 3] * k_scale;
+        const float k_norm4 = k_shared[idx + 4] * k_scale;
+        const float k_norm5 = k_shared[idx + 5] * k_scale;
+        const float k_norm6 = k_shared[idx + 6] * k_scale;
+        const float k_norm7 = k_shared[idx + 7] * k_scale;
+        const int64_t so0 = state_col + (idx + 0) * head_v_dim;
+        const int64_t so1 = state_col + (idx + 1) * head_v_dim;
+        const int64_t so2 = state_col + (idx + 2) * head_v_dim;
+        const int64_t so3 = state_col + (idx + 3) * head_v_dim;
+        const int64_t so4 = state_col + (idx + 4) * head_v_dim;
+        const int64_t so5 = state_col + (idx + 5) * head_v_dim;
+        const int64_t so6 = state_col + (idx + 6) * head_v_dim;
+        const int64_t so7 = state_col + (idx + 7) * head_v_dim;
+        const float old0 = recurrent_state[so0];
+        const float old1 = recurrent_state[so1];
+        const float old2 = recurrent_state[so2];
+        const float old3 = recurrent_state[so3];
+        const float old4 = recurrent_state[so4];
+        const float old5 = recurrent_state[so5];
+        const float old6 = recurrent_state[so6];
+        const float old7 = recurrent_state[so7];
+        if constexpr (write_snapshot) {
+          if (t == 0) {
+            initial_recurrent_state_snapshot[so0] = old0;
+            initial_recurrent_state_snapshot[so1] = old1;
+            initial_recurrent_state_snapshot[so2] = old2;
+            initial_recurrent_state_snapshot[so3] = old3;
+            initial_recurrent_state_snapshot[so4] = old4;
+            initial_recurrent_state_snapshot[so5] = old5;
+            initial_recurrent_state_snapshot[so6] = old6;
+            initial_recurrent_state_snapshot[so7] = old7;
+          }
+        }
+        const float ns0 = old0 * decay + k_norm0 * delta;
+        const float ns1 = old1 * decay + k_norm1 * delta;
+        const float ns2 = old2 * decay + k_norm2 * delta;
+        const float ns3 = old3 * decay + k_norm3 * delta;
+        const float ns4 = old4 * decay + k_norm4 * delta;
+        const float ns5 = old5 * decay + k_norm5 * delta;
+        const float ns6 = old6 * decay + k_norm6 * delta;
+        const float ns7 = old7 * decay + k_norm7 * delta;
+        node_state[so0] = ns0;
+        node_state[so1] = ns1;
+        node_state[so2] = ns2;
+        node_state[so3] = ns3;
+        node_state[so4] = ns4;
+        node_state[so5] = ns5;
+        node_state[so6] = ns6;
+        node_state[so7] = ns7;
+        out_acc += q_norm0 * ns0 + q_norm1 * ns1 + q_norm2 * ns2 + q_norm3 * ns3
+                 + q_norm4 * ns4 + q_norm5 * ns5 + q_norm6 * ns6 + q_norm7 * ns7;
+      }
+      for (int64_t idx = (head_k_dim & ~7); idx < head_k_dim; ++idx) {
+        const float q_norm = q_shared[idx] * q_scale;
+        const float k_norm = k_shared[idx] * k_scale;
+        const int64_t state_offset = state_col + idx * head_v_dim;
+        const float old_state = recurrent_state[state_offset];
+        if constexpr (write_snapshot) {
+          if (t == 0) {
+            initial_recurrent_state_snapshot[state_offset] = old_state;
+          }
+        }
+        const float new_state = old_state * decay + k_norm * delta;
+        node_state[state_offset] = new_state;
+        out_acc += q_norm * new_state;
+      }
+      out_shared[value_idx] = out_acc;
+      norm_partial[threadIdx.x] = out_acc * out_acc;
+    } else {
+      norm_partial[threadIdx.x] = 0.0f;
+    }
+    __syncthreads();
+
+    for (int stride = 64; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+        norm_partial[threadIdx.x] += norm_partial[threadIdx.x + stride];
+      }
+      __syncthreads();
+    }
+
+    if (value_idx < head_v_dim) {
+      const int64_t pos = (t * num_v_heads + v_head) * head_v_dim + value_idx;
+      const float inv_rms = rsqrtf((norm_partial[0] / static_cast<float>(head_v_dim)) + eps);
+      const float value = out_shared[value_idx] * inv_rms * norm_weight[value_idx] *
+          silu_f32(scalar_to_float_qwen35(gate[pos]));
+      out[pos] = value;
+      if constexpr (write_bf16) {
+        out_bf16[pos] = float_to_bf16_bits(value);
+      }
+    }
+    __syncthreads();
+  }
+}
+
+
 __global__ void qwen35_gdn_prefill_recurrent_kernel(
     const float* query,
     const float* key,
@@ -4932,6 +5283,73 @@ hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f
       out_bf16,
       eps,
       max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out(
+    const uint16_t* norm,
+    const float* alpha_weight,
+    const float* beta_weight,
+    uint16_t* alpha_out,
+    uint16_t* beta_out,
+    const float* conv_out,
+    const uint16_t* gate,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* leaf_recurrent_state,
+    float* initial_recurrent_state_snapshot,
+    float* out,
+    uint16_t* out_bf16,
+    float eps,
+    int64_t rows,
+    int64_t in_features,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!norm || !alpha_weight || !beta_weight || !alpha_out || !beta_out ||
+      !conv_out || !gate || !dt_bias || !a_log || !norm_weight ||
+      !base_recurrent_state || !leaf_recurrent_state ||
+      !initial_recurrent_state_snapshot || !out || !out_bf16 ||
+      rows < 1 || rows > 4 || in_features != 5120 || num_k_heads != 16 ||
+      num_v_heads != 48 || head_k_dim != 128 || head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const size_t shared_bytes = static_cast<size_t>(
+      (8 * threads) + (2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_kernel<uint16_t, true, true>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      norm,
+      alpha_weight,
+      beta_weight,
+      alpha_out,
+      beta_out,
+      in_features,
+      conv_out,
+      gate,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      leaf_recurrent_state,
+      initial_recurrent_state_snapshot,
+      nullptr,
+      out,
+      out_bf16,
+      eps,
+      rows,
       num_k_heads,
       num_v_heads,
       head_k_dim,

@@ -207348,3 +207348,82 @@ Vulkan local sizes verbatim will close the measured gap.
   own AR / 11.49% below Vulkan**. Re-rank only the restored three-leaf trace;
   reopen this family only with a materially different schedule that improves
   both target host and complete marked wall.
+
+## 2026-08-05 — Screen dependent alpha/beta-to-GDN fusion
+
+- Re-rank the restored `7eaa6fa05` runtime rather than counting any rejected
+  launch contraction. The next materially different boundary is dependent:
+  each exact chain-GDN block owns one of 48 V heads and consumes exactly one
+  alpha and beta scalar per row. Current B3 executes scalar alpha/beta plus
+  snapshot+cast chain GDN as **1,008 launches / 20.608902 ms** over seven
+  passes. A per-head owner can reproduce both dense-F32 local256 GEMV trees,
+  round to the same BF16 bits, and consume those bits in GDN without any
+  inter-block synchronization, reducing three launches/layer to one.
+- Build the first immutable out-of-tree local256 body over all 48 real
+  K5,120/N48 alpha/beta weight pairs. It reuses each F32 weight across rows and
+  compares six surfaces against two registered scalar GEMVs plus the exact
+  snapshot+cast GDN: alpha, beta, every recurrent row-journal bit, immutable
+  initial snapshot, FP32 recurrent output, and rounded BF16 handoff. All six
+  are bit-exact at rows1-4.
+- The first schedule serializes each of eight row/matrix reduction planes. It
+  wins rows1-3 but fails row4: event speedups are
+  **1.2831x/1.1520x/1.0813x/0.9977x**, synchronized wall agrees, and row4 wins
+  only **1/21** pairs. Do not admit it.
+- Parallelize the independent reduction planes behind one shared barrier tree
+  while preserving each plane's exact 256-way addition order. This selected
+  v2 is exact on all six surfaces and improves 48-layer event medians by
+  **1.3004x/1.1724x/1.0944x/1.0502x** at rows1/2/3/4; synchronized wall is
+  **1.2997x/1.1721x/1.0943x/1.0502x**, with **21/21** event and wall wins in
+  every cell. Source/binary/result SHA-256 values are
+  `4d42249c...4e459`, `173b6188...7b058`, and `83432458...549da`.
+- Also test a local128 physical body that emulates the scalar kernel's 256
+  virtual lanes and explicit first 0+128 reduction. It remains bit-exact but
+  regresses row4 to **0.9602x** with **1/21** wins; reject v3. Select only v2
+  for repository RED.
+- Freeze RED before source changes for a gfx1100-only four-axis dependent owner:
+  wrapper/source/shape validation, gfx1151 exclusion, registry-derived F32 plus
+  Q5T16 dispatch, one alpha/beta+GDN launch only after the existing snapshot
+  Conv producer, complete two-scalar+snapshot-Conv+snapshot-GDN fallback on any
+  miss, rows1-4 scalar/CPU device correctness, full W7900 B1-B3 transaction and
+  ownership census, and a named cache-only trace before wall profiling.
+- RED is established before source changes:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q
+  tests/test_dense_f32_pair_gdn.py --tb=short` -> **10 failed**. All failures
+  are intentional: absent key/wrapper/resolver/runner method, absent staged
+  ownership, and four absent device rows.
+- GREEN adds the selected local256 parallel-plane body to `gdn.hip`. Each V-head
+  block computes alpha and beta for rows1-4 using the exact scalar eight-value
+  FMA traversal and 256-way reduction tree, writes the same BF16 surfaces, then
+  consumes the shared bits in the unchanged exact snapshot+cast chain GDN.
+  The four-axis key combines the registry-derived quant axes as
+  `f32+gguf_q5_k_t16_v1`; gfx1151 explicitly excludes it.
+- The staged runner resolves the dependent owner before launching any producer.
+  On an exact key/shape/layout hit it launches the existing snapshot Conv once,
+  then one dependent alpha/beta+GDN owner, including initial recurrent snapshot
+  and BF16 handoff. Any miss executes the complete prior two-scalar projections
+  plus snapshot Conv plus snapshot GDN. Optional F32 alpha/beta diagnostics and
+  c1 remain on their prior routes. Non-deferred state commits preserve the two
+  existing final-row copies.
+- Validation:
+  - focused rows1-4 scalar/CPU gates pass **10/10** on GPU1; alpha, beta, every
+    recurrent journal bit, immutable snapshot, FP32 output, and BF16 handoff are
+    byte-exact, with independent KL <=0.05 and top-1 >=90%;
+  - focused plus prior pair/composite, chain-journal, GGUF dispatch/cache, and
+    gfx1151 coverage passes **132/132**; adjacent GDN routing passes **51/51**;
+  - the cached W7900 B1-B3 transaction passes exact logits, acceptance,
+    reject/partial/full commit, post-commit rollback, dynamic graph reuse,
+    correction, provider output, lifecycle, and teardown. Its census observes
+    the dependent owner only at rows `{2,3,4}` and exact K5,120/Hk16/Hv48/D128;
+    standalone pair and snapshot GDN owners remain idle while snapshot Conv
+    remains the single producer;
+  - cache-only GPU1 tracing names
+    `qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_kernel`
+    `<unsigned short,true,true>` three times at grid 48/local256, VGPR72,
+    SGPR128, reported LDS512 B, scratch0, and **114.279/100.439/105.159 us**.
+    Kernel/agent/trace-script/test/HIP SHA-256 values are
+    `28615b6c...3ba1f`, `1ba18fbf...dc00`, `b110396d...ad62`,
+    `952cfe3e...db09`, and `207da82c...d6b8`.
+- This is correctness admission only. Commit this unit before the tracked-clean
+  W7900 one-prompt B3 profile against `7eaa6fa05`. Promotion still requires the
+  exact 672-dispatch contraction plus target-kernel, target-host, and complete
+  marked-wall wins before natural25.
