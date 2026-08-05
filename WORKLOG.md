@@ -202917,3 +202917,27 @@ Vulkan local sizes verbatim will close the measured gap.
 - Focused Maple model/loading/CPU/GPU/generation/runtime/harness bundle passes
   **43/43**; Ruff, pycompile, JSON parse, and `git diff --check` pass. Evidence:
   `benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json`.
+
+## 2026-08-05 — Close the Maple public inference bring-up
+
+- Completion-audit the user objective against actual artifacts rather than the
+  closed task list. Model contract, exact 463-tensor/5,308,186,624-byte loader,
+  torch-free model-ID dispatch, gfx1151 kernels, resident runner, CPU/HF gates,
+  lifecycle, docs, and atomic commits are all directly covered. The one weak
+  signal was the real public free-running generation: its prior result preceded
+  the equal-capacity global-span fix.
+- Run `python3 - <<'PY' ... LLM("deepgrove/maple-preview-2bit-mlx",
+  backend="auto", quant="auto").generate_detailed(...) ... PY` on Ryzen AI
+  MAX+ 395 / Radeon 8060S gfx1151 with the exact 18-token formatted prompt,
+  greedy sampling, and `max_tokens=128`, twice in one resident process. The
+  post-fix route resolves `hip_gfx1151` / `maple_ternary2`, emits the same 37
+  tokens/text both times, produces the coherent completed sentence “Maple trees
+  are known for their vibrant autumn foliage and are a common symbol of the
+  season.”, and stops on real EOS 151645. `LLM.close()` returns tracked current
+  allocation to zero (5,378,146,152-byte diagnostic peak, all bytes freed).
+- Cold **4.365 s** and resident-repeat **0.703 s** walls are recorded only as
+  diagnostics, not performance claims. Store generated IDs as SHA256
+  `dc7c0f61...` rather than a scoring target. Update the stale pre-fix section
+  in `docs/KERNELS.md`, add the prompt-to-artifact completion checklist to
+  `docs/MAPLE.md`, and retain
+  `benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.

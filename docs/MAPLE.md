@@ -53,22 +53,24 @@ thresholding recovers exact ternary values).
 - Contiguous per-layer KV cache: SWA layers keep the last 512 tokens (window mask), global
   layers append up to a configured max context.
 - Exact 4-bit lm_head (no FlashHead).
-- Weights resident on GPU in checkpoint-native packed layouts (no repack beyond q/k/v row
-  concatenation at load).
+- Weights resident on GPU in checkpoint-native packed layouts; the fused Q/K/V and selected
+  expert kernels consume the original split tensors without a host-side repack.
 
-### Kernel plan (`hipengine/kernels/hip_gfx1100/maple/`, gfx1151 reuses via arch retarget)
+### Landed kernels (shared gfx11 sources, native gfx1151 retarget)
 
-| Kernel | Purpose |
+| Family / wrapper | Purpose |
 | --- | --- |
-| `maple_ternary_gemv_bf16` | y[r] = α_r · Σ x_j·(code−1), fp32 accum, bf16 x/out |
-| `maple_affine4_gemv_f32` | lm_head: fp32 logits from 4-bit affine rows |
-| `maple_affine4_embed_bf16` | dequantize one embedding row → bf16 hidden |
-| `maple_qknorm_rope_bf16` | fused per-head RMSNorm(q,k) + partial RoPE (rope_dim 0 for NoPE) |
-| `maple_attn_decode_bf16` | GQA decode attention, optional 512 window, online softmax |
-| `maple_router_topk_bf16` | fp32 router GEMV + softmax + top-8 + renorm |
-| `maple_clamped_swiglu_bf16` | silu(min(g,7))·clip(u,±7) |
-| `maple_weighted_residual_bf16` | h ← h + Σ_e w_e·y_e (fp32 combine, one rounding) |
-| `maple_argmax_f32` | greedy argmax over fp32 logits |
+| `quant/maple_ternary.py::maple_ternary_gemv_bf16` | y[r] = α_r · Σ x_j·(code−1), fp32 accum, bf16 x/out |
+| `quant/maple_ternary.py::maple_ternary_qkv_gemv_bf16` | fused launch over the original split Q/K/V packed tensors |
+| `quant/maple_ternary.py::maple_affine4_gemv_f32` | lm_head: fp32 logits from 4-bit affine rows |
+| `quant/maple_ternary.py::maple_affine4_embed_bf16` | dequantize one embedding row → bf16 hidden |
+| `attention/maple_attention.py::maple_qknorm_rope_kv_write_bf16` | fused per-head RMSNorm(q,k), optional partial RoPE, and KVLiveSpans write |
+| `attention/maple_attention.py::maple_attention_decode_bf16` | GQA decode attention over KVLiveSpans; SWA/global behavior comes from span capacity |
+| `moe/maple_moe.py::maple_router_topk_bf16` | fp32 router GEMV + softmax + stable top-8 + renorm |
+| `quant/maple_ternary.py::maple_selected_ternary_{dual_,}gemv_bf16` | selected-expert gate/up and down projection without expert unpacking |
+| `moe/maple_moe.py::maple_clamped_swiglu_bf16` | silu(min(g,7))·clip(u,±7) |
+| `moe/maple_moe.py::maple_weighted_residual_bf16` | h ← h + Σ_e w_e·y_e (fp32 combine, one rounding) |
+| reused `linear/lm_head.py::argmax_f32` | two-stage greedy argmax over fp32 logits |
 
 Reused existing kernels: `hipengine_paro_rmsnorm_out_bf16` (standard RMSNorm semantics),
 `hipengine_paro_add_rmsnorm_out_bf16` (fused residual+norm between sublayers, one bf16
@@ -131,7 +133,35 @@ PYTHONPATH=$PWD /tmp/maple-hf-oracle-venv/bin/python scripts/maple_correctness.p
   --hf-match-packed-affine4 --json /tmp/maple-hf-correctness.json
 ```
 
-## Open follow-ups (not in the basic slice)
+## Bring-up completion audit
+
+The post-correctness-fix public API smoke constructs
+`LLM("deepgrove/maple-preview-2bit-mlx", backend="auto", quant="auto")`, runs
+the formatted prompt twice in one resident process, and checks the complete
+public route rather than calling `MapleRunner` directly. Both runs produce the
+same 37 greedy tokens and coherent completed answer, stop on real EOS 151645,
+and leave zero tracked allocations after `LLM.close()`. The measured 4.365 s
+cold and 0.703 s resident-repeat walls are diagnostics only, not throughput
+claims. Compact evidence is in
+`benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
+
+| Bring-up deliverable | Concrete evidence | Status |
+| --- | --- | --- |
+| Official checkpoint identity and exact packed manifest | `hipengine/loading/maple.py`; 463 tensors / 5,308,186,624 bytes; `tests/test_maple_loading.py` | complete |
+| Pinned model geometry and attention/MoE semantics | `hipengine/models/maple.py`; `tests/test_maple_model_contract.py` | complete |
+| Torch-free model-ID → backend/quant/generator route | `hipengine/generation/maple.py`, `hipengine/quant/maple_ternary.py`; public smoke resolves `hip_gfx1151` / `maple_ternary2` | complete |
+| Exact checkpoint-native GPU primitives | Maple quant, attention, and MoE families in `hipengine/kernels/hip_gfx1100/`, native-compiled for gfx1151; CPU-reference fixtures and `rocprofv3` traces in `docs/KERNELS.md` | complete |
+| Resident token-serial prefill and decode | `hipengine/runtime/maple.py`; post-fix public smoke exercises prompt prefill, 37 decode tokens, reset/reuse, EOS, and close | complete |
+| Numerical implementation gate | packed max KL 0.013508 / 18-of-18 top-1; matched HF max KL 0.004719 / 18-of-18 top-1; exact device argmax | complete |
+| Public free-running behavior after the global-span fix | deterministic coherent answer, real EOS, identical resident repeat, allocator returns to zero | complete |
+| Documentation, measurements, and atomic history | `WORKLOG.md`, this file, `docs/KERNELS.md`, compact result artifacts, commits `55bc253ff` through `7b82c60bf` plus the completion-audit commit | complete |
+
+The untouched dense-BF16 quality diagnostic remains explicitly failed at max KL
+0.149840 / 16-of-18 top-1 because the deployment checkpoint intentionally uses
+affine4 embeddings and head. It is not an implementation-correctness failure and
+its thresholds were not weakened; see the correctness artifact for attribution.
+
+## Open follow-ups (not required for the basic bring-up)
 
 - True chunked prefill (batched GEMM + masked attention).
 - FlashHead approximate head (`lm_head_flash.*`) as an opt-in fast path.
