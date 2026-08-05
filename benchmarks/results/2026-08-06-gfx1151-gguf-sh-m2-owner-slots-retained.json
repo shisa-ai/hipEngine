@@ -10,7 +10,30 @@
     "measured_parent_commit": "d9c66bd4febca97bb86a2d4429c44b3acf3feebf",
     "branch": "main",
     "dirty": true,
-    "qualification": "The candidate implementation, tests, harness, and docs were unstaged during the first full matrix. Unrelated docs/ROCM-AI.md and pre-existing untracked benchmark files were also present. Raw child hashes are preserved below; a committed same-revision checkpoint is required before removing the A/B seam."
+    "qualification": "The candidate implementation, tests, harness, and docs were unstaged during the first full matrix. The committed 7b675670a checkpoint below reproduces the exact state, memory, and wall direction; its sole tracked difference is unrelated docs/ROCM-AI.md. Pre-existing untracked benchmark files remain excluded."
+  },
+  "committed_checkpoint": {
+    "commit": "7b675670af1473ead4420cc41a14764ad9f5c024",
+    "prompt_length": 4096,
+    "dedicated_prefill_tok_s": 1409.0349258771405,
+    "owner_slots_prefill_tok_s": 1417.1856702792513,
+    "prefill_delta_pct": 0.5784629076555288,
+    "dedicated_decode_tok_s": 55.87105403692415,
+    "owner_slots_decode_tok_s": 56.022695866111704,
+    "decode_delta_pct": 0.27141394019045456,
+    "tracked_savings_gib": 1.408568412065506,
+    "whole_gtt_savings_gib": 1.404296875,
+    "state_exact": true,
+    "lifecycle_exact": true,
+    "raw_aggregate_sha256": "5345980c1918416fa3f4386848834b3197dd17a3c08caa5b8767811e9dd2ef20",
+    "child_json_sha256": {
+      "dedicated": "9c52d8ff62d0f46b2760d26244b0e8bb785f96687eb837d3c098fd8cf1aa1b7c",
+      "owner_slots": "8baf943d612ddb58226e1cb5bcdd498621933ea05b652923d89f01a59e8fc5fb"
+    },
+    "state_json_sha256": {
+      "dedicated": "4d62279fa78347f373af103cf032ab78fe90459d341570b3e6d478ef7bbf9df9",
+      "owner_slots": "ae0e56a7ca7ac0251e2f2f057befdb425cd914dffcc273138bbc7475c4956e30"
+    }
   },
   "hardware": {
     "device_name": "AMD Radeon 8060S Graphics",

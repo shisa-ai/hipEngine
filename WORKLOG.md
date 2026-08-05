@@ -204181,3 +204181,19 @@ Vulkan local sizes verbatim will close the measured gap.
   failing nodes: **7 passed**. `check_fixtures.py`, registry/cpu-fixture/add-plan
   smokes, pycompile, JSON validation, and `git diff --check` all pass. Per the
   focused-repair rule, do not repeat the completed broad suite.
+
+## 2026-08-06 — SH-M2 committed default checkpoint
+
+- Commit `7b675670a` retains gfx1151 owner-slot scratch coloring and the complete
+  full-matrix artifact. A committed one-warmup/three-run 4K same-revision A/B
+  reproduces dedicated **1409.035** versus owner slots **1417.186 tok/s**
+  prefill (**+0.578%**) and **55.871 -> 56.023 tok/s** decode (**+0.271%**).
+- Tracked saving remains **1.408568 GiB**, 10-ms whole-GTT saving remains
+  **1.404297 GiB**, complete 4K prefill/state/four-transition/final-state
+  fingerprints are byte-identical, and both processes close at zero tracked
+  bytes. The sole tracked difference during measurement is unrelated
+  `docs/ROCM-AI.md`; raw aggregate SHA-256 is `5345980c...ef20`.
+- The `docs/REFACTOR.md` removal trigger is now satisfied. Remove the disable-
+  only environment seam and transient SH-M2 A/B harness/tests, retain package-
+  owned owner slots plus dedicated diagnostic/peer fallbacks, commit the cleanup,
+  then close Task #29 and advance immediately to SH-K1.
