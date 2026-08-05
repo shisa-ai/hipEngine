@@ -348,6 +348,9 @@ The same-scope whole-GTT gap to fork F16 is now **0.987/0.801/0.667 GiB** at
 the fork memory rows. Strict compact KV therefore proceeds under SH-K1 rather
 than relabeling the remaining gap as parity. Complete evidence is in
 [`2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json).
+The committed `7b675670a` checkpoint reproduces **+0.578%** 4K prefill,
+**+0.271%** decode, exact state, and both memory deltas; the temporary
+disable-only comparison seam is removed afterward.
 
 ### Cumulative decode targets
 

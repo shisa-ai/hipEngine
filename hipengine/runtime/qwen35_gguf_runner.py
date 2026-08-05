@@ -19008,13 +19008,6 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
         return None
     if int(rows) < max(1, min_rows):
         return None
-    # Temporary same-revision SH-M2 control seam. Architecture capability and
-    # route checks still own admission; the environment may only disable it.
-    if "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS" in os.environ and not _env_flag(
-        "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
-        True,
-    ):
-        return None
     requested_mode = _gguf_gdn_prefill_mode()
     if requested_mode == "auto":
         effective_mode = _gguf_gdn_prefill_backend_auto_mode(backend)
