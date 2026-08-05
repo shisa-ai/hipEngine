@@ -207764,3 +207764,21 @@ Vulkan local sizes verbatim will close the measured gap.
   **default-off** until a tracked-clean W7900 one-prompt target/complete screen
   wins; only then spend the full ten-prompt category/heldout and populated-AR
   gates. Exact zero remains the control.
+- The same-commit tracked-clean W7900 profile clears that gate. Explicit zero
+  and one preserve the complete token hash, **17/21** acceptance, cycle ledger
+  `[3,3,2,3,3,0,3]`, GPU/CPU agreement, **32,723,577,074-byte** peak, and clean
+  teardown. The candidate replaces **392 / 46.900 ms** exact wide-Q6 rowtiles
+  with 392 Q8_1 quantizers plus 392 planar `sudot4` leaves totaling **40.991 ms
+  (-12.60%)**. Target host falls **363.420 -> 346.211 ms (-4.74%)**, complete
+  kernels **312.329 -> 304.463 ms (-2.52%)**, complete marker wall **448.975 ->
+  431.487 ms (-3.90%)**, and the profiled throughput sample rises **53.449 ->
+  55.616 tok/s (+4.05%)**, despite target dispatches rising **5,853 -> 6,238**.
+  Control/candidate suite, kernel, marker, copy, and summary SHA-256s are rooted
+  at `/tmp/hipengine-qwen36-27b/final-0f6e48658`; candidate suite/summary/kernel
+  are `9e986cff...64b36bc` / `9cbb1cf4...6f350239` /
+  `63e8a981...61cbeeac`. Advance to the full ten-prompt AR+B1-B3 control and
+  candidate gate; selector-unset promotion and populated AR remain pending.
+- Add `HIPENGINE_GGUF_Q6_PLANAR_Q8_1` to the dense campaign harness provenance
+  environment so the forthcoming explicit-control/category artifacts identify
+  their arithmetic route directly rather than relying on filenames or shell
+  logs.
