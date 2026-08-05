@@ -254,6 +254,7 @@ class MapleRunner:
         self.max_context = int(max_context)
         self.runtime = runtime
         self.position = 0
+        self.last_hidden_states: tuple[np.ndarray, ...] = ()
         self.closed = False
 
     @classmethod
@@ -313,8 +314,9 @@ class MapleRunner:
         self.runtime.device_synchronize()
         self.buffers.reset()
         self.position = 0
+        self.last_hidden_states = ()
 
-    def step(self, token_id: int) -> MapleStepResult:
+    def step(self, token_id: int, *, capture_hidden: bool = False) -> MapleStepResult:
         self._require_open()
         spec = self.checkpoint.spec
         token = int(token_id)
@@ -324,21 +326,10 @@ class MapleRunner:
             raise ValueError(f"Maple context capacity {self.max_context} exceeded")
         started = time.perf_counter()
         position = self.position
+        captured: list[np.ndarray] = []
         b = self.buffers
         libs = self.libraries
-        maple_kv_span_update(
-            b.sliding_span_owner.spans,
-            position=position,
-            library=libs.attention,
-            runtime=self.runtime,
-        )
-        if b.global_span_owner.capacity != b.sliding_span_owner.capacity:
-            maple_kv_span_update(
-                b.global_span_owner.spans,
-                position=position,
-                library=libs.attention,
-                runtime=self.runtime,
-            )
+        self._publish_span_position(position)
 
         maple_affine4_embed_bf16(
             self.weights.embeddings.weight.ptr,
@@ -350,6 +341,8 @@ class MapleRunner:
             library=libs.ternary,
             runtime=self.runtime,
         )
+        if capture_hidden:
+            captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
         for layer_id, (layer_weights, kv_layer) in enumerate(
             zip(self.weights.layers, b.layers)
         ):
@@ -489,6 +482,8 @@ class MapleRunner:
                 library=libs.moe,
                 runtime=self.runtime,
             )
+            if capture_hidden:
+                captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
 
         paro_rmsnorm_out_bf16(
             b.hidden.ptr,
@@ -500,6 +495,8 @@ class MapleRunner:
             library=libs.norm,
             runtime=self.runtime,
         )
+        if capture_hidden:
+            captured.append(self._copy_bf16(b.normalized, spec.hidden_size))
         maple_affine4_gemv_f32(
             b.normalized.ptr,
             self.weights.lm_head.weight.ptr,
@@ -533,6 +530,7 @@ class MapleRunner:
             b.argmax_value,
             runtime=self.runtime,
         )
+        self.last_hidden_states = tuple(captured)
         self.position += 1
         return MapleStepResult(
             position=position,
@@ -552,6 +550,28 @@ class MapleRunner:
             result = self.step(token)
         assert result is not None
         return result
+
+    def _publish_span_position(self, position: int) -> None:
+        for span_owner in (
+            self.buffers.sliding_span_owner,
+            self.buffers.global_span_owner,
+        ):
+            maple_kv_span_update(
+                span_owner.spans,
+                position=position,
+                library=self.libraries.attention,
+                runtime=self.runtime,
+            )
+
+    def _copy_bf16(self, buffer: DeviceBuffer, elements: int) -> np.ndarray:
+        bits = np.empty(int(elements), dtype=np.uint16)
+        copy_device_to_host(
+            host_array_ptr(bits),
+            buffer,
+            nbytes=bits.nbytes,
+            runtime=self.runtime,
+        )
+        return (bits.astype(np.uint32) << np.uint32(16)).view(np.float32)
 
     def copy_logits(self) -> np.ndarray:
         self._require_open()

@@ -26,6 +26,7 @@ from hipengine.kernels.cpu_reference.maple import (
     bf16_round,
     f32_to_bf16_bits,
     qk_norm_rope,
+    rmsnorm,
 )
 from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
     build_maple_attention,
@@ -33,6 +34,10 @@ from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
     maple_kv_span_update,
     maple_qknorm_rope_kv_write_bf16,
     plan_maple_attention_build,
+)
+from hipengine.kernels.hip_gfx1100.norm.rmsnorm import (
+    build_qwen35_rmsnorm,
+    paro_rmsnorm_out_bf16,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
@@ -115,6 +120,39 @@ def test_maple_attention_build_plan_and_gfx1151_registry_alias() -> None:
 def maple_attention_lib(hip_test_target_arch):
     with hip_target_arch_environment(hip_test_target_arch):
         return build_maple_attention(load=True)
+
+
+@pytest.fixture(scope="module")
+def maple_norm_lib(hip_test_target_arch):
+    with hip_target_arch_environment(hip_test_target_arch):
+        return build_qwen35_rmsnorm(load=True)
+
+
+def test_maple_standard_rmsnorm_is_bf16_bit_exact(maple_norm_lib) -> None:
+    rng = np.random.default_rng(33)
+    rows, hidden = 3, 2048
+    x_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    weight_f32 = rng.uniform(0.5, 1.5, size=hidden).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    weight = f32_to_bf16_bits(weight_f32)
+    expected = f32_to_bf16_bits(
+        rmsnorm(bf16_round(x_f32), bf16_round(weight_f32))
+    )
+
+    with DeviceArrays() as dev:
+        x_d, weight_d = dev.put(x), dev.put(weight)
+        out, out_d = dev.empty((rows, hidden), np.dtype(np.uint16))
+        paro_rmsnorm_out_bf16(
+            x_d.ptr,
+            weight_d.ptr,
+            out_d.ptr,
+            rows,
+            hidden,
+            library=maple_norm_lib,
+        )
+        dev.get(out, out_d)
+
+    assert np.array_equal(out, expected)
 
 
 def test_maple_span_update_publishes_ring_metadata(maple_attention_lib) -> None:
