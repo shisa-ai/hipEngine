@@ -191,6 +191,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
@@ -7054,6 +7055,7 @@ class Qwen35GGUFFullStackRunner:
                 ),
                 x_f32_ptr=scratch.ffn_intermediate_f32.ptr if f32_selected_intermediate else None,
                 prefer_f32_out=f32_selected_down,
+                backend=self.backend,
                 stream=stream,
                 runtime=runtime,
             )
@@ -7458,6 +7460,7 @@ class Qwen35GGUFFullStackRunner:
                     ),
                     x_f32_ptr=scratch.ffn_intermediate_f32.ptr if f32_selected_intermediate else None,
                     prefer_f32_out=selected_down_is_f32,
+                    backend=self.backend,
                     stream=stream,
                     runtime=runtime,
                     stage_timings=stage_timings,
@@ -7817,6 +7820,7 @@ _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_T16_SELECTED_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE"
 _GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE"
+_GGUF_Q5_T16_SELECTED_QWEN_TILE8_ENV = "HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8"
 _GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE"
 _gguf_t16_selected_pairreuse_min_rows_session: int | None = None
 _gguf_t16_selected_down_pairreuse_min_rows_session: int | None = None
@@ -8408,6 +8412,20 @@ def _gguf_t16_selected_down_pairreuse_enabled() -> bool:
         return _env_flag(_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV, False)
     min_rows = _gguf_t16_selected_down_pairreuse_min_rows_session
     return min_rows is not None and min_rows > 0
+
+
+def _gguf_q5_t16_selected_qwen_tile8_enabled(backend: str | None) -> bool:
+    if _env_value(_GGUF_Q5_T16_SELECTED_QWEN_TILE8_ENV) is not None:
+        return _env_flag(_GGUF_Q5_T16_SELECTED_QWEN_TILE8_ENV, False)
+    if backend is None:
+        return False
+    return bool(
+        backend_package_capability(
+            backend,
+            "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
+            False,
+        )
+    )
 
 
 @contextmanager
@@ -21580,6 +21598,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
             num_experts=num_experts,
             in_features=expert_ffn,
             out_features=hidden_size,
+            backend=runner.backend,
             stream=stream,
             runtime=runtime,
         )
@@ -22937,6 +22956,7 @@ def _launch_selected_raw_gguf_moe_linear(
     q8_1_workspace_ptr: int | None = None,
     x_f32_ptr: int | None = None,
     prefer_f32_out: bool = False,
+    backend: str | None = None,
     stream: int,
     runtime: HipRuntime,
     stage_timings: dict[str, float] | None = None,
@@ -23111,13 +23131,23 @@ def _launch_selected_raw_gguf_moe_linear(
     elif quant_key == "gguf_q4_k_t16_v1":
         fn = gguf_q4_k_t16_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k_t16_v1":
-        fn = (
-            gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out
-            if _gguf_t16_selected_down_pairreuse_enabled()
-            and x_rows == 64
-            and rows == 64
-            else gguf_q5_k_t16_selected_gemv_bf16_bf16_out
-        )
+        if (
+            not prefer_f32_out
+            and _gguf_q5_t16_selected_qwen_tile8_enabled(backend)
+            and x_rows == 8
+            and rows == 8
+            and in_features == 512
+            and out_features == 2048
+        ):
+            fn = gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out
+        else:
+            fn = (
+                gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out
+                if _gguf_t16_selected_down_pairreuse_enabled()
+                and x_rows == 64
+                and rows == 64
+                else gguf_q5_k_t16_selected_gemv_bf16_bf16_out
+            )
     elif quant_key == "gguf_q6_k_t16_v1":
         fn = (
             gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out

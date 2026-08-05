@@ -54,6 +54,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_fp16_fp16_out,
@@ -2355,6 +2356,85 @@ def test_p9_h3d_qk_t16_direct_bf16_matches_cpu_oracle(
     expected = _expected_direct_single(x_ref, selected, qw, out_features, qtype_enum)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     np.testing.assert_allclose(_bf16_u16_to_f32(actual), expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "builder,repack,production_fn,candidate_fn,qtype_enum",
+    [
+        pytest.param(
+            make_q5_k_weight,
+            repack_gguf_q5_k_tile16,
+            gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
+            GGMLQuantizationType.Q5_K,
+            id="Q5_K",
+        ),
+    ],
+)
+def test_sh_d1_qwen_selected_down_tile8_matches_production_bits_and_cpu_oracle(
+    builder,
+    repack,
+    production_fn,
+    candidate_fn,
+    qtype_enum,
+    t16_selected_library,
+) -> None:
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="selected_t16_qwen_tile8_gemv_decode_bf16_bf16_out",
+    ) is candidate_fn
+    rows = 8
+    selected = np.array([2, 0, 1, 1, 2, 0, 2, 1], dtype=np.int64)
+    in_features, out_features, num_experts = 512, 2048, 3
+    rng = np.random.default_rng(20260806 + int(qtype_enum))
+    qweight = _stack_experts(
+        builder,
+        out_features,
+        in_features,
+        num_experts,
+        seed=97,
+    )
+    tiles = repack(qweight).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    production = _run_direct_single(
+        production_fn,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_direct_single(
+        candidate_fn,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(candidate, production)
+
+    expected = _expected_direct_single(
+        _bf16_u16_to_f32(x_bf16),
+        selected,
+        qweight,
+        out_features,
+        qtype_enum,
+    )
+    expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(candidate),
+        expected_bf16,
+        **_TOL,
+    )
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
