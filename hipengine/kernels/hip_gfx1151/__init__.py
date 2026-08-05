@@ -751,6 +751,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "f32",
             "bf16_hidden_bf16_out",
         ),
+        # The cross-family alpha/beta plus snapshot-Conv owner has only been
+        # screened on gfx1100; gfx1151 retains three independent leaves.
+        (
+            "linear_attn_alpha_beta+chain_conv+snapshot",
+            "f32",
+            "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop",
+        ),
         # Qwen3.6 dense down+residual and rounded next-input RMSNorm fusions
         # are W7900-only pending independent gfx1151 boundary/model gates.
         (

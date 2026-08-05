@@ -2448,6 +2448,112 @@ def launch_gguf_linear_pair(
     return False
 
 
+def launch_gguf_linear_pair_chain_conv_snapshot(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    *,
+    norm_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    hidden_states_ptr: int,
+    base_conv_state_ptr: int,
+    chain_conv_state_ptr: int,
+    initial_conv_state_snapshot_ptr: int,
+    conv_weight_ptr: int,
+    conv_out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    channels: int,
+    kernel_size: int,
+    backend: str | None = None,
+    stream: int = 0,
+    runtime=None,
+) -> bool:
+    """Launch the exact registered alpha/beta plus snapshot-Conv composite.
+
+    The composite is shape-qualified and registry-driven by the two linear
+    weights' ordinary BF16-input dispatch key. Any shape, layout, backend-key,
+    or registration miss returns ``False`` so the caller retains two singleton
+    projections plus the registered snapshot chain-Conv producer.
+    """
+
+    rows = int(rows)
+    in_features = int(in_features)
+    out_features = int(out_features)
+    channels = int(channels)
+    kernel_size = int(kernel_size)
+    if (
+        rows < 1
+        or rows > 4
+        or in_features != 5120
+        or out_features != 48
+        or channels != 10240
+        or kernel_size != 4
+        or int(initial_conv_state_snapshot_ptr) <= 0
+    ):
+        return False
+    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
+    try:
+        dispatch_a = resolve_gguf_linear_dispatch(
+            weight_a,
+            activation_dtype=GGUF_ACTIVATION_BF16,
+            output_dtype=GGUF_OUTPUT_BF16,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        dispatch_b = resolve_gguf_linear_dispatch(
+            weight_b,
+            activation_dtype=GGUF_ACTIVATION_BF16,
+            output_dtype=GGUF_OUTPUT_BF16,
+            backend=resolved_backend,
+            rows=rows,
+        )
+    except ValueError:
+        return False
+    if (
+        dispatch_a.abi != "dense_bf16"
+        or dispatch_b.abi != "dense_bf16"
+        or dispatch_a.key != dispatch_b.key
+    ):
+        return False
+    candidate = KernelKey(
+        resolved_backend,
+        "linear_attn_alpha_beta+chain_conv+snapshot",
+        dispatch_a.key.quant,
+        "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop",
+    )
+    if not is_registered(candidate):
+        return False
+    owner = resolve(
+        backend=candidate.backend,
+        layer=candidate.layer,
+        quant=candidate.quant,
+        variant=candidate.variant,
+    )
+    owner(
+        norm_ptr,
+        weight_a.allocation("raw").tensor.ptr,
+        weight_b.allocation("raw").tensor.ptr,
+        out_a_ptr,
+        out_b_ptr,
+        hidden_states_ptr,
+        base_conv_state_ptr,
+        chain_conv_state_ptr,
+        initial_conv_state_snapshot_ptr,
+        conv_weight_ptr,
+        conv_out_ptr,
+        rows,
+        in_features,
+        out_features,
+        channels,
+        kernel_size,
+        stream=stream,
+        runtime=runtime,
+    )
+    return True
+
+
 def launch_gguf_linear_pair_silu(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
@@ -3764,6 +3870,7 @@ __all__ = [
     "launch_gguf_linear_residual",
     "launch_gguf_linear_moe_tail_host_batch",
     "launch_gguf_linear_pair",
+    "launch_gguf_linear_pair_chain_conv_snapshot",
     "launch_gguf_linear_pair_silu",
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",

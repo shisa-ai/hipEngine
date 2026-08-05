@@ -207228,3 +207228,82 @@ Vulkan local sizes verbatim will close the measured gap.
   reopen alpha/beta only as a materially different cross-family or scheduling
   owner that wins target host and complete marked wall. Artifact SHA-256 is
   `a5b613ba...7587d0`.
+
+## 2026-08-05 — Screen alpha/beta plus chain-Conv launch composite
+
+- Re-rank only the restored `fda35418e` production topology. The alpha/beta
+  pair cannot survive as a standalone runtime launch, but both projections and
+  producer-folded chain Conv are independent consumers of already-ready
+  `norm`/QKV rows. In current B3 they total **1,008 launches / 5.469564 ms**:
+  **672 / 3.572950 ms** dense F32 projections plus **336 / 1.896614 ms** Conv.
+- A single local256 grid can retain the screened pair policy in its first
+  blocks and execute the unchanged snapshot-Conv channel body in its final 40
+  blocks. It needs no cross-block synchronization because GDN consumes all
+  three outputs only after kernel completion. This reduces three launches per
+  layer to one—**672 target dispatches** over seven B3 passes—while preserving
+  the required two-GEMV plus chain-Conv fallback.
+- Screen the immutable first out-of-tree body over all 48 real alpha/beta/Conv
+  weights and rows1-4 on GPU1. Require alpha, beta, every Conv output/journal,
+  and every initial snapshot byte to match the three-launch control, and require
+  both event and synchronized wall wins at every row count before admitting
+  repository RED. This is materially different from merely pairing alpha/beta:
+  it doubles the dispatch contraction and absorbs an independent existing
+  producer without adding a dependency counter or persistent allocation.
+- The immutable GPU1 screen clears admission on all 48 real layers and every
+  rows1-4 cell. Alpha, beta, Conv output, every chain-state journal element,
+  and every initial-state snapshot are bit-exact to the registered three-launch
+  control. Forty-eight-layer event medians improve **0.7600 -> 0.3747 ms
+  (2.028x)**, **0.7936 -> 0.4072 ms (1.949x)**, **0.8318 -> 0.4397 ms
+  (1.892x)**, and **0.8698 -> 0.5024 ms (1.731x)** at rows1/2/3/4.
+  Synchronized wall agrees at **2.024x/1.945x/1.887x/1.729x**, and the
+  composite wins both event and wall **21/21** samples in every cell.
+  HIP/script/result SHA-256s are `32743fad...f1af72`, `729c9b44...2bd8d`, and
+  `e6866c40...8c28d55`.
+- Admit repository RED for a gfx1100-only four-axis composite owner at the exact
+  dense Qwen3.6 shape. Require wrapper/source/shape validation, gfx1151
+  exclusion, registry-driven dense-F32 pair dispatch, one-call chain-journal
+  ownership only when producer-folded initial snapshots are present, complete
+  fallback to the existing two singleton projections plus snapshot Conv on any
+  key/layout/shape/snapshot miss, rows1-4 scalar/CPU device correctness, a named
+  trace, and the cached W7900 B1-B3 transaction before runtime profiling.
+- RED is established before repository source changes:
+  `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q
+  tests/test_dense_f32_pair_chain_conv.py --tb=short` -> **10 failed**. The
+  failures independently expose the absent key/wrapper, dispatch owner, runner
+  ownership and `conv_ready` handoff, plus four rows of device correctness.
+- GREEN registers the gfx1100-only
+  `linear_attn_alpha_beta+chain_conv+snapshot/f32/`
+  `bf16_k5120_n48_c10240_k4_exact_state_rows_tloop` key. Pair
+  blocks preserve each scalar local256 FMA/reduction tree (flat rows1-3,
+  tile2 rows4), and final channel blocks preserve the existing snapshot-Conv
+  body. The generic GGUF helper derives the quant axis from both ordinary
+  linear dispatches; any key/layout/shape/snapshot miss returns `False`.
+  The staged-chain runner invokes the composite only with producer-folded
+  snapshot storage, suppresses alpha/beta and Conv only after success, and
+  otherwise retains all three registered leaves. gfx1151 explicitly excludes
+  the key.
+- Validation:
+  - the focused RED file becomes **10/10 green** on GPU1, including scalar
+    BF16/FP32 byte equality at rows1-4 and independent CPU KL <=0.05 / top-1
+    >=90% gates for both projection and Conv outputs;
+  - the focused plus dense-pair, chain-journal, GGUF dispatch/cache, and gfx1151
+    adjacent bundle passes **125/125**; targeted Ruff and `git diff --check`
+    pass;
+  - the cached W7900 B1-B3 transaction passes exact logits, acceptance,
+    reject/partial/full commit, post-commit rollback, dynamic graph reuse,
+    correction, provider output, lifecycle, and teardown. Its physical census
+    observes the composite only at rows `{2,3,4}` and exact
+    K5,120/N48/C10,240/K4 while both standalone pair and snapshot-Conv owners
+    remain idle;
+  - cached GPU1 tracing names
+    `qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<2>`
+    at semantic grid `(232,1,1)`, local256, VGPR32, SGPR128, LDS2,048 B,
+    scratch0, with steady observed **6.920/9.960 us** durations. Transaction,
+    trace, trace-script, test, and HIP SHA-256s are `423b1d0e...ca74f2d`,
+    `0726c0bc...af4ebe`, `5d6ee223...506c8c`, `554ca39d...d418f`, and
+    `4a6d2ee0...e4206`.
+- This is correctness admission only. Commit the implementation before the
+  tracked-clean W7900 one-prompt B3 profile. Compare against the restored
+  scalar production topology and require target host plus complete marked wall
+  to improve before natural25; do not infer the runtime result from the strong
+  GPU1 screen.

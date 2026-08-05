@@ -18,6 +18,17 @@ __device__ inline float bf16_bits_to_float(uint16_t value) {
   return out.f32;
 }
 
+__device__ inline uint16_t float_to_bf16_bits(float value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } bits;
+  bits.f32 = value;
+  const uint32_t lsb = (bits.u32 >> 16) & 1U;
+  bits.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(bits.u32 >> 16);
+}
+
 __device__ inline float silu_f32(float value) {
   return value / (1.0f + expf(-value));
 }
@@ -722,6 +733,154 @@ __global__ void qwen35_linear_attn_chain_conv_decode_lowp_snapshot_tloop_kernel(
   }
 }
 
+// One-grid Qwen3.6 verifier owner for two independent dense-F32 alpha/beta
+// projections plus the rollback-safe chain-Conv producer. Pair blocks preserve
+// the scalar local256 FMA/reduction order; ROW_TILE=2 is selected only for four
+// rows. Final blocks preserve the existing snapshot-Conv channel body. GDN is
+// a later launch, so kernel completion is the only synchronization required
+// between these independent block groups.
+template <int ROW_TILE>
+__global__ void qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel(
+    const uint16_t* __restrict__ norm,
+    const float* __restrict__ weight_a,
+    const float* __restrict__ weight_b,
+    uint16_t* __restrict__ out_a,
+    uint16_t* __restrict__ out_b,
+    const uint16_t* __restrict__ hidden_states,
+    const float* __restrict__ base_conv_state,
+    float* __restrict__ chain_conv_state,
+    float* __restrict__ initial_conv_state_snapshot,
+    const float* __restrict__ conv_weight,
+    float* __restrict__ conv_out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t channels,
+    int64_t kernel_size) {
+  constexpr int kThreads = 256;
+  constexpr int kValuesPerThread = 8;
+  constexpr int kStride = kThreads * kValuesPerThread;
+  const int tid = threadIdx.x;
+  const int64_t pair_cols = 2 * out_features;
+  const int64_t row_groups = (rows + ROW_TILE - 1) / ROW_TILE;
+  const int64_t pair_blocks = pair_cols * row_groups;
+  const int64_t linear_block = blockIdx.x;
+
+  if (linear_block < pair_blocks) {
+    const int64_t pair_col = linear_block % pair_cols;
+    const int64_t row_base = (linear_block / pair_cols) * ROW_TILE;
+    const bool use_b = pair_col >= out_features;
+    const int64_t out_col = use_b ? pair_col - out_features : pair_col;
+    const float* __restrict__ weight = use_b ? weight_b : weight_a;
+    uint16_t* __restrict__ out = use_b ? out_b : out_a;
+    const int64_t w_base = out_col * in_features;
+
+    float acc[ROW_TILE];
+#pragma unroll
+    for (int local_row = 0; local_row < ROW_TILE; ++local_row) {
+      acc[local_row] = 0.0f;
+    }
+    const int64_t main_end = (in_features / kStride) * kStride;
+    for (int64_t k_base = static_cast<int64_t>(tid) * kValuesPerThread;
+         k_base < main_end;
+         k_base += kStride) {
+      const float* __restrict__ w_ptr = weight + w_base + k_base;
+#pragma unroll
+      for (int local_row = 0; local_row < ROW_TILE; ++local_row) {
+        const int64_t row = row_base + local_row;
+        if (row < rows) {
+          const uint16_t* __restrict__ x_ptr = norm + row * in_features + k_base;
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[0]), w_ptr[0], acc[local_row]);
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[1]), w_ptr[1], acc[local_row]);
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[2]), w_ptr[2], acc[local_row]);
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[3]), w_ptr[3], acc[local_row]);
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[4]), w_ptr[4], acc[local_row]);
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[5]), w_ptr[5], acc[local_row]);
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[6]), w_ptr[6], acc[local_row]);
+          acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[7]), w_ptr[7], acc[local_row]);
+        }
+      }
+    }
+    for (int64_t in_col = main_end + tid;
+         in_col < in_features;
+         in_col += kThreads) {
+      const float w = weight[w_base + in_col];
+#pragma unroll
+      for (int local_row = 0; local_row < ROW_TILE; ++local_row) {
+        const int64_t row = row_base + local_row;
+        if (row < rows) {
+          acc[local_row] = fmaf(
+              bf16_bits_to_float(norm[row * in_features + in_col]),
+              w,
+              acc[local_row]);
+        }
+      }
+    }
+
+    __shared__ float partial[ROW_TILE][kThreads];
+#pragma unroll
+    for (int local_row = 0; local_row < ROW_TILE; ++local_row) {
+      partial[local_row][tid] = acc[local_row];
+    }
+    __syncthreads();
+    for (int stride = kThreads / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+#pragma unroll
+        for (int local_row = 0; local_row < ROW_TILE; ++local_row) {
+          partial[local_row][tid] += partial[local_row][tid + stride];
+        }
+      }
+      __syncthreads();
+    }
+    if (tid == 0) {
+#pragma unroll
+      for (int local_row = 0; local_row < ROW_TILE; ++local_row) {
+        const int64_t row = row_base + local_row;
+        if (row < rows) {
+          out[row * out_features + out_col] =
+              float_to_bf16_bits(partial[local_row][0]);
+        }
+      }
+    }
+    return;
+  }
+
+  constexpr int K_MAX = 8;
+  const int64_t conv_block = linear_block - pair_blocks;
+  const int64_t channel = conv_block * blockDim.x + tid;
+  if (channel >= channels || kernel_size <= 0 || kernel_size > K_MAX) {
+    return;
+  }
+  const int64_t state_stride = channels * kernel_size;
+  const int64_t channel_base = channel * kernel_size;
+  const float* weight = conv_weight + channel_base;
+  float state[K_MAX];
+#pragma unroll
+  for (int k = 0; k < K_MAX; ++k) {
+    const float value = k < kernel_size ? base_conv_state[channel_base + k] : 0.0f;
+    state[k] = value;
+    if (k < kernel_size) {
+      initial_conv_state_snapshot[channel_base + k] = value;
+    }
+  }
+  for (int64_t row = 0; row < rows; ++row) {
+    float* node_state = chain_conv_state + row * state_stride + channel_base;
+    float acc = 0.0f;
+    for (int64_t k = 0; k + 1 < kernel_size; ++k) {
+      const float value = state[k + 1];
+      state[k] = value;
+      node_state[k] = value;
+      acc += value * weight[k];
+    }
+    const float token_value =
+        scalar_to_float_qwen35(hidden_states[row * channels + channel]);
+    state[kernel_size - 1] = token_value;
+    node_state[kernel_size - 1] = token_value;
+    acc += token_value * weight[kernel_size - 1];
+    conv_out[row * channels + channel] = silu_f32(acc);
+  }
+}
+
 bool valid_conv_shape(int64_t channels, int64_t kernel_size) {
   return channels > 0 && kernel_size > 0;
 }
@@ -977,6 +1136,91 @@ extern "C" int hipengine_qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloo
       max_nodes,
       channels,
       kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w(
+    const uint16_t* norm,
+    const float* weight_a,
+    const float* weight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    const uint16_t* hidden_states,
+    const float* base_conv_state,
+    float* chain_conv_state,
+    float* initial_conv_state_snapshot,
+    const float* conv_weight,
+    float* conv_out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  constexpr int64_t kInFeatures = 5120;
+  constexpr int64_t kOutFeatures = 48;
+  constexpr int64_t kChannels = 10240;
+  constexpr int64_t kKernelSize = 4;
+  if (!norm || !weight_a || !weight_b || !out_a || !out_b ||
+      !hidden_states || !base_conv_state || !chain_conv_state ||
+      !initial_conv_state_snapshot || !conv_weight || !conv_out ||
+      rows < 1 || rows > 4 || in_features != kInFeatures ||
+      out_features != kOutFeatures || channels != kChannels ||
+      kernel_size != kKernelSize) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int row_tile = rows == 4 ? 2 : 1;
+  const int64_t row_groups = (rows + row_tile - 1) / row_tile;
+  const int64_t pair_blocks = 2 * out_features * row_groups;
+  const int64_t conv_blocks = (channels + 255) / 256;
+  const dim3 grid(static_cast<unsigned int>(pair_blocks + conv_blocks));
+  if (rows == 4) {
+    hipLaunchKernelGGL(
+        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<2>),
+        grid,
+        dim3(256),
+        0,
+        stream,
+        norm,
+        weight_a,
+        weight_b,
+        out_a,
+        out_b,
+        hidden_states,
+        base_conv_state,
+        chain_conv_state,
+        initial_conv_state_snapshot,
+        conv_weight,
+        conv_out,
+        rows,
+        in_features,
+        out_features,
+        channels,
+        kernel_size);
+  } else {
+    hipLaunchKernelGGL(
+        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1>),
+        grid,
+        dim3(256),
+        0,
+        stream,
+        norm,
+        weight_a,
+        weight_b,
+        out_a,
+        out_b,
+        hidden_states,
+        base_conv_state,
+        chain_conv_state,
+        initial_conv_state_snapshot,
+        conv_weight,
+        conv_out,
+        rows,
+        in_features,
+        out_features,
+        channels,
+        kernel_size);
+  }
   return static_cast<int>(hipGetLastError());
 }
 

@@ -286,6 +286,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     launch_gguf_linear_residual,
     launch_gguf_linear_pair,
+    launch_gguf_linear_pair_chain_conv_snapshot,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
@@ -4320,14 +4321,21 @@ class Qwen35GGUFFullStackRunner:
         runtime,
         gdn_output_fusion=None,
         gdn_initial_state_output_fusion=None,
+        conv_ready: bool = False,
     ) -> bool:
-        """Write exact Conv/GDN row journals through registered chain owners."""
+        """Write exact Conv/GDN row journals through registered chain owners.
+
+        ``conv_ready`` means a registered cross-family owner already produced
+        alpha, beta, the Conv row journal/output, and the initial Conv snapshot.
+        Only the snapshot GDN producer is then launched; all misses retain the
+        ordinary registered snapshot Conv plus GDN chain.
+        """
 
         rows = int(rows)
-        if rows <= 1:
+        if rows <= 1 or (conv_ready and initial_state_snapshot is None):
             return False
         plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
-        if not plan.available:
+        if not conv_ready and not plan.available:
             return False
         assert self.weights is not None
         cfg = self.weights.config
@@ -4341,22 +4349,26 @@ class Qwen35GGUFFullStackRunner:
                 if gdn_output_fusion is not None
                 else plan.gdn_snapshot
             )
-            if not callable(conv_producer) or not callable(gdn_producer):
+            if (
+                (not conv_ready and not callable(conv_producer))
+                or not callable(gdn_producer)
+            ):
                 return False
             conv_initial_snapshot, recurrent_initial_snapshot = initial_state_snapshot
-            conv_producer(
-                scratch.linear_qkv.ptr,
-                conv_state.ptr,
-                conv_state_rows.ptr,
-                conv_initial_snapshot.ptr,
-                layer.weight("ssm_conv1d").allocation().tensor.ptr,
-                scratch.conv_out.ptr,
-                rows,
-                self.linear_qkv_width,
-                cfg.ssm_conv_kernel,
-                stream=stream,
-                runtime=runtime,
-            )
+            if not conv_ready:
+                conv_producer(
+                    scratch.linear_qkv.ptr,
+                    conv_state.ptr,
+                    conv_state_rows.ptr,
+                    conv_initial_snapshot.ptr,
+                    layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                    scratch.conv_out.ptr,
+                    rows,
+                    self.linear_qkv_width,
+                    cfg.ssm_conv_kernel,
+                    stream=stream,
+                    runtime=runtime,
+                )
         else:
             conv_producer(
                 scratch.linear_qkv.ptr,
@@ -4534,15 +4546,45 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        self._run_linear_attention_alpha_beta_rows(
-            layer,
-            scratch.norm.ptr,
-            attn_norm_f32_ptr,
-            scratch,
-            rows=rows,
-            stream=stream,
-            runtime=runtime,
-        )
+        composite_conv_ready = False
+        if (
+            attn_norm_f32_ptr is None
+            and linear_state_rows is not None
+            and initial_state_snapshot is not None
+        ):
+            conv_state_rows, _recurrent_state_rows = linear_state_rows
+            conv_initial_snapshot, _recurrent_initial_snapshot = initial_state_snapshot
+            composite_conv_ready = launch_gguf_linear_pair_chain_conv_snapshot(
+                layer.weight("ssm_alpha"),
+                layer.weight("ssm_beta"),
+                norm_ptr=scratch.norm.ptr,
+                out_a_ptr=scratch.linear_alpha.ptr,
+                out_b_ptr=scratch.linear_beta.ptr,
+                hidden_states_ptr=scratch.linear_qkv.ptr,
+                base_conv_state_ptr=conv_state.ptr,
+                chain_conv_state_ptr=conv_state_rows.ptr,
+                initial_conv_state_snapshot_ptr=conv_initial_snapshot.ptr,
+                conv_weight_ptr=layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                conv_out_ptr=scratch.conv_out.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_time_step_rank,
+                channels=self.linear_qkv_width,
+                kernel_size=cfg.ssm_conv_kernel,
+                backend=self.backend,
+                stream=stream,
+                runtime=runtime,
+            )
+        if not composite_conv_ready:
+            self._run_linear_attention_alpha_beta_rows(
+                layer,
+                scratch.norm.ptr,
+                attn_norm_f32_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                runtime=runtime,
+            )
 
         ssm_out_weight = layer.weight("ssm_out")
         gdn_output_fusion = self._gdn_chain_output_fusion_for_weight(
@@ -4568,6 +4610,7 @@ class Qwen35GGUFFullStackRunner:
                 initial_state_snapshot=initial_state_snapshot,
                 gdn_output_fusion=gdn_output_fusion,
                 gdn_initial_state_output_fusion=gdn_initial_state_output_fusion,
+                conv_ready=composite_conv_ready,
             )
         )
         if initial_state_snapshot is not None and not used_chain_journal:
