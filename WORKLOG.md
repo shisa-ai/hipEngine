@@ -204248,3 +204248,97 @@ Vulkan local sizes verbatim will close the measured gap.
   ported in this unit; the existing in-tree writer/direct grouped-GQA consumer
   remains unchanged. Proceed to the gfx1151 no-mirror full category+heldout
   quality gate for the fixed 8/2 map.
+
+## 2026-08-06 — Close SH-K1 strict compact-KV frontier
+
+- Run the committed 10-prompt category/train/heldout corpus plus `mixed_v1`
+  against BF16 with a forced **65,792-token** resident allocation, 4K prompt,
+  16 teacher-forced decode steps, no persistent BF16 mirror, and exact expected
+  full-attention indices. The fixed `0-7` BF16 / `8-9` per-token/head INT8 K+V
+  map passes **11/11 prompts, 187/187 positions, mean KL 3.344e-5, max KL
+  7.875e-4, 100% aggregate top-1, and 100% minimum-prompt top-1**. The layout
+  audit records zero mirror bytes and zero surviving layer-local oracle buffers.
+  Raw quality SHA-256 is `47a2763b...a1c15`.
+- Compare the candidate at the required long shapes against the committed SH-M2
+  BF16 owner-slot production rows. At 32K, prefill/decode change
+  **+0.032%/-0.436%**; at 64K they change **-0.057%/-0.670%**. All three runs
+  at each depth are finite, keep token 9707, and close at zero tracked bytes.
+- The candidate reduces live owned memory only **0.0620 GiB at 32K** and
+  **0.1235 GiB at 64K**. The layer-local BF16 prefill-oracle pair raises
+  candidate transient high water by **0.1260/0.2510 GiB**, so tracked peak
+  regresses **+0.0640/+0.1274 GiB** and simultaneous 10-ms whole-GTT regresses
+  **+0.0703/+0.1328 GiB**. The map is strict-quality-safe but neither a repeated
+  decode win nor a peak-memory win.
+- The installed `libroctx64.so` lacks `roctxProfilerResume/Pause`, so stop the
+  selected-region profiler attempt before treating its empty output as evidence.
+  Cached full-process traces are valid because the grouped-GQA INT8 symbol is
+  decode-only. Both traces record exactly **10 producer launches** (two compact
+  layers times one warmup plus four measured transitions), local256, VGPR80,
+  LDS0, scratch0. Mean producer duration is **454.6 us at 32K** with 129 splits
+  and **802.5 us at 64K** with 257 splits. Trace SHA-256 values are
+  `833b4acc...1500c` and `22f3c5f5...20fa6`.
+- Primitive/runtime validation passes: writer **4/4** exact cases, decode
+  **3/3** CPU-reference cases with max abs <=`2.98e-08`, layer accuracy at
+  contexts 64/520, all seven committed CPU fixtures, and **237 focused tests**
+  spanning KV dispatch/policy/spans, GGUF policy, memory audit, E2E fixture,
+  mixed-KV, and resident layout. A first smoke-summary helper referenced a stale
+  JSON key and exited after the already-passing writer/decode commands; the
+  corrected parser confirms the accepted primitive artifact. No product code
+  changed in this measurement/publication unit.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json` and
+  update the review, GGUF status, benchmark rollup, and changelog. Reject default
+  promotion, retain BF16 KV plus SH-M2 owner slots, preserve the existing
+  guarded/explicit hybrid without a speed/memory claim, and do not repeat this
+  map or closed formats unless the prefill-oracle lifetime materially changes.
+  Production remains **0.801/0.667 GiB** above fork F16 whole-GTT at 32K/64K.
+  Continue immediately to SH-A1; this closes only SH-K1, not the campaign.
+
+Commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+  .venv/bin/python scripts/qwen35_native_mixed_kv_suite.py \
+  --engine gguf --backend hip_gfx1151 \
+  --gguf-model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --paro-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --prompt-length 4096 --decode-steps 16 \
+  --candidate-kv-storage int8_per_token_head --kl-threshold 0.05 \
+  --top1-threshold 0.9 --max-sequence-length 65792 \
+  --require-no-bf16-mirror --expected-bf16-full-layers 0-7 \
+  --expected-int8-full-layers 8,9 \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-sh-k1-quality-f9bde8190.json
+
+# Independent one-warmup/three-run 32K and 64K candidates with the same
+# production q4096/chunk policy, --kv-storage int8_per_token_head, cached build,
+# GPU_MAX_HW_QUEUES=1, and scripts.gguf_sh_m1_screen._run_with_gtt_sampler at 10 ms.
+
+rocprofv3 --kernel-trace -d <trace-dir> -o sh-k1-<context> -f csv -- \
+  env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-sh-k1-hipcc-version.txt \
+  HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-sh-k1-hipcc-version.txt \
+  PYTHONPATH=. .venv/bin/python scripts/qwen35_gguf_bench.py \
+  --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --token-id 9707 --prompt-length <32768|65536> \
+  --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 0 \
+  --measured-runs 1 --persistent-session --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --no-graph-replay-decode --prefill-linear-chunk-size 1024 \
+  --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 --prefill-chunk-autotune \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --kv-storage int8_per_token_head \
+  --kv-scale-dtype fp16 --kv-scale-granularity per_token_head --json <output>
+
+uv run pytest -q tests/test_kv_dispatch.py tests/test_kvcache_policy.py \
+  tests/test_kvcache_spans.py tests/test_qwen35_bench_memory_audit.py \
+  tests/test_qwen35_gguf_int8_kv_policy.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py \
+  tests/test_qwen35_native_mixed_kv_suite.py \
+  tests/test_qwen35_resident_batch_layout.py --tb=short
+.venv/bin/python scripts/check_fixtures.py
+```

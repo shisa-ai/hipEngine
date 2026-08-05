@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [closed SH-K1 strict compact-KV frontier; default rejected] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / fixed 8-BF16/2-INT8 K+V: forced 65,792-token no-mirror quality passes **11/11 prompts, 187/187 positions, mean/max KL 3.344e-5/7.875e-4, 100% aggregate/min-prompt top-1**, but 32K/64K decode changes **-0.436%/-0.670%** and the prefill oracle turns **0.0620/0.1235-GiB** live savings into tracked-peak **+0.0640/+0.1274 GiB** and whole-GTT **+0.0703/+0.1328 GiB**; named direct-consumer traces pass, BF16 stays default, and SH-A1 is next; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`.
+
 - [retained SH-M2 committed checkpoint] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 4K/128: implementation `7b675670a` reproduces owner-slot prefill **1409.035 -> 1417.186 tok/s (+0.578%)**, decode **+0.271%**, tracked **-1.4086 GiB**, whole-GTT **-1.4043 GiB**, and exact state/lifecycle; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`.
 
 - [retained SH-M2 exact scratch owner slots] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K/32K/64K tg128: graph-color fixed-q4096 route/stage-disjoint fields into 21 owners, reducing tracked peak at 4K+ **23.007/23.654/24.392 -> 21.599/22.245/22.984 GiB (-1.4086 GiB each)** and whole-GTT **23.552/24.204/24.943 -> 22.148/22.800/23.538 GiB (-1.4043 GiB each)** with byte-exact state, zero close delta, and <=1% prefill/decode loss; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`.
