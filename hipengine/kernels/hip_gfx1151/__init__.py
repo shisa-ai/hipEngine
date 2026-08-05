@@ -1465,6 +1465,7 @@ _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.moe",
     "hipengine.kernels.hip_gfx1100.norm",
     "hipengine.kernels.hip_gfx1100.quant",
+    "hipengine.kernels.hip_gfx1100.quant.maple_ternary",
     "hipengine.kernels.hip_gfx1100.rotary",
     "hipengine.kernels.hip_gfx1100.runtime",
     "hipengine.kernels.hip_gfx1100.sampling",
