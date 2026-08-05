@@ -4039,6 +4039,17 @@ scratch. The collector observed unrelated untracked files, so this is a
 provenance-qualified diagnostic rather than a retainable performance claim;
 staged and unstaged tracked source were clean at `e6eb49628`.
 
+The retained [SH-M2 owner-slot result](results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json)
+keeps all 4,096 logical rows but graph-colors disjoint route/stage lifetimes into
+21 independent physical owners. At 4K/32K/64K it saves **1.4086 GiB tracked**
+and **1.4043 GiB whole-GTT** with exact full state and zero close delta. Prefill
+deltas are **+0.466%/-0.038%/+0.679%** and decode deltas are
+**-0.042%/-0.119%/+1.925%**, all inside the frozen 1% loss gate. A separate
+D->L->L->D 4K run confirms **+2.252%** prefill and the same memory saving.
+Whole-GTT becomes **22.148/22.800/23.538 GiB**, leaving **0.987/0.801/0.667
+GiB** to fork F16 at 4K/32K/64K. SH-K1 therefore remains required before any
+memory-parity claim.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4085,6 +4096,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-M2 exact scratch owner slots | 2026-08-06 | parent `d9c66bd4f`; BF16 KV; fixed q4096; one-warmup/three-run 512/4K/32K/64K eager A/B; D->L->L->D 4K confirmation; 10-ms whole-GTT; complete byte-state children | **Retained/default on gfx1151:** 21 owner slots save **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row. Full state and lifecycle are exact; prefill/decode remain within 1%. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json). | Yes — exact memory and wall gates pass; committed checkpoint pending | Run committed same-revision checkpoint, remove the A/B seam, then advance immediately to SH-K1 strict compact KV. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 Q6T16 LM-head tile8 closure | 2026-08-06 | parent `786422891`; transient exact cached gfx1151 object; c1/K2048/N248320; complete 417,177,600-byte resident matrix; FP32-logit/top-1 equality; cached named trace | **Diagnostic rejected; production unchanged:** tile8 reduces **72 -> 48 VGPR** with scratch0 but regresses **1.83174 -> 1.83575 ms (0.99782x, -0.218%)**. All transient surfaces are removed; SH-D1 closes **1.4868 ms/token** short of C1. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-q6-lm-head-tile8-rejected.json). | No — fails frozen leaf admission | Advance immediately to SH-M2 exact scratch aliases; do not repeat closed SH-D1 ownership schedules. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 cumulative 512 attribution checkpoint | 2026-08-06 | measured `1a4c6b9ce`, implementation `3e836edea`; one-warmup/three-run 512/128 eager plus cached 8-token kernel/HIP-API/ROCTX trace; sole tracked difference is unrelated `docs/ROCM-AI.md` | **Diagnostic continue:** exact decode is **53.535 tok/s / 18.6792 ms/token** and profiled GPU is **17.3591 ms/token**. Retained Q5 tile8 cuts selected-down **1.6028 -> 1.3933 ms/token**, but the row remains **1.4868 ms/token** short of C1 and **3.2132 ms/token** short of fork-F16 parity. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json). | No — cross-run attribution checkpoint; same-revision Q5 artifact owns the performance claim | Screen exact Q6T16 c1 lm-head tile8 under the frozen leaf gate; continue until parity or measured headroom exhaustion. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 selected-down Q5T16 tile8 | 2026-08-06 | implementation `3e836edea`; exact c1/top8/K512/N2048; 70.8-MB cycling pool; CPU Q5_K/BF16-byte gates; cached named trace; committed same-revision 512/128 A/B; 512/4K/32K/64K complete state; 18 natural/heldout prompts x3 | **Retained/default on gfx1151:** committed leaf confirms **40.855 -> 34.876 us (1.1715x / projected 0.2212 ms/token)** and committed 512/128 eager confirms **53.027 -> 53.557 tok/s (+0.998%)**, exact and lifecycle-clean. Q6 tile8 reaches only **1.0803x** and tile4 regresses; both Q6 surfaces are removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json). | Yes — exact Q5 leaf clears frozen 1.15x gate and model/natural gates pass | Run cumulative SH-D1 attribution/parity gate; do not stop the campaign. |

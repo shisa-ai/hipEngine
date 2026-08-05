@@ -204113,3 +204113,71 @@ Vulkan local sizes verbatim will close the measured gap.
   direct fallback; the primitive remains available for oracle and peer-backend
   use. Update the routing test to cover capability/default and peer fallback,
   and remove the completed `docs/REFACTOR.md` ledger entry.
+
+## 2026-08-06 — SH-M2 exact scratch-liveness topology screens
+
+- Built the complete route/stage lifetime map for the 4,096-row production
+  scratch and transferred the existing exact compact-route arena admission to
+  gfx1151. Diagnostics, unvalidated routes, and a disable-only A/B control keep
+  dedicated owners. Static physical scratch initially fell **1.7556 -> 0.3044
+  GiB**, saving **1.4513 GiB** without changing any logical field shape.
+- The initial single-arena 64-KiB placement saved the full tracked amount and
+  had exact state/trajectory plus zero close delta, but 4K prefill was
+  **1438.766 -> 1421.195 tok/s (-1.221%)**. A bounded 0..16-MiB architecture-
+  local color screen selected 16 KiB. Right-sized rows below 4,096 remain
+  dedicated after a 512 candidate lost **1.154%** for only **0.274 GiB**.
+- Candidate-first/control-second exposed the 4K order confound that the first
+  control-first run hid: **1409.238 vs 1438.940 tok/s (-2.064%)**, versus
+  **-0.430%** in the first order. Stop the long matrix rather than averaging
+  the single arena into a pass.
+- Split route-local attention and common post-attention fields into independent
+  arenas. Static scratch becomes **596,668,456 bytes (0.556 GiB)**. A fresh
+  D->L->L->D 4K screen records controls **1433.960/1423.202** and candidates
+  **1405.200/1421.799 tok/s**; order-balanced medians are **1428.581 ->
+  1413.499 (-1.056%)**. Decode is **+0.208%** and tracked peak saves **1.2000
+  GiB**, but the predeclared <=1% wall guard fails by 0.056 percentage point.
+- Do not round the miss into a win or repeat the same placement. Screen the last
+  general exact topology once: graph-color mutually exclusive fields into
+  separate allocator-owned slots rather than contiguous subranges. Static
+  accounting predicts **0.3423 GiB** active slots before small metadata, still
+  about **1.41 GiB** below dedicated while removing large-arena address/color
+  coupling. If this owner-slot topology misses, reject SH-M2 and advance to
+  SH-K1 rather than tuning against the four publication lengths.
+- Owner-slot RED fails at the intentionally absent topology; GREEN passes the
+  focused scratch/screen/backend bundle. After rejected color-surface cleanup
+  and the telemetry assertion, the final focused bundle passes **35 tests**.
+  The owner assignment preserves each field's
+  exact byte size, gives overlapping lifetimes distinct allocations, and reuses
+  one owner only across proven-disjoint route/stage intervals.
+- The fresh D->L->L->D 4K screen clears the wall gate: dedicated prefill legs
+  **1434.217/1395.568** and liveness legs **1445.956/1447.544 tok/s** give
+  order-balanced medians **1414.892 -> 1446.750 (+2.252%)**. Decode is
+  **+0.043%** and tracked peak is **23.0074 -> 21.5988 GiB**, saving **1.4086
+  GiB**. Advance to the complete 512/4K/32K/64K exact-state, wall, allocator,
+  and 10-ms whole-GTT matrix; this 4K screen is not publication by itself.
+- The complete matrix passes every frozen gate. 512 remains dedicated and moves
+  prefill/decode **+0.035%/-0.025%** with no memory change. At 4K/32K/64K,
+  owner slots move prefill **+0.466%/-0.038%/+0.679%** and decode
+  **-0.042%/-0.119%/+1.925%**. Tracked/owned peak falls exactly **1.408568
+  GiB** and simultaneous 10-ms whole-GTT falls **1.404297 GiB** at every 4K+
+  row. All processes return tracked bytes exactly to baseline.
+- Independent state children match their complete payload at 512/4K/32K/64K:
+  prefill FP32 logits, hidden/layer/Conv/GDN/live-BF16-KV state, four fixed-input
+  decode transitions, and final state are byte-identical. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`.
+- Remove the rejected contiguous-color and attention/common split runtime paths
+  before publication; retain only the existing gfx1100 single-arena fallback and
+  the selected gfx1151 owner slots. The disable-only same-revision control stays
+  only through a committed checkpoint under its `docs/REFACTOR.md` trigger.
+- SH-M2 reduces same-scope whole-GTT to **22.148/22.800/23.538 GiB** at
+  4K/32K/64K, still **0.987/0.801/0.667 GiB** above fork F16. Do not claim
+  memory parity; advance to SH-K1 immediately after checkpoint/seam cleanup.
+- Validation: the system-python broad run is invalid at collection because that
+  environment lacks FastAPI. `uv run pytest -q` reaches 100% with only seven
+  frozen Laguna H7U/H8A/H8B source-hash assertions failing; all other collected
+  nodes pass. Those hashes were mechanically stale after SH-D1 added the Q5
+  primitive to shared gfx11 packages and SH-M2 added the gfx1151 capability.
+  Refresh only the normalized/post-merge hashes, then rerun exactly the seven
+  failing nodes: **7 passed**. `check_fixtures.py`, registry/cpu-fixture/add-plan
+  smokes, pycompile, JSON validation, and `git diff --check` all pass. Per the
+  focused-repair rule, do not repeat the completed broad suite.

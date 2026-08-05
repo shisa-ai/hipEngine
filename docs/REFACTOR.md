@@ -3144,3 +3144,22 @@ should be boring.
   ownership and focused integration tests are removed. Keep only the separately
   registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
   production remains exact and H2 must not stack H1 arithmetic.
+
+## gfx1151 SH-M2 scratch-liveness comparison seam
+
+- Added 2026-08-06 as a disable-only
+  `HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS=0` same-revision control after
+  gfx1151 gained exact route/stage owner-slot coloring. The rejected contiguous
+  arena color and split-arena placements have no retained runtime surfaces.
+  Right-sized scratch below 4,096 rows remains dedicated because its 0.274-GiB
+  saving did not justify a repeated >1% short-prefill loss. The package
+  capability, compact exact-GDN route, and diagnostic guards remain the only
+  admission owners; the environment cannot force an unqualified backend or
+  route into owner slots.
+- Keep the seam only through SH-M2 byte-exact 512/4K/32K/64K state,
+  tracked/whole-GTT, wall, and committed-default publication. If any gate fails,
+  remove the gfx1151 capability and this seam. If all gates pass, remove the
+  environment branches immediately after the committed default checkpoint and
+  retain only the selected architecture capability. Retain dedicated allocation
+  for diagnostics, unvalidated routes, and peer
+  backends as the required fallback.

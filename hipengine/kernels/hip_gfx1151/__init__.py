@@ -626,6 +626,13 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
+# SH-M2 transfers the existing route/stage liveness admission to gfx1151's
+# proven compact exact GDN route. Diagnostics retain independently owned
+# fields. The final candidate graph-colors mutually exclusive fields into
+# separate allocator-owned slots at the fixed 4,096-row class.
+GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
+GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 4096
+GGUF_PREFILL_SCRATCH_ARENA_GROUPING = "owner_slots"
 # Nathan-review P0 exactness, copy-inclusive sub-window, and right-sized
 # 512/4K/32K/64K gates admit one reusable head-major BF16 K/V pair before
 # AOTriton. Runtime capacity remains capped at the validated 64K allocation
@@ -1575,6 +1582,9 @@ __all__ = [
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
+    "GGUF_PREFILL_SCRATCH_ARENA_GROUPING",
+    "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
+    "GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS",
     "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
     "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
