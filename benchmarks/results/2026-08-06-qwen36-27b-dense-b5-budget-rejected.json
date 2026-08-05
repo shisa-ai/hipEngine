@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "status": "rejected_dense_b5_runtime_default",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_dense_exact_b5_budget_rejection",
+  "timestamp": "2026-08-06T02:29:58+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": {
+    "binding_gpu": "AMD Radeon Pro W7900, GPU0, gfx1100",
+    "component_gpu": "AMD Radeon RX 7900 XTX, GPU1, gfx1100",
+    "rocm": "HIP 7.15.0"
+  },
+  "software": {
+    "experiment_base_commit": "1be920eb1563cf99cf2a6206663b904319d93cde",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "backend": "hip_gfx1100",
+    "measurement_tree_clean": false,
+    "measurement_tree_note": "B5 support and row-6 template instantiations were isolated uncommitted candidate changes over the recorded base. Final production source, tests, and suite were restored byte-identical to the base before publication."
+  },
+  "audit_finding": {
+    "shared_mtp_candidate_budgets": [1, 2, 3, 5],
+    "dense_gguf_production_budgets_before_audit": [1, 2, 3],
+    "omitted_supported_budget": 5,
+    "unsupported_budget": 4,
+    "reason_for_screen": "The prior campaign closure had not measured the only supported higher shared-ABI/provider budget. B5 is algorithmically distinct because six target rows can reduce verifier pass count when acceptance is high."
+  },
+  "admission_policy": {
+    "correctness": "All candidate-visible IDs and every GPU accept decision must match the exact own-AR/CPU oracle.",
+    "suite": "Promotion requires non-regressive absolute throughput on the full ten-prompt suite, train, heldout, and every category; a favorable single prompt is insufficient.",
+    "preliminary_target_pass_ceiling_ms": 50.3,
+    "vulkan_target_pass_ceiling_ms": 42.5,
+    "rule": "Do not spend a second full-suite run unless optimized B5 clears the predeclared per-pass ceiling on the same-process one-prompt screen."
+  },
+  "unoptimized_full_suite": {
+    "workload": "mtpbench-code-general-ja, all 10 prompts, natural25, one run, same-process B3/B5, W7900",
+    "correctness": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "candidate_visible_ids_checked": 500
+    },
+    "b3": {
+      "decode_tok_s": 59.94233877133456,
+      "accepted_drafts": 169,
+      "proposed_drafts": 219,
+      "cycles": 76,
+      "target_forward_rows": 295,
+      "target_verify_seconds": 3.2472997489385307
+    },
+    "b5": {
+      "decode_tok_s": 23.523262324624376,
+      "accepted_drafts": 184,
+      "proposed_drafts": 281,
+      "cycles": 61,
+      "target_forward_rows": 342,
+      "target_verify_seconds": 9.269047773443162
+    },
+    "b5_delta_percent": {
+      "full": -60.756849320878345,
+      "train": -60.15648068228383,
+      "heldout": -61.52023747523155,
+      "code": -56.44970194244636,
+      "general_en": -60.721875078032575,
+      "general_ja": -65.96164049314972,
+      "mixed_ja_en": -61.59021151885625
+    },
+    "interpretation": "B5 increases accepted drafts and reduces verifier cycles, but missing row-6 optimized owners dominate its target wall. This fallback result alone does not adjudicate B5 economics."
+  },
+  "unoptimized_profile": {
+    "row6_graph_replay_median_ms": 166.808,
+    "optimized_b3_row4_graph_replay_median_ms": 41.398,
+    "dominant_direct_fallback_kernel_ms": {
+      "q4_pack8_single": 2558.595,
+      "q4_pack8_dual": 279.843,
+      "planar_q6": 788.0,
+      "q5": 325.351
+    },
+    "dominant_fallback_share_of_traced_kernel_percent": 86.0,
+    "decision": "Admit one RED-first row-6 extension of existing exact Q4/Q5/Q6 rowtile templates before final adjudication."
+  },
+  "row6_candidate_validation": {
+    "routing": "Only rows=6 was added to the existing exact gfx1100 Q4 pack8 single/dual, Q5T16 col4, and planar-Q6 BF16/F32 template families. Row 5 stayed unsupported/unoptimized.",
+    "gpu1": {
+      "q4_tests_passed": 20,
+      "q5_tests_passed": 5,
+      "q6_tests_passed": 9,
+      "outputs": "row-6 single/dual BF16 and FP32 surfaces byte-exact; Q4/Q5 CPU KL/top-1 gates passed"
+    },
+    "cpu_fake_integration": "110/110 passed before profiling",
+    "physical_trace": {
+      "all_intended_row6_symbols_observed": true,
+      "scratch_bytes": 0,
+      "vgpr": {
+        "q4_single": 120,
+        "q4_dual": 120,
+        "q5": 64,
+        "q6": 104
+      },
+      "duration_us": {
+        "q4_range": [9.68, 14.48],
+        "q5": 10.04,
+        "q6_bf16": 15.2,
+        "q6_f32": 35.561
+      }
+    }
+  },
+  "optimized_one_prompt_screen": {
+    "workload": "code_merge_intervals, natural25, one warmup, same-process B3/B5, W7900",
+    "correctness": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true
+    },
+    "b3": {
+      "decode_tok_s": 59.59685157865792,
+      "accepted_drafts": 17,
+      "proposed_drafts": 21,
+      "cycles": 7,
+      "target_forward_rows": 28,
+      "target_verify_ms": 330.91315161436796,
+      "target_verify_ms_per_pass": 47.27330737348114
+    },
+    "b5": {
+      "decode_tok_s": 63.51136087649875,
+      "accepted_drafts": 20,
+      "proposed_drafts": 22,
+      "cycles": 5,
+      "target_forward_rows": 27,
+      "target_verify_ms": 306.67538195848465,
+      "target_verify_ms_per_pass": 61.33507639169693
+    },
+    "b5_vs_b3_tok_s_percent": 6.568315597467977,
+    "b5_vs_unoptimized_b5": {
+      "decode_tok_s_before": 30.103438241024275,
+      "decode_tok_s_after": 63.51136087649875,
+      "speedup": 2.1097709958574407,
+      "target_verify_ms_before": 724.0966553799808,
+      "target_verify_ms_after": 306.67538195848465,
+      "target_verify_delta_percent": -57.64717601166767
+    },
+    "admission_result": "failed: 61.335 ms/pass exceeds the 50.3 ms full-suite break-even ceiling despite the favorable code prompt"
+  },
+  "optimized_profile": {
+    "steady_target_pass": {
+      "b3": {
+        "nodes": 819,
+        "kernel_sum_ms": 35.163337,
+        "traced_span_ms": 39.717628
+      },
+      "b5": {
+        "nodes": 923,
+        "kernel_sum_ms": 47.774175,
+        "traced_span_ms": 53.279103
+      }
+    },
+    "all_row6_direct_fallbacks_removed": true,
+    "per_pass_kernel_delta_ms": {
+      "q4": 7.599,
+      "planar_q6": 2.275,
+      "gdn": 0.925,
+      "q5": 0.58
+    },
+    "add_rmsnorm_note": "B5 replaces 63 fused rounded-add+RMSNorm nodes (0.905 ms) with separate add/RMSNorm work totaling about 0.868 ms; this cannot recover the approximately 11 ms/pass still required.",
+    "profiler_gap_note": "Four recurring 5.728-5.799 ms intervals every 256 dispatches are the separately adjudicated rocprof instrumentation artifact and are excluded from any saving model.",
+    "interpretation": "The remaining B5 cost is the real arithmetic/resource cost of six exact rows, not a missing kernel family or launch rearrangement."
+  },
+  "decision": {
+    "runtime_default_retained": false,
+    "row6_template_changes_retained": false,
+    "second_optimized_full_suite_run": false,
+    "reason": "The frozen preliminary gate failed after all direct row-6 fallbacks were removed. Promoting from one favorable code prompt would violate the campaign anti-gaming and full-suite admission policy.",
+    "production_candidate_budgets": [1, 2, 3],
+    "canonical_budget": 3,
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_gap_vs_vulkan_percent": -11.4869,
+    "reopen_condition": "A materially different speculative algorithm, proposer-quality change, or hardware primitive that lowers six-row target cost below the frozen break-even; not another rearrangement of the closed exact rowtile families."
+  },
+  "post_rejection_validation": {
+    "experimental_source_tests_scripts_match_base": true,
+    "focused_b1_b3_contract_tests": "6/6 passed",
+    "py_compile": "passed",
+    "diff_check": "passed"
+  },
+  "raw_evidence": {
+    "unoptimized_one_prompt_json": "/tmp/hipengine-qwen36-27b/resume-b5-oneprompt-b3-b5.json",
+    "unoptimized_one_prompt_json_sha256": "adc3f2731a32d5ef564dacc7a03e57edd912f393eeed2d36e352d49c961368f7",
+    "unoptimized_full_suite_json": "/tmp/hipengine-qwen36-27b/resume-b5-full-b3-b5.json",
+    "unoptimized_full_suite_json_sha256": "4ba52d4f7ddb882fc86bc6e747a43533a046de041f15a81a489f3cb312928ff6",
+    "optimized_one_prompt_json": "/tmp/hipengine-qwen36-27b/resume-b5-row6/oneprompt-b3-b5.json",
+    "optimized_one_prompt_json_sha256": "9a064181b3b922aca03b9c1b3b87c60e6093cf82457202993a262cd5fbccf40c",
+    "optimized_profile_suite_json": "/tmp/hipengine-qwen36-27b/resume-b5-row6/profile/suite.json",
+    "optimized_profile_suite_json_sha256": "be6da9b00d86e9fe4391e7d2be5d2b29b7f418bc2a93c2a11d77897d81d2e597",
+    "optimized_kernel_trace": "/tmp/hipengine-qwen36-27b/resume-b5-row6/profile/mtp-b5-row6_kernel_trace.csv",
+    "optimized_kernel_trace_sha256": "62a2fa059aab2c2c5d16a5ae785161b36544caf4f9a008aa64f1dbf73a1106c8",
+    "optimized_copy_trace_sha256": "b5a700ad1716024572067afa5dcb507b0e432b7f4230bdc8eb5b3f66703037d0",
+    "gpu1_row6_trace_sha256": "fd6db8a16202848213f2cfaefc0df2f40d952943f44f04bd482e71a46243fe80",
+    "gpu1_row6_trace_script_sha256": "2c3122987969e45943c8ddd1870b39ae3f7ce02d04bd9df73b460da5c3fd4d66"
+  }
+}

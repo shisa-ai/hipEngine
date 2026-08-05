@@ -1535,6 +1535,27 @@ gaps are instrumentation artifacts; segmentation is rejected without source or
 natural25 work. Artifact:
 `benchmarks/results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`.
 
+A post-closure definition-of-done audit then found one omitted algorithmic
+family: the shared MTP ABI and trailing NextN provider support budgets
+`(1,2,3,5)`, but the dense GGUF verifier/graph/suite independently stopped at
+B3. B4 remains intentionally unsupported. The initial exact ten-prompt screen
+shows B5 accepting more drafts (**169 -> 184**) and requiring fewer cycles
+(**76 -> 61**), but direct six-row fallbacks regress B3 **59.942 -> 23.523
+tok/s**. Temporary RED-first row-6 instantiations of the existing exact
+Q4/Q5/Q6 templates remove every fallback and improve one favorable code prompt
+from **30.103 -> 63.511 tok/s**, versus same-process B3 **59.597 tok/s**.
+
+That prompt does not override the frozen admission gate. Optimized B5 still
+costs **61.335 ms/target pass**, above the predeclared **<=50.3 ms** full-suite
+break-even and roughly **42.5 ms** Vulkan break-even. A steady trace shows B5
+at **923 nodes / 47.774 ms kernels / 53.279 ms span**, versus B3 **819 / 35.163
+/ 39.718 ms**; all direct fallbacks are gone and the residual is primarily the
+real six-row Q4 (**+7.599 ms/pass**) and Q6 (**+2.275 ms**) work. Do not game a
+second full-suite run after the preliminary gate fails. Remove all row-6 and
+B5 dense-GGUF production changes, retain B1-B3, and reopen only for a different
+speculative algorithm or hardware primitive. Artifact:
+`benchmarks/results/2026-08-06-qwen36-27b-dense-b5-budget-rejected.json`.
+
 The exact/default pass is therefore tabled below parity, not declared a Vulkan
 win. Populated prefill and AR already beat the matched stateful Vulkan rows;
 natural B3 improved **14.858 -> 60.262 tok/s (4.056x)** and narrowed its gap
@@ -1553,15 +1574,15 @@ unprofiled production reproducer with a new >=5%-wall ceiling.
 
 | Priority | ID | Work | Exit gate / impact rule | Status |
 | ---: | --- | --- | --- | --- |
-| 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, natural25, B1-B4 sweep, and query-profile artifacts. | complete; B3 selected |
+| 0 | D27-M0 | Freeze latest llama.cpp Vulkan revision/build, model hash, hardware/software capture, AR/MTP commands, and unprofiled W7900 baselines. | Fresh pp/tg, context-matched AR, natural25, supported-budget B1/B2/B3/B5 audit, and query-profile artifacts. | complete; B3 selected, B5 rejected, B4 unsupported |
 | 0 | D27-F0 | Add untied dense root/embedding/layout support, then prove dense GGUF AR load/prefill/decode on GPU0. | Strict map uses Q6_K `output.weight`; finite deterministic 8/1 smoke, then 512/128 and 4K/128 exact/state gates. | complete; clean 512/128 + 4K/128 graph gates green |
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | complete for this pass; populated graph AR is 23.284/21.903 tok/s and beats stateful Vulkan by 85.18%/75.40% |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | tabled at exact/default local optimum; canonical B1/B2/B3 is 43.792/55.254/60.262 tok/s, with rounded next-RMSNorm the physical default and rejected launch contractions excluded |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | exhausted for current algorithms; graph upload/splitting and all remaining credible arithmetic/transport ladders are closed, leaving B3 11.49% below Vulkan |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | tabled at exact/default local optimum; canonical B1/B2/B3 is 43.792/55.254/60.262 tok/s, B5 fails the 50.3-ms/pass admission screen, rounded next-RMSNorm is the physical default, and rejected launch contractions are excluded |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | exhausted for current algorithms; graph upload/splitting, exact six-row B5, and all remaining credible arithmetic/transport ladders are closed, leaving B3 11.49% below Vulkan |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | complete as a blocked publication; retained defaults and evidence are published, but matched MTP parity is explicitly not claimed |
 
 ### Impact admission rule

@@ -207553,3 +207553,113 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`.
   Raw W7900 result/script SHA-256s are `e3f9b9db...c9ac` and
   `2f970305...fc33`.
+
+## 2026-08-06 — Reopen dense Qwen3.6 on the omitted exact B5 budget
+
+- The completion audit found one materially distinct uncovered family after the
+  graph-split closure: shared MTP and the trailing NextN provider support
+  budgets `(1,2,3,5)`, but this dense campaign independently capped the GGUF
+  verifier, native graph adapter, and suite at B3. B4 remains intentionally
+  outside the shared MTP bucket contract. Add RED for B5 parser/metadata/cache
+  ownership while preserving hard rejection of B4.
+- The first W7900 admission attempts exposed two deeper fail-closed limits:
+  Python `NativeSpecTargetGraphLauncher` and the compiled NativeSpecCycle host
+  shim both accepted only rows 2-4. The Python RED failed 2/2 before the
+  VERIFY-only rows `{2,3,4,6}` repair and the compiled fake-HIP callback RED
+  returned `UNSUPPORTED_SHAPE` before its rows-6 repair. N2 device
+  accept/commit remains deliberately B1/B2. The hermetic shim was prebuilt as
+  `native_spec_cycle_graph-d2c59b23b73245d3` before cached-only model work.
+- A same-process one-prompt B3/B5 screen is exact but reveals the unoptimized
+  six-row topology: B3 is **60.405 tok/s**, 7 passes / 28 target rows / **325.7
+  ms** target verify; B5 is **30.103 tok/s**, 5 passes / 27 rows / **724.1
+  ms**. B5 accepts **20 vs 17** drafts and executes fewer total target rows, so
+  the loss is not proposal quality or verifier economics.
+- Run the required ten-prompt W7900 B3/B5 gate before making any speed claim.
+  All 500 candidate-visible IDs and every GPU/CPU accept decision are exact.
+  B3 measures **59.942 tok/s**, 169 accepts, 76 passes, and **3.247 s** target
+  verify. B5 measures **23.523 tok/s**, 184 accepts, 61 passes, and **9.269 s**
+  target verify. Full/train/heldout and all four categories are negative
+  (**-56.45% to -65.96%**) in the fallback body. Raw result:
+  `/tmp/hipengine-qwen36-27b/resume-b5-full-b3-b5.json`.
+- Do not misclassify that fallback result as B5 exhaustion. The 53 six-row graph
+  replays have median **166.808 ms** versus **41.398 ms** for optimized B3
+  rows4. B5 needs at most **50.3 ms/pass** to beat same-process B3 and about
+  **42.5 ms/pass** to reach Vulkan. A W7900 kernel/copy trace localizes about
+  **86%** of all traced kernel time to four direct fallbacks: Q4 pack8 single
+  **2,558.6 ms**, Q4 dual **279.8 ms**, planar Q6 direct **788.0 ms**, and Q5
+  direct **325.4 ms**. The B2 tail immediately returns to existing exact
+  rowtile templates. This admits one RED-first `ROW_TILE=6` extension of the
+  retained Q4/Q5/Q6 families before final B5 adjudication; no full suite is
+  repeated until a one-prompt target replay clears the required ceiling.
+- Freeze the row-6 route before production edits. Six focused CPU/fake nodes
+  fail **6/6** solely on the existing bounds: pack8 single/dual wrappers and
+  dispatch stop at row 4, the compact-Q4 sidecar fallback does not reach the
+  pack8 row-6 owner, and Q5T16 row 6 remains on its direct producer. Preserve
+  row 5 as an unoptimized/fail-closed lower-level shape because B4 is not a
+  supported GGUF graph bucket. Existing row-6 planar-Q6 bit equality plus the
+  physical B5 trace naming the direct kernel are the corresponding Q6 RED.
+- GREEN adds only row-6 instantiations of the retained exact templates. Pack8
+  owns rows `{2,3,4,6}` while compact-Q4 sidecars remain bounded to 2-4; Q5T16
+  adds a package-scoped extra row `{6}` without widening its row-4 maximum;
+  planar-qmicro Q6 routes row 6 to its existing col8 body while row 5 retains
+  the direct fallback. The six CPU/fake RED nodes turn GREEN **6/6**. GPU1 leaf
+  coverage passes **20/20 Q4**, **5/5 Q5**, and **9/9 Q6**; row-6 single/dual,
+  BF16, and FP32 outputs are byte-exact and the Q4/Q5 CPU gates remain within
+  KL/top-1 limits.
+- A cached-only GPU1 `rocprofv3` smoke physically names every intended row-6
+  specialization with scratch0: pack8 single and dual at local32/64, VGPR120,
+  LDS512; Q5T16 col4 at local128, VGPR64, LDS512; planar-Q6 BF16/F32 at
+  local128, VGPR104, LDS1024. Observed durations are **9.680-14.480 us** Q4,
+  **10.040 us** Q5, and **15.200/35.561 us** Q6. Trace/script SHA-256 values
+  are `fd6db8a...3fe80` and `2c312298...4d66`. The complete graph/adapter/suite
+  plus GGUF dispatch CPU/fake bundle passes **110/110**. Run one same-process
+  W7900 B3/B5 replay now; do not repeat the ten-prompt suite unless B5 clears
+  the predeclared per-pass ceiling.
+- The same-process W7900 replay is exact and proves the row-6 work is real:
+  B3 is **59.597 tok/s**, **330.913 ms / 7** target passes; B5 is **63.511
+  tok/s (+6.568%)**, **306.675 ms / 5** passes, with the same prior **17 vs
+  20** accepted drafts and B5 **20/22** GPU/CPU-exact acceptance. Against the
+  pre-rowtile one-prompt control, B5 target verify falls **724.097 -> 306.675
+  ms (-57.65%)** and throughput rises **30.103 -> 63.511 tok/s (2.110x)**.
+- Do not promote from the favorable code prompt or move the gate. B5 still
+  costs **61.335 ms/pass**, above the predeclared **50.3-ms** full-suite
+  break-even and roughly **42.5-ms** Vulkan break-even. Therefore do not repeat
+  the ten-prompt suite yet. Profile the optimized row-6 graph once; continue
+  only if the remaining ~18% has a concrete non-exhausted owner rather than the
+  inherent cost of six exact rows.
+- The optimized W7900 trace closes that question. A steady B5 row-6 target pass
+  is **923 nodes / 47.774 ms kernel sum / 53.279 ms traced span**, versus the
+  same runtime's B3 row-4 pass at **819 / 35.163 / 39.718 ms**. All row-6 direct
+  fallbacks are gone. Per pass, Q4 moves from B3 compact-T16 **17.928 ms** to
+  B5 pack8 **25.527 ms (+7.599 ms)**, planar Q6 adds **2.275 ms**, GDN adds
+  **0.925 ms**, and Q5 adds **0.580 ms**. These are the arithmetic/resource
+  costs of six exact rows, not an uncovered launch family. The 63 extra
+  add/RMSNorm nodes replace a **0.905-ms** fused family with only **0.868 ms**
+  of separate kernels; removing them cannot recover the required ~11 ms/pass.
+  The four recurring **5.728-5.799-ms** gaps every 256 dispatches are the
+  already-adjudicated rocprof artifact and are excluded from any saving model.
+- Reject B5 under the frozen gate. The favorable single code prompt cannot
+  override the full-suite break-even model, and a second ten-prompt run is
+  intentionally not spent after the required **<=50.3 ms/pass** admission
+  screen fails at **61.335 ms/pass**. Restore the GGUF verifier/graph/suite to
+  B1-B3 and remove row-6 routing/templates/tests; B4 remains unsupported and
+  B5 remains a shared-ABI/provider capability, not a dense-GGUF production
+  budget. Canonical exact/default stays B3 **60.262 tok/s / 11.49% below
+  Vulkan**. Current trace/suite/copy and unprofiled one-prompt SHA-256 values
+  are `62a2fa05...106c8`, `be6da9b0...2e597`, `b5a700ad...037d0`, and
+  `9a064181...f40c`.
+- Complete the rejection cleanup before publication. All experimental changes
+  under `hipengine/`, `tests/`, and `scripts/` are byte-identical to parent
+  `1be920eb1`; only this evidence journal and publication files remain. The
+  focused restored-cap gate passes **6/6** across suite parsing, Python/C++
+  graph contracts, B3 cache reuse, and bounded Q5 dispatch; `py_compile` and
+  `git diff --check` pass. Per the focused-repair rule, do not repeat GPU leaf
+  or W7900 model gates after restoring already-validated parent bytes.
+- Publish compact rejection artifact
+  `benchmarks/results/2026-08-06-qwen36-27b-dense-b5-budget-rejected.json`,
+  plus the benchmark changelog/README and campaign audit. The artifact records
+  full raw SHA-256 values and explicitly labels every B5 timing diagnostic,
+  not a retained speed claim. The exact/default campaign is complete with no
+  work in progress: B1-B3 remains production, B3 remains canonical, and B5 may
+  reopen only for a materially different speculative algorithm or hardware
+  primitive.
