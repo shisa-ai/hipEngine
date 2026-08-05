@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh_d1_selected_down_q5_tile8_retained",
+  "created_at": "2026-08-06T03:20:00+09:00",
+  "status": "retained_exact_default_pending_clean_publication",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "exact Qwen c1/top8 Q5T16 selected-down leaf and repeated-token 512/128 eager decode on Radeon 8060S gfx1151; Q6 ownership siblings rejected and removed",
+  "decision": "Promote exact Q5T16 tile8 selected-down on gfx1151 at rows=8/K512/N2048; retain production Q6T16 and all peer/shape fallbacks.",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory_domain": "GTT/UMA",
+    "gpu_max_hw_queues_leaf": 1,
+    "gpu_max_hw_queues_eager": 2
+  },
+  "software": {
+    "parent_commit": "0ab9309709f0894187a6ba80be631656211c4fd0",
+    "candidate_provenance": "dirty tracked candidate over the committed parent; runtime-source diff is limited to this SH-D1 unit, while docs/ROCM-AI.md is unrelated concurrent work and excluded",
+    "hip": "7.15.0-0000000",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_status": "blocked_before_diff: missing optional /home/lhl/amd-gpu-tuning/reference/atlas; in-tree design, no external device body copied"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "kernel": "qk_t16_selected_qwen_tile_gemv_kernel<unsigned short,5,8>",
+    "registry_key": [
+      "hip_gfx1100",
+      "moe_linear",
+      "gguf_q5_k_t16_v1",
+      "selected_t16_qwen_tile8_gemv_decode_bf16_bf16_out"
+    ],
+    "backend_capability": {
+      "name": "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
+      "hip_gfx1151": true,
+      "hip_gfx1100": false
+    },
+    "rollback": "HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8=0",
+    "shape_gate": {
+      "x_rows": 8,
+      "selected_rows": 8,
+      "in_features": 512,
+      "out_features": 2048,
+      "quant": "gguf_q5_k_t16_v1",
+      "output": "bf16"
+    },
+    "arithmetic_contract": "Each output column retains production local128 K ownership, FMA order, wave32 shuffle tree, serial wave-0..3 reduction, and BF16 store; only independent output-column ownership changes from 16 to 8 columns per workgroup.",
+    "residency_change_bytes": 0,
+    "fallback": "Production 16-column selected T16 direct GEMV for Q6, gfx1100, non-Qwen shapes, F32 output, and capability/env misses."
+  },
+  "correctness": {
+    "red": "Targeted collection failed because Q5/Q6 tile wrappers did not exist.",
+    "green": "Full Qwen K512/N2048/top8 candidate outputs match production BF16 bytes and CPU Q5_K/Q6_K oracles; final retained surface is Q5 only.",
+    "q5_output_sha256": "c6ce6760e84cafb5c9b1b1e88189e2d64b59439e8bd02bae39482a2a7471b669",
+    "q5_bf16_mismatches": 0,
+    "state_matrix": {
+      "contexts": [512, 4096, 32768, 65536],
+      "decode_transitions_per_context": 4,
+      "prefill_logits_exact": true,
+      "prefill_hidden_layer_conv_gdn_kv_exact": true,
+      "trajectory_exact": true,
+      "final_state_exact": true,
+      "control_sha256": "9600d0d8bb64137581ebf85aeec0c2b355eaddbd6a7a3262ce71c0d30437cfd3",
+      "candidate_sha256": "0cd7d27358641ea0ec7bf63fe8a8b172af58e870a2bcfac0d02aa77280b65e52"
+    },
+    "natural_category_heldout": {
+      "passed": true,
+      "primary_prompts": 10,
+      "heldout_prompts": 8,
+      "repeats": 3,
+      "decode_steps": 24,
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "repeat_deterministic": true,
+      "raw_sha256": "f70e8eb66b320d1b11a6063105e58d3179f270df96cea2b99e0be16532e3b325"
+    },
+    "lifecycle": {
+      "tracked_close_bytes_control": 0,
+      "tracked_close_bytes_candidate": 0
+    }
+  },
+  "leaf_protocol": {
+    "timing": "counterbalanced HIP events",
+    "warmups_per_variant": 80,
+    "samples_per_variant": 3,
+    "launches_per_sample": 400,
+    "orders": [
+      ["control", "candidate"],
+      ["candidate", "control"],
+      ["control", "candidate"]
+    ],
+    "mall_assumption_bytes": 33554432,
+    "selected_matrix_bytes": 5898240,
+    "pool_experts": 96,
+    "pool_bytes": 70778880,
+    "gate": "Continue at >=1.15x leaf speedup or >=0.5 ms/token projection, exact output, and zero scratch/spill.",
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_q5_k_t16_selected_down_tile8_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --warmups 80 --samples 3 --burst 400 --output /tmp/sh-d1-q5-tile8-final.json",
+    "raw_sha256": "88b0d6430b4d4372558b21d5b78d743bdf424329716e775a688f348228b5107f"
+  },
+  "leaf_results": {
+    "control_us": [
+      40.91697692871094,
+      40.81493854522705,
+      40.8115291595459
+    ],
+    "candidate_us": [
+      34.8645806312561,
+      34.827609062194824,
+      34.92222547531128
+    ],
+    "control_median_us": 40.81493854522705,
+    "candidate_median_us": 34.8645806312561,
+    "speedup": 1.170670571859294,
+    "saving_us_per_call": 5.950357913970947,
+    "calls_per_token": 37,
+    "projected_saving_ms_per_token": 0.22016324281692504,
+    "gate_pass": true
+  },
+  "cache_only_trace": {
+    "compiler_spawned_under_profiler": false,
+    "raw_sha256": "28fd20d102b4967022e3eff1ccec8110c6aa69383ec2b05b12c7ab7d48f75e7f",
+    "control": {
+      "kernel": "qk_t16_selected_direct_gemv_kernel<unsigned short,5,false,false>",
+      "local_size_x": 128,
+      "grid_size_x": 16384,
+      "grid_size_y": 8,
+      "vgpr": 128,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "kernel": "qk_t16_selected_qwen_tile_gemv_kernel<unsigned short,5,8>",
+      "local_size_x": 128,
+      "grid_size_x": 32768,
+      "grid_size_y": 8,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    }
+  },
+  "eager_512_128": {
+    "protocol": "independent eager processes; one discarded full run plus three measured 128-token runs; repeated token 9707; cached builds",
+    "control_env": "HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8=0",
+    "candidate_env": "architecture default, selector unset",
+    "control_tok_s": [
+      52.91186090694032,
+      52.88081451052756,
+      52.805060245557264
+    ],
+    "candidate_tok_s": [
+      53.4133587184883,
+      53.38877590871529,
+      53.44429897416583
+    ],
+    "control_median_tok_s": 52.88081451052756,
+    "candidate_median_tok_s": 53.4133587184883,
+    "speedup": 1.0100706506299126,
+    "delta_percent": 1.0070650629912636,
+    "control_median_ms_per_token": 18.9104500234375,
+    "candidate_median_ms_per_token": 18.7219082265625,
+    "saving_ms_per_token": 0.1885417968750005,
+    "all_candidate_samples_above_all_control_samples": true,
+    "all_tokens_exact": true,
+    "control_raw_sha256": "b965c12b0821cf181413dd8746a585ea91bc78301e4b777325a3430ade1712ce",
+    "candidate_raw_sha256": "d3b915d14c366123da5a6756060a805fe018db926523f3d9126a23fad71e1315"
+  },
+  "q6_rejected_removed": {
+    "tile8": {
+      "control_median_us": 41.53400897979736,
+      "candidate_median_us": 38.44780921936035,
+      "speedup": 1.0802698469197294,
+      "projected_saving_ms_per_token": 0.009258599281311035,
+      "exact": true,
+      "gate_pass": false
+    },
+    "tile4": {
+      "control_median_us": 41.7937707901001,
+      "candidate_median_us": 44.817209243774414,
+      "speedup": 0.9325384488527851,
+      "projected_saving_ms_per_token": -0.00907031536102295,
+      "exact": true,
+      "gate_pass": false
+    },
+    "tile8_raw_sha256": "79255323c5101485191f52371c9fb21b5a90925b3190060615ceda1e4dfc660c",
+    "tile4_raw_sha256": "a0b555eac3609a993fc46abf3b5830afdfd929b8a2e95d74eebd7ef5d2386ce8",
+    "surfaces_removed": true,
+    "decision": "Keep production Q6T16 16-column direct GEMV."
+  },
+  "limitations": [
+    "The retained eager performance comparison uses the committed parent plus a dirty candidate and is marked pending clean publication; all runtime-source changes are captured by this unit and unrelated docs/ROCM-AI.md is excluded.",
+    "The leaf uses deterministic synthetic values but charges the exact full Qwen selected-matrix byte count over a >2x-MALL pool; CPU and production-byte gates are independent of timing values.",
+    "gfx1100 remains disabled pending an independent W7900 transfer.",
+    "Q6 exact tile8/tile4 misses admission and is removed."
+  ],
+  "next": "Commit the retained Q5 default, publish a clean same-revision checkpoint, then complete cumulative SH-D1 attribution before continuing SH-M2/SH-K1/SH-A1/SH-G."
+}

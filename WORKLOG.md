@@ -203960,3 +203960,67 @@ Vulkan local sizes verbatim will close the measured gap.
 - Continue the campaign immediately at selected Q5/Q6 down (**1.603-1.606
   ms/token**), then cumulative SH-D1 and SH-M2/SH-K1/SH-A1/SH-G; this rejection
   is not a campaign stopping point.
+
+## 2026-08-06 — Select SH-D1 Qwen selected-down tile8 first object
+
+- The next frozen family is the exact Qwen c1/top8 selected down projection:
+  Q5T16 owns 37 of 40 MoE layers and Q6T16 owns three, together measuring
+  **1.603-1.606 ms/token**. Production launches one local128 workgroup per
+  16-column tile and selected row at K512/N2048, keeps 16 F32 accumulators, and
+  profiles at 96/128 VGPR across the family with zero scratch; the final Q5
+  control trace reports 128 VGPR.
+- Screen one shared exact ownership mechanism for both quant siblings: split
+  each resident T16 tile into independent eight-column workgroups while
+  preserving the production 128-thread K ownership, FMA order, wave32 tree,
+  serial wave-0..3 reduction, BF16 store, bytes, allocation, and direct selected
+  ABI. This is the remaining byte-neutral ownership point suggested by the
+  selected-Q4 result; it does not repeat the closed approximate q8_1/dp4a,
+  raw/X8, duplicate-expert C8, compact scheduler, or launch-shape screens.
+- Freeze the same SH-D1 continuation gate before implementation: each quant
+  leaf must be CPU-oracle correct, BF16-byte exact to production, four-axis
+  resolvable, named in a cached trace with zero scratch/spill, and improve
+  **>=1.15x** or project **>=0.5 ms/token** before runtime/full-model work.
+  Measure immutable 3x400 order-balanced HIP-event samples while cycling
+  disjoint selected-expert matrices over more than twice the 32-MiB MALL.
+- ROCm/gfx1151 is healthy. The required broad lineage check is mechanically
+  blocked before diff by absent optional checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external device body is being
+  copied. RED should fail collection on the intentionally absent Q5/Q6 tile8
+  wrappers before the shared implementation lands.
+- RED fails collection on the absent wrappers. GREEN passes the full
+  K512/N2048/top8 CPU Q5/Q6 oracles and byte-compares each candidate to the
+  production direct owner. The immutable first tile8 screen selects Q5:
+  production **40.903 us** versus **34.925 us**, **1.17120x**, projecting
+  **0.2212 ms/token** across 37 layers. Q6 tile8 reaches only **41.534 ->
+  38.448 us / 1.08027x / 0.0093 ms/token**, so its final tile4 ownership point
+  is screened once and regresses **41.794 -> 44.817 us / 0.93254x**.
+- Retain only Q5 tile8. The final source-shaped Q5 rerun confirms production
+  **40.815 us** versus tile8 **34.865 us**, **1.17067x**, saving **5.950
+  us/call** and projecting **0.2202 ms/token**. Remove both Q6 C ABI wrappers,
+  registry keys, Python exports, and tests; Q6 remains on the production
+  16-column body. The Q5 four-axis key is
+  `moe_linear/gguf_q5_k_t16_v1/selected_t16_qwen_tile8_gemv_decode_bf16_bf16_out`.
+- Cached-only tracing names Q5
+  `qk_t16_selected_qwen_tile_gemv_kernel<unsigned short,5,8>` at local128,
+  grid256x8, **56 VGPR**, 128 SGPR, 512 B LDS, and scratch0 versus production
+  grid128x8 / 128 VGPR / 512 B LDS / scratch0. No compiler spawned under the
+  profiler.
+- The gfx1151 capability defaults Q5 tile8 only at the exact c1/top8
+  K512/N2048 shape; gfx1100 and every shape/quant miss keep the existing
+  direct owner. `HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8=0` is the temporary
+  rollback. Q5 and Q6 allocations, residency, and prefill paths are unchanged.
+- Final-code 512/128 eager one-warmup/three-run control **52.912/52.881/52.805
+  tok/s** (median **52.881**) versus candidate **53.413/53.389/53.444 tok/s**
+  (median **53.413**): **+1.007%**, saving **0.1885 ms/token**, with every
+  candidate sample above every control sample, 128/128 exact IDs each run, and
+  zero tracked close bytes.
+- The independent state children are byte-identical in their complete payload
+  at **512/4K/32K/64K**: prefill logits/hidden/layer/Conv/GDN/live BF16-KV,
+  four fixed-input decode transitions, and final state all match. The natural
+  category+heldout oracle also passes all **18 prompts x3**, comparing **1,350
+  tokens** and **54,000 layer-hidden rows** with zero initial/final-state or
+  hidden mismatch and deterministic repeats.
+- Publish the retained Q5 and rejected Q6 decision in
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json`.
+  Continue SH-D1 immediately with cumulative attribution/parity headroom; this
+  retained leaf is not the campaign stopping point.

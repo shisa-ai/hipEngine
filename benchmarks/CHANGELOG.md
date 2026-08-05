@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [retained SH-D1 selected-down Q5 tile8; clean publication pending] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / c1/top8 Q5T16 K512->N2048: exact tile8 moves **40.815 -> 34.865 us** (**1.1707x**, projected **0.2202 ms/token**) and 512/128 eager **52.881 -> 53.413 tok/s (+1.007%)** with complete 512/4K/32K/64K plus 18-prompt natural/heldout state exactness; gfx1151 defaults tile8, while Q6 tile8/tile4 miss admission and are removed; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json`.
+
 - [diagnostic rejected SH-D1 selected-Q4 tile ladder, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / c1/top8 Q4T16 gate/up+SiLU: exact tile8 moves **57.824 -> 50.429 us** (**1.1466x**, projected **0.2958 ms/token**) but misses the frozen 1.15x gate by **0.292%** and the 0.5-ms alternative; tile4 reaches only **52.915 us / 1.0915x**; remove both transient owners and advance to Q5/Q6 selected down; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-q4-tile-ladder-rejected.json`.
 
 - [diagnostic rejected SH-D1 GDN paired-Q8T32 ladder, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: production Q8T16 **136.19 us -> 127.90 us** with exact byte-neutral local256 Q8T32+DPP+non-temporal (**1.0648x**, projected **0.2487 ms/token**), but best remains **7.94%** above the frozen **118.493-us** gate and register-wide Q8T32 regresses **4.96%** at 91 VGPR; remove all transient Q8T32 surfaces, close GDN layout work, and advance to selected experts; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json`.
