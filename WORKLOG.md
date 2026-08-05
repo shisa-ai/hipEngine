@@ -207978,3 +207978,51 @@ Vulkan local sizes verbatim will close the measured gap.
   shift, or hardware primitive with credible five-row cost below 50.3 ms/pass.
   Campaign, canonical benchmark README/root export, and changelog are
   synchronized; no optimization or benchmark process remains active.
+
+## 2026-08-06 — Final Qwen3.6 parity-or-exhaustion completion audit
+
+- Restate the user objective as an explicit OR gate: exact/default must either
+  beat matched llama.cpp Vulkan, or remain below it only after every material
+  profiler-ranked family and materially distinct speculative schedule has a
+  measured decision, rejected paths are removed, publication is synchronized,
+  and high-leverage-only reopen conditions are explicit. Parity is false;
+  exhaustion is true, so the objective is complete by the second branch rather
+  than by relabeling a blocked row as a win.
+- Final W7900 status is internally consistent across pinned artifacts. Populated
+  512/4096 prefill moves **50.515/50.473 -> 234.580/215.127 tok/s** versus
+  Vulkan **79.805/81.792**; populated AR moves **19.556/18.649 ->
+  23.284/21.903** versus **12.574/12.488**; natural true AR moves **20.361 ->
+  24.114** versus **12.546**. Natural exact B1/B2/B3 moves
+  **17.128/16.005/14.858 -> 43.792/55.254/60.262 tok/s**. Canonical B3 remains
+  **7.821 tok/s / 11.49%** below Vulkan B3 **68.082 tok/s**.
+- The matched directional module ledger is also closed: Q5T16 `ssm_out`
+  **22.911 vs 15.119 ms (+7.792)**; Q4 gate/up+SiLU **76.311 vs 89.534 ms
+  (hipEngine ahead 13.223)**; wide Q6 **47.570 vs 41.486 (+6.084)**; proposal
+  root stage1 **31.241/21 calls vs 31.873/22 calls (ahead 0.632, call mismatch
+  disclosed)**; target root FP32 **11.798 vs 9.170 (+2.628)**. Positive gaps
+  total only **16.504 ms / 3.72%** of the 444.023-ms marker, below the
+  **12.98%** throughput increase required for parity. Q5/Q6/root representation
+  grids, launch composites, graph upload/split, and exact B4/B5 are measured and
+  closed; another isolated arithmetic retune cannot reach the headline.
+- The source/default audit passes. `scripts/qwen36_dense_gguf_suite.py` and the
+  dense runtime again admit only budgets `{1,2,3}`; all B4/B5 row-5/6 templates,
+  planar-Q8 runtime ownership, and X8 c1 sidecars are absent. Exact planar Q6
+  remains production, while its registered planar-Q8 leaf is diagnostic only.
+  Commit `8f08009ba` contains only the B4 evidence/publication after restoring
+  all executable and test paths. `git status` was clean immediately afterward.
+- Correctness and anti-gaming provenance is complete without rerunning closed
+  expensive suites. Retained headlines use the ten-prompt train/heldout/four-
+  category natural25 gate and true same-harness AR; fixed-prompt B4/B5 samples
+  remain diagnostics. Post-removal evidence is planar-Q8 **89 passed / 4
+  skipped** plus runner **30/9**, B5 cap **6/6**, B4 cap **8/8**, and exact
+  W7900 transactions/traces. The 2026-08-03 repository-wide baseline's 20
+  pre-existing failures in unchanged parent paths remain disclosed rather than
+  being falsely claimed green.
+- Campaign, benchmark README/changelog, root README export, artifacts, commands,
+  commit chain, and refactor closure are linked. No Qwen3.6 suite, B4 script, or
+  rocprof process is active; tasks 17-19 are complete, and task 16 closes with
+  this audit unit. Final checklist artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`.
+  Resume only for a materially new verifier/speculative algorithm, proposer-
+  quality shift, hardware primitive, changed baseline, or newly demonstrated
+  >=5%-wall production ceiling.

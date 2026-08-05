@@ -1670,6 +1670,24 @@ Artifacts:
 - `benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json`
 - `benchmarks/results/2026-08-06-qwen36-27b-dense-b4-budget-rejected.json`
 
+### Final parity-or-exhaustion checklist (2026-08-06)
+
+The final prompt-to-artifact audit now closes the gap that reopened B4. Exact
+model/platform identity, true-AR and transactional-MTP correctness, full
+train/heldout/category promotion gates, retained and rejected families,
+per-module Vulkan attribution, B4/B5 economics, source/default cleanup,
+commands, commits, rollups, and active process/task state are all accounted for.
+Matched MTP parity is **not** achieved; completion is by measured exhaustion at
+canonical B3 **60.262 versus Vulkan 68.082 tok/s (-11.49%)**.
+
+Dense production and the campaign suite are restored to B1-B3; no B4/B5 row
+template, planar-Q8 runtime selector, or X8 sidecar remains. Campaign-scoped
+post-removal tests and W7900 transactions are green. The repository-wide
+2026-08-03 baseline's 20 pre-existing failures in unchanged parent paths remain
+disclosed and are not falsely relabeled green. No optimization, benchmark, or
+campaign task remains after this publication. Compact checklist:
+`benchmarks/results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`.
+
 ---
 
 ## 7. Prioritized execution plan
