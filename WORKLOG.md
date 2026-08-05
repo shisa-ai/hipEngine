@@ -202851,3 +202851,29 @@ Vulkan local sizes verbatim will close the measured gap.
 - Cache-only gfx1151 tracing observes router local256/VGPR8/LDS3584/scratch0 at
   **19,156 ns**, clamp-7 local256/VGPR32/scratch0 at **2,605 ns**, and weighted
   residual local256/VGPR16/scratch0 at **2,885 ns** on the tiny fixture.
+
+## 2026-08-05 — Run official Maple checkpoint through public hipEngine
+
+- Compose resident packed weights, direct-weight RMSNorm, fused split-weight
+  Q/K/V, KVLiveSpans attention, selected top-8 ternary experts, affine4 head,
+  and two-stage GPU argmax into a resettable c=1 runner. Token-serial prefill is
+  intentionally the correctness-first fallback; no torch or MLX is imported.
+- First official-checkpoint forward on Ryzen AI MAX+ 395 / gfx1151 uses
+  `MapleRunner.load(..., max_context=64).step(9707)`: load **6.7202 s**, step
+  **16.2230 ms**, all 151,936 logits finite over [-16.8671, 9.02136], and top
+  ID **1112**. This is an execution diagnostic, not yet an oracle verdict or
+  sustained throughput claim.
+- Public `LLM.generate_detailed()` with the exact 18-token prompt
+  `<|im_start|>user\nWrite one short sentence about maple trees.<|im_end|>...`
+  runs model auto-quant `maple_ternary2` on `hip_gfx1151` and emits 32 coherent
+  greedy tokens in **4.2466 s cold-process wall** (load + token-serial prefill +
+  decode), beginning `The user asks for a short sentence about maple trees...`
+  and ending `Maple trees are known for their vibrant autumn foliage...`.
+  Generated IDs are retained in terminal/session evidence, not committed as an
+  overfit target. The first harness call also completed generation but then
+  raised because it treated documented `LLM.generate()` strings as detailed
+  objects; rerun correctly uses `generate_detailed()`.
+- Focused public registry/fail-closed generation, model/loader/import, and
+  generic `LLM.generate()` coverage passes **42/42**; Ruff and pycompile are
+  clean. Full-model HF/NumPy parity is
+  the next correctness task rather than being implied by coherent text alone.

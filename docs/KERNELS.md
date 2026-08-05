@@ -67,6 +67,18 @@ reports router local256/VGPR8/LDS3584/scratch0 at **19,156 ns**, clamp-7
 local256/VGPR32/scratch0 at **2,605 ns**, and weighted residual
 local256/VGPR16/scratch0 at **2,885 ns**.
 
+`hipengine/runtime/maple.py` composes those registered/unfused families with the
+existing direct-weight PARO RMSNorm and two-stage FP32 argmax into a resident
+24-layer c=1 runner. Immutable packed weights stay device-resident; SWA and
+global metadata reset without clearing stale cache bytes because absolute
+`token_positions` gate every read. The initial official-checkpoint diagnostic
+at context 1 produces finite full-vocab logits and top ID 1112 in **16.223 ms**
+after load. The public `LLM.generate_detailed()` route then consumes an
+18-token formatted prompt and returns 32 coherent greedy tokens in **4.2466 s
+cold-process wall**, including model load and token-serial prefill. These are
+bring-up diagnostics, not a retained throughput claim; the HF/NumPy E2E gate and
+prompt-suite performance protocol remain separate acceptance steps.
+
 ### Laguna gfx1151 decode transfer screen
 
 The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16
