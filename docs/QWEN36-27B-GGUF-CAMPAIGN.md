@@ -1398,9 +1398,13 @@ planar-Q6 integer-WMMA body plus its required D4 activation pack reaches only
 FFN-down across rows 2-4, with **0/31** candidate wins in every production
 cell. Maximum KL is **0.0008801** and top-1 is **100%**, so speed—not quality—
 closes this route before source/runtime work or a W7900 gate. The next admitted
-cross-family screen is target-root Q6 rowtile plus per-row top-1 publication;
-it must beat the current full-FP32-row-plus-argmax chain while preserving that
-chain as the requested-logits fallback.
+cross-family screen was target-root Q6 rowtile plus per-row top-1 publication.
+It is FP32 winner-bit and ID exact at rows 2-4 but loses **0.961x/0.949x/0.947x**
+with **0/31** wins because its per-eight-logit winner surface and final reducer
+cost more than the retained full-FP32-row-plus-argmax chain. No source or W7900
+work is admitted. Root compressed publication is now closed alongside the
+arithmetic ladders; re-rank exact launch/transport fusion against the clean
+trace's **110.084-ms target host-minus-kernel gap across 6,294 dispatches**.
 
 ---
 
