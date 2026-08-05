@@ -130,6 +130,7 @@ def test_bulk_prefill_scratch_census_exposes_logical_aliases_and_lifetimes() -> 
             "field_a": (("linear", 0, 1),),
             "field_b": (("full", 1, 2),),
         },
+        allocation_groups={"field_a": "owner_slot_00", "field_b": "owner_slot_00"},
         field_a=DeviceBuffer(0x1000, 80),
         field_b=DeviceBuffer(0x1000, 80),
         metadata=DeviceBuffer(0x1050, 20),
@@ -148,6 +149,10 @@ def test_bulk_prefill_scratch_census_exposes_logical_aliases_and_lifetimes() -> 
     assert census["allocation_lifetimes"]["field_a"] == [
         {"route": "linear", "start_stage": 0, "end_stage": 1}
     ]
+    assert census["allocation_groups"] == {
+        "field_a": "owner_slot_00",
+        "field_b": "owner_slot_00",
+    }
 
 
 def test_head_major_scratch_allocation_denial_frees_partial_and_falls_back(monkeypatch) -> None:

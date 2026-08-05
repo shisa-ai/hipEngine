@@ -21,7 +21,7 @@ _PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
 _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
 _REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 _NORMALIZED_PACKAGE_SHA256 = (
-    "72c0630bbc46a485ca80d9a6634cc1b4cc2e43f2019088b544db53102edc6a86"
+    "33d3d69e328138c377d904f6863494b8e79da20cb7b8f6e7434cf81eb26ba658"
 )
 _RUNTIME_ARTIFACT_RUNNER_SHA256 = (
     "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
@@ -60,7 +60,7 @@ _SOURCE_SHA256 = {
 }
 _POST_MERGE_SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "a4587d4362eb59bba65aacab65d4651fc8d594f7b19195fb8f6692ebafbde1d3"
+        "ff8bb57241b7e3a4aba4ef9e18b4d5c5d2344bee2c06717f6dde5163458bf257"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
         "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
@@ -69,7 +69,7 @@ _POST_MERGE_SOURCE_SHA256 = {
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
     ),
     "docs/REFACTOR.md": (
-        "9b8b0886ba72e7bee2a5058d54599b196f9aa83c44edb46985874b28639ed62e"
+        "2ef8ccdc0f1efc83298fe1292349ae268be63f5d0927e4b49a35338fc70d3d90"
     ),
 }
 _SOURCE_TOPOLOGY = {

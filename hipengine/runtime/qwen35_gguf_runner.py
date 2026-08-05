@@ -18819,6 +18819,24 @@ def _prefill_scratch_lifetimes_overlap(
 
 
 _GGUF_PREFILL_SCRATCH_COLOR_BYTES = 64 * 1024
+_GGUF_PREFILL_SCRATCH_ARENA_GROUPINGS = frozenset({"single", "owner_slots"})
+
+
+def _gguf_prefill_scratch_arena_grouping(backend: str) -> str:
+    try:
+        grouping = str(
+            backend_package_capability(
+                backend,
+                "GGUF_PREFILL_SCRATCH_ARENA_GROUPING",
+                "single",
+            )
+        ).strip().lower()
+    except ValueError:
+        grouping = "single"
+    if grouping not in _GGUF_PREFILL_SCRATCH_ARENA_GROUPINGS:
+        choices = ", ".join(sorted(_GGUF_PREFILL_SCRATCH_ARENA_GROUPINGS))
+        raise ValueError(f"GGUF_PREFILL_SCRATCH_ARENA_GROUPING must be one of: {choices}")
+    return grouping
 
 
 def _align_prefill_scratch(value: int, alignment: int = 256) -> int:
@@ -18870,8 +18888,97 @@ def _allocate_prefill_scratch_liveness_arena(
     return arena, views, MappingProxyType(offsets)
 
 
+def _allocate_prefill_scratch_liveness_owner_slots(
+    sizes: Mapping[str, int],
+    *,
+    runtime: HipRuntime,
+) -> tuple[
+    tuple[DeviceBuffer, ...],
+    dict[str, DeviceBuffer],
+    Mapping[str, tuple[int, int]],
+    Mapping[str, str],
+]:
+    missing = sorted(set(sizes) - set(_GGUF_PREFILL_SCRATCH_LIFETIMES))
+    if missing:
+        raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
+
+    slot_members: list[list[str]] = []
+    slot_sizes: list[int] = []
+    # Descending size order makes each slot's first field its largest, so later
+    # disjoint fields can reuse the owner without resizing or address churn.
+    for name, raw_size in sorted(sizes.items(), key=lambda item: (-int(item[1]), item[0])):
+        size = int(raw_size)
+        if size <= 0:
+            raise ValueError(f"bulk-prefill liveness field {name} must be positive")
+        for members in slot_members:
+            if all(
+                not _prefill_scratch_lifetimes_overlap(
+                    _GGUF_PREFILL_SCRATCH_LIFETIMES[name],
+                    _GGUF_PREFILL_SCRATCH_LIFETIMES[other],
+                )
+                for other in members
+            ):
+                members.append(name)
+                break
+        else:
+            slot_members.append([name])
+            slot_sizes.append(size)
+
+    owners = tuple(malloc(_align_prefill_scratch(size), runtime=runtime) for size in slot_sizes)
+    views: dict[str, DeviceBuffer] = {}
+    virtual_offsets: dict[str, tuple[int, int]] = {}
+    field_groups: dict[str, str] = {}
+    virtual_base = 0
+    for slot_index, (owner, members) in enumerate(zip(owners, slot_members, strict=True)):
+        group = f"owner_slot_{slot_index:02d}"
+        for name in members:
+            size = int(sizes[name])
+            views[name] = DeviceBuffer(ptr=owner.ptr, nbytes=size)
+            virtual_offsets[name] = (virtual_base, size)
+            field_groups[name] = group
+        virtual_base = _align_prefill_scratch(virtual_base + owner.nbytes)
+    return (
+        owners,
+        views,
+        MappingProxyType(virtual_offsets),
+        MappingProxyType(field_groups),
+    )
+
+
+def _allocate_prefill_scratch_liveness_arenas(
+    sizes: Mapping[str, int],
+    *,
+    grouping: str,
+    runtime: HipRuntime,
+) -> tuple[
+    tuple[DeviceBuffer, ...],
+    dict[str, DeviceBuffer],
+    Mapping[str, tuple[int, int]],
+    Mapping[str, str],
+]:
+    if grouping == "owner_slots":
+        return _allocate_prefill_scratch_liveness_owner_slots(
+            sizes,
+            runtime=runtime,
+        )
+    if grouping != "single":  # pragma: no cover - validated by capability lookup
+        raise ValueError(f"unsupported prefill scratch arena grouping {grouping!r}")
+    arena, views, offsets = _allocate_prefill_scratch_liveness_arena(
+        sizes,
+        runtime=runtime,
+    )
+    return (
+        (arena,),
+        views,
+        offsets,
+        MappingProxyType({name: "single" for name in sizes}),
+    )
+
+
 def _gguf_prefill_scratch_liveness_disabled_fields(
     runner: object,
+    *,
+    rows: int,
 ) -> frozenset[str] | None:
     cfg = getattr(getattr(runner, "weights", None), "config", None)
     backend = getattr(runner, "backend", None)
@@ -18888,6 +18995,25 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
     except ValueError:
         return None
     if not admitted:
+        return None
+    try:
+        min_rows = int(
+            backend_package_capability(
+                backend,
+                "GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS",
+                1,
+            )
+        )
+    except ValueError:
+        return None
+    if int(rows) < max(1, min_rows):
+        return None
+    # Temporary same-revision SH-M2 control seam. Architecture capability and
+    # route checks still own admission; the environment may only disable it.
+    if "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS" in os.environ and not _env_flag(
+        "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
+        True,
+    ):
         return None
     requested_mode = _gguf_gdn_prefill_mode()
     if requested_mode == "auto":
@@ -19026,6 +19152,9 @@ class _GGUFFullAttentionPrefillScratch:
         default_factory=lambda: MappingProxyType({})
     )
     allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    allocation_groups: Mapping[str, str] = field(
         default_factory=lambda: MappingProxyType({})
     )
     cos_table: object | None = None
@@ -19200,17 +19329,24 @@ class _GGUFFullAttentionPrefillScratch:
         allocation_mode = "dedicated"
         allocation_offsets: Mapping[str, tuple[int, int]] = MappingProxyType({})
         allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType({})
+        allocation_groups: Mapping[str, str] = MappingProxyType({})
         owners: list[DeviceBuffer] = []
-        liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(runner)
+        liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
+            runner,
+            rows=rows,
+        )
         if liveness_disabled_fields is not None:
             active_sizes = {
                 name: int(nbytes)
                 for name, nbytes in field_sizes.items()
                 if name not in liveness_disabled_fields
             }
-            arena, active_fields, allocation_offsets = _allocate_prefill_scratch_liveness_arena(
-                active_sizes,
-                runtime=runtime,
+            arenas, active_fields, allocation_offsets, allocation_groups = (
+                _allocate_prefill_scratch_liveness_arenas(
+                    active_sizes,
+                    grouping=_gguf_prefill_scratch_arena_grouping(runner.backend),
+                    runtime=runtime,
+                )
             )
             fields = {
                 name: (
@@ -19220,7 +19356,7 @@ class _GGUFFullAttentionPrefillScratch:
                 )
                 for name in field_sizes
             }
-            owners.append(arena)
+            owners.extend(arenas)
             allocation_mode = "liveness_aliased"
             allocation_lifetimes = MappingProxyType(
                 {name: _GGUF_PREFILL_SCRATCH_LIFETIMES[name] for name in active_sizes}
@@ -19312,6 +19448,7 @@ class _GGUFFullAttentionPrefillScratch:
             allocation_mode=allocation_mode,
             allocation_offsets=allocation_offsets,
             allocation_lifetimes=allocation_lifetimes,
+            allocation_groups=allocation_groups,
             gdn_segment_capacity=segments,
             gdn_active_segments=1,
         )

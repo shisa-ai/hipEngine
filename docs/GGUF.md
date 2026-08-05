@@ -3203,3 +3203,21 @@ materialization, not scratch/KV:
 | 4 | **Fuse activate+down** | +1-2% DC | Low | **Done** (2026-06-17). Neutral/slightly lower decode speed; retained for launch overhead reduction. |
 | 5 | **Pack8 layout opt** | -2-3 GiB mem | Tradeoff | **Done** (2026-06-17). Avoided Pack8 expansion, saving ~1.15 GiB peak memory at the cost of a small prefill/decode throughput regression (114.60 -> 114.42 tok/s on 4K DC). |
 | 6 | **Drop T16 for Q8_0** | -0.5-1 GiB mem | Low | **Done** (2026-06-17). Saved ~0.55 GiB peak memory with negligible decode regression. |
+
+## gfx1151 4,096-row scratch owner slots (SH-M2, 2026-08-06)
+
+The exact compact GDN prefill route no longer gives every logical temporary a
+separate physical allocation at the fixed 4,096-row class. A conservative
+linear/full-attention/common-stage interval map graph-colors disjoint lifetimes
+into 21 independently allocated owner slots. Overlapping lifetimes always have
+distinct owners. Rows below 4,096 and all diagnostic, unvalidated-route, and
+peer-backend paths retain dedicated allocation.
+
+This is deliberately not one contiguous arena. The single-arena and
+attention/common split-arena layouts saved memory but missed the 4K prefill
+wall gate after order reversal. Independent slots preserve allocator placement
+while reducing physical scratch by **1.4086 GiB**. Complete 512/4K/32K/64K
+state is byte-identical, tracked close delta is zero, prefill/decode stay within
+1%, and simultaneous whole-GTT falls **1.4043 GiB** at every 4K+ row. The
+retained evidence and exact commands are in
+[`2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json).

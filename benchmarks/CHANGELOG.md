@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [retained SH-M2 exact scratch owner slots] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K/32K/64K tg128: graph-color fixed-q4096 route/stage-disjoint fields into 21 owners, reducing tracked peak at 4K+ **23.007/23.654/24.392 -> 21.599/22.245/22.984 GiB (-1.4086 GiB each)** and whole-GTT **23.552/24.204/24.943 -> 22.148/22.800/23.538 GiB (-1.4043 GiB each)** with byte-exact state, zero close delta, and <=1% prefill/decode loss; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`.
+
 - [diagnostic rejected SH-D1 Q6T16 LM-head tile8; SH-D1 closed] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / c1 K2048->N248320: exact tile8 reduces **72 -> 48 VGPR** at scratch0 but regresses the complete 417,177,600-byte projection **1.83174 -> 1.83575 ms (0.99782x, -0.218%)**; remove all transient surfaces, close row-1 weight ownership **1.4868 ms/token** short of C1, and advance to SH-M2; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-q6-lm-head-tile8-rejected.json`.
 
 - [diagnostic SH-D1 cumulative 512 checkpoint; continue] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV: after retained Q5 tile8, exact 512/128 is **53.535 tok/s / 18.6792 ms/token**, selected-down attribution falls **1.6028 -> 1.3933 ms/token**, and total profiled GPU falls **17.5958 -> 17.3591 ms/token**, but C1 remains **1.4868 ms/token** away; screen the open exact Q6T16 lm-head tile8 owner next; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json`.

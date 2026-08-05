@@ -1291,6 +1291,7 @@ def _bulk_prefill_scratch_census(scratch: object | None) -> dict[str, Any]:
             "by_field_bytes": {},
             "allocation_offsets": {},
             "allocation_lifetimes": {},
+            "allocation_groups": {},
         }
 
     head_major_names = {"head_major_key_cache", "head_major_value_cache"}
@@ -1329,6 +1330,11 @@ def _bulk_prefill_scratch_census(scratch: object | None) -> dict[str, Any]:
         ]
         for name, lifetimes in sorted(raw_lifetimes.items())
     }
+    raw_groups = getattr(scratch, "allocation_groups", {}) or {}
+    allocation_groups = {
+        str(name): str(group)
+        for name, group in sorted(raw_groups.items())
+    }
     rows = _maybe_int(getattr(scratch, "rows", None))
     return {
         "allocation_mode": getattr(scratch, "allocation_mode", None),
@@ -1346,6 +1352,7 @@ def _bulk_prefill_scratch_census(scratch: object | None) -> dict[str, Any]:
         },
         "allocation_offsets": allocation_offsets,
         "allocation_lifetimes": allocation_lifetimes,
+        "allocation_groups": allocation_groups,
         "notes": [
             "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
             "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency.",
