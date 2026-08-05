@@ -206912,3 +206912,55 @@ Vulkan local sizes verbatim will close the measured gap.
   ownership census `{2,3,4}` for Q4 and `{2,3}` for Q6. No kernel, layout,
   allocation, or peer-backend ABI changes. Freeze this policy before its own
   tracked-clean row-4-Q4 profile and full-suite promotion gate.
+
+## 2026-08-05 — Retain selective FFN-down residual fusion; topline unchanged
+
+- The tracked-clean selective `4bbe8eef8` B3 profile preserves the exact
+  **17/21** ledger and executes only the intended compact-Q4 row-4 composite.
+  It removes **224** standalone adds/dispatches, improving complete marker
+  **451.442236 -> 448.386136 ms (-0.677%)** and target host **365.953957 ->
+  364.984885 ms (-0.265%)**. Complete/target kernel sums rise
+  **311.728676 -> 313.140897 ms (+0.453%)** and **255.870362 -> 257.289449 ms
+  (+0.555%)**, so this is an exact launch/queue contraction rather than an
+  arithmetic-family claim. Peak tracked allocation is byte-identical at
+  **32,723,577,074 bytes** and teardown returns to zero. Comparison/suite/kernel
+  SHA-256 values are `562fd009...e132`, `1dfbda28...aa6f`, and
+  `c569164c...406d`.
+- The ten-prompt natural25 gate keeps every token, acceptance count, GPU/CPU
+  decision, stage reconciliation, and teardown exact. B1/B2 improve
+  **43.562736 -> 43.922179 tok/s (+0.825%)** and **55.078739 -> 55.196239
+  tok/s (+0.213%)**; every full/train/heldout/category scope is positive, with
+  only one prompt each at **-0.075%/-0.017%**. B3 is mixed at **60.079407 ->
+  59.950696 tok/s (-0.214%)**, target verify **3.213576 -> 3.221283 s
+  (+0.240%)**, prompt range **-0.968% to +0.617%**, and scope range **-0.464%
+  to +0.110%**. The route cannot execute in true AR; its **-0.870%** movement
+  is timing variance. Candidate/comparison SHA-256 values are
+  `e523615b...bb66` and `8e9267a5...17f4`.
+- Retain planar-Q6 rows2-3 plus compact-Q4 rows2-4 as the gfx1100 default under
+  the exact physical-sub-window policy. Do not advance the broad headline:
+  canonical B3 remains **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**.
+  Publish
+  `benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json`
+  plus benchmark README/changelog, campaign status, NativeSpecCycle status, and
+  kernel-catalog evidence.
+
+## 2026-08-05 — Admit rounded residual plus next-RMSNorm successor to RED
+
+- Screen a distinct cross-layer boundary on GPU1 while the selective W7900 gate
+  completes. The candidate leaves each retained FFN-down projection untouched,
+  materializes its ordinary BF16 output, then fuses the standalone BF16
+  residual add and next-layer RMSNorm while explicitly rounding the residual
+  before the norm reduction. This preserves both existing BF16 boundaries and
+  can replace the current down+residual producer without changing projection
+  arithmetic.
+- Actual `blk.0.ffn_down` planar-Q6 plus `blk.1.attn_norm` and
+  `blk.8.ffn_down` compact-Q4 plus `blk.9.attn_norm` are residual-bit and
+  normalized-output-bit exact at rows 2/3/4. Against the current selective
+  route, 31-sample burst-ten counterbalanced medians save Q6
+  **4.320/2.622/2.648 us** with **27/24/22** wins and Q4
+  **3.806/3.989/2.543 us** with **26/30/27** wins. Every cell is positive,
+  giving a credible exact two-launch successor to the current down+add+norm
+  chain. Result/HIP/script SHA-256 values are `2dd36228...a5b82c`,
+  `60972371...a954`, and `b3f1f4b7...aa416`. Admit registry/fallback/runner
+  RED before production source changes; the unfused down + rounded add + RMSNorm
+  chain remains mandatory for every miss.
