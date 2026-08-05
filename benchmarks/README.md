@@ -5424,6 +5424,34 @@ exact. Retain the selective default without replacing the canonical **60.262
 tok/s / 2.4991x own AR / 11.49% below Vulkan** headline. Artifact:
 [`2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json`](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json).
 
+#### Qwen3.6-27B rounded residual plus next-RMSNorm, W7900/gfx1100
+
+Clean implementation `fda35418e` replaces each native N1 inter-layer
+FFN-down -> rounded BF16 residual add -> next attention RMSNorm boundary with
+ordinary FFN-down plus one exact rounded `add+rmsnorm` owner. The composite
+publishes the identical BF16 residual bits and runs the unchanged RMS reduction
+on those rounded values. It owns B1/B3 rows2/4 only; B2/N2, c1, prefill, F32
+residuals, unsupported policies/keys/backends, the final layer, and gfx1151 keep
+the registered unfused fallback.
+
+GPU1 actual planar-Q6 and compact-Q4 boundaries preserve all rows2-4 residual
+and normalized BF16 surfaces and save **2.543-4.320 us/layer**, with
+**22-30/31** paired wins. The tracked-clean W7900 B3 trace executes **441**
+rounded leaves, removes **217 dispatches**, cuts target host/kernel
+**364.985/257.289 -> 349.141/256.721 ms (-4.341%/-0.221%)**, and cuts complete
+marker/kernel **448.386/313.141 -> 431.236/312.507 ms
+(-3.825%/-0.202%)**. Acceptance remains exact at **17/21** and peak bytes are
+unchanged.
+
+Ten-prompt natural25 is intentionally disclosed as mixed: immediate B1/B2/B3
+moves **43.922/55.196/59.951 -> 43.741/55.332/60.012 tok/s
+(-0.412%/+0.247%/+0.103%)**. B2 cannot execute this N1 route, B1 scopes are
+negative, and B3 prompt/scope timing straddles zero. Tokens, acceptance, state,
+memory, and teardown remain exact. Retain the exact physical/launch contraction
+without replacing canonical **60.262 tok/s / 2.4991x own AR / 11.49% below
+Vulkan**. Artifact:
+[`2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json`](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5606,6 +5634,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact one-launch rollback snapshot](results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
 [Qwen3.6-27B exact producer-folded rollback snapshot](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
 [Qwen3.6-27B selective FFN-down residual fusion](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
+[Qwen3.6-27B rounded residual plus next-RMSNorm](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

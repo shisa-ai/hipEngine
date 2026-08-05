@@ -1,0 +1,212 @@
+{
+  "schema": 1,
+  "status": "retained_exact_rounded_next_rmsnorm_physical_win_headline_unchanged",
+  "performance_claim": true,
+  "performance_claim_scope": "Exact GPU1 actual-weight boundary measurements, a tracked-clean one-prompt W7900 B3 kernel/marker trace, and a ten-prompt W7900 natural25 B1-B3 disclosure. Retention is based on the exact physical target/complete-window and dispatch-count wins; the prior 60.262 tok/s broad headline is unchanged.",
+  "correctness_claim": true,
+  "correctness_scope": "The composite preserves the standalone BF16 residual-add bits and then runs the unchanged RMSNorm reduction over that explicitly rounded residual. Component, CPU-reference, registry, backend, fallback, runner, real-model transaction, natural token/acceptance, state, and teardown gates pass.",
+  "kind": "qwen36_27b_gguf_rounded_next_rmsnorm_w7900",
+  "timestamp": "2026-08-05T18:59:26+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "fda35418e7dfad60eacaa53d8e4b73626ef30d51",
+    "baseline_commit": "4bbe8eef8061b171062d4cc8f9e0a4606458b5d8",
+    "canonical_headline_commit": "01291b066",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Register a gfx1100 rounded BF16 add-plus-next-RMSNorm composite. Dense native N1 verifier graphs leave FFN-down on its ordinary projection owner, explicitly materialize the same BF16 residual sum inside the composite, reuse that rounded value for the unchanged RMS reduction, and pass the prefused next-layer norm to the following attention layer.",
+    "registry_key": "add+rmsnorm/gguf_f32_weight/rounded_bf16_out",
+    "production_ownership": "B1/B3 native N1 rows2/4 across 63 inter-layer boundaries; B2 rows3 intentionally stays on its separate N2 bulk graph.",
+    "fallback": "Projection followed by registered BF16 add and ordinary registered RMSNorm remains mandatory for c1, B2/N2, prefill/WMMA, F32 residuals, layer-boundary capture, MoE, unsupported full-attention/KV policies, key or capability misses, the final layer, and peer backends. gfx1151 deliberately has no alias.",
+    "persistent_bytes_delta": 0,
+    "workspace_bytes_delta": 0,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false,
+    "ar_reachable": false
+  },
+  "correctness": {
+    "red_green": "Eight expected registry/backend/fallback/runner RED failures preceded implementation.",
+    "focused_bundles": "GPU1 component/adjacent tests pass 49/49; the native-cycle bundle separately passes 13/13; the repaired rounded-boundary file passes 8/8.",
+    "device_boundary": "Actual planar-Q6 and compact-Q4 FFN-down plus following attention-norm boundaries preserve all six rows2-4 residual and normalized BF16 surfaces bit-for-bit.",
+    "cpu_reference_gate": "Residual bits are exact; normalized GPU states are projected through the same deterministic CPU head and satisfy KL <= 0.05 and top-1 >= 90% versus kernels/cpu_reference.rmsnorm.",
+    "w7900_transaction": "The cached B1/B2/B3 transaction passes exact logits and IDs, reject/partial/full/rollback state, dynamic-position graph reuse, provider parity, ownership, lifecycle, and teardown. The census observes rounded ownership only at B1/B3 rows2/4; B2 rows3 remains on N2.",
+    "natural25": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "token_ids_equal": true,
+      "acceptance_equal": true,
+      "accepted_proposed": {
+        "1": [115, 127],
+        "2": [151, 182],
+        "3": [169, 219]
+      },
+      "stage_reconciled": true,
+      "memory_after_close_current_bytes": 0
+    }
+  },
+  "component_screen": {
+    "protocol": "GPU1 actual blk.0 planar-Q6 and blk.8 compact-Q4 K17408/N5120 FFN-down weights plus following F32 RMSNorm weights; rows2/3/4; 31 counterbalanced HIP-event samples with burst10.",
+    "q6": {
+      "saved_us": [4.320001602172857, 2.621901035308849, 2.6481032371520885],
+      "speedup": [1.0352904984295501, 1.0201138677143804, 1.0185658652819514],
+      "paired_wins": [27, 24, 22]
+    },
+    "q4": {
+      "saved_us": [3.806000947952276, 3.9889991283416775, 2.5430977344512993],
+      "speedup": [1.0580249432169018, 1.056738886819298, 1.0283902009919845],
+      "paired_wins": [26, 30, 27]
+    },
+    "trace": {
+      "kernel": "gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel",
+      "duration_us": 17.96,
+      "local_size": 256,
+      "vgpr": 16,
+      "sgpr": 128,
+      "scratch_bytes": 0
+    }
+  },
+  "profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy trace; one natural25 prompt; B3; no warmup; immediate 4bbe8eef8 baseline and fda35418e candidate.",
+    "exact_prompt": {
+      "token_ids_equal": true,
+      "gpu_accept_matches_cpu": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3]
+    },
+    "rounded_kernel": {
+      "dispatches": 441,
+      "duration_ms": 6.507684
+    },
+    "complete_window": {
+      "marker_ms": [448.386136, 431.236057],
+      "marker_delta_percent": -3.824845958216694,
+      "kernel_sum_ms": [313.140897, 312.507349],
+      "kernel_delta_percent": -0.2023204270249046,
+      "dispatches": [6807, 6590],
+      "dispatch_delta": -217
+    },
+    "target_verify": {
+      "host_ms": [364.984885, 349.140794],
+      "host_delta_percent": -4.3410266153898425,
+      "kernel_sum_ms": [257.289449, 256.720748],
+      "kernel_delta_percent": -0.22103549220938712,
+      "dispatches": [6070, 5853],
+      "dispatch_delta": -217
+    },
+    "peak_tracked_bytes": [32723577074, 32723577074],
+    "interpretation": "All 63 next-layer boundaries use the rounded composite. Q4 replaces a projection+residual producer plus RMSNorm with ordinary projection plus rounded add+RMSNorm at equal launch count; 31 Q6 boundaries lose one graph node each, yielding 217 fewer launches over seven B3 target passes. The complete and target kernel sums, host windows, and marked wall all improve in this trace."
+  },
+  "natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-fda35418e/natural25-native-rounded-next-rms-b1-b3.json",
+    "true_ar": {
+      "baseline_tok_s": 24.124186758505584,
+      "candidate_tok_s": 24.181711239840602,
+      "delta_percent": 0.23845148402665828,
+      "interpretation": "Unreachable-route timing variance; no AR claim."
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 43.922179019884204,
+        "candidate_tok_s": 43.74101311791137,
+        "complete_delta_percent": -0.4124702052938134,
+        "target_verify_delta_percent": 0.3346835833289763,
+        "prompt_delta_percent_range": [-1.254670981575945, 0.5398892774400643],
+        "scope_delta_percent_range": [-0.7268976840613339, -0.1235917898888994]
+      },
+      "2": {
+        "baseline_tok_s": 55.19623865908136,
+        "candidate_tok_s": 55.33232149006894,
+        "complete_delta_percent": 0.24654366727432375,
+        "target_verify_delta_percent": -0.2585728540208332,
+        "prompt_delta_percent_range": [-0.5906870361329197, 0.6153382395596596],
+        "scope_delta_percent_range": [0.06815630659542382, 0.5799173545425473],
+        "interpretation": "B2 uses the unchanged N2 graph; movement is timing variance rather than attributable speedup."
+      },
+      "3": {
+        "baseline_tok_s": 59.95069550608334,
+        "candidate_tok_s": 60.012223786625604,
+        "complete_delta_percent": 0.10263147078255486,
+        "target_verify_delta_percent": -0.08964956798700463,
+        "prompt_delta_percent_range": [-0.6608031544899973, 1.0601966890052772],
+        "scope_delta_percent_range": [-0.07771043655258048, 0.431401178184454],
+        "candidate_mtp_vs_own_ar": 2.4817194776419464
+      }
+    },
+    "peak_tracked_bytes": [32723997740, 32723997740],
+    "memory_after_close_current_bytes": 0,
+    "interpretation": "Immediate B3 and its target window are slightly positive, B1 is negative, and prompt/scope timing is mixed. The packet confirms exactness and non-material broad movement but does not supersede the best prior clean headline."
+  },
+  "decision": {
+    "action": "retain_gfx1100_default_as_exact_physical_and_launch_contraction",
+    "headline_advanced": false,
+    "canonical_b1_b2_b3_tok_s": [43.792, 55.254, 60.26190653283626],
+    "canonical_b3_mtp_vs_ar": 2.4991,
+    "canonical_b3_vs_vulkan_percent": -11.486910387464954,
+    "candidate_b3_vs_canonical_percent": -0.4143293177666041,
+    "reason": "The candidate is exact, removes 217 target graph nodes, preserves peak bytes, and improves tracked-clean target kernel, target host, complete kernel, and complete marked wall. Mixed sub-percent natural25 timing prevents a new broad topline.",
+    "limitations": [
+      "Immediate natural25 B1 is 0.412% lower and all B1 aggregate scopes are negative in this one-run packet.",
+      "B2 cannot execute the rounded N1 route; its 0.247% movement is unrelated timing variance.",
+      "Candidate B3 is 60.012 tok/s, 0.414% below the canonical 60.262 tok/s packet and 11.85% below the 68.082 tok/s Vulkan B3 floor."
+    ]
+  },
+  "next_target": "The refreshed trace shows native shared-page full attention still submits one BF16 KV append per verifier row before its already-batched attention leaf. Screen an exact shared-cache append batch that can remove up to three launches per full-attention layer at B3 before reopening closed arithmetic families.",
+  "source_artifacts": {
+    "component_screen": {
+      "path": "/tmp/qwen36-down-next-rms-gpu1.json",
+      "sha256": "2dd36228c41cde74138a182f4086e23a31b72b6163bb17d0b26dadff02a5b82c"
+    },
+    "component_trace": {
+      "path": "/tmp/qwen36-rounded-next-rms-trace-gpu1/rounded-next-rms_kernel_trace.csv",
+      "sha256": "b814ed8a42da3d6ea4066a944d78bcf426ab4a925637d28f092ed6615fa0d9c8"
+    },
+    "component_trace_agent": {
+      "path": "/tmp/qwen36-rounded-next-rms-trace-gpu1/rounded-next-rms_agent_info.csv",
+      "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00"
+    },
+    "profile_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-fda35418e/profile-native-rounded-next-rms-mtp-b3-hermetic/profile-comparison.json",
+      "sha256": "347cffdb61414a696ea6019a27b5b8f8aac07f5d052e7c51d8e2eb5601af40c9"
+    },
+    "profile_suite": {
+      "path": "/tmp/hipengine-qwen36-27b/final-fda35418e/profile-native-rounded-next-rms-mtp-b3-hermetic/suite.json",
+      "sha256": "0bbe416c284593a651fa9183e7f9b03bb3e3ae7eb564269216c74de775696294"
+    },
+    "profile_kernel_trace": {
+      "path": "/tmp/hipengine-qwen36-27b/final-fda35418e/profile-native-rounded-next-rms-mtp-b3-hermetic/mtp-b3_kernel_trace.csv",
+      "sha256": "d7e77e5f993db12b38d671662da988ad5f442c4b72a34958f4354e5bc84e74d2"
+    },
+    "natural_candidate": {
+      "path": "/tmp/hipengine-qwen36-27b/final-fda35418e/natural25-native-rounded-next-rms-b1-b3.json",
+      "sha256": "3e57c22ec47ec0dc649a578022c5897a89729fbe4b10a6a3c3f93de19ceb7d41"
+    },
+    "natural_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-fda35418e/natural25-rounded-next-rms-vs-4bbe8eef8.json",
+      "sha256": "74015aaf911418e476390ac55015af4db9668cf3fd0c9be808046235aa003943"
+    }
+  }
+}
