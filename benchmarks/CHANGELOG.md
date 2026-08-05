@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-06
+
+- [rejected runtime default; campaign tabled] Qwen3.6-27B Q4_K_M / native B3 target graph / W7900: four exact 204-node executables preserve every checked output/state byte but move unprofiled submit only **40.563484 -> 40.500983 ms (1.00154x)** and complete call **40.983989 -> 40.918268 ms (1.00161x)**, proving rocprof's three 256-dispatch **5.736-5.799 ms** gaps are instrumentation rather than production savings; add no split route and keep canonical **60.262 tok/s / 11.49% below Vulkan**; `benchmarks/results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`.
+
 ## 2026-08-05
 
 - [retained exact primitive; rejected runtime default] Qwen3.6-27B Q4_K_M / one-prompt natural B3 profile / W7900: dependent alpha/beta-to-snapshot-GDN removes **672** target/complete dispatches and improves target host/complete marked wall **3.179%/2.440%**, but its three-leaf family regresses **1,008 / 20.613994 ms -> 336 / 21.480201 ms (+4.202%)** and target/complete kernel sums regress **0.351%/0.268%**; restore two scalar projections plus snapshot Conv/GDN before natural25 and keep canonical **60.262 tok/s / 11.49% below Vulkan**; `benchmarks/results/2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json`.

@@ -1,6 +1,8 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: active, measured optimization (2026-08-05); clean exact hipEngine AR/MTP baseline and reconciled profiles complete.
+Status: tabled at the measured exact/default local optimum (2026-08-06); AR
+and prefill beat the matched Vulkan floor, while natural B3 remains 11.49%
+short after the credible optimization ladder was exhausted.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -1519,9 +1521,31 @@ and both runtime files are byte-identical to scalar parent `7eaa6fa05`. Retain
 only the registered gfx1100 primitive; gfx1151 remains excluded. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json`.
 
-Re-rank the refreshed scalar-write baseline rather than reopening a closed
-arithmetic family or treating any rejected launch contraction as retained
-savings.
+The final graph-runtime audit closes the apparent profiler residual. Seven
+remaining pointer-copy launches are required selected-row commits, not
+reintroduced snapshots. Explicit graph upload changes only first launch and is
+steady-flat. More decisively, the real W7900 B3 target capture is one **816-node
+/ 815-edge** chain; four exact **204-node** clones preserve target IDs, hidden
+and trunk rows, and every captured linear-state row byte. Across 21 alternating
+same-state pairs, unprofiled graph-submit medians move only **40.563484 ->
+40.500983 ms (1.00154x)** and complete graph-call medians **40.983989 ->
+40.918268 ms (1.00161x)**. The paired median saving is **0.089741 ms**, not the
+**~17.2 ms** implied by three rocprof gaps exactly 256 dispatches apart. Those
+gaps are instrumentation artifacts; segmentation is rejected without source or
+natural25 work. Artifact:
+`benchmarks/results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`.
+
+The exact/default pass is therefore tabled below parity, not declared a Vulkan
+win. Populated prefill and AR already beat the matched stateful Vulkan rows;
+natural B3 improved **14.858 -> 60.262 tok/s (4.056x)** and narrowed its gap
+from **78.18% to 11.49%** versus Vulkan B3 **68.082 tok/s**. The remaining
+matched arithmetic residuals—Q5T16 `ssm_out` **+7.792 ms**, wide Q6
+**+6.084 ms**, and root FP32 rows **+2.628 ms** in profiler ranking—are each
+below the campaign impact threshold, and their representation, row-reuse,
+integer-WMMA, compressed-root, launch-fusion, graph-upload, and graph-split
+ladders have been measured and closed. Resume only for a materially new
+algorithm/hardware primitive, a changed model/runtime baseline, or an
+unprofiled production reproducer with a new >=5%-wall ceiling.
 
 ---
 
@@ -1535,10 +1559,10 @@ savings.
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default; shared-KV, dense-F32 alpha/beta, alpha/beta+Conv, and dependent alpha/beta+GDN contractions remain primitive-only after their frozen complete-path gates fail; canonical 43.792/55.254/60.262 tok/s unchanged |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank scalar parent `7eaa6fa05` without counting any rejected launch contraction |
-| 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | complete for this pass; populated graph AR is 23.284/21.903 tok/s and beats stateful Vulkan by 85.18%/75.40% |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | tabled at exact/default local optimum; canonical B1/B2/B3 is 43.792/55.254/60.262 tok/s, with rounded next-RMSNorm the physical default and rejected launch contractions excluded |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | exhausted for current algorithms; graph upload/splitting and all remaining credible arithmetic/transport ladders are closed, leaving B3 11.49% below Vulkan |
+| 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | complete as a blocked publication; retained defaults and evidence are published, but matched MTP parity is explicitly not claimed |
 
 ### Impact admission rule
 

@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "status": "rejected_native_target_graph_segmentation_runtime_default",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_native_target_graph_split_rejection",
+  "timestamp": "2026-08-06T00:43:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": {
+    "binding_gpu": "AMD Radeon Pro W7900, GPU0, gfx1100",
+    "synthetic_gpu": "AMD Radeon RX 7900 XTX, GPU1, gfx1100"
+  },
+  "software": {
+    "commit": "907622423",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "backend": "hip_gfx1100",
+    "measurement_tree_clean": true
+  },
+  "hypothesis": {
+    "observation": "A rocprofv3 B3 target replay showed three 5.736-5.799 ms idle gaps at consecutive dispatch IDs separated by exactly 256 graph dispatches.",
+    "predicted_saving_ms_per_target_replay": 17.2,
+    "candidate": "Topologically clone the one-stream target DAG into four subgraphs below 256 nodes each, launch all four on the same stream, and synchronize once.",
+    "transaction_semantics": "Sequential same-stream graph launches preserve the original total order; no kernel, pointer, state owner, or arithmetic changes."
+  },
+  "supporting_screens": {
+    "explicit_graph_upload_gpu1": {
+      "first_launch_ms": {
+        "ordinary": 4.490,
+        "uploaded": 4.121
+      },
+      "steady_median_ms": {
+        "ordinary": 2.5047,
+        "uploaded": 2.5054
+      },
+      "decision": "first-launch-only effect; rejected for steady replay"
+    },
+    "clone_split_long_node_gpu1": {
+      "nodes": 836,
+      "edges": 835,
+      "monolithic_median_ms": 15.910161,
+      "split4_median_ms": 16.089184,
+      "speedup": 0.9888730839301733,
+      "exact": true
+    }
+  },
+  "w7900_actual_target_screen": {
+    "workload": "code_merge_intervals prompt state, native B3 rows=4 target graph, 40-token context, 21 alternating restored-state pairs, no profiler",
+    "graph": {
+      "nodes": 816,
+      "edges": 815,
+      "max_topological_ready": 1,
+      "part_nodes": [204, 204, 204, 204]
+    },
+    "correctness": {
+      "token_ids_equal": true,
+      "hidden_rows_sha256_equal": true,
+      "pre_output_norm_rows_sha256_equal": true,
+      "all_linear_state_rows_sha256_equal": true,
+      "token_ids": [12305, 12305, 10562, 2],
+      "hidden_sha256": "e60c54516de8344c29b2285790b2d39ba218912694a557c5dc2ef31fac91bb47",
+      "pre_output_sha256": "b185bdb4fbf1cf40995c9192053cd87bb4fdb60738b240a4f7bd19e584fdb378",
+      "linear_rows_sha256": "37c79026656bcfccc8dce214878898d290728a8b709598ad1d61a9c675c97b1a"
+    },
+    "submit_ms": {
+      "monolithic_median": 40.56348418816924,
+      "split4_median": 40.500983130186796,
+      "median_ratio": 1.0015431985387007,
+      "paired_median_ratio": 1.0022153215990195,
+      "paired_median_delta_ms": 0.08974084630608559,
+      "paired_mean_delta_ms": 0.016230358076947077,
+      "split_wins": 14,
+      "pairs": 21,
+      "observed_range_ms": {
+        "monolithic": [38.1519440561533, 41.349293664097786],
+        "split4": [38.051082752645016, 41.135771200060844]
+      }
+    },
+    "complete_graph_call_ms": {
+      "monolithic_median": 40.983989,
+      "split4_median": 40.918268,
+      "median_ratio": 1.0016061530268094
+    }
+  },
+  "decision": {
+    "runtime_default_retained": false,
+    "source_changes": false,
+    "natural25_run": false,
+    "reason": "The actual unprofiled target screen recovers only 0.06-0.09 ms median, within a 3.2 ms sample span and roughly 0.2% paired noise, rather than the approximately 17.2 ms implied by rocprof. The exact 256-dispatch gaps are profiler instrumentation artifacts, not production queue starvation.",
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_gap_vs_vulkan_percent": -11.4869,
+    "reopen_condition": "Only reopen graph submission with an unprofiled production reproducer showing a material wall gap; profiler dispatch spacing alone is inadmissible."
+  },
+  "raw_evidence": {
+    "w7900_json": "/tmp/hipengine-qwen36-27b/screen-native-b3-graph-clone-split-w7900.json",
+    "w7900_json_sha256": "e3f9b9db62c19001f1db9e0aebd15e6751fd0bf752c2886971800128800fc9ac",
+    "w7900_script_sha256": "2f970305d56caa9d35c5c3161e6236a29741c647b08dab6c70623645d51ffc33",
+    "gpu1_clone_script_sha256": "2bbd7b32ff2a2b54097231881a9bb7b8afbf9aa2d6e77b169fe33cc329ce6931",
+    "gpu1_long_node_log_sha256": "4452cd61c932e4187d9ff822b08a74d55a1e4a0318f12b7c8b76e22ba29278af",
+    "gpu1_clone_log_sha256": "1f5d55ca959e367a51d00764f720967bf7ce9bf5c6da930b02dc4f8ed6cbb22a"
+  }
+}

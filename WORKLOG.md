@@ -207511,3 +207511,45 @@ Vulkan local sizes verbatim will close the measured gap.
   AR / 11.49% below Vulkan**. Re-rank only the restored scalar topology and
   reopen this primitive only if a materially different owner improves family,
   target kernels, target host, and complete marked wall together.
+
+## 2026-08-06 — Reject native target-graph segmentation and close the exact/default pass
+
+- Audit the restored B3 trace before admitting another kernel. The seven
+  pointer-copy launches are required selected-row commits; producer-folding
+  already removed the seven pre-verify snapshots. The only apparent structural
+  gap is three **5.736-5.799 ms** intervals exactly every **256** graph
+  dispatches. Explicit `hipGraphUpload` changes only first launch
+  (**4.490 -> 4.121 ms**) and leaves 31 steady GPU1 replays flat
+  (**2.5047 vs 2.5054 ms**).
+- Test segmentation without changing model code or arithmetic. HIP graph
+  introspection proves both synthetic and production captures are single
+  topological chains. Clone the graph, remove nodes outside four contiguous
+  partitions, submit all four executables on the original stream, and
+  synchronize once. An exact 836-node long-kernel GPU1 graph is slightly worse
+  (**15.910 -> 16.089 ms**, `0.9889x`).
+- Run the decisive unprofiled W7900 screen on the actual 40-token-context B3
+  target DAG. The graph has **816 nodes / 815 edges** and partitions exactly as
+  **204/204/204/204**. Monolithic and split execution produce identical token
+  IDs `[12305,12305,10562,2]`, hidden/trunk SHA-256 values, and all captured
+  Conv/GDN linear-state row bytes.
+- Across 21 alternating pairs from the same restored recurrent state, graph
+  submit medians are **40.563484 -> 40.500983 ms (1.00154x)** and complete graph
+  call medians **40.983989 -> 40.918268 ms (1.00161x)**. The paired median is
+  only **+0.089741 ms / 1.00222x**, the mean only **+0.016230 ms**, with 14/21
+  wins inside a **~3.2 ms** sample span. This is noise-scale and nowhere near
+  the profiler-implied **~17.2 ms** recovery. Reject graph splitting and treat
+  the exact 256-dispatch spacing as profiler instrumentation, not production
+  queue starvation. Do not run natural25 or add a runtime flag.
+- The exact/default campaign is at a measured local optimum rather than Vulkan
+  parity. Populated prefill and AR already beat stateful Vulkan; natural B3 rose
+  **14.858 -> 60.262 tok/s (4.056x)** but remains **11.49%** below Vulkan's
+  **68.082 tok/s**. Remaining matched arithmetic gaps are individually
+  second-order (Q5T16 `ssm_out` **+7.792 ms**, wide Q6 **+6.084 ms**, root FP32
+  rows **+2.628 ms**) and their representation, row-reuse, integer-WMMA,
+  compressed-root, launch-fusion, upload, and segmentation ladders are closed.
+  Resume only on a materially new algorithm/hardware primitive or a changed
+  model/runtime baseline, not another rearrangement of the measured leaves.
+- Compact rejection artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`.
+  Raw W7900 result/script SHA-256s are `e3f9b9db...c9ac` and
+  `2f970305...fc33`.
