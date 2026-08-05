@@ -111,9 +111,33 @@ def test_role_windows_map_hip_launch_correlation_to_innermost_role(tmp_path: Pat
         ],
     )
     kernels = [
-        {"correlation_id": 41, "duration_ns": 60, "family": "q8", "bucket": "dense", "kernel": "q8"},
-        {"correlation_id": 42, "duration_ns": 40, "family": "attn", "bucket": "attn", "kernel": "attn"},
-        {"correlation_id": 99, "duration_ns": 10, "family": "other", "bucket": "other", "kernel": "other"},
+        {
+            "correlation_id": 41,
+            "duration_ns": 60,
+            "family": "q8",
+            "bucket": "dense",
+            "kernel": "q8",
+            "vgpr": 64,
+            "scratch": 0,
+        },
+        {
+            "correlation_id": 42,
+            "duration_ns": 40,
+            "family": "attn",
+            "bucket": "attn",
+            "kernel": "attn",
+            "vgpr": 96,
+            "scratch": 16,
+        },
+        {
+            "correlation_id": 99,
+            "duration_ns": 10,
+            "family": "other",
+            "bucket": "other",
+            "kernel": "other",
+            "vgpr": 8,
+            "scratch": 0,
+        },
     ]
 
     annotated = _annotate_kernel_roles(
@@ -130,6 +154,9 @@ def test_role_windows_map_hip_launch_correlation_to_innermost_role(tmp_path: Pat
     summary = _summarize_role_rows(annotated, steps=2)
     assert summary[0]["name"] == "full_attention_qkv"
     assert summary[0]["gpu_us_per_token"] == pytest.approx(0.03)
+    assert summary[0]["kernel_families"] == ["q8"]
+    assert summary[0]["vgpr_counts"] == [64]
+    assert summary[0]["scratch_sizes"] == [0]
     assert summary[-1]["name"] == "unattributed"
 
 
