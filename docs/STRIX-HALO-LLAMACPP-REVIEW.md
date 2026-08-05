@@ -1,17 +1,18 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04
+**Reviewed:** 2026-08-04; **campaign recertified and closed:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
 `b7b85da9c4a9fdeb3cab51030a40d1552270f272`, and the current hipEngine
 Qwen3.6/Laguna GGUF gfx1151 paths.
 
-**Decision type:** source/evidence review followed by prioritized local
-execution and a later user-requested exact-model fork diagnostic. Nathan's
-published speedups remain upstream evidence; hipEngine's only new accepted
-performance claim is the separately measured head-major scratch artifact linked
-below. The local fork row is descriptive, not a strict cross-engine claim.
+**Decision type:** source/evidence review followed by a completed prioritized
+local campaign and user-requested exact-model fork diagnostics. Nathan's
+published speedups remain upstream evidence. hipEngine's retained own-engine
+claims are the separately measured head-major prefill scratch, exact selected-Q5
+tile8, and exact scratch owner-slot changes linked below. Every local fork row is
+descriptive, not a strict cross-engine claim.
 
 ## Executive decision
 
@@ -46,6 +47,18 @@ approximate KV headline.** The new campaign is defined below. It is not a plan
 to port every fork patch: Nathan's F16 decode is only 1.27%-1.79% above the
 previous vanilla llama.cpp Vulkan lane, while Q8_0 becomes a large additional
 lever only at 32K/64K.
+
+**Final campaign update (2026-08-06): completed.** hipEngine retains the exact
+selected-Q5 tile8 decode owner and 21-slot scratch-liveness allocation in
+addition to the earlier head-major prefill scratch. The strict compact-KV and
+page-internal head-major decode candidates are rejected after complete quality,
+wall, memory, and trace screens. Final current-production decode is
+diagnostically **0.840%-1.314%** above every SH-C0 row, and 4K+ tracked peak
+remains **1.4086 GiB** lower, but no row reaches the C1 half-time-gap target,
+Nathan-fork F16 decode parity, or whole-GTT parity. Fresh prefill beats both
+fork KV lanes at 4K/32K/64K and loses at 512. Therefore hipEngine does **not** beat this fork overall on the
+matched exact-model diagnostic; the campaign is closed because all declared
+owners are decided, not because cross-engine parity was reached.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -440,7 +453,53 @@ on token-major BF16 KV plus the current grouped-GQA producer/reducer. The full
 persistent head-major rewrite stays closed because its bounded prerequisite
 fails by a wide margin. Complete measurements and hashes are in
 [`2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json).
-SH-G final retained-campaign recertification is now the only remaining package.
+SH-G subsequently recertifies that restored production tree and closes the
+campaign below.
+
+### SH-G final retained-campaign recertification (2026-08-06)
+
+SH-G ran all final-production stages sequentially on the same Radeon 8060S:
+independent right-sized one-warmup/three-measurement hipEngine processes at all
+four depths, 10-ms whole-GTT and allocator sampling, cached eight-token
+kernel/HIP-API/ROCTX traces, the exact 10+8 natural/category-heldout oracle, and
+fresh five-repetition F16/Q8_0 runs of pinned fork build `b7b85da9`.
+
+| Context | Final prefill tok/s | Final eager decode tok/s | Decode vs SH-C0 (diagnostic) | Tracked peak GiB | Whole-GTT GiB |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 1358.015 | **53.446** | **+1.114%** | 21.480 | 21.916 |
+| 4K | 1451.836 | **56.116** | **+1.314%** | 21.599 | 22.148 |
+| 32K | 1150.162 | **46.489** | **+1.055%** | 22.245 | 22.800 |
+| 64K | 940.779 | **39.750** | **+0.840%** | 22.984 | 23.538 |
+
+The final-versus-SH-C0 decode delta is a cross-day diagnostic, not a new A/B;
+the same-revision SH-D1 and SH-M2 artifacts own the retained performance claims.
+Measured final decode is **0.208-0.234 ms/token** faster than the SH-C0 rows at
+every depth, and the 4K/32K/64K allocator and whole-GTT deltas remain
+**-1.4086/-1.4043 GiB**. All repeated IDs are exact, every process closes to
+zero tracked bytes, and the 18-prompt, 54-execution oracle passes **1,350 token
+comparisons, 54,000 hidden comparisons, and all initial/final Conv/GDN/KV state
+comparisons** with zero
+mismatches. Cached traces retain **628 dispatches/token**, 4,664 role-attributed
+dispatches, and **37 named Q5 tile8 calls/token** at every depth. Against the
+August 4 accepted hipEngine prefill rows, these fresh rates are
+**-2.635%/-1.392%/-1.831%/-1.215%**; that cross-day drift is diagnostic and
+does not replace the same-session non-regression gates used for each retained
+promotion.
+
+| Context | Prefill vs fork F16 / Q8_0 | Decode vs fork F16 / Q8_0 | hipEngine minus fork whole-GTT F16 / Q8_0 |
+| ---: | ---: | ---: | ---: |
+| 512 | **-2.833% / -2.097%** | **-17.281% / -16.690%** | **+1.085 / +1.084 GiB** |
+| 4K | **+3.357% / +4.515%** | **-10.297% / -10.948%** | **+0.987 / +0.895 GiB** |
+| 32K | **+4.318% / +4.366%** | **-12.670% / -18.903%** | **+0.804 / +1.170 GiB** |
+| 64K | **+6.631% / +7.522%** | **-12.995% / -24.035%** | **+0.696 / +1.376 GiB** |
+
+Thus final hipEngine wins three of four fresh prefill rows against each fork KV
+lane, but zero of four decode and zero of four whole-GTT rows. No C1 or C2 row
+passes. These remain external diagnostics: exact weights, hardware, split
+shapes, and GTT sampling align, while KV dtype, timing owner, and a shared
+cross-engine token/logit oracle do not. Complete commands, samples, role
+resources, raw hashes, and qualifications are in
+[`2026-08-06-gfx1151-gguf-sh-g-final-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json).
 
 ### Cumulative decode targets
 
@@ -450,7 +509,8 @@ heldouts with no token-, prompt-, or candidate-ID-conditioned branch.
 
 | Stage | 512/128 | 4K/128 | 32K/128 | 64K/128 |
 | --- | ---: | ---: | ---: | ---: |
-| Current SH-C0 hipEngine BF16 | 52.857 | 55.389 | 46.004 | 39.419 |
+| SH-C0 hipEngine BF16 | 52.857 | 55.389 | 46.004 | 39.419 |
+| Final SH-G hipEngine BF16 | **53.446** | **56.116** | **46.489** | **39.750** |
 | C1: close at least half the F16 **time** gap | **58.165** | **58.795** | **49.350** | **42.419** |
 | C2: match the local fork F16 lane | **64.658** | **62.648** | **53.220** | **45.913** |
 
@@ -472,7 +532,7 @@ tracked/owned comparison.
 | **SH-M2 — exact scratch-liveness aliases** | **Completed/retained 2026-08-06** | Keep every 4,096-row execution shape fixed and graph-color route/stage-disjoint fields into 21 independent allocator-owned slots. Rows below 4,096, diagnostics, unvalidated routes, and peer backends keep dedicated owners. | Exact state and lifecycle pass at 512/4K/32K/64K. The default saves **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row; prefill/decode remain within 1%. Contiguous and split arenas are rejected. SH-K1 later fails to stack another peak-memory win. |
 | **SH-K1 — strict compact-KV frontier** | **Completed/rejected for default 2026-08-06** | The fixed `0-7` BF16 / `8-9` per-token/head INT8 K+V map passes the actual no-mirror 65,792-capacity category+heldout gate at **3.344e-5 mean KL, 7.875e-4 max KL, and 100% aggregate/min-prompt top-1**. Broader and key-only/block formats remain closed by prior evidence. | Reject default promotion: 32K/64K decode changes **-0.436%/-0.670%**, live ownership saves only **0.0620/0.1235 GiB**, and layer-local BF16 prefill oracles instead raise tracked peak **0.0640/0.1274 GiB** plus whole-GTT **0.0703/0.1328 GiB**. Named direct-consumer traces pass; BF16 remains default and SH-A1 is next. |
 | **SH-A1 — page-internal head-major decode screen** | **Completed/rejected 2026-08-06** | The bounded current-vs-page-head grouped-GQA leaf is exact on dense/permuted/evicted page fixtures, but candidate attention+reducer is only **0.756x/0.797x** at 32K/64K before conversion. | Reject runtime plumbing: append+copy-inclusive speedup is only **0.277x/0.263x**, projecting **-58.3%/-97.8%** decode across ten full-attention layers. Remove every transient surface and keep token-major BF16 KV. |
-| **SH-G — retained recertification** | Required after each retained unit | Re-run hipEngine one-warmup/three-measurement 512/4K/32K/64K rows, exact natural/heldout prompts, allocator/GTT sampling, and the applicable cached kernel trace. Re-run the five-repetition fork comparator only at a campaign milestone, not after every micro-change. | Publish an own-engine A/B only when exact and non-regressive. Keep the external row diagnostic until timing ownership, dtype, and output oracle align. Update artifact, benchmark rollup, changelog, and worklog for every retained performance unit. |
+| **SH-G — retained recertification** | **Completed 2026-08-06; campaign closed** | Final production passes the four one-warmup/three-measurement rows, exact 18-prompt oracle, allocator/GTT lifecycle, cached role/Q5 trace, and fresh five-repetition fork milestone rerun. Decode is diagnostically **0.840%-1.314%** above SH-C0 and 4K+ tracked peak stays **1.4086 GiB** lower. | Final correctness/lifecycle/trace gates pass, but **0/4 C1**, **0/4 C2**, **0/4 fork decode**, and **0/4 fork whole-GTT** rows pass. Publish the prior same-revision own-engine gains and qualified final diagnostic; close the declared campaign without claiming fork parity. |
 
 #### SH-D1 GDN-input audit update
 
