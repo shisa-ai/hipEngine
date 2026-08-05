@@ -206798,3 +206798,27 @@ Vulkan local sizes verbatim will close the measured gap.
   screen is target-root Q6 rowtile plus per-row top-1 publication, which can
   avoid the current rows-by-vocabulary FP32 surface and separate argmax while
   preserving the full-logit fallback.
+
+## 2026-08-05 — Reject exact target-root Q6 tile-winner publication
+
+- Build an out-of-tree planar-qmicro Q6 candidate from the retained col8
+  rowtile. It preserves every per-logit K traversal, coefficient product, FMA,
+  wave/four-wave reduction, and tie rule, but writes one `(FP32 value, int32
+  index)` pair per eight-output group and performs one final per-row reduction.
+  The control is the production FP32 rowtile plus
+  `argmax_f32_rows_i32`; requested full logits remain conceptually untouched.
+- On real `output.weight` (K5,120/N248,320) and deterministic RMSNorm-shaped
+  BF16 activations, candidate IDs and winner FP32 bits match the control and a
+  host scan exactly at rows 2/3/4. The 31-sample burst-five counterbalanced GPU1
+  medians are **1.5771 -> 1.6416 ms**, **1.7473 -> 1.8411 ms**, and
+  **1.8648 -> 1.9691 ms**: **0.961x/0.949x/0.947x**, **0/31** wins, or
+  **4.09%/5.37%/5.60% slower**. The candidate's per-tile pair surface is
+  **496,640/744,960/993,280 bytes**, far larger than the retained argmax
+  scratch, and its reduction overhead outweighs the avoided logits traffic.
+- Reject before RED, repository source/registry/runtime changes, rocprof, or a
+  W7900 gate. HIP/script/result/log SHA-256 values are
+  `4c391a2b...8f12` / `e06c2932...a9f9` / `add70d97...aef6` /
+  `15bfbae7...9fb`. Exact compressed target-root publication is closed unless a
+  different contraction can aggregate winners without this tile-pair cost.
+  Re-rank launch-and-transport fusion next; the current target trace carries a
+  **110.084-ms host-minus-kernel gap across 6,294 dispatches**.
