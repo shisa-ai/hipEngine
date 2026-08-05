@@ -169,6 +169,30 @@ def test_validate_benchmark_leg_fails_closed_on_resolved_scratch_rows() -> None:
         )
 
 
+def test_prefill_hidden_seed_replay_populates_chunked_outer_checkpoint() -> None:
+    calls: list[tuple[int, int, bool]] = []
+
+    class Session:
+        _last_target_hidden_ptr = 0x1000
+        scratch = type("Scratch", (), {"norm": type("Buffer", (), {"ptr": 0x2000})()})()
+        runtime = type("Runtime", (), {"device_synchronize": lambda self: None})()
+        ready = False
+
+        def fp32_hidden_seed_contract(self):
+            return type("Contract", (), {"ready_for_mtp": self.ready})()
+
+        def _run_output_norm_hidden(self, src_ptr, out_ptr, *, capture_hidden_seed_fp32):
+            calls.append((src_ptr, out_ptr, capture_hidden_seed_fp32))
+            self.ready = True
+
+    session = Session()
+    replayed = screen.ensure_prefill_hidden_seed_capture(session)
+
+    assert replayed is True
+    assert calls == [(0x1000, 0x2000, True)]
+    assert screen.ensure_prefill_hidden_seed_capture(session) is False
+
+
 def test_compare_state_children_requires_byte_exact_prefill_trajectory_and_state() -> None:
     baseline = _state_child(4096)
     candidate = _state_child(1024)

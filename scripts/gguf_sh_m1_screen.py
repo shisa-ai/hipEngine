@@ -686,6 +686,32 @@ def _state_command(
     ]
 
 
+def ensure_prefill_hidden_seed_capture(session: Any) -> bool:
+    """Populate the one-row FP32 seed after outer-chunked prefill.
+
+    Production outer chunking intentionally rejects its all-row verifier seed
+    capture because the chunk buffers do not retain the full prompt.  The final
+    pre-output-norm row remains live, so this correctness-only screen can replay
+    the one-row output norm without changing Conv/GDN/KV state or sampling.
+    """
+
+    if session.fp32_hidden_seed_contract().ready_for_mtp:
+        return False
+    scratch = getattr(session, "scratch", None)
+    src_ptr = int(getattr(session, "_last_target_hidden_ptr", 0))
+    if scratch is None or src_ptr <= 0:
+        raise ScreenError("prefill did not retain a final hidden row for state capture")
+    session._run_output_norm_hidden(
+        src_ptr,
+        int(scratch.norm.ptr),
+        capture_hidden_seed_fp32=True,
+    )
+    session.runtime.device_synchronize()
+    if not session.fp32_hidden_seed_contract().ready_for_mtp:
+        raise ScreenError("prefill hidden-seed replay did not populate the FP32 contract")
+    return True
+
+
 def _state_context(
     session: Any,
     *,
@@ -708,9 +734,10 @@ def _state_context(
         use_bulk=True,
         bulk_attention_mode="bulk",
         return_logits=True,
-        capture_hidden_seed_fp32=True,
+        capture_hidden_seed_fp32=False,
         capture_layer_output_hidden=layer_ids,
     )
+    hidden_seed_replayed = ensure_prefill_hidden_seed_capture(session)
     prefill_logits = _fingerprint_array(
         np.ascontiguousarray(first.logits, dtype=np.float32)
     )
@@ -755,6 +782,7 @@ def _state_context(
         "prompt_length": int(prompt_length),
         "prompt_token_id": int(prompt_token_id),
         "prefill_logits": prefill_logits,
+        "prefill_hidden_seed_replayed": hidden_seed_replayed,
         "prefill_state": prefill_state,
         "trajectory": trajectory,
         "final_state": final_state,

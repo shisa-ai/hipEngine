@@ -203723,3 +203723,24 @@ Vulkan local sizes verbatim will close the measured gap.
   These are tooling smokes only, not retained performance rows. A prompt-8
   native-attention attempt exposed the existing cached native-wrapper signature
   mismatch (`split_partial_out_ptr`); the production AOTriton 512+ lane passes.
+
+## 2026-08-05 — Repair SH-M1 outer-chunk state capture
+
+- The first complete SH-M1 attempt finished all eight one-warmup/three-measured
+  performance children, then stopped before artifact assembly: the 4,096-row
+  state child requested the all-row FP32 verifier seed at 32K, while production
+  outer chunking intentionally rejects that capture because it retains only one
+  prefill chunk at a time. No performance or GTT result is retained from this
+  incomplete attempt; raw benchmark children remain under
+  `/tmp/hipengine-sh-m1-20260805/`.
+- RED: focused coverage lacked a post-prefill seed replay and failed on the
+  missing helper. GREEN: the correctness-only child now runs normal chunked
+  prefill with layer capture, then replays output norm for the retained final
+  pre-output-norm row to populate the one-row FP32 seed. This changes no
+  Conv/GDN/KV state and remains outside every timing window.
+- Focused tests pass **5/5**. Cached gfx1151 Q4_K_M outer-chunk smokes pass for
+  both policies: q4096 at 32K and q1024 at 4K report finite logits/state, the
+  expected 4,096/1,024 scratch rows, a populated replayed seed, and all ten
+  full-attention K/V fingerprints. The isolated 4,097/q4096 edge hit an
+  existing `hipMemcpy` invalid-argument boundary; the exact publication shapes
+  32K/q4096 and 4K/q1024 pass and are the scoped repair evidence.
