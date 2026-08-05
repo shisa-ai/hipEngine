@@ -203744,3 +203744,40 @@ Vulkan local sizes verbatim will close the measured gap.
   full-attention K/V fingerprints. The isolated 4,097/q4096 edge hit an
   existing `hipMemcpy` invalid-argument boundary; the exact publication shapes
   32K/q4096 and 4K/q1024 pass and are the scoped repair evidence.
+
+## 2026-08-05 — Reject SH-M1 q1024 and select exact liveness aliases
+
+- Run the complete repaired screen with `PYTHONPATH=. python3
+  scripts/gguf_sh_m1_screen.py screen --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --workloads 512 4K 32K 64K
+  --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1
+  --measured-runs 3 --state-decode-steps 4 --gtt-interval-ms 10
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root
+  /tmp/hipengine-sh-m1-20260805-rerun --out
+  /tmp/hipengine-sh-m1-20260805-rerun.json` on gfx1151, BF16 KV, one hardware
+  queue, cached builds, and explicit 1,024-row linear/MoE/post/RoPE controls.
+- q4096 -> q1024 tracked peak is **21.480 -> 21.480**, **23.007 -> 21.672**,
+  **23.654 -> 22.317**, and **24.392 -> 23.054 GiB** at 512/4K/32K/64K.
+  Whole-GTT is **21.916 -> 21.916**, **23.552 -> 22.201**,
+  **24.204 -> 22.849**, and **24.943 -> 23.587 GiB**. Thus q1024 clears the
+  >=1-GiB memory target at 4K+ and both legs reclaim tracked allocation exactly.
+- Reject q1024 on two independent blockers. Prefill changes
+  **1359.472 -> 1360.721 (+0.092%)**, **1438.860 -> 1415.795 (-1.603%)**,
+  **1154.435 -> 1062.115 (-7.997%)**, and **931.596 -> 821.344 (-11.835%)**;
+  decode remains within the 1% loss bound. Byte-fingerprint state is exact only
+  at 512. At 4K+, prefill/final logits and state differ, including the first
+  layer-output divergence at full-attention layer 3, 37 changed prefill layer
+  outputs, 54 Conv/GDN parts, 18 later K/V parts, and the first fixed-input
+  decode logit row despite stable sampled ID 9707.
+- Aggregate provenance is diagnostic because the canonical collector records
+  **255 unrelated untracked paths**; staged and unstaged tracked source are
+  clean at `e6eb49628`. Make no performance/topline claim. Publish compact
+  diagnostic `benchmarks/results/2026-08-05-gfx1151-gguf-sh-m1-q1024-rejected.json`
+  and update the review, benchmark diagnostic rollup, and changelog.
+- Keep q4096 and close 2,048/768 row-only retries: 2,048 cannot clear 1 GiB and
+  deeper slicing is already exactness/performance-negative. The scratch remains
+  `dedicated`; select SH-M2 to alias proven-mutually-exclusive 4,096-row fields,
+  starting with 256-MiB `moe_down_out_f32` and 128-MiB `conv_out`,
+  `linear_qkv_f32`, and `moe_down_out`, then stack any exact saving with strict
+  compact KV. q1024 alone would still remain **0.716-1.040 GiB** above fork F16
+  and **0.948-1.348 GiB** above fork Q8_0 at 4K+.
