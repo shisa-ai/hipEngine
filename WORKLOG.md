@@ -207116,3 +207116,33 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked-clean B3 profile against `fda35418e`; promotion still requires the
   exact 336-dispatch contraction plus target-kernel, target-host, and complete
   marked-wall wins before the full natural25 gate.
+
+## 2026-08-05 — Reject shared-cache KV batch as a runtime default
+
+- The tracked-clean `e3adc89fa` W7900 one-prompt B3 trace preserves the exact
+  **17/21** acceptance ledger and achieves the intended mechanical/arithmetic
+  result. Target scalar writers fall from **448 calls / 1.083574 ms** to
+  **112 shared batches / 0.378642 ms (-65.05%)**. Target/complete dispatches
+  contract **5,853 -> 5,517 (-336/-5.74%)** and **6,590 -> 6,254
+  (-336/-5.10%)**; target/complete kernel sums improve **256.720748 ->
+  254.585621 ms (-0.832%)** and **312.507349 -> 310.396528 ms (-0.675%)**.
+  Peak allocation remains byte-identical at **32,723,577,074** and teardown is
+  zero.
+- The predeclared complete-path gate nevertheless fails: target host rises
+  **349.140794 -> 354.044767 ms (+1.405%)** and complete marked wall rises
+  **431.236057 -> 443.252176 ms (+2.786%)**. The exact launch/kernel win does
+  not waive both required wall regressions. Do not move the gate after seeing
+  the result and do not spend a full natural25 run on an ineligible route.
+  Suite/kernel/marker/copy/comparison SHA-256 values are
+  `64fbaee7...1635c`, `095ec7f6...1bc9`, `225180aa...2936`,
+  `d90b6f3b...ed60`, and `d32acd16...bc04`.
+- Retain the exact gfx1100 wrapper/kernel and its explicit registry key as a
+  measured primitive, but remove all production-runner resolution and restore
+  four scalar writes before the retained shared-page attention batch. The
+  adjacent primitive/native-cycle bundle remains **19/19** on GPU1 after the
+  unroute, and `qwen35_gguf_runner.py` is byte-identical to pre-candidate
+  `fda35418e`. Per focused-repair policy, do not repeat the multi-minute W7900
+  transaction: its candidate execution was exact, while the final runtime is
+  the already-gated rounded baseline. Publish a rejected-runtime artifact
+  (`a2a4c985...02f6f`); the canonical **60.262 tok/s / 11.49%-below-Vulkan**
+  headline remains unchanged.

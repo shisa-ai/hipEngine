@@ -198,13 +198,25 @@ natural B1/B2/B3 moves **-0.412%/+0.247%/+0.103%** to
 **43.741/55.332/60.012 tok/s**; B2 cannot execute the route and the mixed packet
 creates no new topline. The canonical clean packet remains
 **43.792/55.254/60.262 tok/s**, with selected B3 at **2.4991x** own AR and
-**11.49% below** llama.cpp Vulkan. Every transaction gate, including an explicit
-failure after selected-state commit, remains exact. These dense results are
-separate from the accuracy-traded llama-compat scoreboard row. Artifacts:
+**11.49% below** llama.cpp Vulkan.
+
+A subsequent exact shared-cache KV append batch does not become an N1R default.
+The rows2/4 primitive is cache-bit exact and its routed W7900 transaction passes,
+while profiling cuts writers **448 -> 112**, total target/complete dispatches by
+**336**, and target/complete kernel sums **0.832%/0.675%**. The same trace raises
+target host **1.405%** and complete marked wall **2.786%**, failing the
+predeclared gate before natural25. N1R therefore retains scalar KV writes before
+the existing shared-page attention batch; the exact writer remains an explicit
+registry primitive only.
+
+Every transaction gate, including an explicit failure after selected-state
+commit, remains exact. These dense results are separate from the accuracy-traded
+llama-compat scoreboard row. Artifacts:
 [`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
 [`producer-folded rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
-[`selective FFN-down residual fusion`](../benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json), and
-[`rounded next-RMSNorm`](../benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json).
+[`selective FFN-down residual fusion`](../benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
+[`rounded next-RMSNorm`](../benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json), and
+[`shared-cache KV batch runtime rejection`](../benchmarks/results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json).
 
 ### N2 — device acceptance and selected-state commit
 

@@ -1322,17 +1322,10 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     } == {(16, 48, 128, 128)}
     assert gdn_decode_output_fusion_calls
     assert set(gdn_decode_output_fusion_calls) == {(16, 48, 128, 128)}
-    assert shared_kv_write_calls
-    assert {rows for rows, *_ in shared_kv_write_calls} == {2, 4}
-    assert {
-        (block_size, num_kv_heads, head_dim, table_blocks)
-        for _, block_size, num_kv_heads, head_dim, table_blocks, _, _
-        in shared_kv_write_calls
-    } == {(256, 4, 256, 1)}
-    assert all(
-        rows == live_rows and positions_alias_live == 1
-        for rows, *_, live_rows, positions_alias_live in shared_kv_write_calls
-    )
+    # The exact shared-page writer remains a measured registry primitive only:
+    # its one-prompt W7900 marked wall gate regressed, so production stays on
+    # the scalar writers before the retained shared-page attention batch.
+    assert not shared_kv_write_calls
     assert shared_full_attn_batch_calls
     # B2/rows3 is owned by the separate N2 bulk graph; this shared-page leaf
     # owns the N1 native B1/B3 captures only.
