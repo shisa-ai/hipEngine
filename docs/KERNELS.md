@@ -61,8 +61,9 @@ fixture.
 control/tail around selected ternary GEMV: BF16-hidden/BF16-weight router logits
 with FP32 accumulation, all-expert softmax, stable top-k, and selected
 renormalization; trained clamp-7 SwiGLU; and selected weighted sum plus residual
-with both published BF16 boundaries. Tiny gfx1151 fixtures preserve selected IDs,
-weights (`atol=rtol=2e-6`), and BF16 activation/residual bytes. Cache-only tracing
+with both published BF16 boundaries. Tiny gfx1151 fixtures preserve selected IDs
+exactly, bound FP32 route weights to one ULP, and preserve BF16 activation/residual
+bytes. Cache-only tracing
 reports router local256/VGPR8/LDS3584/scratch0 at **19,156 ns**, clamp-7
 local256/VGPR32/scratch0 at **2,605 ns**, and weighted residual
 local256/VGPR16/scratch0 at **2,885 ns**.
@@ -71,13 +72,21 @@ local256/VGPR16/scratch0 at **2,885 ns**.
 existing direct-weight PARO RMSNorm and two-stage FP32 argmax into a resident
 24-layer c=1 runner. Immutable packed weights stay device-resident; SWA and
 global metadata reset without clearing stale cache bytes because absolute
-`token_positions` gate every read. The initial official-checkpoint diagnostic
-at context 1 produces finite full-vocab logits and top ID 1112 in **16.223 ms**
-after load. The public `LLM.generate_detailed()` route then consumes an
-18-token formatted prompt and returns 32 coherent greedy tokens in **4.2466 s
-cold-process wall**, including model load and token-serial prefill. These are
-bring-up diagnostics, not a retained throughput claim; the HF/NumPy E2E gate and
-prompt-suite performance protocol remain separate acceptance steps.
+`token_positions` gate every read. Both span-owner identities are published even
+when their capacities are equal; the earlier top-ID-1112 diagnostic preceded
+that correctness fix and is not retained evidence.
+
+The corrected 18-position packed-formula gate passes at max KL **0.013508** and
+18/18 top-1; the pinned Transformers `trust_remote_code` same-weight gate passes
+at max KL **0.004719** and 18/18 top-1, with device greedy argmax exact. The
+post-fix public `LLM.generate_detailed()` route resolves model ID →
+`hip_gfx1151` / `maple_ternary2`, consumes the exact 18-token chat prompt,
+produces a coherent 37-token answer, stops on real EOS 151645, repeats the same
+IDs/text in one resident process, and returns tracked allocation to zero after
+`close()`. The observed **4.365 s cold / 0.703 s resident-repeat** walls are
+bring-up diagnostics only, not retained throughput claims. Evidence:
+`benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json` and
+`benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
 
 ### Laguna gfx1151 decode transfer screen
 
