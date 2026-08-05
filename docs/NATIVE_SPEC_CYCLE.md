@@ -90,7 +90,7 @@ single-native-submission boundary.
 | --- | --- | --- | --- | --- |
 | `N0` | Versioned ABI and oracle | Host/device control/result layouts, lifecycle, validation, CPU/fake launcher | Real model submission | Landed; no performance claim |
 | `N1` | Initial fixed-B2 native target graph | One native `VERIFY` submission | Reusable positions; proposal, accept, commit, cursors | Exact but rejected because recapture regressed wall |
-| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 llama-compat topline**; current exact dense B3 route reaches 50.344 tok/s / 2.3260x own AR |
+| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 target owner**; current exact/default dense B3 route reaches 60.262 tok/s / 2.4991x own AR |
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
@@ -166,14 +166,20 @@ chain journals then remove redundant row producers/copies; shared-page
 full-attention batching retires all row K/V writes before one causal batch
 attention; and the unchanged pack8 K body finally batches independent rows in
 grid Y. Subsequent exact target-resident Q6 proposal scoring, selective source-Q6T16
-projection residency, compact-Q4T16 FFN fusion, and row-selective compact-Q4T16
-single projections preserve the same N1R ownership boundary. The current clean
-B1/B2/B3 packet is **37.544/45.634/50.344 tok/s**, with selected B3 at
-**2.3260x** own AR. Every prompt-budget row and every
+projection residency, compact-Q4T16 FFN fusion, row-selective compact-Q4T16
+single projections, col8/planar Q6 rowtiles, and a planar root head preserve the
+same N1R ownership boundary. A state-only full-accept tail then removes discarded
+proposal scoring; the quality-gated sole-resident Q5T16 `ssm_out` route reduces
+the dominant linear family; exact GDN BF16 handoff removes its standalone cast.
+The latest exact pointer-table rollback snapshot collapses 96 pre-verify state
+copies to one launch per cycle without moving proposal, accept, or commit
+ownership. The current clean B1/B2/B3 packet is
+**43.792/55.254/60.262 tok/s**, with selected B3 at **2.4991x** own AR and
+**11.49% below** llama.cpp Vulkan. Every prompt-budget row and every
 full/train/heldout/category aggregate improves versus the immediately preceding
 route, and every transaction gate remains exact. These dense results are
 separate from the accuracy-traded llama-compat scoreboard row. Artifact:
-[`row-selective compact-Q4T16 projections`](../benchmarks/results/2026-08-05-qwen36-27b-q4t16-row-selective-sidecars-retained.json).
+[`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json).
 
 ### N2 — device acceptance and selected-state commit
 

@@ -206580,3 +206580,50 @@ Vulkan local sizes verbatim will close the measured gap.
   correctness/component unit, not a topline claim. Commit it, then profile the
   same hermetic one-prompt natural25 B3 window against clean `a5f25c9ad`; retain
   only if the 672 copies disappear and target/complete physical windows win.
+
+## 2026-08-05 — Retain one-launch GGUF rollback snapshots
+
+- Profile clean implementation `01291b066` against clean `a5f25c9ad` with the
+  same cached W7900 one-prompt natural25 B3 protocol under
+  `rocprofv3 --kernel-trace --memory-copy-trace --marker-trace`. The corrected
+  SDK-marker run preserves all 25 IDs, **17/21** accepted/proposed tokens, the
+  cycle ledger `[3,3,2,3,3,0,3]`, and GPU/CPU acceptance. The initial-state
+  family changes **672 copies / 4.527840 ms -> 7 registered launches /
+  3.457868 ms**, removing **665 dispatches** and **1.069972 ms (23.63%)** of
+  physical work. Target dispatches fall **6,966 -> 6,301**, target host wall
+  falls **360.239139 -> 357.778074 ms (-0.683%)**, and complete marker wall
+  falls **444.949446 -> 438.030988 ms (-1.555%)**. Complete kernel sum also
+  falls **315.112352 -> 314.705277 ms (-0.129%)**. The profiled suite improves
+  **53.932128 -> 54.785145 tok/s (+1.582%)**.
+- Preserve the independent first exact profile whose ROCTX shim did not emit a
+  marker CSV: its complete suite result is **54.315442 tok/s (+0.711%)**. It is
+  not used for phase attribution, but independently confirms the complete-wall
+  direction. Corrected profile comparison:
+  `/tmp/hipengine-qwen36-27b/final-01291b066/profile-native-journal-snapshot-copy-mtp-b3-hermetic/profile-comparison.json`
+  (`d52f6e83...ee06`).
+- Run the canonical ten-prompt W7900 suite at B1-B3 with one warmup, one measured
+  run, exact/default native verification, and 24 timed transitions per prompt.
+  B1/B2/B3 improve **43.356990/54.678427/59.790280 ->
+  43.792177/55.254201/60.261907 tok/s (+1.004/+1.053/+0.789%)**; target verify
+  improves **0.876/0.803/0.747%**. Every one of the 30 prompt-budget rows and
+  every full/train/heldout/category aggregate improves: the minimum prompt and
+  scope gains are **+0.149%/+0.235%**. All MTP/AR IDs, acceptance totals
+  (**115/127, 151/182, 169/219**), GPU/CPU decisions, stage reconciliation, and
+  teardown are exact. The MTP-only route cannot affect AR; its one-run
+  **+1.533%** timing movement lowers the reported B3/AR ratio to **2.4991x**
+  despite the absolute MTP win. Populated AR is therefore not repeated.
+- Publish
+  `benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json`
+  plus benchmark rollup, changelog, campaign scoreboard, and NativeSpecCycle
+  status. Candidate profile-marker/no-marker/natural/comparison SHA-256s are
+  `cf21718c...40b`, `c8a72d3f...21b`, `323c5a8f...b60`, and
+  `2ee70ef6...198`; the GPU1 screen/trace hashes remain
+  `95217fca...8ed` and `166b1e83...a44`. Canonical exact B3 is now
+  **60.262 tok/s**, **11.49% below** llama.cpp Vulkan's 68.082 tok/s.
+- Re-rank only `01291b066`. The registered chain Conv/GDN journal producers
+  consume resident state through const pointers and, with deferred commit,
+  write only row journals. Next establish a fail-closed read-only planning
+  contract, assert resident state is unchanged immediately after native
+  prepare, then omit the redundant initial state copy and native-only snapshot
+  allocation. The retained pointer-copy path remains fallback for any registry,
+  shape, or backend miss.

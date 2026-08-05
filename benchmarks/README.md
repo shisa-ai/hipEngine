@@ -5331,6 +5331,40 @@ teardown returns to zero. Natural25 B3 is now **12.18% below** Vulkan's 68.082
 tok/s. Artifact:
 [`2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json`](results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json).
 
+#### Qwen3.6-27B exact one-launch rollback snapshot, W7900/gfx1100
+
+Clean implementation `01291b066` corrects the prior copy attribution: the
+**672** target-window copies are seven pre-verify snapshots of 48 Conv plus 48
+GDN resident states, not final-row commits. `_StateJournal` now owns immutable
+live/snapshot pointer tables and replaces each 96-copy snapshot with one
+registered 64-KiB-chunked pair-copy launch. Registry, shape, layer-pair, and
+backend misses retain the original copies; per-row journals are unchanged and
+gfx1151 deliberately misses.
+
+| Route | GDN-handoff baseline | + one-launch snapshot | Delta | MTP / true AR | Acceptance / work |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 23.750 tok/s | 24.114 tok/s | +1.533% timing variance | 1.0000x | MTP-only route is unreachable |
+| B1 | 43.357 tok/s | **43.792 tok/s** | **+1.004%** | 1.8161x | 115 / 127 |
+| B2 | 54.678 tok/s | **55.254 tok/s** | **+1.053%** | 2.2914x | 151 / 182 |
+| **B3 (retained)** | 59.790 tok/s | **60.262 tok/s** | **+0.789%** | **2.4991x** | **169 / 219** |
+
+All 30 prompt-budget rows and every full/train/heldout/category scope improve;
+the smallest prompt and scope wins are **+0.149%/+0.235%**. All tokens,
+acceptance, GPU/CPU decisions, transaction state, and teardown are exact. The
+same-session AR rise is timing variance and numerically lowers MTP/AR despite
+every absolute MTP row improving. Populated AR was not repeated because
+`_StateJournal` cannot execute outside MTP.
+
+The corrected one-prompt W7900 trace changes **672 copies / 4.528 ms** into
+**7 launches / 3.458 ms**, removes **665 dispatches**, cuts target host wall
+**0.683%**, and cuts complete marker wall **444.949 -> 438.031 ms (-1.555%)**.
+An independent exact no-marker profile also improves **53.932 -> 54.315 tok/s**.
+The pointer plan adds only **1,540 bytes**. GPU1 production-shape synchronized
+wall improves **656.504 -> 436.108 us (1.505x)** with byte-exact forward and
+reverse copies. Natural25 B3 is now **11.49% below** Vulkan's 68.082 tok/s.
+Artifact:
+[`2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json`](results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
