@@ -203697,3 +203697,29 @@ Vulkan local sizes verbatim will close the measured gap.
   all 63 distinct external URLs (AMD product pages intermittently reject or
   time out under automated `curl`; they were reviewed through the browser),
   and run `git diff --check`. No GPU benchmark or performance claim is made.
+
+## 2026-08-05 — Implement the SH-M1 fail-closed screen
+
+- Add `scripts/gguf_sh_m1_screen.py`. The parent launches independent
+  right-sized gfx1151 Q4_K_M processes for the 4,096-row control and 1,024-row
+  candidate, explicitly fixing all five chunk surfaces, retaining WMMA prefill,
+  GEMV eager decode, one warmup/three measurements, cached builds, one hardware
+  queue, and 10-ms whole-GTT sampling. It validates resolved scratch rows,
+  exact expected tokens, allocator reclamation, and the campaign's >=1-GiB /
+  <=1% prefill/decode promotion gates before classifying the result.
+- Add correctness-only state children that compare byte fingerprints for full
+  prefill logits, final prompt hidden/layer/Conv/GDN/live-BF16-KV state, a
+  fixed-input decode-logit trajectory, and final decode state at every requested
+  context. State-child timing is explicitly excluded from performance evidence.
+- RED: `tests/test_gguf_sh_m1_screen.py` failed collection because the screen did
+  not exist. GREEN: the screen/benchmark metadata/ROCTX bundle passes **10/10**;
+  the screen plus head-major bundle passes **18/18**; pycompile/compileall and
+  `git diff --check` pass. Ruff/Black/pyflakes are not installed in this env.
+- Run cached gfx1151 Q4_K_M mechanical smokes. The 512-row candidate state child
+  resolves a 768-row right-sized scratch, reports finite prefill/decode state,
+  and fingerprints all ten full-attention K/V layers. A separate 512/1
+  benchmark validates the real child schema and lifecycle at **1,272.483
+  prefill tok/s**, **52.538 decode tok/s**, and **21.480 GiB** tracked peak.
+  These are tooling smokes only, not retained performance rows. A prompt-8
+  native-attention attempt exposed the existing cached native-wrapper signature
+  mismatch (`split_partial_out_ptr`); the production AOTriton 512+ lane passes.
