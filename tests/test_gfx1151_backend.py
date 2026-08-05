@@ -369,6 +369,34 @@ def test_gfx1151_backend_excludes_unvalidated_dense_q6_qmicro() -> None:
         )
 
 
+def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
+    register_gfx1151_kernels()
+
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_DENSE_Q5_T16_SSM_OUT",
+        False,
+    )
+    assert not backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DENSE_Q5_T16_SSM_OUT",
+        False,
+    )
+    for variant in (
+        "t16_gemv_decode_bf16_bf16_out",
+        "t16_gemv_rowtile_bf16_bf16_out",
+        "t16_wmma_prefill_bf16_bf16_out",
+    ):
+        assert not is_registered(
+            KernelKey(
+                "hip_gfx1151",
+                "linear",
+                "gguf_q5_k_t16_v1",
+                variant,
+            )
+        )
+
+
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     register_qwen35_rmsnorm_kernels()
     register_gfx1151_kernels()

@@ -15,6 +15,7 @@ from hipengine.loading.qwen35_gguf import (
 )
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_Q4_K_PACK8,
@@ -160,9 +161,31 @@ def test_qwen36_dense_decode_repack_replaces_wide_rank2_q6_and_root_head() -> No
         decode_repack=True,
         dense_q6_qmicro_planar=True,
     )
+    optimized_plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q6_qmicro_planar=True,
+    )
     legacy_by_slot = {spec.slot_path: spec for spec in legacy.specs}
     plan_by_slot = {spec.slot_path: spec for spec in plan.specs}
     qmicro_by_slot = {spec.slot_path: spec for spec in qmicro_plan.specs}
+    optimized_by_slot = {spec.slot_path: spec for spec in optimized_plan.specs}
+
+    q5_ssm_out_slots = {
+        spec.slot_path
+        for spec in optimized_plan.specs
+        if spec.layout == LAYOUT_GGUF_Q5_K_T16
+    }
+    assert len(q5_ssm_out_slots) == 48
+    assert all(slot.endswith(".ssm_out") for slot in q5_ssm_out_slots)
+    for slot in q5_ssm_out_slots:
+        optimized = optimized_by_slot[slot]
+        assert optimized.source.shape == (5_120, 6_144)
+        assert optimized.quant_key == "gguf_q5_k_t16_v1"
+        assert optimized.allocation_names == ("tiles",)
+        assert plan_by_slot[slot].layout == LAYOUT_DENSE_BF16
+        assert plan_by_slot[slot].allocation_names == ("raw",)
 
     wide_slots = {
         spec.slot_path
