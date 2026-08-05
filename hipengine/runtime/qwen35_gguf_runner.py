@@ -284,6 +284,7 @@ from hipengine.runtime.gguf_linear import (
     gguf_gemv_decode_enabled,
     gguf_wmma_prefill_enabled,
     launch_gguf_linear,
+    launch_gguf_linear_residual,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_pair_silu,
@@ -7411,43 +7412,59 @@ class Qwen35GGUFFullStackRunner:
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_silu")
-        launch_gguf_linear(
-            layer.weight("ffn_down"),
-            scratch.ffn_intermediate.ptr,
-            scratch.ffn_down.ptr,
-            rows=rows,
-            in_features=self.ffn_size,
-            out_features=self.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        if f32_residual:
-            count = rows * self.hidden_size
-            gguf_f32_bf16_add_out_f32(
-                int(out_f32_ptr),
-                scratch.ffn_down.ptr,
-                int(out_f32_ptr),
-                count,
-                stream=stream,
-                runtime=runtime,
-            )
-            f32_to_bf16(
-                int(out_f32_ptr),
-                out_ptr,
-                count,
-                stream=stream,
-                library=self._cast_library(),
-                runtime=runtime,
-            )
-        else:
-            gguf_bf16_add(
+        down_residual_fused = (
+            not f32_residual
+            and rows > 1
+            and launch_gguf_linear_residual(
+                layer.weight("ffn_down"),
+                scratch.ffn_intermediate.ptr,
                 scratch.residual.ptr,
-                scratch.ffn_down.ptr,
                 out_ptr,
-                rows * self.hidden_size,
+                rows,
+                self.ffn_size,
+                self.hidden_size,
                 stream=stream,
                 runtime=runtime,
             )
+        )
+        if not down_residual_fused:
+            launch_gguf_linear(
+                layer.weight("ffn_down"),
+                scratch.ffn_intermediate.ptr,
+                scratch.ffn_down.ptr,
+                rows=rows,
+                in_features=self.ffn_size,
+                out_features=self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            if f32_residual:
+                count = rows * self.hidden_size
+                gguf_f32_bf16_add_out_f32(
+                    int(out_f32_ptr),
+                    scratch.ffn_down.ptr,
+                    int(out_f32_ptr),
+                    count,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                f32_to_bf16(
+                    int(out_f32_ptr),
+                    out_ptr,
+                    count,
+                    stream=stream,
+                    library=self._cast_library(),
+                    runtime=runtime,
+                )
+            else:
+                gguf_bf16_add(
+                    scratch.residual.ptr,
+                    scratch.ffn_down.ptr,
+                    out_ptr,
+                    rows * self.hidden_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
         _mark_sync_stage(
             runtime,
             stage_timings,

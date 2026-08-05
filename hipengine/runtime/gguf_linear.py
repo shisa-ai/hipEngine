@@ -1735,6 +1735,180 @@ def launch_gguf_q4_t16_sidecar_decode(
     return False
 
 
+def _linear_residual_variant(variant: str) -> str | None:
+    """Return the same-ABI rounded-BF16 residual sibling name."""
+
+    suffix = "_bf16_bf16_out"
+    if not variant.endswith(suffix):
+        return None
+    return f"{variant[: -len(suffix)]}_bf16_residual_bf16_out"
+
+
+def _launch_registered_linear_residual(
+    normal_key: KernelKey,
+    weight_ptr: int,
+    x_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    libraries: Mapping[str, ctypes.CDLL] | None,
+    runtime,
+) -> bool:
+    """Launch one exact composite only when its primitive owner also exists."""
+
+    fused_variant = _linear_residual_variant(normal_key.variant)
+    if fused_variant is None:
+        return False
+    _ensure_linear_kernel_registered(normal_key)
+    if not is_registered(normal_key):
+        return False
+    fused_key = KernelKey(
+        normal_key.backend,
+        "linear+residual",
+        normal_key.quant,
+        fused_variant,
+    )
+    # Ensuring the primitive restores its whole owning module after registry
+    # tests clear global state, including any supported composite siblings.
+    # Do not bootstrap again for an unsupported composite: dense models with a
+    # different T16 quant must fail closed without re-registering every kernel
+    # on every layer/pass.
+    if not is_registered(fused_key):
+        return False
+    fn = resolve(
+        backend=fused_key.backend,
+        layer=fused_key.layer,
+        quant=fused_key.quant,
+        variant=fused_key.variant,
+    )
+    kwargs = {"stream": stream, "runtime": runtime}
+    if libraries is not None:
+        library = libraries.get(
+            f"{fused_key.quant}:{fused_key.variant}",
+            libraries.get(
+                f"{normal_key.quant}:{normal_key.variant}",
+                libraries.get(fused_key.quant),
+            ),
+        )
+        if library is not None:
+            kwargs["library"] = library
+    fn(
+        x_ptr,
+        int(weight_ptr),
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+    return True
+
+
+def launch_gguf_linear_residual(
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+) -> bool:
+    """Launch an exact small-row projection plus rounded-BF16 residual.
+
+    Only registry-qualified native rows 2-4 can own this boundary. Any shape,
+    backend, WMMA-policy, allocation, primitive-key, or composite-key miss
+    returns ``False`` so callers execute the ordinary projection plus
+    ``gguf_bf16_add`` chain.
+    """
+
+    if (
+        not _native_batch_decode_session_enabled
+        or rows < 2
+        or rows > 4
+        or _resolve_use_wmma_prefill(None)
+    ):
+        return False
+    resolved_backend = _weight_backend(weight, backend=backend)
+
+    # Qwen3.6 compact-Q4 weights retain pack8 as their primary layout and expose
+    # the exact T16 verifier owner as a bounded sidecar. Try those registered
+    # sibling keys first without branching on the resident quant in model code.
+    for variant in _q4_t16_sidecar_decode_variants(
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    ):
+        sidecar = _q4_t16_sidecar_allocation(
+            weight,
+            rows=rows,
+            allow_r3plus_at_row2=(
+                variant == "dense_rowtile_col4_bf16_bf16_out"
+            ),
+        )
+        if sidecar is None:
+            continue
+        normal_key = KernelKey(
+            resolved_backend,
+            "linear",
+            "gguf_q4_k_t16_v1",
+            variant,
+        )
+        if _launch_registered_linear_residual(
+            normal_key,
+            sidecar.tensor.ptr,
+            x_ptr,
+            residual_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+        ):
+            return True
+
+    # Sole-resident T16 owners derive the composite from the same registry key
+    # selected by native small-row linear dispatch. Today the registered match
+    # is planar Q6; other T16 quants fail closed until independently qualified.
+    dispatch = resolve_gguf_linear_dispatch(
+        weight,
+        backend=resolved_backend,
+        rows=rows,
+    )
+    dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
+    allocation_name = {"t16": "tiles"}.get(dispatch.abi)
+    if allocation_name is None:
+        return False
+    try:
+        allocation = weight.allocation(allocation_name)
+    except KeyError:
+        return False
+    return _launch_registered_linear_residual(
+        dispatch.key,
+        allocation.tensor.ptr,
+        x_ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+    )
+
+
 def launch_gguf_linear_moe_tail_host_batch(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -3572,6 +3746,7 @@ __all__ = [
     "Q5F32ResidentPlane",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
+    "launch_gguf_linear_residual",
     "launch_gguf_linear_moe_tail_host_batch",
     "launch_gguf_linear_pair",
     "launch_gguf_linear_pair_silu",

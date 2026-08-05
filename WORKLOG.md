@@ -206822,3 +206822,64 @@ Vulkan local sizes verbatim will close the measured gap.
   different contraction can aggregate winners without this tile-pair cost.
   Re-rank launch-and-transport fusion next; the current target trace carries a
   **110.084-ms host-minus-kernel gap across 6,294 dispatches**.
+
+## 2026-08-05 — Admit exact FFN-down plus residual fusion to RED
+
+- Reconcile the clean `82a7f8691` B3 trace at the first large repeated
+  launch/transport boundary. Every target pass runs 64 dense FFN-down
+  projections followed by 64 standalone BF16 residual adds; seven B3 passes
+  therefore carry **448 adds / 1.304 ms / 448 graph nodes**. The model has 32
+  production planar-Q6 down owners and 32 compact-Q4T16 sidecar owners.
+- Screen one-launch producer variants out of tree on GPU1 with actual
+  `blk.0.ffn_down.weight` Q6 (K17,408/N5,120) and
+  `blk.8.ffn_down.weight` Q4 (K17,408/N5,120). Each variant preserves the
+  producer's complete dot/reduction and BF16 projection store value in a
+  register, then performs the exact standalone-add BF16 read/add/rounding
+  boundary before publication. All rows 2/3/4 are BF16-bit exact.
+- The 31-sample, burst-ten, counterbalanced medians are Q6
+  **118.172 -> 115.800 us**, **128.693 -> 125.008 us**, and
+  **131.341 -> 128.609 us** (**1.020x/1.029x/1.021x**, 26/29/23 wins), and Q4
+  **63.868 -> 59.944 us**, **65.712 -> 62.604 us**, and
+  **82.560 -> 80.424 us** (**1.065x/1.050x/1.027x**, 25/28/24 wins). At 32
+  layers per family this projects **201.475/217.344/155.776 us saved per
+  B1/B2/B3 target pass**, before graph-node queue effects. Result/HIP/script
+  SHA-256 values are `2998f040...7e21` / `372e24c9...c6d` and
+  `1c3464a6...48f` / `f6845146...087`.
+- Admit a gfx1100-only `linear+residual` composite for the two already-retained
+  rowtile owners. The ordinary projection plus registered `gguf_bf16_add`
+  remains the exact unfused fallback; c1, F32-residual diagnostics, rows outside
+  2-4, WMMA, registry/backend misses, and gfx1151 must fail closed. Establish
+  RED first for both registry keys and exact device boundaries, generic
+  dispatch ownership/fallback, runner launch contraction, and gfx1151
+  exclusion. `scripts/check_lineage.py --kind kernel --diff stat` still shows
+  only the four catalogued upstream drift entries.
+- GREEN the implementation with two separately registered composite bodies and
+  generic registry dispatch. The Q6 planar owner preserves the retained col8
+  local128 arithmetic, and the Q4 owner reuses the retained local32 accumulator;
+  both materialize the first BF16 projection value in-register before the exact
+  residual add/final BF16 boundary. The dense runner attempts the composite only
+  for non-F32 rows greater than one and otherwise executes the unchanged
+  projection-plus-`gguf_bf16_add` fallback.
+- The six GPU1 rows2-4 device fixtures are bit-exact to that explicit chain. A
+  cache-only `rocprofv3 --kernel-trace` names all specializations with zero
+  scratch: Q6 local128 uses VGPR **80/96/104**, LDS512, and
+  **9.48/11.84/18.00 us**; Q4 local32 uses VGPR **120/144/144**, LDS0, and
+  **14.32/11.12/12.76 us**. Kernel/agent/log SHA-256 values are
+  `0ae8df31...ed05` / `1ba18fbf...dc00` / `0a6f6c52...9818`. The retained
+  projection fixtures already bind the CPU GGUF oracles, while the new fixtures
+  prove the added boundary bit-for-bit.
+- The adjacent Q4/Q6 registry, dispatch, runner, and backend bundle passes
+  **262/262**. That broader order exposed and repaired a fail-closed detail: an
+  unsupported Q5 composite miss was redundantly invoking the whole lazy kernel
+  registrar, which could overwrite fake-pointer captures in tests and would add
+  repeated host work for unsupported model quants. Primitive bootstrap now runs
+  once; absence of the exact composite key returns `False` directly. The focused
+  sentinel-pointer route and the complete 262-test bundle pass after repair.
+- Run the final current-tree W7900 transaction with
+  `HIP_VISIBLE_DEVICES=0`, gfx1100, decode repack, the pinned compiler-version
+  file, and cached builds required. It passes B1/B2/B3 reject/partial/full state,
+  IDs, acceptance, provider parity, rollback, and teardown, and its ownership
+  census observes both Q4 and Q6 composites at every row count **2/3/4** and
+  only at K17,408/N5,120. The implementation is ready for a tracked-clean B3
+  profile against `82a7f8691`; promotion still requires intended-family,
+  dispatch-count, target-window, and complete-wall wins.

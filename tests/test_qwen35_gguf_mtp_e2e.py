@@ -753,6 +753,51 @@ def q4_single_rowtile_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]
             register(key, originals[name], replace=True)
 
 
+@pytest.fixture
+def down_residual_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
+    """Count exact Q4/Q6 FFN-down plus residual composite ownership."""
+
+    keys = {
+        "q4": KernelKey(
+            "hip_gfx1100",
+            "linear+residual",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_bf16_residual_bf16_out",
+        ),
+        "q6": KernelKey(
+            "hip_gfx1100",
+            "linear+residual",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_bf16_residual_bf16_out",
+        ),
+    }
+    originals = {
+        name: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for name, key in keys.items()
+    }
+    calls: dict[str, list[tuple[int, int, int]]] = {"q4": [], "q6": []}
+
+    def counted(name: str):
+        def wrapper(*args, **kwargs):
+            calls[name].append((int(args[4]), int(args[5]), int(args[6])))
+            return originals[name](*args, **kwargs)
+
+        return wrapper
+
+    for name, key in keys.items():
+        register(key, counted(name), replace=True)
+    try:
+        yield calls
+    finally:
+        for name, key in keys.items():
+            register(key, originals[name], replace=True)
+
+
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
@@ -765,6 +810,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
     q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
     q4_single_rowtile_calls: dict[str, list[tuple[int, int, int]]],
+    down_residual_calls: dict[str, list[tuple[int, int, int]]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
@@ -1152,7 +1198,6 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (5_120, 10_240),
         (5_120, 12_288),
         (6_144, 5_120),
-        (17_408, 5_120),
     }
     assert q4_single_rowtile_calls["col4"]
     assert {
@@ -1225,6 +1270,14 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for _, in_features, out_features in q4_dual_rowtile_silu_calls["t16"]
     } == {(5120, 17408)}
     assert not q4_dual_rowtile_silu_calls["pack8"]
+    assert down_residual_calls["q4"]
+    assert down_residual_calls["q6"]
+    for calls in down_residual_calls.values():
+        assert {rows for rows, _, _ in calls} == {2, 3, 4}
+        assert {
+            (in_features, out_features)
+            for _, in_features, out_features in calls
+        } == {(17_408, 5_120)}
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:

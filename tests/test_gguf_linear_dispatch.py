@@ -162,6 +162,125 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     )
 
 
+def test_launch_gguf_linear_residual_routes_registered_q6_and_q4_owners() -> None:
+    launch = getattr(gguf_linear_module, "launch_gguf_linear_residual", None)
+    assert callable(launch)
+    q6_key = KernelKey(
+        "hip_gfx1100",
+        "linear+residual",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_gemv_rowtile_bf16_residual_bf16_out",
+    )
+    q4_key = KernelKey(
+        "hip_gfx1100",
+        "linear+residual",
+        "gguf_q4_k_t16_v1",
+        "dense_rowtile_bf16_residual_bf16_out",
+    )
+    # Earlier registry-plan tests deliberately clear global registrations. Make
+    # both primitive owners present before installing fake-pointer captures;
+    # otherwise the launcher's lazy bootstrap can restore the real composite
+    # over a capture and execute it with these sentinel addresses.
+    for primitive_key in (
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_bf16_bf16_out",
+        ),
+    ):
+        gguf_linear_module._ensure_linear_kernel_registered(primitive_key)
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (q6_key, q4_key)
+    }
+    calls = []
+
+    def capture(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        return fake
+
+    register(q6_key, capture("q6"), replace=True)
+    register(q4_key, capture("q4"), replace=True)
+    q6 = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    q4 = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    q5 = _fake_weight(
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        quant_key="gguf_q5_k_t16_v1",
+    )
+    try:
+        assert not launch(q6, 100, 300, 400, 3, 17_408, 5_120)
+        with native_batch_decode_session(True):
+            assert not launch(q5, 100, 300, 400, 3, 6_144, 5_120)
+            assert not launch(q6, 100, 300, 400, 5, 17_408, 5_120)
+            with wmma_prefill_session(True):
+                assert not launch(q6, 100, 300, 400, 3, 17_408, 5_120)
+            assert launch(
+                q6,
+                100,
+                300,
+                400,
+                3,
+                17_408,
+                5_120,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+            assert launch(
+                q4,
+                101,
+                301,
+                401,
+                4,
+                17_408,
+                5_120,
+                stream=8,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert calls == [
+        (
+            "q6",
+            (100, 14, 300, 400, 3, 17_408, 5_120),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
+        (
+            "q4",
+            (101, 15, 301, 401, 4, 17_408, 5_120),
+            {"stream": 8, "runtime": "runtime-sentinel"},
+        ),
+    ]
+
+
 def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:
     weight = _fake_weight(layout=LAYOUT_Q4_K_PACK8, quant_key="gguf_q4_k")
     key = KernelKey(
