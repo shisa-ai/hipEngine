@@ -855,9 +855,8 @@ __global__ void qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_ke
     int64_t head_v_dim) {
   extern __shared__ float shared[];
   float* projection_partial = shared;
-  float* q_shared = projection_partial + 8 * blockDim.x;
-  float* k_shared = q_shared + head_k_dim;
-  float* q_partial = k_shared + head_k_dim;
+  float* conv_shared = projection_partial + 8 * blockDim.x;
+  float* q_partial = conv_shared + 4 * (2 * head_k_dim + head_v_dim);
   float* k_partial = q_partial + blockDim.x;
   float* out_shared = k_partial + blockDim.x;
   float* norm_partial = out_shared + head_v_dim;
@@ -869,6 +868,30 @@ __global__ void qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_ke
   if (v_head >= num_v_heads) {
     return;
   }
+  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
+  const int64_t key_dim = num_k_heads * head_k_dim;
+  const int64_t value_dim = num_v_heads * head_v_dim;
+  const int64_t conv_stride = (2 * key_dim) + value_dim;
+  const int64_t staged_row_width = 2 * head_k_dim + head_v_dim;
+  for (int64_t staged_idx = threadIdx.x;
+       staged_idx < max_nodes * staged_row_width;
+       staged_idx += blockDim.x) {
+    const int64_t row = staged_idx / staged_row_width;
+    const int64_t local_idx = staged_idx - row * staged_row_width;
+    const int64_t conv_row = row * conv_stride;
+    if (local_idx < head_k_dim) {
+      conv_shared[staged_idx] =
+          conv_out[conv_row + k_head * head_k_dim + local_idx];
+    } else if (local_idx < 2 * head_k_dim) {
+      conv_shared[staged_idx] = conv_out[
+          conv_row + key_dim + k_head * head_k_dim + local_idx - head_k_dim];
+    } else {
+      conv_shared[staged_idx] = conv_out[
+          conv_row + 2 * key_dim + v_head * head_v_dim +
+          local_idx - 2 * head_k_dim];
+    }
+  }
+  __syncthreads();
 
   // Reproduce both scalar local256 dense-F32 GEMV trees for every verifier row,
   // but load each alpha/beta weight once across the rows. The rounded BF16 bits
@@ -963,10 +986,6 @@ __global__ void qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_ke
   }
   __syncthreads();
 
-  const int64_t k_head = qwen35_gdn_k_head_from_v_head(v_head, num_k_heads);
-  const int64_t key_dim = num_k_heads * head_k_dim;
-  const int64_t value_dim = num_v_heads * head_v_dim;
-  const int64_t conv_stride = (2 * key_dim) + value_dim;
   const int64_t state_stride = num_v_heads * head_k_dim * head_v_dim;
   const int64_t state_head_base = v_head * head_k_dim * head_v_dim;
   const float a_log_v = a_log[v_head];
@@ -978,54 +997,35 @@ __global__ void qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_ke
         ? base_recurrent_state
         : tree_recurrent_state + parent * state_stride;
     float* node_state = tree_recurrent_state + t * state_stride;
-    const int64_t conv_row = t * conv_stride;
-    const int64_t q_base = conv_row + k_head * head_k_dim;
-    const int64_t k_base = conv_row + key_dim + k_head * head_k_dim;
-    const int64_t value_offset = conv_row + 2 * key_dim + v_head * head_v_dim;
+    const float* __restrict__ staged_row = conv_shared + t * staged_row_width;
+    const float* __restrict__ q_shared = staged_row;
+    const float* __restrict__ k_shared = staged_row + head_k_dim;
 
     float q_sum = 0.0f;
     float k_sum = 0.0f;
     for (int64_t idx = threadIdx.x * 8; idx + 7 < head_k_dim; idx += blockDim.x * 8) {
-      const float q0 = conv_out[q_base + idx + 0];
-      const float q1 = conv_out[q_base + idx + 1];
-      const float q2 = conv_out[q_base + idx + 2];
-      const float q3 = conv_out[q_base + idx + 3];
-      const float q4 = conv_out[q_base + idx + 4];
-      const float q5 = conv_out[q_base + idx + 5];
-      const float q6 = conv_out[q_base + idx + 6];
-      const float q7 = conv_out[q_base + idx + 7];
-      const float k0 = conv_out[k_base + idx + 0];
-      const float k1 = conv_out[k_base + idx + 1];
-      const float k2 = conv_out[k_base + idx + 2];
-      const float k3 = conv_out[k_base + idx + 3];
-      const float k4 = conv_out[k_base + idx + 4];
-      const float k5 = conv_out[k_base + idx + 5];
-      const float k6 = conv_out[k_base + idx + 6];
-      const float k7 = conv_out[k_base + idx + 7];
-      q_shared[idx + 0] = q0;
-      q_shared[idx + 1] = q1;
-      q_shared[idx + 2] = q2;
-      q_shared[idx + 3] = q3;
-      q_shared[idx + 4] = q4;
-      q_shared[idx + 5] = q5;
-      q_shared[idx + 6] = q6;
-      q_shared[idx + 7] = q7;
-      k_shared[idx + 0] = k0;
-      k_shared[idx + 1] = k1;
-      k_shared[idx + 2] = k2;
-      k_shared[idx + 3] = k3;
-      k_shared[idx + 4] = k4;
-      k_shared[idx + 5] = k5;
-      k_shared[idx + 6] = k6;
-      k_shared[idx + 7] = k7;
+      const float q0 = q_shared[idx + 0];
+      const float q1 = q_shared[idx + 1];
+      const float q2 = q_shared[idx + 2];
+      const float q3 = q_shared[idx + 3];
+      const float q4 = q_shared[idx + 4];
+      const float q5 = q_shared[idx + 5];
+      const float q6 = q_shared[idx + 6];
+      const float q7 = q_shared[idx + 7];
+      const float k0 = k_shared[idx + 0];
+      const float k1 = k_shared[idx + 1];
+      const float k2 = k_shared[idx + 2];
+      const float k3 = k_shared[idx + 3];
+      const float k4 = k_shared[idx + 4];
+      const float k5 = k_shared[idx + 5];
+      const float k6 = k_shared[idx + 6];
+      const float k7 = k_shared[idx + 7];
       q_sum += q0*q0 + q1*q1 + q2*q2 + q3*q3 + q4*q4 + q5*q5 + q6*q6 + q7*q7;
       k_sum += k0*k0 + k1*k1 + k2*k2 + k3*k3 + k4*k4 + k5*k5 + k6*k6 + k7*k7;
     }
     for (int64_t idx = (head_k_dim & ~7) + threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
-      const float q_value = conv_out[q_base + idx];
-      const float k_value = conv_out[k_base + idx];
-      q_shared[idx] = q_value;
-      k_shared[idx] = k_value;
+      const float q_value = q_shared[idx];
+      const float k_value = k_shared[idx];
       q_sum += q_value * q_value;
       k_sum += k_value * k_value;
     }
@@ -1070,7 +1070,7 @@ __global__ void qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_ke
         kv_mem += k_norm * state_value;
       }
 
-      const float value = conv_out[value_offset + value_idx];
+      const float value = staged_row[2 * head_k_dim + value_idx];
       const float delta = (value - kv_mem) * beta;
       for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
         const float q_norm0 = q_shared[idx + 0] * q_scale;
@@ -5324,7 +5324,8 @@ extern "C" int hipengine_qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf
   }
   constexpr int threads = 256;
   const size_t shared_bytes = static_cast<size_t>(
-      (8 * threads) + (2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+      (8 * threads) + 4 * (2 * head_k_dim + head_v_dim) +
+      (3 * threads) + head_v_dim) * sizeof(float);
   hipLaunchKernelGGL(
       (qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_kernel<uint16_t, true, true>),
       dim3(static_cast<unsigned int>(num_v_heads)),
