@@ -26,6 +26,25 @@ See also:
 
 This is the authoritative list of kernels/oracles that exist in this repo today. Empty backend family packages under `hipengine/kernels/hip_gfx1100/*/` are placeholders, not implemented kernels.
 
+### Maple packed linear kernels (**hipEngine landed, gfx11 bring-up**)
+
+`hipengine/kernels/hip_gfx1100/quant/maple_ternary.{hip,py}` implements the
+framework-independent storage contract published in
+`deepgrove-ai/mlx-lm-deepgrove/mlx_lm/ternary.py`: ternary projections pack 16
+LSB-first 2-bit codes per U32 word with `value = row_alpha * (code - 1)`, while
+embeddings and the exact lm-head use LSB-first affine 4-bit/group-64 storage.
+The family exposes generic BF16 ternary GEMV, split-weight fused Q/K/V GEMV,
+selected-expert dual gate/up and single down GEMV, affine4 embedding lookup,
+and affine4→FP32 lm-head GEMV. It registers under both `hip_gfx1100` and the
+peer `hip_gfx1151` alias for quant key `maple_ternary2`.
+
+Independent NumPy fixtures cover pack/dequant order and BF16 boundaries. The
+gfx1151 gate is BF16-bit exact for embedding, generic/fused QKV, and selected
+expert outputs; affine4 FP32 logits pass at `atol=rtol=2e-4`. A cache-only
+`rocprofv3 --kernel-trace` smoke observes
+`maple_ternary_gemv_kernel` at grid 128/local32, VGPR32, SGPR128, LDS0,
+scratch0, and **3,527 ns** duration on Radeon 8060S/gfx1151.
+
 ### Laguna gfx1151 decode transfer screen
 
 The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16

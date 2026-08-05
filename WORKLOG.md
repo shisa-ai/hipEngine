@@ -202799,3 +202799,22 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. Maple kernels are
   net-new against the published DeepGrove formulas rather than copied from that
   missing reference, but the blocker remains recorded for the kernel handoff.
+
+## 2026-08-05 — Land Maple packed-linear gfx11 kernels
+
+- Add net-new raw-pointer kernels from the published DeepGrove storage formula:
+  generic ternary GEMV, one-launch split-weight Q/K/V, selected top-8 dual
+  gate/up and selected down, affine4 embedding, and exact affine4→FP32 head.
+  The source reads checkpoint-native U32/BF16 bytes and is aliased from
+  `hip_gfx1100` to native-compiled `hip_gfx1151` through the four-axis registry.
+- The predeclared RED test initially fails at import because no device family
+  exists. After implementation, generic/QKV/selected/embedding BF16 outputs are
+  bit-exact to the independent NumPy oracle; affine4 FP32 logits pass at
+  `atol=rtol=2e-4`. The focused CPU+GPU bundle passes **11/11**; Ruff,
+  pycompile, and build-plan/registry checks pass.
+- Prebuild `maple_ternary.so` with `/tmp/hipengine-maple-hipcc-version.txt`, then
+  run cache-only `rocprofv3 --kernel-trace` on gfx1151. The trace names
+  `maple_ternary_gemv_kernel` at grid 128/local32, VGPR32, SGPR128, LDS0,
+  scratch0, and **3,527 ns** duration. The first profiler attempt never reached
+  HIP because `/tmp` script resolution lacked `PYTHONPATH`; rerun with
+  `PYTHONPATH=$PWD` is the retained evidence.
