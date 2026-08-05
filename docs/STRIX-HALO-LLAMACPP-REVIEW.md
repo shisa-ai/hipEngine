@@ -192,8 +192,75 @@ the [prior vanilla Vulkan lane](../benchmarks/results/2026-07-17-gfx1151-amd-iom
 the [retained decode family profile](../benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json),
 and the [current prefill/memory overlay](../benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json).
 The family profile predates the final head-major prefill-only change, but decode
-was measured neutral in that promotion. Campaign C0 refreshes the attribution
-before any kernel candidate is selected.
+was measured neutral in that promotion.
+
+### SH-C0 execution update (2026-08-05)
+
+SH-C0 is complete. Fresh right-sized eager processes use one discarded full run,
+three measured 128-token runs, exact repeated-token trajectories, one hardware
+queue, cached builds, and simultaneous 10-ms whole-GTT sampling. Independent
+8-token profiler children join nested ROCTX roles to asynchronous kernels by HIP
+`Correlation_Id`; the fork runs its own Vulkan perf logger and is never mixed
+into hipEngine timing. Profiled rates are diagnostic, not topline replacements.
+
+| Context | hipEngine non-profiled decode tok/s | GPU kernel ms/token | Profiled host minus kernel ms/token | attributed dispatches | whole-GTT GiB | tracked GiB |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | **52.857** | 17.596 | 4.658 | 4,664/5,024 | 21.916 | 21.480 |
+| 4K | **55.389** | 16.950 | 3.985 | 4,664/5,024 | 23.552 | 23.007 |
+| 32K | **46.004** | 20.613 | 2.161 | 4,664/5,024 | 24.204 | 23.654 |
+| 64K | **39.419** | 24.106 | 2.042 | 4,664/5,024 | 24.943 | 24.392 |
+
+The same-scope memory result is now stronger than the former tracked-versus-GTT
+description:
+
+| Context | hipEngine whole-GTT | Fork F16 whole-GTT | hipEngine minus fork | Fork Q8_0 whole-GTT | hipEngine minus fork |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 21.916 | 20.831 | **+1.085** | 20.832 | **+1.084** |
+| 4K | 23.552 | 21.161 | **+2.391** | 21.253 | **+2.299** |
+| 32K | 24.204 | 21.999 | **+2.205** | 21.630 | **+2.575** |
+| 64K | 24.943 | 22.871 | **+2.071** | 22.239 | **+2.704** |
+
+Role attribution separates the work that the old symbol-only bucket combined:
+
+| Context | dense Q8 projections | selected gate/up + down | full-attention core | lm-head | router/combine | total GPU |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 8.384 | 3.920 | 1.579 | 1.831 | 0.980 | 17.596 |
+| 4K | 8.405 | 3.912 | 0.912 | 1.837 | 0.979 | 16.950 |
+| 32K | 8.420 | 3.925 | 4.533 | 1.836 | 0.986 | 20.613 |
+| 64K | 8.429 | 3.914 | 8.041 | 1.833 | 0.982 | 24.106 |
+
+`dense Q8 projections` above is the sum of GDN input/decay/output, full-attention
+QKV/output, and shared-expert gate/up/down. Its largest constituent is now known:
+GDN input projections cost **4.113/4.143/4.157/4.166 ms/token**. Selected
+expert gate/up and down cost **2.317+1.603**, **2.309+1.603**,
+**2.319+1.606**, and **2.311+1.603 ms/token**.
+
+The fork logger independently reports these operation families:
+
+| Context | Fork F16 total | dense Q8 | selected Q4+Q5 | F16 FA | Fork Q8 total | Q8 FA |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 16.440 | 7.562 | 2.975 | 0.186 | 16.533 | 0.150 |
+| 4K | 16.881 | 7.507 | 2.978 | 0.660 | 16.765 | 0.415 |
+| 32K | 19.622 | 7.524 | 2.965 | 3.401 | 18.261 | 1.930 |
+| 64K | 22.608 | 7.515 | 2.966 | 6.390 | 19.871 | 3.595 |
+
+The profilers perturb and overlap work differently, so those totals are not a
+cross-engine speed ratio. They do select the next owners: hipEngine's dense
+projection ledger is **0.822-0.913 ms/token** above the fork logger, selected
+experts are **0.934-0.959 ms/token** above, and BF16 full-attention is
+**0.252-1.652 ms/token** above except for the short 512 split-policy outlier.
+SH-D1 therefore starts with the 4.11-4.17-ms GDN input role, then the selected
+pair. SH-A1 remains gated but is now admitted as material at 32K/64K.
+
+SH-M1 also has a concrete first screen. The physically owned bulk-prefill
+scratch is **1.756/1.785/1.818 GiB** at 4K/32K/64K with 4,096 rows. A 1,024-row
+screen is predicted to remove about **1.32-1.36 GiB** and is the first candidate;
+2,048 rows cannot reliably clear the campaign's 1-GiB target. Prediction is not
+promotion: the copy-inclusive four-context prefill gate still decides.
+
+Complete commands, role resources, GTT samples, owned components, fork logs,
+and raw hashes are in
+[`2026-08-05-gfx1151-gguf-sh-c0-attribution.json`](../benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json).
 
 ### Cumulative decode targets
 
@@ -203,22 +270,23 @@ heldouts with no token-, prompt-, or candidate-ID-conditioned branch.
 
 | Stage | 512/128 | 4K/128 | 32K/128 | 64K/128 |
 | --- | ---: | ---: | ---: | ---: |
-| Current hipEngine BF16 | 52.710 | 55.183 | 45.943 | 39.362 |
-| C1: close at least half the F16 **time** gap | **58.076** | **58.679** | **49.314** | **42.386** |
+| Current SH-C0 hipEngine BF16 | 52.857 | 55.389 | 46.004 | 39.419 |
+| C1: close at least half the F16 **time** gap | **58.165** | **58.795** | **49.350** | **42.419** |
 | C2: match the local fork F16 lane | **64.658** | **62.648** | **53.220** | **45.913** |
 
 The exact/default lane targets F16 parity, not the fork's approximate Q8_0
 headline. Preserve current prefill within **1%** at every context while keeping
 all existing exact state, allocator-lifecycle, and fallback gates. For memory,
 the first internal target is at least **1.0 GiB** less hipEngine tracked peak at
-4K+ without more than **1%** prefill loss; cross-engine memory stays descriptive
-until both engines expose the same scope.
+4K+ without more than **1%** prefill loss. SH-C0 now supplies same-scope
+whole-GTT peaks for both engines; component attribution remains an own-engine
+tracked/owned comparison.
 
 ### Ordered work packages
 
 | ID | Priority | Hypothesis and experiment | Promotion / stop rule |
 | --- | --- | --- | --- |
-| **SH-C0 — matched attribution freeze** | P0, first | Reprofile current hipEngine eager/graph decode at 512/4K/32K/64K with role-resolved ROCTX/kernel accounting; run the fork perf logger separately for F16/Q8_0; collect 10-ms whole-GTT for both plus hipEngine's owned-allocation census. A/B only the fork's relevant FA/Q8 controls to distinguish fork-specific changes from the base Vulkan lane. | No production change. Publish per-role ms/token, dispatches, resources, host-minus-device wall, and allocation components. Admit a kernel campaign only for a family owning at least **5%** or **0.5 ms/token**. Profiled rates are not topline rates. |
+| **SH-C0 — matched attribution freeze** | **Completed 2026-08-05** | Role-resolved HIP correlation traces, separate fork F16/Q8_0 logger runs, 10-ms same-scope GTT, and owned allocation/lifetime census now cover 512/4K/32K/64K. | No production change. GDN input, selected experts, long-context attention, and 4,096-row scratch all clear admission; see the execution update and artifact. |
 | **SH-D1 — exact row-1 weight-kernel redesign** | P0 | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. For the largest role, test one gfx1151-specific replacement-layout consumer at a time: better coalesced tile traversal, one reusable activation representation across existing pair/triple groups, or a larger selected-down/combine owner only when the trace proves intermediate traffic is material. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
 | **SH-M1 — prefill-scratch/lifetime Pareto** | P0, parallel after C0 | Add a component/lifetime census for the 4,096-row bulk scratch. Sweep full-attention query rows **4096/2048/1024/768** while keeping the qualified gfx1151 linear/MoE policy and head-major consumer fixed, then alias only the largest proven-mutually-exclusive buffers. Measure 512/4K/32K/64K prefill, decode, tracked peak, whole-GTT peak, and close-to-baseline reclamation. | Default promotion requires exact state, decode neutrality, >=**1.0 GiB** lower 4K+ tracked peak, and <=**1%** prefill loss. If the Pareto point trades more speed, expose it only as an explicit memory profile; do not silently weaken the winning prefill default. |
 | **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |

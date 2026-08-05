@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-05
 
+- [diagnostic retained SH-C0 attribution, no topline replacement] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K/32K/64K tg128: refresh eager decode **52.710/55.183/45.943/39.362 -> 52.857/55.389/46.004/39.419 tok/s (+0.279%/+0.373%/+0.134%/+0.143%)**, replace tracked-vs-GTT memory description with same-scope whole-GTT gaps of **+1.084 to +2.704 GiB**, and isolate GDN input **4.113-4.166 ms/token**, selected experts **3.912-3.925**, long BF16 attention **4.533/8.041**, and 4,096-row scratch **1.756-1.818 GiB** as SH-D1/SH-M1 targets; `benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json`.
+
 - [accepted gfx1151 safety fallback, no performance claim] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / repeated 128K/128: controlled conservative and exact-GDN arms pass **12/12**, restoring only Q4T16 shared-X reproduces the no-progress state on prefill 4, and changing only that route to baseline passes **12/12** at measured **575.180-580.626 tok/s** with stable decode/tokens and full cleanup; gfx1151 `auto` **shared_x -> baseline**, gfx1100 unchanged; `benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json`.
 
 ## 2026-08-04
