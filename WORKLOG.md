@@ -203846,3 +203846,34 @@ Vulkan local sizes verbatim will close the measured gap.
   temporal Q8T16 loads next, consider byte-neutral paired Q8T32 only if the
   residual justifies its materializer/runtime cost, then complete selected-
   expert and cumulative decode work before SH-M2/SH-K1/SH-A1/SH-G.
+
+## 2026-08-06 — Reject the SH-D1 GDN same-layout ladder
+
+- RED collection fails before a non-temporal wrapper exists. Implement two
+  transient four-axis siblings over the unchanged Q8T16 allocation: one keeps
+  three 16-byte scale/weight payload reads and emits gfx1151 `slc dlc`; the
+  second stacks those reads with the already exact 16-permlanex16/64-direct-DPP
+  peer tree. Both preserve production K/FMA/LDS/barrier/output association.
+- GREEN focused coverage passes **7/7** across both siblings: registry keys,
+  production BF16-byte identity, and CPU GGUF Q8_0 oracles at 32->16+32,
+  256->64+128, and 2048->8192+4096. Cached traces name each expected local128 /
+  grid98,304-thread kernel twice with zero scratch.
+- The non-temporal body is 3,356 bytes, 51 VGPR / 31 SGPR, 256 B LDS, zero
+  spills/private bytes, three `global_load_b128 ... slc dlc`, the original 80
+  bpermutes, and 62 waitcnts. The stacked body is 2,992 bytes at the same
+  resources and replaces that tree with 16 permlanex16 + 64 DPP adds, zero
+  bpermutes, and 20 waitcnts. Both retain the original 16+16 FMA instructions.
+- Run three order-balanced cycling triples with row 1, 2048->8192+4096, three
+  26.739-MB weight copies, one queue, 80 warmups, and 400 measured launches.
+  Production is **135.44/135.26/135.23 us**; non-temporal is
+  **130.82/131.56/131.64 us**; stacked is **130.11/130.83/129.85 us**.
+- Reject both before full-model timing. The best stacked median is only
+  **1.0396x**, saving **5.15 us/call** and projecting **0.1545 ms/token**. At
+  **130.11 us**, it remains **9.80%** slower than the frozen 118.493-us gate
+  and misses 1.15x. Remove both kernels, wrappers, registry keys, test, and
+  microbench modes; production is unchanged. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json`.
+- Same-layout communication/cache-policy headroom is exhausted. Continue SH-D1
+  with a bounded byte-neutral paired-Q8T32 first-object screen; if it cannot
+  reach leaf admission, close GDN layout work and move immediately to selected
+  experts rather than stopping the overall campaign.

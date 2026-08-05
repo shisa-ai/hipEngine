@@ -336,7 +336,7 @@ tracked/owned comparison.
 | ID | Priority | Hypothesis and experiment | Promotion / stop rule |
 | --- | --- | --- | --- |
 | **SH-C0 — matched attribution freeze** | **Completed 2026-08-05** | Role-resolved HIP correlation traces, separate fork F16/Q8_0 logger runs, 10-ms same-scope GTT, and owned allocation/lifetime census now cover 512/4K/32K/64K. | No production change. GDN input, selected experts, long-context attention, and 4,096-row scratch all clear admission; see the execution update and artifact. |
-| **SH-D1 — exact row-1 weight-kernel redesign** | **P0; first leaf rejected 2026-08-06** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. The exact same-layout permlanex16/DPP-add GDN-input sibling passed byte/ISA/trace gates but missed continuation at **132.77 us**; it was removed. Screen same-layout non-temporal loads next, then pay replacement-layout cost only if measured headroom remains. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
+| **SH-D1 — exact row-1 weight-kernel redesign** | **P0; same-layout ladder rejected 2026-08-06** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. Exact DPP, non-temporal, and stacked DPP+non-temporal GDN-input siblings all pass byte/ISA/trace gates but best reaches only **130.11 us / 1.0396x**; all were removed. Screen the bounded byte-neutral paired-Q8T32 first object next, then selected experts. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
 | **SH-M1 — query-row Pareto screen** | **Completed/rejected 2026-08-05** | The explicit 4,096 -> 1,024 query-row A/B saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, with exact cleanup and neutral decode. | Reject q1024 and close 2,048/768 row-only retries: q1024 changes exact state/logits at 4K+ and loses **1.603%-11.835%** prefill. Keep q4096. |
 | **SH-M2 — exact scratch-liveness aliases** | P0, parallel with D1 | Keep every 4,096-row execution shape fixed. Build a route/stage liveness map for the currently `dedicated` scratch, beginning with the 256-MiB `moe_down_out_f32` and three 128-MiB owners; alias only fields proven non-overlapping across the isolated AOTriton stream and linear/full-attention/MoE phases. | Require byte-exact logits/hidden/Conv/GDN/KV state at 512/4K/32K/64K, zero tracked close delta, <=**1%** prefill/decode loss, and >=**1.0 GiB** tracked plus same-direction whole-GTT saving. Do not claim fork memory parity until the exact alias and strict-KV stack beats both fork rows. |
 | **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |
@@ -370,10 +370,23 @@ the candidate at **132.61/132.84/132.77 us**. Median speedup is only
 calls. That is **12.05% slower** than the **118.493-us** continuation target and
 also misses the independent **117.530-us** 1.15x target. Per the predeclared
 stop rule, no full-model matrix was run and the kernel, wrapper, registry key,
-test, and microbench mode were removed. Production remains unchanged. SH-D1
-continues with same-layout non-temporal loads before considering the higher-cost
-byte-neutral paired-Q8T32 slab, then proceeds through selected experts and the
-cumulative gate.
+test, and microbench mode were removed. Production remains unchanged.
+
+The follow-up same-layout ladder is frozen in
+[`2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json).
+The non-temporal sibling preserves three 16-byte weight loads and emits gfx1151
+`slc dlc` policy on all three; its stacked sibling adds the exact 16
+permlanex16/64-DPP tree. Both are byte-identical and CPU-oracle exact, spill-
+free at 51 VGPR, and named by cached traces. Across three order-balanced pairs,
+production is **135.44/135.26/135.23 us**, non-temporal is
+**130.82/131.56/131.64 us**, and stacked is **130.11/130.83/129.85 us**.
+
+The best **130.11-us / 1.0396x** median saves **5.15 us/call**, projecting only
+**0.1545 ms/token**. It remains **9.80% slower** than the 118.493-us gate and
+misses 1.15x, so both siblings are removed before full-model work. Same-layout
+communication/cache-policy headroom is now exhausted. SH-D1 next runs a bounded
+byte-neutral paired-Q8T32 first-object screen; if that physical object cannot
+reach the same leaf gate, GDN layout work closes and selected-expert work begins.
 
 ### Campaign guardrails and closed retries
 

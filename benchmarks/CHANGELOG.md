@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [diagnostic rejected SH-D1 GDN same-layout ladder, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: production **135.26 us -> 131.56 us** with cache-bypassing Q8T16 loads and **-> 130.11 us** when stacked with exact DPP (**1.0396x**, projected **0.1545 ms/token**), but best remains **9.80%** above the frozen **118.493-us** gate; remove both transient siblings and bound the next screen to paired Q8T32; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json`.
+
 - [diagnostic rejected SH-D1 exact GDN DPP leaf, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: production **135.20 us -> 132.77 us** median (**1.0183x**, projected **0.0729 ms/token**) with byte-exact output and **80 bpermutes -> 16 permlanex16 + 64 DPP adds**, but the result is **12.05%** slower than the frozen **118.493-us** continuation target; remove the transient sibling and screen same-layout non-temporal loads next; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json`.
 
 ## 2026-08-05
