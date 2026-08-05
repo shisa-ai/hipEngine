@@ -336,12 +336,33 @@ tracked/owned comparison.
 | ID | Priority | Hypothesis and experiment | Promotion / stop rule |
 | --- | --- | --- | --- |
 | **SH-C0 — matched attribution freeze** | **Completed 2026-08-05** | Role-resolved HIP correlation traces, separate fork F16/Q8_0 logger runs, 10-ms same-scope GTT, and owned allocation/lifetime census now cover 512/4K/32K/64K. | No production change. GDN input, selected experts, long-context attention, and 4,096-row scratch all clear admission; see the execution update and artifact. |
-| **SH-D1 — exact row-1 weight-kernel redesign** | P0 | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. For the largest role, test one gfx1151-specific replacement-layout consumer at a time: better coalesced tile traversal, one reusable activation representation across existing pair/triple groups, or a larger selected-down/combine owner only when the trace proves intermediate traffic is material. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
+| **SH-D1 — exact row-1 weight-kernel redesign** | **P0; audit complete 2026-08-05** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. The first implementation candidate is now the exact permlanex16/DPP-add reduction sibling for the row-1 GDN `attn_qkv+attn_gate` pair; replacement-layout and non-temporal alternatives remain behind its measured gate. Compare PARO/Vulkan as algorithm/shape references, not drop-in formats. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
 | **SH-M1 — query-row Pareto screen** | **Completed/rejected 2026-08-05** | The explicit 4,096 -> 1,024 query-row A/B saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, with exact cleanup and neutral decode. | Reject q1024 and close 2,048/768 row-only retries: q1024 changes exact state/logits at 4K+ and loses **1.603%-11.835%** prefill. Keep q4096. |
 | **SH-M2 — exact scratch-liveness aliases** | P0, parallel with D1 | Keep every 4,096-row execution shape fixed. Build a route/stage liveness map for the currently `dedicated` scratch, beginning with the 256-MiB `moe_down_out_f32` and three 128-MiB owners; alias only fields proven non-overlapping across the isolated AOTriton stream and linear/full-attention/MoE phases. | Require byte-exact logits/hidden/Conv/GDN/KV state at 512/4K/32K/64K, zero tracked close delta, <=**1%** prefill/decode loss, and >=**1.0 GiB** tracked plus same-direction whole-GTT saving. Do not claim fork memory parity until the exact alias and strict-KV stack beats both fork rows. |
 | **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |
 | **SH-A1 — page-internal head-major decode screen** | P2, only if C0 leaves BF16 attention material | Microbenchmark the current `[block, token, kv_head, D]` layout against a page-internal `[block, kv_head, token, D]` variant with complete `KVLiveSpans`, charging append/copy and reducer wall. Do not first rewrite every writer/compactor/graph. | Proceed to runtime plumbing only if copy/append-inclusive attention improves >=**1.10x**, projected whole decode saves >=**1%**, memory does not grow, and dense/permuted/evicted page oracles are exact. The fork's F16 lane being only 1.27%-1.79% above vanilla makes this a bounded screen, not P0. |
 | **SH-G — retained recertification** | Required after each retained unit | Re-run hipEngine one-warmup/three-measurement 512/4K/32K/64K rows, exact natural/heldout prompts, allocator/GTT sampling, and the applicable cached kernel trace. Re-run the five-repetition fork comparator only at a campaign milestone, not after every micro-change. | Publish an own-engine A/B only when exact and non-regressive. Keep the external row diagnostic until timing ownership, dtype, and output oracle align. Update artifact, benchmark rollup, changelog, and worklog for every retained performance unit. |
+
+#### SH-D1 GDN-input audit update
+
+The first SH-D1 leaf is frozen in
+[`2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json`](../benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json).
+The active row-1 `attn_qkv[2048->8192] + attn_gate[2048->4096]` owner runs once
+in each of 30 linear-attention layers and costs **4.113-4.166 ms/token**. A
+three-copy, 80.2-MB cycling leaf reproduces the role at **135.16 us/call** and
+**197.8 GB/s** effective matrix reads.
+
+The current gfx1151 code object is already vectorized, spill-free, and
+scratch-free at 50 logical VGPR, but its exact 16-column wave reduction compiles
+to **80 `ds_bpermute_b32`** instructions plus **67 `s_waitcnt`** instructions.
+SH-D1 therefore starts with a separately registered exact sibling that changes
+only the 16/8/4/2/1 peer tree to `permlanex16` plus direct DPP adds. It must
+preserve the 128-thread/four-wave K partition, every FMA, lane-0 publication,
+one barrier, serial wave0..3 sum, BF16 bytes, ABI, and production fallback. The
+cycling leaf must reach **<=118.493 us** (projected >=0.5 ms/token saving), with
+**<=117.530 us** satisfying the independent 1.15x rule, before any full-model
+run. Non-temporal loads and a byte-neutral paired Q8T32 slab are deferred until
+this same-layout communication seam is measured.
 
 ### Campaign guardrails and closed retries
 
