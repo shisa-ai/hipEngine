@@ -202763,3 +202763,20 @@ Vulkan local sizes verbatim will close the measured gap.
   ternary with per-row alpha, while embeddings and exact lm-head are affine
   4-bit/group-64. Validation passes **16/16** focused model/import tests; Ruff,
   pycompile, and parsing the downloaded live `config.json` are clean.
+
+## 2026-08-05 — Load official Maple packed weights on gfx1151
+
+- Add a strict exact-head manifest for **463 tensors / 5,308,186,624 bytes**.
+  Preserve MLX U32 words bit-for-bit (runtime INT32 handles), preserve BF16 raw
+  bits, ignore only the five optional `lm_head_flash.*` tensors, and reject
+  missing, unexpected, dtype-drifted, or shape-drifted storage.
+- Add structured embedding/layer/lm-head device views and failure-safe ownership,
+  plus the `maple_ternary2` quant metadata and a torch-free `tokenizer.json`
+  adapter. The adapter reproduces the official chat generation suffix ending in
+  `<|im_start|>assistant\n<think>\n`.
+- Real-model smoke on Ryzen AI MAX+ 395 / gfx1151 using
+  `materialize_maple_weights(load_maple_checkpoint('deepgrove/maple-preview-2bit-mlx'))`
+  uploads all 463 exact tensors in **5.3361 s**; observed HIP free memory moves
+  128,844,787,712 → 123,379,535,872 bytes and returns to 128,695,816,192 after
+  `free()`. Focused loader/model/materialization coverage passes **20/20**;
+  Ruff, pycompile, live tokenizer round-trip, and live BF16 raw-read checks pass.
