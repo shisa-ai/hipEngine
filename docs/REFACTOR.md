@@ -14,19 +14,6 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## SH-D1 gfx1151 Q5T16 selected-down tile8 rollback
-
-- Added 2026-08-06 after the exact Qwen c1/top8 Q5 leaf passed **1.1707x** and
-  final-code 512/128 eager improved **52.881 -> 53.413 tok/s (+1.007%)** with
-  complete 512/4K/32K/64K and natural/heldout state exactness.
-- Keep `HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8=0` only through the clean
-  same-revision publication and SH-D1 cumulative attribution checkpoint. Then
-  remove the env comparison seam while retaining the 16-column direct kernel
-  as the required peer-backend/shape fallback and primitive oracle.
-- If clean publication or cumulative attribution regresses, disable the gfx1151
-  capability and remove the tile8 runtime selector/wrapper/key/body rather than
-  leaving an unqualified default-off experiment.
-
 ## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 
 - Added 2026-07-31 as a gfx1151 default plus

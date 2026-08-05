@@ -204100,3 +204100,16 @@ Vulkan local sizes verbatim will close the measured gap.
   **1.4868 ms/token** short of C1 and **3.2132 ms/token** short of fork F16.
   Attention/layout remains assigned to SH-A1. Continue immediately to SH-M2,
   then SH-K1/SH-A1/SH-G; this closes only SH-D1, not the campaign.
+
+## 2026-08-06 — Remove completed SH-D1 Q5 comparison seam
+
+- The removal trigger recorded in `docs/REFACTOR.md` is satisfied: Q5 tile8 has
+  committed same-revision publication, complete exact state/natural gates, and
+  cumulative SH-D1 attribution. Remove
+  `HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8` and its env branch rather than
+  carrying a stale default-off experiment surface.
+- gfx1151 backend capability plus exact c1/top8/K512/N2048 shape gates now own
+  tile8 dispatch. gfx1100 and all quant/shape misses retain the exact 16-column
+  direct fallback; the primitive remains available for oracle and peer-backend
+  use. Update the routing test to cover capability/default and peer fallback,
+  and remove the completed `docs/REFACTOR.md` ledger entry.

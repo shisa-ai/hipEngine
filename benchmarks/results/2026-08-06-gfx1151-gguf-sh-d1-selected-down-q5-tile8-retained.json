@@ -19,6 +19,7 @@
     "parent_commit": "0ab9309709f0894187a6ba80be631656211c4fd0",
     "implementation_commit": "3e836edead25306d450fcb7d37f65e0b3c657c13",
     "candidate_provenance": "Initial complete gates used the final dirty candidate over the committed parent; the post-commit leaf and eager checkpoint runs both use implementation commit 3e836edea. The only tracked worktree difference during the checkpoint was unrelated docs/ROCM-AI.md; runtime/kernel/test sources matched the commit.",
+    "comparison_seam_cleanup": "The temporary HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8 env seam was removed after committed publication and SH-D1 cumulative closure; backend capability plus exact shape gates now own dispatch.",
     "hip": "7.15.0-0000000",
     "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
     "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
@@ -44,7 +45,7 @@
       "hip_gfx1151": true,
       "hip_gfx1100": false
     },
-    "rollback": "HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8=0",
+    "rollback": "Environment comparison seam removed after committed publication and cumulative attribution; direct 16-column owner remains the peer-backend/shape fallback.",
     "shape_gate": {
       "x_rows": 8,
       "selected_rows": 8,

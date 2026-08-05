@@ -448,8 +448,9 @@ cached-only trace names the expected tile8 kernel at local128, grid256x8,
 **56 VGPR / 512 B LDS / zero scratch**, versus production grid128x8 and 128
 VGPR. gfx1151 therefore defaults the exact shape through
 `GGUF_Q5_T16_SELECTED_QWEN_TILE8`; gfx1100 and all shape/quant misses retain the
-16-column owner, with `HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8=0` as the
-short-lived comparison rollback.
+16-column owner. The short-lived environment comparison seam was removed after
+committed publication and cumulative attribution; the direct owner remains the
+required peer/shape fallback and primitive oracle.
 
 The post-commit same-revision checkpoint at `3e836edea` independently confirms
 the leaf at **40.855 -> 34.876 us (1.1715x / projected 0.2212 ms/token)** and
