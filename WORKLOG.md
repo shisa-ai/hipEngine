@@ -207200,3 +207200,31 @@ Vulkan local sizes verbatim will close the measured gap.
   tracked-clean W7900 profile; compare against the restored scalar-write
   `fda35418e` topology and require complete marked wall to improve before
   natural25.
+
+## 2026-08-05 — Reject dense F32 alpha/beta pair as a runtime default
+
+- The tracked-clean `7e274241a` W7900 one-prompt B3 profile is exact at the
+  unchanged **17/21** acceptance ledger and delivers the intended physical
+  contraction. The scalar pair family falls **672 / 3.572950 ms -> 336 /
+  2.802259 ms (-21.57%)**; target/complete dispatches each fall **336**, target
+  kernels improve **256.720748 -> 256.361037 ms (-0.140%)**, and complete
+  kernels improve **312.507349 -> 312.238536 ms (-0.086%)**.
+- The frozen runtime gate nevertheless fails. Target host rises **349.140794 ->
+  349.840861 ms (+0.201%)** and complete marked wall rises **431.236057 ->
+  432.049781 ms (+0.189%)**. Profiler-suite throughput correspondingly moves
+  **55.649 -> 55.544 tok/s (-0.189%)**. Do not move the gate after measurement
+  or spend natural25/populated-AR time on the ineligible route.
+- Retain the exact gfx1100 primitive, wrapper, key, CPU/scalar gates, trace, and
+  gfx1151 exclusion, but remove generic pair dispatch ownership. The production
+  `gguf_linear.py` is byte-identical to `fda35418e`; alpha/beta again execute as
+  two scalar leaves. Updated focused and adjacent tests pass **8/8 + 99/99**.
+  Per focused-repair policy, do not repeat the multi-minute W7900 transaction:
+  routed candidate execution was exact, and final production dispatch is the
+  already-gated scalar baseline. Profile suite/kernel/marker/copy/comparison
+  SHA-256s are `b806b236...12b2c1`, `b388979a...6c9ef5`,
+  `e35b23b0...e64fb2`, `519b4468...fd4084`, and `2edde680...01fd0`.
+- Publish the rejected-runtime artifact; canonical B3 remains **60.262 tok/s /
+  2.4991x own AR / 11.49% below Vulkan**. Re-rank the restored scalar topology;
+  reopen alpha/beta only as a materially different cross-family or scheduling
+  owner that wins target host and complete marked wall. Artifact SHA-256 is
+  `a5b613ba...7587d0`.

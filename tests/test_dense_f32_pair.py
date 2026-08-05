@@ -15,7 +15,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.linear import dense_gemv_bf16_f32w_bf16_out
 from hipengine.kernels.hip_gfx1100.linear import dense_gemv as dense_gemv_module
-from hipengine.kernels.registry import KernelKey, is_registered, register, resolve, unregister
+from hipengine.kernels.registry import KernelKey, is_registered, register, resolve
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_F32
 from hipengine.quant.gguf import bf16_to_float32
@@ -114,14 +114,12 @@ def test_dense_f32_pair_wrapper_selects_flat_rows1_to3_and_tile2_row4(
     assert [int(args[5]) for _symbol, args in calls] == [1, 2, 3, 4]
 
 
-def test_dense_f32_pair_dispatch_owns_equal_small_rows_and_fails_closed() -> None:
-    wrapper = _pair_wrapper()
+def test_dense_f32_pair_stays_primitive_only_after_runtime_wall_rejection() -> None:
     original = resolve(
         backend=_PAIR_KEY.backend,
         layer=_PAIR_KEY.layer,
         quant=_PAIR_KEY.quant,
         variant=_PAIR_KEY.variant,
-        missing="none",
     )
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
@@ -131,7 +129,7 @@ def test_dense_f32_pair_dispatch_owns_equal_small_rows_and_fails_closed() -> Non
     register(_PAIR_KEY, pair, replace=True)
     try:
         for rows in (1, 2, 3, 4):
-            assert launch_gguf_linear_pair(
+            assert not launch_gguf_linear_pair(
                 _fake_weight(20),
                 _fake_weight(30),
                 x_ptr=10,
@@ -144,59 +142,10 @@ def test_dense_f32_pair_dispatch_owns_equal_small_rows_and_fails_closed() -> Non
                 stream=7,
                 runtime="runtime-sentinel",
             )
-        assert not launch_gguf_linear_pair(
-            _fake_weight(20),
-            _fake_weight(30),
-            10,
-            40,
-            50,
-            5,
-            5120,
-            48,
-            backend="hip_gfx1100",
-        )
-        assert not launch_gguf_linear_pair(
-            _fake_weight(20),
-            _fake_weight(30),
-            10,
-            40,
-            50,
-            4,
-            5120,
-            48,
-            out_features_b=96,
-            backend="hip_gfx1100",
-        )
-        assert not launch_gguf_linear_pair(
-            _fake_weight(20, backend="hip_gfx1151"),
-            _fake_weight(30, backend="hip_gfx1151"),
-            10,
-            40,
-            50,
-            4,
-            5120,
-            48,
-            backend="hip_gfx1151",
-        )
-        unregister(_PAIR_KEY)
-        assert not launch_gguf_linear_pair(
-            _fake_weight(20),
-            _fake_weight(30),
-            10,
-            40,
-            50,
-            4,
-            5120,
-            48,
-            backend="hip_gfx1100",
-        )
     finally:
-        register(_PAIR_KEY, original or wrapper, replace=True)
+        register(_PAIR_KEY, original, replace=True)
 
-    assert len(calls) == 4
-    assert [int(args[5]) for args, _kwargs in calls] == [1, 2, 3, 4]
-    assert all(args[:5] == (10, 20, 30, 40, 50) for args, _kwargs in calls)
-    assert all(kwargs["stream"] == 7 for _args, kwargs in calls)
+    assert not calls
 
 
 def test_dense_f32_pair_wrapper_rejects_unscreened_shapes_before_loading() -> None:

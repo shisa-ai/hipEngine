@@ -5471,6 +5471,26 @@ is not run; retain only the measured exact primitive. The canonical **60.262
 tok/s / 2.4991x own AR / 11.49% below Vulkan** headline is unchanged. Artifact:
 [`2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json`](results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json).
 
+#### Qwen3.6-27B dense-F32 alpha/beta pair primitive, runtime rejected
+
+Correctness commit `7e274241a` adds a gfx1100-only same-input pair for the 48
+linear-attention `ssm_alpha`/`ssm_beta` F32 weight pairs. Rows1-3 use one flat
+pair grid and row4 uses two rows/block; two ordinary dense-F32 GEMVs remain the
+fallback. Every rows1-4 output is scalar-BF16-bit exact and passes the CPU
+KL/top-1 gate. All 48 real pairs improve GPU1 event medians
+**1.771x/1.786x/1.837x/1.560x**, with **21/21** wins per selected row count.
+The routed W7900 B1-B3 transaction is exact; cache-only row4 tracing records
+local256, VGPR24, LDS2,048 B, scratch0, and **12.080 us**.
+
+The production route fails its frozen W7900 complete-path gate. The pair family
+improves **672 / 3.572950 ms -> 336 / 2.802259 ms (-21.57%)**, target/complete
+dispatches each fall **336**, and target/complete kernel sums improve
+**0.140%/0.086%**. Target host and complete marked wall nevertheless regress
+**0.201%/0.189%**. Generic pair dispatch is removed before natural25/populated
+AR; retain only the measured primitive. Canonical **60.262 tok/s / 2.4991x own
+AR / 11.49% below Vulkan** is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5655,6 +5675,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B selective FFN-down residual fusion](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
 [Qwen3.6-27B rounded residual plus next-RMSNorm](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json),
 [Qwen3.6-27B shared-cache KV batch runtime rejection](results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json),
+[Qwen3.6-27B dense-F32 alpha/beta pair runtime rejection](results/2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

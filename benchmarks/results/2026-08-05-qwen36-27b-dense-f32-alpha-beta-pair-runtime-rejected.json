@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "status": "rejected_dense_f32_alpha_beta_pair_runtime_default",
+  "performance_claim": false,
+  "performance_claim_scope": "The exact primitive and its GPU1 component/W7900 kernel-family sub-windows improve, but the production runtime route is rejected because tracked-clean W7900 target-host and complete marked wall regress. No natural25 run or topline change is claimed.",
+  "correctness_claim": true,
+  "correctness_scope": "BF16 outputs at rows 1-4 match two independent scalar dense-F32 GEMVs bit-for-bit and pass an independent CPU KL/top-1 gate; the routed W7900 B1-B3 transaction was exact before production dispatch was removed.",
+  "kind": "qwen36_27b_dense_f32_alpha_beta_pair_runtime_rejection",
+  "timestamp": "2026-08-05T20:50:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m",
+    "linear_attention_layers": 48,
+    "weight_shape_each": [48, 5120],
+    "weight_dtype": "f32"
+  },
+  "hardware": {
+    "component_gpu": "AMD Radeon RX 7900 XTX, GPU1, gfx1100",
+    "binding_gpu": "AMD Radeon Pro W7900, GPU0, gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "baseline_commit": "fda35418e7dfad60eacaa53d8e4b73626ef30d51",
+    "candidate_correctness_commit": "7e274241ae7189e51d114c88bbd55003724d9040",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100"
+  },
+  "primitive": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair",
+      "f32",
+      "bf16_hidden_bf16_out"
+    ],
+    "flat_symbol": "dense_pair_gemv_bf16_f32w_bf16_out_kernel",
+    "rowtile2_symbol": "dense_pair_gemv_bf16_f32w_bf16_out_rowtile2_kernel",
+    "selected_policy": {
+      "rows_1_to_3": "flat pair",
+      "rows_4": "two rows per block"
+    },
+    "retained": true,
+    "runtime_routed_after_decision": false,
+    "gfx1151_aliased": false,
+    "fallback": "two ordinary dense_gemv_bf16_f32w_bf16_out launches"
+  },
+  "correctness": {
+    "red": "8 failed before implementation",
+    "focused_green": "8 passed on GPU1",
+    "adjacent_green": "99 passed across GGUF linear dispatch and gfx1151 backend coverage",
+    "component_rows": [1, 2, 3, 4],
+    "scalar_bf16_bit_exact": true,
+    "cpu_kl_max_at_most": 0.05,
+    "cpu_top1_agreement_at_least": 0.90,
+    "w7900_transaction": "passed 1/1 with exact B1-B3 target logits, reject/partial/full/post-commit rollback state, dynamic graph reuse, correction, provider output, GPU/CPU acceptance, lifecycle, and teardown; routed census observed only K5120/N48 at rows 1/2/3/4",
+    "profile_exact_greedy": true,
+    "profile_gpu_accept_match_cpu": true,
+    "profile_accepted_draft_tokens": 17,
+    "profile_proposed_draft_tokens": 21,
+    "profile_cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3],
+    "post_unroute_green": "8 focused plus 99 adjacent tests; gguf_linear.py is byte-identical to fda35418e after removing route ownership"
+  },
+  "gpu1_component_screen": {
+    "weights": 48,
+    "samples": 21,
+    "burst": 12,
+    "counterbalanced": true,
+    "threads": 256,
+    "all_selected_cells_scalar_bit_exact": true,
+    "rows": {
+      "1": {
+        "scalar_event_ms_per_48_layers": 0.5071191787719727,
+        "candidate_event_ms_per_48_layers": 0.28635483980178833,
+        "event_speedup": 1.7709467705277653,
+        "wall_speedup": 1.768702617651266,
+        "candidate_wins": "21/21",
+        "policy": "flat"
+      },
+      "2": {
+        "scalar_event_ms_per_48_layers": 0.493532657623291,
+        "candidate_event_ms_per_48_layers": 0.2762814958890279,
+        "event_speedup": 1.7863398923448892,
+        "wall_speedup": 1.7827980943053428,
+        "candidate_wins": "21/21",
+        "policy": "flat"
+      },
+      "3": {
+        "scalar_event_ms_per_48_layers": 0.45879606405893963,
+        "candidate_event_ms_per_48_layers": 0.2497114141782125,
+        "event_speedup": 1.8373051370872013,
+        "wall_speedup": 1.833465831848716,
+        "candidate_wins": "21/21",
+        "policy": "flat"
+      },
+      "4": {
+        "scalar_event_ms_per_48_layers": 0.44442590077718097,
+        "candidate_event_ms_per_48_layers": 0.28480825821558636,
+        "event_speedup": 1.5604389548310484,
+        "wall_speedup": 1.558908172883255,
+        "candidate_wins": "21/21",
+        "policy": "rowtile2"
+      }
+    }
+  },
+  "cache_only_primitive_trace": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "kernel": "dense_pair_gemv_bf16_f32w_bf16_out_rowtile2_kernel",
+    "duration_ns": 12080,
+    "grid_workgroups": [96, 2, 1],
+    "workgroup": [256, 1, 1],
+    "vgpr": 24,
+    "sgpr": 128,
+    "lds_bytes": 2048,
+    "scratch_bytes": 0
+  },
+  "w7900_profile": {
+    "workload": "natural prompt code_merge_intervals, B3, 25 visible outputs, seven target passes, one run, no warmup, rocprofv3 kernel+copy+marker trace",
+    "baseline_root": "/tmp/hipengine-qwen36-27b/final-fda35418e/profile-native-rounded-next-rms-mtp-b3-hermetic",
+    "candidate_root": "/tmp/hipengine-qwen36-27b/final-7e274241a/profile-native-f32-pair-mtp-b3-hermetic",
+    "pair_family": {
+      "baseline_dispatches": 672,
+      "candidate_dispatches": 336,
+      "dispatch_delta": -336,
+      "baseline_ms": 3.57295,
+      "candidate_ms": 2.802259,
+      "delta_ms": -0.770691,
+      "delta_percent": -21.5701591122182
+    },
+    "target": {
+      "baseline_dispatches": 5853,
+      "candidate_dispatches": 5517,
+      "dispatch_delta": -336,
+      "baseline_kernel_ms": 256.720748,
+      "candidate_kernel_ms": 256.361037,
+      "kernel_delta_percent": -0.1401176191649367,
+      "baseline_host_ms": 349.140794,
+      "candidate_host_ms": 349.840861,
+      "host_delta_percent": 0.2005113730708885
+    },
+    "complete": {
+      "baseline_dispatches": 6590,
+      "candidate_dispatches": 6254,
+      "dispatch_delta": -336,
+      "baseline_kernel_ms": 312.507349,
+      "candidate_kernel_ms": 312.238536,
+      "kernel_delta_percent": -0.0860181371286628,
+      "baseline_marker_ms": 431.236057,
+      "candidate_marker_ms": 432.049781,
+      "marker_delta_percent": 0.1886957240219811
+    },
+    "profile_suite": {
+      "baseline_tok_s": 55.64867460505229,
+      "candidate_tok_s": 55.54374594969218,
+      "delta_percent": -0.188555533630963,
+      "topline_eligible": false
+    },
+    "memory": {
+      "baseline_peak_allocated_bytes": 32723577074,
+      "candidate_peak_allocated_bytes": 32723577074,
+      "candidate_current_allocated_bytes_after_close": 0
+    }
+  },
+  "decision": {
+    "runtime_default_retained": false,
+    "primitive_retained": true,
+    "natural25_run": false,
+    "populated_ar_run": false,
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_gap_vs_vulkan_percent": -11.4869,
+    "reason": "The exact 336-dispatch contraction and pair-family/target-kernel/complete-kernel improvements pass, but the frozen gate also required target-host and complete marked-wall wins. Those regress 0.201% and 0.189%, so production dispatch is removed before natural25 rather than moving the gate after measurement.",
+    "reopen_condition": "Reopen only with a materially different scheduling or cross-family owner that preserves the arithmetic work and improves both target host and complete marked wall on W7900."
+  },
+  "commands": {
+    "component_screen": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. python3 /tmp/hipengine-qwen36-27b/screen-f32-alpha-beta-pair.py",
+    "focused_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q tests/test_dense_f32_pair.py --tb=short",
+    "adjacent_gate": "python3 -m pytest -q tests/test_gguf_linear_dispatch.py tests/test_gfx1151_backend.py --tb=short",
+    "w7900_transaction": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar --tb=short",
+    "profile": "D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; PATH=/home/lhl/mambaforge/envs/therock/bin:$PATH HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:$D:$D/rocm_sysdeps/lib:/opt/rocm/lib PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --marker-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/hipengine-qwen36-27b/final-7e274241a/profile-native-f32-pair-mtp-b3-hermetic -- python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-7e274241a/profile-native-f32-pair-mtp-b3-hermetic/suite.json"
+  },
+  "raw_evidence_sha256": {
+    "gpu1_screen_hip": "d8df17838fd0285685bf331bb6e10d20e87ed5c390054bcda767ff7c28fd54b4",
+    "gpu1_screen_script": "f3afa6f2ee0f8edf854ab832bf865f2f8192644ef0ead7d3bf25d37654f5baf7",
+    "gpu1_screen_result": "8ca59ddd123a5e624a4ba742558c90264ba5ccbd0d84629e1164b71a97cd069f",
+    "primitive_trace_kernel": "a5eb93e8e63c335eb25bc3c28a47f3d0869190634284d029b2b57cbb8c912f47",
+    "primitive_trace_agent": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "profile_suite": "b806b236f9e434b002becbbfd48cbb49b027f74017dd5253557673d19012b2c1",
+    "profile_kernel": "b388979aa96c465c643be33ed9a254fddd4defb73995e210ae5a2c8d706c9ef5",
+    "profile_marker": "e35b23b0b7e7b8df749bcf551969298fc4046e82f5257eb8b2455ef7b7e64fb2",
+    "profile_copy": "519b446859dc651c1eb38b43bfa515ecb220a99d62e0d87b26affa5cc0fd4084",
+    "profile_comparison": "2edde6802f1a638efcbb7c4e33d2a60c2db14de72a7a092a7c7af1d5aed01fd0"
+  }
+}
