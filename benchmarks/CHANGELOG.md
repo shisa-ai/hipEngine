@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-06
+
+- [diagnostic rejected SH-D1 exact GDN DPP leaf, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: production **135.20 us -> 132.77 us** median (**1.0183x**, projected **0.0729 ms/token**) with byte-exact output and **80 bpermutes -> 16 permlanex16 + 64 DPP adds**, but the result is **12.05%** slower than the frozen **118.493-us** continuation target; remove the transient sibling and screen same-layout non-temporal loads next; `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json`.
+
 ## 2026-08-05
 
 - [diagnostic SH-D1 GDN-input audit, production unchanged] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / row-1 `2048 -> 8192+4096`: freeze the active Q8T16 pair at **135.16 us / 197.8 GB/s** and **4.113-4.166 ms/token** model ownership; its spill-free ISA still contains **80 `ds_bpermute_b32` + 67 `s_waitcnt`**, selecting an exact permlanex16/DPP-add sibling with **<=118.493 us** continuation and **<=117.530 us** 1.15x gates; no topline change; `benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json`.

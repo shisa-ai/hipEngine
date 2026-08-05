@@ -203814,3 +203814,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `/home/lhl/amd-gpu-tuning/reference/atlas`; the relevant pinned
   `llama.cpp-hip` MMQ source is clean at `1ebf790cd`. No external body is being
   ported; the exact DPP mechanism is already independently validated in-tree.
+
+## 2026-08-06 — Reject the SH-D1 exact GDN DPP leaf
+
+- RED collection first failed because the selected DPP wrapper did not exist.
+  Implement a transient separately registered BF16 Q8T16 dual-split sibling
+  that preserves the production K/FMA/LDS/barrier/serial-sum order and changes
+  only the 16/8/4/2/1 wave peer transport. Focused gfx1151 coverage passes
+  **4/4**: registry resolution, production BF16-byte identity, and CPU GGUF
+  Q8_0 oracle checks at 32->16+32, 256->64+128, and the full
+  2048->8192+4096 Qwen shape.
+- The code object clears every physical gate: 2,976 bytes, 50 VGPR / 32 SGPR,
+  256 B LDS, zero private bytes/spills, **16 `v_permlanex16_b32` + 64 direct
+  `v_add_f32_dpp`**, zero `ds_bpermute_b32`, 20 waitcnts, unchanged 16+16
+  FMA instructions, and one barrier. A cached-only `rocprofv3 --kernel-trace`
+  records two dispatches under the expected DPP kernel name, local128,
+  grid98,304 threads, and zero scratch; profiler timings are launch proof only.
+- Run three order-balanced cycling pairs with the exact frozen protocol: row 1,
+  2048->8192+4096, three 26.739-MB weight copies (80.2 MB), one hardware queue,
+  80 warmups, and 400 measured launches per variant. Production is
+  **135.02/135.92/135.20 us**; DPP is **132.61/132.84/132.77 us**. Median
+  speedup is only **1.0183x**, and the **2.43-us** saving projects to
+  **0.0729 ms/token** over 30 calls.
+- Reject before full-model timing. The 132.77-us median is **12.05% slower**
+  than the predeclared 118.493-us >=0.5-ms/token continuation gate and also
+  misses the independent 117.530-us 1.15x gate. Remove the transient kernel,
+  wrapper, registry key, focused test, and microbench mode; production is byte-
+  for-byte unchanged. Publish diagnostic
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json`.
+- Continue the campaign rather than closing SH-D1: screen same-layout non-
+  temporal Q8T16 loads next, consider byte-neutral paired Q8T32 only if the
+  residual justifies its materializer/runtime cost, then complete selected-
+  expert and cumulative decode work before SH-M2/SH-K1/SH-A1/SH-G.
