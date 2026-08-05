@@ -57,7 +57,8 @@
     "owner_slot_count_at_4096_rows": 21,
     "logical_execution_shapes_changed": false,
     "admission": "gfx1151 package capability plus exact compact GDN route; diagnostics and rows below 4096 retain dedicated owners",
-    "same_revision_disable_control": "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS=0"
+    "same_revision_disable_control_at_measurement": "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS=0",
+    "comparison_seam_removed_after_committed_checkpoint": true
   },
   "protocol": {
     "benchmark": "Independent persistent session per context/mode; one discarded run plus three measured runs.",

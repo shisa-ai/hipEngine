@@ -204197,3 +204197,22 @@ Vulkan local sizes verbatim will close the measured gap.
   only environment seam and transient SH-M2 A/B harness/tests, retain package-
   owned owner slots plus dedicated diagnostic/peer fallbacks, commit the cleanup,
   then close Task #29 and advance immediately to SH-K1.
+
+## 2026-08-06 — Close SH-M2 comparison seam
+
+- Remove the disable-only
+  `HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS` runtime branch, its transient
+  full-matrix screen, its screen-policy tests, and the satisfied refactor-ledger
+  entry. The retained production path is now owned only by the gfx1151 package
+  capability, exact compact-GDN route, fixed 4,096-row class, and diagnostic
+  guards; dedicated owners remain the required short-row, diagnostic,
+  unvalidated-route, and peer-backend fallback.
+- Update the retained artifact and rollup to distinguish the historical
+  same-revision control from current production, and refresh the mechanical
+  post-merge `docs/REFACTOR.md` source hash after deleting the completed entry.
+- Cleanup validation: `uv run pytest -q
+  tests/test_qwen35_gguf_prefill_scratch_liveness.py
+  tests/test_gfx1151_backend.py tests/test_laguna_h8b_source_default.py` passes
+  **32 tests**; runner pycompile, retained-artifact JSON parsing,
+  `docs/REFACTOR.md` SHA-256, and `git diff --check` pass. This closes SH-M2
+  only; continue the campaign immediately with SH-K1.

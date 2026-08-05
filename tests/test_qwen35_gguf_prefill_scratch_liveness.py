@@ -68,7 +68,6 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL",
             "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED",
             "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32",
-            "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
         }:
             monkeypatch.delenv(name, raising=False)
 
@@ -214,25 +213,6 @@ def test_gfx1151_exact_prefill_scratch_uses_bounded_liveness_owners(monkeypatch)
     largest_owner = max(allocations, key=lambda buffer: buffer.nbytes)
     assert largest_owner in scratch.buffers
     assert largest_owner.nbytes <= 384 * _MIB
-
-
-def test_gfx1151_scratch_liveness_control_restores_dedicated_owners(monkeypatch) -> None:
-    _install_fake_device(monkeypatch)
-    _clear_diagnostic_environment(monkeypatch)
-    monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS", "0")
-
-    scratch = _GGUFFullAttentionPrefillScratch.allocate(
-        _fake_runner("hip_gfx1151"),
-        rows=4096,
-        capacity=4352,
-        allocate_kv_cache=False,
-        runtime=SimpleNamespace(),
-    )
-
-    assert scratch.allocation_mode == "dedicated"
-    assert sum(buffer.nbytes for buffer in scratch.buffers) > 1700 * _MIB
-    assert scratch.moe_down_out_f32.ptr != 0
-    assert not scratch.allocation_offsets
 
 
 def test_prefill_scratch_keeps_dedicated_layout_for_diagnostics_and_unvalidated_backend(monkeypatch) -> None:
