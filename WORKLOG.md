@@ -202780,3 +202780,22 @@ Vulkan local sizes verbatim will close the measured gap.
   128,844,787,712 → 123,379,535,872 bytes and returns to 128,695,816,192 after
   `free()`. Focused loader/model/materialization coverage passes **20/20**;
   Ruff, pycompile, live tokenizer round-trip, and live BF16 raw-read checks pass.
+
+## 2026-08-05 — Establish Maple NumPy correctness oracle
+
+- Translate the HF/MLX math into a torch-free NumPy oracle: LSB-first ternary
+  and affine4 unpack/dequant, BF16 round-to-nearest-even boundaries, standard
+  RMSNorm, QK-norm plus rotate-half partial RoPE, grouped-query attention,
+  fp32 softmax/top-8/renorm routing, trained clamp-7 SwiGLU, and two-boundary
+  weighted residual combine.
+- RED-first was not possible for the initial scratch translation because the
+  oracle module predated the fixture file in this session. The first
+  hand-checkable fixture run nevertheless exposed a real rotate-half aliasing
+  error (the second half read a mutated first-half view); copy both source
+  halves before stores. All **7/7** analytic/registry fixtures now pass; Ruff
+  and pycompile are clean.
+- Required `python3 scripts/check_lineage.py --kind kernel --diff stat` is
+  currently blocked before reporting tracked families because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. Maple kernels are
+  net-new against the published DeepGrove formulas rather than copied from that
+  missing reference, but the blocker remains recorded for the kernel handoff.
