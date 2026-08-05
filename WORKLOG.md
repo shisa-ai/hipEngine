@@ -207427,3 +207427,51 @@ Vulkan local sizes verbatim will close the measured gap.
   W7900 one-prompt B3 profile against `7eaa6fa05`. Promotion still requires the
   exact 672-dispatch contraction plus target-kernel, target-host, and complete
   marked-wall wins before natural25.
+
+## 2026-08-05 — Repair dependent GDN Conv-input locality
+
+- The first tracked-clean dependent-owner profile removes the intended **672**
+  launches but fails the frozen three-part promotion gate. Against a refreshed
+  current-clock `7eaa6fa05` scalar profile, the three-launch family moves
+  **1,008 / 20.613994 ms -> 336 / 21.215339 ms (+2.917%)**. Target host and
+  complete marked wall improve **357.514821 -> 346.444322 ms (-3.097%)** and
+  **439.371729 -> 429.677416 ms (-2.206%)**, but target and complete kernels
+  regress **0.319%/0.266%**. Do not spend natural25 while the physical family
+  and kernel sums fail. Comparison SHA-256 is `ee47acb0...1f6c1e`.
+- Diagnose the discrepancy in a same-process W7900 HIP graph over all 48 real
+  alpha/beta weights and the production row-4 GDN shape. The admitted v2 body
+  is exact and improves the three-launch control **3.2391 -> 3.0620 ms**, but
+  keeping every row's Conv Q/K/V slice resident across the long alpha/beta scan
+  improves it again to **3.0046 ms**. The selected producer-locality schedule
+  beats its contemporaneous control **3.2212 -> 3.0046 ms (1.0721x)** with
+  **21/21** event and wall wins. Lower-VGPR, local128, and alternate launch-
+  bounds schedules are slower and rejected.
+- Re-run the selected body over GPU1 rows1-4 before source admission. Alpha,
+  beta, every recurrent-state row, immutable initial snapshot, FP32 output, and
+  BF16 handoff are bit-exact in every cell. Event speedups are
+  **1.2958x/1.1657x/1.0893x/1.0360x**, with **21/21** wins at every row count.
+  W7900-graph/GPU1 result SHA-256s are `9d13a2ac...4801` and
+  `f8b92974...a20e`.
+- Replace only the in-tree dependent kernel schedule: stage at most four
+  per-head `(Q128,K128,V128)` Conv slices in **17,920 bytes** of dynamic LDS
+  before projection work, then execute the unchanged projection reductions and
+  GDN arithmetic. No new RED is needed for this performance-only scheduling
+  repair: the existing direct scalar/CPU rows1-4 test is the behavioral oracle,
+  and the immutable out-of-tree screen established bytes before source change.
+  A mechanical extraction check confirms the in-tree function exactly matches
+  the screened v7 body after symbol normalization.
+- Validation after the source replacement:
+  - GPU1 `tests/test_dense_f32_pair_gdn.py` passes **10/10**, including all six
+    byte surfaces and both CPU KL/top-1 gates;
+  - the cached W7900 B1-B3 transaction passes **1/1**, preserving logits,
+    acceptance, reject/partial/full/post-commit rollback state, dynamic graph
+    reuse, correction output, physical ownership, lifecycle, and teardown;
+  - cache-only GPU1 tracing names the intended dependent specialization three
+    times at grid48/local256, VGPR64, SGPR128, reported static LDS512 B plus the
+    declared dynamic allocation, scratch0, and **115.720/99.601/105.720 us**.
+    Kernel/source/trace-script SHA-256s are `9cbb2bda...12ab2`,
+    `a9869e7a...581a`, and `b110396d...ad62`.
+- Commit this exact schedule repair before its single final tracked-clean W7900
+  B3 profile. Run natural25 only if family kernels, target kernels/host, and
+  complete marked wall all clear the frozen gate; otherwise remove runtime
+  ownership and retain the exact primitive only.
