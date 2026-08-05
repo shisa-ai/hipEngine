@@ -1371,6 +1371,7 @@ def resolve_gguf_linear_dispatch(
 # this collapses the ~18us-per-launch dispatch-resolve chain to a dict lookup.
 _DISPATCH_RESOLVE_CACHE: dict[tuple, tuple] = {}
 _PAIR_DISPATCH_RESOLVE_CACHE: dict[tuple, str] = {}
+_Q8_1_DISPATCH_RESOLVE_CACHE: dict[tuple, tuple | bool] = {}
 
 
 def clear_gguf_linear_dispatch_cache() -> None:
@@ -1382,6 +1383,7 @@ def clear_gguf_linear_dispatch_cache() -> None:
 
     _DISPATCH_RESOLVE_CACHE.clear()
     _PAIR_DISPATCH_RESOLVE_CACHE.clear()
+    _Q8_1_DISPATCH_RESOLVE_CACHE.clear()
 
 
 def launch_gguf_linear(
@@ -1858,40 +1860,63 @@ def launch_gguf_linear_q8_1(
     ):
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
-    layer = "linear_q8_1" if residual_ptr is None else "linear_q8_1+residual"
-    variant = (
-        "t16_q8_1_dp4a_gemv_bf16_bf16_out"
-        if residual_ptr is None
-        else "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out"
-    )
-    key = KernelKey(
-        resolved_backend,
-        layer,
+    has_residual = residual_ptr is not None
+    cache_key = (
+        generation(),
+        weight.spec.layout,
         weight.spec.quant_key,
-        variant,
+        resolved_backend,
+        has_residual,
+        rows,
+        in_features,
+        out_features,
     )
-    if not is_registered(key):
+    cached = _Q8_1_DISPATCH_RESOLVE_CACHE.get(cache_key)
+    if cached is None:
+        layer = "linear_q8_1+residual" if has_residual else "linear_q8_1"
+        variant = (
+            "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out"
+            if has_residual
+            else "t16_q8_1_dp4a_gemv_bf16_bf16_out"
+        )
+        key = KernelKey(
+            resolved_backend,
+            layer,
+            weight.spec.quant_key,
+            variant,
+        )
+        if not is_registered(key):
+            _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = False
+            return False
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            backend=resolved_backend,
+            rows=1,
+        )
+        allocation_name = {"t16": "tiles"}.get(dispatch.abi)
+        if allocation_name is None:
+            _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = False
+            return False
+        fn = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        supports = getattr(fn, "_hipengine_supports", None)
+        if callable(supports) and not bool(
+            supports(rows, in_features, out_features)
+        ):
+            _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = False
+            return False
+        cached = (fn, allocation_name, key.quant, key.variant)
+        _Q8_1_DISPATCH_RESOLVE_CACHE[cache_key] = cached
+    if cached is False:
         return False
-    dispatch = resolve_gguf_linear_dispatch(
-        weight,
-        backend=resolved_backend,
-        rows=1,
-    )
-    allocation_name = {"t16": "tiles"}.get(dispatch.abi)
-    if allocation_name is None:
-        return False
+    fn, allocation_name, quant, variant = cached
     try:
         allocation = weight.allocation(allocation_name)
     except KeyError:
-        return False
-    fn = resolve(
-        backend=key.backend,
-        layer=key.layer,
-        quant=key.quant,
-        variant=key.variant,
-    )
-    supports = getattr(fn, "_hipengine_supports", None)
-    if callable(supports) and not bool(supports(rows, in_features, out_features)):
         return False
     gguf_q4_k_quantize_bf16_q8_1(
         x_ptr,
@@ -1904,8 +1929,8 @@ def launch_gguf_linear_q8_1(
     kwargs = {"stream": stream, "runtime": runtime}
     if libraries is not None:
         library = libraries.get(
-            f"{key.quant}:{key.variant}",
-            libraries.get(key.quant),
+            f"{quant}:{variant}",
+            libraries.get(quant),
         )
         if library is not None:
             kwargs["library"] = library
