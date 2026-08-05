@@ -204505,3 +204505,49 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `docs/STRIX-HALO-LLAMACPP-REVIEW.md`, `docs/GGUF.md`,
   `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`; unrelated
   `docs/ROCM-AI.md` and untracked benchmark outputs remain untouched.
+
+## 2026-08-06 — Launch post-SH-G beat-fork continuation
+
+- Preserve SH-G as the closed, immutable Campaign-2 decision, but keep the
+  higher-level thread objective active: final production has **0/4 fork-decode
+  and 0/4 fork-whole-GTT wins**. Task #33 replays the compact SH-G/SH-C0
+  arithmetic and audits prior closed owners rather than rerunning any package.
+- Remaining hipEngine-versus-fork-F16 decode time gaps at 512/4K/32K/64K are
+  **3.233/1.835/2.725/3.269 ms/token**; gaps to C1 are
+  **1.518/0.812/1.247/1.583 ms/token**. Final selected Q4 gate/up, selected
+  down, and router/combine own about **4.689 ms/token** at 512. The only
+  unclosed exact decode family with enough Amdahl is P10.D1: a new mixed
+  Q4T16 producer -> exactly rounded SiLU intermediate -> output-tiled
+  Q5T16/Q6T16 down -> route-weight combine/residual composite. The existing
+  raw-Q4 megakernel is explicitly excluded because it accepts neither the
+  deployed mixed layout nor enough c1 blocks.
+- Freeze SH2-D1's first gate before implementation: registered unfused fallback,
+  complete BF16/CPU-oracle equality, actual-weight timing, named cached trace,
+  zero spills, and **>=1.15x or >=0.5-ms/token projected saving** before
+  full-model routing. Reaching C1 from this owner alone requires approximately
+  **1.479x/1.209x/1.362x/1.510x** across the four contexts. If a retained exact
+  sub-window win does not reach C2, cumulative re-attribution continues; the
+  thread does not close.
+- Memory census identifies the full raw-Q8 family as only
+  `root.token_embedding`: **540,344,320 bytes / 0.503 GiB**. Ideal removal still
+  leaves whole-GTT gaps of **0.582/0.484/0.301/0.193 GiB** versus fork F16, so
+  host embedding alone cannot claim parity. The existing exact host-copy path
+  must be re-screened on current gfx1151 against both admitted graph and eager
+  owners; the old gfx1100 128K **11.141 tok/s** result remains a blocker, not a
+  transferable result.
+- Full-table mapped-host embedding is not currently admitted: shell soft and
+  hard memlock are both **8 MiB**, far below 540,344,320 bytes. Do not change
+  system limits silently. The same-file memory stack instead screens current
+  host-copy behavior, then requires at least **0.49 GiB** measured
+  phase-exclusive code-object/library GTT before lazy/deferred ownership, plus a
+  separately exact 768-row owner-slot map. Scaling the existing interval map
+  projects **157,138,758 bytes / 0.146 GiB** at 768 rows; this is a hypothesis,
+  not a result.
+- Add Campaign 3 / SH2-C0,M1,M2,M3,D1,C1,G to
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md`, and mark P10.D1 post-SH-G admitted in
+  `docs/GGUF.md`. Freeze the compact no-performance-claim audit at
+  `benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`.
+  HIP/gfx1151 health passes. `python3 scripts/check_lineage.py --kind kernel
+  --diff stat` remains blocked because the read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent; this is not a
+  green lineage verdict.
