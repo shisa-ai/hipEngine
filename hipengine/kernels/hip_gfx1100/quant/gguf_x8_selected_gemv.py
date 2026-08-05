@@ -25,6 +25,7 @@ _Q5_DIRECT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q5_DIRECT_F32 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out"
 _Q6_DIRECT_BF16 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q6_DIRECT_F32 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out"
+_Q6_DENSE_BF16 = "hipengine_gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out"
 _Q5_COMPACT_BF16 = "hipengine_gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out"
 _Q6_COMPACT_BF16 = "hipengine_gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out"
 
@@ -295,6 +296,72 @@ def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q6_k_x8_q8_1_threads(
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> int:
+    """Return the cache-qualified dense c1 X8 thread policy, or zero."""
+
+    if int(rows) != 1:
+        return 0
+    return {
+        (17_408, 5_120): 256,
+        (5_120, 10_240): 64,
+    }.get((int(in_features), int(out_features)), 0)
+
+
+def gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out(
+    xq_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch dense Q6X8 q8_1+sudot4 c1 GEMV from a resident sidecar."""
+
+    if int(rows) != 1:
+        raise ValueError("rows must be 1 for dense Q6X8 c1")
+    if threads is None:
+        threads = gguf_q6_k_x8_q8_1_threads(rows, in_features, out_features)
+        if not threads:
+            raise ValueError("unsupported dense Q6X8 c1 shape")
+    _launch_dense(
+        _Q6_DENSE_BF16,
+        xq_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=int(threads),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _q6_x8_q8_1_supports(
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> bool:
+    return bool(gguf_q6_k_x8_q8_1_threads(rows, in_features, out_features))
+
+
+setattr(
+    gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out,
+    "_hipengine_supports",
+    _q6_x8_q8_1_supports,
+)
+
+
 def gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out(
     xq_ptr: int,
     selected_ptr: int,
@@ -517,6 +584,51 @@ def _launch_direct(
         runtime.check(int(err))
 
 
+def _launch_dense(
+    symbol: str,
+    xq_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if rows != 1:
+        raise ValueError("rows must be 1 for dense X8 c1")
+    _check_common(rows, in_features, out_features, 1, threads)
+    library = library or build_gguf_x8_selected_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_compact(
     symbol: str,
     xq_ptr: int,
@@ -580,8 +692,18 @@ def _check_common(rows: int, in_features: int, out_features: int, num_experts: i
 
 
 def register_gguf_x8_selected_gemv_kernels(*, replace: bool = True) -> None:
-    """Register selected X8 q8_1+sudot4 GEMV kernels."""
+    """Register selected and dense-sidecar X8 q8_1+sudot4 GEMV kernels."""
 
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_q8_1",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "x8_sidecar_q8_1_dp4a_gemv_bf16_bf16_out",
+        ),
+        gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -649,6 +771,8 @@ __all__ = [
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out",
     "gguf_q5_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
+    "gguf_q6_k_x8_q8_1_dp4a_gemv_bf16_bf16_out",
+    "gguf_q6_k_x8_q8_1_threads",
     "gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q6_k_x8_selected_q8_1_dp4a_gemv_bf16_f32_out",
     "gguf_q6_k_x8_selected_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",

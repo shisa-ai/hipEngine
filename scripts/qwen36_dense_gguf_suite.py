@@ -674,6 +674,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "HIPENGINE_GGUF_Q6_PLANAR_Q8_1": os.environ.get(
                 "HIPENGINE_GGUF_Q6_PLANAR_Q8_1"
             ),
+            "HIPENGINE_GGUF_Q6_X8_C1_SIDECAR": os.environ.get(
+                "HIPENGINE_GGUF_Q6_X8_C1_SIDECAR"
+            ),
             "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD"),
         },
         build_profile="qwen36_dense_gguf_ar_mtp_suite",

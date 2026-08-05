@@ -10,6 +10,7 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
+import hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv  # noqa: F401
 import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.kernels.registry import KernelKey, register, resolve, unregister
 from hipengine.loading.qwen35_gguf_materialize import (
@@ -65,6 +66,7 @@ def _fake_weight(
     quant_key: str,
     decode_tiles: bool = False,
     decode_tiles_dual: bool = False,
+    x8: bool = False,
 ):
     allocations = {
         "raw": SimpleNamespace(tensor=SimpleNamespace(ptr=10)),
@@ -81,6 +83,8 @@ def _fake_weight(
         allocations["decode_tiles_dual"] = SimpleNamespace(
             tensor=SimpleNamespace(ptr=16)
         )
+    if x8:
+        allocations["x8"] = SimpleNamespace(tensor=SimpleNamespace(ptr=17))
 
     class Weight:
         def __init__(self) -> None:
@@ -444,6 +448,83 @@ def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
     assert len(resolve_dispatch_calls) == 3
     assert len(quantize_calls) == 3
     gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+
+def test_launch_gguf_linear_q8_1_prefers_x8_sidecar_only_for_c1(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar_key = KernelKey(
+        "hip_gfx1100",
+        "linear_q8_1",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "x8_sidecar_q8_1_dp4a_gemv_bf16_bf16_out",
+    )
+    planar_key = KernelKey(
+        "hip_gfx1100",
+        "linear_q8_1",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_q8_1_dp4a_gemv_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+        for key in (sidecar_key, planar_key)
+    }
+    calls = []
+    quantize_calls = []
+
+    def capture(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+
+        fake._hipengine_supports = lambda rows, in_features, out_features: (
+            (rows, in_features, out_features)
+            in {(1, 5_120, 10_240), (1, 17_408, 5_120)}
+            if label == "x8"
+            else (rows, in_features, out_features)
+            in {(1, 5_120, 10_240), (2, 17_408, 5_120)}
+        )
+        return fake
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q4_k_quantize_bf16_q8_1",
+        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
+    )
+    register(sidecar_key, capture("x8"), replace=True)
+    register(planar_key, capture("planar"), replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+        x8=True,
+    )
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
+    try:
+        assert gguf_linear_module.launch_gguf_linear_q8_1(
+            weight, 100, 200, 300, 1, 5_120, 10_240,
+            stream=7, runtime="runtime-sentinel",
+        )
+        assert gguf_linear_module.launch_gguf_linear_q8_1(
+            weight, 101, 201, 301, 2, 17_408, 5_120,
+            stream=8, runtime="runtime-sentinel",
+        )
+    finally:
+        for key, fn in originals.items():
+            if fn is None:
+                unregister(key)
+            else:
+                register(key, fn, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert [label for label, _args, _kwargs in calls] == ["x8", "planar"]
+    assert calls[0][1] == (200, 17, 300, 1, 5_120, 10_240)
+    assert calls[1][1] == (201, 14, 301, 2, 17_408, 5_120)
+    assert len(quantize_calls) == 2
 
 
 def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:

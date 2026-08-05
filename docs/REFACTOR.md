@@ -22,13 +22,19 @@ should be removed or collapsed.
   planar-qmicro resident bytes and the existing Q8_1 workspace; rows above
   four, unsupported shapes/backends, registry misses, and explicit zero retain
   the exact T16/WMMA path.
-- If the complete multi-category plus heldout gate or either matched W7900
-  target/complete performance window regresses, remove runtime ownership and
-  the flag while retaining the separately registered primitive and correctness
-  fixture for diagnostics. If admitted, promote selector-unset production and
-  keep zero only through one later regression/bisection cycle; then remove the
-  env branch while preserving the exact registered linear/add fallback required
-  by project policy.
+- The planar-only category gate improves B1/B2/B3 but rejects AR because its c1
+  component rotates 56 weights / 3.372 GB rather than reusing one cache-hot
+  matrix. `HIPENGINE_GGUF_Q6_X8_C1_SIDECAR=1` is therefore a second default-off
+  materialization seam: exactly 32 FFN-down and 24 QKV planar residents retain
+  an equal-size X8 c1 sidecar (**3,371,827,200 bytes / 3.140 GiB**), while planar
+  remains the exact WMMA and rows2-4 owner.
+- If the sidecar's matched W7900 transaction/category or populated-AR gate does
+  not beat exact-zero AR and retain the B1-B3 gains, remove the X8 allocations,
+  env helper, dense-sidecar registry key, and adapter candidate together. If it
+  promotes, retain the exact planar fallback and explicit-zero selector through
+  one later regression/bisection cycle, then collapse the runtime flag. Remove
+  duplicate residency only after an X8 prefill consumer passes the exact
+  512/4096 gate, or a planar c1 body matches the rotating-cache X8 result.
 
 ## Qwen3.6 shared-cache verifier KV batch primitive
 

@@ -873,9 +873,15 @@ def down_residual_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
 
 @pytest.fixture
 def q6_planar_q8_1_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
-    """Count qualified planar-Q6/Q8_1 projection and residual ownership."""
+    """Count qualified X8-c1 and planar rows2-4 Q6/Q8_1 ownership."""
 
     keys = {
+        "x8_projection": KernelKey(
+            "hip_gfx1100",
+            "linear_q8_1",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "x8_sidecar_q8_1_dp4a_gemv_bf16_bf16_out",
+        ),
         "projection": KernelKey(
             "hip_gfx1100",
             "linear_q8_1",
@@ -899,6 +905,7 @@ def q6_planar_q8_1_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
         for name, key in keys.items()
     }
     calls: dict[str, list[tuple[int, int, int]]] = {
+        "x8_projection": [],
         "projection": [],
         "residual": [],
     }
@@ -910,6 +917,7 @@ def q6_planar_q8_1_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
 
         return wrapper
 
+    register(keys["x8_projection"], counted("x8_projection", (3, 4, 5)), replace=True)
     register(keys["projection"], counted("projection", (3, 4, 5)), replace=True)
     register(keys["residual"], counted("residual", (4, 5, 6)), replace=True)
     try:
@@ -970,7 +978,8 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_PLANAR_Q8_1", "1")
-    _require_free_vram(32.0)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_X8_C1_SIDECAR", "1")
+    _require_free_vram(36.0)
     prompt = (9707, 9707, 9707, 9707)
     require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
     with Qwen35GGUFResidentSession(
@@ -1384,8 +1393,17 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for calls in q5_t16_ssm_out_calls.values()
         for _, in_features, out_features in calls
     } == {(6_144, 5_120)}
+    assert q6_planar_q8_1_calls["x8_projection"]
     assert q6_planar_q8_1_calls["projection"]
     assert q6_planar_q8_1_calls["residual"]
+    assert {
+        (in_features, out_features)
+        for _rows, in_features, out_features
+        in q6_planar_q8_1_calls["x8_projection"]
+    } == {(5_120, 10_240), (17_408, 5_120)}
+    assert {
+        rows for rows, _, _ in q6_planar_q8_1_calls["x8_projection"]
+    } == {1}
     assert {
         (in_features, out_features)
         for _rows, in_features, out_features
@@ -1393,8 +1411,11 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     } == {(5_120, 10_240), (17_408, 5_120)}
     assert {
         rows
-        for rows, in_features, out_features
-        in q6_planar_q8_1_calls["projection"]
+        for calls in (
+            q6_planar_q8_1_calls["x8_projection"],
+            q6_planar_q8_1_calls["projection"],
+        )
+        for rows, in_features, out_features in calls
         if (in_features, out_features) == (5_120, 10_240)
     } == {1, 2, 3, 4}
     assert {
