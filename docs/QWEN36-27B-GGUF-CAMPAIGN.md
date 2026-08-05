@@ -1269,27 +1269,54 @@ moves **+0.642%** in one-run noise; the NextN tail path cannot execute there.
 B3 reaches **2.4466x own AR** and is now **16.57% below Vulkan**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json`.
 
+The cache-representative Q5T16 reopening is now retained. Exactly 48 gfx1100
+K6,144/N5,120 `ssm_out` tensors become sole-resident source-faithful Q5T16;
+other shapes/roles, decode-repack-off, registry misses, and gfx1151 retain dense
+BF16. Direct c1, exact local128/col4 rows 2-4, direct larger-row fallback, and
+dense WMMA prefill are registered siblings. The complete B1-B3 transaction
+proves intended ownership plus logits, reject/partial/full/rollback state,
+dynamic graph reuse, provider output, lifecycle, and teardown. Aggregate
+component quality is **7.38e-5 max KL / 99.79% top-1**, above the project gate;
+the route is therefore quality-gated rather than bit-identical to dense BF16.
+
+Tracked-clean W7900 tracing confirms the production mechanism: 336 dense
+`ssm_out` calls fall **37.004 -> 22.911 ms (-38.09%)**, target-verify host wall
+falls **380.843 -> 361.440 ms (-5.095%)**, and complete marker wall falls
+**464.238 -> 444.023 ms (-4.354%)** at unchanged **8,039** dispatches. Natural25
+true AR advances **23.217 -> 24.049 tok/s (+3.585%)** and B1/B2/B3 advance
+**41.512/51.974/56.802 -> 43.170/54.621/59.551 tok/s
+(+3.994/+5.094/+4.839%)**. Every aggregate scope and every B2/B3 prompt improves;
+one B1 prompt is **-2.116%**. Candidate MTP matches its own AR on every row.
+Nine of ten prior-route outputs remain byte-identical; only
+`general_ja_explain` diverges after token 18 into a fluent memory-bandwidth
+explanation rather than the prior fluent FLOPS explanation. B3 acceptance
+improves **168/222 -> 169/219** accepted/proposed.
+
+The populated gate is strongly positive as well. At 512/4096, prefill advances
+**207.864/193.001 -> 234.014/215.771 tok/s (+12.58%/+11.80%)**, graph AR advances
+**22.208/21.017 -> 23.241/21.841 (+4.65%/+3.92%)**, all six final IDs remain
+`9707`, and each peak falls by exactly **1,958,215,680 bytes / 1.824 GiB** before
+clean teardown. Canonical B3 reaches **2.4762x own AR** and is now **12.53% below
+Vulkan**. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json`.
+
 The refreshed profiler-only matched-module ledger is now:
 
 | Module | hipEngine | llama.cpp Vulkan | Directional gap / status |
 | --- | ---: | ---: | --- |
-| Dense Q5 `ssm_out` | 37.393 ms | 15.119 ms | +22.274 ms; largest gap, reopened by cache-representative rotation |
-| Q4 FFN gate/up + SiLU | 76.648 ms | 89.534 ms | hipEngine ahead 12.886 ms |
-| Wide Q6 FFN-down + QKV | 46.917 ms | 41.486 ms | +5.431 ms; retained planar owner, second-order residual |
-| Proposal root stage1 | 31.192 ms / 21 calls | 31.873 ms / 22 calls | hipEngine ahead 0.681 ms; call counts disclosed |
-| Target root FP32 rows | 11.713 ms | 9.170 ms | +2.543 ms; second-order residual |
+| Q5T16 `ssm_out` | 22.911 ms | 15.119 ms | +7.792 ms; reduced from +22.274 ms, now second-order |
+| Q4 FFN gate/up + SiLU | 76.311 ms | 89.534 ms | hipEngine ahead 13.223 ms |
+| Wide Q6 FFN-down + QKV | 47.570 ms | 41.486 ms | +6.084 ms; largest remaining arithmetic residual |
+| Proposal root stage1 | 31.241 ms / 21 calls | 31.873 ms / 22 calls | hipEngine ahead 0.632 ms; call counts disclosed |
+| Target root FP32 rows | 11.798 ms | 9.170 ms | +2.628 ms; second-order residual |
 
-These are synchronized-profiler ranking values, not toplines. Dense Q5 is the
-only high-leverage arithmetic gap. Its earlier rejection repeatedly reused one
-60-MiB dense plane that can remain in the 96-MiB cache, whereas production
-rotates 48 planes / **2.813 GiB** per pass. A GPU1 48-weight rotation reverses
-the result: Q5T16 improves rows 1/2/3/4 by
-**1.666x/1.581x/1.523x/1.573x**, every cell with **11/11** paired wins, while
-projecting **1,958,215,680 bytes** less residency. Aggregate component quality
-passes at **7.38e-5 max KL / 99.79% top-1** (one disclosed single-layer row-4
-cell is 75%); runtime transaction/state and full W7900 gates remain mandatory.
-This cache-representative reinterpretation, rather than another hot single-
-weight microkernel, is the next admitted D27-O3 candidate.
+These are synchronized-profiler ranking values, not toplines. No matched
+arithmetic family now has a credible 5%-of-complete-wall gap. Exact launch and
+transport removal is the next leverage class: the explicit GDN F32-to-BF16
+handoff alone is **336 launches / 0.606 ms** of kernels before queue cost. The
+next candidate will perform that same BF16 rounding in-register inside a
+Q5T16 F32-input consumer, with the current cast plus ordinary Q5T16 chain kept
+as the required unfused fallback.
 
 ---
 
@@ -1302,10 +1329,10 @@ weight microkernel, is the next admitted D27-O3 candidate.
 | 0 | D27-F1 | Add architecture-shaped dense NextN mapping/materialization with RED tests. | Strict real call-spec accepts 15-tensor `blk.64`; existing MoE fixtures remain unchanged. | complete; real map green |
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
-| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; exact tile8x8 plus planar Q6T16 reach 207.864/193.001 tok/s |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 22.208/21.017 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact B3 reaches 56.802 tok/s / 2.4466x own AR, with every prompt-budget row and aggregate scope positive; cache-representative Q5T16 is reopened next |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | blocked by remaining O3; re-rank `e15d85d1c`, with a 16.57% Vulkan B3 gap and one reopened dense-Q5 candidate above second-order residuals |
+| 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.241/21.841 tok/s and Vulkan remains beaten |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; quality-gated B3 reaches 59.551 tok/s / 2.4762x own AR, all aggregate scopes and all B2/B3 prompts improve; one B1 timing and one prior-route trajectory change are disclosed |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; re-rank `24fef47da` at a 12.53% Vulkan B3 gap, beginning with exact launch/transport removal rather than another sub-5% arithmetic family |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
@@ -1457,6 +1484,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | 2026-08-04 | hipEngine `da6865f74`, exact/default dense GGUF | W7900 | 512/128, 4K/128; natural25 B1-B3 | 50.515 / 50.473 | 19.556 / 18.649; natural AR 20.361 | B1 17.128 (best), B2 16.005, B3 14.858 | 0.8412x / 0.7861x / 0.7297x | all repeated IDs deterministic; all 750 MTP-visible IDs exact vs AR; GPU/CPU accept exact; state transaction oracle green | `benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json` |
 | 2026-08-05 | hipEngine `3728531ba`, byte-neutral planar Q6T16 | W7900 | 512/128, 4K/128; natural25 B1-B3 | 207.022 / 192.528 | 22.107 / 20.926; natural AR 23.031 | B1 39.830, B2 49.848, B3 54.547 | 1.7294x / 2.1644x / 2.3685x | all 750 MTP IDs and acceptance exact; all 30 rows/scopes improve; populated IDs deterministic; byte-identical peaks and clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json` |
 | 2026-08-05 | hipEngine `094941175`, planar Q6T16 root head | W7900 | 512/128, 4K/128; natural25 B1-B3 | 207.864 / 193.001 | 22.208 / 21.017; natural AR 23.069 | B1 40.179, B2 50.813, B3 55.899 | 1.7417x / 2.2026x / 2.4231x | all IDs/acceptance exact; all aggregate scopes and all B2/B3 prompt rows improve; one B1 prompt -0.653% disclosed; byte-identical peaks and clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json` |
+| 2026-08-05 | hipEngine `24fef47da`, sole-resident Q5T16 `ssm_out` | W7900 | 512/128, 4K/128; natural25 B1-B3 | 234.014 / 215.771 | 23.241 / 21.841; natural AR 24.049 | B1 43.170, B2 54.621, B3 59.551 | 1.7951x / 2.2712x / 2.4762x | aggregate Q5 quality 7.38e-5 KL / 99.79% top-1; candidate MTP exact vs own AR; all scopes and all B2/B3 prompts improve; one B1 timing and one fluent prior-route trajectory change disclosed; peaks -1.824 GiB | `benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json` |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

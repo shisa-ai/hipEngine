@@ -5258,6 +5258,44 @@ proposal body is flat at **48.671 -> 48.658 ms** of kernels. Canonical B3 is now
 **16.57% below** llama.cpp Vulkan. Artifact:
 [`2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json`](results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json).
 
+#### Qwen3.6-27B quality-gated Q5T16 dense `ssm_out`, W7900/gfx1100
+
+Clean implementation `24fef47da` replaces exactly 48 gfx1100
+K6,144/N5,120 dense-BF16 `ssm_out` residents with source-faithful Q5T16.
+Direct c1, exact local128/col4 rows 2-4, larger-row fallback, and dense WMMA
+prefill are registered siblings; all other shapes/roles, decode-repack-off,
+registry misses, and gfx1151 retain dense BF16. Residency falls exactly
+**1,958,215,680 bytes / 1.824 GiB**.
+
+| Route | State-only-tail baseline | + Q5T16 `ssm_out` | Delta | MTP / true AR | Acceptance / work |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 23.217 tok/s | **24.049 tok/s** | **+3.585%** | 1.0000x | candidate trajectory control |
+| B1 | 41.512 tok/s | **43.170 tok/s** | **+3.994%** | 1.7951x | 115 / 127 |
+| B2 | 51.974 tok/s | **54.621 tok/s** | **+5.094%** | 2.2712x | 151 / 182 |
+| **B3 (retained)** | 56.802 tok/s | **59.551 tok/s** | **+4.839%** | **2.4762x** | **169 / 219** |
+
+Every full/train/heldout/category scope and every B2/B3 prompt improves. One B1
+prompt is **-2.116%**. Candidate MTP matches its own AR on every row. Nine of ten
+prior-route outputs remain byte-identical; only `general_ja_explain` diverges
+after token 18 into a fluent memory-bandwidth explanation rather than the prior
+fluent FLOPS explanation. Aggregate component quality is **7.38e-5 max KL /
+99.79% top-1**, and the complete B1-B3 transaction/state/provider/lifecycle gate
+passes, so this is retained as a disclosed quality-gated route rather than a
+bit-identical dense-BF16 replacement.
+
+The tracked-clean one-prompt B3 trace cuts the 336-call physical family
+**37.004 -> 22.911 ms (-38.09%)**, target-verify host wall **380.843 -> 361.440
+ms (-5.095%)**, and complete marker wall **464.238 -> 444.023 ms (-4.354%)** at
+unchanged **8,039** dispatches.
+
+Populated 512/4096 prefill advances **207.864/193.001 -> 234.014/215.771 tok/s
+(+12.58%/+11.80%)** and graph AR advances **22.208/21.017 -> 23.241/21.841
+(+4.65%/+3.92%)**. All six final IDs are `9707`, each peak falls exactly 1.824
+GiB, and teardown returns to zero. Prefill and AR remain well above matched
+stateful Vulkan; natural25 B3 is now **12.53% below** Vulkan's 68.082 tok/s.
+Artifact:
+[`2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json`](results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5435,6 +5473,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B byte-neutral planar-Q6T16 replacement](results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json),
 [Qwen3.6-27B byte-neutral planar-Q6T16 root head](results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json),
 [Qwen3.6-27B exact NextN state-only full-accept tail](results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json),
+[Qwen3.6-27B quality-gated Q5T16 dense ssm_out](results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),
