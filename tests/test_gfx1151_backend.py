@@ -390,6 +390,19 @@ def test_gfx1151_backend_excludes_unvalidated_qwen36_down_residual_fusions() -> 
                 variant,
             )
         )
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
+        {},
+    ) == {
+        "gguf_q4_k_t16_v1": 4,
+        "gguf_q6_k_t16_qmicro_planar_v1": 3,
+    }
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
+        None,
+    ) is None
 
 
 def test_gfx1151_backend_excludes_unvalidated_dense_q5_t16_ssm_out() -> None:
