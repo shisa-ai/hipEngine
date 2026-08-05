@@ -204216,3 +204216,35 @@ Vulkan local sizes verbatim will close the measured gap.
   **32 tests**; runner pycompile, retained-artifact JSON parsing,
   `docs/REFACTOR.md` SHA-256, and `git diff --check` pass. This closes SH-M2
   only; continue the campaign immediately with SH-K1.
+
+## 2026-08-06 — Harden SH-K1 fixed-policy quality audit
+
+- Audit the existing compact-KV frontier before measurement. The admitted
+  per-token/head K+V format keeps full-attention indices `0-7` BF16 and `8-9`
+  INT8 for long sessions. After the layer-local prefill-oracle repair, that map
+  passed the historical W7900 `128K/128` gate at mean KL **0.01448** and
+  **96.124%** top-1 with no persistent BF16 mirror. Every materially broader
+  suffix or format is already closed: three-layer prefix 7 and non-contiguous
+  `{5,8,9}`/`{6,8,9}` K+V maps fail, key-only prefix 6 fails and prefix 7 saves
+  less than the 2-layer K+V map, block16 fails even the forced-long 4K row, and
+  tail-four Hadamard group32 is quality-clean but loses repeated decode and
+  allocator high water. Do not repeat those rows under SH-K1.
+- Extend `scripts/qwen35_native_mixed_kv_suite.py` with an explicit resident
+  capacity, a no-BF16-mirror requirement, and exact expected BF16/INT8
+  full-attention index expressions. The generic GGUF layout audit now checks
+  the complete fixed-layer partition, storage layout, scale granularity,
+  persistent mirror bytes, and released layer-local oracle buffers for both
+  uniform INT8 and tail-four policies. This closes the old loophole where a
+  short mirrored `int8_per_token_head` run could pass quality without proving
+  compact storage.
+- RED failed at collection on the absent layer-index parser. GREEN:
+  `uv run pytest -q tests/test_qwen35_native_mixed_kv_suite.py --tb=short`
+  passes **6 tests**; pycompile and `git diff --check` pass. The project
+  environment has no `ruff` executable, so the attempted `uv run ruff check`
+  was unavailable rather than a source failure.
+- Required lineage preflight is mechanically blocked before any source audit:
+  the manifest roots `/home/lhl/amd-gpu-tuning/reference/atlas` and
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` are absent. No external code is
+  ported in this unit; the existing in-tree writer/direct grouped-GQA consumer
+  remains unchanged. Proceed to the gfx1151 no-mirror full category+heldout
+  quality gate for the fixed 8/2 map.
