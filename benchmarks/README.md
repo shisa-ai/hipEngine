@@ -5491,6 +5491,29 @@ AR; retain only the measured primitive. Canonical **60.262 tok/s / 2.4991x own
 AR / 11.49% below Vulkan** is unchanged. Artifact:
 [`2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json).
 
+#### Qwen3.6-27B alpha/beta plus snapshot-Conv primitive, runtime rejected
+
+Correctness commit `95fff80d3` adds a gfx1100-only one-grid owner for both
+K5,120/N48 dense-F32 projections and the independent C10,240/K4 rollback-safe
+chain-Conv. The pair blocks preserve the scalar local256 arithmetic trees and
+the final 40 blocks preserve the registered snapshot-Conv body. All 48 real
+layers at rows1-4 are bit-exact for alpha, beta, Conv output/journal, and initial
+snapshot; CPU KL/top-1 gates pass. GPU1 event medians improve
+**2.028x/1.949x/1.892x/1.731x**, with synchronized wall agreement and
+**21/21** wins at every row count. The routed W7900 B1-B3 transaction is exact,
+and cache-only tracing records local256, VGPR32, LDS2,048 B, scratch0, with
+steady **6.920/9.960 us** durations.
+
+The production route fails its frozen W7900 complete-path gate. The combined
+family improves **1,008 / 5.469564 ms -> 336 / 3.221938 ms (-41.09%)**,
+target/complete dispatches each fall **672**, and target/complete kernel sums
+improve **1.016%/0.884%**. Target host and complete marked wall nevertheless
+regress **0.546%/1.629%**. Generic dispatch and runner ownership are removed
+before natural25/populated AR; production again uses two scalar projections plus
+snapshot Conv. Retain only the measured primitive. Canonical **60.262 tok/s /
+2.4991x own AR / 11.49% below Vulkan** is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight

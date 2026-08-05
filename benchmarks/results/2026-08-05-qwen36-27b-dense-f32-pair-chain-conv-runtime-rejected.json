@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "status": "rejected_dense_f32_alpha_beta_snapshot_conv_runtime_default",
+  "performance_claim": false,
+  "performance_claim_scope": "The exact primitive and its GPU1 component/W7900 kernel-family sub-windows improve, but the production runtime route is rejected because tracked-clean W7900 target-host and complete marked wall regress. No natural25 run or topline change is claimed.",
+  "correctness_claim": true,
+  "correctness_scope": "Rows 1-4 alpha/beta BF16 outputs, Conv FP32 outputs/journals, and initial snapshots match two independent dense-F32 GEMVs plus the registered snapshot chain-Conv bit-for-bit; the routed W7900 B1-B3 transaction was exact before production ownership was removed.",
+  "kind": "qwen36_27b_dense_f32_alpha_beta_snapshot_conv_runtime_rejection",
+  "timestamp": "2026-08-05T21:55:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m",
+    "linear_attention_layers": 48,
+    "alpha_beta_weight_shape_each": [48, 5120],
+    "conv_weight_shape_each": [10240, 4],
+    "weight_dtype": "f32"
+  },
+  "hardware": {
+    "component_gpu": "AMD Radeon RX 7900 XTX, GPU1, gfx1100",
+    "binding_gpu": "AMD Radeon Pro W7900, GPU0, gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "baseline_commit": "fda35418e7dfad60eacaa53d8e4b73626ef30d51",
+    "candidate_correctness_commit": "95fff80d343a3e15b41dd0327a34b94eeac2fab4",
+    "restored_runtime_parent": "7a821bfb925cf2c4834a5c3c19aa9d3a9984ff47",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100"
+  },
+  "primitive": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_attn_alpha_beta+chain_conv+snapshot",
+      "f32",
+      "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop"
+    ],
+    "symbol": "qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<2>",
+    "selected_policy": {
+      "alpha_beta_rows_1_to_3": "flat pair blocks",
+      "alpha_beta_rows_4": "two rows per block",
+      "conv": "forty independent snapshot chain-Conv channel blocks"
+    },
+    "retained": true,
+    "runtime_routed_after_decision": false,
+    "gfx1151_aliased": false,
+    "fallback": "two ordinary dense_gemv_bf16_f32w_bf16_out launches plus qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloop"
+  },
+  "correctness": {
+    "red": "10 failed before implementation",
+    "focused_green_before_profile": "10 passed on GPU1",
+    "adjacent_green_before_profile": "125 passed across the focused file, dense pair, chain journal, GGUF dispatch/cache, and gfx1151 coverage",
+    "component_rows": [1, 2, 3, 4],
+    "alpha_bf16_bit_exact": true,
+    "beta_bf16_bit_exact": true,
+    "conv_output_f32_bit_exact": true,
+    "conv_state_rows_f32_bit_exact": true,
+    "initial_conv_snapshot_f32_bit_exact": true,
+    "cpu_kl_max_at_most": 0.05,
+    "cpu_top1_agreement_at_least": 0.90,
+    "w7900_transaction": "passed 1/1 with exact B1-B3 target logits, reject/partial/full/post-commit rollback state, dynamic graph reuse, correction, provider output, GPU/CPU acceptance, lifecycle, and teardown; routed census observed only K5120/N48/C10240/K4 at rows 2/3/4 while standalone pair and snapshot-Conv owners were idle",
+    "profile_exact_greedy": true,
+    "profile_gpu_accept_match_cpu": true,
+    "profile_accepted_draft_tokens": 17,
+    "profile_proposed_draft_tokens": 21,
+    "profile_cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3],
+    "post_unroute_green": "122/122 focused and adjacent tests on GPU1; gguf_linear.py and qwen35_gguf_runner.py are byte-identical to candidate parent 7a821bfb9 after removing route ownership"
+  },
+  "gpu1_component_screen": {
+    "weights": 48,
+    "samples": 21,
+    "burst": 12,
+    "counterbalanced": true,
+    "threads": 256,
+    "control_launches_per_layer": 3,
+    "candidate_launches_per_layer": 1,
+    "all_selected_cells_three_primitive_bit_exact": true,
+    "rows": {
+      "1": {
+        "control_event_ms_per_48_layers": 0.7599877516428629,
+        "candidate_event_ms_per_48_layers": 0.3747229178746541,
+        "event_speedup": 2.0281325624633424,
+        "wall_speedup": 2.0242733561434174,
+        "event_wins": "21/21",
+        "wall_wins": "21/21"
+      },
+      "2": {
+        "control_event_ms_per_48_layers": 0.793571392695109,
+        "candidate_event_ms_per_48_layers": 0.40715543429056805,
+        "event_speedup": 1.9490625099425143,
+        "wall_speedup": 1.9448828037707167,
+        "event_wins": "21/21",
+        "wall_wins": "21/21"
+      },
+      "3": {
+        "control_event_ms_per_48_layers": 0.8317584991455078,
+        "candidate_event_ms_per_48_layers": 0.43967266877492267,
+        "event_speedup": 1.89176757669079,
+        "wall_speedup": 1.8871122115118972,
+        "event_wins": "21/21",
+        "wall_wins": "21/21"
+      },
+      "4": {
+        "control_event_ms_per_48_layers": 0.8697920640309652,
+        "candidate_event_ms_per_48_layers": 0.5024298429489136,
+        "event_speedup": 1.731171179892283,
+        "wall_speedup": 1.7293547292492093,
+        "event_wins": "21/21",
+        "wall_wins": "21/21"
+      }
+    }
+  },
+  "cache_only_primitive_trace": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "kernel": "qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<2>",
+    "steady_duration_ns": [6920, 9960],
+    "grid_workgroups": [232, 1, 1],
+    "workgroup": [256, 1, 1],
+    "vgpr": 32,
+    "sgpr": 128,
+    "lds_bytes": 2048,
+    "scratch_bytes": 0
+  },
+  "w7900_profile": {
+    "workload": "natural prompt code_merge_intervals, B3, 25 visible outputs, seven target passes, one run, no warmup, rocprofv3 kernel+copy+marker trace",
+    "baseline_root": "/tmp/hipengine-qwen36-27b/final-fda35418e/profile-native-rounded-next-rms-mtp-b3-hermetic",
+    "candidate_root": "/tmp/hipengine-qwen36-27b/final-95fff80d3/profile-native-f32-pair-conv-composite-mtp-b3-hermetic",
+    "three_leaf_family": {
+      "baseline_dispatches": 1008,
+      "candidate_dispatches": 336,
+      "dispatch_delta": -672,
+      "baseline_ms": 5.469564,
+      "candidate_ms": 3.221938,
+      "delta_ms": -2.247626,
+      "delta_percent": -41.09333029104331
+    },
+    "target": {
+      "baseline_dispatches": 5853,
+      "candidate_dispatches": 5181,
+      "dispatch_delta": -672,
+      "baseline_kernel_ms": 256.720748,
+      "candidate_kernel_ms": 254.11282,
+      "kernel_delta_percent": -1.0158617954790339,
+      "baseline_host_ms": 349.140794,
+      "candidate_host_ms": 351.048748,
+      "host_delta_percent": 0.5464712324621646
+    },
+    "complete": {
+      "baseline_dispatches": 6590,
+      "candidate_dispatches": 5918,
+      "dispatch_delta": -672,
+      "baseline_kernel_ms": 312.507349,
+      "candidate_kernel_ms": 309.745421,
+      "kernel_delta_percent": -0.8837961759420754,
+      "baseline_marker_ms": 431.236057,
+      "candidate_marker_ms": 438.260045,
+      "marker_delta_percent": 1.6288035023935832
+    },
+    "profile_suite": {
+      "baseline_tok_s": 55.64867460505229,
+      "candidate_tok_s": 54.7557845731736,
+      "delta_percent": -1.6045126648849717,
+      "topline_eligible": false
+    },
+    "memory": {
+      "baseline_peak_allocated_bytes": 32723577074,
+      "candidate_peak_allocated_bytes": 32723577074,
+      "candidate_current_allocated_bytes_after_close": 0
+    }
+  },
+  "decision": {
+    "runtime_default_retained": false,
+    "primitive_retained": true,
+    "natural25_run": false,
+    "populated_ar_run": false,
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_gap_vs_vulkan_percent": -11.4869,
+    "reason": "The exact 672-dispatch contraction and family/target-kernel/complete-kernel improvements pass, but the frozen gate also required target-host and complete marked-wall wins. Those regress 0.546% and 1.629%, so generic dispatch and runner ownership are removed before natural25 rather than moving the gate after measurement.",
+    "reopen_condition": "Reopen only with a materially different scheduling or graph owner that preserves the three-leaf arithmetic work and improves both target host and complete marked wall on W7900."
+  },
+  "commands": {
+    "component_screen": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt PYTHONPATH=. python3 /tmp/hipengine-qwen36-27b/screen-f32-pair-conv-composite.py",
+    "post_unroute_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q tests/test_dense_f32_pair_chain_conv.py tests/test_dense_f32_pair.py tests/test_qwen35_linear_attn_chain_journal.py tests/test_gguf_linear_dispatch.py tests/test_gguf_linear_dispatch_cache.py tests/test_gfx1151_backend.py --tb=short",
+    "w7900_transaction": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar --tb=short",
+    "profile": "D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; PATH=/home/lhl/mambaforge/envs/therock/bin:$PATH HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:$D:$D/rocm_sysdeps/lib:/opt/rocm/lib PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --marker-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/hipengine-qwen36-27b/final-95fff80d3/profile-native-f32-pair-conv-composite-mtp-b3-hermetic -- python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-95fff80d3/profile-native-f32-pair-conv-composite-mtp-b3-hermetic/suite.json"
+  },
+  "raw_evidence_sha256": {
+    "gpu1_screen_hip": "32743fad554bfaf6526d8ed4b9a58afe24c8b91ac9ba23dea8ea0bceefb1af72",
+    "gpu1_screen_script": "729c9b44e66925b9116c2506271fc3af673fc920d9396869d9fa03ab8872bd8d",
+    "gpu1_screen_result": "e6866c403717ef0fd17674d391f70816d3a57b514b5f6a3deb38144788c28d55",
+    "primitive_trace_kernel": "0726c0bc7488577b1d03229c626266ef504f64ea6108be77a627a1b1b5af4ebe",
+    "primitive_trace_agent": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+    "primitive_trace_script": "5d6ee2239af8f63cb05e7be5569e6e5d371a3540c22eb821bbf7506304506c8c",
+    "candidate_test": "554ca39d492a6ce809d1f1684de5152238ae58b5bc591f3b1502c29bf30d418f",
+    "kernel_source": "4a6d2ee09621f2d722212cc395b170569959637be799ece3df107a7f09de4206",
+    "profile_suite": "6bbd2cd8915c7ec5ba4eb18eee470cb0e261e15059cfb9ae7d63086101b35207",
+    "profile_kernel": "f9717a3b84345d1cb530fbe5f6e578d57192ab37e92d158df7df2e2bb24ecd2c",
+    "profile_marker": "cc4cff9fb2044f80688c314ea07e6746f137b07ea37ae4cbe2f84de69cabd0dc",
+    "profile_copy": "a473c32e8f73ea46f13394f624de2575ed346bae603fac383e4953051e9dccae",
+    "profile_comparison": "9bbae91eb9f35084b03a8a4b58f12e9c7b712af310176fa56506dcf7a30ab289"
+  }
+}
