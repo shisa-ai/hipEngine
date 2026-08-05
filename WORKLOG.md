@@ -203638,3 +203638,32 @@ Vulkan local sizes verbatim will close the measured gap.
   the Strix Halo review, benchmark diagnostic rollup, and changelog. Raw traces
   and fork logs remain under `/tmp/hipengine-sh-c0-20260805/` and
   `/tmp/hipengine-nathan-sh-c0-perf/`.
+
+## 2026-08-05 — Audit the SH-M1 1,024-row screen
+
+- Trace the exact SH-C0 construction path before changing policy. The GGUF
+  resident session resolves the generic `PrefillConfig` without a target-arch
+  argument, so current 4K/32K/64K publication uses linear/MoE/post/RoPE chunks
+  of 1,024 and a full-attention query chunk of 4,096. `_prefill_scratch_rows()`
+  sizes the one shared bulk owner to the maximum layer chunk, explaining the
+  measured 4,096-row **1.756-1.818 GiB** allocation. The later PARO-only gfx1151
+  256-row architecture profile is not active in this GGUF session and must not
+  be silently folded into the memory A/B.
+- The production runner and `scripts/qwen35_gguf_bench.py` already expose the
+  required exact control. SH-M1 can hold linear/MoE/post/RoPE at 1,024 and vary
+  only `full_attn_query_chunk_size=4,096 -> 1,024`; no new kernel, dispatch
+  branch, or runtime ABI is needed for the first screen. Explicitly setting all
+  five fields is mandatory because any one non-zero manual field disables the
+  auto policy; setting only the query field would accidentally leave the other
+  layers unchunked.
+- Existing tiny-model chunk coverage proves only an 8-row/4-row KL check. It is
+  insufficient for promotion. Add a fail-closed SH-M1 A/B that verifies exact
+  full-model prefill logits/trajectory and resolved scratch rows, then run fresh
+  right-sized one-warmup/three-measurement processes under the 10-ms whole-GTT
+  sampler. The binding promotion gate remains exact state, decode neutrality,
+  at least **1.0 GiB** lower 4K+ tracked peak, and no more than **1%** prefill
+  loss at 512/4K/32K/64K.
+- Do not treat the 2026-06 gfx1100/Q4_K_S 2,048-row rejection as this screen: it
+  used a different GPU, quant file, and pre-head-major runtime and changed the
+  final token. It remains cautionary correctness evidence, while the review
+  explicitly admits the later gfx1151/Q4_K_M 1,024-row experiment.
