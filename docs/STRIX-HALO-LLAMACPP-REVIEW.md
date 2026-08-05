@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **campaign recertified and closed:** 2026-08-06
+**Reviewed:** 2026-08-04; **campaign recertified and closed:** 2026-08-06; **post-closure parity continuation launched:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -500,6 +500,90 @@ shapes, and GTT sampling align, while KV dtype, timing owner, and a shared
 cross-engine token/logit oracle do not. Complete commands, samples, role
 resources, raw hashes, and qualifications are in
 [`2026-08-06-gfx1151-gguf-sh-g-final-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json).
+
+## Campaign 3: post-SH-G beat-fork continuation
+
+SH-G remains closed: every package declared in Campaign 2 was decided and its
+final production matrix is immutable evidence. The higher-level thread objective
+is different, however: **beat the pinned fork**, not merely finish those six
+packages. Because SH-G measured zero decode and zero whole-GTT wins, that
+objective remains active. This continuation does not reopen SH graph, compact-KV,
+page-head, or individual byte-neutral schedule ladders; it selects only
+structurally new ownership with enough measured Amdahl.
+
+### Residual gap and admitted decode owner
+
+| Context | hipEngine / fork F16 ms/token | F16 gap | gap to C1 | whole-GTT gap |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 18.711 / 15.477 | **3.233 ms** | **1.518 ms** | **1.085 GiB** |
+| 4K | 17.820 / 15.985 | **1.835 ms** | **0.812 ms** | **0.987 GiB** |
+| 32K | 21.510 / 18.785 | **2.725 ms** | **1.247 ms** | **0.804 GiB** |
+| 64K | 25.157 / 21.888 | **3.269 ms** | **1.583 ms** | **0.696 GiB** |
+
+The only unclosed exact decode family with sufficient scope is a new **mixed-T16
+selected-MoE producer/consumer composite**. Final selected Q4 gate/up, selected
+down, and router/combine own about **4.689 ms/token** at 512. Closing C1 from
+that owner alone requires approximately **1.479x/1.209x/1.362x/1.510x** at
+512/4K/32K/64K. This is P10.D1: retain Q4T16 gate/up and Q5T16/Q6T16 down bytes,
+publish the exactly rounded SiLU intermediate, then let an output-tiled stage
+replay the current down and route-weight reduction orders. It is not the existing
+raw-Q4 megakernel: that body accepts neither the deployed mixed quant/layout nor
+enough c1 blocks.
+
+A leaf must preserve the unfused registered fallback, match its complete BF16
+outputs, run under the expected cached symbol without spills, and reach at least
+**1.15x** or project **0.5 ms/token** before full-model routing. A retained exact
+sub-window win is still kept under project policy even if it does not alone reach
+C2; cumulative attribution then selects another structurally new owner rather
+than ending the objective.
+
+### Residual memory arithmetic
+
+The final allocation census identifies `root.token_embedding` as the complete
+**540,344,320-byte / 0.503 GiB raw-Q8** family. Ideal removal would still leave
+hipEngine **0.582/0.484/0.301/0.193 GiB** above fork F16 whole-GTT at
+512/4K/32K/64K, so embedding offload alone cannot claim parity. The existing
+host-copy diagnostic is exact but disables device-token-fed graphs; its old
+11.1-tok/s gfx1100 128K result is a blocker, not current gfx1151 evidence. The
+current machine also has an **8 MiB soft and hard memlock limit**, so registering
+the full 0.503-GiB table as mapped host memory is not admitted and this campaign
+will not change system limits silently.
+
+The legitimate same-file stack is therefore:
+
+1. re-screen the existing exact host-copy path on current gfx1151 against both
+   the admitted graph and eager c1 owners, with exact state and same-scope GTT;
+2. attribute and eliminate overlap among active, prefill-only, decode-only, and
+   never-used loaded code objects, but continue only if at least **0.49 GiB** is
+   measurably phase-exclusive at 512/4K; and
+3. separately extend SH-M2's interval coloring to the 768-row short owner. The
+   4,096-row alias map projects **157,138,758 bytes / 0.146 GiB** at 768 rows,
+   but that projection is not a result and must pass its own exact/performance
+   gate.
+
+No host embedding route is promoted if prefill or decode loses more than 1%, if
+production graph-class behavior regresses, or if c>N/unsupported sessions lose
+the device-resident fallback. No library unloading/lazy-load change proceeds
+without cached-build, module-lifecycle, complete prefill/decode, and teardown
+evidence.
+
+### Ordered continuation packages
+
+| ID | Experiment | Continuation / stop rule |
+| --- | --- | --- |
+| **SH2-C0** | Post-SH-G role, allocation, graph, and closed-frontier audit. | **Complete.** The table above and the compact audit artifact freeze the residual owners; no production change. |
+| **SH2-M1** | Current-gfx1151 exact c1 host-embedding matrix: device graph, device eager, existing host-copy eager, tracked and whole-GTT. | Continue only with exact state, approximately 0.503-GiB real GTT saving, and <=1% prefill/decode loss. Full-table mapped work remains blocked unless the human changes the 8-MiB hard limit outside this campaign. |
+| **SH2-M2** | Phase-resolved code-object/library GTT census, then bounded lazy/deferred ownership if sufficient. | Require >=0.49-GiB phase-exclusive headroom before implementation; no compiler in measured processes, no unsafe `dlclose`, and exact lifecycle/performance gates. |
+| **SH2-M3** | 768-row owner-slot map with dedicated fallback. | Require exact complete state, projected ~0.146-GiB recovery to be measured, clean teardown, and <=1% prefill/decode loss; reject arena-style address coupling. |
+| **SH2-D1** | P10.D1 mixed Q4T16 -> Q5/Q6T16 output-tiled selected-MoE composite. | CPU/unfused byte oracle, actual-weight leaf, named cached trace, no spills, >=1.15x or >=0.5-ms/token projection before model routing, then the four-depth exact gate. |
+| **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | If any C2 or whole-GTT row is still missing, schedule the next structurally new owner. Never relabel a closed Campaign-2 retry as new work. |
+| **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | Mark the thread objective complete only when the declared beat-fork policy passes; otherwise return to SH2-C1. |
+
+The audit is frozen in
+[`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).
+`python3 scripts/check_lineage.py --kind kernel --diff stat` is currently blocked
+because the read-only Atlas reference path is absent. That tooling failure must
+be recorded for SH2-D1 and is not a green lineage verdict.
 
 ### Cumulative decode targets
 
