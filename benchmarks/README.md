@@ -5514,6 +5514,28 @@ snapshot Conv. Retain only the measured primitive. Canonical **60.262 tok/s /
 2.4991x own AR / 11.49% below Vulkan** is unchanged. Artifact:
 [`2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json).
 
+#### Qwen3.6-27B dependent alpha/beta-to-GDN primitive, runtime rejected
+
+Correctness commit `4e6c8e21d` and producer-locality repair `648cd4bf0` add a
+gfx1100-only per-V-head owner for both K5,120/N48 dense-F32 projections plus
+the rollback-safe chain GDN and Q5T16 BF16 handoff. The repaired local256 body
+stages four per-head Conv Q/K/V slices in 17,920 B of dynamic LDS before the
+projection scan. Rows1-4 preserve alpha, beta, every recurrent journal and
+initial snapshot bit, FP32 output, and BF16 handoff; CPU KL/top-1 gates pass.
+GPU1 event screens improve **1.2958x/1.1657x/1.0893x/1.0360x**, with **21/21**
+wins per row count, and the complete routed W7900 B1-B3 transaction is exact.
+
+The final tracked-clean current-clock W7900 profile fails its frozen compound
+gate. The three-leaf family moves **1,008 / 20.613994 ms -> 336 / 21.480201 ms
+(+4.202%)** despite removing **672** target/complete dispatches. Target host and
+complete marked wall improve **3.179%/2.440%**, but target/complete kernel sums
+regress **0.351%/0.268%**. Generic dispatch and runner ownership are removed
+before natural25/populated AR; production again uses two scalar projections,
+snapshot Conv, and snapshot+cast GDN. Post-unroute coverage passes **129/129**.
+Retain only the measured primitive; canonical **60.262 tok/s / 2.4991x own AR /
+11.49% below Vulkan** is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
