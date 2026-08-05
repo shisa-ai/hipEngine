@@ -671,12 +671,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
             "HIPENGINE_GGUF_DECODE_REPACK": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
-            "HIPENGINE_GGUF_Q6_PLANAR_Q8_1": os.environ.get(
-                "HIPENGINE_GGUF_Q6_PLANAR_Q8_1"
-            ),
-            "HIPENGINE_GGUF_Q6_X8_C1_SIDECAR": os.environ.get(
-                "HIPENGINE_GGUF_Q6_X8_C1_SIDECAR"
-            ),
             "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD"),
         },
         build_profile="qwen36_dense_gguf_ar_mtp_suite",

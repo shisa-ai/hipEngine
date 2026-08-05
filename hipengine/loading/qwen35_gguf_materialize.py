@@ -57,7 +57,6 @@ HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_X8"
 HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV = "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"
 HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV = "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"
-HIPENGINE_GGUF_Q6_X8_C1_SIDECAR_ENV = "HIPENGINE_GGUF_Q6_X8_C1_SIDECAR"
 
 
 @dataclass(frozen=True)
@@ -491,18 +490,6 @@ def gguf_lm_head_q6_x8_sidecar_enabled(value: bool | str | None = None) -> bool:
     return raw.strip().lower() not in {"", "0", "false", "off", "no"}
 
 
-def gguf_q6_x8_c1_sidecar_enabled(value: bool | str | None = None) -> bool:
-    """Return whether qualified wide planar-Q6 residents keep an X8 c1 sidecar."""
-
-    if value is None:
-        raw = os.environ.get(HIPENGINE_GGUF_Q6_X8_C1_SIDECAR_ENV, "")
-    elif isinstance(value, bool):
-        raw = "1" if value else ""
-    else:
-        raw = str(value)
-    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
-
-
 def plan_qwen35_gguf_weight_spec(
     slot_path: str,
     tensor: GGUFTensorInfo,
@@ -674,9 +661,6 @@ def _spec_for_tensor(
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
         if decode_repack and _is_wide_rank2_q6_t16_tensor(slot_path, tensor):
-            keep_x8_c1_sidecar = (
-                dense_q6_qmicro_planar and gguf_q6_x8_c1_sidecar_enabled()
-            )
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
                 source=tensor,
@@ -690,9 +674,7 @@ def _spec_for_tensor(
                     if dense_q6_qmicro_planar
                     else LAYOUT_GGUF_Q6_K_T16
                 ),
-                allocation_names=(
-                    ("tiles", "x8") if keep_x8_c1_sidecar else ("tiles",)
-                ),
+                allocation_names=("tiles",),
             )
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
             if _gguf_selected_down_raw_enabled_for("q6") and _is_selected_down_expert_tensor(slot_path, tensor):
@@ -1053,10 +1035,7 @@ def _materialize_spec(
             )
         }
         if "x8" in spec.allocation_names:
-            if spec.layout not in {
-                LAYOUT_GGUF_Q6_K_T16,
-                LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
-            }:
+            if spec.layout != LAYOUT_GGUF_Q6_K_T16:
                 raise ValueError("X8 sidecar is only supported for Q6_K T16 residents")
             x8_packed = repack_gguf_q6_k_x8(raw if raw.ndim == 3 else raw[None, ...])
             x8_tiles = x8_packed.tiles[0] if raw.ndim == 2 else x8_packed.tiles
@@ -1129,7 +1108,6 @@ __all__ = [
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",
     "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV",
     "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV",
-    "HIPENGINE_GGUF_Q6_X8_C1_SIDECAR_ENV",
     "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV",
     "HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV",
     "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV",
@@ -1156,7 +1134,6 @@ __all__ = [
     "audit_qwen35_gguf_precision_contractions",
     "gguf_decode_repack_enabled",
     "gguf_lm_head_q6_x8_sidecar_enabled",
-    "gguf_q6_x8_c1_sidecar_enabled",
     "gguf_q8_0_raw_sidecar_all_enabled",
     "gguf_q8_0_raw_sidecar_enabled",
     "gguf_selected_down_raw_enabled",

@@ -14,27 +14,24 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## Qwen3.6 planar-Q6 Q8_1 scalar-dot candidate
+## Qwen3.6 planar-Q6 Q8_1 scalar-dot diagnostic — closed
 
-- Added 2026-08-06 as default-off
-  `HIPENGINE_GGUF_Q6_PLANAR_Q8_1` while the quality-gated wide-Q6 route moves
-  through W7900 transaction/profile/category admission. It reuses the sole
-  planar-qmicro resident bytes and the existing Q8_1 workspace; rows above
-  four, unsupported shapes/backends, registry misses, and explicit zero retain
-  the exact T16/WMMA path.
-- The planar-only category gate improves B1/B2/B3 but rejects AR because its c1
-  component rotates 56 weights / 3.372 GB rather than reusing one cache-hot
-  matrix. `HIPENGINE_GGUF_Q6_X8_C1_SIDECAR=1` is therefore a second default-off
-  materialization seam: exactly 32 FFN-down and 24 QKV planar residents retain
-  an equal-size X8 c1 sidecar (**3,371,827,200 bytes / 3.140 GiB**), while planar
-  remains the exact WMMA and rows2-4 owner.
-- If the sidecar's matched W7900 transaction/category or populated-AR gate does
-  not beat exact-zero AR and retain the B1-B3 gains, remove the X8 allocations,
-  env helper, dense-sidecar registry key, and adapter candidate together. If it
-  promotes, retain the exact planar fallback and explicit-zero selector through
-  one later regression/bisection cycle, then collapse the runtime flag. Remove
-  duplicate residency only after an X8 prefill consumer passes the exact
-  512/4096 gate, or a planar c1 body matches the rotating-cache X8 result.
+- The registered planar-Q6/Q8_1 projection/residual primitive remains as
+  correctness and hardware evidence: its W7900 profile cuts the qualified
+  rows1-4 family **46.900 -> 40.992 ms (-12.60%)**, and the full category gate
+  improves B1/B2/B3 **1.875%/1.106%/2.315%**. It is not a production owner
+  because true AR regresses **23.271 -> 21.821 tok/s (-6.235%)**.
+- A cache-representative X8 c1 rescue wins its 56-weight component loop
+  **6.269 -> 5.803 ms (1.080x)** on W7900, but adds **3,371,827,200 bytes / 3.140
+  GiB**. The binding same-commit one-prompt gate improves B3 **65.896 -> 67.592
+  tok/s (+2.573%)** while regressing AR **24.194 -> 22.533 tok/s (-6.867%)**.
+- Runtime ownership and `HIPENGINE_GGUF_Q6_PLANAR_Q8_1` were removed after that
+  rejection. The X8 allocation, helper, registry key, adapter candidate, tests,
+  and `HIPENGINE_GGUF_Q6_X8_C1_SIDECAR` were removed together. Retain only the
+  planar registered leaf, generic q8-input adapter, and focused diagnostics;
+  reopen production only for a byte-neutral/sole-resident c1 representation
+  that preserves transaction-consistent rows2-4 arithmetic and wins AR.
+  Artifact: `benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json`.
 
 ## Qwen3.6 shared-cache verifier KV batch primitive
 

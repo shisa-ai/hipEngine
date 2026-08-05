@@ -872,62 +872,6 @@ def down_residual_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
 
 
 @pytest.fixture
-def q6_planar_q8_1_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
-    """Count qualified X8-c1 and planar rows2-4 Q6/Q8_1 ownership."""
-
-    keys = {
-        "x8_projection": KernelKey(
-            "hip_gfx1100",
-            "linear_q8_1",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "x8_sidecar_q8_1_dp4a_gemv_bf16_bf16_out",
-        ),
-        "projection": KernelKey(
-            "hip_gfx1100",
-            "linear_q8_1",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "t16_q8_1_dp4a_gemv_bf16_bf16_out",
-        ),
-        "residual": KernelKey(
-            "hip_gfx1100",
-            "linear_q8_1+residual",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out",
-        ),
-    }
-    originals = {
-        name: resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-        for name, key in keys.items()
-    }
-    calls: dict[str, list[tuple[int, int, int]]] = {
-        "x8_projection": [],
-        "projection": [],
-        "residual": [],
-    }
-
-    def counted(name: str, indices: tuple[int, int, int]):
-        def wrapper(*args, **kwargs):
-            calls[name].append(tuple(int(args[index]) for index in indices))
-            return originals[name](*args, **kwargs)
-
-        return wrapper
-
-    register(keys["x8_projection"], counted("x8_projection", (3, 4, 5)), replace=True)
-    register(keys["projection"], counted("projection", (3, 4, 5)), replace=True)
-    register(keys["residual"], counted("residual", (4, 5, 6)), replace=True)
-    try:
-        yield calls
-    finally:
-        for name, key in keys.items():
-            register(key, originals[name], replace=True)
-
-
-@pytest.fixture
 def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
     """Count exact dense rounded-add plus next-input RMSNorm ownership."""
 
@@ -959,7 +903,6 @@ def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
-    monkeypatch: pytest.MonkeyPatch,
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_f32_pair_calls: list[tuple[int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
@@ -972,14 +915,11 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
     q4_single_rowtile_calls: dict[str, list[tuple[int, int, int]]],
     down_residual_calls: dict[str, list[tuple[int, int, int]]],
-    q6_planar_q8_1_calls: dict[str, list[tuple[int, int, int]]],
     rounded_next_rms_calls: list[tuple[int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
-    monkeypatch.setenv("HIPENGINE_GGUF_Q6_PLANAR_Q8_1", "1")
-    monkeypatch.setenv("HIPENGINE_GGUF_Q6_X8_C1_SIDECAR", "1")
-    _require_free_vram(36.0)
+    _require_free_vram(32.0)
     prompt = (9707, 9707, 9707, 9707)
     require_cached = os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1"
     with Qwen35GGUFResidentSession(
@@ -1393,42 +1333,6 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for calls in q5_t16_ssm_out_calls.values()
         for _, in_features, out_features in calls
     } == {(6_144, 5_120)}
-    assert q6_planar_q8_1_calls["x8_projection"]
-    assert q6_planar_q8_1_calls["projection"]
-    assert q6_planar_q8_1_calls["residual"]
-    assert {
-        (in_features, out_features)
-        for _rows, in_features, out_features
-        in q6_planar_q8_1_calls["x8_projection"]
-    } == {(5_120, 10_240), (17_408, 5_120)}
-    assert {
-        rows for rows, _, _ in q6_planar_q8_1_calls["x8_projection"]
-    } == {1}
-    assert {
-        (in_features, out_features)
-        for _rows, in_features, out_features
-        in q6_planar_q8_1_calls["projection"]
-    } == {(5_120, 10_240), (17_408, 5_120)}
-    assert {
-        rows
-        for calls in (
-            q6_planar_q8_1_calls["x8_projection"],
-            q6_planar_q8_1_calls["projection"],
-        )
-        for rows, in_features, out_features in calls
-        if (in_features, out_features) == (5_120, 10_240)
-    } == {1, 2, 3, 4}
-    assert {
-        rows
-        for calls in q6_planar_q8_1_calls.values()
-        for rows, in_features, out_features in calls
-        if (in_features, out_features) == (17_408, 5_120)
-    } == {1, 2, 3, 4}
-    assert {
-        (in_features, out_features)
-        for rows, in_features, out_features
-        in q6_planar_q8_1_calls["residual"]
-    } == {(17_408, 5_120)}
     assert not chain_journal_calls["conv"]
     assert not chain_journal_calls["gdn_unfused"]
     assert not chain_journal_calls["gdn_fused"]
@@ -1487,12 +1391,14 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert {rows for rows, _hidden in rounded_next_rms_calls} == {2, 4}
     assert {hidden for _rows, hidden in rounded_next_rms_calls} == {5_120}
     assert down_residual_calls["q4"]
-    assert not down_residual_calls["q6"]
+    assert down_residual_calls["q6"]
     assert {rows for rows, _, _ in down_residual_calls["q4"]} == {2, 3, 4}
-    assert {
-        (in_features, out_features)
-        for _, in_features, out_features in down_residual_calls["q4"]
-    } == {(17_408, 5_120)}
+    assert {rows for rows, _, _ in down_residual_calls["q6"]} == {2, 3}
+    for calls in down_residual_calls.values():
+        assert {
+            (in_features, out_features)
+            for _, in_features, out_features in calls
+        } == {(17_408, 5_120)}
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:

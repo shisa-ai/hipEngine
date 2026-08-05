@@ -1,0 +1,221 @@
+{
+  "schema": 1,
+  "status": "rejected_runtime_removed_diagnostic_primitive_retained",
+  "performance_claim": false,
+  "performance_claim_scope": "Rejected W7900 planar-Q6/Q8_1 rows1-4 route and its X8-c1 sidecar rescue; component and profile improvements are diagnostic only because both complete-path designs regress true AR.",
+  "correctness_claim": true,
+  "correctness_scope": "GPU1 CPU/X8/residual oracle, registered dispatch, W7900 B1-B3 transaction, natural token identity and B3 acceptance identity, memory teardown, and focused post-removal regression gates.",
+  "kind": "qwen36_27b_gguf_planar_q6_q8_1_runtime_rejection",
+  "timestamp": "2026-08-06T05:18:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "canonical_gpu_index": 0,
+    "canonical_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100"
+  },
+  "software": {
+    "planar_primitive_commit": "0f6e48658",
+    "dispatch_memoization_commit": "6155ec470",
+    "sidecar_candidate_commit": "e7c0edecae08e8bb2821ba640901b69f684b500d",
+    "measurement_tree_clean": true,
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "qualified_weights": 56,
+    "qualified_weight_counts": {
+      "ffn_down": 32,
+      "attn_qkv": 24
+    },
+    "qualified_shapes": [
+      {
+        "in_features": 17408,
+        "out_features": 5120,
+        "threads": 256
+      },
+      {
+        "in_features": 5120,
+        "out_features": 10240,
+        "threads": 64
+      }
+    ],
+    "planar_route": "Q8_1 activation quantization plus planar-Q6 sudot4 at rows1-4; exact planar-Q6 WMMA retained for larger rows.",
+    "sidecar_rescue": "Equal-size X8 Q6 sidecar at c1 plus planar-Q6/Q8_1 rows2-4, preserving transaction-consistent X8 arithmetic.",
+    "sidecar_bytes": 3371827200,
+    "sidecar_gib": 3.1402587890625,
+    "prompt_conditioned": false
+  },
+  "correctness": {
+    "component_quality": {
+      "max_kl": 9.70672598593267e-06,
+      "top1_matches": 54,
+      "rows": 56,
+      "top1_agreement": 0.9642857142857143,
+      "project_gate_pass": true
+    },
+    "planar_leaf": "GPU1 c1/rows2-4 across both actual wide shapes and local64/128/256 has zero X8-output bit mismatches, 20/20 top-1, and max KL 1.00e-5; residual sibling preserves the approximate projection-plus-BF16-add boundary.",
+    "sidecar_dense_entry": "Selector-free dense Q6X8 c1 entry is BF16-bit identical to the selected-X8 oracle; cached rocprof names gguf_x8_selected_q8_1_dp4a_gemv_kernel<unsigned short, 6, true> at 3.720 us, local64, VGPR72, LDS512 B, scratch0.",
+    "transaction": "W7900 B1-B3 logits, GPU/CPU acceptance, reject/partial/full commit, forced rollback, correction, dynamic graph reuse, provider output, 36-GiB lifecycle, ownership census, and teardown passed before performance admission.",
+    "directional_identity": {
+      "true_ar_tokens_exact": true,
+      "mtp_tokens_exact": true,
+      "accepted_counts_exact": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "memory_after_close_zero": true
+    }
+  },
+  "performance": {
+    "planar_rows1_4_profile_w7900": {
+      "protocol": "Tracked-clean one-prompt natural25 B3 rocprofv3 kernel/marker/copy profile; explicit zero versus one.",
+      "qualified_family_ms": {
+        "control": 46.9,
+        "candidate": 40.991,
+        "delta_percent": -12.5991
+      },
+      "target_host_ms": {
+        "control": 363.42,
+        "candidate": 346.211,
+        "delta_percent": -4.7352
+      },
+      "complete_marker_ms": {
+        "control": 448.975,
+        "candidate": 431.487,
+        "delta_percent": -3.8951
+      },
+      "profiled_tok_s": {
+        "control": 53.449,
+        "candidate": 55.616,
+        "delta_percent": 4.0543
+      }
+    },
+    "planar_rows1_4_full_category_w7900": {
+      "protocol": "Tracked-clean same-commit ten-prompt natural25 true AR plus B1-B3; all code/general_en/general_ja/mixed_ja_en train and heldout categories.",
+      "true_ar_tok_s": {
+        "control": 23.271467705795658,
+        "candidate": 21.820547198288647,
+        "delta_percent": -6.234761493559193
+      },
+      "b1_tok_s": {
+        "control": 43.96295953418111,
+        "candidate": 44.787747630173655,
+        "delta_percent": 1.8760977530442924
+      },
+      "b2_tok_s": {
+        "control": 55.48696708656676,
+        "candidate": 56.10056203982535,
+        "delta_percent": 1.1058361728463195
+      },
+      "b3_tok_s": {
+        "control": 60.26269373993654,
+        "candidate": 61.658358045743384,
+        "delta_percent": 2.315967340971903
+      },
+      "true_ar_tokens_exact": true,
+      "mtp_tokens_exact": true,
+      "b3_acceptance_exact": true
+    },
+    "rotating_x8_c1_component": {
+      "protocol": "All 56 production weights, one Q8_1 activation quantizer per weight, 20 warmup pairs and 21 counterbalanced HIP-event samples.",
+      "gpu1": {
+        "control_us": 5282.722949981689,
+        "candidate_us": 4716.917991638184,
+        "speedup": 1.1199522568224685,
+        "candidate_wins": 21
+      },
+      "w7900": {
+        "control_us": 6269.381046295166,
+        "candidate_us": 5803.136825561523,
+        "speedup": 1.0803434822835714,
+        "candidate_wins": 21
+      }
+    },
+    "sidecar_directional_gate_w7900": {
+      "protocol": "Tracked-clean same-commit code_merge_intervals natural25 true AR plus B3; one run; explicit zero/zero versus planar-one/sidecar-one.",
+      "true_ar_tok_s": {
+        "control": 24.19448773549123,
+        "candidate": 22.5330010727692,
+        "delta_percent": -6.867211576812071
+      },
+      "b3_tok_s": {
+        "control": 65.89623521598108,
+        "candidate": 67.5917645608943,
+        "delta_percent": 2.5730291561512963
+      },
+      "proposal_ms": {
+        "control": 65.62881544232368,
+        "candidate": 64.31512534618378,
+        "delta_percent": -2.0016971010156537
+      },
+      "target_verify_ms": {
+        "control": 291.1093719303608,
+        "candidate": 283.46405271440744,
+        "delta_percent": -2.6262703825908673
+      },
+      "peak_allocated_bytes": {
+        "control": 32723587314,
+        "candidate": 36095414514,
+        "delta_bytes": 3371827200
+      }
+    }
+  },
+  "decision": {
+    "action": "reject_runtime_and_remove_sidecar",
+    "reason": "Both transaction-consistent c1 designs improve B3 but regress true AR by more than 6%. The sidecar also adds 3.140 GiB. The frozen gate requires both AR and B3 to improve, so the full sidecar category and populated-AR runs are intentionally skipped.",
+    "code_outcome": "Exact planar Q6 remains the production owner. Removed dense-runner planar-Q8 ownership and selector provenance; removed the X8 allocation/helper/registry/adapter seam and all sidecar tests. Retained the registered planar projection/residual primitive, generic q8-input adapter, dispatch memoization, and focused diagnostic fixtures.",
+    "resume_condition": "A byte-neutral or sole-resident c1 representation that preserves transaction-consistent rows2-4 arithmetic and beats true AR, or a materially new hardware primitive/algorithm. Do not repeat the closed planar or duplicate-X8 layouts."
+  },
+  "post_removal_validation": {
+    "parent_equivalence": "Dense runner and W7900 transaction fixture match 0f6e48658^ exactly; sidecar implementation/test files match e7c0edeca^ exactly.",
+    "python_compile": "passed",
+    "gpu1_planar_dispatch_mapping_bundle": {
+      "passed": 89,
+      "skipped": 4
+    },
+    "runner_target_graph_bundle": {
+      "passed": 30,
+      "skipped": 9
+    }
+  },
+  "sources": {
+    "planar_full_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-11ea2a587/natural25-q6-planar-q8-1-comparison.json",
+      "sha256": "5993deaa467f3f97b7971da4007345f29026f94162e6cd6fe952909bfbd4a7a9"
+    },
+    "profile_control_summary": {
+      "path": "/tmp/hipengine-qwen36-27b/final-0f6e48658/profile-native-q6-planar-q8-1-control-mtp-b3-hermetic/summary.json",
+      "sha256": "4f1212675ebb0a64b50634fd4a5bdef4c718cfd2253f7ebc71700dbd307edccb"
+    },
+    "profile_candidate_summary": {
+      "path": "/tmp/hipengine-qwen36-27b/final-0f6e48658/profile-native-q6-planar-q8-1-candidate-mtp-b3-hermetic/summary.json",
+      "sha256": "9cbb1cf4d9db5711f22bcd373916c27e8e5bf3270e50066eaed7448e6f350239"
+    },
+    "rotating_gpu1": {
+      "path": "/tmp/qwen36-q6-x8-q8-rotating-c1-gpu1.json",
+      "sha256": "b908a02a48bb55ac558fde58c70a96e97121a450d299c472687239b641f06c3c"
+    },
+    "rotating_w7900": {
+      "path": "/tmp/qwen36-q6-x8-q8-rotating-c1-w7900.json",
+      "sha256": "dc9f53a9345f852e107208ca21364085663e79efcb932e61149b2db4e652bc7b"
+    },
+    "directional_control": {
+      "path": "/tmp/hipengine-qwen36-27b/final-e7c0edeca/oneprompt-q6-q8-x8-c1-control-b3.json",
+      "sha256": "6ef244d045b7659f7e299f4b43dd2077eacb2918fea7eb9fef8b2f21d7777751"
+    },
+    "directional_candidate": {
+      "path": "/tmp/hipengine-qwen36-27b/final-e7c0edeca/oneprompt-q6-q8-x8-c1-candidate-b3.json",
+      "sha256": "a97e5f13c9b1baad1037ba75a65919d68ff30f324ad697d4c406b5ec516b0886"
+    }
+  }
+}
