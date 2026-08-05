@@ -1319,12 +1319,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
-    assert dense_f32_pair_calls
-    assert {rows for rows, _, _ in dense_f32_pair_calls} == {1, 2, 3, 4}
-    assert {
-        (in_features, out_features)
-        for _, in_features, out_features in dense_f32_pair_calls
-    } == {(5_120, 48)}
+    # The exact dense alpha/beta pair remains registry-accessible but is not a
+    # production owner after its W7900 complete marked-wall gate regressed.
+    assert not dense_f32_pair_calls
     assert not dense_virtual256_rowtile_calls
     assert q5_t16_ssm_out_calls["decode"]
     assert {rows for rows, _, _ in q5_t16_ssm_out_calls["decode"]} == {1}

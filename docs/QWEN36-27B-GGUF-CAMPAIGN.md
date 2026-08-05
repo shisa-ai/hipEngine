@@ -1465,8 +1465,24 @@ writes; retain only the exact measured primitive. The canonical physical
 default remains `fda35418e` and the headline remains **60.262 tok/s / 11.49%
 below Vulkan**. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json`.
+
+The next dense-F32 alpha/beta pair is also retained only as an exact primitive.
+Its gfx1100 key combines the two same-input K5,120/N48 projections; rows1-3 use
+one flat pair grid and row4 uses two rows/block. All 48 real weight pairs are
+scalar-BF16-bit exact at rows1-4 and improve GPU1 48-layer medians
+**1.771x/1.786x/1.837x/1.560x**, with **21/21** wins each. The routed W7900
+B1-B3 transaction remains exact and observes only rows `{1,2,3,4}`.
+
+Tracked-clean B3 profiling cuts the physical pair family **672 / 3.572950 ms ->
+336 / 2.802259 ms (-21.57%)**, removes **336** target/complete dispatches, and
+improves target/complete kernel sums **0.140%/0.086%**. The frozen complete-path
+gate fails because target host and complete marked wall regress **0.201%/0.189%**.
+Do not run natural25 or populated AR. Remove generic pair dispatch ownership and
+restore the two scalar leaves; retain only the measured primitive. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json`.
+
 Re-rank the refreshed scalar-write baseline rather than reopening a closed
-arithmetic family or treating the rejected 336-dispatch projection as savings.
+arithmetic family or treating either rejected 336-dispatch projection as savings.
 
 ---
 
@@ -1481,8 +1497,8 @@ arithmetic family or treating the rejected 336-dispatch projection as savings.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default, while exact shared-KV batching is primitive-only after target host/complete marked wall regress 1.405%/2.786%; canonical 43.792/55.254/60.262 tok/s unchanged |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank the scalar-write trace after rejecting the 336-dispatch KV batch default |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default; shared-KV and dense-F32 alpha/beta batching are primitive-only after each removes 336 dispatches but fails complete marked wall; canonical 43.792/55.254/60.262 tok/s unchanged |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank the scalar-write trace without counting either rejected 336-dispatch projection |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
