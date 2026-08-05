@@ -203667,3 +203667,33 @@ Vulkan local sizes verbatim will close the measured gap.
   used a different GPU, quant file, and pre-head-major runtime and changed the
   final token. It remains cautionary correctness evidence, while the review
   explicitly admits the later gfx1151/Q4_K_M 1,024-row experiment.
+
+## 2026-08-05 — Assess ROCm.AI for hipEngine
+
+- Review the ROCm.AI landing page and the linked Core SDK 7.14, AMD Skills,
+  Hyperloom, library, profiling, quantization, deployment, and developer
+  offerings against hipEngine's gfx1100/gfx1151 targets, torch-free runtime,
+  plugin registry, kernel ABI, and benchmark evidence policy. Prefer AMD/ROCm
+  documentation and repositories, and record moving-repository `HEAD` values
+  for the agentic/kernel projects inspected.
+- Publish `docs/ROCM-AI.md` as the source-backed decision record. The immediate
+  recommendations are version-complete TheRock manifests, direct hipBLASLt
+  offline-tuning experiments, deeper cached-child `rocprofv3` evidence, and
+  AMD SMI metadata. Bounded pilots are TraceLens ROCprof analysis, AITER Opus
+  device-only compilation, ROCm Systems Profiler host-gap attribution, and a
+  Quark importer fixture.
+- Keep AITER/CK/rocWMMA target-qualified and experimental on gfx11; do not add
+  AITER as a runtime dependency. Reject current end-to-end Hyperloom and broad
+  AMD Skills installation because their validated hardware/framework contracts
+  do not match hipEngine. Keep vLLM/SGLang as exact-version external baselines,
+  not architecture templates or correctness oracles.
+- Read-only local inventory confirms a working gfx1151 development stack: HIP
+  7.15.0/AMD Clang 23, `rocprofv3` 1.3.2, AMD SMI 26.5.0, ROCm SDK wheel
+  `7.15.0a20260711`, and 120.00 GB visible GTT. This is environment inventory,
+  not a performance measurement; the reviewed public production baseline is
+  ROCm 7.14.0.
+- Docs-only validation: re-read the 954-line analysis end to end, resolve and
+  verify the TraceLens ROCprof path, verify every local Markdown target, probe
+  all 63 distinct external URLs (AMD product pages intermittently reject or
+  time out under automated `curl`; they were reviewed through the browser),
+  and run `git diff --check`. No GPU benchmark or performance claim is made.
