@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "status": "retained_exact_selective_launch_contraction_headline_unchanged",
+  "performance_claim": true,
+  "performance_claim_scope": "Exact GPU1 production-weight component measurements plus tracked-clean W7900 B3 marker/target-host launch contraction. The ten-prompt B1/B2 gains and mixed B3 packet are disclosed; the prior 60.262 tok/s broad headline is unchanged.",
+  "correctness_claim": true,
+  "correctness_scope": "Both fused producers preserve the existing projection BF16 rounding boundary and the subsequent FP32-add/BF16 rounding boundary bit-for-bit. Focused device, registry, fallback, backend, runner, and real W7900 B1-B3 transaction gates pass.",
+  "kind": "qwen36_27b_gguf_ffn_down_residual_fusion_w7900",
+  "timestamp": "2026-08-05T17:48:01+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "8e281f115722843bc5279cb4a0ae91fa00fc6053",
+    "selective_policy_commit": "4bbe8eef8061b171062d4cc8f9e0a4606458b5d8",
+    "baseline_commit": "82a7f869156dba0a40a4f355fcf9d40316e35fee",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Register two gfx1100 linear+residual composites for the retained planar-Q6 and compact-Q4T16 FFN-down rowtiles. Each producer rounds the projection to BF16 in-register, then performs the same BF16 residual read, FP32 add, and final BF16 rounding as the standalone add.",
+    "registry_keys": [
+      "linear+residual/gguf_q6_k_t16_qmicro_planar_v1/t16_gemv_rowtile_bf16_residual_bf16_out",
+      "linear+residual/gguf_q4_k_t16_v1/dense_rowtile_bf16_residual_bf16_out"
+    ],
+    "selected_rows": {
+      "gguf_q6_k_t16_qmicro_planar_v1": [2, 3],
+      "gguf_q4_k_t16_v1": [2, 3, 4]
+    },
+    "fallback": "The registered projection followed by gguf_bf16_add remains mandatory for c1, planar-Q6 row4+, FP32-residual diagnostics, WMMA, unsupported shapes/keys/allocations/backends, and every registry miss. gfx1151 deliberately has no composite alias.",
+    "persistent_bytes_delta": 0,
+    "workspace_bytes_delta": 0,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false,
+    "ar_reachable": false
+  },
+  "correctness": {
+    "gpu1_device_boundary": "All six Q6/Q4 rows2-4 fixtures are BF16-bit exact to the explicit retained projection plus standalone-add chain. Existing projection fixtures bind the CPU GGUF oracle; the new fixtures prove the added rounded residual boundary.",
+    "focused_bundle": "The adjacent Q4/Q6 kernel, generic dispatch, runner, backend, and registry bundle passes 262/262 after repairing unsupported-composite lazy-registration fallback.",
+    "w7900_transaction": "The cached B1/B2/B3 transaction passes reject/partial/full state, token IDs, acceptance, provider parity, rollback, graph reuse, and teardown. Ownership census observes Q4 rows 2/3/4 and Q6 rows 2/3 only at K17408/N5120.",
+    "natural25": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "token_ids_equal": true,
+      "acceptance_equal": true,
+      "accepted_proposed": {
+        "1": [115, 127],
+        "2": [151, 182],
+        "3": [169, 219]
+      },
+      "stage_reconciled": true,
+      "memory_after_close_current_bytes": 0
+    }
+  },
+  "component_screen": {
+    "protocol": "GPU1 actual blk.0 Q6_K and blk.8 Q4_K FFN-down weights at K17408/N5120; rows 2/3/4; 31 counterbalanced HIP-event samples with burst 10.",
+    "q6": {
+      "baseline_us": [118.172, 128.693, 131.341],
+      "candidate_us": [115.800, 125.008, 128.609],
+      "saved_us": [2.372, 3.684, 2.732],
+      "paired_wins": [26, 29, 23]
+    },
+    "q4": {
+      "baseline_us": [63.868, 65.712, 82.560],
+      "candidate_us": [59.944, 62.604, 80.424],
+      "saved_us": [3.924, 3.108, 2.136],
+      "paired_wins": [25, 28, 24]
+    },
+    "trace": {
+      "q6": "local128, VGPR 80/96/104, LDS 512 bytes, zero scratch, 9.48/11.84/18.00 us fixture durations",
+      "q4": "local32, VGPR 120/144/144, LDS 0, zero scratch, 14.32/11.12/12.76 us fixture durations"
+    }
+  },
+  "all_row_rejection": {
+    "commit": "8e281f115722843bc5279cb4a0ae91fa00fc6053",
+    "profile": {
+      "standalone_add_dispatches_removed": 448,
+      "complete_marker_delta_percent": -2.573,
+      "target_host_delta_percent": -2.446,
+      "complete_kernel_sum_delta_percent": 2.512,
+      "target_kernel_sum_delta_percent": 2.971,
+      "q6_row4_family_ms": {
+        "baseline": 32.831,
+        "candidate": 38.892,
+        "delta_percent": 18.46
+      }
+    },
+    "natural25": {
+      "b1_tok_s": [43.562736426605525, 43.714287474502555],
+      "b2_tok_s": [55.07873897590986, 55.141084999799745],
+      "b3_tok_s": [60.07940674871761, 59.274010139251665],
+      "delta_percent": [0.34789147865483816, 0.113194356023949, -1.3405535324849671],
+      "b3_target_verify_delta_percent": 1.5900835471641894,
+      "interpretation": "Every B3 prompt and aggregate scope regresses, so planar-Q6 row4 fusion is rejected and fails closed to projection plus add."
+    }
+  },
+  "selective_profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy trace; one natural25 prompt; B3; no warmup; clean 82a7f8691 baseline and clean 4bbe8eef8 candidate.",
+    "exact_prompt": {
+      "token_ids_equal": true,
+      "gpu_accept_matches_cpu": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21
+    },
+    "complete_window": {
+      "marker_ms": [451.442236, 448.386136],
+      "marker_delta_percent": -0.6769636857814842,
+      "kernel_sum_ms": [311.728676, 313.140897],
+      "kernel_delta_percent": 0.4530289026088763,
+      "dispatches": [7031, 6807],
+      "dispatch_delta": -224
+    },
+    "target_verify": {
+      "host_ms": [365.953957, 364.984885],
+      "host_delta_percent": -0.26480708336759085,
+      "kernel_sum_ms": [255.870362, 257.289449],
+      "kernel_delta_percent": 0.5546117138803153,
+      "dispatches": [6294, 6070],
+      "dispatch_delta": -224
+    },
+    "peak_tracked_bytes": [32723577074, 32723577074],
+    "interpretation": "Selective Q4 row4 removes 224 standalone adds/graph nodes and improves complete marker and target host wall. Kernel sum is slightly higher, so this is retained as a launch/queue contraction rather than an arithmetic or broad-throughput claim."
+  },
+  "selective_natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-4bbe8eef8/natural25-native-down-residual-q4-row4-b1-b3.json",
+    "true_ar": {
+      "baseline_tok_s": 24.33586223807031,
+      "candidate_tok_s": 24.124186758505584,
+      "delta_percent": -0.8698088339503585,
+      "interpretation": "Unreachable-route timing variance; no AR claim."
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 43.562736426605525,
+        "candidate_tok_s": 43.922179019884204,
+        "complete_delta_percent": 0.8251148177623513,
+        "target_verify_delta_percent": -0.6793665926903003,
+        "prompt_delta_percent_range": [-0.07468141554226593, 1.8564653542441079],
+        "scope_delta_percent_range": [0.619755446111836, 1.0824910724867909]
+      },
+      "2": {
+        "baseline_tok_s": 55.07873897590986,
+        "candidate_tok_s": 55.19623865908136,
+        "complete_delta_percent": 0.21333038002719906,
+        "target_verify_delta_percent": -0.2849154632335815,
+        "prompt_delta_percent_range": [-0.016900810478870376, 0.4985296331712519],
+        "scope_delta_percent_range": [0.060051023604623666, 0.3060979447319756]
+      },
+      "3": {
+        "baseline_tok_s": 60.07940674871761,
+        "candidate_tok_s": 59.95069550608334,
+        "complete_delta_percent": -0.2142352090336086,
+        "target_verify_delta_percent": 0.23985483240218652,
+        "prompt_delta_percent_range": [-0.9677433664752377, 0.6166394355663352],
+        "scope_delta_percent_range": [-0.464271283181239, 0.10993149808815605]
+      }
+    },
+    "interpretation": "B1/B2 complete wall and every aggregate scope improve. B3 is mixed and 0.214% lower, while the tracked-clean physical profile is positive. Retain the exact launch contraction under the physical sub-window policy without advancing the broad headline."
+  },
+  "decision": {
+    "action": "retain_selective_gfx1100_default_as_exact_launch_contraction",
+    "headline_advanced": false,
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_b3_vs_vulkan_percent": -11.486910387464954,
+    "reason": "The candidate is exact, removes 224 B3 dispatches and graph nodes, and improves tracked-clean complete marker and target host wall. The unsafe planar-Q6 row4 policy is excluded. The mixed sub-percent natural B3 packet prevents a new broad topline.",
+    "limitations": [
+      "Selective natural25 B3 is 0.214% below the clean 82a7f8691 packet and target verify is 0.240% higher.",
+      "Selective profiled target and complete kernel sums are 0.555% and 0.453% higher despite lower host wall.",
+      "Best exact canonical B3 remains 60.262 tok/s, 2.4991x own AR, and 11.49% below llama.cpp Vulkan B3."
+    ]
+  },
+  "next_target": "Replace down+add+rmsnorm with the already-screened exact two-launch down plus rounded add+rmsnorm chain. GPU1 actual Q6/Q4 weights are bit-exact at rows2-4 and save 2.543-4.320 us per layer versus the current selective route.",
+  "source_artifacts": {
+    "component_screen": {
+      "path": "/tmp/qwen36-down-residual-fusion-gpu1.json",
+      "sha256": "2998f040f8a4370143def403ae3836b932bf6bae7c952b672c2bfc9bd0b77e21"
+    },
+    "component_trace": {
+      "path": "/tmp/qwen36-down-residual-trace-gpu1/epyc/2398602_kernel_trace.csv",
+      "sha256": "0ae8df3104cba167054fbce074b105ebf21e8b958549af0e9a9290d141e1ed05"
+    },
+    "all_row_profile_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-8e281f115/profile-native-down-residual-mtp-b3-hermetic/profile-comparison.json",
+      "sha256": "1d79fad634ad7f46955228c9c850e3809fed9bb49bb043274e107d72da405b39"
+    },
+    "all_row_natural_candidate": {
+      "path": "/tmp/hipengine-qwen36-27b/final-8e281f115/natural25-native-down-residual-b1-b3.json",
+      "sha256": "e075ece93c3ef7a8566f9e50ee6bf7ef0372404cb45ebb13ccbc08c8c7057012"
+    },
+    "all_row_natural_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-8e281f115/natural25-down-residual-vs-82a7f8691.json",
+      "sha256": "c087bd08dc0dc370929c5d2a9219b23cc2965ad692bc5458eb9d7ec2baa6b3fa"
+    },
+    "selective_profile_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-4bbe8eef8/profile-native-down-residual-q4-row4-mtp-b3-hermetic/profile-comparison.json",
+      "sha256": "562fd0092507bcae35f6edba9f159f2125b80f2e9cb5e225c68b672df27de132"
+    },
+    "selective_profile_suite": {
+      "path": "/tmp/hipengine-qwen36-27b/final-4bbe8eef8/profile-native-down-residual-q4-row4-mtp-b3-hermetic/suite.json",
+      "sha256": "1dfbda28de28141e144c59973a10db83eb6da3eef9f71312d0b73100dbbfaa6f"
+    },
+    "selective_profile_kernel_trace": {
+      "path": "/tmp/hipengine-qwen36-27b/final-4bbe8eef8/profile-native-down-residual-q4-row4-mtp-b3-hermetic/mtp-b3_kernel_trace.csv",
+      "sha256": "c569164ccbc0c388d0986afce1f9048281f2a4f8054609c08f001fcfa3bb406d"
+    },
+    "selective_natural_candidate": {
+      "path": "/tmp/hipengine-qwen36-27b/final-4bbe8eef8/natural25-native-down-residual-q4-row4-b1-b3.json",
+      "sha256": "e523615b21f9835f8a08d8ba549ee276ec977515093c7795835cdc81eb6366bb"
+    },
+    "selective_natural_comparison": {
+      "path": "/tmp/hipengine-qwen36-27b/final-4bbe8eef8/natural25-down-residual-selective-vs-82a7f8691.json",
+      "sha256": "8e9267a5f3d7d8baa5e76ae64bfffae8aeeef60c0ba768a8ab894cce648a17f4"
+    },
+    "next_candidate_screen": {
+      "path": "/tmp/qwen36-down-next-rms-gpu1.json",
+      "sha256": "2dd36228c41cde74138a182f4086e23a31b72b6163bb17d0b26dadff02a5b82c"
+    }
+  }
+}

@@ -1406,6 +1406,37 @@ work is admitted. Root compressed publication is now closed alongside the
 arithmetic ladders; re-rank exact launch/transport fusion against the clean
 trace's **110.084-ms target host-minus-kernel gap across 6,294 dispatches**.
 
+The first launch/transport candidate is retained selectively. Every target pass
+contains 64 FFN-down projections followed by 64 standalone BF16 residual adds.
+Two gfx1100 `linear+residual` composites preserve both existing BF16 rounding
+boundaries and keep projection-plus-add as the registered fallback. GPU1 actual
+Q6/Q4 FFN-down weights are bit exact at rows 2-4 and save
+**2.372-3.684 / 2.136-3.924 us per layer**. The initial all-row W7900 profile
+removed **448 dispatches** and cut marked wall **2.573%**, but row-4 planar Q6
+raised its 224-call family **32.831 -> 38.892 ms (+18.46%)** and made every B3
+prompt/scope negative (**60.079 -> 59.274 tok/s, -1.341%**). The backend
+therefore caps planar Q6 at rows 2-3 while compact Q4 retains rows 2-4.
+
+The tracked-clean selective B3 profile removes **224 dispatches**, improves
+complete marker **451.442 -> 448.386 ms (-0.677%)**, and improves target host
+**365.954 -> 364.985 ms (-0.265%)**; kernel sums rise **0.453%/0.555%**, so the
+retained result is launch/queue contraction rather than arithmetic. Natural25
+B1/B2 improve **43.563 -> 43.922 (+0.825%)** and **55.079 -> 55.196 tok/s
+(+0.213%)**, with every aggregate scope positive. B3 is mixed at **60.079 ->
+59.951 tok/s (-0.214%)** and target verify **+0.240%**. Tokens, acceptance,
+state, ownership, memory, and teardown remain exact. The route stays default
+under the physical-sub-window policy but does not replace the canonical
+**60.262 tok/s / 11.49%-below-Vulkan** headline. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json`.
+
+The next distinct exact boundary is already component-positive: leave each
+FFN-down projection unchanged and replace standalone rounded add plus next-layer
+RMSNorm with one rounded `add+rmsnorm` owner. On GPU1 actual Q6/Q4 weights, all
+rows 2-4 preserve both residual and normalized BF16 bits and save
+**2.543-4.320 us per layer** versus the current selective route, with
+**22-30/31** paired wins. Admit this two-launch successor to RED before another
+arithmetic residual is reopened.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1419,8 +1450,8 @@ trace's **110.084-ms target host-minus-kernel gap across 6,294 dispatches**.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; producer-folded rollback capture removes 7 snapshot launches and 635,437,056 peak bytes while improving target verify at every budget; noisy complete movement does not replace the canonical 43.792/55.254/60.262 tok/s packet |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; `82a7f8691` is the exact default while canonical B3 remains 60.262 tok/s / 11.49% below Vulkan; re-rank only its clean trace and reopen a residual solely for a materially new exact representation, primitive, or cross-family fusion |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; producer-folded rollback removes 7 launches/635,437,056 peak bytes, and selective FFN-down residual fusion removes another 224 B3 launches with a 0.677% marked-wall win; mixed natural B3 does not replace the canonical 43.792/55.254/60.262 tok/s packet |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; selective `4bbe8eef8` is the exact default while canonical B3 remains 60.262 tok/s / 11.49% below Vulkan; next admit the exact rounded add+next-RMSNorm successor that saves 2.543-4.320 us/layer on GPU1 |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule

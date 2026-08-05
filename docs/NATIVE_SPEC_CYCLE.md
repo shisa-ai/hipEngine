@@ -172,18 +172,28 @@ same N1R ownership boundary. A state-only full-accept tail then removes discarde
 proposal scoring; the quality-gated sole-resident Q5T16 `ssm_out` route reduces
 the dominant linear family; exact GDN BF16 handoff removes its standalone cast.
 The exact pointer-table rollback snapshot first collapses 96 pre-verify state
-copies to one launch per cycle. The current default then folds that immutable
-capture into the Conv/GDN chain producers while preserving post-selected-commit
+copies to one launch per cycle. The next default folds that immutable capture
+into the Conv/GDN chain producers while preserving post-selected-commit
 rollback. It removes the final seven snapshot launches and **635,437,056 peak
 bytes**, saves **1.593 ms** in the direct profiled family, and improves natural25
-target verify **0.140%/0.296%/0.506%** at B1/B2/B3. Unrelated sub-percent
-complete-wall variance prevents a new topline, so the canonical clean packet
-remains **43.792/55.254/60.262 tok/s**, with selected B3 at **2.4991x** own AR
-and **11.49% below** llama.cpp Vulkan. Every transaction gate, including an
-explicit failure after selected-state commit, remains exact. These dense results
-are separate from the accuracy-traded llama-compat scoreboard row. Artifacts:
-[`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json) and
-[`producer-folded rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json).
+target verify **0.140%/0.296%/0.506%** at B1/B2/B3.
+
+The current selective default then folds the already-rounded FFN-down result and
+standalone BF16 residual add into registered planar-Q6 rows 2-3 and compact-Q4
+rows 2-4 producers. The exact projection-plus-add fallback remains available.
+The all-row policy is rejected because planar-Q6 row4 raises its profiled family
+**18.46%** and makes natural B3 **1.341%** slower. The selective profile removes
+**224 B3 dispatches** and improves complete marker **0.677%** plus target host
+**0.265%**. Natural B1/B2 improve **0.825%/0.213%**; mixed B3 is **0.214%**
+lower, so neither this nor the preceding sub-percent complete-wall variance
+creates a new topline. The canonical clean packet remains
+**43.792/55.254/60.262 tok/s**, with selected B3 at **2.4991x** own AR and
+**11.49% below** llama.cpp Vulkan. Every transaction gate, including an explicit
+failure after selected-state commit, remains exact. These dense results are
+separate from the accuracy-traded llama-compat scoreboard row. Artifacts:
+[`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
+[`producer-folded rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json), and
+[`selective FFN-down residual fusion`](../benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json).
 
 ### N2 — device acceptance and selected-state commit
 
