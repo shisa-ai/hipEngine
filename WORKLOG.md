@@ -207782,3 +207782,13 @@ Vulkan local sizes verbatim will close the measured gap.
   environment so the forthcoming explicit-control/category artifacts identify
   their arithmetic route directly rather than relying on filenames or shell
   logs.
+- The full category gate exposed an AR-only host cost hidden by single-weight
+  component loops: the exact-zero control remains faster than planar Q8_1 at
+  c1 even though B1-B3 benefit. Registry-generation-aware memoization now
+  resolves each stable q8-input shape/key once and caches supported and rejected
+  results without weakening fail-closed invalidation. The focused dispatch
+  regression passes and proves two identical launches perform one resolution.
+  On `code_merge_intervals`, candidate AR recovers **21.611 -> 22.320 tok/s**
+  while B3 remains exact at **67.334 tok/s**, **17/21** acceptance. Do not repeat
+  the broad suite yet: rotating all 56 production weights is the representative
+  discriminator for the remaining c1 layout question.

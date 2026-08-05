@@ -310,6 +310,7 @@ def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
     }
     quantize_calls = []
     kernel_calls = []
+    resolve_dispatch_calls = []
 
     def quantize(*args, **kwargs):
         quantize_calls.append((args, kwargs))
@@ -326,6 +327,18 @@ def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
         quantize,
         raising=False,
     )
+    original_resolve_dispatch = gguf_linear_module.resolve_gguf_linear_dispatch
+
+    def counted_resolve_dispatch(*args, **kwargs):
+        resolve_dispatch_calls.append((args, kwargs))
+        return original_resolve_dispatch(*args, **kwargs)
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "resolve_gguf_linear_dispatch",
+        counted_resolve_dispatch,
+    )
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
     def reject_global_registry_restore(_key):
         raise AssertionError("optional q8-input misses must not rewrite the registry")
@@ -360,6 +373,18 @@ def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
         )
         assert launch(
             q6,
+            100,
+            200,
+            300,
+            1,
+            5_120,
+            10_240,
+            stream=7,
+            runtime="runtime-sentinel",
+            enabled=True,
+        )
+        assert launch(
+            q6,
             101,
             201,
             301,
@@ -379,7 +404,12 @@ def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
         for key, fn in originals.items():
             register(key, fn, replace=True)
 
+    assert len(resolve_dispatch_calls) == 2
     assert quantize_calls == [
+        (
+            (100, 200, 1, 5_120),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
         (
             (100, 200, 1, 5_120),
             {"stream": 7, "runtime": "runtime-sentinel"},
@@ -396,6 +426,11 @@ def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
             {"stream": 7, "runtime": "runtime-sentinel"},
         ),
         (
+            "projection",
+            (200, 14, 300, 1, 5_120, 10_240),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        ),
+        (
             "residual",
             (201, 14, 401, 301, 4, 17_408, 5_120),
             {"stream": 8, "runtime": "runtime-sentinel"},
@@ -403,9 +438,12 @@ def test_launch_gguf_linear_q8_1_routes_only_registered_planar_owner(
     ]
 
     # The restored production leaf must fail closed before quantization when a
-    # registered planar weight has no measured shape policy.
+    # registered planar weight has no measured shape policy. Misses are cached
+    # too, but remain invalidated by registry-generation changes.
     assert not launch(q6, 102, 202, 302, 4, 512, 256, enabled=True)
-    assert len(quantize_calls) == 2
+    assert len(resolve_dispatch_calls) == 3
+    assert len(quantize_calls) == 3
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
 
 def test_launch_q4_pack8_wmma_prefill_uses_resident_pack8_abi() -> None:
