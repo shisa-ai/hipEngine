@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-05**
+Last updated: **2026-08-06**
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
@@ -4040,13 +4040,17 @@ provenance-qualified diagnostic rather than a retainable performance claim;
 staged and unstaged tracked source were clean at `e6eb49628`.
 
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json)
-freezes the first implementation leaf without changing production. The exact
-row-1 `attn_qkv+attn_gate` pair reproduces at **135.16 us/call** while cycling
-80.2 MB of weights (**197.8 GB/s**). Its spill-free gfx1151 body still emits
-**80 `ds_bpermute_b32`** and **67 `s_waitcnt`** instructions for the 16-column
-wave tree, so SH-D1 selects an exact permlanex16/DPP-add sibling. It must reach
-**<=118.493 us** before a full-model run; **<=117.530 us** independently clears
-the 1.15x leaf rule. This is a diagnostic target, not a speedup claim.
+and [first implementation decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json)
+leave production unchanged. The exact permlanex16/direct-DPP sibling is
+BF16-byte exact and replaces **80 bpermutes + 67 waitcnts** with **16
+permlanex16 + 64 DPP adds + 20 waitcnts**, retaining 50 VGPR and zero spills.
+However, three order-balanced 80-warmup/400-launch cycling pairs measure
+production at **135.02/135.92/135.20 us** and the candidate at
+**132.61/132.84/132.77 us**. The **1.0183x** median speedup projects only
+**0.0729 ms/token**, missing the **118.493-us** continuation target by
+**12.05%** and the independent **117.530-us** 1.15x target. The sibling was
+removed before full-model timing; SH-D1 moves to same-layout non-temporal loads.
+This is a diagnostic rejection, not a retained speedup claim.
 
 The correlation trace identifies the implementation targets rather than treating
 all Q8T16 work alike. GDN input projection owns **4.113-4.166 ms/token**;
@@ -4079,7 +4083,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 GDN-input Q8T16 audit | 2026-08-05 | tracked-clean `36f5b4a31`; cached gfx1151 code object `38d9163f...5289d7`; deterministic three-copy 80.2-MB cycling pool; 80 warmups/400 launches; SH-C0 512/4K/32K/64K role trace | **Diagnostic candidate selected, no speedup claim:** production pair is **135.16 us / 197.8 GB/s** and owns **4.113-4.166 ms/token**. ISA is spill/scratch-free but emits **80 bpermutes + 67 waitcnts**, selecting an exact DPP-add sibling with a **<=118.493-us** continuation gate. [`artifact`](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json). | No — baseline and implementation target only | Implement the separate exact DPP sibling; remove it if the cycling leaf misses 118.493 us, otherwise require byte-exact natural-prompt state plus the full context matrix before promotion. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 GDN-input Q8T16 first leaf | 2026-08-06 | parent `f786e770e`; transient cached gfx1151 code object `3db3c434...f494b4`; three-copy 80.2-MB cycling pool; three order-balanced 80-warmup/400-launch pairs; BF16-byte/CPU-Q8_0 oracle; cached named trace | **Diagnostic rejected; production unchanged:** exact DPP is **132.77 us** median versus **135.20 us** production (**1.0183x**, projected **0.0729 ms/token**), missing the **118.493-us** continuation target by **12.05%**. ISA passes at 16 permlanex16, 64 DPP adds, zero bpermutes/spills, but the transient sibling is removed. [`audit`](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json), [`decision`](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json). | No — candidate fails predeclared leaf gate | Screen same-layout non-temporal loads next; consider byte-neutral paired Q8T32 only if measured residual justifies layout/runtime work, then continue selected experts and cumulative SH-D1 gating. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-M1 4,096-vs-1,024 query-row memory screen | 2026-08-05 | tracked-clean commit `e6eb49628` with **255 unrelated untracked paths**; BF16 KV; explicit five-surface chunk controls; independent right-sized one-warmup/three-run eager processes; 10-ms whole-GTT; byte-fingerprint state children at 512/4K/32K/64K | **Diagnostic rejected; q4096 unchanged:** q1024 saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, but changes exact state/logits and loses **1.603%-11.835%** prefill. Decode and cleanup pass. [`artifact`](results/2026-08-05-gfx1151-gguf-sh-m1-q1024-rejected.json). | No — aggregate provenance is untracked-dirty and candidate fails exactness/prefill | Keep q4096; do not retry 2,048/768 rows. Audit exact dedicated-scratch liveness aliases, then stack with strict compact KV before claiming fork memory parity. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-C0 decode-role and same-scope memory freeze | 2026-08-05 | hipEngine production `a2541162d`, role tooling `359b967fd`/`133239a4d`; Nathan fork `b7b85da9`; exact same GGUF/hardware; hipEngine one-warmup/three-run eager wall plus cached 8-token kernel/HIP-API/ROCTX trace; fork F16/Q8 Vulkan logger; both engines sampled at 10-ms whole-GTT | **Diagnostic retained:** hipEngine whole-GTT is **1.084-2.704 GiB** above the fork. GDN input is the largest short/mid exact role at **4.113-4.166 ms/token**; selected experts are **3.912-3.925 ms/token**; attention reaches **8.041 ms/token** at 64K. The 4K+ 4,096-row scratch owns **1.756-1.818 GiB**, selecting 1,024 rows for SH-M1. [`artifact`](results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json). | No — attribution and campaign target selection | Rerun after a retained SH-D1, SH-M1, or SH-A1 unit; profiled totals never replace non-profiled toplines. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M local Nathan Strix Halo fork comparator | 2026-08-04 | hipEngine accepted implementation `d5e95d1c9`, BF16 KV; Nathan fork `b7b85da9` build 10283, bundled Mesa `d18d598e2`, F16/Q8_0 KV; exact same GGUF and hardware; five fork repetitions per split phase plus three claim-protocol repetitions; explicit Vulkan/RADV backend and build gates | **Diagnostic retained, no strict cross-engine claim:** hipEngine wins all eight full-prompt prefill comparisons; the fork wins all eight tg128 decode comparisons. Fork whole-device GTT is descriptively **0.648-2.153 GiB** below hipEngine tracked peak, with non-comparable scopes. Its exact-model claim-protocol rerun exceeds the published different-model d0/d32K/d64K rows. [`artifact`](results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json). | No — external diagnostic comparator | Rerun after either engine, fork payload/toolchain, model bytes, KV policy, timing protocol, or memory scope changes; require a shared output oracle before a strict ratio. |
