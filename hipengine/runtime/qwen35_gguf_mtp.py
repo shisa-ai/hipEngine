@@ -22,7 +22,8 @@ from hipengine.core.memory import (
 from hipengine.core.tensor import Tensor
 from hipengine.generation.batch_scheduler import ResidentBatchScheduler
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import build_dflash_accept
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import build_dflash_commit
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kvcache import FixedPagedKVPolicy
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
@@ -145,6 +146,23 @@ class Qwen35GGUFMTPGenerationResult:
         }
 
 
+@dataclass(frozen=True)
+class _InitialStatePairCopy:
+    """Fixed pointer tables for one-launch initial-state snapshot/rollback."""
+
+    kernel: object
+    live_table: DeviceBuffer
+    snapshot_table: DeviceBuffer
+    row_zero_i32: DeviceBuffer
+    layer_count: int
+    conv_row_nbytes: int
+    recurrent_row_nbytes: int
+
+    @property
+    def buffers(self) -> tuple[DeviceBuffer, DeviceBuffer, DeviceBuffer]:
+        return self.live_table, self.snapshot_table, self.row_zero_i32
+
+
 @dataclass
 class _StateJournal:
     target: Qwen35GGUFResidentSession
@@ -152,6 +170,7 @@ class _StateJournal:
     state_rows: tuple[tuple[DeviceBuffer, DeviceBuffer], ...]
     initial_hidden: DeviceBuffer
     row_hidden: DeviceBuffer
+    initial_state_copy: _InitialStatePairCopy | None
     buffers: tuple[DeviceBuffer, ...]
 
     @classmethod
@@ -164,24 +183,117 @@ class _StateJournal:
         runtime = target.runtime
         assert runtime is not None
         buffers: list[DeviceBuffer] = []
-        state_rows: list[tuple[DeviceBuffer, DeviceBuffer]] = []
-        for state in (*owner.layer_conv_states, *owner.layer_recurrent_states):
-            if state is None:
-                continue
-            snapshots = malloc(int(max_rows + 1) * int(state.nbytes), runtime=runtime)
-            buffers.append(snapshots)
-            state_rows.append((state, snapshots))
+        conv_rows: list[tuple[int, DeviceBuffer, DeviceBuffer]] = []
+        recurrent_rows: list[tuple[int, DeviceBuffer, DeviceBuffer]] = []
+        for family_rows, states in (
+            (conv_rows, owner.layer_conv_states),
+            (recurrent_rows, owner.layer_recurrent_states),
+        ):
+            for layer_id, state in enumerate(states):
+                if state is None:
+                    continue
+                snapshots = malloc(int(max_rows + 1) * int(state.nbytes), runtime=runtime)
+                buffers.append(snapshots)
+                family_rows.append((int(layer_id), state, snapshots))
         hidden_nbytes = int(target.runner.hidden_size) * DType.BF16.itemsize
         initial_hidden = malloc(hidden_nbytes, runtime=runtime)
         row_hidden = malloc(int(max_rows) * hidden_nbytes, runtime=runtime)
         buffers.extend((initial_hidden, row_hidden))
+        initial_state_copy = cls._allocate_initial_state_copy(
+            target,
+            conv_rows=conv_rows,
+            recurrent_rows=recurrent_rows,
+            runtime=runtime,
+        )
+        if initial_state_copy is not None:
+            buffers.extend(initial_state_copy.buffers)
         return cls(
             target=target,
             max_rows=int(max_rows),
-            state_rows=tuple(state_rows),
+            state_rows=tuple(
+                (state, snapshots)
+                for _layer_id, state, snapshots in (*conv_rows, *recurrent_rows)
+            ),
             initial_hidden=initial_hidden,
             row_hidden=row_hidden,
+            initial_state_copy=initial_state_copy,
             buffers=tuple(buffers),
+        )
+
+    @staticmethod
+    def _allocate_initial_state_copy(
+        target: Qwen35GGUFResidentSession,
+        *,
+        conv_rows: list[tuple[int, DeviceBuffer, DeviceBuffer]],
+        recurrent_rows: list[tuple[int, DeviceBuffer, DeviceBuffer]],
+        runtime: HipRuntime,
+    ) -> _InitialStatePairCopy | None:
+        """Resolve and materialize the backend-owned pointer-table copy plan."""
+
+        if not conv_rows or tuple(row[0] for row in conv_rows) != tuple(
+            row[0] for row in recurrent_rows
+        ):
+            return None
+        conv_row_nbytes = int(conv_rows[0][1].nbytes)
+        recurrent_row_nbytes = int(recurrent_rows[0][1].nbytes)
+        if any(int(state.nbytes) != conv_row_nbytes for _layer, state, _snapshots in conv_rows):
+            return None
+        if any(
+            int(state.nbytes) != recurrent_row_nbytes
+            for _layer, state, _snapshots in recurrent_rows
+        ):
+            return None
+        key = KernelKey(target.backend, "linear_state_pair_copy", "f32", "chunked_i32")
+        if not is_registered(key):
+            return None
+        kernel = resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        if kernel is None:
+            return None
+        live_host = np.asarray(
+            [int(state.ptr) for _layer, state, _snapshots in (*conv_rows, *recurrent_rows)],
+            dtype=np.uint64,
+        )
+        snapshot_host = np.asarray(
+            [int(snapshots.ptr) for _layer, _state, snapshots in (*conv_rows, *recurrent_rows)],
+            dtype=np.uint64,
+        )
+        row_zero_host = np.zeros((1,), dtype=np.int32)
+        allocated: list[DeviceBuffer] = []
+        try:
+            live_table = malloc(live_host.nbytes, runtime=runtime)
+            allocated.append(live_table)
+            snapshot_table = malloc(snapshot_host.nbytes, runtime=runtime)
+            allocated.append(snapshot_table)
+            row_zero_i32 = malloc(row_zero_host.nbytes, runtime=runtime)
+            allocated.append(row_zero_i32)
+            for destination, source in (
+                (live_table, live_host),
+                (snapshot_table, snapshot_host),
+                (row_zero_i32, row_zero_host),
+            ):
+                copy_host_to_device(
+                    destination,
+                    host_array_ptr(source),
+                    source.nbytes,
+                    runtime=runtime,
+                )
+        except BaseException:
+            for buffer in reversed(allocated):
+                free(buffer, runtime=runtime)
+            raise
+        return _InitialStatePairCopy(
+            kernel=kernel,
+            live_table=live_table,
+            snapshot_table=snapshot_table,
+            row_zero_i32=row_zero_i32,
+            layer_count=len(conv_rows),
+            conv_row_nbytes=conv_row_nbytes,
+            recurrent_row_nbytes=recurrent_row_nbytes,
         )
 
     @property
@@ -191,7 +303,8 @@ class _StateJournal:
     def capture_initial(self, *, stream: int = 0) -> None:
         hidden = self.target.last_target_hidden
         self._copy_d2d(self.initial_hidden.ptr, hidden.ptr, self.hidden_nbytes, stream=stream)
-        self._capture_state_index(0, stream=stream)
+        if not self._copy_initial_state(restore=False, stream=stream):
+            self._capture_state_index(0, stream=stream)
 
     def capture_row(self, row: int, *, stream: int = 0) -> None:
         row = int(row)
@@ -225,7 +338,8 @@ class _StateJournal:
         )
 
     def restore_initial(self, *, stream: int = 0) -> None:
-        self._restore_state_index(0, stream=stream)
+        if not self._copy_initial_state(restore=True, stream=stream):
+            self._restore_state_index(0, stream=stream)
         self._restore_hidden(self.initial_hidden.ptr, stream=stream)
 
     def restore_row(self, row: int, *, stream: int = 0) -> None:
@@ -262,6 +376,34 @@ class _StateJournal:
         runtime = self.target.runtime
         for buffer in reversed(self.buffers):
             free(buffer, runtime=runtime)
+
+    def _copy_initial_state(self, *, restore: bool, stream: int) -> bool:
+        plan = self.initial_state_copy
+        if plan is None:
+            return False
+        if self.target._dflash_commit_library is None:
+            self.target._dflash_commit_library = build_dflash_commit(
+                load=True,
+                compiler_version=self.target.compiler_version,
+                require_cached=self.target.require_cached_build,
+            )
+        table_half_nbytes = plan.layer_count * np.dtype(np.uint64).itemsize
+        source_table = plan.snapshot_table if restore else plan.live_table
+        destination_table = plan.live_table if restore else plan.snapshot_table
+        plan.kernel(
+            source_table.ptr,
+            destination_table.ptr,
+            plan.conv_row_nbytes,
+            source_table.ptr + table_half_nbytes,
+            destination_table.ptr + table_half_nbytes,
+            plan.recurrent_row_nbytes,
+            plan.row_zero_i32.ptr,
+            plan.layer_count,
+            stream=int(stream),
+            library=self.target._dflash_commit_library,
+            runtime=self.target.runtime,
+        )
+        return True
 
     def _capture_state_index(self, index: int, *, stream: int) -> None:
         for state, snapshots in self.state_rows:
