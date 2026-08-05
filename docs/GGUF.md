@@ -82,8 +82,9 @@ Do not treat this document as a performance claim. It is an implementation plan.
 
 Last updated: 2026-08-06. Evidence artifacts:
 [`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json),
-[`benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json), and the gfx1151 SH-K1 closure
-[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json).
+[`benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json), the gfx1151 SH-K1 closure
+[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json), and the final SH-G recertification
+[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json).
 
 Terminology matters:
 
@@ -152,6 +153,15 @@ that guard, the current GGUF results are:
   **0.0703/0.1328 GiB**. Cached traces prove the grouped-GQA INT8 direct
   consumer runs at both shapes, so SH-K1 closes as a default rejection rather
   than a missing-dispatch blocker.
+- Final SH-G production recertification confirms that BF16 KV plus the retained
+  scratch owner slots is still the correct exact default. It keeps the SH-C0
+  tracked/whole-GTT reductions of **1.4086/1.4043 GiB** at 4K/32K/64K and
+  measures decode diagnostically **0.840%-1.314%** above SH-C0, with the exact
+  18-prompt state and lifecycle gates passing. Fresh same-model fork diagnostics
+  still favor fork F16/Q8_0 decode and whole-GTT at every depth; this does not justify the 8/2
+  hybrid because SH-K1 itself loses decode and raises peak. Cross-engine rows
+  remain diagnostic because KV dtype, timing ownership, and token/logit oracles
+  differ.
 
 Operational policy:
 

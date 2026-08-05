@@ -204419,3 +204419,89 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
   --require-cached-build
 ```
+
+## 2026-08-06 — Launch SH-G final retained-campaign recertification
+
+- SH-A1 is committed as `915f64182`; all SH-C0/D1/M1/M2/K1/A1 packages are
+  decided and SH-G is the only remaining campaign task. Freeze the final
+  production lane at BF16 KV, retained gfx1151 Q5 tile8 selected-down, SH-M2
+  21-owner scratch slots, token-major paged KV, and the bounded head-major
+  AOTriton prefill scratch.
+- Reuse existing protocol owners rather than add benchmark-only runtime code:
+  four independent right-sized `qwen35_readme_sweep.py` processes provide
+  one-warmup/three-measurement prefill plus eager decode wall; the SH-C0 parent
+  provides independent one-warmup/three-measurement eager decode, tracked/owned
+  allocation, 10-ms whole-GTT, and cached kernel/HIP-API/ROCTX role traces at
+  512/4K/32K/64K; `gguf_packed_ar_category_oracle.py` reruns the exact 10+8
+  natural/category-heldout, 24-transition, three-repeat gate.
+- At this campaign milestone, rerun the pinned Nathan fork `b7b85da9` F16 and
+  Q8_0 split comparator with its built-in warmup plus five repetitions, the
+  exact 22,663,387,424-byte GGUF, `-b/-ub 1024`, and 10-ms whole-GTT. The
+  portable archive and real `bin/llama-bench` still hash to
+  `1449e4f6...cd66d` and `a5923323...c4`; the public launcher is intentionally
+  a symlink to the separately hashed `_run` environment wrapper.
+- Keep the final external row diagnostic: exact weights, hardware, split shapes,
+  and whole-GTT scope align, but BF16/F16/Q8_0 KV, timing ownership, and a shared
+  cross-engine token/logit oracle still do not. Raw evidence is isolated under
+  `/tmp/hipengine-sh-g-20260806/`; the sole tracked worktree difference at
+  launch is unrelated `docs/ROCM-AI.md`.
+
+## 2026-08-06 — Complete SH-G and close the Strix Halo campaign
+
+- Run the frozen final matrix sequentially on the Radeon 8060S with:
+  `bash /tmp/run_hipengine_sh_g_20260806.sh`. `bg-38` exits 0 after all stages:
+  SH-C0 current-production wall/allocator/GTT/trace, four right-sized README
+  rows, the exact natural/heldout gate, and fresh pinned-fork F16 and Q8_0
+  sweeps. Stage timestamps are 07:18:55-08:15:10 JST; no process fallback,
+  cache rebuild, overlap, or lifecycle failure occurs.
+- Final hipEngine BF16 current-production rows at 512/4K/32K/64K are:
+  prefill **1358.015/1451.836/1150.162/940.779 tok/s**, eager decode
+  **53.446/56.116/46.489/39.750 tok/s**, tracked peak
+  **21.480/21.599/22.245/22.984 GiB**, and 10-ms whole-GTT
+  **21.916/22.148/22.800/23.538 GiB**. Decode is diagnostically
+  **+1.114%/+1.314%/+1.055%/+0.840%** versus the cross-day SH-C0 rows, or
+  **0.208-0.234 ms/token** lower. The retained SH-M2 delta remains exactly
+  **-1.4086 GiB tracked / -1.4043 GiB whole-GTT** at 4K+; the same-revision
+  SH-D1/SH-M2 artifacts, not this cross-day refresh, own those accepted A/B
+  claims.
+- The fresh hipEngine prefill rows are
+  **-2.635%/-1.392%/-1.831%/-1.215%** versus the August 4 accepted hipEngine
+  rows. Treat this as cross-day drift, not a failed same-session promotion
+  guard. Against the fresh fork runs, hipEngine prefill wins 4K/32K/64K and
+  loses 512 for both F16 and Q8_0. hipEngine loses every decode row:
+  **-17.281%/-10.297%/-12.670%/-12.995%** versus fork F16 and
+  **-16.690%/-10.948%/-18.903%/-24.035%** versus fork Q8_0. It also remains
+  **+1.085/+0.987/+0.804/+0.696 GiB** above fork F16 and
+  **+1.084/+0.895/+1.170/+1.376 GiB** above fork Q8_0 in same-scope whole-GTT.
+  These are diagnostics: weights, hardware, split shapes, and GTT scope match,
+  but KV dtype, timing owner, and a shared cross-engine token/logit oracle do
+  not.
+- Correctness and execution evidence pass: all repeated IDs are exact; all four
+  processes return tracked bytes to zero; the 10+8 prompt, 54-execution oracle
+  passes **1,350 token comparisons**, **54,000 hidden comparisons**, and every
+  initial/final Conv/GDN/KV state comparison with zero mismatches. Cached traces
+  retain **628 dispatches/token**, **4,664 role-attributed dispatches**, and
+  **37 named selected-Q5 tile8 calls/token** at local128, VGPR56, LDS0,
+  scratch0 at every depth. The 4K+ census resolves the expected 21 liveness
+  owners; 512 correctly remains dedicated.
+- Compose the compact packet with:
+  `python3 -m py_compile /tmp/compose_hipengine_sh_g.py` and
+  `python3 /tmp/compose_hipengine_sh_g.py`. Independently replay all eight raw
+  SHA-256 values, four trace CSV hashes, exact counters, allocator modes,
+  row arithmetic, and document references; run `python3 -m json.tool` and
+  `git diff --check`. All pass. Composer stderr is empty
+  (`e3b0c442...b855`); final artifact SHA-256 is
+  `81d9e5607acac5524e108fd575d30dd3e6838f3e39da0f35ec81b28f977d438b`:
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json`.
+  No additional pytest is required for this docs/artifact-only publication;
+  the raw final matrix includes the production exact-state gate and cached
+  execution traces.
+- Final decision: all SH-C0/D1/M1/M2/K1/A1/G packages are decided. Retain the
+  bounded head-major BF16 prefill scratch, exact gfx1151 selected-Q5 tile8, and
+  exact 21-owner scratch aliases. Keep q4096 and token-major BF16 KV; reject the
+  measured compact-KV default and page-head decode rewrite. The campaign closes
+  with **0/4 C1, 0/4 C2, 0/4 fork-decode, and 0/4 fork-whole-GTT** rows, not
+  with a parity claim. Publication updates
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md`, `docs/GGUF.md`,
+  `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`; unrelated
+  `docs/ROCM-AI.md` and untracked benchmark outputs remain untouched.
