@@ -171,15 +171,19 @@ single projections, col8/planar Q6 rowtiles, and a planar root head preserve the
 same N1R ownership boundary. A state-only full-accept tail then removes discarded
 proposal scoring; the quality-gated sole-resident Q5T16 `ssm_out` route reduces
 the dominant linear family; exact GDN BF16 handoff removes its standalone cast.
-The latest exact pointer-table rollback snapshot collapses 96 pre-verify state
-copies to one launch per cycle without moving proposal, accept, or commit
-ownership. The current clean B1/B2/B3 packet is
-**43.792/55.254/60.262 tok/s**, with selected B3 at **2.4991x** own AR and
-**11.49% below** llama.cpp Vulkan. Every prompt-budget row and every
-full/train/heldout/category aggregate improves versus the immediately preceding
-route, and every transaction gate remains exact. These dense results are
-separate from the accuracy-traded llama-compat scoreboard row. Artifact:
-[`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json).
+The exact pointer-table rollback snapshot first collapses 96 pre-verify state
+copies to one launch per cycle. The current default then folds that immutable
+capture into the Conv/GDN chain producers while preserving post-selected-commit
+rollback. It removes the final seven snapshot launches and **635,437,056 peak
+bytes**, saves **1.593 ms** in the direct profiled family, and improves natural25
+target verify **0.140%/0.296%/0.506%** at B1/B2/B3. Unrelated sub-percent
+complete-wall variance prevents a new topline, so the canonical clean packet
+remains **43.792/55.254/60.262 tok/s**, with selected B3 at **2.4991x** own AR
+and **11.49% below** llama.cpp Vulkan. Every transaction gate, including an
+explicit failure after selected-state commit, remains exact. These dense results
+are separate from the accuracy-traded llama-compat scoreboard row. Artifacts:
+[`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json) and
+[`producer-folded rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json).
 
 ### N2 — device acceptance and selected-state commit
 

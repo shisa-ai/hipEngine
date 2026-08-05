@@ -5365,6 +5365,38 @@ reverse copies. Natural25 B3 is now **11.49% below** Vulkan's 68.082 tok/s.
 Artifact:
 [`2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json`](results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json).
 
+#### Qwen3.6-27B exact producer-folded rollback snapshot, W7900/gfx1100
+
+Clean implementation `82a7f8691` removes the native verifier's separate
+pre-verify Conv/GDN snapshot without weakening rollback. Exact chain producers
+store each immutable resident input into one session-owned rollback row while
+writing the existing output-row journals. The snapshot becomes restorable only
+after the complete target block retires; a failure after selected-state commit
+still restores all 96 original buffers. Serial mode and every paired-owner,
+registry, shape, or backend miss retain the five-row journal and pointer-copy
+fallback; gfx1151 deliberately misses.
+
+GPU1 rows 2/3/4 preserve every initial-state, output-row, FP32-output, and fused
+BF16-handoff bit. Added producer-store cost is only **2.478/2.922/3.714 us per
+layer**, projecting **317.167/295.850/257.839 us saved per B1/B2/B3 cycle**
+against the retained one-launch copy. The binding W7900 B1-B3 transaction adds
+a post-commit forced-failure gate and restores every state byte exactly.
+
+Tracked-clean B3 tracing removes all **7 snapshot launches / 3.458 ms**. Conv
+plus GDN producers rise only **17.079 -> 18.943 ms**, a direct **1.593 ms**
+target-family saving; target and complete kernel sums improve **3.025/2.977
+ms**. Peak tracked allocation falls exactly **635,437,056 bytes**
+(**606.0 MiB**), from five state rows to one.
+
+The ten-prompt gate improves target verify at every budget:
+**4.8487 -> 4.8419 s (-0.140%)**, **3.6468 -> 3.6360 s (-0.296%)**, and
+**3.2299 -> 3.2136 s (-0.506%)**. Unrelated proposal/commit/host timing variance
+leaves complete B1/B2/B3 **0.524%/0.318%/0.303% lower**, so this is retained as
+an exact physical target-window and memory win, not a new broad topline. The
+canonical headline remains **60.262 tok/s / 2.4991x own AR / 11.49% below
+Vulkan**. Artifact:
+[`2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json`](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5544,6 +5576,8 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact NextN state-only full-accept tail](results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json),
 [Qwen3.6-27B quality-gated Q5T16 dense ssm_out](results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json),
 [Qwen3.6-27B exact GDN-to-Q5T16 BF16 handoff](results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json),
+[Qwen3.6-27B exact one-launch rollback snapshot](results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
+[Qwen3.6-27B exact producer-folded rollback snapshot](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

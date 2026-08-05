@@ -206722,3 +206722,56 @@ Vulkan local sizes verbatim will close the measured gap.
   pass. Freeze this correctness unit, then run the same hermetic natural25 B3
   marker profile against retained `01291b066`; only physical target/complete
   improvement admits a full ten-prompt promotion gate.
+
+## 2026-08-05 — Retain producer-folded rollback capture physically; hold topline
+
+- Freeze the correctness unit in `82a7f8691` (`kernel: fold rollback snapshots
+  into GGUF producers`) and run a tracked-clean cached W7900 B3
+  `rocprofv3 --kernel-trace --memory-copy-trace --marker-trace` against clean
+  `01291b066`. The prompt IDs, **17/21** accepted/proposed ledger, cycle counts
+  `[3,3,2,3,3,0,3]`, and GPU/CPU decisions are exact.
+- The intended physical family wins. All **7 / 3.457868-ms** pre-verify snapshot
+  launches disappear. Conv+GDN producers rise only **17.078567 -> 18.943346
+  ms**, so the direct family saves **1.593089 ms**. Total target kernels fall
+  **258.895501 -> 255.870362 ms (-1.168%)** and complete kernels fall
+  **314.705277 -> 311.728676 ms (-0.946%)**; target/complete dispatches each
+  fall by seven. Peak tracked allocation falls **33,359,014,130 ->
+  32,723,577,074 bytes**, exactly **635,437,056 bytes**. The one-prompt marker
+  host wall is noise-negative (**438.031 -> 451.442 ms, +3.062%**) and is not a
+  throughput claim. Comparison/suite hashes are `17a8a468...a646` and
+  `967e7662...d667`.
+- Run the binding unprofiled ten-prompt natural25 B1-B3 command unchanged on the
+  W7900. Every AR/MTP ID, acceptance ledger (**115/127, 151/182, 169/219**),
+  GPU/CPU decision, stage reconciliation, post-commit rollback contract, and
+  teardown remain exact. Target verify improves at every budget:
+  **4.848730825 -> 4.841930416 s (-0.140%)**, **3.646841712 -> 3.636044013 s
+  (-0.296%)**, and **3.229917784 -> 3.213575529 s (-0.506%)**. The candidate
+  peak is **32,723,997,740 bytes**, again exactly **635,437,056 bytes** below
+  the retained baseline.
+- Complete B1/B2/B3 move **43.792177/55.254201/60.261907 ->
+  43.562736/55.078739/60.079407 tok/s (-0.524/-0.318/-0.303%)** because
+  unrelated proposal, commit, and host-residual timings rise 2.6-17.9%; this
+  MTP-target-only route cannot execute in those stages. Retain the exact default
+  under the repository's physical-sub-window/memory policy, but do **not**
+  advance the broad topline: canonical B3 remains **60.262 tok/s / 2.4991x own
+  AR / 11.49% below Vulkan**. Candidate/comparison hashes are
+  `7c66ec7c...09b0` and `299e4395...3776`.
+- Publish
+  `benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json`
+  plus benchmark README/changelog, campaign status, NativeSpecCycle status, and
+  kernel-catalog evidence. Populated AR is not repeated because the route is
+  unreachable outside MTP and its allocation delta is already exact in both
+  tracked-clean profile and natural packets.
+- Audit the apparent 256-dispatch spacing in the profiled target trace before
+  treating it as a fusion target. A GPU1 synthetic captured-graph sweep from 1
+  to 1,024 sequential kernels scales smoothly (**768: 2.243 ms; 896: 2.617 ms;
+  1,024: 2.989 ms**) with no 256-node cliff. Therefore the profiled gaps are not
+  a generic production graph threshold and cannot justify a projected wall win.
+  Diagnostic: `/tmp/qwen36-hip-graph-node-threshold-gpu1.json`; no source is
+  retained.
+- Next re-rank only clean `82a7f8691`. The matched arithmetic residuals remain
+  Q5T16 `ssm_out` (**+7.792 ms**), wide Q6 FFN-down/QKV (**+6.084 ms**), and
+  target root FP32 rows (**+2.628 ms**) versus Vulkan. Prior row-reuse and
+  representation ladders for each are closed; reopen only for a materially new
+  exact representation, hardware primitive, or cross-family fusion with a
+  credible complete-wall ceiling.
