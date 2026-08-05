@@ -58,6 +58,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
     gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
+    gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
+    gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -856,6 +858,56 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     )
 
 
+@pytest.mark.parametrize("rows", [1, 2, 3, 4])
+def test_q5_t16_dense_decode_and_rowtile_match_selected_production_bits(
+    rows: int,
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260805 + rows)
+    in_features = 512
+    out_features = 32
+    raw = make_q5_k_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+    selected = np.zeros(rows, dtype=np.int64)
+
+    control = _run_direct_single(
+        gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_dense_single(
+        (
+            gguf_q5_k_t16_gemv_decode_bf16_bf16_out
+            if rows == 1
+            else gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out
+        ),
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, control)
+    expected = gguf_quant_gemv(
+        _bf16_u16_to_f32(x_bf16),
+        raw,
+        GGMLQuantizationType.Q5_K,
+    )
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(candidate),
+        expected,
+        **_TOL,
+    )
+
+
 def _run_direct_dual_silu_q8_dp4a(
     x_dev,
     selected,
@@ -1182,6 +1234,18 @@ def test_p9_h3d_registry_keys_resolve() -> None:
     assert resolve(
         backend="hip_gfx1100",
         layer="linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="t16_gemv_decode_bf16_bf16_out",
+    ) is gguf_q5_k_t16_gemv_decode_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="t16_gemv_rowtile_bf16_bf16_out",
+    ) is gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
         quant="gguf_q4_k_t16_v1",
         variant="dense_rowtile_col4_bf16_bf16_out",
     ) is gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out
@@ -1222,6 +1286,8 @@ def test_p9_h3d_wrappers_validate_args() -> None:
         gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
             0, 0, 0, 0, 5, 256, 16
         )
+    with pytest.raises(ValueError, match="rows in 2..4"):
+        gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(0, 0, 0, 1, 256, 16)
     with pytest.raises(ValueError, match="compact_rows must be positive"):
         gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(0, 0, 0, 0, 0, 0, 256, 16, 16, 1)
     with pytest.raises(ValueError, match="block size 256"):

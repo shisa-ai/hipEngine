@@ -434,6 +434,87 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
   }
 }
 
+// Dense one-expert Q5T16 prefill over the same bytes and arithmetic as the
+// selected producer above. Removing selected-row metadata changes only the
+// compile-time expert/row addressing; FP16 operands, WMMA accumulation, and
+// BF16 stores remain identical.
+__launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
+__global__ void gguf_q5_t16_dense_wmma_prefill_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t col_tile = blockIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 16;
+  const int lane16 = threadIdx.x & 15;
+  const int half_id = threadIdx.x >> 4;
+  const int64_t input_row = row_base + lane16;
+  const bool valid_row = input_row < rows;
+  const int64_t out_col = col_tile * T16_COLS + lane16;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+
+  float8_t acc = zero_float8();
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile = k_t16_tile_ptr(
+        tiles,
+        0,
+        col_tile,
+        blk,
+        out_tiles,
+        blocks_per_row,
+        Q5_T16_BLOCK_BYTES);
+    const float d_f = fp16_bytes_to_float(
+        tile + Q5_T16_D_OFFSET + lane16 * 2);
+    const float dmin_f = fp16_bytes_to_float(
+        tile + Q5_T16_DMIN_OFFSET + lane16 * 2);
+    const int64_t block_k_base = blk * QK_K;
+#if defined(__gfx1100__)
+#pragma unroll 1
+#else
+#pragma unroll
+#endif
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+      const float scale_f = d_f * static_cast<float>(
+          tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + lane16]);
+      const float min_f = dmin_f * static_cast<float>(
+          tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + lane16]);
+#pragma unroll
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+        const half16_t a_reg = load_compact_row_half16<uint16_t>(
+            x,
+            valid_row ? input_row : 0,
+            in_features,
+            block_k_base + k_off,
+            valid_row);
+        half16_t b_reg;
+#pragma unroll
+        for (int kk = 0; kk < 16; ++kk) {
+          const int lane32 = kt * K_TILE + kk;
+          const uint8_t q = q5_t16_quant(
+              tile, sb, lane32, lane16);
+          b_reg[kk] = static_cast<half_t>(
+              scale_f * static_cast<float>(q) - min_f);
+        }
+        acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+            a_reg, b_reg, acc);
+      }
+    }
+  }
+
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t out_row = row_base + half_id + j * 2;
+    if (out_row < rows) {
+      out[out_row * out_features + out_col] =
+          float_to_scalar<uint16_t>(acc[j]);
+    }
+  }
+}
+
 // Quality-safe Laguna candidate: each block owns one natural expert and one
 // 16-column output tile, then walks that expert's compact rows in M16 tiles.
 // This consumes the resident no-D2H active-expert metadata directly, avoids a
@@ -633,6 +714,38 @@ int launch_k_t16_selected(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q5_t16_dense_wmma_prefill_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>((rows + 15) / 16));
+  hipLaunchKernelGGL(
+      gguf_q5_t16_dense_wmma_prefill_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 }  // namespace
 
 #define HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(NAME, QTYPE) \
@@ -674,6 +787,18 @@ extern "C" int hipengine_##NAME##_selected_wmma_prefill_compact_fp16_fp16_out( \
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q4_k_t16, 4)
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q5_k_t16, 5)
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q6_k_t16, 6)
+
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_bf16(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
 
 #define HIPENGINE_GGUF_K_T16_EXPERT_MAJOR_COMP_EXPORT(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_selected_expert_major_wmma_comp_bf16_bf16_out( \

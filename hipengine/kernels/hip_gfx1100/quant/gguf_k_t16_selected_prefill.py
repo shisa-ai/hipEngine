@@ -31,6 +31,9 @@ _SYMBOLS = {
     ("gguf_q6_k_t16", "bf16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q6_k_t16", "fp16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
 }
+_Q5_DENSE_WMMA_BF16 = (
+    "hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out"
+)
 _EXPERT_MAJOR_COMP_SYMBOLS = {
     "gguf_q4_k_t16": "hipengine_gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16": "hipengine_gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
@@ -150,6 +153,36 @@ gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_
 gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q6_k_t16", "fp16")
 
 
+def gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch dense one-expert Q5T16 WMMA prefill (BF16->BF16)."""
+
+    del tile_m, tile_n
+    _launch_dense_q5_t16(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _make_expert_major_comp_wrapper(quant: str):
     symbol = _EXPERT_MAJOR_COMP_SYMBOLS[quant]
 
@@ -253,6 +286,54 @@ def _launch_k_t16(
         ctypes.c_int64(out_features),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(wmma_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _launch_dense_q5_t16(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_positive(rows, "rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features, "out_features")
+    if in_features % _QK_K != 0:
+        raise ValueError(
+            f"in_features must be divisible by GGUF K-family block size {_QK_K}"
+        )
+    if out_features % 16 != 0:
+        raise ValueError("out_features must be a multiple of 16")
+
+    library = library or build_gguf_k_t16_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _Q5_DENSE_WMMA_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:
@@ -364,6 +445,17 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
     ``_COMPACT_MOE_DOWN_KEYS`` in the runner can route on quant key alone.
     """
 
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_wmma_prefill_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+
     for quant_key, fn_bf16, fn_fp16 in (
         (
             "gguf_q4_k_t16_v1",
@@ -434,6 +526,7 @@ __all__ = [
     "gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
+    "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",
     "gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
