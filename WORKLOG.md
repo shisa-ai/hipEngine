@@ -206627,3 +206627,36 @@ Vulkan local sizes verbatim will close the measured gap.
   prepare, then omit the redundant initial state copy and native-only snapshot
   allocation. The retained pointer-copy path remains fallback for any registry,
   shape, or backend miss.
+
+## 2026-08-05 — Begin native deferred-state snapshot elision
+
+- Admit the follow-on from the retained `01291b066` profile. The seven remaining
+  snapshot launches move **158,859,264 bytes/cycle** and consume **3.457868 ms**
+  across the profiled B3 request. Native chain Conv/GDN owners take resident
+  state through const pointers, write each resulting row into dedicated journal
+  storage, and emit no final-state copy when `defer_linear_state_commit=True`.
+  The native verifier therefore needs the resident state only as read-only input;
+  its selected-row commit already copies from the row journal.
+- Establish RED before runtime edits. New tests require: (1) a registry-backed
+  read-only plan only for rows > 1 with both exact chain owners; (2) native
+  verifier construction to omit resident-state snapshot storage only for that
+  plan, while serial mode and any miss allocate the prior fallback; (3) hidden
+  snapshot/rollback to remain intact; and (4) the binding dense W7900 transaction
+  to observe no snapshot buffers and byte-identical resident Conv/GDN state
+  immediately after native `prepare()`. Focused RED reports the expected **5
+  failures / 3 passes** because the plan method, allocation flag, and journal
+  telemetry do not exist yet.
+- Reject the shortcut before the binding model gate. The read-only claim is true
+  only through `prepare()`: `_StateJournal` is also the sole original-state
+  source if selected-row commit mutates resident Conv/GDN state and a later KV
+  transaction/finalize step fails. The outer exception path deliberately calls
+  `verifier.rollback(prepared)` after such failures. Omitting the snapshot would
+  silently make that rollback restore only hidden/cursors while leaving partially
+  or fully committed recurrent state live.
+- Stop the in-flight W7900 transaction before full-model execution and remove all
+  candidate runtime/test changes. The restored snapshot/chain focused bundle is
+  green **4/4**, pycompile and `git diff --check` pass, and only this rejection
+  record remains. A viable follow-on must preserve post-commit rollback: either
+  fold the initial-state store into the existing chain producers or move it onto
+  an honestly timed concurrent stream. A happy-path-only snapshot omission is
+  permanently inadmissible.
