@@ -411,35 +411,6 @@ def dense_f32_pair_calls() -> Iterator[list[tuple[int, int, int]]]:
 
 
 @pytest.fixture
-def dense_f32_pair_gdn_calls() -> Iterator[list[tuple[int, int, int, int, int, int]]]:
-    """Count dependent alpha/beta-to-snapshot-GDN ownership."""
-
-    key = KernelKey(
-        "hip_gfx1100",
-        "linear_attn_alpha_beta+gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
-        "f32+gguf_q5_k_t16_v1",
-        "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out",
-    )
-    original = resolve(
-        backend=key.backend,
-        layer=key.layer,
-        quant=key.quant,
-        variant=key.variant,
-    )
-    calls: list[tuple[int, int, int, int, int, int]] = []
-
-    def counted(*args, **kwargs):
-        calls.append(tuple(int(value) for value in args[16:22]))
-        return original(*args, **kwargs)
-
-    register(key, counted, replace=True)
-    try:
-        yield calls
-    finally:
-        register(key, original, replace=True)
-
-
-@pytest.fixture
 def dense_virtual256_rowtile_calls() -> Iterator[list[tuple[int, int, int]]]:
     """Count the shape-qualified small-row local128 launches."""
 
@@ -934,7 +905,6 @@ def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_f32_pair_calls: list[tuple[int, int, int]],
-    dense_f32_pair_gdn_calls: list[tuple[int, int, int, int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
     q5_t16_ssm_out_calls: dict[str, list[tuple[int, int, int]]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
@@ -1349,16 +1319,10 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
-    # Standalone alpha/beta and the alpha/beta+Conv composite remain primitive
-    # only; the dependent owner consumes both exact BF16 projections in GDN.
+    # The exact dense alpha/beta pair and both cross-family composites remain
+    # registry primitives only after their W7900 marked-wall/kernel gates fail;
+    # production keeps scalar projections plus snapshot Conv/GDN owners.
     assert not dense_f32_pair_calls
-    assert dense_f32_pair_gdn_calls
-    assert {rows for rows, *_ in dense_f32_pair_gdn_calls} == {2, 3, 4}
-    assert {
-        (in_features, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
-        for _, in_features, num_k_heads, num_v_heads, head_k_dim, head_v_dim
-        in dense_f32_pair_gdn_calls
-    } == {(5120, 16, 48, 128, 128)}
     assert not dense_virtual256_rowtile_calls
     assert q5_t16_ssm_out_calls["decode"]
     assert {rows for rows, _, _ in q5_t16_ssm_out_calls["decode"]} == {1}
@@ -1381,7 +1345,15 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for _, channels, kernel_size in chain_journal_calls["conv_snapshot"]
     } == {(10240, 4)}
     assert not chain_journal_calls["gdn_snapshot"]
-    assert not chain_journal_calls["gdn_fused_snapshot"]
+    assert chain_journal_calls["gdn_fused_snapshot"]
+    assert {
+        rows for rows, *_ in chain_journal_calls["gdn_fused_snapshot"]
+    } == {2, 3, 4}
+    assert {
+        (num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+        for _, num_k_heads, num_v_heads, head_k_dim, head_v_dim
+        in chain_journal_calls["gdn_fused_snapshot"]
+    } == {(16, 48, 128, 128)}
     assert gdn_decode_output_fusion_calls
     assert set(gdn_decode_output_fusion_calls) == {(16, 48, 128, 128)}
     # The exact shared-page writer remains a measured registry primitive only:

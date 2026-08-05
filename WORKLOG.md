@@ -207475,3 +207475,39 @@ Vulkan local sizes verbatim will close the measured gap.
   B3 profile. Run natural25 only if family kernels, target kernels/host, and
   complete marked wall all clear the frozen gate; otherwise remove runtime
   ownership and retain the exact primitive only.
+
+## 2026-08-05 — Reject dependent alpha/beta-to-GDN runtime ownership
+
+- Profile tracked-clean producer-locality commit `648cd4bf0` against the
+  refreshed same-clock scalar parent `7eaa6fa05` on W7900. The one-prompt
+  natural B3 workload remains exact: identical greedy IDs, GPU/CPU acceptance,
+  **17/21** proposals, cycle ledger `[3,3,2,3,3,0,3]`, byte-identical
+  **32,723,577,074-byte** peak allocation, and zero live bytes after teardown.
+- The intended contraction succeeds mechanically: target/complete dispatches
+  each fall **672** (**5,853 -> 5,181**, **6,590 -> 5,918**), target host falls
+  **357.514821 -> 346.148599 ms (-3.179%)**, and complete marked wall falls
+  **439.371729 -> 428.649403 ms (-2.440%)**. The profiler-suite diagnostic moves
+  **54.618 -> 55.984 tok/s (+2.501%)**.
+- The frozen compound gate fails on physical work. Scalar alpha/beta plus
+  snapshot+cast GDN move **1,008 / 20.613994 ms -> 336 / 21.480201 ms
+  (+4.202%)**; target kernels move **256.956272 -> 257.857238 ms (+0.351%)**
+  and complete kernels **312.808836 -> 313.645887 ms (+0.268%)**. Do not move
+  the gate after measurement and do not spend natural25/populated-AR time on a
+  one-prompt mixed result.
+- Retain the exact gfx1100 primitive, rows1-4 scalar/CPU gate, producer-locality
+  schedule, named trace, and explicit gfx1151 exclusion. Remove the generic
+  GGUF resolver and all runner ownership. Production again executes two scalar
+  projections plus snapshot Conv and snapshot+cast GDN; both runtime files are
+  byte-identical to scalar parent `7eaa6fa05`.
+- Post-unroute GPU1 coverage passes **129/129** across the primitive, prior pair
+  and pair+Conv closures, chain journal, GGUF dispatch/cache, and gfx1151
+  bundles. Per focused-repair policy, do not repeat the multi-minute W7900
+  transaction: routed execution passed it and final runtime bytes are the
+  already-gated scalar topology. Artifact SHA-256 is
+  `25da480c...881862`; suite/kernel/marker/copy/comparison SHA-256s are
+  `578cc92b...2e30`, `eec68f68...7f7`, `07dac5e9...6aa`,
+  `967d2eff...968`, and `55fdce75...ec3`.
+- Canonical natural25 remains **43.792/55.254/60.262 tok/s**, B3 **2.4991x own
+  AR / 11.49% below Vulkan**. Re-rank only the restored scalar topology and
+  reopen this primitive only if a materially different owner improves family,
+  target kernels, target host, and complete marked wall together.

@@ -1,0 +1,178 @@
+{
+  "schema": 1,
+  "status": "rejected_dense_f32_alpha_beta_dependent_gdn_runtime_default",
+  "performance_claim": false,
+  "performance_claim_scope": "The exact primitive and 672-launch contraction are measured, but production routing is rejected because the fused family and target/complete kernel sums regress against the frozen W7900 gate. No natural25 or topline change is claimed.",
+  "correctness_claim": true,
+  "correctness_scope": "Rows 1-4 alpha/beta BF16 outputs, recurrent journals, immutable initial snapshot, FP32 output, and BF16 handoff match two scalar dense-F32 GEMVs plus snapshot+cast chain GDN bit-for-bit; the routed W7900 B1-B3 transaction was exact before ownership was removed.",
+  "kind": "qwen36_27b_dense_f32_alpha_beta_dependent_gdn_runtime_rejection",
+  "timestamp": "2026-08-05T23:58:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m",
+    "linear_attention_layers": 48,
+    "alpha_beta_weight_shape_each": [48, 5120],
+    "gdn_shape": {
+      "num_k_heads": 16,
+      "num_v_heads": 48,
+      "head_k_dim": 128,
+      "head_v_dim": 128
+    }
+  },
+  "hardware": {
+    "component_gpu": "AMD Radeon RX 7900 XTX, GPU1, gfx1100",
+    "binding_gpu": "AMD Radeon Pro W7900, GPU0, gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "baseline_commit": "7eaa6fa05a2cd502b15bd7057103918e16138ee3",
+    "correctness_commit": "4e6c8e21d2398f0ca05207f58c3f1de972d36ced",
+    "producer_locality_commit": "648cd4bf0",
+    "restored_runtime_parent": "7eaa6fa05a2cd502b15bd7057103918e16138ee3",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100"
+  },
+  "primitive": {
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_attn_alpha_beta+gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+      "f32+gguf_q5_k_t16_v1",
+      "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out"
+    ],
+    "symbol": "qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out_kernel<unsigned short,true,true>",
+    "selected_schedule": "local256 parallel projection planes with four per-head Conv Q/K/V rows staged before projection work",
+    "dynamic_shared_bytes": 17920,
+    "retained": true,
+    "runtime_routed_after_decision": false,
+    "gfx1151_aliased": false,
+    "fallback": "two scalar dense_gemv_bf16_f32w_bf16_out projections plus registered snapshot Conv and snapshot+cast chain GDN"
+  },
+  "correctness": {
+    "red": "10 intentional failures before the original dependent owner existed",
+    "original_green": "10/10 focused, 132/132 adjacent, 51/51 GDN routing, W7900 B1-B3 transaction, and named GPU1 trace",
+    "producer_locality_no_red_rationale": "Performance-only scheduling change with unchanged arithmetic; immutable out-of-tree rows1-4 bytes were established first and the existing scalar/CPU device test remained the oracle.",
+    "producer_locality_focused": "10/10 on GPU1 before profiling",
+    "producer_locality_w7900_transaction": "1/1 exact B1-B3 logits, acceptance, reject/partial/full/post-commit rollback state, dynamic graph reuse, correction, provider output, ownership, lifecycle, and teardown",
+    "post_unroute_green": "129/129 focused and adjacent tests on GPU1; gguf_linear.py and qwen35_gguf_runner.py are byte-identical to scalar parent 7eaa6fa05",
+    "component_rows": [1, 2, 3, 4],
+    "alpha_bf16_bit_exact": true,
+    "beta_bf16_bit_exact": true,
+    "recurrent_state_rows_f32_bit_exact": true,
+    "initial_recurrent_state_snapshot_f32_bit_exact": true,
+    "out_f32_bit_exact": true,
+    "out_bf16_bit_exact": true,
+    "cpu_kl_max_at_most": 0.05,
+    "cpu_top1_agreement_at_least": 0.90,
+    "profile_exact_greedy": true,
+    "profile_gpu_accept_match_cpu": true,
+    "profile_accepted_draft_tokens": 17,
+    "profile_proposed_draft_tokens": 21,
+    "profile_cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3]
+  },
+  "component_screens": {
+    "original_gpu1_rows_1_to_4_event_speedup": [1.3004, 1.1724, 1.0944, 1.0502],
+    "producer_locality_gpu1_rows_1_to_4_event_speedup": [1.2958019152798161, 1.1656854770085685, 1.0892593445622594, 1.0359981648860768],
+    "producer_locality_gpu1_paired_wins_each": 21,
+    "w7900_row4_graph": {
+      "control_three_launch_ms_per_48_layers": 3.2212185859680176,
+      "original_candidate_ms_per_48_layers": 3.0620434284210205,
+      "producer_locality_candidate_ms_per_48_layers": 3.004551410675049,
+      "speedup_over_control": 1.0721129864921461,
+      "paired_event_wins": 21,
+      "paired_wall_wins": 21
+    }
+  },
+  "cache_only_trace": {
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "dispatches": 3,
+    "grid": [12288, 1, 1],
+    "semantic_workgroups": 48,
+    "workgroup": [256, 1, 1],
+    "durations_ns": [115720, 99601, 105720],
+    "vgpr": 64,
+    "sgpr": 128,
+    "reported_static_lds_bytes": 512,
+    "declared_dynamic_lds_bytes": 17920,
+    "scratch_bytes": 0
+  },
+  "w7900_profile": {
+    "workload": "natural prompt code_merge_intervals, B3, 25 visible outputs, seven target passes, one run, no warmup, rocprofv3 kernel+copy+marker trace",
+    "baseline_root": "/tmp/hipengine-qwen36-27b/final-7eaa6fa05/profile-native-current-clock-baseline-mtp-b3-hermetic",
+    "candidate_root": "/tmp/hipengine-qwen36-27b/final-648cd4bf0/profile-native-f32-pair-gdn-conv-prefetch-mtp-b3-hermetic",
+    "three_leaf_family": {
+      "baseline_dispatches": 1008,
+      "candidate_dispatches": 336,
+      "dispatch_delta": -672,
+      "baseline_ms": 20.613994,
+      "candidate_ms": 21.480201,
+      "delta_ms": 0.866207,
+      "delta_percent": 4.20203382226656
+    },
+    "target": {
+      "baseline_dispatches": 5853,
+      "candidate_dispatches": 5181,
+      "dispatch_delta": -672,
+      "baseline_kernel_ms": 256.956272,
+      "candidate_kernel_ms": 257.857238,
+      "kernel_delta_percent": 0.3506300869744905,
+      "baseline_host_ms": 357.514821,
+      "candidate_host_ms": 346.148599,
+      "host_delta_percent": -3.1792309947340613
+    },
+    "complete": {
+      "baseline_dispatches": 6590,
+      "candidate_dispatches": 5918,
+      "dispatch_delta": -672,
+      "baseline_kernel_ms": 312.808836,
+      "candidate_kernel_ms": 313.645887,
+      "kernel_delta_percent": 0.26759186559552894,
+      "baseline_marker_ms": 439.371729,
+      "candidate_marker_ms": 428.649403,
+      "marker_delta_percent": -2.440376859112847
+    },
+    "profile_suite": {
+      "baseline_tok_s": 54.6183464670739,
+      "candidate_tok_s": 55.98409645902554,
+      "delta_percent": 2.500533392703441,
+      "topline_eligible": false
+    },
+    "memory": {
+      "baseline_peak_allocated_bytes": 32723577074,
+      "candidate_peak_allocated_bytes": 32723577074,
+      "candidate_current_allocated_bytes_after_close": 0
+    },
+    "frozen_gate_passed": false
+  },
+  "decision": {
+    "runtime_default_retained": false,
+    "primitive_retained": true,
+    "natural25_run": false,
+    "populated_ar_run": false,
+    "canonical_b3_tok_s": 60.26190653283626,
+    "canonical_gap_vs_vulkan_percent": -11.4869,
+    "reason": "The exact 672-dispatch contraction and target-host/complete-wall measurements improve, but the predeclared gate also requires the intended fused family and target kernel sum to improve. The family regresses 4.202% and target/complete kernels regress 0.351%/0.268%, so runtime ownership is removed before natural25 rather than moving the gate after measurement.",
+    "reopen_condition": "Reopen only with a materially different algorithm or owner that improves the dependent family, target kernels, target host, and complete marked wall on W7900."
+  },
+  "commands": {
+    "focused": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q tests/test_dense_f32_pair_gdn.py --tb=short",
+    "post_unroute": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -q tests/test_dense_f32_pair_gdn.py tests/test_dense_f32_pair.py tests/test_dense_f32_pair_chain_conv.py tests/test_qwen35_linear_attn_chain_journal.py tests/test_gguf_linear_dispatch.py tests/test_gguf_linear_dispatch_cache.py tests/test_gfx1151_backend.py --tb=short",
+    "w7900_transaction": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar --tb=short",
+    "profile": "rocprofv3 --kernel-trace --memory-copy-trace --marker-trace -- python3 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --require-cached-build"
+  },
+  "raw_evidence_sha256": {
+    "profile_suite": "578cc92bfdee76714c5f3d7570ed8c2b254c17852769e118fed182af96782e30",
+    "profile_kernel": "eec68f680f991ea19f7fbf3199ef128c813f3440f3f3c33bf14e7c608fe387f7",
+    "profile_marker": "07dac5e99f01df29451a357892eb73d363122c01188fc25c7b5f5577f33076aa",
+    "profile_copy": "967d2eff5baeddb5f389fb58e5b310dc4a9026109b57763b3cb256ad5f869968",
+    "profile_comparison": "55fdce75d98fd8d1119b244184f85d713ca06cf91adfd97a61039ea17cfe9ec3",
+    "compare_script": "dadd81da06086087c424aba7fd0232ac76344a9f7ac5378f70503d97635cf093",
+    "w7900_graph_screen": "9d13a2ac0804cc5dfeea41b92da01d27f90ea240bc94185659487724f45b4801",
+    "gpu1_rows_screen": "f8b92974fde61a5d17c6f2d31b2cf4b247a5daba4d7b5a4beff28229c0f6a20e",
+    "primitive_trace": "9cbb2bda4a6f14b9d3d5c4039f846ac1c223931ae283c9898e47e6dd4f512ab2",
+    "kernel_source": "a9869e7ae9044656aa7ee40ca2051890806656b891008817f8bbcd374d77581a"
+  }
+}

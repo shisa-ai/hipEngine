@@ -1498,6 +1498,27 @@ runner ownership; production again uses two scalar projections plus snapshot
 Conv. Retain only the measured primitive. Artifact:
 `benchmarks/results/2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json`.
 
+The dependent alpha/beta-to-snapshot-GDN owner is also retained only as an
+exact primitive. Correctness commit `4e6c8e21d` and producer-locality repair
+`648cd4bf0` preserve both scalar dense-F32 projection trees, every recurrent
+journal/snapshot bit, FP32 output, and the Q5T16 BF16 handoff. GPU1 rows1-4 and
+the complete routed W7900 B1-B3 transaction pass; the repaired row-4 W7900
+graph screen improves the three-launch control **3.2212 -> 3.0046 ms/48
+layers (1.0721x, 21/21)**.
+
+The final tracked-clean current-clock profile nevertheless fails the frozen
+compound gate. The dependent family moves **1,008 / 20.613994 ms -> 336 /
+21.480201 ms (+4.202%)** despite removing **672** target/complete dispatches.
+Target host and complete marked wall improve **357.514821 -> 346.148599 ms
+(-3.179%)** and **439.371729 -> 428.649403 ms (-2.440%)**, but target and
+complete kernel sums regress **0.351%/0.268%**. Do not move the gate or spend
+natural25/populated-AR time on a profiler-only mixed result. Remove the generic
+resolver and runner ownership; production again uses two scalar projections,
+snapshot Conv, and snapshot+cast GDN. Post-unroute coverage passes **129/129**
+and both runtime files are byte-identical to scalar parent `7eaa6fa05`. Retain
+only the registered gfx1100 primitive; gfx1151 remains excluded. Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json`.
+
 Re-rank the refreshed scalar-write baseline rather than reopening a closed
 arithmetic family or treating any rejected launch contraction as retained
 savings.
@@ -1515,8 +1536,8 @@ savings.
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default; shared-KV, dense-F32 alpha/beta, and alpha/beta+Conv contractions remain primitive-only after their complete marked-wall gates fail; canonical 43.792/55.254/60.262 tok/s unchanged |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank the restored three-leaf trace without counting any rejected launch contraction |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; rounded next-RMSNorm remains the physical default; shared-KV, dense-F32 alpha/beta, alpha/beta+Conv, and dependent alpha/beta+GDN contractions remain primitive-only after their frozen complete-path gates fail; canonical 43.792/55.254/60.262 tok/s unchanged |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; exact physical default `fda35418e` keeps canonical B3 at 60.262 tok/s / 11.49% below Vulkan; re-rank scalar parent `7eaa6fa05` without counting any rejected launch contraction |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule
