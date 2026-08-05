@@ -202877,3 +202877,43 @@ Vulkan local sizes verbatim will close the measured gap.
   generic `LLM.generate()` coverage passes **42/42**; Ruff and pycompile are
   clean. Full-model HF/NumPy parity is
   the next correctness task rather than being implied by coherent text alone.
+
+## 2026-08-05 — Gate Maple against packed and pinned HF oracles
+
+- Add opt-in per-layer hidden capture and a two-process teacher-forced harness.
+  The first packed comparison localizes divergence to layer 3: when
+  `max_context=64` made SWA/global capacities equal, the runner skipped the
+  distinct global `KVLiveSpans` owner. Publish both owner identities and cover
+  the equal-capacity regression. The earlier top ID 1112 was therefore a
+  pre-fix execution diagnostic, not retained correctness evidence.
+- Primitive gfx1151 command covering standard RMSNorm, QK-norm+partial RoPE,
+  router, and clamp-7 SwiGLU passes **4/4**: BF16 outputs are bit exact, router
+  IDs are exact, and fp32 route weights are within one ULP. The current packed
+  18-position command
+  `python3 scripts/maple_correctness.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --token-ids <18 IDs> --oracle packed --json /tmp/maple-correctness-packed-final.json`
+  passes at max/mean KL **0.013508/0.001679**, top-1 **18/18**, device argmax
+  exact, and minimum hidden cosine **0.994289**.
+- Download pinned dense source `deepgrove/maple-preview@ac1ddd79...` (nine
+  safetensors, 18,651 tensors, 40,428,060,672-byte parameter payload). The
+  default HF cache resolves to `/data`, which had only 11 GB free despite
+  `/home` having 140 GB; stop before ENOSPC, relocate this model cache to
+  `/home/lhl/maple-hf-cache`, and resume successfully. Isolate the checkpoint's
+  required `transformers==4.57.1`; host 5.8.1 is incompatible with its
+  `ROPE_INIT_FUNCTIONS["default"]` lookup.
+- A full-resident dense load is not viable on this 128 GB UMA host: 40 GB HIP
+  allocation leaves insufficient host working memory and remains at shard 1/9
+  after 13 minutes of swap thrashing. Replace only residency: Accelerate hooks
+  mmap each routed `MapleMLP` from the original safetensors while attention,
+  router, norms, and endpoints remain on gfx1151. A tiny resident/offloaded
+  remote model is logit-bit exact; the real model loads in ~15 s with 6,144
+  expert modules offloaded.
+- The same-weight pinned-HF command (artifact has the exact invocation), using
+  `--hf-offload-experts --hf-match-packed-affine4`, passes all **18/18**
+  positions at max/mean KL **0.004719/0.000723** with exact device argmax. The
+  untouched dense-source quality diagnostic is retained as a failure rather
+  than threshold-gamed: max KL **0.149840**, top-1 **16/18**. Hybrid isolation
+  attributes the gap to intentional affine4 embedding/head quantization
+  (dense endpoints: max KL 0.033023, top-1 17/18), not the runner math.
+- Focused Maple model/loading/CPU/GPU/generation/runtime/harness bundle passes
+  **43/43**; Ruff, pycompile, JSON parse, and `git diff --check` pass. Evidence:
+  `benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json`.

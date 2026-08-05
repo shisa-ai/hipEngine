@@ -117,7 +117,7 @@ def test_maple_router_topk_matches_fp32_softmax_renorm_oracle(maple_moe_lib) -> 
         dev.get(weights, weights_d)
 
     assert np.array_equal(ids, expected_ids.astype(np.int32))
-    assert np.allclose(weights, expected_weights, atol=2e-6, rtol=2e-6)
+    np.testing.assert_array_max_ulp(weights, expected_weights, maxulp=1)
     assert float(weights.sum()) == pytest.approx(1.0, abs=2e-7)
 
 
