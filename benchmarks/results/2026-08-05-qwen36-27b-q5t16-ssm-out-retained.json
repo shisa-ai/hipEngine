@@ -1,0 +1,421 @@
+{
+  "schema": 1,
+  "status": "retained_quality_gated_sole_resident_q5t16_dense_ssm_out",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical W7900 ten-prompt natural25 true-AR plus B1-B3 complete decode wall, populated 512/4096 prefill and graph AR, a tracked-clean one-prompt B3 kernel/marker trace, and cache-representative GPU1 component screens.",
+  "correctness_claim": true,
+  "correctness_scope": "Project-gated Q5T16 component quality, exact Q5T16 physical-consumer equality, complete W7900 B1-B3 transaction/state/provider correctness, candidate MTP equality to its own AR, deterministic populated IDs, and clean teardown. Prior dense-BF16 trajectories are not claimed bit-identical.",
+  "kind": "qwen36_27b_gguf_q5t16_dense_ssm_out_w7900",
+  "timestamp": "2026-08-05T10:10:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "24fef47da5fed5036bc96b050d3007db0c58198d",
+    "baseline_implementation_commit": "e15d85d1c8bc030a34e1ef69a08ec87c2552f167",
+    "populated_control_baseline_commit": "09494117538a6ca7487b9265a5c4192d4a5da691",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Replace exactly 48 Qwen3.6-27B K6,144/N5,120 dense-BF16 ssm_out residents with source-faithful Q5T16 and route c1, verifier rows 2-4, fallback rows, and populated prefill through registered consumers.",
+    "quant_key": "gguf_q5_k_t16_v1",
+    "ownership": {
+      "tensor_role": "ssm_out",
+      "source_shape_k_n": [6144, 5120],
+      "tensor_count": 48,
+      "backend": "hip_gfx1100",
+      "dense_bf16_bytes_per_tensor": 62914560,
+      "q5t16_bytes_per_tensor": 22118400,
+      "dense_bf16_total_bytes": 3019898880,
+      "q5t16_total_bytes": 1061683200,
+      "resident_bytes_saved": 1958215680,
+      "resident_gib_saved": 1.82373046875
+    },
+    "routes": {
+      "c1": "registered metadata-free direct Q5T16 producer",
+      "rows_2_to_4": "registered exact local128/col4 Q5T16 rowtile",
+      "rows_5_plus": "registered direct Q5T16 fallback",
+      "bulk_prefill": "registered metadata-free one-matrix Q5T16 WMMA producer"
+    },
+    "fallbacks": "Other roles/shapes, decode-repack-off, registry misses, and gfx1151 retain dense BF16; gfx1151 exports no Q5T16 dense aliases.",
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "component_screen": {
+    "protocol": "GPU1 actual production weights, counterbalanced rotation over all 48 ssm_out planes, 11 HIP-event pairs per row count; candidate quality compared with the retained dense-BF16 owner.",
+    "reason_for_reopening": "Earlier screens repeatedly reused one 60-MiB dense plane inside the 96-MiB cache. Production rotates 48 planes / 2.813 GiB, reversing the cache-biased result.",
+    "speedup_over_dense": {
+      "rows_1": 1.6656547674138344,
+      "rows_2": 1.5811378395199955,
+      "rows_3": 1.5233848394154208,
+      "rows_4": 1.5731569850326659
+    },
+    "paired_wins_each_cell": 11,
+    "quality": {
+      "maximum_kl": 0.00007384656883927584,
+      "aggregate_top1_agreement": 0.9979166666666667,
+      "minimum_single_layer_top1_agreement_disclosure": 0.75,
+      "project_gate_kl_max": 0.05,
+      "project_gate_top1_minimum": 0.9,
+      "aggregate_gate_passed": true
+    },
+    "physical_consumer_exactness": "Direct and rows-2/3/4 rowtile outputs are BF16-bit identical to the selected Q5T16 producer; dense M17 WMMA is BF16-bit identical to the selected one-expert WMMA producer and passes the CPU oracle.",
+    "runtime_trace": "Cached GPU1 rocprofv3 names direct, rows 2/3/4 col4, and M64 WMMA at only K6,144/N5,120. Direct/rowtiles use local128, VGPR 128/40/48/56, LDS 256/128/192/256 B, scratch0; WMMA uses local32, VGPR104, LDS0, scratch0."
+  },
+  "correctness": {
+    "planner_dispatch_backend": "Focused shape-qualified ownership, c1/c2-c4/c5 fallback, WMMA, and gfx1151-exclusion contracts passed 7/7; the broader mapping/materialization/dispatch/backend bundle passed with local-fixture skips.",
+    "gpu_component": "GPU1 direct/rowtile and WMMA equality gates passed 5/5; actual materialization selected gguf_q5_k_t16_v1 [1,320,24,2880], allocated 22,118,400 bytes, and freed to zero.",
+    "w7900_transaction": "The focused cached B1-B3 transaction passed exact candidate target/provider logits, reject/partial/full/rollback state, dynamic graph positions/reuse, intended Q5T16 c1 plus rows 2/3/4 ownership, lifecycle, and teardown. The first run failed only its obsolete dense-owner ledger; the repaired focused node passed under the focused-repair rule.",
+    "natural25": {
+      "all_candidate_exact_greedy_match_to_own_ar": true,
+      "all_candidate_gpu_accept_match_cpu": true,
+      "prior_route_matching_outputs": 9,
+      "prior_route_total_outputs": 10,
+      "changed_prompt": "general_ja_explain",
+      "first_changed_token_index_zero_based": 18,
+      "trajectory_disclosure": "The prior route continues with a FLOPS-oriented explanation while Q5T16 continues with a memory-bandwidth-oriented explanation; both decoded continuations are fluent. Every candidate B1-B3 stream matches the candidate's own true AR.",
+      "candidate_memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 33359433256,
+        "total_allocated_bytes": 34169866874,
+        "total_freed_bytes": 34169866874,
+        "active_allocations": 0,
+        "peak_allocations": 2415
+      }
+    },
+    "populated": {
+      "contexts": [512, 4096],
+      "decode_tokens": 128,
+      "measured_repeats_each": 3,
+      "finite_final_logits_all": true,
+      "candidate_final_token_ids": {
+        "512": [9707, 9707, 9707],
+        "4096": [9707, 9707, 9707]
+      },
+      "tracked_bytes_after_close": {
+        "512": 0,
+        "4096": 0
+      }
+    }
+  },
+  "profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy traces; one natural25 prompt; B3; no warmup; clean e15d85d1c baseline and clean 24fef47da candidate.",
+    "exact_candidate_prompt": {
+      "token_ids_match_own_ar": true,
+      "gpu_accept_matches_cpu": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3]
+    },
+    "dense_q5_ssm_out_family": {
+      "baseline_kernel": "dense_gemv_virtual256_local128_rowtile_out_kernel<unsigned short,4>",
+      "candidate_kernel": "q5_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short,4>",
+      "dispatches": {
+        "baseline": 336,
+        "candidate": 336
+      },
+      "duration_ms": {
+        "baseline": 37.004292,
+        "candidate": 22.910906,
+        "delta_percent": -38.08581447795299
+      },
+      "candidate_resources": {
+        "local_x": 128,
+        "vgpr": 56,
+        "sgpr": 128,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      }
+    },
+    "target_verify": {
+      "host_ms": {
+        "baseline": 380.84326,
+        "candidate": 361.440203,
+        "delta_percent": -5.094761818812287
+      },
+      "kernel_ms": {
+        "baseline": 272.61286,
+        "candidate": 261.295621,
+        "delta_percent": -4.151395865917706
+      },
+      "dispatches": {
+        "baseline": 7302,
+        "candidate": 7302
+      }
+    },
+    "complete_window": {
+      "suite_wall_ms": {
+        "baseline": 464.27692705765367,
+        "candidate": 444.06781415455043,
+        "delta_percent": -4.352814392732829
+      },
+      "marker_span_ms": {
+        "baseline": 464.237877,
+        "candidate": 444.022704,
+        "delta_percent": -4.354485922310913
+      },
+      "kernel_sum_ms": {
+        "baseline": 328.505145,
+        "candidate": 317.355699,
+        "delta_percent": -3.393994331504313
+      },
+      "dispatches": {
+        "baseline": 8039,
+        "candidate": 8039
+      }
+    }
+  },
+  "natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-24fef47da/natural25-native-q5t16-ssm-out-b1-b3.json",
+    "true_ar": {
+      "baseline_tok_s": 23.217170002114365,
+      "candidate_tok_s": 24.049451044800282,
+      "delta_percent": 3.584765251794786
+    },
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 41.5119039982628,
+        "candidate_tok_s": 43.17009230485958,
+        "delta_percent": 3.9944886812856684,
+        "candidate_mtp_vs_true_ar": 1.7950552062265621,
+        "accepted_draft_tokens": 115,
+        "proposed_draft_tokens": 127,
+        "cycles": 127,
+        "prompt_delta_percent_range": [-2.115748500684478, 5.144622725512948],
+        "scope_delta_percent_range": [1.0124652289599467, 5.005077666540969],
+        "all_prompt_rows_improve": false,
+        "all_scopes_improve": true
+      },
+      "2": {
+        "baseline_tok_s": 51.97412217996428,
+        "candidate_tok_s": 54.621476057630765,
+        "delta_percent": 5.093599981351926,
+        "candidate_mtp_vs_true_ar": 2.271215087441276,
+        "accepted_draft_tokens": 151,
+        "proposed_draft_tokens": 182,
+        "cycles": 91,
+        "prompt_delta_percent_range": [3.168013900409705, 15.637976922346342],
+        "scope_delta_percent_range": [3.688979201193354, 9.595245578554202],
+        "all_prompt_rows_improve": true,
+        "all_scopes_improve": true
+      },
+      "3": {
+        "baseline_tok_s": 56.80224585759689,
+        "candidate_tok_s": 59.55101322485042,
+        "delta_percent": 4.839187827440283,
+        "candidate_mtp_vs_true_ar": 2.4761901264987882,
+        "accepted_draft_tokens": 169,
+        "proposed_draft_tokens": 219,
+        "cycles": 76,
+        "prompt_delta_percent_range": [3.2580521707023635, 15.701565347006108],
+        "scope_delta_percent_range": [3.5050420801541415, 9.70050264006128],
+        "all_prompt_rows_improve": true,
+        "all_scopes_improve": true
+      }
+    },
+    "acceptance_comparison": {
+      "1": {
+        "baseline_accepted_proposed": [115, 126],
+        "candidate_accepted_proposed": [115, 127]
+      },
+      "2": {
+        "baseline_accepted_proposed": [151, 184],
+        "candidate_accepted_proposed": [151, 182]
+      },
+      "3": {
+        "baseline_accepted_proposed": [168, 222],
+        "candidate_accepted_proposed": [169, 219]
+      }
+    },
+    "stage_delta_percent": {
+      "1": {
+        "proposal": -1.4559311773836958,
+        "target_verify": -4.18814565759118,
+        "target_commit_finish": 0.8471135625385928,
+        "scheduler_accept_replay_host_residual": -1.1764632628077143
+      },
+      "2": {
+        "proposal": -3.2235714337345067,
+        "target_verify": -5.107087018344137,
+        "target_commit_finish": -2.8039234583520867,
+        "scheduler_accept_replay_host_residual": -9.619423884194056
+      },
+      "3": {
+        "proposal": -2.9923086422131817,
+        "target_verify": -4.958245445231812,
+        "target_commit_finish": -2.7908666997070286,
+        "scheduler_accept_replay_host_residual": -6.940663920538737
+      }
+    }
+  },
+  "populated_512_4096": {
+    "protocol": "One warmup plus three measured resident resets; repeated token 9707; bulk prefill; WMMA prefill; state-bound one-step graph decode; 128 decode tokens; cached W7900 build.",
+    "512": {
+      "prefill_tok_s": {
+        "baseline": 207.86408193376735,
+        "candidate": 234.01379485004585,
+        "delta_percent": 12.58019792212619,
+        "candidate_samples": [236.09204147609526, 234.01379485004585, 231.43766293610122]
+      },
+      "graph_ar_tok_s": {
+        "baseline": 22.207638739558348,
+        "candidate": 23.240873449607477,
+        "delta_percent": 4.652609501471372,
+        "candidate_samples": [23.309573592514404, 23.240873449607477, 23.203059823527028]
+      },
+      "tracked_peak_bytes": {
+        "baseline": 33990631812,
+        "candidate": 32032416132,
+        "saved": 1958215680
+      }
+    },
+    "4096": {
+      "prefill_tok_s": {
+        "baseline": 193.0014539813733,
+        "candidate": 215.7711761617268,
+        "delta_percent": 11.797694634233702,
+        "candidate_samples": [219.22460046068633, 215.7711761617268, 215.4557978002336]
+      },
+      "graph_ar_tok_s": {
+        "baseline": 21.01738856723784,
+        "candidate": 21.8412922407416,
+        "delta_percent": 3.9201048734858857,
+        "candidate_samples": [21.932409679556233, 21.8412922407416, 21.841227113128298]
+      },
+      "tracked_peak_bytes": {
+        "baseline": 37023203004,
+        "candidate": 35064987324,
+        "saved": 1958215680
+      }
+    }
+  },
+  "matched_comparison": {
+    "llamacpp_vulkan": {
+      "commit": "ee0445c99cffbe8d920b05cad28cb055d7049c0a",
+      "kv_dtype": "f16",
+      "natural25_b3_tok_s": 68.08247965468567,
+      "stateful_512_4096_prefill_tok_s": [79.805, 81.792],
+      "stateful_512_4096_ar_tok_s": [12.57431, 12.48779]
+    },
+    "hipengine_candidate": {
+      "kv_dtype": "bf16",
+      "natural25_b3_tok_s": 59.55101322485042,
+      "natural25_below_vulkan_percent": 12.531074768584883,
+      "natural25_vulkan_over_candidate_ratio": 1.1432631615791735,
+      "natural25_b3_vs_own_ar": 2.4761901264987882,
+      "stateful_512_4096_prefill_tok_s": [234.01379485004585, 215.7711761617268],
+      "stateful_512_4096_graph_ar_tok_s": [23.240873449607477, 21.8412922407416],
+      "prefill_above_vulkan_percent": [193.23199655415806, 163.80474393794847],
+      "ar_above_vulkan_percent": [84.82822078990797, 74.90118139992423]
+    },
+    "profile_only_module_rerank": {
+      "dense_q5_ssm_out": {
+        "hipengine_ms": 22.910906,
+        "vulkan_ms": 15.1194,
+        "gap_ms": 7.791506,
+        "status": "reduced from the prior +22.274-ms gap; now second-order"
+      },
+      "q4_ffn_gate_up_plus_silu": {
+        "hipengine_ms": 76.310598,
+        "vulkan_ms": 89.534,
+        "gap_ms": -13.223402,
+        "status": "hipEngine ahead"
+      },
+      "wide_q6_ffn_down_plus_qkv": {
+        "hipengine_ms": 47.57028,
+        "vulkan_ms": 41.486,
+        "gap_ms": 6.08428,
+        "status": "largest remaining matched arithmetic residual"
+      },
+      "proposal_root_stage1": {
+        "hipengine_ms": 31.240882,
+        "vulkan_ms": 31.8732,
+        "gap_ms": -0.632318,
+        "call_counts": {
+          "hipengine": 21,
+          "vulkan": 22
+        },
+        "status": "hipEngine ahead"
+      },
+      "target_root_f32_rows": {
+        "hipengine_ms": 11.798132,
+        "vulkan_ms": 9.17016,
+        "gap_ms": 2.627972,
+        "status": "second-order residual"
+      }
+    },
+    "protocol_note": "Unprofiled matched workloads establish toplines. rocprof and Vulkan query logging perturb execution differently; the module ledger is directional Amdahl ranking only. hipEngine BF16 K/V versus Vulkan F16 K/V remains disclosed."
+  },
+  "next_target": {
+    "summary": "Re-rank the retained 24fef47da profile. No arithmetic family retains a >=5% complete-wall Vulkan gap; exact dispatch/transport removal now has the highest credible leverage.",
+    "candidate": "Consume GDN FP32 output through a Q5T16 producer that performs the existing BF16 rounding in-register, removing 336 separate F32-to-BF16 launches and their global transport while preserving the exact candidate arithmetic boundary.",
+    "measured_ceiling": {
+      "cast_dispatches": 336,
+      "cast_kernel_ms": 0.606203,
+      "complete_profile_dispatches": 8039,
+      "complete_marker_ms": 444.022704
+    },
+    "admission": "RED bit-equality against explicit cast+Q5T16, actual GPU1 rows 1-4 screen, then W7900 transaction/profile/natural25. Keep the explicit cast plus ordinary Q5T16 route as the required unfused fallback."
+  },
+  "sources": {
+    "paths": {
+      "natural_baseline": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/natural25-native-state-only-tail-b1-b3.json",
+      "natural_candidate": "/tmp/hipengine-qwen36-27b/final-24fef47da/natural25-native-q5t16-ssm-out-b1-b3.json",
+      "natural_comparison": "/tmp/hipengine-qwen36-27b/final-24fef47da/natural25-q5t16-ssm-out-vs-e15d85d1c.json",
+      "profile_baseline_summary": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/profile-native-state-only-tail-mtp-b3-hermetic-v2/candidate-summary.json",
+      "profile_candidate_summary": "/tmp/hipengine-qwen36-27b/final-24fef47da/profile-native-q5t16-ssm-out-mtp-b3-hermetic/candidate-summary.json",
+      "profile_baseline_kernel": "/tmp/hipengine-qwen36-27b/final-e15d85d1c/profile-native-state-only-tail-mtp-b3-hermetic-v2/mtp-b3_kernel_trace.csv",
+      "profile_candidate_kernel": "/tmp/hipengine-qwen36-27b/final-24fef47da/profile-native-q5t16-ssm-out-mtp-b3-hermetic/mtp-b3_kernel_trace.csv",
+      "profile_candidate_marker": "/tmp/hipengine-qwen36-27b/final-24fef47da/profile-native-q5t16-ssm-out-mtp-b3-hermetic/mtp-b3_marker_api_trace.csv",
+      "ar_512_baseline": "/tmp/hipengine-qwen36-27b/final-094941175/ar-512x128-q6-qmicro-root.json",
+      "ar_512_candidate": "/tmp/hipengine-qwen36-27b/final-24fef47da/ar-512x128-q5t16-ssm-out.json",
+      "ar_4096_baseline": "/tmp/hipengine-qwen36-27b/final-094941175/ar-4096x128-q6-qmicro-root.json",
+      "ar_4096_candidate": "/tmp/hipengine-qwen36-27b/final-24fef47da/ar-4096x128-q5t16-ssm-out.json",
+      "rotation_screen": "/tmp/qwen36-q5t16-ssm-out-rotating-cache-reopen.json",
+      "runtime_trace_db": "/tmp/qwen36-q5t16-ssm-out-runtime-trace-99b1ca9a6/epyc/1456657_results.db"
+    },
+    "sha256": {
+      "natural_baseline": "34e05cf40eb3e4cfcbf9d0b0a09468ea874de8294d1f500e80f87292d2b46656",
+      "natural_candidate": "48c998c368460dc84bc614a3ed8155e9bb38bbfb8c9b487cf478c488f24e19b6",
+      "natural_comparison": "0a23be4fd27a6ee586276615d96e89df07884981f21f6dbc3d7aa0a8153a81ff",
+      "profile_baseline_summary": "f8c6833cca796ba0060fe4c5554c87ee2ca3336fb809e5ee53af5672771c26c7",
+      "profile_candidate_summary": "b8e82af2e0eddc7caa772e2eceb88fa726eac87072e3c61b9bc37f80ebace946",
+      "profile_baseline_kernel": "dcf1bd36a1c0c3feb7d9570481ee1337262b946a8ff11aadd93c262215bc06cd",
+      "profile_candidate_kernel": "e3c2e4e8ac0841efe5a83dc7be7c3d6f8e2222e4c943cdb7abbe75f622df6929",
+      "profile_candidate_marker": "b578dc2294026e908e34973420ba3d66397a9d8be6ca29e2a1272e50650f0a56",
+      "ar_512_baseline": "05cacbd93ec5206ad994028a895694369b6bbf21dd338ba1d43a3ed6abd2eb4e",
+      "ar_512_candidate": "79dc27058469df8247cbe216f1e4345035060569e2a25c899048ebd12fbc1e66",
+      "ar_4096_baseline": "13ca4e02748004157a4ff81a8f445e3bd024d8f07dc8b71b6585308e5426d75c",
+      "ar_4096_candidate": "7f895694c467bae2cfc933ea33a2725e4639024256c43a2668b963de4959faad",
+      "rotation_screen": "a9a07c32f8b21fe0b296e962429adbd9dcd7d931862305b020f32006752b2082",
+      "runtime_trace_db": "9d343f052d789c55f1f54b673d9df6b4949b1317a503d1bd3faa1d886a189c93"
+    }
+  },
+  "decision": {
+    "action": "retain_and_promote_shape_qualified_q5t16_ssm_out",
+    "reason": "The cache-representative family, complete profile, every B2/B3 prompt, every aggregate scope, populated prefill, graph AR, and residency all improve. Candidate MTP remains exact to its own AR and passes transaction/component quality gates; the one prior-route trajectory change is quality-gated and explicitly disclosed.",
+    "remaining_gap": "Natural25 B3 reaches 59.551 tok/s and remains 12.53% below llama.cpp Vulkan's 68.082 tok/s; matched prefill and AR remain substantially above Vulkan.",
+    "next": "Pursue exact launch/transport removal from the refreshed profile, beginning with the 336-launch GDN F32-to-BF16 handoff while preserving the unfused fallback."
+  }
+}

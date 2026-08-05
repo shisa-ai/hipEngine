@@ -206361,3 +206361,71 @@ Vulkan local sizes verbatim will close the measured gap.
   a hermetic cached W7900 one-prompt B3 trace against retained `e15d85d1c`;
   only an intended Q5 physical-family and complete-window win advances to the
   natural25 and populated 512/4096 promotion gates.
+
+## 2026-08-05 — Retain sole-resident Q5T16 dense `ssm_out`
+
+- Run a tracked-clean cached W7900 one-prompt B3 trace at `24fef47da` with
+  `rocprofv3 --kernel-trace --memory-copy-trace --marker-trace` around
+  `scripts/qwen36_dense_gguf_suite.py --candidate-budgets 3 --limit 1
+  --no-warmup --roctx-markers --require-cached-build`. Compare with the retained
+  clean `e15d85d1c` state-only-tail trace using
+  `/tmp/summarize_qwen36_profile.py`.
+- The intended 336-call family changes from
+  `dense_gemv_virtual256_local128_rowtile_out_kernel<unsigned short,4>` at
+  **37.004292 ms** to
+  `q5_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short,4>` at
+  **22.910906 ms (-38.086%)**. Target-verify host wall falls
+  **380.843260 -> 361.440203 ms (-5.095%)**, target kernels fall
+  **272.612860 -> 261.295621 ms (-4.151%)**, and complete marker wall falls
+  **464.237877 -> 444.022704 ms (-4.354%)**. Kernel sum falls
+  **328.505145 -> 317.355699 ms (-3.394%)** at unchanged **8,039** dispatches.
+  Candidate IDs, 17/21 accepted/proposed tokens, cycle ledger
+  `[3,3,2,3,3,0,3]`, GPU/CPU acceptance, **31.068-GiB** peak, and teardown pass.
+- Run the canonical W7900 ten-prompt suite:
+  `/home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-24fef47da/natural25-native-q5t16-ssm-out-b1-b3.json`.
+  True AR advances **23.217170 -> 24.049451 tok/s (+3.585%)** and B1/B2/B3
+  advance **41.511904/51.974122/56.802246 ->
+  43.170092/54.621476/59.551013 tok/s (+3.994/+5.094/+4.839%)**. Every
+  full/train/heldout/category scope improves; all B2/B3 prompt rows improve.
+  One B1 `mixed_ja_en_review` timing is **-2.116%**.
+- This source-Q5 representation is quality-gated, not bit-identical to the prior
+  dense-BF16 owner. Candidate MTP matches its own AR on all 30 rows. Nine of ten
+  prior-route outputs are byte-identical; only `general_ja_explain` changes
+  after token 18, with both decoded continuations fluent (prior FLOPS framing,
+  candidate memory-bandwidth framing). B1 acceptance is 115 with proposals
+  **126 -> 127**; B2 stays 151 accepted while proposals improve **184 -> 182**;
+  B3 improves **168/222 -> 169/219**. This is consistent with the predeclared
+  aggregate component gate (**7.38e-5 max KL / 99.79% top-1**) and is retained
+  with explicit disclosure.
+- Run the mandatory populated controls with one warmup and three measured
+  resets at 512/128 and 4096/128 using bulk prefill, WMMA, state-bound graph AR,
+  cached builds, and repeated token 9707. Against the latest identical AR-path
+  `094941175` controls, 512 prefill/AR advances
+  **207.864082/22.207639 -> 234.013795/23.240873 tok/s
+  (+12.580%/+4.653%)** and 4096 advances
+  **193.001454/21.017389 -> 215.771176/21.841292
+  (+11.798%/+3.920%)**. All six final IDs are `9707`, logits are finite, each
+  tracked peak falls by exactly **1,958,215,680 bytes / 1.824 GiB**, and both
+  sessions free to zero.
+- Retain and publish. Matched prefill and AR remain substantially above Vulkan;
+  natural25 B3 reaches **2.4762x own AR** and narrows the Vulkan gap
+  **16.57% -> 12.53%**. Artifact:
+  `benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json`.
+  Natural candidate/comparison hashes are `48c998c3...19b6` and
+  `0a23be4f...81ff`; profile summary/kernel/marker hashes are
+  `b8e82af2...e946`, `e3c2e4e8...6929`, and `b578dc22...0a56`; populated
+  512/4096 hashes are `79dc2705...1e66` and `7f895694...faad`.
+- Re-rank only `24fef47da`. The refreshed matched arithmetic residuals are Q5T16
+  `ssm_out` **+7.792 ms**, wide Q6 **+6.084 ms**, and target root **+2.628 ms**;
+  no family alone retains a 5%-complete-wall gap. Next target exact launch and
+  transport removal: fuse the existing BF16 rounding boundary into an
+  F32-input Q5T16 consumer to remove **336** standalone cast launches and
+  **0.606 ms** of cast kernels, while preserving the explicit cast plus
+  ordinary Q5T16 chain as the unfused fallback.
