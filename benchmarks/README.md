@@ -5555,6 +5555,31 @@ admitted. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan** is
 unchanged. Artifact:
 [`2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`](results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json).
 
+#### Qwen3.6-27B exact B5 higher budget, runtime rejected
+
+A completion audit found that the shared MTP ABI and trailing NextN provider
+support budgets `(1,2,3,5)`, while this dense GGUF route had only measured
+B1-B3. B4 remains unsupported. The initial exact ten-prompt B3/B5 run confirms
+that B5 improves acceptance (**169 -> 184**) and reduces cycles (**76 -> 61**),
+but missing six-row owners collapse throughput **59.942 -> 23.523 tok/s**.
+
+Adding temporary row-6 instantiations of the existing exact Q4/Q5/Q6 templates
+removes every direct fallback. On the same favorable code prompt, B5 target
+verify falls **724.097 -> 306.675 ms (-57.65%)** and throughput rises **30.103
+-> 63.511 tok/s (2.110x)**, temporarily exceeding same-process B3 **59.597
+tok/s**. That single prompt is not a promotion gate. B5 still costs **61.335
+ms/pass**, above the frozen **<=50.3 ms** full-suite break-even and roughly
+**42.5 ms** Vulkan break-even.
+
+The decisive trace shows steady B5 at **923 nodes / 47.774 ms kernels / 53.279
+ms span**, versus B3 **819 / 35.163 / 39.718 ms**. The residual is the real
+cost of six exact rows—primarily Q4 **+7.599 ms/pass** and Q6 **+2.275 ms**—not
+another missing leaf. No second optimized full-suite run is spent after the
+predeclared screen fails; all row-6/runtime changes are removed and B1-B3 stays
+production. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**
+is unchanged. Artifact:
+[`2026-08-06-qwen36-27b-dense-b5-budget-rejected.json`](results/2026-08-06-qwen36-27b-dense-b5-budget-rejected.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight

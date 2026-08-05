@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [rejected higher budget; campaign tabled] Qwen3.6-27B Q4_K_M / exact dense B5 / W7900: row-6 Q4/Q5/Q6 templates cut one-prompt B5 target verify **724.097 -> 306.675 ms (-57.65%)** and lift the favorable code prompt **30.103 -> 63.511 tok/s (2.110x)**, but optimized B5 still costs **61.335 ms/pass** versus the frozen **<=50.3 ms** full-suite break-even; the trace shows **923 nodes / 47.774 ms kernels** versus B3 **819 / 35.163 ms** with no direct fallback left, so restore B1-B3 production support without gaming a second full suite and keep canonical **60.262 tok/s / 11.49% below Vulkan**; `benchmarks/results/2026-08-06-qwen36-27b-dense-b5-budget-rejected.json`.
+
 - [rejected runtime default; campaign tabled] Qwen3.6-27B Q4_K_M / native B3 target graph / W7900: four exact 204-node executables preserve every checked output/state byte but move unprofiled submit only **40.563484 -> 40.500983 ms (1.00154x)** and complete call **40.983989 -> 40.918268 ms (1.00161x)**, proving rocprof's three 256-dispatch **5.736-5.799 ms** gaps are instrumentation rather than production savings; add no split route and keep canonical **60.262 tok/s / 11.49% below Vulkan**; `benchmarks/results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`.
 
 ## 2026-08-05
