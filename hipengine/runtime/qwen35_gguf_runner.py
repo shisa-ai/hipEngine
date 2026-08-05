@@ -1979,6 +1979,23 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_gdn_decode_output_cast_fn_cache = fn
         return fn
 
+    def _rounded_add_rmsnorm_fn(self):
+        """Resolve the exact rounded-add plus next-input RMSNorm composite."""
+
+        missing = object()
+        fn = getattr(self, "_gguf_rounded_add_rmsnorm_fn_cache", missing)
+        if fn is missing:
+            load_backend_kernel_package(self.backend)
+            fn = resolve(
+                backend=self.backend,
+                layer="add+rmsnorm",
+                quant="gguf_f32_weight",
+                variant="rounded_bf16_out",
+                missing="none",
+            )
+            self._gguf_rounded_add_rmsnorm_fn_cache = fn
+        return fn
+
     def _gdn_decode_output_cast_for_weight(self, weight, *, rows: int = 1):
         """Return the plugin cast or the unfused cast required by weight layout."""
 
@@ -4435,6 +4452,7 @@ class Qwen35GGUFFullStackRunner:
         linear_state_rows: tuple[object, object] | None = None,
         initial_state_snapshot: tuple[object, object] | None = None,
         hidden_f32_ptr: int | None = None,
+        input_norm_ptr: int | None = None,
         commit_final_linear_state: bool = True,
         stream: int = 0,
     ) -> None:
@@ -4461,21 +4479,28 @@ class Qwen35GGUFFullStackRunner:
         if conv_state is None or recurrent_state is None:
             raise ValueError(f"layer {layer_id} has no linear-attention state")
 
-        attn_norm_f32_ptr = self._run_attention_norm_rows(
-            hidden_ptr=hidden_ptr,
-            hidden_f32_ptr=hidden_f32_ptr,
-            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
-            out_ptr=scratch.norm.ptr,
-            out_f32_ptr=(
-                scratch.post_norm_f32.ptr
-                if hasattr(scratch, "post_norm_f32")
-                else None
-            ),
-            rows=rows,
-            eps=cfg.rms_norm_eps,
-            stream=stream,
-            runtime=runtime,
-        )
+        if input_norm_ptr is None:
+            attn_norm_f32_ptr = self._run_attention_norm_rows(
+                hidden_ptr=hidden_ptr,
+                hidden_f32_ptr=hidden_f32_ptr,
+                weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+                out_ptr=scratch.norm.ptr,
+                out_f32_ptr=(
+                    scratch.post_norm_f32.ptr
+                    if hasattr(scratch, "post_norm_f32")
+                    else None
+                ),
+                rows=rows,
+                eps=cfg.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            if hidden_f32_ptr is not None:
+                raise ValueError("prefused dense input norm requires a BF16 residual")
+            if int(input_norm_ptr) != int(scratch.norm.ptr):
+                raise ValueError("prefused linear-attention input norm must use scratch.norm")
+            attn_norm_f32_ptr = None
         if not launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
             layer.weight("attn_gate"),
@@ -4753,6 +4778,7 @@ class Qwen35GGUFFullStackRunner:
         decode_row_scratches: tuple[object, ...],
         start_position: int,
         hidden_f32_ptr: int | None = None,
+        input_norm_ptr: int | None = None,
         attention_context_limit: int,
         stream: int = 0,
     ) -> None:
@@ -4797,16 +4823,22 @@ class Qwen35GGUFFullStackRunner:
         kv_write_library = self._paged_kv_write_library()
         paged_attn_library = self._paged_attn_decode_library()
 
-        self._run_attention_norm_rows(
-            hidden_ptr=hidden_ptr,
-            hidden_f32_ptr=hidden_f32_ptr,
-            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
-            out_ptr=scratch.norm.ptr,
-            rows=rows,
-            eps=cfg.rms_norm_eps,
-            stream=stream,
-            runtime=runtime,
-        )
+        if input_norm_ptr is None:
+            self._run_attention_norm_rows(
+                hidden_ptr=hidden_ptr,
+                hidden_f32_ptr=hidden_f32_ptr,
+                weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+                out_ptr=scratch.norm.ptr,
+                rows=rows,
+                eps=cfg.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            if hidden_f32_ptr is not None:
+                raise ValueError("prefused dense input norm requires a BF16 residual")
+            if int(input_norm_ptr) != int(scratch.norm.ptr):
+                raise ValueError("prefused full-attention input norm must use scratch.norm")
         launch_gguf_linear(
             layer.weight("attn_q"),
             scratch.norm.ptr,
@@ -5745,6 +5777,9 @@ class Qwen35GGUFFullStackRunner:
         commit_final_linear_state: bool = True,
         hidden_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
+        input_norm_ptr: int | None = None,
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
         decode_row_scratches: tuple[object, ...] | None = None,
         attention_context_limit: int | None = None,
         stream: int = 0,
@@ -5766,6 +5801,10 @@ class Qwen35GGUFFullStackRunner:
         row_nbytes = self.hidden_size * DType.BF16.itemsize
         row_f32_nbytes = self.hidden_size * DType.FP32.itemsize
         runtime = self.runtime or get_hip_runtime()
+        if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
+            raise ValueError("next norm weight and output pointers must be provided together")
+        if input_norm_ptr is not None and hidden_f32_ptr is not None:
+            raise ValueError("prefused dense input norm requires a BF16 residual")
         if decode_row_scratches is not None and len(decode_row_scratches) != rows:
             raise ValueError("native decode row scratch count must match verifier rows")
         staged_dense_linear = (
@@ -5797,6 +5836,7 @@ class Qwen35GGUFFullStackRunner:
                 linear_state_rows=linear_state_rows,
                 initial_state_snapshot=initial_state_snapshot,
                 hidden_f32_ptr=hidden_f32_ptr,
+                input_norm_ptr=input_norm_ptr,
                 commit_final_linear_state=commit_final_linear_state,
                 stream=stream,
             )
@@ -5812,6 +5852,7 @@ class Qwen35GGUFFullStackRunner:
                 decode_row_scratches=decode_row_scratches,
                 start_position=start_position,
                 hidden_f32_ptr=hidden_f32_ptr,
+                input_norm_ptr=input_norm_ptr,
                 attention_context_limit=attention_context_limit,
                 stream=stream,
             )
@@ -5886,6 +5927,8 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             hidden_f32_ptr=hidden_f32_ptr,
             out_f32_ptr=out_f32_ptr,
+            next_norm_weight_ptr=next_norm_weight_ptr,
+            next_norm_out_ptr=next_norm_out_ptr,
         )
 
     def _run_linear_attention_prefill_layer_rows(
@@ -7241,6 +7284,8 @@ class Qwen35GGUFFullStackRunner:
         sync_stages = bool(sync_stage_timings and stage_timings is not None)
         t_stage = time.perf_counter() if sync_stages else 0.0
         f32_residual = hidden_f32_ptr is not None or out_f32_ptr is not None
+        if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
+            raise ValueError("next norm weight and output pointers must be provided together")
         post_norm_f32_ptr: int | None = None
         if f32_residual:
             if hidden_f32_ptr is None or out_f32_ptr is None:
@@ -7338,8 +7383,13 @@ class Qwen35GGUFFullStackRunner:
                     gpu_stage_recorder=gpu_stage_recorder,
                 )
             return
-        if next_norm_weight_ptr is not None:
-            raise ValueError("MoE-tail next RMSNorm fusion requires an MoE layer")
+        if next_norm_weight_ptr is not None and f32_residual:
+            raise ValueError("dense next RMSNorm fusion requires a BF16 residual")
+        rounded_next_rms_fn = (
+            self._rounded_add_rmsnorm_fn()
+            if next_norm_weight_ptr is not None and rows in (2, 3, 4)
+            else None
+        )
         dense_silu_fused = rows > 1 and launch_gguf_linear_pair_silu(
             layer.weight("ffn_gate"),
             layer.weight("ffn_up"),
@@ -7413,7 +7463,8 @@ class Qwen35GGUFFullStackRunner:
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_silu")
         down_residual_fused = (
-            not f32_residual
+            next_norm_weight_ptr is None
+            and not f32_residual
             and rows > 1
             and launch_gguf_linear_residual(
                 layer.weight("ffn_down"),
@@ -7456,6 +7507,19 @@ class Qwen35GGUFFullStackRunner:
                     library=self._cast_library(),
                     runtime=runtime,
                 )
+            elif rounded_next_rms_fn is not None:
+                rounded_next_rms_fn(
+                    scratch.residual.ptr,
+                    scratch.ffn_down.ptr,
+                    int(next_norm_weight_ptr),
+                    int(next_norm_out_ptr),
+                    out_ptr,
+                    rows,
+                    self.hidden_size,
+                    self.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
             else:
                 gguf_bf16_add(
                     scratch.residual.ptr,
@@ -7465,6 +7529,17 @@ class Qwen35GGUFFullStackRunner:
                     stream=stream,
                     runtime=runtime,
                 )
+                if next_norm_weight_ptr is not None:
+                    gguf_rmsnorm_bf16_f32_weight(
+                        out_ptr,
+                        int(next_norm_weight_ptr),
+                        int(next_norm_out_ptr),
+                        rows=rows,
+                        hidden_size=self.hidden_size,
+                        eps=self.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
         _mark_sync_stage(
             runtime,
             stage_timings,
@@ -14041,12 +14116,40 @@ class Qwen35GGUFResidentSession:
             block_wmma_prefill = gguf_wmma_prefill_enabled(
                 self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
             )
+            layer_types = self.runner.weights.config.layer_types
+            full_attention_prefused_ready = (
+                FULL_ATTENTION not in layer_types
+                or (
+                    _native_decode_row_scratches is not None
+                    and _native_attention_context_limit is not None
+                    and int(_native_attention_context_limit) > 0
+                    and not _use_gguf_full_attention_split_decode(
+                        int(_native_attention_context_limit)
+                    )
+                    and all(
+                        getattr(row_scratch, "kv_storage_dtype", DType.BF16)
+                        == DType.BF16
+                        for row_scratch in _native_decode_row_scratches
+                    )
+                )
+            )
+            chain_dense_next_rms = bool(
+                bulk_attention_mode == "native"
+                and not block_wmma_prefill
+                and not self.runner.weights.config.is_moe
+                and not use_f32_residual
+                and rows in (2, 3, 4)
+                and not capture_layer_boundary_ids
+                and full_attention_prefused_ready
+                and self.runner._rounded_add_rmsnorm_fn() is not None
+            )
+            input_norm_ptr: int | None = None
             with (
                 wmma_prefill_session(block_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 native_batch_decode_session(bulk_attention_mode == "native"),
             ):
-                for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                for layer_id, layer_type in enumerate(layer_types):
                     if sync_stages:
                         runtime.device_synchronize()
                     t_layer0 = time.perf_counter() if stage_timings is not None else 0.0
@@ -14074,6 +14177,16 @@ class Qwen35GGUFResidentSession:
                         dst_chunk_ptr = dst.ptr + scratch_row_start * row_nbytes
                         src_f32_chunk_ptr = None if src_f32 is None else int(src_f32.ptr)
                         dst_f32_chunk_ptr = None if dst_f32 is None else int(dst_f32.ptr)
+                        next_norm_weight_ptr: int | None = None
+                        next_norm_out_ptr: int | None = None
+                        if chain_dense_next_rms and layer_id + 1 < len(layer_types):
+                            next_norm_weight_ptr = (
+                                self.runner.weights.layer(layer_id + 1)
+                                .weight("attn_norm")
+                                .allocation()
+                                .tensor.ptr
+                            )
+                            next_norm_out_ptr = bulk_scratch.norm.ptr
                         if bulk_attention_mode == "native":
                             self.runner._run_native_attention_bulk_ffn_layer_rows(
                                 layer_id,
@@ -14109,6 +14222,9 @@ class Qwen35GGUFResidentSession:
                                 ),
                                 hidden_f32_ptr=src_f32_chunk_ptr,
                                 out_f32_ptr=dst_f32_chunk_ptr,
+                                input_norm_ptr=input_norm_ptr,
+                                next_norm_weight_ptr=next_norm_weight_ptr,
+                                next_norm_out_ptr=next_norm_out_ptr,
                                 decode_row_scratches=_native_decode_row_scratches,
                                 attention_context_limit=_native_attention_context_limit,
                             )
@@ -14197,6 +14313,7 @@ class Qwen35GGUFResidentSession:
                             rows=rows,
                             runtime=runtime,
                         )
+                    input_norm_ptr = next_norm_out_ptr if chain_dense_next_rms else None
                     src, dst = dst, src
                     if use_f32_residual:
                         src_f32, dst_f32 = dst_f32, src_f32

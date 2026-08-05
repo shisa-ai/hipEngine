@@ -206964,3 +206964,42 @@ Vulkan local sizes verbatim will close the measured gap.
   `60972371...a954`, and `b3f1f4b7...aa416`. Admit registry/fallback/runner
   RED before production source changes; the unfused down + rounded add + RMSNorm
   chain remains mandatory for every miss.
+
+## 2026-08-05 — GREEN exact rounded dense next-RMSNorm ownership
+
+- Establish eight expected RED failures, then register the explicit gfx1100-only
+  `add+rmsnorm/gguf_f32_weight/rounded_bf16_out` key. One local256 block per row
+  forms the BF16 add, explicitly rounds it, converts the rounded bits back to
+  FP32 for the unchanged RMS reduction tree, and writes both residual and
+  normalized BF16 outputs. The wrapper accepts only rows 2-4 and 256 threads;
+  gfx1151 explicitly excludes the alias.
+- Wire the composite only through BF16-residual dense native N1 verifier graphs.
+  Each layer leaves FFN-down on its ordinary registered projection owner, fuses
+  add plus the following layer's attention RMSNorm, and passes the prefused norm
+  through both linear- and full-attention consumers. B1/B3 rows2/4 own the
+  cross-layer route. B2 rows3 intentionally remains on the separate N2 bulk
+  graph. C1, prefill/WMMA, F32 residuals, layer-boundary capture, MoE,
+  unsupported full-attention/KV policies, key misses, and peer backends retain
+  projection -> registered BF16 add -> registered RMSNorm. The final layer has
+  no following attention norm and retains the existing selective residual
+  producer where qualified.
+- GPU1 component/adjacent gates pass **49/49**, with the native-cycle bundle
+  separately **13/13**. All six rows2-4 residual and norm surfaces are bit-exact
+  to the registered HIP chain. The repaired focused file passes **8/8** and now
+  also binds candidate outputs to `kernels/cpu_reference.rmsnorm`: residual bits
+  are exact and deterministic projected-logit KL/top-1 satisfy **<=0.05/>=90%**.
+  A direct hidden-feature argmax was discarded as a non-semantic near-tie metric;
+  the gate correctly evaluates a shared deterministic CPU projection instead.
+- Cache-only GPU1 tracing names
+  `gguf_rounded_add_rmsnorm_bf16_f32_weight_kernel` at **17.960 us**, local256,
+  VGPR16, SGPR128, scratch0. Kernel/agent SHA-256 values are
+  `b814ed8a...0d9c8` / `1ba18fbf...dc00`.
+- The final cached W7900 B1-B3 transaction passes exact logits/IDs,
+  reject/partial/full/rollback state, dynamic-position graph reuse, provider
+  parity, ownership, lifecycle, and teardown. Two preceding executions reached
+  the same numerical/state checks but exposed stale census expectations: the
+  ordinary Q4 FFN-down shape must now appear, and rounded chaining owns rows
+  `{2,4}` rather than B2's N2 row3. Per focused-repair policy, only this failed
+  node and the changed rounded-boundary file were rerun; no broad suite repeat
+  was necessary. Commit this correctness unit before the tracked-clean W7900 B3
+  marker/kernel profile against the selective `4bbe8eef8` source baseline.

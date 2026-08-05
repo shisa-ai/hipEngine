@@ -798,6 +798,35 @@ def down_residual_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
             register(key, originals[name], replace=True)
 
 
+@pytest.fixture
+def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
+    """Count exact dense rounded-add plus next-input RMSNorm ownership."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "add+rmsnorm",
+        "gguf_f32_weight",
+        "rounded_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, int]] = []
+
+    def counted(*args, **kwargs):
+        calls.append((int(args[5]), int(args[6])))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
+
+
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
@@ -811,6 +840,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
     q4_single_rowtile_calls: dict[str, list[tuple[int, int, int]]],
     down_residual_calls: dict[str, list[tuple[int, int, int]]],
+    rounded_next_rms_calls: list[tuple[int, int]],
 ) -> None:
     """Dense B1-B3 rows and reject/partial/full commits stay target-exact."""
 
@@ -1198,6 +1228,8 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (5_120, 10_240),
         (5_120, 12_288),
         (6_144, 5_120),
+        # Rounded add+next-RMSNorm leaves FFN-down as an ordinary projection.
+        (17_408, 5_120),
     }
     assert q4_single_rowtile_calls["col4"]
     assert {
@@ -1270,6 +1302,11 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         for _, in_features, out_features in q4_dual_rowtile_silu_calls["t16"]
     } == {(5120, 17408)}
     assert not q4_dual_rowtile_silu_calls["pack8"]
+    assert rounded_next_rms_calls
+    # B2/rows3 remains on the separate N2 bulk graph. The cross-layer owner is
+    # deliberately limited to the native N1 B1/B3 graphs.
+    assert {rows for rows, _hidden in rounded_next_rms_calls} == {2, 4}
+    assert {hidden for _rows, hidden in rounded_next_rms_calls} == {5_120}
     assert down_residual_calls["q4"]
     assert down_residual_calls["q6"]
     assert {rows for rows, _, _ in down_residual_calls["q4"]} == {2, 3, 4}

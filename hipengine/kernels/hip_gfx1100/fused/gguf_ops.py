@@ -230,6 +230,49 @@ def gguf_add_rmsnorm_bf16_f32_weight(
     )
 
 
+def gguf_rounded_add_rmsnorm_bf16_f32_weight(
+    residual_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Add BF16 inputs, round, then normalize that rounded residual."""
+
+    if rows not in (2, 3, 4):
+        raise ValueError("rows must be 2, 3, or 4")
+    _check_positive(hidden_size, "hidden_size")
+    if threads != 256:
+        raise ValueError("threads must be exactly 256")
+    for pointer, name in (
+        (residual_ptr, "residual_ptr"),
+        (add_ptr, "add_ptr"),
+        (weight_ptr, "weight_ptr"),
+        (norm_out_ptr, "norm_out_ptr"),
+        (residual_out_ptr, "residual_out_ptr"),
+    ):
+        _check_nonzero_pointer(pointer, name)
+    _launch_add_rmsnorm(
+        "hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight",
+        (residual_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256(
     x_ptr: int,
     add_ptr: int,
@@ -698,6 +741,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "add+rmsnorm",
+            "gguf_f32_weight",
+            "rounded_bf16_out",
+        ),
+        gguf_rounded_add_rmsnorm_bf16_f32_weight,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "add_rmsnorm",
             "gguf_f32_weight",
             "bf16_out_staged_f32_local256",
@@ -1060,6 +1113,7 @@ __all__ = [
     "build_gguf_ops",
     "gguf_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
+    "gguf_rounded_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_f32_f32_weight",
     "gguf_bf16_add",
