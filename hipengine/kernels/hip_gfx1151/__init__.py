@@ -758,6 +758,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "f32",
             "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop",
         ),
+        # The dependent alpha/beta-to-GDN owner is screened only on gfx1100;
+        # gfx1151 retains scalar projections plus snapshot chain GDN.
+        (
+            "linear_attn_alpha_beta+gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+            "f32+gguf_q5_k_t16_v1",
+            "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out",
+        ),
         # Qwen3.6 dense down+residual and rounded next-input RMSNorm fusions
         # are W7900-only pending independent gfx1151 boundary/model gates.
         (

@@ -8,7 +8,7 @@ import os
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Iterator, Mapping
+from typing import Callable, Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
@@ -2448,6 +2448,104 @@ def launch_gguf_linear_pair(
     return False
 
 
+def resolve_gguf_linear_pair_gdn_snapshot(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    ssm_out_weight: GGUFDeviceWeight,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    ssm_in_features: int,
+    ssm_out_features: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    backend: str | None = None,
+) -> Callable[..., None] | None:
+    """Resolve the exact dependent alpha/beta-to-snapshot-GDN owner.
+
+    The composite quant axis is derived from both dense-F32 projection weights
+    and the downstream resident ``ssm_out`` weight. Shape, layout, backend, or
+    key misses return ``None`` before any producer launches, preserving the two
+    scalar projections plus registered snapshot Conv/GDN fallback.
+    """
+
+    rows = int(rows)
+    in_features = int(in_features)
+    out_features = int(out_features)
+    ssm_in_features = int(ssm_in_features)
+    ssm_out_features = int(ssm_out_features)
+    num_k_heads = int(num_k_heads)
+    num_v_heads = int(num_v_heads)
+    head_k_dim = int(head_k_dim)
+    head_v_dim = int(head_v_dim)
+    if (
+        rows < 1
+        or rows > 4
+        or in_features != 5120
+        or out_features != 48
+        or ssm_in_features != 6144
+        or ssm_out_features != 5120
+        or num_k_heads != 16
+        or num_v_heads != 48
+        or head_k_dim != 128
+        or head_v_dim != 128
+    ):
+        return None
+    try:
+        resolved_backend = _weight_backend(
+            weight_a,
+            weight_b,
+            ssm_out_weight,
+            backend=backend,
+        )
+        dispatch_a = resolve_gguf_linear_dispatch(
+            weight_a,
+            activation_dtype=GGUF_ACTIVATION_BF16,
+            output_dtype=GGUF_OUTPUT_BF16,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        dispatch_b = resolve_gguf_linear_dispatch(
+            weight_b,
+            activation_dtype=GGUF_ACTIVATION_BF16,
+            output_dtype=GGUF_OUTPUT_BF16,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        dispatch_out = resolve_gguf_linear_dispatch(
+            ssm_out_weight,
+            activation_dtype=GGUF_ACTIVATION_BF16,
+            output_dtype=GGUF_OUTPUT_BF16,
+            backend=resolved_backend,
+            rows=rows,
+        )
+    except ValueError:
+        return None
+    if (
+        dispatch_a.abi != "dense_bf16"
+        or dispatch_b.abi != "dense_bf16"
+        or dispatch_a.key != dispatch_b.key
+    ):
+        return None
+    candidate = KernelKey(
+        resolved_backend,
+        "linear_attn_alpha_beta+gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+        f"{dispatch_a.key.quant}+{dispatch_out.key.quant}",
+        "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out",
+    )
+    if not is_registered(candidate):
+        return None
+    return resolve(
+        backend=candidate.backend,
+        layer=candidate.layer,
+        quant=candidate.quant,
+        variant=candidate.variant,
+    )
+
+
 def launch_gguf_linear_pair_silu(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
@@ -3764,6 +3862,7 @@ __all__ = [
     "launch_gguf_linear_residual",
     "launch_gguf_linear_moe_tail_host_batch",
     "launch_gguf_linear_pair",
+    "resolve_gguf_linear_pair_gdn_snapshot",
     "launch_gguf_linear_pair_silu",
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",

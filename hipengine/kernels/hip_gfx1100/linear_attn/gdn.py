@@ -33,6 +33,9 @@ _SYMBOL_CHAIN_C1_EXACT_SNAPSHOT_TLOOP_F32_BF16 = (
     "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_"
     "c1_exact_snapshot_tloop_f32_bf16_out"
 )
+_SYMBOL_ALPHA_BETA_GDN_CHAIN_SNAPSHOT_F32_BF16 = (
+    "hipengine_qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out"
+)
 _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
@@ -757,6 +760,105 @@ def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f32_bf1
         initial_state_snapshot_ptr=initial_recurrent_state_snapshot_ptr,
         out_bf16_ptr=out_bf16_ptr,
     )
+
+
+def qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out(
+    norm_ptr: int,
+    alpha_weight_ptr: int,
+    beta_weight_ptr: int,
+    alpha_out_ptr: int,
+    beta_out_ptr: int,
+    conv_out_ptr: int,
+    gate_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    base_recurrent_state_ptr: int,
+    leaf_recurrent_state_ptr: int,
+    initial_recurrent_state_snapshot_ptr: int,
+    out_ptr: int,
+    out_bf16_ptr: int,
+    eps: float,
+    rows: int,
+    in_features: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Project exact BF16 alpha/beta and consume them in snapshot chain GDN."""
+
+    rows = int(rows)
+    in_features = int(in_features)
+    num_k_heads = int(num_k_heads)
+    num_v_heads = int(num_v_heads)
+    head_k_dim = int(head_k_dim)
+    head_v_dim = int(head_v_dim)
+    if rows < 1 or rows > 4:
+        raise ValueError("rows must be between 1 and 4")
+    if in_features != 5120:
+        raise ValueError("in_features must equal 5120")
+    if num_k_heads != 16:
+        raise ValueError("num_k_heads must equal 16")
+    if num_v_heads != 48:
+        raise ValueError("num_v_heads must equal 48")
+    if head_k_dim != 128:
+        raise ValueError("head_k_dim must equal 128")
+    if head_v_dim != 128:
+        raise ValueError("head_v_dim must equal 128")
+    if int(threads) != 256:
+        raise ValueError("threads must equal 256")
+
+    pointer_args = (
+        norm_ptr,
+        alpha_weight_ptr,
+        beta_weight_ptr,
+        alpha_out_ptr,
+        beta_out_ptr,
+        conv_out_ptr,
+        gate_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        base_recurrent_state_ptr,
+        leaf_recurrent_state_ptr,
+        initial_recurrent_state_snapshot_ptr,
+        out_ptr,
+        out_bf16_ptr,
+    )
+    if any(int(pointer) <= 0 for pointer in pointer_args):
+        raise ValueError("dependent alpha/beta-to-GDN pointers must be non-zero")
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_ALPHA_BETA_GDN_CHAIN_SNAPSHOT_F32_BF16)
+    fn.argtypes = [ctypes.c_void_p] * len(pointer_args) + [
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        *(ctypes.c_void_p(pointer) for pointer in pointer_args),
+        ctypes.c_float(eps),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16(
@@ -3356,6 +3458,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
         ),
         qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_snapshot_tloop_f32_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_attn_alpha_beta+gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
+            "f32+gguf_q5_k_t16_v1",
+            "bf16_k5120_n48_hk16_hv48_d128_exact_state_rows_tloop_f32_bf16_out",
+        ),
+        qwen35_linear_attn_alpha_beta_gdn_chain_snapshot_f32_bf16_out,
         replace=replace,
     )
     register(

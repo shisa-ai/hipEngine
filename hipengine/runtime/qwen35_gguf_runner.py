@@ -287,6 +287,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_residual,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
+    resolve_gguf_linear_pair_gdn_snapshot,
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
@@ -4440,6 +4441,106 @@ class Qwen35GGUFFullStackRunner:
             )
         return True
 
+    def _try_run_linear_attention_alpha_beta_gdn_rows_exact(
+        self,
+        layer,
+        scratch,
+        conv_state,
+        recurrent_state,
+        *,
+        rows: int,
+        linear_state_rows: tuple[object, object],
+        initial_state_snapshot: tuple[object, object] | None,
+        ssm_out_weight,
+        commit_final_linear_state: bool,
+        stream: int,
+        runtime,
+    ) -> bool:
+        """Run snapshot Conv then the dependent exact alpha/beta-to-GDN owner."""
+
+        rows = int(rows)
+        if rows <= 1 or initial_state_snapshot is None:
+            return False
+        assert self.weights is not None
+        cfg = self.weights.config
+        owner = resolve_gguf_linear_pair_gdn_snapshot(
+            layer.weight("ssm_alpha"),
+            layer.weight("ssm_beta"),
+            ssm_out_weight,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=cfg.ssm_time_step_rank,
+            ssm_in_features=cfg.ssm_inner_size,
+            ssm_out_features=self.hidden_size,
+            num_k_heads=cfg.ssm_group_count,
+            num_v_heads=cfg.ssm_time_step_rank,
+            head_k_dim=cfg.ssm_state_size,
+            head_v_dim=self.ssm_value_dim,
+            backend=self.backend,
+        )
+        if not callable(owner):
+            return False
+        plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
+        if not callable(plan.conv_snapshot):
+            return False
+        conv_state_rows, recurrent_state_rows = linear_state_rows
+        conv_initial_snapshot, recurrent_initial_snapshot = initial_state_snapshot
+        plan.conv_snapshot(
+            scratch.linear_qkv.ptr,
+            conv_state.ptr,
+            conv_state_rows.ptr,
+            conv_initial_snapshot.ptr,
+            layer.weight("ssm_conv1d").allocation().tensor.ptr,
+            scratch.conv_out.ptr,
+            rows,
+            self.linear_qkv_width,
+            cfg.ssm_conv_kernel,
+            stream=stream,
+            runtime=runtime,
+        )
+        owner(
+            scratch.norm.ptr,
+            layer.weight("ssm_alpha").allocation().tensor.ptr,
+            layer.weight("ssm_beta").allocation().tensor.ptr,
+            scratch.linear_alpha.ptr,
+            scratch.linear_beta.ptr,
+            scratch.conv_out.ptr,
+            scratch.linear_z.ptr,
+            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+            layer.weight("ssm_a").allocation().tensor.ptr,
+            layer.weight("ssm_norm").allocation().tensor.ptr,
+            recurrent_state.ptr,
+            recurrent_state_rows.ptr,
+            recurrent_initial_snapshot.ptr,
+            scratch.recurrent_out.ptr,
+            scratch.recurrent_bf16.ptr,
+            cfg.rms_norm_eps,
+            rows,
+            self.hidden_size,
+            cfg.ssm_group_count,
+            cfg.ssm_time_step_rank,
+            cfg.ssm_state_size,
+            self.ssm_value_dim,
+            stream=stream,
+            runtime=runtime,
+        )
+        if commit_final_linear_state:
+            runtime.memcpy_async(
+                conv_state.ptr,
+                conv_state_rows.ptr + (rows - 1) * int(conv_state.nbytes),
+                int(conv_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                recurrent_state.ptr,
+                recurrent_state_rows.ptr + (rows - 1) * int(recurrent_state.nbytes),
+                int(recurrent_state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        return True
+
     def _run_linear_attention_attn_chain_rows_exact(
         self,
         layer_id: int,
@@ -4534,16 +4635,6 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        self._run_linear_attention_alpha_beta_rows(
-            layer,
-            scratch.norm.ptr,
-            attn_norm_f32_ptr,
-            scratch,
-            rows=rows,
-            stream=stream,
-            runtime=runtime,
-        )
-
         ssm_out_weight = layer.weight("ssm_out")
         gdn_output_fusion = self._gdn_chain_output_fusion_for_weight(
             ssm_out_weight
@@ -4553,28 +4644,60 @@ class Qwen35GGUFFullStackRunner:
             if initial_state_snapshot is not None
             else None
         )
-        used_chain_journal = bool(
-            linear_state_rows is not None
-            and self._try_run_linear_attention_chain_journal_rows_exact(
+        used_dependent_gdn = bool(
+            attn_norm_f32_ptr is None
+            and linear_state_rows is not None
+            and self._try_run_linear_attention_alpha_beta_gdn_rows_exact(
                 layer,
                 scratch,
                 conv_state,
                 recurrent_state,
                 rows=rows,
                 linear_state_rows=linear_state_rows,
+                initial_state_snapshot=initial_state_snapshot,
+                ssm_out_weight=ssm_out_weight,
                 commit_final_linear_state=bool(commit_final_linear_state),
                 stream=stream,
                 runtime=runtime,
-                initial_state_snapshot=initial_state_snapshot,
-                gdn_output_fusion=gdn_output_fusion,
-                gdn_initial_state_output_fusion=gdn_initial_state_output_fusion,
+            )
+        )
+        if not used_dependent_gdn:
+            self._run_linear_attention_alpha_beta_rows(
+                layer,
+                scratch.norm.ptr,
+                attn_norm_f32_ptr,
+                scratch,
+                rows=rows,
+                stream=stream,
+                runtime=runtime,
+            )
+        used_chain_journal = bool(
+            used_dependent_gdn
+            or (
+                linear_state_rows is not None
+                and self._try_run_linear_attention_chain_journal_rows_exact(
+                    layer,
+                    scratch,
+                    conv_state,
+                    recurrent_state,
+                    rows=rows,
+                    linear_state_rows=linear_state_rows,
+                    commit_final_linear_state=bool(commit_final_linear_state),
+                    stream=stream,
+                    runtime=runtime,
+                    initial_state_snapshot=initial_state_snapshot,
+                    gdn_output_fusion=gdn_output_fusion,
+                    gdn_initial_state_output_fusion=gdn_initial_state_output_fusion,
+                )
             )
         )
         if initial_state_snapshot is not None and not used_chain_journal:
             raise RuntimeError(
                 "deferred initial-state capture lost an exact Conv/GDN producer"
             )
-        gdn_bf16_ready = used_chain_journal and gdn_output_fusion is not None
+        gdn_bf16_ready = used_chain_journal and (
+            used_dependent_gdn or gdn_output_fusion is not None
+        )
         if not used_chain_journal:
             qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
             z_row_nbytes = cfg.ssm_inner_size * DType.BF16.itemsize
