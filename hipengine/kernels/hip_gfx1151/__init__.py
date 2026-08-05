@@ -756,6 +756,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_f32_weight",
             "rounded_bf16_out",
         ),
+        # Shared-cache verifier KV batching is qualified only for the W7900
+        # dense Qwen3.6 N1 graph; gfx1151 retains scalar append aliases.
+        (
+            "paged_kv_write",
+            "gguf_q4_k_m",
+            "mixed_bf16_shared_batch_spans",
+        ),
         # Dense Q5T16 ssm_out is W7900-only pending a separate gfx1151 gate.
         *(
             (

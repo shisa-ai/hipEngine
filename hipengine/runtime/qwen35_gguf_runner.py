@@ -1959,6 +1959,7 @@ class Qwen35GGUFFullStackRunner:
         self.__dict__.pop("_gguf_gdn_decode_output_cast_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_batch_native_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_batch_shared_native_fn_cache", None)
+        self.__dict__.pop("_gguf_full_attn_kv_write_shared_batch_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_k_grid_y_batch_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
 
@@ -2108,6 +2109,27 @@ class Qwen35GGUFFullStackRunner:
                 missing="none",
             )
             self._gguf_full_attn_decode_batch_shared_native_fn_cache = fn
+        return fn
+
+    def _full_attn_kv_write_shared_batch_fn(self):
+        """Resolve the exact shared-cache verifier KV append leaf."""
+
+        missing = object()
+        fn = getattr(
+            self,
+            "_gguf_full_attn_kv_write_shared_batch_fn_cache",
+            missing,
+        )
+        if fn is missing:
+            quant = getattr(self, "_gguf_prefill_quant", "gguf_qwen35")
+            fn = resolve(
+                backend=self.backend,
+                layer="paged_kv_write",
+                quant=quant,
+                variant="mixed_bf16_shared_batch_spans",
+                missing="none",
+            )
+            self._gguf_full_attn_kv_write_shared_batch_fn_cache = fn
         return fn
 
     def _full_attn_k_grid_y_batch_fn(self):
@@ -4666,10 +4688,10 @@ class Qwen35GGUFFullStackRunner:
         *,
         rows: int,
         attention_context_limit: int,
-    ) -> tuple[KVLiveSpans, object, object] | None:
-        """Bind contiguous row counts to one verified resident page table."""
+    ) -> tuple[KVLiveSpans, KVLiveSpans, object, object] | None:
+        """Bind native N1 rows to verified append/decode shared-page spans."""
 
-        if rows <= 1 or len(decode_row_scratches) != rows:
+        if rows not in (2, 4) or len(decode_row_scratches) != rows:
             return None
         first = decode_row_scratches[0]
         first_decode = getattr(first, "decode_spans", None)
@@ -4721,12 +4743,15 @@ class Qwen35GGUFFullStackRunner:
                 or decode_spans.spans_mode != "uniform"
                 or decode_spans.storage_dtype != DType.BF16
                 or decode_spans.scale_metadata is not None
+                or append_spans.spans_mode != "uniform"
+                or append_spans.storage_dtype != DType.BF16
                 or append_spans.scale_metadata is not None
                 or decode_spans.span_role != "verify_chain"
                 or append_spans.span_role != "verify_chain"
                 or decode_spans.base_offsets.ptr != table.ptr
                 or decode_spans.base_offsets.shape != table.shape
                 or append_spans.base_offsets.ptr != table.ptr
+                or append_spans.base_offsets.shape != table.shape
                 or decode_spans.live_counts.dtype != DType.INT64
                 or decode_spans.live_counts.numel != 1
                 or decode_spans.live_counts.ptr
@@ -4736,6 +4761,8 @@ class Qwen35GGUFFullStackRunner:
                 or row_position.numel != 1
                 or row_position.ptr
                 != first_position.ptr + row * DType.INT64.itemsize
+                or append_spans.live_counts.dtype != DType.INT64
+                or append_spans.live_counts.numel != 1
                 or append_spans.live_counts.ptr != row_position.ptr
                 or row_key_cache.ptr != key_cache.ptr
                 or row_value_cache.ptr != value_cache.ptr
@@ -4754,18 +4781,23 @@ class Qwen35GGUFFullStackRunner:
             DType.INT64,
             first_position.device,
         )
-        return (
-            KVLiveSpans.paged_uniform(
-                block_table=table,
-                live_counts=live_counts,
-                max_live_count=int(attention_context_limit),
-                storage_dtype=DType.BF16,
-                row_positions=row_positions,
-                span_role="verify_chain",
-            ),
-            key_cache,
-            value_cache,
+        append_batch_spans = KVLiveSpans.paged_uniform(
+            block_table=table,
+            live_counts=row_positions,
+            max_live_count=int(attention_context_limit) - 1,
+            storage_dtype=DType.BF16,
+            row_positions=row_positions,
+            span_role="verify_chain",
         )
+        decode_batch_spans = KVLiveSpans.paged_uniform(
+            block_table=table,
+            live_counts=live_counts,
+            max_live_count=int(attention_context_limit),
+            storage_dtype=DType.BF16,
+            row_positions=row_positions,
+            span_role="verify_chain",
+        )
+        return append_batch_spans, decode_batch_spans, key_cache, value_cache
 
     def _run_full_attention_attn_chain_rows_exact(
         self,
@@ -4960,31 +4992,48 @@ class Qwen35GGUFFullStackRunner:
             else None
         )
         if shared_batch is not None:
-            for (
-                row_scratch,
-                _query_ptr,
-                key_ptr,
-                value_ptr,
-                _gate_ptr,
-                _context_ptr,
-                _gated_ptr,
-                key_cache,
-                value_cache,
-            ) in row_io:
-                qwen35_write_paged_kv_mixed_value_bf16_spans(
-                    key_ptr,
-                    value_ptr,
+            append_batch_spans, batch_spans, key_cache, value_cache = shared_batch
+            batch_write_fn = self._full_attn_kv_write_shared_batch_fn()
+            if batch_write_fn is not None:
+                batch_write_fn(
+                    scratch.full_key.ptr,
+                    scratch.full_v.ptr,
                     key_cache.ptr,
                     value_cache.ptr,
-                    row_scratch.append_spans,
-                    row_scratch.block_size,
+                    append_batch_spans,
+                    rows,
+                    decode_row_scratches[0].block_size,
                     cfg.head_count_kv,
                     cfg.key_length,
                     stream=stream,
                     library=kv_write_library,
                     runtime=runtime,
                 )
-            batch_spans, key_cache, value_cache = shared_batch
+            else:
+                for (
+                    row_scratch,
+                    _query_ptr,
+                    key_ptr,
+                    value_ptr,
+                    _gate_ptr,
+                    _context_ptr,
+                    _gated_ptr,
+                    row_key_cache,
+                    row_value_cache,
+                ) in row_io:
+                    qwen35_write_paged_kv_mixed_value_bf16_spans(
+                        key_ptr,
+                        value_ptr,
+                        row_key_cache.ptr,
+                        row_value_cache.ptr,
+                        row_scratch.append_spans,
+                        row_scratch.block_size,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        stream=stream,
+                        library=kv_write_library,
+                        runtime=runtime,
+                    )
             batch_attn_fn(
                 scratch.full_query.ptr,
                 key_cache.ptr,
