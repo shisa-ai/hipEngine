@@ -80,9 +80,10 @@ Do not treat this document as a performance claim. It is an implementation plan.
 
 ## GGUF Q8 / INT8 KV cache status
 
-Last updated: 2026-06-24. Evidence artifacts:
-[`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json) and
-[`benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json).
+Last updated: 2026-08-06. Evidence artifacts:
+[`benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-pure-int8kv-layout-sweep.json),
+[`benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`](../benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json), and the gfx1151 SH-K1 closure
+[`benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json).
 
 Terminology matters:
 
@@ -137,12 +138,30 @@ that guard, the current GGUF results are:
 - PARO is the positive control, not the GGUF answer: packed PARO
   `int8_per_token_head` KV passes the same KL/top-1 style `4K/1` comparison with
   mean KL `2.09e-7` and top-1 `1.0`.
+- The gfx1151 SH-K1 gate validates the actual fixed long-session hybrid rather
+  than a short mirror-backed session. With capacity **65,792**, full-attention
+  indices `0-7` BF16 and `8-9` INT8 K+V pass all ten category/train/heldout
+  prompts plus `mixed_v1`: **11/11 prompts, 187/187 positions, mean/max KL
+  3.344e-5/7.875e-4, and 100% aggregate/minimum-prompt top-1**. The audit finds
+  zero persistent BF16 mirror bytes and zero surviving prefill-oracle buffers.
+  This proves strict quality, not a default speed or memory win.
+- On the required gfx1151 32K/64K repeated screen, that same 8/2 map changes
+  decode **-0.436%/-0.670%**. Persistent ownership falls only
+  **0.0620/0.1235 GiB**, while the required layer-local BF16 prefill-oracle pair
+  raises tracked peak **0.0640/0.1274 GiB** and 10-ms whole-GTT
+  **0.0703/0.1328 GiB**. Cached traces prove the grouped-GQA INT8 direct
+  consumer runs at both shapes, so SH-K1 closes as a default rejection rather
+  than a missing-dispatch blocker.
 
 Operational policy:
 
-1. **Exact/admitted GGUF path:** keep BF16 KV or the current guarded hybrid
-   (`8` BF16 full-attention layers + `2` INT8 layers for long contexts) when the
-   strict BF16-vs-candidate gate must pass.
+1. **Exact/admitted GGUF path:** keep BF16 KV as the gfx1151 production default.
+   The current guarded hybrid (`8` BF16 full-attention layers + `2` INT8 K+V
+   layers for long contexts) is strict-quality-qualified and remains available
+   under its existing explicit/admission semantics, but must not be described
+   as a speed or peak-memory win. Reopen default promotion only after removing
+   or shrinking the layer-local BF16 prefill-oracle high water and repeating the
+   complete quality, 32K/64K wall, allocator, GTT, and trace gates.
 2. **Approximate/relaxed option:** pure per-token/head FP32 INT8 is now a
    plausible long-context relaxed candidate because it passes the matched
    generated-corpus `4K/16` gate while llama.cpp ROCm `q8_0` fails its matched

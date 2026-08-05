@@ -352,6 +352,57 @@ The committed `7b675670a` checkpoint reproduces **+0.578%** 4K prefill,
 **+0.271%** decode, exact state, and both memory deltas; the temporary
 disable-only comparison seam is removed afterward.
 
+### SH-K1 strict compact-KV execution update (2026-08-06)
+
+SH-K1 begins from the only unclosed strict-quality map rather than repeating the
+failed all-layer, three-layer, block16, key-only, or tail-four format screens.
+The candidate keeps full-attention indices `0-7` in BF16 and stores K+V for
+indices `8-9` as per-token/per-KV-head INT8 with effective FP32 sideband scales.
+The quality child reserves **65,792 tokens**, so a short-session BF16 mirror
+cannot hide the actual layout. Its audit finds zero persistent BF16 mirror
+bytes, the exact 8/2 partition, and zero surviving layer-local prefill-oracle
+buffers.
+
+The complete 10-prompt category/train/heldout corpus plus `mixed_v1` passes:
+**11/11 prompts, 187/187 positions, mean KL 3.344e-5, max KL 7.875e-4,
+100% aggregate top-1, and 100% minimum-prompt top-1**. Thus the map is
+strict-quality-safe on gfx1151. Quality alone is not the promotion rule,
+however; long repeated wall and peak memory must also win.
+
+| Context | BF16 prefill | 8/2 prefill | delta | BF16 decode | 8/2 decode | delta |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 32K | 1149.883 | **1150.247** | **+0.032%** | **46.435** | 46.232 | **-0.436%** |
+| 64K | **939.234** | 938.695 | **-0.057%** | **39.750** | 39.484 | **-0.670%** |
+
+| Context | BF16 tracked | 8/2 owned live | live saving | 8/2 tracked peak | peak change | BF16 / 8/2 whole-GTT |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 32K | 22.245 | 22.183 | **0.0620 GiB** | 22.309 | **+0.0640 GiB** | 22.800 / 22.870 GiB |
+| 64K | 22.984 | 22.860 | **0.1235 GiB** | 23.111 | **+0.1274 GiB** | 23.538 / 23.671 GiB |
+
+The persistent compact payload does reduce live ownership, but the required
+layer-local BF16 prefill-oracle pair is **0.1260/0.2510 GiB** at 32K/64K and
+sets a higher allocator high-water mark. Ten-millisecond whole-GTT confirms the
+same negative direction at **+0.0703/+0.1328 GiB**. Every process returns
+tracked bytes to zero, so this is a real lifetime result rather than a leak.
+
+Cached full-process traces prove the existing direct consumer is active at both
+required shapes. The decode-only grouped-GQA INT8 producer runs **10 times**
+(two compact layers times one warmup plus four measured transitions), uses
+local256, **80 VGPR, 0 LDS, and 0 scratch**, and averages **454.6 us at 32K**
+and **802.5 us at 64K**. Its split grid scales from **129 to 257**. The intended
+consumer therefore works; its arithmetic plus writer cost does not repay the
+BF16 path, and storage savings cannot outrun the prefill-oracle high water.
+
+Close SH-K1 without a production change. Keep BF16 KV plus SH-M2 owner slots as
+the gfx1151 default and preserve the existing guarded/explicit hybrid only as a
+quality-qualified option, not a speed or peak-memory claim. The production
+whole-GTT gap to fork F16 remains **0.801/0.667 GiB** at 32K/64K; selecting the
+candidate would worsen it to **0.871/0.800 GiB**. Complete quality, wall,
+allocator, trace, primitive, and validation evidence is in
+[`2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json).
+The campaign advances immediately to SH-A1 rather than inventing another
+already-closed compact format.
+
 ### Cumulative decode targets
 
 These are reporting/stop targets, never license to specialize to the repeated-
@@ -379,8 +430,8 @@ tracked/owned comparison.
 | **SH-C0 — matched attribution freeze** | **Completed 2026-08-05** | Role-resolved HIP correlation traces, separate fork F16/Q8_0 logger runs, 10-ms same-scope GTT, and owned allocation/lifetime census now cover 512/4K/32K/64K. | No production change. GDN input, selected experts, long-context attention, and 4,096-row scratch all clear admission; see the execution update and artifact. |
 | **SH-D1 — exact row-1 weight-kernel redesign** | **Completed 2026-08-06; Q5 tile8 retained, all other measured ladders closed** | Split dense Q8T16 by role (full Q/K/V/O, GDN projections, shared expert), selected Q4/Q5/Q6 T16, and lm-head. Exact selected-Q5 tile8 is retained at **1.1715x** and committed 512/128 **+0.998%**. GDN tops out at **1.0648x**, selected Q4 at **1.1466x**, Q6 down at **1.0803x**, and Q6 lm-head tile8 regresses **0.218%**; all transient siblings are removed. Cumulative decode is **53.535 tok/s**, **1.487 ms/token** short of C1. | Primitive CPU oracle, named trace, no scratch spill, and full model quality/state gate. A leaf must be at least **1.15x** or save **0.5 ms/token** before a full-model run. First cumulative gate is the half-time-gap row above; continue until F16 parity or measured Amdahl headroom is exhausted. Reject any 512/4K win that loses >1% prefill or regresses another context. |
 | **SH-M1 — query-row Pareto screen** | **Completed/rejected 2026-08-05** | The explicit 4,096 -> 1,024 query-row A/B saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, with exact cleanup and neutral decode. | Reject q1024 and close 2,048/768 row-only retries: q1024 changes exact state/logits at 4K+ and loses **1.603%-11.835%** prefill. Keep q4096. |
-| **SH-M2 — exact scratch-liveness aliases** | **Completed/retained 2026-08-06** | Keep every 4,096-row execution shape fixed and graph-color route/stage-disjoint fields into 21 independent allocator-owned slots. Rows below 4,096, diagnostics, unvalidated routes, and peer backends keep dedicated owners. | Exact state and lifecycle pass at 512/4K/32K/64K. The default saves **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row; prefill/decode remain within 1%. Contiguous and split arenas are rejected. Memory parity still requires SH-K1. |
-| **SH-K1 — strict compact-KV frontier** | P1, after C0 | Do not repeat failed all-layer per-token/head, q8_0-block32, block16, or K-only screens. Start from the passing guarded 2/10-layer hybrid and sweep fixed layer policies and K-only versus K+V only if they are genuinely new. Use the complete multi-prompt quality suite plus category-heldouts, then profile the existing grouped-GQA direct consumer at 32K/64K. | Exact/default promotion still requires KL <= **0.05**, aggregate and minimum-prompt top-1 >= **90%**, no BF16 mirror in the claimed compact layers, and repeated speed/memory wins. An all-layer relaxed mode may be reported separately with its quality loss, but it never replaces or inflates the strict default claim. |
+| **SH-M2 — exact scratch-liveness aliases** | **Completed/retained 2026-08-06** | Keep every 4,096-row execution shape fixed and graph-color route/stage-disjoint fields into 21 independent allocator-owned slots. Rows below 4,096, diagnostics, unvalidated routes, and peer backends keep dedicated owners. | Exact state and lifecycle pass at 512/4K/32K/64K. The default saves **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row; prefill/decode remain within 1%. Contiguous and split arenas are rejected. SH-K1 later fails to stack another peak-memory win. |
+| **SH-K1 — strict compact-KV frontier** | **Completed/rejected for default 2026-08-06** | The fixed `0-7` BF16 / `8-9` per-token/head INT8 K+V map passes the actual no-mirror 65,792-capacity category+heldout gate at **3.344e-5 mean KL, 7.875e-4 max KL, and 100% aggregate/min-prompt top-1**. Broader and key-only/block formats remain closed by prior evidence. | Reject default promotion: 32K/64K decode changes **-0.436%/-0.670%**, live ownership saves only **0.0620/0.1235 GiB**, and layer-local BF16 prefill oracles instead raise tracked peak **0.0640/0.1274 GiB** plus whole-GTT **0.0703/0.1328 GiB**. Named direct-consumer traces pass; BF16 remains default and SH-A1 is next. |
 | **SH-A1 — page-internal head-major decode screen** | P2, only if C0 leaves BF16 attention material | Microbenchmark the current `[block, token, kv_head, D]` layout against a page-internal `[block, kv_head, token, D]` variant with complete `KVLiveSpans`, charging append/copy and reducer wall. Do not first rewrite every writer/compactor/graph. | Proceed to runtime plumbing only if copy/append-inclusive attention improves >=**1.10x**, projected whole decode saves >=**1%**, memory does not grow, and dense/permuted/evicted page oracles are exact. The fork's F16 lane being only 1.27%-1.79% above vanilla makes this a bounded screen, not P0. |
 | **SH-G — retained recertification** | Required after each retained unit | Re-run hipEngine one-warmup/three-measurement 512/4K/32K/64K rows, exact natural/heldout prompts, allocator/GTT sampling, and the applicable cached kernel trace. Re-run the five-repetition fork comparator only at a campaign milestone, not after every micro-change. | Publish an own-engine A/B only when exact and non-regressive. Keep the external row diagnostic until timing ownership, dtype, and output oracle align. Update artifact, benchmark rollup, changelog, and worklog for every retained performance unit. |
 
