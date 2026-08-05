@@ -1272,8 +1272,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert not q4_dual_rowtile_silu_calls["pack8"]
     assert down_residual_calls["q4"]
     assert down_residual_calls["q6"]
+    assert {rows for rows, _, _ in down_residual_calls["q4"]} == {2, 3, 4}
+    assert {rows for rows, _, _ in down_residual_calls["q6"]} == {2, 3}
     for calls in down_residual_calls.values():
-        assert {rows for rows, _, _ in calls} == {2, 3, 4}
         assert {
             (in_features, out_features)
             for _, in_features, out_features in calls

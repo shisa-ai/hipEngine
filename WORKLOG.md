@@ -206883,3 +206883,32 @@ Vulkan local sizes verbatim will close the measured gap.
   only at K17,408/N5,120. The implementation is ready for a tracked-clean B3
   profile against `82a7f8691`; promotion still requires intended-family,
   dispatch-count, target-window, and complete-wall wins.
+
+## 2026-08-05 — Reject row-4 planar-Q6 residual fusion; gate selective policy
+
+- The tracked-clean all-row `8e281f115` B3 profile preserves the exact **17/21**
+  acceptance ledger and removes all **448** standalone adds/dispatches. Marked
+  target/complete host wall improves **365.954 -> 357.001 ms (-2.446%)** and
+  **451.442 -> 439.828 ms (-2.573%)**, but kernel sums regress
+  **255.870 -> 263.471 ms (+2.971%)** and **311.729 -> 319.561 ms (+2.512%)**.
+  The row-4 planar-Q6 family is the clear physical loss:
+  **32.831 -> 38.892 ms (+18.46%)** for 224 calls despite the removed add,
+  whereas the complete Q4-down family moves only **51.231 -> 52.197 ms**.
+  Profile comparison/kernel/suite SHA-256 values are `1d79fad6...5b39`,
+  `b9a420c0...b13b`, and `d9eae46f...b573`.
+- The binding ten-prompt natural25 suite confirms that row-4 loss. B1/B2 improve
+  **43.563 -> 43.714 tok/s (+0.348%)** and **55.079 -> 55.141 tok/s
+  (+0.113%)**, with every aggregate scope positive. B3 falls
+  **60.079 -> 59.274 tok/s (-1.341%)**, every prompt and scope is negative,
+  and target verify regresses **3.213576 -> 3.264674 s (+1.590%)**. IDs,
+  acceptance ledgers (**115/127, 151/182, 169/219**), GPU/CPU decisions, and
+  stage reconciliation remain exact. True AR is unreachable by this route; its
+  measured **-1.113%** movement is disclosed as run noise. Comparison SHA-256
+  is `c087bd08...b3fa`.
+- Fail closed selectively at the gfx1100 backend capability boundary: compact
+  Q4 retains rows 2-4, while planar Q6 retains only rows 2-3 and rows 4+
+  execute the exact projection-plus-add fallback. The focused dispatch/backend
+  nodes pass **2/2**, and the cached W7900 B1-B3 transaction passes **1/1** with
+  ownership census `{2,3,4}` for Q4 and `{2,3}` for Q6. No kernel, layout,
+  allocation, or peer-backend ABI changes. Freeze this policy before its own
+  tracked-clean row-4-Q4 profile and full-suite promotion gate.

@@ -180,6 +180,13 @@ GGUF_DENSE_Q5_T16_SSM_OUT = True
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
     "gguf_q5_k_t16_v1": 4,
 }
+# Full-suite row policy for exact FFN-down plus residual composites. Rotating
+# row-4 planar-Q6 loses despite positive isolated leaves, while compact Q4 wins;
+# rows 2-3 retain both independently qualified owners.
+GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
+    "gguf_q4_k_t16_v1": 4,
+    "gguf_q6_k_t16_qmicro_planar_v1": 3,
+}
 # Byte-neutral planar qmicro owns the measured Qwen3.6 wide rank-2 Q6 family
 # and K5,120/N248,320 root head on W7900. Exact actual-weight c1, rows2-4,
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
@@ -627,6 +634,7 @@ __all__ = [
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+    "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

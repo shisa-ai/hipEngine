@@ -1763,6 +1763,21 @@ def _launch_registered_linear_residual(
     fused_variant = _linear_residual_variant(normal_key.variant)
     if fused_variant is None:
         return False
+    residual_max_rows = 4
+    residual_limits = backend_package_capability(
+        normal_key.backend,
+        "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
+        {},
+    )
+    if isinstance(residual_limits, Mapping):
+        try:
+            residual_max_rows = int(
+                residual_limits.get(normal_key.quant, residual_max_rows)
+            )
+        except (TypeError, ValueError):
+            residual_max_rows = 0
+    if rows > residual_max_rows:
+        return False
     _ensure_linear_kernel_registered(normal_key)
     if not is_registered(normal_key):
         return False

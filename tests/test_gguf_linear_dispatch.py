@@ -238,6 +238,7 @@ def test_launch_gguf_linear_residual_routes_registered_q6_and_q4_owners() -> Non
         assert not launch(q6, 100, 300, 400, 3, 17_408, 5_120)
         with native_batch_decode_session(True):
             assert not launch(q5, 100, 300, 400, 3, 6_144, 5_120)
+            assert not launch(q6, 100, 300, 400, 4, 17_408, 5_120)
             assert not launch(q6, 100, 300, 400, 5, 17_408, 5_120)
             with wmma_prefill_session(True):
                 assert not launch(q6, 100, 300, 400, 3, 17_408, 5_120)
