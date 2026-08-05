@@ -473,7 +473,7 @@ def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
             ),
             (5, 6, 7),
         ),
-        "gdn": (
+        "gdn_unfused": (
             KernelKey(
                 "hip_gfx1100",
                 "gdn_chain_recurrent_rmsnorm_gate",
@@ -481,6 +481,15 @@ def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
                 "bf16_c1_exact_state_rows_tloop",
             ),
             (12, 13, 14, 15, 16),
+        ),
+        "gdn_fused": (
+            KernelKey(
+                "hip_gfx1100",
+                "gdn_chain_recurrent_rmsnorm_gate+cast",
+                "gguf_q5_k_t16_v1",
+                "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
+            ),
+            (13, 14, 15, 16, 17),
         ),
     }
     calls: dict[str, list[tuple[int, ...]]] = {name: [] for name in specs}
@@ -507,6 +516,35 @@ def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
     finally:
         for name, (key, _indices) in specs.items():
             register(key, originals[name], replace=True)
+
+
+@pytest.fixture
+def gdn_decode_output_fusion_calls() -> Iterator[list[tuple[int, ...]]]:
+    """Count scalar GDN FP32+BF16 boundary ownership."""
+
+    key = KernelKey(
+        "hip_gfx1100",
+        "gdn_recurrent_rmsnorm_gate+cast",
+        "gguf_q5_k_t16_v1",
+        "bf16_lowp_f32_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple[int, ...]] = []
+
+    def counted(*args, **kwargs):
+        calls.append(tuple(int(args[index]) for index in (11, 12, 13, 14)))
+        return original(*args, **kwargs)
+
+    register(key, counted, replace=True)
+    try:
+        yield calls
+    finally:
+        register(key, original, replace=True)
 
 
 @pytest.fixture
@@ -695,6 +733,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
     q5_t16_ssm_out_calls: dict[str, list[tuple[int, int, int]]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
+    gdn_decode_output_fusion_calls: list[tuple[int, ...]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
     q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
@@ -1014,12 +1053,16 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         (channels, kernel_size)
         for _, channels, kernel_size in chain_journal_calls["conv"]
     } == {(10240, 4)}
-    assert chain_journal_calls["gdn"]
-    assert {rows for rows, *_ in chain_journal_calls["gdn"]} == {2, 3, 4}
+    assert not chain_journal_calls["gdn_unfused"]
+    assert chain_journal_calls["gdn_fused"]
+    assert {rows for rows, *_ in chain_journal_calls["gdn_fused"]} == {2, 3, 4}
     assert {
         (num_k_heads, num_v_heads, head_k_dim, head_v_dim)
-        for _, num_k_heads, num_v_heads, head_k_dim, head_v_dim in chain_journal_calls["gdn"]
+        for _, num_k_heads, num_v_heads, head_k_dim, head_v_dim
+        in chain_journal_calls["gdn_fused"]
     } == {(16, 48, 128, 128)}
+    assert gdn_decode_output_fusion_calls
+    assert set(gdn_decode_output_fusion_calls) == {(16, 48, 128, 128)}
     assert shared_full_attn_batch_calls
     # B2/rows3 is owned by the separate N2 bulk graph; this shared-page leaf
     # owns the N1 native B1/B3 captures only.

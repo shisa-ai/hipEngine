@@ -96,7 +96,7 @@ __device__ inline float scalar_to_float_qwen35<uint16_t>(uint16_t value) {
   return bf16_bits_to_float(value);
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool write_bf16 = false>
 __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
     const float* conv_out,
     const scalar_t* gate,
@@ -107,6 +107,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
     const float* norm_weight,
     float* recurrent_state,
     float* out,
+    uint16_t* out_bf16,
     float eps,
     int64_t num_k_heads,
     int64_t num_v_heads,
@@ -285,7 +286,12 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
   if (value_idx < head_v_dim) {
     const int64_t pos = v_head * head_v_dim + value_idx;
     const float inv_rms = rsqrtf((norm_partial[0] / static_cast<float>(head_v_dim)) + eps);
-    out[pos] = out_shared[value_idx] * inv_rms * norm_weight[value_idx] * silu_f32(scalar_to_float_qwen35(gate[pos]));
+    const float value = out_shared[value_idx] * inv_rms * norm_weight[value_idx] *
+        silu_f32(scalar_to_float_qwen35(gate[pos]));
+    out[pos] = value;
+    if constexpr (write_bf16) {
+      out_bf16[pos] = float_to_bf16_bits(value);
+    }
   }
 }
 
@@ -576,7 +582,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel(
   }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool write_bf16 = false>
 __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
     const float* __restrict__ conv_out,
     const scalar_t* __restrict__ gate,
@@ -589,6 +595,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
     float* __restrict__ tree_recurrent_state,
     const int64_t* __restrict__ parent_ids,
     float* __restrict__ out,
+    uint16_t* __restrict__ out_bf16,
     float eps,
     int64_t max_nodes,
     int64_t num_k_heads,
@@ -782,7 +789,12 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel(
     if (value_idx < head_v_dim) {
       const int64_t pos = (t * num_v_heads + v_head) * head_v_dim + value_idx;
       const float inv_rms = rsqrtf((norm_partial[0] / static_cast<float>(head_v_dim)) + eps);
-      out[pos] = out_shared[value_idx] * inv_rms * norm_weight[value_idx] * silu_f32(scalar_to_float_qwen35(gate[pos]));
+      const float value = out_shared[value_idx] * inv_rms * norm_weight[value_idx] *
+          silu_f32(scalar_to_float_qwen35(gate[pos]));
+      out[pos] = value;
+      if constexpr (write_bf16) {
+        out_bf16[pos] = float_to_bf16_bits(value);
+      }
     }
     __syncthreads();
   }
@@ -4238,6 +4250,55 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
       norm_weight,
       recurrent_state,
       out,
+      nullptr,
+      eps,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    float* recurrent_state,
+    float* out,
+    uint16_t* out_bf16,
+    float eps,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!out_bf16 ||
+      !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>(
+      (2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<uint16_t, true>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state,
+      out,
+      out_bf16,
       eps,
       num_k_heads,
       num_v_heads,
@@ -4282,6 +4343,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16(
       norm_weight,
       recurrent_state,
       out,
+      nullptr,
       eps,
       num_k_heads,
       num_v_heads,
@@ -4335,6 +4397,7 @@ int launch_qwen35_gdn_tree_recurrent_rmsnorm_gate_lowp_tloop(
         tree_recurrent_state,
         parent_ids,
         out,
+        nullptr,
         eps,
         max_nodes,
         num_k_heads,
@@ -4432,6 +4495,7 @@ int launch_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop(
         leaf_recurrent_state,
         nullptr,
         out,
+        nullptr,
         eps,
         max_nodes,
         num_k_heads,
@@ -4660,6 +4724,64 @@ extern "C" int hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_t
       leaf_recurrent_state,
       nullptr,
       out,
+      nullptr,
+      eps,
+      max_nodes,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int
+hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_f32_bf16_out(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* base_recurrent_state,
+    float* leaf_recurrent_state,
+    float* /* acc_buf */,
+    float* out,
+    uint16_t* out_bf16,
+    float eps,
+    int64_t max_nodes,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!out_bf16 || max_nodes <= 0 ||
+      !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim) ||
+      head_k_dim > 256 || (head_k_dim % 64) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>(
+      (2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<
+          uint16_t, true>),
+      dim3(static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      base_recurrent_state,
+      leaf_recurrent_state,
+      nullptr,
+      out,
+      out_bf16,
       eps,
       max_nodes,
       num_k_heads,

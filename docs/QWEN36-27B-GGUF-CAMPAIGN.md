@@ -1313,10 +1313,20 @@ The refreshed profiler-only matched-module ledger is now:
 These are synchronized-profiler ranking values, not toplines. No matched
 arithmetic family now has a credible 5%-of-complete-wall gap. Exact launch and
 transport removal is the next leverage class: the explicit GDN F32-to-BF16
-handoff alone is **336 launches / 0.606 ms** of kernels before queue cost. The
-next candidate will perform that same BF16 rounding in-register inside a
-Q5T16 F32-input consumer, with the current cast plus ordinary Q5T16 chain kept
-as the required unfused fallback.
+handoff alone is **336 launches / 0.606 ms** of kernels before queue cost.
+Consumer-side F32 rounding is rejected before model admission: although exact,
+it raises the c2/c3/c4 Q5T16 body from **99.0/105.4/112.6** to
+**101.1/112.5/121.7 us**, exceeding the removed **2.9-4.8 us** cast.
+
+The replacement performs the identical round-to-nearest-even BF16 store in the
+GDN producer while retaining its FP32 output. Registry keys are owned only by
+the sole-resident Q5T16 weight plugin; every miss keeps ordinary GDN, explicit
+cast, and BF16 Q5T16. GPU1 c1-c4 production shapes preserve every FP32
+output/state bit and every explicit-cast BF16 bit, while complete
+GDN-plus-handoff event medians improve **14.270/22.570/29.770/37.066 ->
+11.287/19.582/26.762/34.064 us**. The W7900 B1-B3 transaction is exact and
+observes both scalar and chain dual-output owners. Named profile and natural25
+admission remain pending; no topline claim is made yet.
 
 ---
 
