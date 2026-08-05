@@ -5296,6 +5296,41 @@ stateful Vulkan; natural25 B3 is now **12.53% below** Vulkan's 68.082 tok/s.
 Artifact:
 [`2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json`](results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json).
 
+#### Qwen3.6-27B exact GDN-to-Q5T16 BF16 handoff, W7900/gfx1100
+
+Clean implementation `a5f25c9ad` writes the existing round-to-nearest-even BF16
+`ssm_out` input from the scalar or chain GDN producer while preserving its FP32
+output and every recurrent-state bit. The resident Q5T16 weight plugin owns the
+two registered boundaries; registry misses and gfx1151 retain ordinary GDN plus
+standalone cast plus BF16 Q5T16.
+
+| Route | Q5T16 baseline | + producer handoff | Delta | MTP / true AR | Acceptance / work |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 24.049 tok/s | 23.750 tok/s | -1.247% timing variance | 1.0000x | all tokens exact |
+| B1 | 43.170 tok/s | **43.357 tok/s** | **+0.433%** | 1.8256x | 115 / 127 |
+| B2 | 54.621 tok/s | **54.678 tok/s** | **+0.104%** | 2.3023x | 151 / 182 |
+| **B3 (retained)** | 59.551 tok/s | **59.790 tok/s** | **+0.402%** | **2.5175x** | **169 / 219** |
+
+All 750 MTP tokens, AR tokens, acceptance counts, and GPU/CPU decisions are
+exact. Target-verify wall improves **0.466%/0.390%/0.479%** at B1/B2/B3. Timing
+noise leaves the worst prompt/category at **-0.561%/-0.287%**; B3 has one
+negative prompt and one category at only **-0.466%/-0.094%**.
+
+The corrected one-prompt W7900 trace removes **336** casts and dispatches
+(**8,039 -> 7,703**), changes GDN+cast **15.522 + 0.606 -> 15.465 ms**, cuts
+target kernels **0.809%** and target host wall **0.332%**, and cuts complete
+kernel sum **0.707%**. Complete marker wall is disclosed at **+0.209%** queue
+variance; an independent first exact run measures complete/target wall
+**-1.875%/-1.494%**. GPU1 complete GDN-handoff medians improve c1-c4
+**1.264x/1.153x/1.112x/1.088x**.
+
+Populated graph AR improves **23.241 -> 23.284 tok/s (+0.184%)** at 512 and
+**21.841 -> 21.903 (+0.281%)** at 4K. Prefill is noise-flat
+(**+0.242%/-0.299%**), peaks are byte-identical, all IDs are `9707`, and
+teardown returns to zero. Natural25 B3 is now **12.18% below** Vulkan's 68.082
+tok/s. Artifact:
+[`2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json`](results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5474,6 +5509,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B byte-neutral planar-Q6T16 root head](results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json),
 [Qwen3.6-27B exact NextN state-only full-accept tail](results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json),
 [Qwen3.6-27B quality-gated Q5T16 dense ssm_out](results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json),
+[Qwen3.6-27B exact GDN-to-Q5T16 BF16 handoff](results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json),
 [Qwen3.6-27B exact populated pack8 prefill tile8x8](results/2026-08-04-qwen36-27b-exact-pack8-prefill-tile8x8-retained.json),
 [W7900 GGUF MTP transfer](results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [W7900 llama.cpp MTP floor refresh](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json),

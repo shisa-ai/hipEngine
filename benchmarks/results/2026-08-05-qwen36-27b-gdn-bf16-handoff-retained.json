@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "status": "retained_exact_gdn_bf16_handoff",
+  "performance_claim": true,
+  "performance_claim_scope": "Canonical W7900 ten-prompt natural25 B1-B3 complete decode wall, populated 512/4096 graph AR controls, a tracked-clean one-prompt B3 kernel/marker trace, and a same-GPU production-shape component screen.",
+  "correctness_claim": true,
+  "correctness_scope": "Every scalar and chain FP32 output/state bit and every BF16 handoff bit match ordinary GDN plus explicit cast; the W7900 B1-B3 transaction, all natural25 AR/MTP tokens and acceptance, populated IDs/logits, and teardown are exact.",
+  "kind": "qwen36_27b_gguf_gdn_bf16_handoff_w7900",
+  "timestamp": "2026-08-05T12:05:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "retained_gpu_index": 0,
+    "retained_gpu": "AMD Radeon Pro W7900",
+    "component_gpu_index": 1,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "a5f25c9ad",
+    "baseline_implementation_commit": "24fef47da5fed5036bc96b050d3007db0c58198d",
+    "measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "summary": "Write the exact RNE BF16 recurrent output from the scalar or verifier-chain GDN producer and feed the retained BF16 Q5T16 ssm_out consumer without a standalone cast.",
+    "registry_keys": [
+      "gdn_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/bf16_lowp_f32_bf16_out",
+      "gdn_chain_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/bf16_c1_exact_state_rows_tloop_f32_bf16_out"
+    ],
+    "ownership": "The resident ssm_out weight quant key selects the fused boundary; other weights, missing keys, and gfx1151 retain ordinary FP32 GDN plus explicit f32_to_bf16 plus BF16 linear.",
+    "rejected_predecessor": "An exact F32-input Q5T16 consumer raised c2/c3/c4 from 99.0/105.4/112.6 to 101.1/112.5/121.7 us, exceeding the removed 2.9-4.8 us cast; all of that consumer-side source and dispatch was removed before admission.",
+    "new_environment_flag": false,
+    "new_resident_bytes": 0,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "component_screen": {
+    "protocol": "GPU1 production GDN geometry K/V heads 16/48 and dimensions 128/128; counterbalanced HIP-event medians over complete ordinary-GDN-plus-cast versus dual-output GDN calls.",
+    "rows": {
+      "1": {"baseline_us": 14.269974827766418, "candidate_us": 11.287025362253189, "speedup": 1.2642812760471867},
+      "2": {"baseline_us": 22.57000058889389, "candidate_us": 19.582049548625946, "speedup": 1.1525862261173578},
+      "3": {"baseline_us": 29.770150780677795, "candidate_us": 26.76205039024353, "speedup": 1.1124017161080793},
+      "4": {"baseline_us": 37.06609904766083, "candidate_us": 34.064099192619324, "speedup": 1.0881279683359995}
+    },
+    "correctness": "Rows 2/4 production fixtures preserve every scalar/chain FP32 recurrent output/state bit and every explicit-cast BF16 bit; the same fixture also covers scalar c1 inside each row loop.",
+    "trace": "Cached GPU1 rocprofv3 names scalar and chain qwen35_gdn_*<unsigned short,true>; c4 uses global grid 6144, local128, dynamic group segment 3072 bytes, and private segment zero."
+  },
+  "correctness": {
+    "focused_tests": "Adjacent GDN plan/routing/backend and chain-journal bundle: 60 passed. GPU1 production rows 2/4: 2 passed. Binding W7900 B1-B3 transaction: 1 passed.",
+    "w7900_transaction": "Full logits, reject/partial/full/rollback Conv/GDN/KV/hidden state, dynamic graph positions/reuse, correction logits, provider output, intended scalar/chain dual-output ownership, zero unfused chain ownership, lifecycle, and teardown pass.",
+    "natural25": {
+      "true_ar_tokens_exact": true,
+      "mtp_tokens_exact": {"1": true, "2": true, "3": true},
+      "acceptance_exact": {"1": true, "2": true, "3": true},
+      "all_candidate_exact_greedy": true,
+      "all_candidate_gpu_accept_match_cpu": true,
+      "candidate_memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 33359433256,
+        "total_allocated_bytes": 34169866874,
+        "total_freed_bytes": 34169866874,
+        "active_allocations": 0,
+        "peak_allocations": 2415
+      }
+    },
+    "populated": {
+      "contexts": [512, 4096],
+      "decode_tokens": 128,
+      "measured_repeats_each": 3,
+      "finite_final_logits_all": true,
+      "final_token_ids": {
+        "512": [9707, 9707, 9707],
+        "4096": [9707, 9707, 9707]
+      },
+      "tracked_peak_allocated_bytes": {
+        "512": 32032416132,
+        "4096": 35064987324
+      },
+      "tracked_bytes_after_close": {"512": 0, "4096": 0}
+    }
+  },
+  "profile": {
+    "protocol": "Tracked-clean cached W7900 rocprofv3 kernel+marker+copy trace; one natural25 prompt; B3; no warmup; clean 24fef47da baseline and clean a5f25c9ad candidate. A first exact candidate run without the SDK marker overlay is retained as an independent suite-wall diagnostic only.",
+    "exact_prompt": {
+      "token_ids_equal": true,
+      "gpu_accept_matches_cpu": true,
+      "accepted_draft_tokens": 17,
+      "proposed_draft_tokens": 21,
+      "cycle_accepted_counts": [3, 3, 2, 3, 3, 0, 3]
+    },
+    "gdn_handoff": {
+      "baseline_gdn": {"dispatches": 336, "duration_ms": 15.52248},
+      "baseline_cast": {"dispatches": 336, "duration_ms": 0.606203},
+      "candidate_dual_output_gdn": {
+        "dispatches": 336,
+        "duration_ms": 15.465411,
+        "local_x": 128,
+        "grid_x": 6144,
+        "vgpr": 80,
+        "sgpr": 128,
+        "static_lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      "candidate_standalone_cast_dispatches": 0
+    },
+    "target_verify": {
+      "host_ms": {"baseline": 361.440203, "candidate": 360.239139, "delta_percent": -0.3322995034949039},
+      "kernel_ms": {"baseline": 261.295621, "candidate": 259.182248, "delta_percent": -0.8088053645567861}
+    },
+    "complete_window": {
+      "marker_span_ms": {"baseline": 444.022704, "candidate": 444.949446, "delta_percent": 0.20871500300581047},
+      "kernel_sum_ms": {"baseline": 317.355699, "candidate": 315.112352, "delta_percent": -0.7068872583882668},
+      "dispatches": {"baseline": 8039, "candidate": 7703, "delta_percent": -4.179624331384502},
+      "queue_variance_disclosure": "The corrected marker run is +0.209% complete wall despite lower target host/kernel and complete kernel sum. The independent first exact run measured 444.068 -> 435.742 ms (-1.875%) complete suite wall and 361.524 -> 356.124 ms (-1.494%) target wall. Retention is based on exact physical and target sub-window wins, not the noisy one-prompt complete marker."
+    }
+  },
+  "natural25": {
+    "protocol": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-a5f25c9ad/natural25-native-gdn-bf16-handoff-b1-b3.json",
+    "true_ar": {"baseline_tok_s": 24.049451044800282, "candidate_tok_s": 23.749617780652855, "delta_percent": -1.2467364165148154},
+    "budgets": {
+      "1": {
+        "baseline_tok_s": 43.17009230485958,
+        "candidate_tok_s": 43.35699039413802,
+        "delta_percent": 0.4329341896204486,
+        "candidate_mtp_vs_true_ar": 1.8255868702635676,
+        "accepted_draft_tokens": 115,
+        "proposed_draft_tokens": 127,
+        "cycles": 127,
+        "target_verify_delta_percent": -0.46616360414764024,
+        "prompt_delta_percent_range": [-0.24560872530767774, 0.9632757754285848],
+        "scope_delta_percent_range": [0.09468423181056007, 0.8508734754888669]
+      },
+      "2": {
+        "baseline_tok_s": 54.621476057630765,
+        "candidate_tok_s": 54.678427343172515,
+        "delta_percent": 0.104265372619472,
+        "candidate_mtp_vs_true_ar": 2.302286624070017,
+        "accepted_draft_tokens": 151,
+        "proposed_draft_tokens": 182,
+        "cycles": 91,
+        "target_verify_delta_percent": -0.3904205737416899,
+        "prompt_delta_percent_range": [-0.5606127230293745, 0.7763781183027563],
+        "scope_delta_percent_range": [-0.28743434821533187, 0.3603499494750695]
+      },
+      "3": {
+        "baseline_tok_s": 59.55101322485042,
+        "candidate_tok_s": 59.790280281614,
+        "delta_percent": 0.4017850306932136,
+        "candidate_mtp_vs_true_ar": 2.517526001210889,
+        "accepted_draft_tokens": 169,
+        "proposed_draft_tokens": 219,
+        "cycles": 76,
+        "target_verify_delta_percent": -0.4792488382006743,
+        "prompt_delta_percent_range": [-0.46633480680591255, 1.0993272556336864],
+        "scope_delta_percent_range": [-0.09436827899057532, 0.6923738603524354]
+      }
+    },
+    "variance_disclosure": "Absolute B1/B2/B3 and every target-verify aggregate improve. AR is -1.247% timing variance. One B1 prompt, four B2 prompts/two categories, and one B3 prompt/one category are noise-negative; the worst prompt is -0.561% and worst category is -0.287%. Tokens and acceptance are exact."
+  },
+  "populated_controls": {
+    "protocol": "W7900 repeated-token 9707; 512/128 and 4096/128; one warmup and three measured resets; forced bulk/WMMA prefill; state-bound one-step graph replay decode; cached builds.",
+    "512": {
+      "prefill_tok_s": {"baseline": 234.01379485004585, "candidate": 234.58035153643004, "delta_percent": 0.24210396944643886},
+      "graph_ar_tok_s": {"baseline": 23.240873449607477, "candidate": 23.283664580106173, "delta_percent": 0.1841201475989207}
+    },
+    "4096": {
+      "prefill_tok_s": {"baseline": 215.7711761617268, "candidate": 215.12695622338558, "delta_percent": -0.29856626348384596},
+      "graph_ar_tok_s": {"baseline": 21.8412922407416, "candidate": 21.902650894979082, "delta_percent": 0.280929596844226}
+    },
+    "interpretation": "Graph AR improves at both contexts; prefill is unaffected and noise-flat; peaks are byte-identical."
+  },
+  "vulkan_comparison": {
+    "llama_cpp_vulkan_b3_tok_s": 68.08248,
+    "hipengine_b3_tok_s": 59.790280281614,
+    "hipengine_gap_percent": -12.179638165921691,
+    "hipengine_b3_vs_own_ar": 2.517526001210889
+  },
+  "source_artifacts": {
+    "profile_baseline_summary": {"path": "/tmp/hipengine-qwen36-27b/final-24fef47da/profile-native-q5t16-ssm-out-mtp-b3-hermetic/candidate-summary.json", "sha256": "b8e82af2e0eddc7caa772e2eceb88fa726eac87072e3c61b9bc37f80ebace946"},
+    "profile_candidate_summary": {"path": "/tmp/hipengine-qwen36-27b/final-a5f25c9ad/profile-native-gdn-bf16-handoff-mtp-b3-hermetic/candidate-summary.json", "sha256": "11033a46c88c76c4b5e1f03777983d1b25b12ff8bdc2178032af2026d557d955"},
+    "profile_first_no_marker_suite": {"path": "/tmp/hipengine-qwen36-27b/final-a5f25c9ad/profile-native-gdn-bf16-handoff-mtp-b3-no-marker/suite.json", "sha256": "fb68eebc23598f6c16b190cbe697df328ed96ea063e3a3e838df5e49c39b92e6"},
+    "natural_baseline": {"path": "/tmp/hipengine-qwen36-27b/final-24fef47da/natural25-native-q5t16-ssm-out-b1-b3.json", "sha256": "48c998c368460dc84bc614a3ed8155e9bb38bbfb8c9b487cf478c488f24e19b6"},
+    "natural_candidate": {"path": "/tmp/hipengine-qwen36-27b/final-a5f25c9ad/natural25-native-gdn-bf16-handoff-b1-b3.json", "sha256": "306806c4b644f8380d10bd20d6e3ba1d4991934539e71af82c65839b253b4275"},
+    "natural_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-a5f25c9ad/natural25-gdn-bf16-handoff-vs-24fef47da.json", "sha256": "25d18b0af2aa0dddcbe30cfc44cc40536974b336b31dd618813b604cf92deca2"},
+    "populated_512_candidate": {"path": "/tmp/hipengine-qwen36-27b/final-a5f25c9ad/ar-512x128-gdn-bf16-handoff.json", "sha256": "590358e47b38e705141661289791cfc990128552b056b7fded107ced19630061"},
+    "populated_4096_candidate": {"path": "/tmp/hipengine-qwen36-27b/final-a5f25c9ad/ar-4096x128-gdn-bf16-handoff.json", "sha256": "748907f73ea44e72cd7681977f8b1a26dcf281a9d465f15773ac00ab8ecda034"}
+  }
+}

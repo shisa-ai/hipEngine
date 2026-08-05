@@ -1325,8 +1325,27 @@ cast, and BF16 Q5T16. GPU1 c1-c4 production shapes preserve every FP32
 output/state bit and every explicit-cast BF16 bit, while complete
 GDN-plus-handoff event medians improve **14.270/22.570/29.770/37.066 ->
 11.287/19.582/26.762/34.064 us**. The W7900 B1-B3 transaction is exact and
-observes both scalar and chain dual-output owners. Named profile and natural25
-admission remain pending; no topline claim is made yet.
+observes both scalar and chain dual-output owners.
+
+The route is retained after the complete gate. Tracing removes **336** casts
+and dispatches (**8,039 -> 7,703**), changes GDN+cast **15.522 + 0.606 ->
+15.465 ms**, and cuts target kernels/host **0.809%/0.332%**. Complete marker wall
+is **+0.209%** queue variance while an independent exact run is **-1.875%**;
+retention follows the exact physical and target sub-window wins. Natural25
+B1/B2/B3 improves **0.433%/0.104%/0.402%** to **59.790 tok/s / 2.5175x own
+AR**, with every token/acceptance decision exact and target verify positive at
+every budget. Populated graph AR improves **0.184%/0.281%** at 512/4K; prefill
+is noise-flat and peaks are unchanged. B3 is now **12.18% below Vulkan**.
+Artifact:
+`benchmarks/results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json`.
+
+The refreshed exact launch ledger now exposes the next larger boundary: every
+B3 target pass still copies the final 160-KiB Conv and 3-MiB recurrent journal
+row back into resident state. That is **672 dispatches / 4.528 ms** of kernels
+per seven-cycle profile before queue cost, even though both producers already
+hold every final-state value in registers. Fusing only the non-deferred final
+write into registered producer variants is next; deferred rollback capture and
+ordinary copy fallback remain mandatory.
 
 ---
 
@@ -1340,9 +1359,9 @@ admission remain pending; no topline claim is made yet.
 | 0 | D27-F2 | Run dense NextN one-step and exact/default MTP cycle. | Layer CPU/llama oracle KL <= 0.05, top-1 >= 90%; full state/KV transaction exact. | complete; exact transaction green |
 | 0 | D27-M1 | Establish fine-grained llama Vulkan and hipEngine AR/MTP profiles and reconcile wall. | Compact Amdahl tables with <=10% residual or an explicit queue/overlap explanation. | complete; AR + MTP walls reconciled, 10.75% AR graph gap explained |
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
-| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.241/21.841 tok/s and Vulkan remains beaten |
-| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; quality-gated B3 reaches 59.551 tok/s / 2.4762x own AR, all aggregate scopes and all B2/B3 prompts improve; one B1 timing and one prior-route trajectory change are disclosed |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; re-rank `24fef47da` at a 12.53% Vulkan B3 gap, beginning with exact launch/transport removal rather than another sub-5% arithmetic family |
+| 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | continue at lower urgency; populated graph AR is 23.284/21.903 tok/s and Vulkan remains beaten |
+| 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | continue; exact GDN handoff raises B3 to 59.790 tok/s / 2.5175x own AR; all tokens/acceptance are exact, target verify improves at every budget, and sub-0.6% timing negatives are disclosed |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | active; re-rank `a5f25c9ad` at a 12.18% Vulkan B3 gap; next fuse 672 final Conv/GDN state-copy dispatches into non-deferred producers |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | pending |
 
 ### Impact admission rule

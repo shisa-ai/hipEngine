@@ -206473,3 +206473,61 @@ Vulkan local sizes verbatim will close the measured gap.
   profile against `24fef47da`; retain only if the standalone cast family
   disappears and the target/complete windows are non-regressive before
   natural25 and populated controls.
+
+## 2026-08-05 — Retain exact GDN-to-Q5T16 BF16 handoff
+
+- Profile clean implementation `a5f25c9ad` on the W7900 with cached builds and
+  the same one-prompt natural25 B3 protocol as clean baseline `24fef47da`:
+  `rocprofv3 --kernel-trace --memory-copy-trace --marker-trace` around
+  `scripts/qwen36_dense_gguf_suite.py --candidate-budgets 3 --limit 1
+  --no-warmup --roctx-markers --require-cached-build`. The corrected SDK-marker
+  run preserves the exact 17/21 accepted/proposed tokens and cycle ledger
+  `[3,3,2,3,3,0,3]`. It removes every standalone cast (**336 -> 0**) and total
+  dispatches fall **8,039 -> 7,703**. Baseline GDN plus cast is
+  **15.522480 + 0.606203 ms**; the dual-output GDN is **15.465411 ms**. Target
+  kernels fall **261.295621 -> 259.182248 ms (-0.809%)**, target host wall falls
+  **361.440203 -> 360.239139 ms (-0.332%)**, and complete kernel sum falls
+  **317.355699 -> 315.112352 ms (-0.707%)**.
+- Disclose one-prompt queue variance rather than hiding it: the corrected
+  complete marker span is **444.022704 -> 444.949446 ms (+0.209%)** despite the
+  exact physical and target-window wins. An independent first exact run without
+  the SDK marker overlay measures complete/target suite wall
+  **444.068 -> 435.742 ms (-1.875%)** and **361.524 -> 356.124 ms (-1.494%)**.
+  Retain on the launch-count, physical-family, target-kernel, target-host, and
+  complete-kernel wins; do not claim the noisy marker span itself improved.
+- Run the canonical W7900 ten-prompt suite at B1-B3:
+  `/home/lhl/mambaforge/envs/therock/bin/python3.12
+  scripts/qwen36_dense_gguf_suite.py --model
+  /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25
+  --candidate-budgets 1,2,3 --target-verify-mode native --runs 1
+  --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt
+  --require-cached-build --output
+  /tmp/hipengine-qwen36-27b/final-a5f25c9ad/natural25-native-gdn-bf16-handoff-b1-b3.json`.
+  B1/B2/B3 improve **43.170092/54.621476/59.551013 ->
+  43.356990/54.678427/59.790280 tok/s (+0.433/+0.104/+0.402%)** and target
+  verification improves **0.466/0.390/0.479%**. All 750 MTP tokens, AR tokens,
+  acceptance totals (**115/127, 151/182, 169/219**), and GPU/CPU decisions are
+  exact. The true-AR timing is **-1.247%**; timing noise leaves the worst prompt
+  and category at **-0.561%/-0.287%**, including one B3 prompt/category at
+  **-0.466%/-0.094%**. The retained B3 result is **2.5175x own AR** and
+  **12.18% below** llama.cpp Vulkan's 68.082 tok/s.
+- Run populated 512/128 and 4096/128 controls with one warmup, three measured
+  resets, bulk/WMMA prefill, state-bound graph AR, cached builds, and repeated
+  token 9707. Graph AR improves **23.240873 -> 23.283665 tok/s (+0.184%)** and
+  **21.841292 -> 21.902651 (+0.281%)**. Prefill is noise-flat at
+  **234.013795 -> 234.580352 (+0.242%)** and
+  **215.771176 -> 215.126956 (-0.299%)**. All final IDs are 9707, logits are
+  finite, tracked peaks are byte-identical, and both sessions free to zero.
+- Publish
+  `benchmarks/results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json`
+  plus the benchmark rollup, changelog, campaign, and kernel catalog. Candidate
+  profile/natural/comparison/512/4096 SHA-256s are
+  `11033a46...d955`, `306806c4...4275`, `25d18b0a...ca2`,
+  `590358e4...061`, and `748907f7...034`; the GPU1 screen/database hashes are
+  `8fe0decf...0bd` and `871ff558...4bf`.
+- Re-rank only `a5f25c9ad`. The exact launch ledger now exposes **672** final
+  journal-to-resident Conv/GDN state copies totaling **4.528 ms** of kernels per
+  seven-cycle B3 profile, before queue cost. Next test registered non-deferred
+  producer variants that write the final row directly while retaining deferred
+  rollback journals and ordinary copy fallbacks.
