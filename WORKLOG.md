@@ -203909,3 +203909,54 @@ Vulkan local sizes verbatim will close the measured gap.
   predeclared gate. Continue the campaign immediately at the measured selected
   gate/up+down role (**3.912-3.925 ms/token**), then cumulative SH-D1,
   SH-M2/SH-K1/SH-A1/SH-G.
+
+## 2026-08-06 — Select SH-D1 Qwen selected-Q4 tile8 first object
+
+- The c=1 Qwen selected gate/up owner is the next measured leaf: **2.309-2.319
+  ms/token** across 40 MoE layers. Its exact fused-SiLU Q4T16 body launches
+  local128 over eight selected experts and 16 columns, but holds 16 gate plus
+  16 up accumulators and profiles at **200 VGPR**.
+- Screen one materially different, exact gfx1151-local ownership shape before
+  changing runtime dispatch: split every resident T16 tile into two independent
+  eight-column workgroups, use adjacent-column packed-Q/coefficient loads, keep
+  the production 128-thread K partition, wave and wave0..3 reduction order,
+  BF16 gate/up round trips, SiLU expression, allocation, and fallback. This is
+  the exact analogue of the previously retained Laguna tile8/coefficient
+  mechanism, specialized to Qwen's c1/top8/K2048/N512 shape; it is not a new
+  format or prompt-conditioned policy.
+- Freeze the continuation rule from SH-D1: require BF16-byte identity to the
+  production fused owner, the CPU Q4_K oracle, a named cached trace with zero
+  scratch/spill, and either **>=1.15x** leaf speedup or **>=0.5 ms/token**
+  projection before any full-model run. Use an order-balanced >2x-MALL cycling
+  pool so the screen charges the eight selected experts' complete gate/up
+  matrix traffic.
+- ROCm/gfx1151 is healthy. The required broad lineage command remains
+  mechanically blocked before any diff by absent optional checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; this candidate reuses only the
+  in-tree exact T16 mechanism and copies no external body.
+- RED collection fails on the absent Qwen wrapper. The first exact tile8 object
+  then passes registry, BF16-byte identity, and CPU Q4_K coverage. Its first
+  immutable 3x400, 80-warmup, order-balanced, 67.9-MB cycling screen measures
+  production **57.824 us** and tile8 **50.429 us**: **1.14664x**, saving
+  **7.395 us/call** and projecting **0.2958 ms/token**. Output hashes are
+  identical, but it misses the frozen 1.15x gate by **0.292%** and the 0.5-ms
+  alternative.
+- Do not rerun tile8 seeking favorable noise. Because the miss is narrow and
+  the ownership ladder still has one materially distinct exact point, screen
+  tile4 once under the same immutable protocol. Tile4 halves the tile8 live
+  accumulator set again while doubling independent output workgroups; reject
+  the whole Qwen selected-Q4 ownership ladder if it also misses admission.
+- Tile4 is exact but clearly worse: production **57.754 us** versus candidate
+  **52.915 us**, only **1.09145x**, saving **4.839 us/call** and projecting
+  **0.1936 ms/token**. Cached traces name both candidates. Production is
+  local128 / grid32x8 / 200 VGPR / 1,024 B LDS / scratch0; tile8 is grid64x8 /
+  **72 VGPR** / 512 B LDS / scratch0; tile4 is grid128x8 / **40 VGPR** / 512 B
+  LDS / scratch0. Lower register pressure cannot repay the extra workgroups.
+- Reject before runtime/full-model work and remove both kernels, C ABI wrappers,
+  four-axis keys, tests, and the transient microbench. Production source is
+  restored byte-for-byte. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-q4-tile-ladder-rejected.json`.
+  The exact selected-Q4 ownership ladder is exhausted under the frozen gate.
+- Continue the campaign immediately at selected Q5/Q6 down (**1.603-1.606
+  ms/token**), then cumulative SH-D1 and SH-M2/SH-K1/SH-A1/SH-G; this rejection
+  is not a campaign stopping point.
