@@ -1568,6 +1568,75 @@ ladders have been measured and closed. Resume only for a materially new
 algorithm/hardware primitive, a changed model/runtime baseline, or an
 unprofiled production reproducer with a new >=5%-wall ceiling.
 
+### Residual tuning coverage audit (2026-08-06)
+
+This closing audit maps every profiler-ranked residual to the experiments already
+run, then screens only the one materially distinct candidate that was still
+uncovered. It does **not** rerun closed grids or turn profiler timing into a
+topline. Initial/current hipEngine natural rows use the same ten-prompt
+natural25 protocol; Vulkan B3 is the clean `ee0445c99` selected row.
+
+| W7900 metric | Initial hipEngine | Current retained | llama.cpp Vulkan | Initial -> current | Current vs Vulkan | Status |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Populated prefill 512 / 4096 | 50.515 / 50.473 tok/s | 234.580 / 215.127 tok/s | 79.805 / 81.792 tok/s | +364.38% / +326.22% | +193.94% / +163.02% | hipEngine ahead |
+| Populated AR 512 / 4096 | 19.556 / 18.649 tok/s | 23.284 / 21.903 tok/s | 12.574 / 12.488 tok/s | +19.06% / +17.45% | +85.18% / +75.39% | hipEngine ahead |
+| Natural AR | 20.361 tok/s | 24.114 tok/s | 12.546 tok/s | +18.43% | +92.20% | hipEngine ahead |
+| Natural B1 / B2 | 17.128 / 16.005 tok/s | 43.792 / 55.254 tok/s | not canonical; Vulkan selected B3 | +155.68% / +245.23% | n/a | absolute hipEngine gains retained |
+| Natural B3 | 14.858 tok/s | **60.262 tok/s** | **68.082 tok/s** | **+305.59% / 4.056x** | **-11.49%** | parity blocked by 7.821 tok/s |
+| Natural B3 / own AR | 0.7297x | 2.4991x | 5.4265x | +242.48% | -53.95% | disclosed; absolute B3 is the closure metric |
+
+The refreshed synchronized-profiler module ledger is directional attribution,
+not a throughput denominator:
+
+| Module | Last retained step | Current hipEngine | llama.cpp Vulkan | Current directional gap | Coverage verdict |
+| --- | --- | ---: | ---: | ---: | --- |
+| Q5T16 `ssm_out`, 336 calls | 37.004 -> 22.911 ms (-38.09%) | 22.911 ms | 15.119 ms | +7.792 ms; 1.75% of complete wall | Raw/T16, row reuse, workgroups, DP4A, WMMA, rotating residency, and producer/consumer handoffs covered; exhausted |
+| Q4 FFN gate/up + SiLU | retained compact/fused route | 76.311 ms | 89.534 ms | hipEngine ahead 13.223 ms | no residual debt |
+| Wide Q6 FFN-down + QKV, 392 calls | 59.876 -> 46.714 ms (-21.98%); refreshed clocks shown at right | 47.570 ms | 41.486 ms | +6.084 ms; 1.37% of complete wall | Legacy/planar T16, col4/8/16, row2-6, WMMA, qmicro, residual fusion, integer-WMMA, and scalar-DP4A covered; exhausted |
+| Proposal root stage1 | 40.606 -> 37.127 ms in the retained root pass | 31.241 ms / 21 calls | 31.873 ms / 22 calls | hipEngine ahead 0.632 ms; call mismatch disclosed | no positive residual |
+| Target root FP32, 7 calls | 15.032 -> 11.724 ms (-22.00%); refreshed clocks shown at right | 11.798 ms | 9.170 ms | +2.628 ms; 0.59% of complete wall | Root residency, rowtiles, compact top-1, WMMA/quantized, fusion, and scalar-DP4A covered; exhausted |
+
+The family-specific conclusions are binding:
+
+- **Q5T16 `ssm_out`:** dense BF16, raw-Q5 wave/SWAR/pack8/column/rowbatch,
+  direct and exact T16 rows2-4 at local32/64/128 and col4/8/16, raw-Q5 and
+  Q5T16 Q8_1 `sudot4` row reuse, dense WMMA, all-48-plane rotating residency,
+  and F32/BF16 handoffs have all been measured. Reopen only for a genuinely new
+  representation or hardware primitive; a fused GDN-to-Q8_1 idea is sub-ms and
+  does not reopen the rejected DP4A layouts.
+- **Wide Q6:** the new planar-Q6/Q8_1 scalar-dot leaf wins its tracked-clean
+  qualified family **46.900 -> 40.992 ms (-12.60%)** and full-suite B1/B2/B3
+  **+1.876%/+1.106%/+2.316%**, but planar c1 regresses true AR **23.271 ->
+  21.821 tok/s (-6.235%)**. A transaction-consistent X8-c1 rescue then wins the
+  all-56-weight W7900 component loop **6.269 -> 5.803 ms (1.080x)** with
+  **54/56 top-1** and max KL **9.71e-6**, but costs **3.140 GiB** and fails the
+  binding one-prompt gate: AR **24.194 -> 22.533 (-6.867%)**, B3 **65.896 ->
+  67.592 tok/s (+2.573%)**. Broader sidecar work is intentionally skipped; all
+  runtime ownership and sidecar code are removed, while the registered planar
+  primitive remains diagnostic-only.
+- **Target root FP32:** the piggyback K5,120/N248,320 scalar-DP4A screen does
+  beat retained planar qmicro inclusively at rows2/3/4: best local policies are
+  **1.405x/1.420x/1.357x**, all **31/31** paired wins. It nevertheless matches
+  top-1 in only **8/9 rows (88.89%)**, below the project-wide 90% gate, despite
+  max KL **3.79e-7**. It is rejected before runtime/W7900 work. No credible
+  untried exact root design remains, and perfect root closure is only 0.59% of
+  complete wall.
+
+The three positive module gaps sum to only **16.504 ms / 3.72%** of the
+444.023-ms reference marker. Even perfect arithmetic elimination cannot supply
+the **12.98%** throughput increase needed to move 60.262 to 68.082 tok/s.
+There is no optimization or benchmark running after this publication. Resume
+only for a materially new speculative algorithm/schedule, hardware primitive,
+changed model/runtime/compiler/driver/Vulkan baseline, or a newly profiled
+production reproducer with a credible >=5%-wall ceiling. Do not repeat the
+closed Q5/Q6/root grids, planar-Q8 runtime, duplicate-X8 sidecar, graph
+upload/split, or exact B5 work without such a new mechanism.
+
+Artifacts:
+
+- `benchmarks/results/2026-08-06-qwen36-27b-residual-tuning-coverage-audit.json`
+- `benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json`
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1582,7 +1651,7 @@ unprofiled production reproducer with a new >=5%-wall ceiling.
 | 1 | D27-O1 | Optimize the largest measured AR prefill bucket. | Candidate ceiling >=5% complete wall; same-suite exact win at 512 and 4K. | complete; populated route reaches 234.014/215.771 tok/s, 193.23%/163.80% above stateful Vulkan |
 | 1 | D27-O2 | Optimize the largest measured AR decode bucket. | Candidate ceiling >=5% or >=0.20 ms/token; same-suite exact win. | complete for this pass; populated graph AR is 23.284/21.903 tok/s and beats stateful Vulkan by 85.18%/75.40% |
 | 1 | D27-O3 | Optimize the largest measured MTP cycle bucket (draft, target, commit, or host residual). | Full and heldout absolute MTP improves; own-AR ratio improves or a faster-AR denominator decline is disclosed; no category or acceptance regression. | tabled at exact/default local optimum; canonical B1/B2/B3 is 43.792/55.254/60.262 tok/s, B5 fails the 50.3-ms/pass admission screen, rounded next-RMSNorm is the physical default, and rejected launch contractions are excluded |
-| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | exhausted for current algorithms; graph upload/splitting, exact six-row B5, and all remaining credible arithmetic/transport ladders are closed, leaving B3 11.49% below Vulkan |
+| 2 | D27-L1 | Re-profile and close second-order gaps until Vulkan parity. | Each new target is selected from the refreshed profile, not this initial list. | exhausted for current algorithms; the residual coverage audit closes Q5, wide-Q6 scalar-DP4A/X8-sidecar, root scalar-DP4A, graph upload/splitting, and exact six-row B5, leaving B3 11.49% below Vulkan |
 | 3 | D27-P0 | Final clean W7900 publication and default promotion. | Definition of done, rollups, artifacts, refactor cleanup, atomic commits. | complete as a blocked publication; retained defaults and evidence are published, but matched MTP parity is explicitly not claimed |
 
 ### Impact admission rule

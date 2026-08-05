@@ -1,0 +1,321 @@
+{
+  "schema": 1,
+  "status": "complete_exhausted_current_algorithms",
+  "performance_claim": false,
+  "performance_claim_scope": "Publication audit over previously retained and rejected W7900/GPU1 measurements; this artifact adds no new topline measurement.",
+  "correctness_claim": false,
+  "kind": "qwen36_27b_gguf_residual_tuning_coverage_audit",
+  "timestamp": "2026-08-06T05:36:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "canonical_gpu": "AMD Radeon Pro W7900",
+    "canonical_gpu_index": 0,
+    "component_gpu": "AMD Radeon RX 7900 XTX",
+    "component_gpu_index": 1,
+    "architecture": "gfx1100"
+  },
+  "publication_commit_before_audit": "122bce46c7bdcff714bdaaff338bdad91eadd70c",
+  "topline": {
+    "protocol_note": "All rows are transition-normalized W7900 values. The initial and current hipEngine natural rows use the same ten-prompt natural25 suite. Vulkan B3 is the selected clean ee0445c99 server row. Populated prefill/AR use the matched 512/128 and 4096/128 stateful protocol.",
+    "rows": [
+      {
+        "metric": "populated_prefill_512_tok_s",
+        "initial_hipengine": 50.515,
+        "current_hipengine": 234.58,
+        "llamacpp_vulkan": 79.805,
+        "initial_to_current_percent": 364.3769177472038,
+        "current_vs_vulkan_percent": 193.94148236326046,
+        "status": "hipEngine ahead"
+      },
+      {
+        "metric": "populated_prefill_4096_tok_s",
+        "initial_hipengine": 50.473,
+        "current_hipengine": 215.127,
+        "llamacpp_vulkan": 81.792,
+        "initial_to_current_percent": 326.2219404434054,
+        "current_vs_vulkan_percent": 163.01716549295776,
+        "status": "hipEngine ahead"
+      },
+      {
+        "metric": "populated_ar_512_tok_s",
+        "initial_hipengine": 19.556,
+        "current_hipengine": 23.284,
+        "llamacpp_vulkan": 12.574,
+        "initial_to_current_percent": 19.063203109020233,
+        "current_vs_vulkan_percent": 85.17575950373785,
+        "status": "hipEngine ahead"
+      },
+      {
+        "metric": "populated_ar_4096_tok_s",
+        "initial_hipengine": 18.649,
+        "current_hipengine": 21.903,
+        "llamacpp_vulkan": 12.488,
+        "initial_to_current_percent": 17.448656764437764,
+        "current_vs_vulkan_percent": 75.39237668161434,
+        "status": "hipEngine ahead"
+      },
+      {
+        "metric": "natural_ar_tok_s",
+        "initial_hipengine": 20.361,
+        "current_hipengine": 24.11377551783828,
+        "llamacpp_vulkan": 12.54629714336497,
+        "initial_to_current_percent": 18.431194527961694,
+        "current_vs_vulkan_percent": 92.19834539460672,
+        "status": "hipEngine ahead"
+      },
+      {
+        "metric": "natural_b1_tok_s",
+        "initial_hipengine": 17.128,
+        "current_hipengine": 43.792176855996814,
+        "llamacpp_vulkan": null,
+        "initial_to_current_percent": 155.67595081735647,
+        "current_vs_vulkan_percent": null,
+        "status": "Vulkan B1 not canonical; B3 selected"
+      },
+      {
+        "metric": "natural_b2_tok_s",
+        "initial_hipengine": 16.005,
+        "current_hipengine": 55.25420093867832,
+        "llamacpp_vulkan": null,
+        "initial_to_current_percent": 245.23087121948345,
+        "current_vs_vulkan_percent": null,
+        "status": "Vulkan B2 not canonical; B3 selected"
+      },
+      {
+        "metric": "natural_b3_tok_s",
+        "initial_hipengine": 14.858,
+        "current_hipengine": 60.26190653283626,
+        "llamacpp_vulkan": 68.08247965468567,
+        "initial_to_current_percent": 305.58558711021846,
+        "current_vs_vulkan_percent": -11.48690993852657,
+        "status": "hipEngine remains below Vulkan"
+      },
+      {
+        "metric": "natural_b3_over_own_ar",
+        "initial_hipengine": 0.7297,
+        "current_hipengine": 2.499065585488976,
+        "llamacpp_vulkan": 5.426499857026792,
+        "initial_to_current_percent": 242.47849602425325,
+        "current_vs_vulkan_percent": -53.94700725453945,
+        "status": "absolute B3 is the closure metric; ratio disclosed"
+      }
+    ],
+    "remaining_b3_gap_tok_s": 7.820573121849414,
+    "required_hipengine_improvement_percent": 12.977639725998458
+  },
+  "matched_module_ledger": {
+    "protocol": "Synchronized profiler ranking values from the refreshed one-prompt B3 traces; not throughput toplines. Proposal-root call counts differ and are disclosed.",
+    "complete_marker_reference_ms": 444.023,
+    "rows": [
+      {
+        "module": "Q5T16 ssm_out",
+        "calls": 336,
+        "hipengine_ms": 22.911,
+        "llamacpp_vulkan_ms": 15.119,
+        "gap_ms": 7.792,
+        "hipengine_vs_vulkan_percent": 51.53780011905551,
+        "perfect_removal_share_percent": 1.7548640498352561,
+        "status": "largest positive residual after tuning"
+      },
+      {
+        "module": "Q4 FFN gate/up plus SiLU",
+        "calls": null,
+        "hipengine_ms": 76.311,
+        "llamacpp_vulkan_ms": 89.534,
+        "gap_ms": -13.223,
+        "hipengine_vs_vulkan_percent": -14.76869122344584,
+        "perfect_removal_share_percent": null,
+        "status": "hipEngine ahead"
+      },
+      {
+        "module": "wide Q6 FFN-down plus QKV",
+        "calls": 392,
+        "call_breakdown": {
+          "ffn_down": 224,
+          "attn_qkv": 168
+        },
+        "hipengine_ms": 47.57,
+        "llamacpp_vulkan_ms": 41.486,
+        "gap_ms": 6.084,
+        "hipengine_vs_vulkan_percent": 14.665188256279226,
+        "perfect_removal_share_percent": 1.370199291478144,
+        "status": "largest remaining arithmetic residual"
+      },
+      {
+        "module": "proposal root stage1",
+        "calls": 21,
+        "llamacpp_vulkan_calls": 22,
+        "hipengine_ms": 31.241,
+        "llamacpp_vulkan_ms": 31.873,
+        "gap_ms": -0.632,
+        "hipengine_vs_vulkan_percent": -1.9828695133812357,
+        "perfect_removal_share_percent": null,
+        "status": "hipEngine directionally ahead; call-count mismatch disclosed"
+      },
+      {
+        "module": "target root FP32 rows",
+        "calls": 7,
+        "hipengine_ms": 11.798,
+        "llamacpp_vulkan_ms": 9.17,
+        "gap_ms": 2.628,
+        "hipengine_vs_vulkan_percent": 28.658669574700113,
+        "perfect_removal_share_percent": 0.5918612324136362,
+        "status": "second-order residual"
+      }
+    ],
+    "positive_residual_sum_ms": 16.504,
+    "positive_residual_sum_share_percent": 3.7169245737270367,
+    "interpretation": "Even perfect elimination of all three positive arithmetic residuals is below the approximately 12.98% throughput improvement needed for Vulkan B3 parity. A new algorithm/schedule is required; isolated arithmetic retuning cannot close the headline gap."
+  },
+  "coverage": {
+    "q5t16_ssm_out": {
+      "last_retained_change_ms": {
+        "before": 37.004,
+        "after": 22.911,
+        "delta_percent": -38.08507188412062
+      },
+      "covered": [
+        "dense BF16 virtual256/local128 rowtile baseline",
+        "raw Q5 wave32x2, SWAR, pack8, coltile, and rowbatch layouts",
+        "Q5T16 direct and exact row reuse at rows2-4, local32/64/128, columns4/8/16",
+        "raw Q5 plus Q8_1 sudot4 row reuse across 8 geometries",
+        "Q5T16 plus Q8_1 sudot4 row reuse across 27 geometries and the final 11-pair gate",
+        "Q5T16 dense WMMA prefill",
+        "48-plane rotating-cache sole-resident admission",
+        "consumer F32 fold rejected and producer GDN BF16 handoff retained"
+      ],
+      "decision": "Coverage complete. No credible untried representation has material complete-wall ceiling.",
+      "resume_condition": "A genuinely new representation or hardware primitive. A fused GDN-to-Q8_1 idea is sub-ms and does not reopen the closed DP4A row-reuse layouts."
+    },
+    "wide_q6_down_qkv": {
+      "retained_progress": "The byte-neutral planar-qmicro pass measured 59.876 -> 46.714 ms; the refreshed matched ledger is 47.570 ms versus Vulkan 41.486 ms.",
+      "covered": [
+        "dense BF16 source-Q6 owner",
+        "legacy Q6T16 c1, rows2-6, and dense WMMA M64/M512",
+        "local128 col16, retained row-selective col8, rejected col4, rows2-6, and BF16/F32 policies",
+        "byte-neutral interleaved/planar qmicro and aligned-record WMMA; scalar-record WMMA rejected",
+        "planar qmicro c1, rows2-4, M64, and M512 retained",
+        "small-row planar-Q6 D4 integer-WMMA rejected at 0.273-0.477x with 0/31 wins",
+        "FFN-down plus residual fusion with rows2-3 retained and row4 rejected",
+        "rounded add plus next-RMSNorm retained",
+        "planar-Q6/Q8_1 scalar sudot4 with both production shapes at c1 and rows2-4",
+        "56-weight rotating X8-c1 sidecar rescue"
+      ],
+      "scalar_dp4a_candidate": {
+        "profile_qualified_family_ms": {
+          "control": 46.9,
+          "candidate": 40.991,
+          "delta_percent": -12.5991
+        },
+        "full_category": {
+          "true_ar_delta_percent": -6.234761493559193,
+          "b1_delta_percent": 1.8760977530442924,
+          "b2_delta_percent": 1.1058361728463195,
+          "b3_delta_percent": 2.315967340971903
+        },
+        "x8_sidecar_component_w7900": {
+          "control_us": 6269.381046295166,
+          "candidate_us": 5803.136825561523,
+          "speedup": 1.0803434822835714,
+          "sidecar_bytes": 3371827200
+        },
+        "x8_sidecar_directional_gate": {
+          "true_ar_delta_percent": -6.867211576812071,
+          "b3_delta_percent": 2.5730291561512963
+        },
+        "outcome": "Runtime and 3.140-GiB sidecar removed; registered planar scalar-dot primitive retained only as diagnostic evidence."
+      },
+      "decision": "All credible current representations and scheduling families are closed. Exact planar Q6 remains production.",
+      "resume_condition": "A byte-neutral or sole-resident transaction-consistent c1 representation, new hardware primitive, or algorithm with a larger complete-wall ceiling."
+    },
+    "target_root_fp32": {
+      "retained_progress": "The retained planar-qmicro root pass measured 15.032 -> 11.724 ms; the refreshed matched ledger is 11.798 ms versus Vulkan 9.170 ms.",
+      "covered": [
+        "source-Q6 raw/full-logit and byte-neutral legacy Q6T16 residency",
+        "exact Q6T16 col16 rowtile, retained selective col8 rows3-4, and rejected col4",
+        "byte-neutral planar-qmicro FP32 c1/rows2-4 and proposal top-1",
+        "exact tile-winner publication rejected at 0.947-0.961x with 0/31 wins",
+        "exact Q6T16 top-1 fusion rejected by full-model graph nonregression",
+        "prior X8/Q8_1 verifier top-1 route rejected on the 35B/gfx1151 lane",
+        "current K5120/N248320 planar-Q6/Q8_1 scalar-sudot4 rows2-4 screen"
+      ],
+      "scalar_dp4a_component_gpu1": {
+        "resident_bytes_per_layout": 1042944000,
+        "rows2_best": {
+          "threads": 256,
+          "control_us": 1685.492992401123,
+          "candidate_us": 1199.4893550872803,
+          "speedup": 1.405175448412778,
+          "paired_wins": 31
+        },
+        "rows3_best": {
+          "threads": 256,
+          "control_us": 1838.4277025858562,
+          "candidate_us": 1294.3170070648193,
+          "speedup": 1.4203844132087402,
+          "paired_wins": 31
+        },
+        "rows4_best": {
+          "threads": 128,
+          "control_us": 1950.3885904947917,
+          "candidate_us": 1437.424659729004,
+          "speedup": 1.3568631769977402,
+          "paired_wins": 31
+        },
+        "quality": {
+          "top1_matches": 8,
+          "rows": 9,
+          "top1_agreement": 0.8888888888888888,
+          "max_kl": 3.786333559146817e-07,
+          "project_gate_pass": false,
+          "failure": "rows3 matches only 2/3 at every tested thread policy, placing root-only aggregate below the required 90% top-1 gate"
+        },
+        "outcome": "Rejected before runtime ownership or W7900 work."
+      },
+      "decision": "No credible untried exact root candidate remains; the only new quality-traded screen fails the top-1 gate and has a 0.6%-wall ceiling.",
+      "resume_condition": "A new exact compact-output algorithm/hardware primitive with a sole-resident memory design and materially larger end-to-end ceiling."
+    }
+  },
+  "overall_decision": {
+    "action": "table_exact_default_campaign_below_vulkan_parity",
+    "current_status": "Prefill and AR beat matched Vulkan; natural B3 remains 60.262 versus 68.082 tok/s, 11.49% below Vulkan.",
+    "work_in_progress": "None after publication. No performance benchmark or candidate remains running.",
+    "resume_conditions": [
+      "materially new speculative algorithm or verifier schedule",
+      "new GPU hardware primitive or backend capability",
+      "changed model, runtime, compiler, driver, or llama.cpp baseline",
+      "an unprofiled production reproducer with a newly demonstrated >=5%-wall ceiling"
+    ],
+    "do_not_repeat": [
+      "Q5 raw/T16/Q8_1 row-reuse and WMMA grids",
+      "wide-Q6 legacy/planar/col4-col8/integer-WMMA ladders",
+      "planar-Q6/Q8_1 rows1-4 runtime and duplicate-X8 c1 sidecar",
+      "root col4/tile-winner/top1-fusion/Q8_1 scalar-dot routes",
+      "graph upload/split and exact six-row B5 without a new mechanism"
+    ]
+  },
+  "sources": [
+    "benchmarks/results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json",
+    "benchmarks/results/2026-08-04-qwen36-27b-hipengine-baseline.json",
+    "benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json",
+    "benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json",
+    "benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-rowreuse-rejected.json",
+    "benchmarks/results/2026-08-05-qwen36-27b-raw-q5-q8-1-dp4a-rowreuse-rejected.json",
+    "benchmarks/results/2026-08-05-qwen36-27b-q5t16-q8-1-dp4a-rowreuse-rejected.json",
+    "benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json",
+    "benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-root-head-retained.json",
+    "benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json",
+    {
+      "path": "/tmp/qwen36-q6-x8-q8-rowtile-gpu1.json",
+      "sha256": "90d8af971db049df2bafa16a2dedfd55c0386f669146c425ab09b2c589c0c014"
+    }
+  ]
+}

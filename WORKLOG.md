@@ -207850,3 +207850,29 @@ Vulkan local sizes verbatim will close the measured gap.
   **89 passed / 4 skipped**, and the focused runner/target/graph bundle is
   **30 passed / 9 skipped**. The prior complete W7900 exact-parent evidence
   therefore remains the applicable broad gate.
+- Publish the residual tuning coverage audit. From initial bring-up to current
+  retained W7900 production, populated 512/4096 prefill moves **50.515/50.473 ->
+  234.580/215.127 tok/s**, populated AR **19.556/18.649 -> 23.284/21.903**,
+  natural AR **20.361 -> 24.114**, and natural B1/B2/B3 **17.128/16.005/14.858
+  -> 43.792/55.254/60.262 tok/s**. hipEngine beats matched Vulkan prefill and
+  AR, while B3 remains **60.262 vs 68.082 tok/s (-11.49%, 7.821 tok/s)**.
+- The current synchronized module ledger is Q5T16 `ssm_out` **22.911 vs 15.119
+  ms (+7.792)**, Q4 FFN gate/up+SiLU **76.311 vs 89.534 ms (hipEngine ahead
+  13.223)**, wide Q6 **47.570 vs 41.486 ms (+6.084)**, proposal root stage1
+  **31.241/21 calls vs 31.873/22 calls (hipEngine ahead 0.632)**, and target root
+  FP32 **11.798 vs 9.170 ms (+2.628)**. The three positive gaps total only
+  **16.504 ms / 3.72%** of the 444.023-ms marker, below the **12.98%** throughput
+  increase required for B3 parity.
+- Coverage is now explicit. Q5 raw/T16/row-reuse/workgroup/DP4A/WMMA/rotating-
+  residency/handoff families are closed. Wide Q6 legacy/planar T16, col4/8/16,
+  rows2-6, qmicro/WMMA/integer-WMMA/fusions, planar-Q8, and X8-sidecar routes are
+  closed. The last root piggyback screen does win inclusive rows2/3/4 at
+  **1.405x/1.420x/1.357x**, all **31/31**, but matches only **8/9 top-1
+  (88.89%)** and fails the 90% gate despite max KL **3.79e-7**; it receives no
+  runtime/W7900 work. No credible untried exact root design remains.
+- There is no performance candidate or benchmark running after publication.
+  Resume only for a materially new speculative algorithm/schedule, hardware
+  primitive, changed model/runtime/compiler/driver/Vulkan baseline, or a newly
+  profiled production reproducer with a credible >=5%-wall ceiling. Compact
+  audit artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-residual-tuning-coverage-audit.json`.
