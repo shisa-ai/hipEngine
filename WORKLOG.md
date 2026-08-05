@@ -207663,3 +207663,18 @@ Vulkan local sizes verbatim will close the measured gap.
   work in progress: B1-B3 remains production, B3 remains canonical, and B5 may
   reopen only for a materially different speculative algorithm or hardware
   primitive.
+
+## 2026-08-06 — Repair stale root benchmark export after completion audit
+
+- The requested prompt-to-artifact audit found one publication gap despite the
+  clean post-B5 tree: `python3 scripts/sync_benchmark_readme.py --check` failed
+  because root `README.md` had a stale `SPECULATIVE` TOPLINE block. The
+  canonical `benchmarks/README.md` contained the retained Qwen3.6 campaign
+  progression and final B5 rejection, but the repository-level export stopped
+  before the latest 322 lines.
+- Run the documented repair exactly:
+  `python3 scripts/sync_benchmark_readme.py --write` followed by `--check`.
+  The check now reports `README benchmark blocks are synchronized`; only the
+  generated root block changes. This is publication repair, not a new
+  performance result, and canonical B3 remains **60.262 tok/s / 11.49% below
+  Vulkan**.

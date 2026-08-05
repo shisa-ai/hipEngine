@@ -2658,6 +2658,328 @@ proposal body is flat at **48.671 -> 48.658 ms** of kernels. Canonical B3 is now
 **16.57% below** llama.cpp Vulkan. Artifact:
 [`2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json`](results/2026-08-05-qwen36-27b-nextn-state-only-tail-retained.json).
 
+#### Qwen3.6-27B quality-gated Q5T16 dense `ssm_out`, W7900/gfx1100
+
+Clean implementation `24fef47da` replaces exactly 48 gfx1100
+K6,144/N5,120 dense-BF16 `ssm_out` residents with source-faithful Q5T16.
+Direct c1, exact local128/col4 rows 2-4, larger-row fallback, and dense WMMA
+prefill are registered siblings; all other shapes/roles, decode-repack-off,
+registry misses, and gfx1151 retain dense BF16. Residency falls exactly
+**1,958,215,680 bytes / 1.824 GiB**.
+
+| Route | State-only-tail baseline | + Q5T16 `ssm_out` | Delta | MTP / true AR | Acceptance / work |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 23.217 tok/s | **24.049 tok/s** | **+3.585%** | 1.0000x | candidate trajectory control |
+| B1 | 41.512 tok/s | **43.170 tok/s** | **+3.994%** | 1.7951x | 115 / 127 |
+| B2 | 51.974 tok/s | **54.621 tok/s** | **+5.094%** | 2.2712x | 151 / 182 |
+| **B3 (retained)** | 56.802 tok/s | **59.551 tok/s** | **+4.839%** | **2.4762x** | **169 / 219** |
+
+Every full/train/heldout/category scope and every B2/B3 prompt improves. One B1
+prompt is **-2.116%**. Candidate MTP matches its own AR on every row. Nine of ten
+prior-route outputs remain byte-identical; only `general_ja_explain` diverges
+after token 18 into a fluent memory-bandwidth explanation rather than the prior
+fluent FLOPS explanation. Aggregate component quality is **7.38e-5 max KL /
+99.79% top-1**, and the complete B1-B3 transaction/state/provider/lifecycle gate
+passes, so this is retained as a disclosed quality-gated route rather than a
+bit-identical dense-BF16 replacement.
+
+The tracked-clean one-prompt B3 trace cuts the 336-call physical family
+**37.004 -> 22.911 ms (-38.09%)**, target-verify host wall **380.843 -> 361.440
+ms (-5.095%)**, and complete marker wall **464.238 -> 444.023 ms (-4.354%)** at
+unchanged **8,039** dispatches.
+
+Populated 512/4096 prefill advances **207.864/193.001 -> 234.014/215.771 tok/s
+(+12.58%/+11.80%)** and graph AR advances **22.208/21.017 -> 23.241/21.841
+(+4.65%/+3.92%)**. All six final IDs are `9707`, each peak falls exactly 1.824
+GiB, and teardown returns to zero. Prefill and AR remain well above matched
+stateful Vulkan; natural25 B3 is now **12.53% below** Vulkan's 68.082 tok/s.
+Artifact:
+[`2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json`](results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json).
+
+#### Qwen3.6-27B exact GDN-to-Q5T16 BF16 handoff, W7900/gfx1100
+
+Clean implementation `a5f25c9ad` writes the existing round-to-nearest-even BF16
+`ssm_out` input from the scalar or chain GDN producer while preserving its FP32
+output and every recurrent-state bit. The resident Q5T16 weight plugin owns the
+two registered boundaries; registry misses and gfx1151 retain ordinary GDN plus
+standalone cast plus BF16 Q5T16.
+
+| Route | Q5T16 baseline | + producer handoff | Delta | MTP / true AR | Acceptance / work |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 24.049 tok/s | 23.750 tok/s | -1.247% timing variance | 1.0000x | all tokens exact |
+| B1 | 43.170 tok/s | **43.357 tok/s** | **+0.433%** | 1.8256x | 115 / 127 |
+| B2 | 54.621 tok/s | **54.678 tok/s** | **+0.104%** | 2.3023x | 151 / 182 |
+| **B3 (retained)** | 59.551 tok/s | **59.790 tok/s** | **+0.402%** | **2.5175x** | **169 / 219** |
+
+All 750 MTP tokens, AR tokens, acceptance counts, and GPU/CPU decisions are
+exact. Target-verify wall improves **0.466%/0.390%/0.479%** at B1/B2/B3. Timing
+noise leaves the worst prompt/category at **-0.561%/-0.287%**; B3 has one
+negative prompt and one category at only **-0.466%/-0.094%**.
+
+The corrected one-prompt W7900 trace removes **336** casts and dispatches
+(**8,039 -> 7,703**), changes GDN+cast **15.522 + 0.606 -> 15.465 ms**, cuts
+target kernels **0.809%** and target host wall **0.332%**, and cuts complete
+kernel sum **0.707%**. Complete marker wall is disclosed at **+0.209%** queue
+variance; an independent first exact run measures complete/target wall
+**-1.875%/-1.494%**. GPU1 complete GDN-handoff medians improve c1-c4
+**1.264x/1.153x/1.112x/1.088x**.
+
+Populated graph AR improves **23.241 -> 23.284 tok/s (+0.184%)** at 512 and
+**21.841 -> 21.903 (+0.281%)** at 4K. Prefill is noise-flat
+(**+0.242%/-0.299%**), peaks are byte-identical, all IDs are `9707`, and
+teardown returns to zero. Natural25 B3 is now **12.18% below** Vulkan's 68.082
+tok/s. Artifact:
+[`2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json`](results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json).
+
+#### Qwen3.6-27B exact one-launch rollback snapshot, W7900/gfx1100
+
+Clean implementation `01291b066` corrects the prior copy attribution: the
+**672** target-window copies are seven pre-verify snapshots of 48 Conv plus 48
+GDN resident states, not final-row commits. `_StateJournal` now owns immutable
+live/snapshot pointer tables and replaces each 96-copy snapshot with one
+registered 64-KiB-chunked pair-copy launch. Registry, shape, layer-pair, and
+backend misses retain the original copies; per-row journals are unchanged and
+gfx1151 deliberately misses.
+
+| Route | GDN-handoff baseline | + one-launch snapshot | Delta | MTP / true AR | Acceptance / work |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| True AR | 23.750 tok/s | 24.114 tok/s | +1.533% timing variance | 1.0000x | MTP-only route is unreachable |
+| B1 | 43.357 tok/s | **43.792 tok/s** | **+1.004%** | 1.8161x | 115 / 127 |
+| B2 | 54.678 tok/s | **55.254 tok/s** | **+1.053%** | 2.2914x | 151 / 182 |
+| **B3 (retained)** | 59.790 tok/s | **60.262 tok/s** | **+0.789%** | **2.4991x** | **169 / 219** |
+
+All 30 prompt-budget rows and every full/train/heldout/category scope improve;
+the smallest prompt and scope wins are **+0.149%/+0.235%**. All tokens,
+acceptance, GPU/CPU decisions, transaction state, and teardown are exact. The
+same-session AR rise is timing variance and numerically lowers MTP/AR despite
+every absolute MTP row improving. Populated AR was not repeated because
+`_StateJournal` cannot execute outside MTP.
+
+The corrected one-prompt W7900 trace changes **672 copies / 4.528 ms** into
+**7 launches / 3.458 ms**, removes **665 dispatches**, cuts target host wall
+**0.683%**, and cuts complete marker wall **444.949 -> 438.031 ms (-1.555%)**.
+An independent exact no-marker profile also improves **53.932 -> 54.315 tok/s**.
+The pointer plan adds only **1,540 bytes**. GPU1 production-shape synchronized
+wall improves **656.504 -> 436.108 us (1.505x)** with byte-exact forward and
+reverse copies. Natural25 B3 is now **11.49% below** Vulkan's 68.082 tok/s.
+Artifact:
+[`2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json`](results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json).
+
+#### Qwen3.6-27B exact producer-folded rollback snapshot, W7900/gfx1100
+
+Clean implementation `82a7f8691` removes the native verifier's separate
+pre-verify Conv/GDN snapshot without weakening rollback. Exact chain producers
+store each immutable resident input into one session-owned rollback row while
+writing the existing output-row journals. The snapshot becomes restorable only
+after the complete target block retires; a failure after selected-state commit
+still restores all 96 original buffers. Serial mode and every paired-owner,
+registry, shape, or backend miss retain the five-row journal and pointer-copy
+fallback; gfx1151 deliberately misses.
+
+GPU1 rows 2/3/4 preserve every initial-state, output-row, FP32-output, and fused
+BF16-handoff bit. Added producer-store cost is only **2.478/2.922/3.714 us per
+layer**, projecting **317.167/295.850/257.839 us saved per B1/B2/B3 cycle**
+against the retained one-launch copy. The binding W7900 B1-B3 transaction adds
+a post-commit forced-failure gate and restores every state byte exactly.
+
+Tracked-clean B3 tracing removes all **7 snapshot launches / 3.458 ms**. Conv
+plus GDN producers rise only **17.079 -> 18.943 ms**, a direct **1.593 ms**
+target-family saving; target and complete kernel sums improve **3.025/2.977
+ms**. Peak tracked allocation falls exactly **635,437,056 bytes**
+(**606.0 MiB**), from five state rows to one.
+
+The ten-prompt gate improves target verify at every budget:
+**4.8487 -> 4.8419 s (-0.140%)**, **3.6468 -> 3.6360 s (-0.296%)**, and
+**3.2299 -> 3.2136 s (-0.506%)**. Unrelated proposal/commit/host timing variance
+leaves complete B1/B2/B3 **0.524%/0.318%/0.303% lower**, so this is retained as
+an exact physical target-window and memory win, not a new broad topline. The
+canonical headline remains **60.262 tok/s / 2.4991x own AR / 11.49% below
+Vulkan**. Artifact:
+[`2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json`](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json).
+
+#### Qwen3.6-27B selective FFN-down residual fusion, W7900/gfx1100
+
+Clean implementation `8e281f115` adds exact gfx1100 `linear+residual`
+composites for the retained planar-Q6 and compact-Q4T16 FFN-down rowtiles. Each
+producer first materializes the ordinary BF16 projection value in-register,
+then performs the same BF16 residual read, FP32 add, and final BF16 rounding as
+the standalone add. Projection-plus-add remains the registered fallback; c1,
+FP32 residuals, unsupported shapes/keys/backends, and gfx1151 fail closed.
+
+GPU1 actual Q6/Q4 K17,408/N5,120 weights are bit exact at rows 2-4 and save
+**2.372-3.684 / 2.136-3.924 us per layer**. The all-row W7900 gate rejects
+planar-Q6 row4: its 224-call family rises **32.831 -> 38.892 ms (+18.46%)** and
+natural B3 falls **60.079 -> 59.274 tok/s (-1.341%)** with every prompt and
+scope negative. Selective commit `4bbe8eef8` therefore keeps Q6 rows 2-3 and Q4
+rows 2-4, with all other rows on the exact fallback.
+
+The selective tracked-clean B3 profile removes **224 dispatches**, cuts complete
+marker **451.442 -> 448.386 ms (-0.677%)**, and cuts target host **365.954 ->
+364.985 ms (-0.265%)**. Target/complete kernel sums rise **0.555%/0.453%**, so
+this is a launch/queue contraction, not an arithmetic claim. The ten-prompt gate
+moves B1/B2 **43.563 -> 43.922 (+0.825%)** and **55.079 -> 55.196 tok/s
+(+0.213%)**, with every aggregate scope positive; B3 is mixed at **60.079 ->
+59.951 tok/s (-0.214%)**. All IDs, acceptance, state, memory, and teardown are
+exact. Retain the selective default without replacing the canonical **60.262
+tok/s / 2.4991x own AR / 11.49% below Vulkan** headline. Artifact:
+[`2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json`](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json).
+
+#### Qwen3.6-27B rounded residual plus next-RMSNorm, W7900/gfx1100
+
+Clean implementation `fda35418e` replaces each native N1 inter-layer
+FFN-down -> rounded BF16 residual add -> next attention RMSNorm boundary with
+ordinary FFN-down plus one exact rounded `add+rmsnorm` owner. The composite
+publishes the identical BF16 residual bits and runs the unchanged RMS reduction
+on those rounded values. It owns B1/B3 rows2/4 only; B2/N2, c1, prefill, F32
+residuals, unsupported policies/keys/backends, the final layer, and gfx1151 keep
+the registered unfused fallback.
+
+GPU1 actual planar-Q6 and compact-Q4 boundaries preserve all rows2-4 residual
+and normalized BF16 surfaces and save **2.543-4.320 us/layer**, with
+**22-30/31** paired wins. The tracked-clean W7900 B3 trace executes **441**
+rounded leaves, removes **217 dispatches**, cuts target host/kernel
+**364.985/257.289 -> 349.141/256.721 ms (-4.341%/-0.221%)**, and cuts complete
+marker/kernel **448.386/313.141 -> 431.236/312.507 ms
+(-3.825%/-0.202%)**. Acceptance remains exact at **17/21** and peak bytes are
+unchanged.
+
+Ten-prompt natural25 is intentionally disclosed as mixed: immediate B1/B2/B3
+moves **43.922/55.196/59.951 -> 43.741/55.332/60.012 tok/s
+(-0.412%/+0.247%/+0.103%)**. B2 cannot execute this N1 route, B1 scopes are
+negative, and B3 prompt/scope timing straddles zero. Tokens, acceptance, state,
+memory, and teardown remain exact. Retain the exact physical/launch contraction
+without replacing canonical **60.262 tok/s / 2.4991x own AR / 11.49% below
+Vulkan**. Artifact:
+[`2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json`](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json).
+
+#### Qwen3.6-27B shared-cache KV batch primitive, runtime rejected
+
+Correctness commit `e3adc89fa` adds a gfx1100-only rows2/4 shared-page BF16 KV
+writer. Each grid-Y row preserves the scalar FP32-K/BF16-V conversion and store
+arithmetic while indexing one common physical page table. The reversed-page
+positions-255..258 fixture is byte-exact to scalar launches and the direct CPU
+cache oracle; the routed W7900 B1-B3 transaction is also exact. GPU1 component
+graph medians improve **1.762x/3.172x**, and cache-only tracing records the
+rows4 body at **6.240 us**, local256, VGPR8, scratch0.
+
+The production route fails its predeclared W7900 complete-path gate. Target
+writers improve **448 / 1.083574 ms -> 112 / 0.378642 ms (-65.05%)**,
+target/complete dispatches each fall **336**, and target/complete kernel sums
+improve **0.832%/0.675%**. Target host and complete marked wall nevertheless
+regress **1.405%/2.786%**. The runner is restored to scalar writes and natural25
+is not run; retain only the measured exact primitive. The canonical **60.262
+tok/s / 2.4991x own AR / 11.49% below Vulkan** headline is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json`](results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json).
+
+#### Qwen3.6-27B dense-F32 alpha/beta pair primitive, runtime rejected
+
+Correctness commit `7e274241a` adds a gfx1100-only same-input pair for the 48
+linear-attention `ssm_alpha`/`ssm_beta` F32 weight pairs. Rows1-3 use one flat
+pair grid and row4 uses two rows/block; two ordinary dense-F32 GEMVs remain the
+fallback. Every rows1-4 output is scalar-BF16-bit exact and passes the CPU
+KL/top-1 gate. All 48 real pairs improve GPU1 event medians
+**1.771x/1.786x/1.837x/1.560x**, with **21/21** wins per selected row count.
+The routed W7900 B1-B3 transaction is exact; cache-only row4 tracing records
+local256, VGPR24, LDS2,048 B, scratch0, and **12.080 us**.
+
+The production route fails its frozen W7900 complete-path gate. The pair family
+improves **672 / 3.572950 ms -> 336 / 2.802259 ms (-21.57%)**, target/complete
+dispatches each fall **336**, and target/complete kernel sums improve
+**0.140%/0.086%**. Target host and complete marked wall nevertheless regress
+**0.201%/0.189%**. Generic pair dispatch is removed before natural25/populated
+AR; retain only the measured primitive. Canonical **60.262 tok/s / 2.4991x own
+AR / 11.49% below Vulkan** is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-alpha-beta-pair-runtime-rejected.json).
+
+#### Qwen3.6-27B alpha/beta plus snapshot-Conv primitive, runtime rejected
+
+Correctness commit `95fff80d3` adds a gfx1100-only one-grid owner for both
+K5,120/N48 dense-F32 projections and the independent C10,240/K4 rollback-safe
+chain-Conv. The pair blocks preserve the scalar local256 arithmetic trees and
+the final 40 blocks preserve the registered snapshot-Conv body. All 48 real
+layers at rows1-4 are bit-exact for alpha, beta, Conv output/journal, and initial
+snapshot; CPU KL/top-1 gates pass. GPU1 event medians improve
+**2.028x/1.949x/1.892x/1.731x**, with synchronized wall agreement and
+**21/21** wins at every row count. The routed W7900 B1-B3 transaction is exact,
+and cache-only tracing records local256, VGPR32, LDS2,048 B, scratch0, with
+steady **6.920/9.960 us** durations.
+
+The production route fails its frozen W7900 complete-path gate. The combined
+family improves **1,008 / 5.469564 ms -> 336 / 3.221938 ms (-41.09%)**,
+target/complete dispatches each fall **672**, and target/complete kernel sums
+improve **1.016%/0.884%**. Target host and complete marked wall nevertheless
+regress **0.546%/1.629%**. Generic dispatch and runner ownership are removed
+before natural25/populated AR; production again uses two scalar projections plus
+snapshot Conv. Retain only the measured primitive. Canonical **60.262 tok/s /
+2.4991x own AR / 11.49% below Vulkan** is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-pair-chain-conv-runtime-rejected.json).
+
+#### Qwen3.6-27B dependent alpha/beta-to-GDN primitive, runtime rejected
+
+Correctness commit `4e6c8e21d` and producer-locality repair `648cd4bf0` add a
+gfx1100-only per-V-head owner for both K5,120/N48 dense-F32 projections plus
+the rollback-safe chain GDN and Q5T16 BF16 handoff. The repaired local256 body
+stages four per-head Conv Q/K/V slices in 17,920 B of dynamic LDS before the
+projection scan. Rows1-4 preserve alpha, beta, every recurrent journal and
+initial snapshot bit, FP32 output, and BF16 handoff; CPU KL/top-1 gates pass.
+GPU1 event screens improve **1.2958x/1.1657x/1.0893x/1.0360x**, with **21/21**
+wins per row count, and the complete routed W7900 B1-B3 transaction is exact.
+
+The final tracked-clean current-clock W7900 profile fails its frozen compound
+gate. The three-leaf family moves **1,008 / 20.613994 ms -> 336 / 21.480201 ms
+(+4.202%)** despite removing **672** target/complete dispatches. Target host and
+complete marked wall improve **3.179%/2.440%**, but target/complete kernel sums
+regress **0.351%/0.268%**. Generic dispatch and runner ownership are removed
+before natural25/populated AR; production again uses two scalar projections,
+snapshot Conv, and snapshot+cast GDN. Post-unroute coverage passes **129/129**.
+Retain only the measured primitive; canonical **60.262 tok/s / 2.4991x own AR /
+11.49% below Vulkan** is unchanged. Artifact:
+[`2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json`](results/2026-08-05-qwen36-27b-dense-f32-pair-gdn-runtime-rejected.json).
+
+#### Qwen3.6-27B native target-graph split, runtime rejected
+
+The restored B3 profile contains three apparent **5.736-5.799 ms** idle gaps
+exactly 256 dispatches apart, but unprofiled graph experiments show they are
+profiler instrumentation. Explicit graph upload changes first launch only. An
+exact cloned 836-node GPU1 graph is slightly slower when split four ways.
+
+The decisive W7900 test topologically partitions the actual one-stream B3
+target DAG from **816 nodes** into four exact **204-node** executables and
+submits them on the same stream with one synchronization. Tokens, hidden and
+pre-output rows, and every captured Conv/GDN state-row byte remain identical.
+Across 21 alternating same-state pairs, submit medians move only **40.563484 ->
+40.500983 ms (1.00154x)** and complete call medians **40.983989 -> 40.918268
+ms (1.00161x)**. The paired median saving is **0.089741 ms** inside a ~3.2-ms
+range—not the profiler-implied ~17.2 ms. No source route or natural25 run is
+admitted. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan** is
+unchanged. Artifact:
+[`2026-08-06-qwen36-27b-native-target-graph-split-rejected.json`](results/2026-08-06-qwen36-27b-native-target-graph-split-rejected.json).
+
+#### Qwen3.6-27B exact B5 higher budget, runtime rejected
+
+A completion audit found that the shared MTP ABI and trailing NextN provider
+support budgets `(1,2,3,5)`, while this dense GGUF route had only measured
+B1-B3. B4 remains unsupported. The initial exact ten-prompt B3/B5 run confirms
+that B5 improves acceptance (**169 -> 184**) and reduces cycles (**76 -> 61**),
+but missing six-row owners collapse throughput **59.942 -> 23.523 tok/s**.
+
+Adding temporary row-6 instantiations of the existing exact Q4/Q5/Q6 templates
+removes every direct fallback. On the same favorable code prompt, B5 target
+verify falls **724.097 -> 306.675 ms (-57.65%)** and throughput rises **30.103
+-> 63.511 tok/s (2.110x)**, temporarily exceeding same-process B3 **59.597
+tok/s**. That single prompt is not a promotion gate. B5 still costs **61.335
+ms/pass**, above the frozen **<=50.3 ms** full-suite break-even and roughly
+**42.5 ms** Vulkan break-even.
+
+The decisive trace shows steady B5 at **923 nodes / 47.774 ms kernels / 53.279
+ms span**, versus B3 **819 / 35.163 / 39.718 ms**. The residual is the real
+cost of six exact rows—primarily Q4 **+7.599 ms/pass** and Q6 **+2.275 ms**—not
+another missing leaf. No second optimized full-suite run is spent after the
+predeclared screen fails; all row-6/runtime changes are removed and B1-B3 stays
+production. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**
+is unchanged. Artifact:
+[`2026-08-06-qwen36-27b-dense-b5-budget-rejected.json`](results/2026-08-06-qwen36-27b-dense-b5-budget-rejected.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
