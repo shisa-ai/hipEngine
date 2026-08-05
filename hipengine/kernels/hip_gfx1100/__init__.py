@@ -171,6 +171,15 @@ GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # Q5T16 selected-down pair reuse also requires an independent W7900 gate.
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
+# Production-cache rotation admits sole-resident Q5T16 for the measured dense
+# Qwen3.6 K6,144/N5,120 recurrent output projections. The materializer remains
+# shape/role qualified; peer backends keep dense BF16 until independently gated.
+GGUF_DENSE_Q5_T16_SSM_OUT = True
+# Q5T16 row reuse is measured only for native rows 2-4. Other T16 quants retain
+# the generic rows-through-6 behavior unless their backend package overrides it.
+GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
+    "gguf_q5_k_t16_v1": 4,
+}
 # Byte-neutral planar qmicro owns the measured Qwen3.6 wide rank-2 Q6 family
 # and K5,120/N248,320 root head on W7900. Exact actual-weight c1, rows2-4,
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
@@ -615,7 +624,9 @@ __all__ = [
     "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
+    "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

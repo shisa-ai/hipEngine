@@ -410,6 +410,56 @@ def dense_virtual256_rowtile_calls() -> Iterator[list[tuple[int, int, int]]]:
 
 
 @pytest.fixture
+def q5_t16_ssm_out_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
+    """Count sole-resident Q5T16 recurrent-output ownership."""
+
+    keys = {
+        "decode": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        ),
+        "rowtile": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        name: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for name, key in keys.items()
+    }
+    calls: dict[str, list[tuple[int, int, int]]] = {
+        "decode": [],
+        "rowtile": [],
+    }
+
+    def counted(name: str):
+        def wrapper(*args, **kwargs):
+            calls[name].append((int(args[3]), int(args[4]), int(args[5])))
+            return originals[name](*args, **kwargs)
+
+        return wrapper
+
+    for name, key in keys.items():
+        register(key, counted(name), replace=True)
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
+    try:
+        yield calls
+    finally:
+        for name, key in keys.items():
+            register(key, originals[name], replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+
+@pytest.fixture
 def chain_journal_calls() -> Iterator[dict[str, list[tuple[int, ...]]]]:
     """Count exact dense native Conv/GDN chain-journal ownership."""
 
@@ -643,6 +693,7 @@ def q4_single_rowtile_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]
 def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     dense_virtual256_calls: list[tuple[int, int, int]],
     dense_virtual256_rowtile_calls: list[tuple[int, int, int]],
+    q5_t16_ssm_out_calls: dict[str, list[tuple[int, int, int]]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
@@ -947,12 +998,16 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
     assert dense_virtual256_calls
     assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
-    assert dense_virtual256_rowtile_calls
-    assert {rows for rows, _, _ in dense_virtual256_rowtile_calls} == {2, 3, 4}
+    assert not dense_virtual256_rowtile_calls
+    assert q5_t16_ssm_out_calls["decode"]
+    assert {rows for rows, _, _ in q5_t16_ssm_out_calls["decode"]} == {1}
+    assert q5_t16_ssm_out_calls["rowtile"]
+    assert {rows for rows, _, _ in q5_t16_ssm_out_calls["rowtile"]} == {2, 3, 4}
     assert {
         (in_features, out_features)
-        for _, in_features, out_features in dense_virtual256_rowtile_calls
-    } == {(6144, 5120)}
+        for calls in q5_t16_ssm_out_calls.values()
+        for _, in_features, out_features in calls
+    } == {(6_144, 5_120)}
     assert chain_journal_calls["conv"]
     assert {rows for rows, _, _ in chain_journal_calls["conv"]} == {2, 3, 4}
     assert {

@@ -44,6 +44,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     register_gguf_q6_k_t16_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    register_gguf_k_t16_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     register_gguf_k_mmq_prefill_kernels,
 )
@@ -84,6 +87,7 @@ from hipengine.kernels.registry import KernelKey, generation, is_registered, res
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_GGUF_Q8_0_T16,
@@ -185,6 +189,7 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q4_k": 256,
     "gguf_q6_k": 256,
     # Dense T16 WMMA consumers keep the source quant's K-block alignment.
+    "gguf_q5_k_t16_v1": 256,
     "gguf_q6_k_t16_v1": 256,
     "gguf_q6_k_t16_qmicro_planar_v1": 256,
     "gguf_q8_0_t16_v1": 32,
@@ -481,6 +486,10 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     (LAYOUT_DENSE_F32, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out"),
         "dense_bf16",
+    ),
+    (LAYOUT_GGUF_Q5_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
+        "t16",
     ),
     (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
@@ -3191,9 +3200,25 @@ def _native_batch_decode_dispatch(
 
     if not _native_batch_decode_session_enabled or rows <= 1 or rows > 8:
         return dispatch
+    t16_rowtile_max_rows = 6
+    t16_rowtile_limits = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+        {},
+    )
+    if isinstance(t16_rowtile_limits, Mapping):
+        try:
+            t16_rowtile_max_rows = int(
+                t16_rowtile_limits.get(
+                    dispatch.key.quant,
+                    t16_rowtile_max_rows,
+                )
+            )
+        except (TypeError, ValueError):
+            t16_rowtile_max_rows = 0
     if (
         dispatch.abi == "t16"
-        and rows <= 6
+        and rows <= t16_rowtile_max_rows
         and dispatch.key.variant == "t16_gemv_decode_bf16_bf16_out"
     ):
         rewritten_key = KernelKey(
@@ -3500,6 +3525,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
         return
     register_dense_gemv_kernels()
     register_gguf_k_gemv_kernels()
+    register_gguf_k_t16_selected_prefill_kernels()
     register_gguf_k_mmq_prefill_kernels()
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()

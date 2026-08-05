@@ -206319,3 +206319,45 @@ Vulkan local sizes verbatim will close the measured gap.
   by the rotating-cache reopening. Runtime ownership remains pending the full
   W7900 B1-B3 transaction, named profile, natural25, and populated 512/4096
   gates.
+
+## 2026-08-05 — Admit shape-qualified dense Q5T16 runtime ownership
+
+- Add a gfx1100 backend capability that selects sole-resident Q5T16 only for
+  the **48** Qwen3.6-27B `layers.*.ssm_out` tensors with source shape
+  K6,144/N5,120. Each allocation moves **62,914,560 -> 22,118,400 bytes**;
+  the complete model projects **1,958,215,680 bytes / 1.824 GiB** less
+  residency. Default planning, other roles/shapes, decode-repack-off, and
+  gfx1151 retain dense BF16. gfx1151 exports neither the capability nor aliases
+  for the direct, rowtile, or WMMA keys.
+- Register the restored Q5T16 dense ABI in `gguf_linear`: c1 uses the direct
+  producer, native c2-c4 use the exact col4 rowtile under a quant-specific
+  backend limit, c5+ falls back to the direct producer, and eligible bulk
+  prefill uses the dense WMMA sibling. There is no backend/quant branch in
+  engine/model dispatch, environment selector, duplicate sidecar, or
+  prompt/token-conditioned behavior.
+- Focused planner/dispatch/backend contracts pass **7/7**. The broader mapping,
+  materialization, dispatch, and gfx1151 bundle passes with local-fixture skips;
+  changed runtime files and the strengthened transaction fixture pass Ruff,
+  `py_compile`, and `git diff --check`. GPU1 direct/rowtile and WMMA equality
+  gates pass **5/5**. Actual materialization reports layout/quant
+  `gguf_q5_k_t16_v1`, tiles `[1,320,24,2880]`, **22,118,400 bytes**, and zero
+  tracked bytes after free.
+- Cached GPU1 `rocprofv3 --kernel-trace` names the intended production-shape
+  direct, row-2/3/4 col4, and M64 WMMA kernels. Direct/rowtiles use local128,
+  VGPR **128/40/48/56**, SGPR128, LDS **256/128/192/256 B**, scratch0, and
+  **111,320/99,681/103,920/113,080 ns** durations; WMMA uses local32,
+  VGPR104, SGPR128, LDS0, scratch0, and **741,722 ns**. Harness/database
+  SHA-256s are `7eefbc4c...b1a0` and `9d343f05...9c93`.
+- Binding cached W7900
+  `tests/test_qwen35_gguf_mtp_e2e.py -k
+  dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` reaches all
+  B1-B3 logits, reject/partial/full/rollback state, dynamic positions, graph
+  reuse, provider output, lifecycle, and teardown checks. Its first run then
+  fails only the obsolete dense-BF16 rowtile ledger after that owner is
+  replaced. Under the focused-repair rule, strengthen the ledger to require
+  Q5T16 c1 plus rows `{2,3,4}` exclusively at K6,144/N5,120 and require zero
+  legacy dense rowtiles; the focused rerun passes **1/1**.
+- This is correctness/runtime admission, not a performance claim. Next compare
+  a hermetic cached W7900 one-prompt B3 trace against retained `e15d85d1c`;
+  only an intended Q5 physical-family and complete-window win advances to the
+  natural25 and populated 512/4096 promotion gates.
