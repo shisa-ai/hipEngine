@@ -208297,3 +208297,56 @@ Vulkan local sizes verbatim will close the measured gap.
   suite/benchmark contract tests pass **136/136**; Ruff, py_compile, and diff
   checks pass. Commit this wiring, then run the clean ten-prompt natural25
   B1-B3 promotion gate against `a3e4912ee`.
+
+## 2026-08-06 — Retain exact proposal and target-policy submission graphs
+
+- Run the clean committed `09abd51968` W7900 promotion command in a hermetic
+  cached-only process:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-09abd51968/natural25-device-accept-commit-b1-b3.json`.
+  The packet is tracked-clean and `complete_exact`; all true-AR/MTP IDs,
+  accepted-count ledgers, and GPU/CPU decisions match `a3e4912ee`, and all
+  allocations free.
+- Proposal chaining remains the canonical clean promotion. Versus
+  `01291b066`, B1/B2/B3 improve **43.792/55.254/60.262 ->
+  44.035/56.014/61.020 tok/s (+0.555%/+1.376%/+1.259%)**; all 30 prompt-budget
+  rows, train/heldout, and four categories improve. The subsequent N2 packet is
+  **44.224/56.037/60.903 tok/s (+0.428%/+0.040%/-0.193%)** versus that graph
+  control. Nine of ten prompts improve at every budget, but one transient row
+  per budget makes B1/B2 train+code and B3 full/heldout/mixed scopes negative.
+  Do not repeat the six-minute broad suite solely to resolve that isolated
+  timing variance: keep canonical B3 **61.020 tok/s** and disclose the immediate
+  current-HEAD packet.
+- The intended physical boundary is unambiguous despite aggregate variance.
+  Suite-wide `target_commit_finish` falls **96.675 -> 2.032 ms (B1)**,
+  **68.441 -> 2.646 ms (B2)**, and **57.919 -> 6.354 ms (B3)**. The prior
+  17-pair same-loaded-model screen improves target+policy median **42.441009 ->
+  41.489807 ms/cycle (1.022926x)** with **17/17** pair wins and exact complete
+  state; median paired speedup is **1.020530x**.
+- Run the required clean post-keep profile with cached builds and the SDK ROCTX
+  overlay:
+  `LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib:/opt/rocm/lib HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked/suite.json`.
+  After replacing first proposal/target captures with steady means, proposal
+  chaining moves **376.569 -> 366.417 ms**, then device accept/selected commit
+  moves **366.417 -> 364.004 ms (-2.414 ms / -0.659%)**. The persisted-sample
+  recomputation supersedes the earlier **366.423-ms** shorthand (a 0.006-ms
+  normalization difference). The latter removes
+  **110 dispatches and all 21 traced copies**, while kernels rise only
+  **0.279 ms** and non-kernel residual falls **51.491 -> 48.985 ms (-4.866%)**.
+  The complete two-graph stack closes **12.566 ms wall** and **16.149 ms
+  non-kernel residual** versus the refreshed control. Remaining submission
+  residual is **25.197 ms** versus Vulkan B3's inferred **23.789 ms**.
+- Canonical hipEngine B3 is now **9.843% below** matched latest Vulkan B3
+  **67.682 tok/s** and **12.575% below** selected Vulkan B4 **69.798 tok/s**;
+  closure requires **14.384%**. Publish the compact evidence as
+  `benchmarks/results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json`.
+  Raw SHA-256 values: proposal natural25 `912052d0...8de11adb7`; N2 natural25
+  `279ec6f4...c00ff8d`; N2 component `052dcc7d...eeb3c68`; N2 profile summary
+  `0d46e6d5...be78ebd4`; kernel/marker/copy traces
+  `dad4b2c4...b1e7fbe` / `c877d37d...2eed9af` / `83be0ba3...295da50`.
+  Compact artifact SHA-256 is `f62edaba...00da8d6`; the artifact also pins both
+  temporary component harnesses and the profile summarizer by full SHA-256.
+- D27-R2 remains active. Continue at the remaining submission residual before
+  advancing to Q5 `ssm_out`, Q6 FFN-down, full-attention K/V, linear-attention
+  Q6 QKV, and target root. Aggregate target arithmetic remains **21.718 ms
+  ahead** of matched Vulkan, so arithmetic-only tuning cannot replace queue and
+  command-boundary closure.

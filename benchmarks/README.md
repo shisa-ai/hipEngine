@@ -4565,12 +4565,15 @@ The prior B4 budget row was depressed by one cold first prompt at 48.60 tok/s;
 its other nine rows and 171/242 acceptance ledger match the refresh. The
 candidate-local warmup moves that prompt into the mid-70s, so the old B3
 selection is superseded rather than treated as a source-level B4 regression.
-Current hipEngine B3 **60.262 tok/s** is **10.96% below matched Vulkan B3** and
-**13.66% below selected Vulkan B4**, requiring a **15.82%** hipEngine speedup.
+Current canonical hipEngine B3 **61.020 tok/s** is **9.843% below matched Vulkan
+B3** and **12.575% below selected Vulkan B4**, requiring a **14.384%** hipEngine
+speedup. The immediate N2 physical-default packet is separately disclosed at
+60.903 tok/s and does not replace the canonical proposal-graph row.
 
-The old `ee0445c99` query attribution is not carried forward as a latest-source
-module ledger. Fresh matched B3/B4 Vulkan and current hipEngine profiles are the
-next campaign unit; profiler numbers remain ranking evidence, never toplines.
+The old `ee0445c99` query attribution is not carried forward. Fresh matched
+B3/B4 Vulkan and hipEngine profiles now rank submission first; the retained
+proposal and target-policy graphs reduce the normalized submission residual
+**41.346 -> 25.197 ms**. Profiler numbers remain attribution, never toplines.
 
 This is an external floor, not a hipEngine result. Latest artifact:
 [`2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`](results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json).
@@ -5618,6 +5621,48 @@ The final model/platform, correctness, anti-gaming, module-coverage,
 source-cleanup, validation, publication, and active-state checklist is
 [`2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`](results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json).
 
+#### Qwen3.6-27B exact proposal and target-policy submission graphs, W7900/gfx1100
+
+Clean `a3e4912ee` replaces each eager B1/B2/B3 NextN chain and per-depth top-1
+host drain with one reusable fixed-address graph, device token handoff between
+depths, and one compact result drain. Clean `09abd51968` then extends the N2
+`VERIFY|ACCEPT|selected COMMIT|UPDATE_CURSORS` graph through B3, commits the
+selected BF16 trunk hidden row in session-owned storage, and returns acceptance
+plus every target top-1 row in the same bounded payload. Diagnostic logits,
+caller streams, output-cap tails, and unsupported captures retain N1/eager
+execution; no post-launch failure replays a mutating path.
+
+| Route | One-launch snapshot | + proposal graph | + target device policy | Latest decision |
+| --- | ---: | ---: | ---: | --- |
+| True AR | 24.114 tok/s | 24.085 tok/s | 24.158 tok/s | MTP-only movement is timing variance |
+| B1 | 43.792 tok/s | **44.035 tok/s (+0.555%)** | **44.224 tok/s (+0.428%)** | physical default retained |
+| B2 | 55.254 tok/s | **56.014 tok/s (+1.376%)** | **56.037 tok/s (+0.040%)** | physical default retained |
+| B3 | 60.262 tok/s | **61.020 tok/s (+1.259%)** | 60.903 tok/s (-0.193%) | **61.020 remains canonical** |
+
+The proposal-graph packet improves all **30/30** prompt-budget rows, all
+train/heldout scopes, and all four categories with unchanged IDs and acceptance
+(**115/127, 151/182, 169/219**). Its same-loaded-model B3 transaction cuts
+proposal median **67.593 -> 58.429 ms (-13.56%)** and complete decode median
+**370.917 -> 365.821 ms (1.01393x)** across 12 counterbalanced pairs.
+
+The target-policy packet remains exact and improves **9/10 prompts at every
+budget**, but one transient row per budget makes aggregate scopes mixed. It
+therefore does not replace the proposal packet as the canonical topline. The
+physical gate is decisive: all 17 same-loaded-model pairs improve target+policy
+wall **42.441009 -> 41.489807 ms (1.022926x)** with identical IDs and complete
+state. Suite-wide `target_commit_finish` falls **96.675 -> 2.032 ms (B1)**,
+**68.441 -> 2.646 ms (B2)**, and **57.919 -> 6.354 ms (B3)**.
+
+After normalizing first graph captures, the profile progression is
+**376.569 -> 366.417 -> 364.004 ms**. The N2 step removes **110 dispatches and
+21 traced copies**, lowers non-kernel residual **51.491 -> 48.985 ms
+(-4.866%)**, and leaves a **25.197-ms** submission gap versus Vulkan B3's
+inferred **23.789 ms**. Aggregate target arithmetic remains **21.718 ms ahead**
+of Vulkan; submission is still the largest deficit. Canonical hipEngine B3 is
+**9.843% below** matched Vulkan B3 **67.682 tok/s** and **12.575% below**
+selected Vulkan B4 **69.798 tok/s**, requiring **14.384%**. Artifact:
+[`2026-08-06-qwen36-27b-native-submission-graphs-retained.json`](results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5798,6 +5843,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B quality-gated Q5T16 dense ssm_out](results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json),
 [Qwen3.6-27B exact GDN-to-Q5T16 BF16 handoff](results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json),
 [Qwen3.6-27B exact one-launch rollback snapshot](results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
+[Qwen3.6-27B exact native submission graphs](results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json),
 [Qwen3.6-27B exact producer-folded rollback snapshot](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
 [Qwen3.6-27B selective FFN-down residual fusion](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
 [Qwen3.6-27B rounded residual plus next-RMSNorm](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json),

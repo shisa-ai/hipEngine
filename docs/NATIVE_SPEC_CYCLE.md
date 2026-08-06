@@ -27,9 +27,13 @@ Those boundaries do not advance in lockstep. In particular:
   compact proposal scoring, exact chain journals, shared-page attention, and
   grid-y K batching reduce arithmetic, copies, and launches while preserving
   the same transaction boundary.
-- On W7900, `N2` and `N3` own more of the transaction but are not faster than
-  `N1R` yet. On gfx1151, N3 retains essentially all of N1 and improves the clean
-  current-main direct-commit control by 14.39%.
+- In the historical W7900 accuracy-traded `llama-compat` scorecard, `N2` and
+  `N3` own more of the transaction but do not beat `N1R`. The exact dense route
+  now retains N2 as a physical B1/B2/B3 default: paired target+policy wall and
+  capture-normalized complete wall improve, while a mixed immediate natural25
+  packet leaves the proposal-graph B3 topline unchanged. On gfx1151, N3 retains
+  essentially all of N1 and improves the clean current-main direct-commit
+  control by 14.39%.
 - `N3P` graph-submits the proposal too, but still uses one proposal graph and
   one target graph per cycle rather than one combined native submission.
 - the first `N4` slice is a cross-provider adapter for PARO MTP and DFlash, not
@@ -90,8 +94,8 @@ single-native-submission boundary.
 | --- | --- | --- | --- | --- |
 | `N0` | Versioned ABI and oracle | Host/device control/result layouts, lifecycle, validation, CPU/fake launcher | Real model submission | Landed; no performance claim |
 | `N1` | Initial fixed-B2 native target graph | One native `VERIFY` submission | Reusable positions; proposal, accept, commit, cursors | Exact but rejected because recapture regressed wall |
-| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal and policy/commit remain on prior path | **Retained W7900 target owner**; current exact/default dense B3 route reaches 60.262 tok/s / 2.4991x own AR |
-| `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
+| `N1R` | Reusable B1/B2 target graphs, plus exact dense B3 | Stable native target `VERIFY` submission with live device metadata | Proposal remains independently submitted; diagnostic/tail policy and commit retain N1/eager paths | **Retained W7900 target owner**; chained proposal raises canonical exact/default B3 to 61.020 tok/s |
+| `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Historical compatibility diagnostic plus retained exact dense full-room B1/B2/B3 physical default; canonical B3 topline remains 61.020 tok/s after mixed aggregate timing |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
 | `N4` | Shared PARO MTP / DFlash adapters | Base slice wraps shared target `VERIFY + ACCEPT`; retained PARO replays also capture selected linear-state `COMMIT + UPDATE_CURSORS` | Provider proposal and DFlash hidden/KV commit/full-cycle ownership | gfx1100 strict B1/B2/B3 exact; selected commit is default-on inside explicit N4 after full category+heldout, accepted-row state, and profiler gates; N4 stays globally default-off, DFlash/gfx1151 ungated |
@@ -125,7 +129,8 @@ body was exact, but recapture made the path slower, so it was rejected.
 
 - independent reusable B1/two-row and B2/three-row executables;
 - an independently gated B3/four-row N1 VERIFY bucket for exact dense native
-  verification; N2 device accept/commit remains B1/B2;
+  verification; the later N2 extension owns eligible full-room B1/B2/B3 policy
+  and selected commit while N1 remains the diagnostic/output-tail fallback;
 - graph-owned fixed-address scratch, including exact dense pre-output-norm trunk
   rows for the existing BF16 transaction journal;
 - live device token IDs, positions, context counts, and cursor metadata;
@@ -144,8 +149,9 @@ The benchmark rollup calls retained `N1R` simply **N1** because the rejected
 one-shot experiment is no longer a candidate route. The dense B3 extension
 preserves token-serial attention/Conv/GDN arithmetic and binds each captured row
 to dynamic position/context/`KVLiveSpans` views over the resident request page
-table; it does not broaden the accuracy-traded llama-compat policy or N2. Exact
-dense cycle records expose graph submission, first-capture wall, submit wall,
+table; it does not broaden the accuracy-traded llama-compat policy. Its original
+N1-only B3 ownership was later extended by the separately gated exact N2 path.
+Exact dense cycle records expose graph submission, first-capture wall, submit wall,
 readback wall, and pre-launch fallback reason without changing execution. On the
 clean Qwen3.6-27B Q4_K_M W7900 natural25 graph-promotion gate, exact dense
 B1/B2/B3 improve **11.41%/12.30%/15.35%** to
@@ -215,8 +221,9 @@ llama-compat scoreboard row. Artifacts:
 [`one-launch rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
 [`producer-folded rollback snapshot`](../benchmarks/results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
 [`selective FFN-down residual fusion`](../benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
-[`rounded next-RMSNorm`](../benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json), and
-[`shared-cache KV batch runtime rejection`](../benchmarks/results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json).
+[`rounded next-RMSNorm`](../benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json),
+[`shared-cache KV batch runtime rejection`](../benchmarks/results/2026-08-05-qwen36-27b-shared-kv-write-runtime-rejected.json), and
+[`exact native submission graphs`](../benchmarks/results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json).
 
 ### N2 — device acceptance and selected-state commit
 
@@ -236,8 +243,26 @@ Python/device-chain proposal
     -> existing MTP-KV repair, reseed, and remaining accounting
 ```
 
-This removes real small host windows, but the aggregate result remains below
-`N1R`; it is retained as infrastructure for complete-cycle ownership.
+The historical accuracy-traded W7900 milestone packet remains below `N1R` and
+is still reported as an ownership diagnostic. The 2026-08-06 exact dense
+production extension is a separate retained result: B3 is admitted without
+changing the N2 stage contract; graph-owned FP32 pre-output rows are cast to
+BF16 and the selected row is copied into stable session storage; all target
+top-1 rows share the bounded accept payload; and transactional `commit()` is
+validation-only after successful graph retirement. Full-room, no-logit,
+session-stream B1/B2/B3 cycles use N2. Diagnostic logits, caller streams,
+output-cap tails, and pre-launch misses retain N1/eager execution, while a
+post-launch failure restores the outer journal without fallback replay.
+
+The exact reject/partial/full, selected hidden/Conv/GDN/live-KV, cursor,
+rollback, correction, dynamic-reuse, natural-output, and teardown oracle is
+green. A 17-pair same-loaded-model B3 screen improves target+policy median
+**42.441009 -> 41.489807 ms (1.022926x, 17/17 wins)**. Capture-normalized
+one-prompt wall improves **366.417 -> 364.004 ms (-0.659%)**, with 110 fewer
+dispatches and 21 fewer traced copies. The immediate natural25 packet moves
+B1/B2/B3 **+0.428%/+0.040%/-0.193%**; nine of ten prompts improve at every
+budget, but mixed aggregate timing means canonical B3 remains **61.020 tok/s**.
+This is a retained physical default, not a new aggregate topline.
 
 ### N3 — complete scheduler-facing GGUF adapter
 
@@ -340,13 +365,18 @@ score.
 
 `N1R` attacks the dominant W7900 bottleneck: thousands of target-verifier host
 submissions. `N2`–`N3P` add state selection, staging, richer lifecycle, and
-additional graph boundaries. Their small sub-windows improve, but those savings
-have not yet offset all aggregate overhead and run variance.
+additional graph boundaries. In the historical `llama-compat` packet, their
+small sub-windows did not offset aggregate overhead. In the newer exact dense
+route, N2's paired sub-window and capture-normalized complete wall do improve,
+so it is retained physically even though run variance leaves the canonical
+proposal-graph topline unchanged.
 
 The retained decision is consequently:
 
 - use `N1R` as the explicit gfx1100 `llama-compat` performance route;
-- retain `N2`, `N3`, and `N3P` as exact ownership/submission infrastructure;
+- use N1R plus chained proposal as the exact dense aggregate topline, and N2 for
+  eligible exact dense full-room B1/B2/B3 target policy/commit;
+- retain `N3` and `N3P` as exact ownership/submission infrastructure on gfx1100;
 - do not promote a larger milestone merely because it owns more stages;
 - require the same full category+heldout correctness and wall gate before any
   default or topline change.
