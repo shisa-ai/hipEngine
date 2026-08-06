@@ -168,6 +168,7 @@ class MoonshineCudaResidentRuntime:
         loaded_model: MoonshineLoadedModel | None = None,
         device: Device | None = None,
         runtime: CudaRuntime | None = None,
+        owns_weights: bool = True,
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -176,6 +177,7 @@ class MoonshineCudaResidentRuntime:
         self.loaded_model = loaded_model
         self.weights = loaded_model.weights if loaded_model is not None else None
         self.spec = loaded_model.spec if loaded_model is not None else None
+        self.owns_weights = bool(owns_weights)
         self.encoder_frames = int(encoder_frames)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
         self.stream = 0
@@ -1098,7 +1100,7 @@ class MoonshineCudaResidentRuntime:
                 self._close_token_graphs()
             if self.workspace is not None:
                 self.workspace.free()
-            if self.loaded_model is not None and self.weights is not None:
+            if self.owns_weights and self.loaded_model is not None and self.weights is not None:
                 self.loaded_model.weights.free(runtime=self.runtime)
             if self.stream:
                 self.runtime.stream_destroy(self.stream)
