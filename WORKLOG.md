@@ -203374,3 +203374,77 @@ within tolerance, decodes all 194 positions, and enforces the borderline
 coin-flip rule. Full combined bundle (CUDA + moonshine + HIP runtime + reference
 + w8a16 + HIP moonshine kernels) on GPU0: `188 passed, 14 skipped, 0 failures`;
 the CUDA sm_120a suites alone pass 151/151.
+
+## 2026-08-06 — C5: exclusive complete-ASR backend table (custom CUDA retained)
+
+### Goal
+Publish the updated hardware-scoped table on the same six fixtures and timing
+scope: ONNX Runtime CUDA FP16, compiled PyTorch CUDA FP16, PyTorch encoder +
+custom CUDA decoder, standalone fixed-bucket encoder + custom CUDA decoder, and
+decoder-only custom CUDA (explicitly partial), with deployed library bytes,
+packed model bytes, generated kernel bytes, workspace, preparation/startup, and
+latency rather than latency-only ranking.
+
+### Driver + runtime split
+- Added `scripts/benchmark_moonshine_cuda_complete.py` with three modes on the
+  six audio fixtures: `standalone` (torch-free encoder -> D2D handoff ->
+  precompute -> graph decode to EOS), `torch-encoder` (HF PyTorch CUDA FP16
+  encoder, uncompiled as in the retained baseline -> D2D -> precompute -> graph
+  decode), and `decoder-only` (fixture encoder.output -> precompute -> graph
+  decode, explicitly partial). Each file is prepared once then run through
+  `--warmup` + `--iterations` stream-synchronized host-wall measurements with an
+  exact-to-EOS token gate, plus footprint/preparation reporting.
+- Split `MoonshineCudaEncoderRuntime.encode` into `upload_input` (audio + mask
+  H2D, KB-scale) and `run_encode` (fixed-address DAG + sync) so the timed region
+  excludes the initial H2D, matching the framework baseline scope; `encode`
+  remains `upload_input` + `run_encode` (all prior tests unchanged).
+- Added CPU-side test `test_cuda_encoder_runtime_upload_run_encode_split`
+  (run_encode before upload raises; split dispatches the same 101-launch DAG).
+
+### Exclusive campaign (GPU0, driver 610.43.03)
+Runner `run_cuda_complete_pairs.sh` in the docs repo: three alternating
+exclusive pairs per custom route (baseline -> route -> route -> baseline ->
+baseline -> route), 18 runs + 38 GPU snapshots with no foreign compute process.
+Protocol per file: two warmups, ten stream-synchronized host-wall measurements;
+preprocessing and initial H2D excluded; encoder plus autoregressive generation
+to EOS included. All six routes reproduce the retained EOS token streams
+exactly (the documented position-88 coin flip is beyond every EOS decode
+length and never reached).
+
+| Route | Runs | Median ms | Median P95 ms | vs compiled PyTorch |
+|---|---:|---:|---:|---:|
+| ONNX Runtime CUDA FP16 (retained) | 3 | 15.823 | 15.889 | 0.817x |
+| Compiled PyTorch CUDA FP16 | 9 | 12.924 | 13.005 | 1.000x |
+| Standalone CUDA encoder + custom decoder | 3 | 3.898 | 4.000 | 3.315x |
+| PyTorch encoder + custom CUDA decoder | 3 | 3.971 | 4.005 | 3.254x |
+| Decoder-only custom CUDA (partial) | 3 | 1.699 | 1.703 | 7.608x |
+
+Per-file standalone medians: hai 2.53 ms, konichiwa 4.19 ms,
+konichiwa.ogenkidesuka 8.57 ms, kumbawa 3.95 ms, sosososo 3.83 ms,
+sumimasen 3.86 ms.
+
+### Deployment footprint (on-disk, measured)
+- Custom CUDA: runtime subset 41.8 MiB (libcudart.so.13 0.7 MiB + CUDA runtime
+  python 0.62 MiB + numpy 40.5 MiB) + one-per-family AOT sm_120a kernel
+  binaries 8,245,160 bytes (10.7 MiB total cached including 3 dev encoder
+  variants) + packed model 133,748,369 bytes (126,435,712 FP16 weights +
+  7,312,657 tokenizer/config).
+- Compiled PyTorch: 4,144,599,366 bytes (torch 1.09 GiB + transformers 93.8 MiB
+  + safetensors 1.3 MiB + huggingface_hub 5.9 MiB + numpy 38.6 MiB + nvidia pip
+  packages 2.79 GiB).
+- ONNX Runtime: 379,634,571 bytes (onnxruntime 323.5 MiB + numpy 38.6 MiB).
+- Device workspace: custom ~162-164 MiB (incl. 157,106,560 resident FP16
+  weights) vs compiled PyTorch peak 176,155,136 bytes.
+
+### TensorRT decision
+Not measured: the fixed-bucket custom encoder already wins the native-encoder
+comparison on latency, so the C5 option clause (TensorRT only if native encoder
+profiling reopens it as an oracle) is not triggered; TensorRT stays excluded
+from the production dependency path.
+
+### RED/GREEN
+Docs repo: `tests/test_retained_moonshine_cuda_complete_asr.py` validates the
+compact artifact (exclusive 38 snapshots, five routes, custom route faster than
+compiled baseline and smallest footprint, EOS exactness, partial note); docs
+lint/`make check` pass. HipEngine: the new split test plus the full CUDA +
+moonshine bundle re-validated. No commit or push was performed.
