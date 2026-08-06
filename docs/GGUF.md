@@ -2668,6 +2668,25 @@ the arena flag/capability/planners/telemetry/tests and restore SH14 production
 allocation paths byte-for-byte. Evidence:
 [`SH15-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json).
 
+SH16-M1 reuses all four exact SH15 allocation-label censuses to isolate a
+narrower owner rather than retry global packing. The invariant weight inventory
+is **732 allocations / 21,918,738,944 requested / 22,187,868,160 captured
+commit bytes**. All **161 allocations larger than 16 MiB** are 2-MiB aligned at
+every depth and contain **21,034,278,912 bytes / 95.965%** of resident weight
+bytes. Keep those Q/QKV, selected-expert, and other large payloads dedicated.
+
+Packing only the **571 allocations <=16 MiB** gives **884,460,032 requested
+bytes** and **1,111,490,560 captured commit bytes**. A conservative sum of one
+4-KiB-rounded view per allocation plus one 2-MiB owner round is **884,998,144
+bytes / 844 MiB**, projecting **216 MiB** reclaimed. This would put 512/32K/64K
+**42.473/56.629/160.730 MiB below** fork F16 while leaving 4K **130.820 MiB
+above**. The result is structural admission only, not measured GTT. SH16-M2 may
+screen one default-off private-c1 small-weight owner starting at 512. All state,
+>16-MiB, shared/c>N, unsupported, and denial routes remain dedicated; stop and
+remove on any plan/state/lifecycle error or >1% prefill/decode loss. Do not add
+compact Q4 or the rejected state arena in this package. Evidence:
+[`SH16-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

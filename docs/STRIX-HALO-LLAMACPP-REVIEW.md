@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -184,6 +184,26 @@ continuation, or compact Q4; remove the flag, capability, planners, arena owners
 telemetry, and candidate tests. SH14 production allocation paths are restored
 byte-for-byte, and the beat-fork objective remains unmet. Evidence:
 [`SH15-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json).
+
+**SH16-M1 selective follow-up (2026-08-06): new structural subset admitted,
+no production or measured-memory change.** Re-analysis of every immutable
+SH15-M1 allocation label at all four depths finds a clean boundary that SH15-M2
+did not test. Keep all **161 weights larger than 16 MiB** dedicated: they hold
+**21,034,278,912 bytes / 95.965%** of requested weight bytes and every one is
+2-MiB aligned in all four raw processes. This preserves Q/QKV, selected-expert,
+and every other large bandwidth payload on the production allocator.
+
+The remaining **571 allocations <=16 MiB** request **884,460,032 bytes** and
+are charged **1,111,490,560 bytes / 1,060 MiB** by the captured allocation
+sequence. Giving each a 4-KiB view and conservatively rounding one owner once to
+2 MiB bounds its commit at **884,998,144 bytes / 844 MiB**, a projected **216
+MiB** saving. That projects fork-memory margins of **-42.473/+130.820/-56.629/
+-160.730 MiB** at 512/4K/32K/64K. This is projection, not actual GTT. Admit one
+default-off private-c1 selective-weight screen starting at 512; all state,
+shared/c>N, denial, unsupported, and >16-MiB routes remain dedicated. Stop on
+any plan/state/lifecycle failure or >1% prefill/decode loss, and do not stack
+compact Q4 or the rejected state arena. Evidence:
+[`SH16-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json).
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -723,6 +743,7 @@ evidence.
 | **SH14-C1** | Cumulative four-depth campaign completion gate. | **Complete: policy fails; objective not met.** Fresh decode is **54.330/54.798/46.405/40.180 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. Exact oracle/lifecycle/role gates pass; the frozen prefill guard is **3/4**, while C1/C2/fork-F16 decode/fork-F16 memory remain **0/4**. Tracked peak is already below fork whole-GTT at every depth, so the residual memory gap is untracked runtime/page-table/allocator/active-mapping residency; all HSA code is only 3.497 MiB. Preserve retained defaults and require new structural evidence before another package. |
 | **SH15-M1** | Per-allocation HIP commit-granularity census at all four depths. | **Complete: new structural precondition passes; admit SH15-M2, no production change.** All four processes have 921 persistent allocations; ordinary `hipMalloc` commits 2-MiB backing chunks. One globally packed session owner projects **236/294/300/300-MiB** savings, enough for 512/32K/64K fork-memory parity but still **52.820 MiB** short at 4K. The async pool and alternate allocation flags do not help. Measure the ordinary arena before conditionally screening the exact 80-MiB full-attention-layer compact-Q4 subset. |
 | **SH15-M2** | Bounded private-c1 two-owner 4-KiB-suballocated weight/state arena. | **Complete: memory mechanism confirmed, wall gate failed, implementation removed.** Whole-GTT falls **236/292 MiB** at 512/4K and 512 beats fork F16 by **62.473 MiB**, but 4K remains **54.820 MiB** high. Prefill regresses **1.608%/1.809%**, beyond the <=1% contract, despite decode improving **1.373%/1.648%** and exact state/lifecycle. Stop before 32K/64K, full categories, or compact Q4; restore SH14 allocation paths. |
+| **SH16-M1** | Reclassify exact SH15 allocation commits by weight size/family and preserve large-owner alignment. | **Complete: narrower structural precondition passes; admit SH16-M2, no production change.** Packing only **571 allocations <=16 MiB** bounds one owner at **844 MiB** versus **1,060 MiB** captured commit, projecting **216 MiB** saved and 512/32K/64K parity. All **161 >16-MiB owners / 95.965% of bytes** stay dedicated and 2-MiB aligned. Start at 512; stop on >1% wall or any exactness/lifecycle failure; no state arena or compact-Q4 stack. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -1215,6 +1236,25 @@ favorable rerun before 32K/64K, the 18-prompt continuation, or the conditional
 80-MiB Q4 stack. Remove every runtime/allocator/telemetry/test surface and keep
 SH14 production byte-identical. Evidence:
 [`SH15-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json).
+
+SH16-M1 uses the existing four raw censuses to isolate a materially different
+allocator owner instead of reviving global packing. The 732-label inventory and
+**21,918,738,944 requested / 22,187,868,160 captured-commit bytes** are identical
+at every depth. Every **>16-MiB** allocation is already 2-MiB aligned. Keeping
+those **161 owners / 21,034,278,912 bytes** dedicated preserves 95.965% of
+weight bytes and excludes Q/QKV plus selected-expert payloads from the candidate.
+
+The selected 571-entry class includes raw norms/state coefficients, small K/V
+and shared-expert T16 payloads, and 8.5-MiB attention-gate/output/SSM-output
+payloads. It requests **884,460,032 bytes** versus **1,111,490,560 captured
+commit bytes**. Per-view 4-KiB rounding plus one conservative 2-MiB owner round
+is **884,998,144 bytes**, projecting **226,492,416 bytes / 216 MiB** reclaimed.
+The <=2-MiB class would save only 110 MiB; extending through 32 MiB adds hot
+Q/QKV input payloads for only 40 MiB more. Select <=16 MiB as the smallest
+power-of-two class projected to cross 512/32K/64K. Actual GTT and wall remain
+unmeasured, so SH16-M2 starts at 512 under the frozen exactness/lifecycle/<=1%
+stop rule and admits no state-arena or compact-Q4 stack. Evidence:
+[`SH16-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json).
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by

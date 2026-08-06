@@ -206003,3 +206003,43 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   flag/planner symbols. SH15-M2 is closed; no packing was retained, so
   the conditional post-packing cumulative gate is not applicable. The
   beat-fork objective remains unmet.
+
+## 2026-08-06 — Admit SH16-M2 selective small-weight arena screen
+
+- Continue from clean `30a530dc5` without rerunning stale SH8 or the rejected
+  SH15 global arena. Re-analyze all four immutable SH15-M1 raw allocation
+  censuses by exact label, request, immediate `hipMemGetInfo` commit delta, and
+  pointer alignment. Raw hashes remain `1e9d792d...afe3`,
+  `f78b46d4...bb6c`, `d9450653...341e`, and `3d05a731...779a`; every depth
+  has the identical **732-label / 21,918,738,944-requested /
+  22,187,868,160-captured-commit-byte** weight inventory.
+- The SH15-M2 distinction is mechanical. Every one of the **161 allocations
+  larger than 16 MiB** is 2-MiB aligned at all four depths. They contain
+  **21,034,278,912 bytes / 95.965%** of requested weight bytes and include Q/QKV,
+  selected-expert, and every other large bandwidth payload. A selective policy
+  leaves those owners and all state/scratch allocations dedicated instead of
+  changing all 921 addresses as SH15-M2 did.
+- The complementary **571 allocations <=16 MiB** request **884,460,032 bytes**
+  but are assigned **1,111,490,560 bytes / 1,060 MiB** by the captured commit
+  sequence. Conservatively summing one 4-KiB-rounded view per allocation and
+  rounding the single owner once to the measured 2-MiB physical granularity is
+  **884,998,144 bytes / 844 MiB**, projecting **226,492,416 bytes / 216 MiB**
+  reclaimed. Projected fork-F16 margins become
+  **-42.473/+130.820/-56.629/-160.730 MiB** at 512/4K/32K/64K.
+- The <=2-MiB class saves only 110 MiB and projects parity only at 64K. Extending
+  through 32 MiB saves 256 MiB but adds hot Q/QKV input payloads for only 40 MiB
+  more. Select <=16 MiB as the smallest power-of-two class projected to clear
+  512/32K/64K while preserving all Q/QKV and selected-expert owners. This is a
+  generic size/package/private-c1 policy, never prompt/token conditioned.
+- This remains a projection, not measured GTT: immediate per-call deltas assign
+  shared backing to the call that first commits it. The capacity bound is
+  conservative, but only an actual owner can claim memory or wall. Admit
+  SH16-M2 default-off and start at 512 with exact metadata planning,
+  state/lifecycle/fallback/accounting, actual GTT, and <=1% prefill/decode stop
+  rules. Keep >16-MiB, state, shared/c>N, unsupported, and denial paths
+  dedicated; do not stack compact Q4 or the rejected state arena.
+- Analysis script `/tmp/analyze_sh16_m1_selective_weight_arena.py` SHA-256 is
+  `0097a66c...03bc`; analysis JSON SHA-256 is `51b37cd2...744e`. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json`
+  (SHA-256 `21f23f2b...1428`). Production is unchanged and the objective remains
+  active.
