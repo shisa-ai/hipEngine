@@ -206076,3 +206076,35 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `0c67aba7...35db`. The candidate is ready to freeze before canonical 512
   actual-GTT and wall screening; no 4K/32K/64K or category gate is admitted
   unless the 512 <=1%-loss stop rule passes.
+
+## 2026-08-06 — Retain SH16-M2 selective small-weight arena
+
+- Freeze the validated default-off implementation as commit `03b76724f`. A
+  fresh tracked-clean same-source 512 control/candidate pair reproduces control
+  whole-GTT **21.000130 GiB** and measures candidate **20.814583 GiB (-190
+  MiB)**. Prefill changes **1371.967 -> 1365.143 tok/s (-0.497%)** and decode
+  **54.990 -> 55.230 (+0.436%)**; exact IDs, 571/161 identity, and tracked/GTT
+  lifecycle all pass. Harness `/tmp/run_sh16_m2_512_ab.py` has SHA-256
+  `95baac44...18ae`; aggregate SHA-256 is `87e60036...1ca9`.
+- Continue sequentially under the frozen stop rule. At 4K/32K/64K, candidate
+  prefill is **1438.288/1146.100/938.524 tok/s** and decode is
+  **55.829/46.809/40.430 tok/s**; changes versus SH14 are
+  **+0.564/+0.121/+0.246%** and **+1.883/+0.870/+0.622%**. Whole-GTT falls
+  **212/210/210 MiB** to **21.292397/21.946766/22.685047 GiB**. Harness
+  `/tmp/run_sh16_m2_remaining_matrix.py` has SHA-256 `a6997589...2afd`;
+  aggregate SHA-256 is `df55326a...13f7`.
+- All four frozen prefill and <=1% wall guards pass. Fork-F16 memory parity is
+  now **3/4**: candidate margins are **-16.473/+134.820/-50.629/-154.730 MiB**
+  at 512/4K/32K/64K. Fork decode remains **0/4**, so overall parity is not
+  claimed. The selected owner adds only **0.388 MiB** tracked alignment padding
+  and preserves all 161 large 2-MiB-aligned owners plus all state/scratch.
+- Promote the selector to the gfx1151 private-c1 default with explicit env
+  opt-out. With the flag deliberately unset, the full 18-prompt primary+heldout
+  oracle passes **1,350 token / 54,000 hidden comparisons**, exact initial/final
+  state, and deterministic repeats (SHA-256 `1e195bd9...129b`). Focused
+  post-promotion validation remains **26/26**.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json`
+  (SHA-256 `f3a5b544...11aae`). Keep no SH15 state arena or compact-Q4 stack;
+  4K memory and all four decode rows still require separately admitted new
+  structural evidence.

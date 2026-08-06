@@ -2687,6 +2687,25 @@ remove on any plan/state/lifecycle error or >1% prefill/decode loss. Do not add
 compact Q4 or the rejected state arena in this package. Evidence:
 [`SH16-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json).
 
+SH16-M2 retains that selective owner as the gfx1151 private-c1 default. The
+exact runtime inventory is **571 small views / 884,460,032 requested bytes** in
+one **884,867,072-byte** owner plus **161 dedicated large weights /
+21,034,278,912 bytes**; all large pointers remain 2-MiB aligned and all
+state/scratch stays dedicated. Canonical whole-GTT becomes
+**20.814583/21.292397/21.946766/22.685047 GiB**, saving
+**190/212/210/210 MiB** from SH14. Fresh 512 same-source prefill/decode changes
+**-0.497%/+0.436%** and all other rows improve versus SH14; every frozen
+prefill, <=1% wall, allocation-identity, and teardown gate passes.
+
+The promoted default also passes the full category+heldout oracle: **18/18
+prompts, 1,350/1,350 token comparisons, 54,000/54,000 hidden comparisons**, exact
+initial/final state, and deterministic repeats. Fork-F16 whole-GTT parity is now
+**3/4** (512/32K/64K), while 4K remains **134.820 MiB** high and fork decode
+remains **0/4**. Keep the explicit disable seam temporarily, continue the
+beat-fork campaign from new structural evidence, and do not stack compact Q4 or
+the rejected SH15 state arena. Evidence:
+[`SH16-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

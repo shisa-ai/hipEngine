@@ -16,19 +16,20 @@ should be removed or collapsed.
 
 ## SH16 gfx1151 private-c1 selective small-weight arena
 
-- Added 2026-08-06 as default-off
-  `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=1` after SH16-M1 bounded one
-  owner for the exact **571 allocations <=16 MiB** while preserving all **161
-  larger owners / 95.965% of weight bytes**, all state/scratch, shared/c>N, and
-  unsupported/denied routes as dedicated allocations.
-- If the 512 exact-state, lifecycle, actual-GTT, prefill, or decode gate fails,
-  remove the environment switch, gfx1151 capability, selective planner/allocator
-  route, arena ownership fields, telemetry, and candidate tests. Retain generic
-  `DeviceMemoryArena` only if another validated production owner uses it.
-- If 512 passes, continue only through the declared four-depth and category
-  gates. Promote only exact <=1%-loss memory wins; keep no state-arena or compact-
-  Q4 stack in this package. Remove the opt-out and obsolete dedicated private-c1
-  small-weight path after the cumulative fork-policy gate stabilizes.
+- Added 2026-08-06 and promoted to the gfx1151 private-c1 default after exact
+  four-transition plus 18-prompt gates and four-depth whole-GTT savings of
+  **190/212/210/210 MiB**. One owner holds the exact **571 allocations <=16
+  MiB** while all **161 larger owners / 95.965% of weight bytes**, all
+  state/scratch, c>N requests, unsupported layouts, and denied routes keep
+  dedicated behavior.
+- Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
+  disable-only rollback/bisection seam. Remove the environment seam after the
+  next cumulative gfx1151 GGUF policy refresh confirms the retained **3/4
+  fork-memory parity** and no supported private-c1 consumer requires rollback.
+- Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
+  telemetry while this production owner is active. Do not add the rejected SH15
+  state arena or compact-Q4 stack to this package; 4K still needs a separately
+  admitted structural owner.
 
 ## SH15 gfx1151 private-c1 persistent allocation arena — closed
 

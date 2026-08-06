@@ -624,8 +624,8 @@ GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
 # shared, c>N, graph, packed-AR, MTP, or device-token-pointer consumer retains
 # or transactionally restores the exact resident Q8_0 table.
 GGUF_HOST_TOKEN_EMBEDDING_C1 = True
-# SH16-M2 screens one bounded private-c1 owner for allocations <=16 MiB.
-# This is eligibility only; the environment selector remains default-off.
+# SH16-M2 retains one bounded private-c1 owner for allocations <=16 MiB.
+# The environment selector is a temporary explicit opt-out for rollback.
 GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.

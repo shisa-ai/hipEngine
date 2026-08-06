@@ -117,7 +117,7 @@ def test_host_embedding_policy_auto_admits_only_private_c1(
     ) == ("device", "backend_device_fallback")
 
 
-def test_private_c1_small_weight_arena_requires_flag_capability_and_private_shape(
+def test_private_c1_small_weight_arena_defaults_on_with_capability_and_private_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.runtime.qwen35_gguf_runner as gguf_runner
@@ -134,13 +134,13 @@ def test_private_c1_small_weight_arena_requires_flag_capability_and_private_shap
         backend="hip_gfx1151",
         max_batch_size=1,
         has_shared_runner=False,
-    ) == (False, "disabled")
+    ) == (True, "private_c1_selective")
     assert _resolve_gguf_private_c1_small_weight_arena(
         backend="hip_gfx1151",
         max_batch_size=1,
         has_shared_runner=False,
-        requested=True,
-    ) == (True, "private_c1_candidate")
+        requested=False,
+    ) == (False, "disabled")
     assert _resolve_gguf_private_c1_small_weight_arena(
         backend="hip_gfx1151",
         max_batch_size=2,

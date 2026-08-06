@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06; **SH16-M2 selective arena retained/default, fork memory 3/4:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -11,8 +11,9 @@ Qwen3.6/Laguna GGUF gfx1151 paths.
 local campaign and user-requested exact-model fork diagnostics. Nathan's
 published speedups remain upstream evidence. hipEngine's retained own-engine
 claims are the separately measured head-major prefill scratch, exact selected-Q5
-tile8, and exact scratch owner-slot changes linked below. Every local fork row is
-descriptive, not a strict cross-engine claim.
+tile8, exact scratch owner slots, and selective small-weight allocation owner
+linked below. Every local fork row is descriptive, not a strict cross-engine
+claim.
 
 ## Executive decision
 
@@ -204,6 +205,24 @@ shared/c>N, denial, unsupported, and >16-MiB routes remain dedicated. Stop on
 any plan/state/lifecycle failure or >1% prefill/decode loss, and do not stack
 compact Q4 or the rejected state arena. Evidence:
 [`SH16-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json).
+
+**SH16-M2 retention update (2026-08-06): selective owner promoted, memory parity
+3/4, overall objective continues.** The measured owner holds exactly **571
+<=16-MiB views / 884,460,032 requested bytes** in **884,867,072 bytes**, while
+all **161 large weights / 21,034,278,912 bytes** and all state/scratch remain
+dedicated. Whole-GTT falls **190/212/210/210 MiB** to
+**20.814583/21.292397/21.946766/22.685047 GiB**. Fresh 512 same-source
+prefill/decode changes **-0.497%/+0.436%** and every four-depth wall/frozen-
+prefill guard passes. The promoted default passes all 18 primary+heldout prompts
+with **1,350 token and 54,000 hidden comparisons**, exact state, and deterministic
+repeats.
+
+Fork-F16 whole-GTT parity is now **3/4**: margins are
+**-16.473/+134.820/-50.629/-154.730 MiB** at 512/4K/32K/64K. Decode remains
+**0/4**, so hipEngine still does not beat the fork overall. Keep the explicit
+rollback seam temporarily; do not stack compact Q4 or the rejected SH15 state
+arena. Evidence:
+[`SH16-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json).
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -744,6 +763,7 @@ evidence.
 | **SH15-M1** | Per-allocation HIP commit-granularity census at all four depths. | **Complete: new structural precondition passes; admit SH15-M2, no production change.** All four processes have 921 persistent allocations; ordinary `hipMalloc` commits 2-MiB backing chunks. One globally packed session owner projects **236/294/300/300-MiB** savings, enough for 512/32K/64K fork-memory parity but still **52.820 MiB** short at 4K. The async pool and alternate allocation flags do not help. Measure the ordinary arena before conditionally screening the exact 80-MiB full-attention-layer compact-Q4 subset. |
 | **SH15-M2** | Bounded private-c1 two-owner 4-KiB-suballocated weight/state arena. | **Complete: memory mechanism confirmed, wall gate failed, implementation removed.** Whole-GTT falls **236/292 MiB** at 512/4K and 512 beats fork F16 by **62.473 MiB**, but 4K remains **54.820 MiB** high. Prefill regresses **1.608%/1.809%**, beyond the <=1% contract, despite decode improving **1.373%/1.648%** and exact state/lifecycle. Stop before 32K/64K, full categories, or compact Q4; restore SH14 allocation paths. |
 | **SH16-M1** | Reclassify exact SH15 allocation commits by weight size/family and preserve large-owner alignment. | **Complete: narrower structural precondition passes; admit SH16-M2, no production change.** Packing only **571 allocations <=16 MiB** bounds one owner at **844 MiB** versus **1,060 MiB** captured commit, projecting **216 MiB** saved and 512/32K/64K parity. All **161 >16-MiB owners / 95.965% of bytes** stay dedicated and 2-MiB aligned. Start at 512; stop on >1% wall or any exactness/lifecycle failure; no state arena or compact-Q4 stack. |
+| **SH16-M2** | Implement and gate one selective private-c1 owner for allocations <=16 MiB. | **Complete: retained/default.** The exact 571/161 owner saves **190/212/210/210 MiB whole-GTT**, every four-depth wall/frozen-prefill guard passes, and the full 18-prompt state oracle is exact. Fork-F16 memory parity becomes **3/4**; 4K remains **134.820 MiB** high and decode remains **0/4**. Keep no SH15 state arena or compact-Q4 stack. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -1256,6 +1276,23 @@ unmeasured, so SH16-M2 starts at 512 under the frozen exactness/lifecycle/<=1%
 stop rule and admits no state-arena or compact-Q4 stack. Evidence:
 [`SH16-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json).
 
+SH16-M2 validates the selective mechanism and retains it. A fresh independent
+512 control/candidate pair measures **1371.967 -> 1365.143 tok/s (-0.497%)**
+prefill, **54.990 -> 55.230 (+0.436%)** decode, and **21.000130 -> 20.814583
+GiB (-190 MiB)** whole-GTT. Sequential 4K/32K/64K candidates remain inside the
+frozen wall guards and save **212/210/210 MiB**. Exact IDs and teardown pass in
+every process; the 571 selected views share one **884,867,072-byte** owner, all
+161 large owners remain 2-MiB aligned, and no state/scratch allocation moves.
+
+The selector is therefore the gfx1151 private-c1 default with explicit opt-out.
+The default path's 18-prompt primary+heldout oracle passes **1,350/1,350 token**
+and **54,000/54,000 hidden comparisons**, exact initial/final state, and repeat
+determinism. Whole-GTT now beats fork F16 by **16.473/50.629/154.730 MiB** at
+512/32K/64K but trails by **134.820 MiB** at 4K. Fork decode remains faster at
+all four depths, so retain the allocation win without claiming the overall
+objective or admitting the rejected state-arena/compact-Q4 stack. Evidence:
+[`SH16-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json).
+
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by
 **0.0703/0.1328 GiB** and loses decode at 32K/64K; removing the embedding table
@@ -1285,6 +1322,7 @@ heldouts with no token-, prompt-, or candidate-ID-conditioned branch.
 | SH9-C1 carried production (SH9 is prefill-only) | **53.153** | **55.832** | **46.785** | **40.386** |
 | SH10-A1 clean production / qualified carry | **53.445** | **55.832** | **46.785** | **40.386** |
 | SH14-C1 fresh current production | **54.330** | **54.798** | **46.405** | **40.180** |
+| SH16-M2 retained selective owner | **55.230** | **55.829** | **46.809** | **40.430** |
 | C1: close at least half the F16 **time** gap | **58.165** | **58.795** | **49.350** | **42.419** |
 | C2: match the local fork F16 lane | **64.658** | **62.648** | **53.220** | **45.913** |
 
