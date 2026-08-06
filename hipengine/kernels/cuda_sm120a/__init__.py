@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from hipengine.kernels.backends import cuda_target_arch_for_backend
+from hipengine.kernels.cuda_sm120a.attention import register_moonshine_attention_kernels
 from hipengine.kernels.cuda_sm120a.fused import (
     register_moonshine_glue_kernels,
     register_moonshine_mlp_kernels,
@@ -44,6 +45,14 @@ def register_backend_kernels(*, replace: bool = True) -> None:
     mlp_key = KernelKey(BACKEND, "moonshine_gated_silu", "fp16", "value_gate_split")
     if replace or not is_registered(mlp_key):
         register_moonshine_mlp_kernels(replace=replace)
+    attention_key = KernelKey(
+        BACKEND,
+        "moonshine_self_attention",
+        "fp16",
+        "fixed_cache_logical_dim",
+    )
+    if replace or not is_registered(attention_key):
+        register_moonshine_attention_kernels(replace=replace)
 
 
 register_backend_kernels()
