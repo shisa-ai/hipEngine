@@ -91,6 +91,8 @@ class Qwen35GGUFPreparedVerify:
     native_graph_submit_ms: float = 0.0
     native_graph_readback_ms: float = 0.0
     native_graph_fallback_reason: str | None = None
+    native_device_accept_commit: bool = False
+    device_state_commit_buffers: TargetStateCommitBuffers | None = None
 
 
 @dataclass(frozen=True)
@@ -600,6 +602,10 @@ class Qwen35GGUFTransactionalVerifier:
         native_graph_submit_ms = 0.0
         native_graph_readback_ms = 0.0
         native_graph_fallback_reason = None
+        native_device_accept_commit = False
+        device_state_commit_buffers: TargetStateCommitBuffers | None = None
+        buffers: TargetVerifyBuffers | None = None
+        gpu_summary: TargetAcceptSummary | None = None
         try:
             if self.target_verify_mode == "native":
                 native_kwargs = {
@@ -610,25 +616,26 @@ class Qwen35GGUFTransactionalVerifier:
                     "capture_lm_head_logits": return_logits,
                     "defer_linear_state_commit": True,
                 }
-                if stream:
-                    native_graph_fallback_reason = (
-                        "native target graph does not support caller-owned streams"
+                device_block = None
+                if not stream and not return_logits and budgets[0] >= batch.rows:
+                    from hipengine.runtime.gguf_native_spec_cycle import (
+                        NativeSpecTargetGraphUnsupportedError,
                     )
-                    block = self.target.verify_target_block(
-                        batch.tokens,
-                        stream=stream,
-                        **native_kwargs,
-                    )
-                else:
-                    block = self.target.verify_target_block_native_cycle(
-                        batch.tokens,
-                        fallback=True,
-                        cycle_id=int(graph_bucket.replay_count),
-                        transaction_id=int(transaction_id),
-                        request_id=int(batch.request_ids[0]),
-                        **native_kwargs,
-                    )
-                if not stream:
+
+                    try:
+                        device_block = self.target.verify_target_block_native_cycle(
+                            batch.tokens,
+                            fallback=False,
+                            cycle_id=int(graph_bucket.replay_count),
+                            transaction_id=int(transaction_id),
+                            request_id=int(batch.request_ids[0]),
+                            device_accept_commit=True,
+                            remaining_decode=int(budgets[0]),
+                            **native_kwargs,
+                        )
+                    except NativeSpecTargetGraphUnsupportedError:
+                        device_block = None
+                if device_block is not None:
                     native_graph_submitted = bool(
                         self.target.last_native_spec_target_submitted
                     )
@@ -644,20 +651,100 @@ class Qwen35GGUFTransactionalVerifier:
                     native_graph_fallback_reason = (
                         self.target.last_native_spec_target_fallback_reason
                     )
-                if block is None:
-                    raise RuntimeError("native GGUF target verifier produced no host result")
-                if int(block.start_position) != initial_position:
-                    raise RuntimeError("native GGUF target verifier changed the declared root position")
-                if self.journal.producer_capture_initial_state:
-                    self.journal.mark_initial_state_captured()
-                if block.pre_output_norm_hidden is None:
-                    raise RuntimeError("native GGUF target verifier did not capture trunk hidden rows")
-                top1.extend(int(token) for token in block.token_ids)
-                self.journal.capture_hidden_rows(block.pre_output_norm_hidden, stream=stream)
-                if return_logits:
-                    if block.lm_head_logits_f32 is None:
-                        raise RuntimeError("native GGUF target verifier did not capture requested logits")
-                    logits.append(block.lm_head_logits_f32)
+                    if not bool(getattr(device_block, "device_accept_commit", False)):
+                        raise RuntimeError("native GGUF N2 graph did not commit on device")
+                    if int(device_block.start_position) != initial_position:
+                        raise RuntimeError(
+                            "native GGUF N2 graph changed the declared root position"
+                        )
+                    top1.extend(int(token) for token in device_block.target_top1)
+                    if len(top1) != batch.rows:
+                        raise RuntimeError("native GGUF N2 graph omitted target top-1 rows")
+                    buffers = device_block.verify_buffers
+                    device_state_commit_buffers = device_block.state_commit_buffers
+                    if buffers is None or device_state_commit_buffers is None:
+                        raise RuntimeError("native GGUF N2 graph omitted device buffer descriptors")
+                    payload = {
+                        "accepted_counts": (int(device_block.accepted_draft_tokens),),
+                        "commit_rows": (int(device_block.commit_row),),
+                        "commit_tokens": (int(device_block.commit_token),),
+                        "commit_positions": (int(device_block.commit_position),),
+                        "next_tokens": (int(device_block.next_token),),
+                        "full_accept": (bool(device_block.full_accept),),
+                    }
+                    gpu_summary = replace(
+                        TargetAcceptSummary.from_gpu_payload(batch, payload),
+                        transaction_id=int(transaction_id),
+                    )
+                    expected_visible = (
+                        *gpu_summary.accepted_tokens[0],
+                        gpu_summary.next_tokens[0],
+                    )
+                    if tuple(int(token) for token in device_block.token_ids) != expected_visible:
+                        raise RuntimeError("native GGUF N2 graph returned inconsistent visible tokens")
+                    if int(device_block.end_position) != initial_position + len(expected_visible):
+                        raise RuntimeError("native GGUF N2 graph returned an inconsistent cursor")
+                    if self.journal.producer_capture_initial_state:
+                        self.journal.mark_initial_state_captured()
+                    native_device_accept_commit = True
+                else:
+                    if stream:
+                        native_graph_fallback_reason = (
+                            "native target graph does not support caller-owned streams"
+                        )
+                        block = self.target.verify_target_block(
+                            batch.tokens,
+                            stream=stream,
+                            **native_kwargs,
+                        )
+                    else:
+                        block = self.target.verify_target_block_native_cycle(
+                            batch.tokens,
+                            fallback=True,
+                            cycle_id=int(graph_bucket.replay_count),
+                            transaction_id=int(transaction_id),
+                            request_id=int(batch.request_ids[0]),
+                            **native_kwargs,
+                        )
+                    if not stream:
+                        native_graph_submitted = bool(
+                            self.target.last_native_spec_target_submitted
+                        )
+                        native_graph_capture_ms = float(
+                            self.target.last_native_spec_target_capture_ms
+                        )
+                        native_graph_submit_ms = float(
+                            self.target.last_native_spec_target_submit_ms
+                        )
+                        native_graph_readback_ms = float(
+                            self.target.last_native_spec_target_readback_ms
+                        )
+                        native_graph_fallback_reason = (
+                            self.target.last_native_spec_target_fallback_reason
+                        )
+                    if block is None:
+                        raise RuntimeError("native GGUF target verifier produced no host result")
+                    if int(block.start_position) != initial_position:
+                        raise RuntimeError(
+                            "native GGUF target verifier changed the declared root position"
+                        )
+                    if self.journal.producer_capture_initial_state:
+                        self.journal.mark_initial_state_captured()
+                    if block.pre_output_norm_hidden is None:
+                        raise RuntimeError(
+                            "native GGUF target verifier did not capture trunk hidden rows"
+                        )
+                    top1.extend(int(token) for token in block.token_ids)
+                    self.journal.capture_hidden_rows(
+                        block.pre_output_norm_hidden,
+                        stream=stream,
+                    )
+                    if return_logits:
+                        if block.lm_head_logits_f32 is None:
+                            raise RuntimeError(
+                                "native GGUF target verifier did not capture requested logits"
+                            )
+                        logits.append(block.lm_head_logits_f32)
             else:
                 for row, (token, position) in enumerate(zip(batch.tokens, batch.positions, strict=True)):
                     result = self.target.step(
@@ -671,37 +758,58 @@ class Qwen35GGUFTransactionalVerifier:
                         logits.append(result.logits)
                     self.journal.capture_row(row, stream=stream)
 
-            buffers = graph_bucket.owner.bind(batch, transaction_id=int(transaction_id))
-            self._write_verify_inputs(buffers, batch, top1, graph_bucket.remaining_decode, budgets)
-            assert self._accept_kernel is not None
-            self._accept_kernel(
-                buffers.token_ids.ptr,
-                buffers.positions.ptr,
-                buffers.parent_rows.ptr,
-                buffers.draft_depths.ptr,
-                buffers.active_mask.ptr,
-                buffers.target_top1.ptr,
-                graph_bucket.remaining_decode.ptr,
-                buffers.accepted_counts.ptr,
-                buffers.commit_rows.ptr,
-                buffers.commit_tokens.ptr,
-                buffers.commit_positions.ptr,
-                buffers.next_tokens.ptr if buffers.next_tokens is not None else 0,
-                buffers.full_accept.ptr if buffers.full_accept is not None else 0,
-                buffers.committed_output_ids.ptr if buffers.committed_output_ids is not None else 0,
-                buffers.committed_output_lengths.ptr if buffers.committed_output_lengths is not None else 0,
-                batch.rows,
-                len(batch.request_ids),
-                buffers.committed_output_ids.shape[1] if buffers.committed_output_ids is not None else batch.rows,
-                stream=stream,
-                library=self._accept_library,
-                runtime=self.target.runtime,
-            )
-            payload = self._read_accept_payload(buffers, stream=stream)
-            gpu_summary = replace(
-                TargetAcceptSummary.from_gpu_payload(batch, payload),
-                transaction_id=int(transaction_id),
-            )
+            if gpu_summary is None:
+                buffers = graph_bucket.owner.bind(batch, transaction_id=int(transaction_id))
+                self._write_verify_inputs(
+                    buffers,
+                    batch,
+                    top1,
+                    graph_bucket.remaining_decode,
+                    budgets,
+                )
+                assert self._accept_kernel is not None
+                self._accept_kernel(
+                    buffers.token_ids.ptr,
+                    buffers.positions.ptr,
+                    buffers.parent_rows.ptr,
+                    buffers.draft_depths.ptr,
+                    buffers.active_mask.ptr,
+                    buffers.target_top1.ptr,
+                    graph_bucket.remaining_decode.ptr,
+                    buffers.accepted_counts.ptr,
+                    buffers.commit_rows.ptr,
+                    buffers.commit_tokens.ptr,
+                    buffers.commit_positions.ptr,
+                    buffers.next_tokens.ptr if buffers.next_tokens is not None else 0,
+                    buffers.full_accept.ptr if buffers.full_accept is not None else 0,
+                    (
+                        buffers.committed_output_ids.ptr
+                        if buffers.committed_output_ids is not None
+                        else 0
+                    ),
+                    (
+                        buffers.committed_output_lengths.ptr
+                        if buffers.committed_output_lengths is not None
+                        else 0
+                    ),
+                    batch.rows,
+                    len(batch.request_ids),
+                    (
+                        buffers.committed_output_ids.shape[1]
+                        if buffers.committed_output_ids is not None
+                        else batch.rows
+                    ),
+                    stream=stream,
+                    library=self._accept_library,
+                    runtime=self.target.runtime,
+                )
+                payload = self._read_accept_payload(buffers, stream=stream)
+                gpu_summary = replace(
+                    TargetAcceptSummary.from_gpu_payload(batch, payload),
+                    transaction_id=int(transaction_id),
+                )
+            if buffers is None or gpu_summary is None:
+                raise RuntimeError("GGUF target verifier omitted transaction buffers")
             cpu_result = batch.accept_from_top1(
                 top1,
                 transaction_id=int(transaction_id),
@@ -732,6 +840,8 @@ class Qwen35GGUFTransactionalVerifier:
                 native_graph_submit_ms=native_graph_submit_ms,
                 native_graph_readback_ms=native_graph_readback_ms,
                 native_graph_fallback_reason=native_graph_fallback_reason,
+                native_device_accept_commit=native_device_accept_commit,
+                device_state_commit_buffers=device_state_commit_buffers,
             )
             self._prepared = prepared
             return prepared
@@ -757,11 +867,28 @@ class Qwen35GGUFTransactionalVerifier:
         if (
             plan.accepted_counts != expected.accepted_counts
             or plan.commit_rows != expected.commit_rows
+            or plan.commit_tokens != expected.commit_tokens
             or plan.commit_positions != expected.commit_positions
+            or plan.next_tokens != expected.next_tokens
         ):
             raise ValueError("GGUF commit plan must match GPU target accept summary")
         selected_row = int(plan.commit_rows[0])
         next_position = int(plan.commit_positions[0]) + 1
+        if prepared.native_device_accept_commit:
+            if stream:
+                raise ValueError("device-committed GGUF verify does not accept a commit stream")
+            state_buffers = prepared.device_state_commit_buffers
+            if state_buffers is None:
+                raise RuntimeError("device-committed GGUF verify omitted state buffers")
+            if (
+                state_buffers.transaction_id != plan.transaction_id
+                or state_buffers.request_ids != plan.request_ids
+                or state_buffers.mode != plan.mode
+            ):
+                raise RuntimeError("device-committed GGUF state buffers drifted from the plan")
+            if int(self.target.position) != next_position:
+                raise RuntimeError("device-committed GGUF target cursor drifted before finalize")
+            return state_buffers
         if prepared.target_verify_mode == "native":
             self.journal.restore_native_row(
                 selected_row,
@@ -1022,6 +1149,7 @@ class Qwen35GGUFMTPDecodeSession:
             prepared_native_graph_submit_ms = 0.0
             prepared_native_graph_readback_ms = 0.0
             prepared_native_graph_fallback_reason = None
+            prepared_native_device_accept_commit = False
             draft_tail_advanced = False
             try:
                 verify_started = time.perf_counter()
@@ -1044,6 +1172,9 @@ class Qwen35GGUFMTPDecodeSession:
                 prepared_native_graph_readback_ms = prepared.native_graph_readback_ms
                 prepared_native_graph_fallback_reason = (
                     prepared.native_graph_fallback_reason
+                )
+                prepared_native_device_accept_commit = (
+                    prepared.native_device_accept_commit
                 )
                 buffer_plan = scheduler.bind_speculative_verify_buffers(plan, prepared.buffers)
                 commit = scheduler.plan_speculative_commit(buffer_plan, prepared.summary)
@@ -1098,6 +1229,7 @@ class Qwen35GGUFMTPDecodeSession:
                 "target_native_graph_submit_ms": prepared_native_graph_submit_ms,
                 "target_native_graph_readback_ms": prepared_native_graph_readback_ms,
                 "target_native_graph_fallback_reason": prepared_native_graph_fallback_reason,
+                "target_native_device_accept_commit": prepared_native_device_accept_commit,
                 "draft_tail_advanced": draft_tail_advanced,
             }
             # ``prepared`` is cleared only after the transaction is fully

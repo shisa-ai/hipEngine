@@ -1049,6 +1049,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
             )
             assert verifier.journal.initial_state_captured
             assert rollback_prepared.native_graph_submitted
+            assert rollback_prepared.native_device_accept_commit
             assert rollback_prepared.native_graph_capture_ms > 0.0
             rollback_plan = TargetCommitPlan(
                 transaction_id=90,
@@ -1124,6 +1125,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 assert target.last_native_spec_target_submitted
                 assert target.last_native_spec_target_fallback_reason is None
                 assert prepared.native_graph_submitted
+                assert prepared.native_device_accept_commit
                 # The post-commit rollback case above owns the first reusable
                 # B3 capture; reject/partial/full all reuse that executable.
                 assert prepared.native_graph_capture_ms == 0.0
@@ -1197,50 +1199,13 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 assert dynamic_prepared.target_top1 == tuple(dynamic_top1)
                 assert dynamic_prepared.summary.accepted_counts == (3,)
                 assert dynamic_prepared.native_graph_submitted
+                assert dynamic_prepared.native_device_accept_commit
                 assert dynamic_prepared.native_graph_capture_ms == 0.0
                 assert dynamic_prepared.native_graph_submit_ms > 0.0
                 assert dynamic_prepared.native_graph_readback_ms > 0.0
                 assert dynamic_prepared.native_graph_fallback_reason is None
                 verifier.rollback(dynamic_prepared)
                 assert target.position == dynamic_start
-
-                # The submission successor keeps the same B3 target arithmetic,
-                # but moves strict accept, selected-state/hidden commit, and
-                # target cursor update into the reusable graph.  Prove all
-                # reject/partial/full rows against the scalar transaction before
-                # production wiring can select it.
-                target.reset()
-                reference.reset()
-                n2_root = int(
-                    target.prefill(prompt, use_bulk=False, return_logits=False).token_id
-                )
-                assert n2_root == int(
-                    reference.prefill(prompt, use_bulk=False, return_logits=False).token_id
-                )
-                n2_result = target.verify_target_block_native_cycle(
-                    [n2_root, *candidates],
-                    fallback=False,
-                    cycle_id=300 + accepted_count,
-                    transaction_id=400 + accepted_count,
-                    request_id=0,
-                    bulk_attention_mode="native",
-                    use_wmma_prefill=False,
-                    capture_linear_state_rows=True,
-                    defer_linear_state_commit=True,
-                    device_accept_commit=True,
-                    remaining_decode=4,
-                )
-                assert n2_result.device_accept_commit
-                assert n2_result.accepted_draft_tokens == accepted_count
-                assert n2_result.token_ids == [
-                    *candidates[:accepted_count],
-                    oracle[accepted_count],
-                ]
-                reference.step(n2_root, return_logits=False)
-                for token in candidates[:accepted_count]:
-                    reference.step(token, return_logits=False)
-                _assert_committed_state_matches(target, reference)
-                assert target.position == len(prompt) + accepted_count + 1
 
         assert int(target._verify_linear_initial_snapshot_users) == 0
         natural_prompt = (
@@ -1320,10 +1285,20 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     assert all(record["experts_per_token"] == 0 for record in actual.cycle_records)
     assert all(record["target_verify_mode"] == "native" for record in actual.cycle_records)
     assert all(record["target_native_graph_submitted"] for record in actual.cycle_records)
+    assert any(
+        record["target_native_device_accept_commit"]
+        for record in actual.cycle_records
+    )
+    # Full-room cycles use N2; the final output-cap cycle stays on the
+    # independently cached N1 graph rather than overcommitting one correction.
     assert sum(
         record["target_native_graph_capture_ms"] > 0.0
         for record in actual.cycle_records
-    ) == 1
+    ) == 2
+    assert any(
+        not record["target_native_device_accept_commit"]
+        for record in actual.cycle_records
+    )
     assert all(record["target_native_graph_submit_ms"] > 0.0 for record in actual.cycle_records)
     assert all(record["target_native_graph_readback_ms"] > 0.0 for record in actual.cycle_records)
     assert all(
