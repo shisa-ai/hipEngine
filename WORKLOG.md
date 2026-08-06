@@ -205340,3 +205340,48 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   unchanged. Activate mandatory **SH6-C1** clean-production four-depth
   re-attribution; campaign completion remains forbidden while fork parity is
   open.
+
+## 2026-08-06 — SH6-C1 cumulative gate complete; activate SH7-A1
+
+- Freeze tracked-clean production source
+  `b074e805491f33e169102e879de6994e6a963f64` after SH6 cleanup. The process
+  inherited `GPU_MAX_HW_QUEUES=2` from the preceding overlap screen rather than
+  the package-default cap of 1; all profiled decode dispatches still use only
+  queue 1 / stream 0. Keep this explicit qualification because SH6-C1 is a
+  diagnostic policy decision, not a retained performance claim. Run independent
+  right-sized one-discard/three-measurement eager attribution plus 10-ms
+  whole-GTT and cached eight-token kernel/HIP/ROCTX traces at 512/4K/32K/64K.
+  Decode is
+  **52.899/55.515/46.011/39.561 tok/s**, tracked peak is
+  **20.566/20.951/21.597/22.336 GiB**, whole-GTT is
+  **21.000/21.499/22.152/22.890 GiB**, and every child closes to zero tracked
+  bytes. All traces retain 628 dispatches/token.
+- Fresh canonical one-warmup/three-measurement prefill/decode is
+  **1373.558/53.153**, **1446.862/55.832**, **1149.718/46.196**, and
+  **938.363/39.579 tok/s**. Prefill changes **+0.352%/+0.751%/+0.138%/-0.115%**
+  versus SH3-C1, so all four frozen 1% guards pass. Every run retains exact ID
+  9707.
+- The fresh exact category+heldout oracle passes 18/18 prompts, 54 prompt
+  executions, 1,350 token comparisons, 54,000 layer-hidden comparisons, and all
+  initial/final Conv/GDN/KV state comparisons with zero mismatches and
+  deterministic repeats. Oracle SHA-256 is recorded in the compact artifact.
+- Apply the unchanged comparator: C1, C2, pinned-fork F16 decode, and pinned-fork
+  F16 whole-GTT each remain **0/4**. F16 decode time deficits are
+  **3.288/1.934/2.794/3.440 ms/token**, and same-scope GTT gaps are
+  **0.169/0.339/0.156/0.054 GiB**. SH6-C1 is complete, but the beat-fork
+  objective is not.
+- Fresh long-context role traces measure full-attention core at
+  **4.5195/8.0695 ms/token** and its serial grouped-GQA split reducer alone at
+  **0.4276/0.7511 ms/token** for 32K/64K. Select **SH7-A1**, an independent
+  gfx1151 gate for the existing registered prepare-plus-coalesced parallel
+  reducer retained on gfx1100. This changes reduction ownership only; it does
+  not reopen page-head, compact-KV, split-count, or online-softmax retries.
+  Require CPU and 18-prompt semantic correctness, then a fresh
+  package-default `GPU_MAX_HW_QUEUES=1` serial/candidate 32K/64K pair; the
+  qualified SH6-C1 rows select scope but are not the performance denominator.
+  Require >=1% or >=0.5-ms/token 64K wall saving, cached named scratch-free
+  kernels, unchanged memory/lifecycle, and serial fallback below 32K.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json`
+  (SHA-256 `8e0a0aa6...d7797`). This is a cumulative diagnostic, not a retained
+  performance claim or campaign completion.
