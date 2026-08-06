@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **campaign recertified and closed:** 2026-08-06; **post-closure parity continuation launched:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH2-G parity continuation recertified and SH3 launched:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -57,8 +57,16 @@ diagnostically **0.840%-1.314%** above every SH-C0 row, and 4K+ tracked peak
 remains **1.4086 GiB** lower, but no row reaches the C1 half-time-gap target,
 Nathan-fork F16 decode parity, or whole-GTT parity. Fresh prefill beats both
 fork KV lanes at 4K/32K/64K and loses at 512. Therefore hipEngine does **not** beat this fork overall on the
-matched exact-model diagnostic; the campaign is closed because all declared
+matched exact-model diagnostic; Campaign 2 is closed because all declared
 owners are decided, not because cross-engine parity was reached.
+
+**Beat-fork continuation update (2026-08-06): active.** SH2-G freshly reruns the
+pinned fork after the retained short-scratch and compact-Q5 units. Exact/default
+hipEngine still reaches **0/4 F16 decode and 0/4 F16 whole-GTT parity** despite
+passing all four prefill guards and the full correctness/lifecycle/trace gate.
+The higher-level objective therefore remains open and advances to the frozen
+SH3-D1 complete shared-expert composite, SH3-M1 runner-safe host embedding, and
+SH3-C1 cumulative re-attribution packages rather than stopping at recertification.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -579,7 +587,10 @@ evidence.
 | **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | **Checkpoint complete: continue.** Fresh clean 512 is **53.332 tok/s, 21.214 GiB tracked, 21.648 GiB whole-GTT**; unchanged 4K+ rows carry from SH-G. C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the new 0.457031-GiB compact-T16 metadata owner. |
 | **SH2-M4** | Compact selected-expert Q4/Q5 T16 scale/min metadata. | **Complete: retain/default Q5 subset; reject Q4 production route.** Compact Q5 removes exactly **155,189,248 bytes / 0.144531 GiB** with 512 prefill/decode changes **-0.426%/-0.459%**, whole-GTT **-0.144363 GiB**, scratch-free named kernels, and byte-exact four-depth state. Full Q4+Q5 projects **+1.598%** decode, so all 80 Q4 tensors remain current T16. |
 | **SH2-C2** | Post-M4 cumulative re-attribution. | **Checkpoint complete: continue to SH2-G.** Fresh 512/4K/32K/64K decode is **53.374/55.851/46.315/39.673 tok/s** and whole-GTT is **21.504/22.003/22.656/23.394 GiB**. Compact Q5 saves 0.144 GiB at every depth, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. Freeze the complete shared-expert composite and runner-safe host embedding as post-milestone owners. |
-| **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | **Next / mandatory.** Rerun the pinned fork only after this fresh C2 matrix. Mark the thread objective complete only when the declared beat-fork policy passes; otherwise advance to the frozen SH3 decode/memory owners and continue cumulative re-attribution. |
+| **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | **Complete: milestone passes, objective continues to SH3.** All four prefill guards and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. Fresh F16 decode is **64.411/62.590/53.042/45.818 tok/s** versus hipEngine **53.319/55.895/46.353/39.644**, and F16 whole-GTT remains **0.673/0.843/0.660/0.558 GiB** lower. |
+| **SH3-D1** | Complete Q8T16 shared-expert gate/up -> exact BF16 SiLU -> down -> residual producer/consumer chain. | **Next / mandatory.** Start from the fresh named **1.061-1.075-ms/token** complete owner. Require a RED CPU oracle, registered unfused fallback, exact BF16 output/state, cached named spill-free trace, and at least **1.15x** or **0.5 ms/token** projected admission before full-model routing. |
+| **SH3-M1** | Runner-safe exact 540,344,320-byte host embedding policy. | **Queued after SH3-D1.** Eliminate load-order high water while preserving c>N, packed AR, MTP, graph, allocation-denial, and device-pointer fallback contracts; require exact state, <=1% prefill/decode regression, same-scope GTT, and clean teardown. |
+| **SH3-C1** | Post-SH3 cumulative four-depth re-attribution and beat-fork policy gate. | **Queued after SH3-D1/M1.** Freshly rerun current production and the required comparator dimensions; complete the objective only if the declared policy passes, otherwise select another structurally new measured owner. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -695,6 +706,24 @@ SiLU + down + residual composite (**1.061-1.075 ms/token** scope) and a
 runner-safe exact **540,344,320-byte** host-embedding policy that preserves
 c>N, packed AR, MTP, and device-pointer fallbacks. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json).
+
+SH2-G then recertifies the exact current stack against fresh pinned fork build
+`b7b85da9` rows. Independent hipEngine prefill/decode is
+**1368.737/53.319**, **1445.181/55.895**, **1151.255/46.353**, and
+**938.924/39.644 tok/s** at 512/4K/32K/64K. Pinned-fork F16 decode is
+**64.411/62.590/53.042/45.818 tok/s** and Q8_0 is
+**64.179/63.087/57.379/52.167**. hipEngine protects all four prior-production
+prefill guards and beats fresh fork prefill at 4K/32K/64K, but reaches **0/4
+C1, 0/4 C2, 0/4 F16 decode, and 0/4 F16 whole-GTT parity**. F16 decode deficits
+are **10.767%-17.135%**, and hipEngine whole-GTT remains
+**0.673/0.843/0.660/0.558 GiB** higher.
+
+The exact 18-prompt category/heldout oracle passes 1,350 token and 54,000 hidden
+comparisons plus all initial/final Conv/GDN/KV state checks, repeated rows are
+exact, tracked ownership closes to zero, and compact-Q5 traces remain valid.
+Thus SH2-G is complete, but the declared beat-fork policy and thread objective
+are not. Proceed immediately to SH3-D1, then SH3-M1 and SH3-C1. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

@@ -4175,9 +4175,18 @@ freshly measures committed `e39aba0e1` at every depth. 512/4K/32K/64K decode is
 **21.504/22.003/22.656/23.394 GiB**. All IDs and lifecycle checks pass, and the
 compact Q5 owner reproduces its exact **0.144531-GiB** tracked reduction at all
 four depths. C1/C2/fork-F16 decode/fork-F16 whole-GTT nevertheless remain
-**0/4**. The mandatory next step is a fresh SH2-G pinned-fork rerun; if parity
-still misses, the frozen next owners are the complete Q8T16 shared-expert
-composite and runner-safe exact host embedding, not another compact-Q4 retry.
+**0/4**.
+
+The [SH2-G fork parity recertification](results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json)
+closes that mandatory milestone but not the beat-fork objective. Fresh hipEngine
+prefill/decode is **1368.737/53.319**, **1445.181/55.895**,
+**1151.255/46.353**, and **938.924/39.644 tok/s** at 512/4K/32K/64K. Fresh
+pinned-fork F16 decode is **64.411/62.590/53.042/45.818 tok/s**; Q8_0 is
+**64.179/63.087/57.379/52.167**. All four prefill guards and the exact
+18-prompt state/lifecycle/trace gate pass, but C1/C2/fork-F16 decode/fork-F16
+whole-GTT remain **0/4**. Continue immediately to SH3-D1's complete Q8T16
+shared-expert chain, SH3-M1's runner-safe exact host embedding, and SH3-C1
+cumulative re-attribution; do not stop at SH2-G or retry compact Q4.
 
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
@@ -4225,6 +4234,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-G fork parity recertification | 2026-08-06 | hipEngine runtime `e39aba0e1` (publication-only parent `53537b05a`); fresh four-depth prefill/decode, 10-ms whole-GTT and cached role trace; exact 18-prompt oracle; pinned fork `b7b85da9` F16/Q8_0 five-repeat rows | **Milestone complete; objective continues:** hipEngine decode **53.319/55.895/46.353/39.644 tok/s** versus fork F16 **64.411/62.590/53.042/45.818**; all four prefill guards and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json). | No — qualified cross-engine diagnostic and continuation decision | Execute SH3-D1 complete shared-expert chain, SH3-M1 runner-safe host embedding, then SH3-C1; do not mark the objective complete. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C2 cumulative re-attribution | 2026-08-06 | clean `e39aba0e1`; fresh four-depth one-warmup/three-run tg128 wall; 10-ms whole-GTT; cached role trace | **Diagnostic continue:** decode **53.374/55.851/46.315/39.673 tok/s**, whole-GTT **21.504/22.003/22.656/23.394 GiB**, exact IDs/lifecycle, and compact-Q5 saving reproduced; C1/C2/fork-F16 decode/fork-F16 whole-GTT all remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json). | No — milestone-selection evidence, not parity | Run mandatory fresh SH2-G pinned-fork recertification; on miss, continue to frozen SH3 shared-expert and host-embedding owners. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M4 compact selected Q5 T16 metadata | 2026-08-06 | parent `70b338a0e`; actual all-256-expert Q4/Q5 leaf; one-warmup/three-run 512/128 wall; 10-ms GTT; cached production trace; clean-parent vs candidate four-depth state | **Retained/default Q5 subset:** 37 Q5 tensors save **0.144531 GiB tracked / 0.144363 GiB whole-GTT**; prefill/decode change **-0.426%/-0.459%** and complete state is byte-exact. Full Q4+Q5 is rejected at **+1.598%** projected decode, so Q4 remains current T16. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json). | Yes — exact memory/non-regression/trace/state/lifecycle gates pass for Q5 | Run SH2-C2 cumulative re-attribution immediately; do not treat the partial owner as fork parity. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C1 cumulative re-attribution | 2026-08-06 | clean `b8989cbb4`; fresh 512/128 non-profiled+role trace+10-ms GTT; mechanically unchanged SH-G 4K+ rows; complete expert-T16 metadata census | **Diagnostic continue:** fresh 512 is **53.332 tok/s, 21.214/21.648 GiB tracked/GTT**; C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the exact **0.457031-GiB** compact Q4/Q5 T16 metadata owner; no layout exists yet. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json). | No — re-attribution and next-owner selection only | Execute SH2-M4 under exact/perf/trace/four-depth GTT gates, then rerun SH2-C2; do not proceed to SH2-G yet. |
