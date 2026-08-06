@@ -8290,10 +8290,10 @@ def _resolve_gguf_private_c1_small_weight_arena(
     has_shared_runner: bool,
     requested: bool | None = None,
 ) -> tuple[bool, str]:
-    """Admit only the default-off allocator-owned private-c1 screen."""
+    """Select the retained allocator-owned private-c1 path with explicit opt-out."""
 
     enabled = (
-        _env_flag(_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV, False)
+        _env_flag(_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV, True)
         if requested is None
         else bool(requested)
     )
@@ -8311,7 +8311,7 @@ def _resolve_gguf_private_c1_small_weight_arena(
         )
     ):
         return False, "backend_capability_fallback"
-    return True, "private_c1_candidate"
+    return True, "private_c1_selective"
 
 
 def _gguf_host_token_embedding_requested() -> bool:
