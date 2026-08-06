@@ -161,6 +161,37 @@ The untouched dense-BF16 quality diagnostic remains explicitly failed at max KL
 affine4 embeddings and head. It is not an implementation-correctness failure and
 its thresholds were not weakened; see the correctness artifact for attribution.
 
+## Current performance baseline (gfx1151, basic bring-up)
+
+All numbers below are from the accepted public smoke
+`benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json` plus the
+kernel shapes in this tree, on Radeon 8060S / gfx1151 (40 CU, 80 SIMD32,
+~256 GB/s, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA).
+
+| Metric | Value |
+| --- | ---: |
+| Cold request wall (incl. model load) | 4.365 s |
+| Resident repeat wall (18-token prefill + 36 decode) | 0.703 s |
+| Effective output rate (incl. prefill) | 52.6 tok/s |
+| Avg model-forward latency | ~13.0 ms |
+| Inferred token-serial prefill | ~234 ms / 18 tokens |
+| Inferred decode rate | ~76.8 tok/s |
+
+**Why decode is slow today — launch-bound, not compute/bandwidth bound.** Each
+token forward launches ~271 HIP kernels through Python ctypes (24 layers × 11
+per-layer kernels, plus span update, embedding, final norm, affine4 lm_head,
+and two-stage argmax). At 76.8 tok/s ≈ 13 ms/token, that is ~48 µs of
+host/dispatch cost per launch — the dominant term. The active weight traffic per
+token is only ~9.5 MB (ternary packs 0.25 bytes/element), so the pure bandwidth
+floor is ~37 µs/token and compute is even lower. Decode is therefore limited by
+dispatch/launch overhead, not by the hardware doing the math.
+
+**Why prefill is slow today.** Prefill is token-serial: `runner.prefill()` loops
+`step()` over the prompt, so each prompt token pays the same ~13 ms forward with
+no weight reuse across rows. A 4K prompt costs ~52 s of model-forward time. The
+correct fix is a true batched `[T, hidden]` prefill that reuses weights across
+prompt rows and is compute-bound (see `docs/MAPLE-PERF.md`).
+
 ## Open follow-ups (not required for the basic bring-up)
 
 - True chunked prefill (batched GEMM + masked attention).
