@@ -205268,3 +205268,29 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   complete natural/category KL/top-1 gate for changed decode arithmetic. Remove
   the SH5 model route on failure; on pass promote through a gfx1151 capability
   and proceed to SH6-C1. The whole beat-fork campaign remains active.
+
+## 2026-08-06 — SH6-P1 raw-to-T16 converter leaf is GREEN
+
+- Establish RED first with `tests/test_gguf_q8_0_raw_to_t16.py`: collection
+  fails because the converter module does not exist. Add a four-axis
+  `layout_transform/gguf_q8_0/raw_pair_to_t16` wrapper and a combined-grid HIP
+  body. One workgroup stages one 16-output x 32-K raw slab, transposes bytes,
+  and writes the exact Q8T16 record; there is no dequantization or arithmetic.
+- The production `2048 -> 8192` QKV plus `2048 -> 4096` gate pair requires
+  exactly **26,738,688 bytes**, matching the frozen one-owner cap. GPU output is
+  byte-identical to `repack_gguf_q8_0_tile16` for both tensors at local64/128/256.
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt
+  python3 -m pytest tests/test_gguf_q8_0_raw_to_t16.py -q` passes **6/6**.
+- Screen three raw pair copies / **80,216,064 bytes** with nine counterbalanced
+  HIP-event samples. local64/128/256 medians are **0.360914/0.401951/0.502646
+  ms per pair**; retain local64 for runtime admission. Raw screen SHA-256 is
+  `c2c594f4...9754`.
+- Prebuild outside profiling and run a cached-only production-pair
+  `rocprofv3 --kernel-trace`. The expected named local64 body launches with
+  grid 3,145,728 workitems, **40 VGPR, 128 SGPR, 0 scratch**, and profiled
+  duration 0.770256 ms. Kernel/agent CSV SHA-256 values are
+  `d8b5f78f...dc4` and `451e2511...6078`.
+- This closes only the mechanical leaf. The measured **0.360914 ms x 30 =
+  10.827 ms** serial conversion floor already makes the <=1% 512 prefill gate
+  demanding; SH6-P1 still proceeds to one-owner transactional runtime routing,
+  exact prefill state, and the binding wall gate before any quality promotion.
