@@ -206108,3 +206108,29 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (SHA-256 `f3a5b544...11aae`). Keep no SH15 state arena or compact-Q4 stack;
   4K memory and all four decode rows still require separately admitted new
   structural evidence.
+
+## 2026-08-06 — Close SH17-C0 post-SH16 residual admission audit
+
+- Start from clean retained production `35a0b18b6` and do not duplicate the
+  completed four-depth/category gates. Reconcile SH16 wall/GTT against SH14's
+  immutable role attribution, SH15/SH16 allocation censuses, and every closed
+  SH-D1/SH7-SH13 package.
+- Current decode is **55.230/55.829/46.809/40.430 tok/s**. Gaps to C1 are
+  **0.914/0.903/1.100/1.160 ms/token** and gaps to fork F16 are
+  **2.581/1.935/2.511/2.908 ms/token**. SH16 changes only pointers: all moved
+  K/V, attention-output/gate, SSM-output, shared-expert, norm, and control
+  families map to named roles. Device bodies, dispatch, launch counts, and
+  arithmetic are unchanged, and their exact schedule/composite alternatives are
+  already retained or closed. A fresh trace could only remeasure cache-color
+  redistribution, not admit a new >=0.5-ms algorithmic owner; skip it.
+- The 4K whole-GTT remainder is **134.820 MiB**. Extending <=16 -> <=32 MiB
+  projects only 40 MiB more and leaves **94.820 MiB**. Replacing SH16 with the
+  rejected global/state arena or stacking compact Q4 adds 80 MiB and still
+  leaves **54.820 MiB**; SH13 code unload can remove at most **0.719 MiB** from
+  peak. No evidence-backed single owner closes the row, and combining rejected
+  components is not a new admissible package.
+- Close conditional Task #66 without implementation or transient files. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json`
+  (SHA-256 `65e344f4...bb50`). Preserve SH16; the higher-level objective remains
+  active but requires genuinely new source/hardware/runtime evidence or a
+  separately approved system-memory scope.
