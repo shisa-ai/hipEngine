@@ -204626,3 +204626,39 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (SHA-256 `9604f2abe034967a213e3e7ee2677a1020d40f4efac9034ce96ba8d5d2848e29`),
   update the campaign/benchmark rollups, and proceed directly to SH2-M3's
   separately exact 768-row owner slots.
+
+## 2026-08-06 — Implement SH2-M3 768-row scratch owner slots
+
+- RED first: change the short gfx1151 scratch contract to require the same 21
+  independent owner slots at 768 rows and change the backend capability gate to
+  `768`. The focused gate fails exactly at the old production behavior:
+  `test_gfx1151_right_sized_short_scratch_uses_owner_slots` observes
+  `allocation_mode='dedicated'`. Lower only
+  `GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS` from 4096 to 768; keep the existing
+  route/stage interval map, independent allocator owners, compact exact GDN
+  admission, and dedicated diagnostic/unvalidated fallback unchanged.
+- GREEN unit gate:
+  `uv run pytest -q tests/test_qwen35_gguf_prefill_scratch_liveness.py
+  tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys`
+  passes **9/9**. The synthetic 768-row census changes physical scratch
+  **355,182,664 -> 69,790,760 bytes**, retains 21 owner slots, keeps overlapping
+  lifetimes on distinct pointers, and explicitly proves that F32 diagnostics
+  retain the full dedicated **355,182,664-byte** fallback.
+- Run a same-source external comparison seam (never added to production) in
+  D->L->L->D order. Each leg uses the exact Q4_K_M file, BF16 KV, fixed q4096
+  controls with a right-sized 768-row owner, one discarded warmup plus three
+  512/128 eager measurements, cached builds, and 10-ms whole-GTT. Dedicated
+  medians are **1361.744 prefill / 53.322 decode tok/s**; owner-slot medians are
+  **1370.204 / 53.408**, changes of **+0.621%/+0.160%**. Tracked peak falls
+  **21.479979 -> 21.214187 GiB (-0.265792)** and whole-GTT falls
+  **21.916004 -> 21.648426 GiB (-0.267578)**. Both owner legs report exactly
+  **69,790,760** physical scratch bytes and all four processes reclaim tracked
+  bytes.
+- Separate 768-row state children compare dedicated and owner-slot allocation
+  after 512-token bulk prefill and four fixed-input transitions. FP32 logits,
+  hidden seed, all 40 layer outputs, 30 Conv/GDN state pairs, 10 live BF16 K/V
+  pairs, complete trajectories, and final state are byte-identical and finite.
+  Raw aggregate is `/tmp/hipengine-sh2-m3-20260806/run-evidence.json` SHA-256
+  `7bf72760e01143e41d18d96d0f4a83e230e3ba64d0e192d5c33e447c1d0cda7d`.
+  Retain the 768-row capability and commit the code/test unit; run one
+  committed-source confirmation before publishing SH2-M3 and closing Task #36.

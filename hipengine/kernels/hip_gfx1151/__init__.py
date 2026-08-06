@@ -627,11 +627,11 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
 # SH-M2 transfers the existing route/stage liveness admission to gfx1151's
-# proven compact exact GDN route. Diagnostics retain independently owned
-# fields. The final candidate graph-colors mutually exclusive fields into
-# separate allocator-owned slots at the fixed 4,096-row class.
+# proven compact exact GDN route. SH2-M3 extends the same independent owner-slot
+# topology to the right-sized 768-row class; diagnostics retain independently
+# owned fields and allocation denial retains the existing dedicated fallback.
 GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
-GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 4096
+GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 768
 GGUF_PREFILL_SCRATCH_ARENA_GROUPING = "owner_slots"
 # Nathan-review P0 exactness, copy-inclusive sub-window, and right-sized
 # 512/4K/32K/64K gates admit one reusable head-major BF16 K/V pair before
