@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH9-C1 audited and SH10-A1 selected:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH10-A1 retained and SH11-A1 selected:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -69,8 +69,20 @@ WMMA launches and complete state exactly, and improves the cached marker span
 **381.308 -> 379.572 ms (-1.736 ms)** while unprofiled prefill is neutral at
 **1366.040 -> 1366.013 tok/s (-0.002%)** and memory is unchanged. Retain the
 package cap, but give it no decode-parity credit. SH9-C1's hash-bound audit
-confirms C1, C2, fork decode, and fork memory parity remain **0/4** and selects
-SH10-A1 on the actual short-context private-c1 attention owner.
+confirms C1, C2, fork decode, and fork memory parity remain **0/4**.
+
+SH10-A1 then turns the review's short-context anomaly into an exact retained
+win without adding device code. A cached trace confirms the actual old owner at
+**1.500 ms/token**; the already-registered fixed256 batch leaf is byte-exact at
+`rows=1`, and gfx1151 now selects it through active context 1,023. Independent
+512/128 processes improve decode **51.541 -> 53.591 tok/s (+3.978%, -0.742
+ms/token)** with prefill **-0.612%**, unchanged **20.566/21.000-GiB**
+tracked/whole-GTT peaks, and clean lifecycle. The full-process kernel role falls
+**1.500 -> 0.928 ms/token (-0.572 ms/token)** at unchanged 40-VGPR,
+scratch-free resources. Clean committed production measures **53.445 tok/s**,
+still **1.518 ms/token** short of C1 and **3.186 ms/token** behind the pinned
+fork F16 row. Retain the transfer, give it no parity claim, and continue to
+SH11-A1.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -603,7 +615,7 @@ evidence.
 | **SH8-A1** | Split the 72-VGPR grouped-GQA producer's eight query heads into exact four-head ownership groups to test register occupancy against duplicated K/V traffic. | **Complete: exact, rejected at leaf gate.** qgroup4 lowers **72 -> 56 VGPR** and remains byte-exact, but complete producer+parallel-reducer wall is only **0.896x/0.885x** at 32K/64K with **0/42 wins**, projecting **-0.494/-0.985 ms/token**. All transient surfaces are removed. |
 | **SH9-D1** | Independently transfer gfx1100 LCP-2B's exact compact-WMMA static upper bound to gfx1151 and remove the selected-Q4 scalar `wmma_total` D2H boundary. | **Complete: retained/default through 4,096 selected prefill rows.** Corrected scope is pp512 multi-row prefill, not decode. Full state is byte-exact; wall is neutral **1366.040 -> 1366.013 tok/s (-0.002%)**; cached trace removes **40 hipMemcpy + 40 dispatches** and **1.736 ms** marker span with unchanged selected kernels/memory/lifecycle. |
 | **SH9-C1** | Scope-correct cumulative completion audit after SH9-D1. | **Complete: policy fails; objective continues.** SH9 receives no decode/memory credit. Carried decode is **53.153/55.832/46.785/40.386 tok/s**, whole-GTT is **21.000/21.499/22.152/22.890 GiB**, and all four C1/C2/fork-F16 decode/fork-F16 memory classes remain **0/4**. |
-| **SH10-A1** | Exact short-context private-c1 attention screen on the actual single-row context kernel. | **Next.** First capture a cached 512 actual-shape trace. Continue only with arithmetic-order-preserving address hoists/packed loads/ILP; require exact primitive/full state, named resources, repeated 512 wall, <=1% prefill loss, lifecycle, and no 1,024-boundary regression. The review's 0.8-1.4-ms estimate is unmeasured and receives no credit. |
+| **SH10-A1** | Exact short-context private-c1 attention screen on the actual single-row context kernel. | **Complete: retained/default through active context 1,023.** Trace-first attribution measures the old owner at **1.500 ms/token**. Reusing the existing fixed256 batch leaf at rows1 is byte-exact, lowers that role to **0.928 ms/token**, and improves independent 512/128 decode **51.541 -> 53.591 tok/s (+3.978%, -0.742 ms/token)** with prefill **-0.612%**, unchanged memory/lifecycle, identical resources, and unchanged 1,024+ fallback. Clean production is **53.445 tok/s**; C1/fork parity remain open. |
 | **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | Re-measure `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=8192` in independent cached processes. Any state/logit/ID drift blocks promotion; only a surviving material lever admits a separately designed exact-emulation package. |
 | **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | Attribute every per-token sync/copy/scalar read and separate mandatory next-token/host-embedding ownership from removable boundaries. Implement nothing without measured repeated impact; SH9 is prefill-only and does not reopen graph replay. |
 | **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | Re-scope SH2-M2 as a precondition audit only. Continue beyond 4K or add loader churn only if the eligible phase-exclusive subset exceeds the actual fork gap and peak timing permits safe deferral/unload. |
@@ -969,17 +981,28 @@ whole-GTT remain **0/4**. Evidence:
 [`SH9-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json).
 
 Two external reviews supplied useful leads, but their mechanisms required
-correction. The 512 private-c1 eager owner is the fixed-256-thread
-`qwen35_paged_full_attn_decode_context_tensor_kernel` with 16 q-head blocks,
-not the compact/batched `context_tensor_batch_kernel<true,2>`. It has only an
-old arithmetic-changing 128-thread rejection and no gfx1151 exact
-address-hoist/packed-load leaf. Select **SH10-A1** around that actual owner.
-Then run **SH11-A1** as a default-off current-model remeasurement of June's
+correction. SH10-A1 first traces the 512 private-c1 eager owner as the
+fixed-256-thread `qwen35_paged_full_attn_decode_context_tensor_kernel` with 16
+q-head blocks, not the compact/batched `context_tensor_batch_kernel<true,2>`.
+That old owner costs **1.499680 ms/token**. Before adding another body, the
+screen proves the existing compact fixed256 batch leaf byte-exact at rows1 and
+materially faster at every tested 513/576/640/1,023 context. The retained
+package-scoped dispatch transfer lowers the full-process role to **0.928096
+ms/token** and independent 512/128 wall from **51.541 -> 53.591 tok/s
+(+3.978%, -0.742 ms/token)**. Complete state is byte-identical, prefill changes
+**-0.612%**, tracked/whole-GTT stay **20.566421/21.000130 GiB**, all closes
+return to zero, and context 1,024 keeps the prior direct/split boundary.
+Evidence:
+[`SH10-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json).
+
+Clean committed production is **53.445 tok/s**, leaving **1.518 ms/token** to
+the 512 C1 target and **3.186 ms/token** to the pinned fork F16 row. Therefore
+run **SH11-A1** as a default-off current-model remeasurement of June's
 faster-but-divergent direct 4K route, **SH12-C0** as a complete decode
 synchronization/D2H census independent of SH9, and **SH13-M1** as a 4K-first
 phase-resolved code-residency precondition audit. **SH14-C1** is the required
-cumulative four-depth completion gate; the campaign does not stop after one
-leaf.
+cumulative four-depth completion gate; the campaign does not stop after this
+retained leaf.
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by
@@ -1008,6 +1031,7 @@ heldouts with no token-, prompt-, or candidate-ID-conditioned branch.
 | Final SH-G hipEngine BF16 | **53.446** | **56.116** | **46.489** | **39.750** |
 | SH7-A1 one-queue candidate (32K+ scoped) | — | — | **46.785** | **40.386** |
 | SH9-C1 carried production (SH9 is prefill-only) | **53.153** | **55.832** | **46.785** | **40.386** |
+| SH10-A1 clean production / qualified carry | **53.445** | **55.832** | **46.785** | **40.386** |
 | C1: close at least half the F16 **time** gap | **58.165** | **58.795** | **49.350** | **42.419** |
 | C2: match the local fork F16 lane | **64.658** | **62.648** | **53.220** | **45.913** |
 

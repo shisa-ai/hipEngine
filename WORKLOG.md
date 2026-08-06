@@ -205651,3 +205651,22 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   passed**; focused compileall passes. Retain the package-scoped transfer,
   commit source, then run one clean
   publication row before updating the artifact and rollups. C1 remains open.
+
+## 2026-08-06 — Publish retained SH10-A1 and activate SH11-A1
+
+- Commit the implementation and its validation record as `df4dd5a5d`. A clean
+  package-default publication process at that commit measures prefill
+  **1357.791 tok/s** and decode **53.445 tok/s** from three samples, with
+  **20.566421 GiB** tracked peak, repeated ID 9707, and all four warmup/measured
+  closes at zero. Raw SHA-256 is `b2930f12...8e18`.
+- Against the frozen 512 C1 target, clean production remains **1.518366
+  ms/token** short; against pinned-fork F16 **64.411 tok/s**, it remains
+  **3.185582 ms/token** short. This is an exact own-engine win, not fork parity.
+  Whole-GTT and the paired control/candidate claim remain those of the qualified
+  independent A/B; do not substitute the clean row as its denominator.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json`
+  (SHA-256 `0cf6724e...8f710`) and update the campaign review, GGUF guide,
+  benchmark scoreboard, and changelog. SH10-A1 is complete; activate SH11-A1's
+  bounded current-model direct-4K diagnostic because the higher-level objective
+  remains open.
