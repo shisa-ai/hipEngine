@@ -204972,3 +204972,43 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   objective are not. Continue immediately to SH3-D1's complete Q8T16
   shared-expert chain, then SH3-M1's runner-safe exact 540,344,320-byte host
   embedding and SH3-C1 cumulative re-attribution; do not stop at this milestone.
+
+## 2026-08-06 — SH3-D1 exact shared-expert composite rejected; advance to SH3-M1
+
+- Start from clean production `2493b194b`. ROCm is healthy on gfx1151. The
+  required `python3 scripts/check_lineage.py --kind kernel --diff stat` remains
+  blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; this is
+  recorded as a blocker, not a green lineage verdict. The deployed 40-layer
+  owner is Q8T16 gate/up + exact BF16 SiLU + Q8T16 down, measured freshly at
+  **1.061-1.075 ms/token** before this experiment.
+- Write the CPU/unfused boundary oracle first. RED is the expected collection
+  failure for the absent candidate module; GREEN passes **2/2** after adding a
+  transient registered cooperative leaf. The candidate preserves the production
+  128-thread/four-wave reduction order, publishes each K-block's 16 scales
+  through wave-private LDS, and retains observable gate/up, BF16-SiLU
+  intermediate, shared-down, and final routed/shared-gate/residual buffers.
+  All four candidate/control arrays are byte-identical; the CPU-reference
+  correctness gate is therefore KL 0 and top-1 100% at the final boundary.
+- Run actual `blk.0.ffn_{gate,up,down}_shexp.weight` Q8_0 payloads at the
+  production `2048 -> 512 -> 2048`, top-8 shape with 24 rotating copies
+  (**80,216,064 bytes**, above twice the cache estimate), 200 warmups, 2,000
+  iterations, five counterbalanced repeats. The four-kernel fallback is
+  **34.719371 us** median. The 128-block composite is **38.611470 us / 0.8992x**,
+  projecting **-0.155684 ms/token** across 40 layers. The bounded occupancy
+  audit closes 40/64/80 blocks at **0.4438x/0.7545x/0.7491x**; no candidate
+  reaches either >=1.15x or >=0.5-ms/token admission.
+- Prebuild outside profiling and run a cached-only `rocprofv3 --kernel-trace`
+  child. The named composite has median **25.287 us, VGPR72, SGPR128, LDS512,
+  scratch0**, versus **23.482 us** summed median gate/up + SiLU + down + combine
+  kernels (**0.9286x**). Rocprof emits the complete 27-row CSV and then reports a
+  teardown SIGSEGV in `rocr::HSA::hsa_signal_store_screlease`; record that fault
+  explicitly rather than claiming a clean profiler exit. Independent exactness
+  and counterbalanced wall screens complete successfully. CSV SHA-256 is
+  `37395573...2faeb1`; grid-sweep JSON is `3c0c5659...d543`.
+- Reject before model routing and remove every transient `.hip`, wrapper,
+  registry key, test, and `/tmp` harness surface from the tracked tree. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`
+  (SHA-256 `84ffd3b6...e74d9`).
+  Production remains unchanged. SH3-D1 is complete, but the beat-fork objective
+  is not; proceed immediately to SH3-M1's runner-safe exact 540,344,320-byte
+  host-embedding policy, then SH3-C1.

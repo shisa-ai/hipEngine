@@ -2241,7 +2241,7 @@ IDs are stable for `WORKLOG.md` and commit messages.
 | **Wave 3 — decode push from 98 to ≥120 tok/s** | | | | | | | | | |
 | P10.D1 | Fused Q4T16 selected dual gate+up + SiLU + Q5T16/Q6T16 down + scatter combine — output-tiled producer/consumer composite | ~0 | **+8 to +15** | 0 | L (parent has analog: PARO `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`) | **SH2-D1 complete/rejected; no production change** | | | Exact down+tail reaches only **1.053x / 0.080 ms/token** deployed aggregate; complete cooperative/standard-queue composites regress to **0.520x/0.739x**. Scratch-free standard traces pass, but no leaf clears >=1.15x or >=0.5 ms/token. All transient surfaces removed; artifact `2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`. |
 | P10.D2 | Wider tile or block-launch tuning on Q4T16 selected decode (currently `compact32`); try `compact64`/`compact96` for hot experts | ~0 | +3 to +8 | 0 | S | pending | | | follows P9.D10 width-tuning method on dual_split GEMV |
-| P10.D3 | Q8T16 shared-expert gate+up+SiLU+down fused decode kernel | ~0 | +3 to +8 | 0 | M | re-attempt (P9.D11 failed on 128/64-thread variants; try a different K-tile + LDS plan) | | | parent: `w8a16_shared_gate_up_bulk_kernel` + `w8a16_shared_down_bulk_combine_kernel` |
+| P10.D3 | Q8T16 shared-expert gate+up+SiLU+down fused decode kernel | ~0 | +3 to +8 | 0 | M | **SH3-D1 complete/rejected; no production change** | | | Exact cooperative K-block scale-LDS composite reaches **0.899x** actual-weight wall and **0.929x** named kernel-only; 40/64/80-block siblings regress further. Trace is **72 VGPR / 512 B LDS / 0 scratch**. All transient surfaces removed; artifact `2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`. |
 | P10.D4 | Decode-only Q4T16 fused-K micro-batch (write 2 tokens per launch when capture allows) | ~0 | +5 to +10 | small scratch | M | pending | | | hipGraph 2-step replay extension; needs P9.E3 graph bucket update |
 | P10.D5 | Drop `f32_to_bf16` casts already folded for `ssm_out` (P9.D14) into other narrow surfaces (router logits, lm-head) | ~0 | +1 to +3 | 0 | S | pending | | | mirror P9.D14 |
 | **Wave 4 — stretch moonshots (only if Wave 1–3 still short of target)** | | | | | | | | | |
@@ -2369,6 +2369,21 @@ chain, followed by SH3-M1's runner-safe exact 540,344,320-byte host embedding
 and SH3-C1 cumulative re-attribution. Do not stop at this milestone or retry
 compact Q4. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json).
+
+SH3-D1 closes P10.D3 without model routing. The RED CPU/unfused oracle becomes
+GREEN at **2/2** and proves byte identity at gate/up, exact-BF16 SiLU
+intermediate, Q8T16 shared-down, and final routed/shared-gate/residual output.
+On actual layer-0 `2048 -> 512 -> 2048` weights with a 24-copy 80.2-MB cycling
+pool, the four-kernel fallback is **34.719 us** and the best 128-block
+cooperative K-block scale-LDS candidate is **38.611 us (0.899x)**. Bounded
+40/64/80-block schedules are **0.444x/0.754x/0.749x**. Cached tracing records
+**25.287 us, 72 VGPR, 512 B LDS, 0 scratch** versus **23.482 us** summed
+fallback kernels (**0.929x**). The complete CSV precedes a recorded ROCr
+profiler-teardown fault; independent correctness and counterbalanced wall
+screens are clean. Both frozen admission gates fail, all transient surfaces are
+removed, and the registered unfused production route remains unchanged. The
+campaign advances to SH3-M1, not closure. Evidence:
+[`2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
