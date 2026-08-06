@@ -14,21 +14,22 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## SH15 gfx1151 private-c1 persistent allocation arena
+## SH15 gfx1151 private-c1 persistent allocation arena — closed
 
 - Added 2026-08-06 as default-off
   `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1` after SH15-M1 measured a
   2-MiB HIP commit mechanism and exact metadata-derived plans reproduced all
   **732 weight + 189 state/scratch** requests at 512/4K/32K/64K.
-- The screen is restricted by the gfx1151 package capability to an owned
+- The screen was restricted by the gfx1151 package capability to an owned
   private-c1 runner. Shared runners, c>N, unsupported resident layouts, and
-  either owner-allocation denial retain dedicated allocations.
-- If full-state or <=1% wall gates fail, remove the environment switch,
-  capability, arena routing, and planning code while retaining the generic
-  `DeviceMemoryArena` primitive only if another validated owner uses it. If the
-  canonical four-depth gate passes, promote the package default, retain an
-  explicit opt-out only through the cumulative fork-parity gate, then remove
-  the env branch and obsolete dedicated private-c1 construction path.
+  either owner-allocation denial retained dedicated allocations.
+- **Closed 2026-08-06:** exact state/lifecycle and measured **236/292-MiB**
+  whole-GTT savings at 512/4K did not pass the wall contract. Prefill regressed
+  **1.608%/1.809%**, beyond the <=1% loss limit. Removed the environment switch,
+  package capability, generic arena primitive, weight/state planners, allocator
+  routing, ownership telemetry, and candidate tests. SH14 production files are
+  byte-identical to their pre-screen parent. Do not revive unchanged packing or
+  stack compact Q4 onto this rejected owner.
 
 ## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 

@@ -528,7 +528,6 @@ def _run_gguf_sweep(
     load_seconds = time.perf_counter() - load_start
     host_token_embedding_enabled = bool(getattr(session, "host_token_embedding_enabled", False))
     host_token_embedding_reason = getattr(session, "host_token_embedding_reason", None)
-    allocation_arena = session.allocation_arena_audit()
     persistent_memory["after_load"] = _gguf_memory_snapshot("after_load", runtime, session)
     runs_by_workload: dict[str, list[dict[str, Any]]] = {}
     try:
@@ -621,7 +620,6 @@ def _run_gguf_sweep(
             "prefill_kernel_selectors": dict(args.prefill_kernel_selectors),
             "host_token_embedding_enabled": host_token_embedding_enabled,
             "host_token_embedding_reason": host_token_embedding_reason,
-            "allocation_arena": allocation_arena,
         },
     )
 

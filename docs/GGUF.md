@@ -2650,6 +2650,24 @@ without fresh exact-state, <=1% wall, memory, trace, denial/fallback, and
 lifecycle gates. Evidence:
 [`SH15-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json).
 
+SH15-M2 confirms the commit-granularity mechanism but rejects the arena on its
+frozen wall gate. The default-off gfx1151 private-c1 implementation uses exactly
+two ordinary owners: **732 weight views -> 21,919,145,984 bytes** and **189
+initial state/scratch views -> 164,478,976 / 577,441,792 bytes** at 512/4K. Its
+four-transition hidden/Conv/GDN/KV state oracle is byte-exact and both measured
+processes return tracked and whole-GTT ownership to baseline.
+
+Actual 10-ms whole-GTT falls **21.000130 -> 20.769661 GiB (-236 MiB)** at 512
+and **21.499428 -> 21.214272 GiB (-292 MiB)** at 4K. The first row beats fork
+F16 by **62.473 MiB**; 4K remains **54.820 MiB** high. This memory result is not
+retained because canonical prefill falls **1369.489 -> 1347.470 tok/s
+(-1.608%)** and **1430.215 -> 1404.341 (-1.809%)**, beyond the <=1% loss limit.
+Decode improves **1.373%/1.648%** but cannot waive prefill. Stop before
+32K/64K, the full category oracle, or the conditional compact-Q4 stack. Remove
+the arena flag/capability/planners/telemetry/tests and restore SH14 production
+allocation paths byte-for-byte. Evidence:
+[`SH15-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

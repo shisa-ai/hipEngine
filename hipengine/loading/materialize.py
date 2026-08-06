@@ -11,14 +11,7 @@ from safetensors import safe_open
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
-from hipengine.core.memory import (
-    DeviceBuffer,
-    DeviceMemoryArena,
-    copy_host_to_device,
-    free,
-    host_array_ptr,
-    malloc,
-)
+from hipengine.core.memory import DeviceBuffer, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.loading.safetensors import TensorInfo, WeightIndex, read_tensor_storage_bytes
 
@@ -161,7 +154,6 @@ def load_host_array_to_device(
     *,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
-    allocator: DeviceMemoryArena | None = None,
 ) -> DeviceTensorAllocation:
     """Materialize an already prepared contiguous host array to device memory."""
 
@@ -183,7 +175,6 @@ def load_host_array_to_device(
         source_dtype=safetensors_dtype,
         device=device,
         runtime=runtime,
-        allocator=allocator,
     )
 
 
@@ -230,7 +221,6 @@ def load_host_array_to_device_as_dtype(
     source_dtype: str | None = None,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
-    allocator: DeviceMemoryArena | None = None,
 ) -> DeviceTensorAllocation:
     """Materialize a host array while assigning an explicit runtime dtype.
 
@@ -256,31 +246,18 @@ def load_host_array_to_device_as_dtype(
             f"host array byte size {nbytes} does not match dtype {parsed.value!r} and shape {shape}: "
             f"expected {expected_nbytes}"
         )
-    buffer = (
-        malloc(nbytes, runtime=runtime)
-        if allocator is None
-        else allocator.allocate(nbytes)
-    )
+    buffer = malloc(nbytes, runtime=runtime)
     try:
         copy_host_to_device(buffer, host_array_ptr(array), nbytes, runtime=runtime)
     except Exception:
-        if allocator is None:
-            free(buffer, runtime=runtime)
-        else:
-            allocator.release(buffer)
+        free(buffer, runtime=runtime)
         raise
     safetensors_dtype = source_dtype or _DTYPE_TO_SAFETENSORS.get(parsed)
     if safetensors_dtype is None:
         raise ValueError(f"dtype {parsed.value!r} cannot be represented as safetensors metadata")
     source = TensorInfo(name=name, shard_path=index_virtual_path(name), dtype=safetensors_dtype, shape=shape)
     tensor = Tensor.from_handle(buffer.ptr, shape, parsed, device or Device("hip", 0))
-    return DeviceTensorAllocation(
-        name=name,
-        source=source,
-        buffer=buffer,
-        tensor=tensor,
-        owns_buffer=allocator is None,
-    )
+    return DeviceTensorAllocation(name=name, source=source, buffer=buffer, tensor=tensor)
 
 
 def float_array_to_bf16_bits(array: object):

@@ -205963,3 +205963,43 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   the six changed Python modules compile. The optional `ruff` executable is not
   installed in this environment, so no lint result is claimed. Continue to
   canonical wall/GTT and full 18-prompt exact gates before retention.
+
+## 2026-08-06 — Reject SH15-M2 private-c1 session arena on wall gate
+
+- Freeze the default-off implementation as clean commit `d4d36e675` after 30
+  focused tests, six-module compile, real 512/tg1 two-owner lifecycle smoke, and
+  the byte-exact four-transition eager hidden/Conv/GDN/KV oracle. The clean
+  candidate uses exactly **732 weight + 189 state/scratch logical views** behind
+  ordinary owners of **21,919,145,984 + 164,478,976 / 577,441,792 bytes** at
+  512/4K. Harness `/tmp/run_sh15_m2_matrix.py` SHA-256 is
+  `800fda15...b553`.
+- Run independent right-sized package-default one-queue 512/4K processes with
+  `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1`, one full warmup, three measured
+  pp/tg128 eager repetitions, cached builds, and simultaneous 10-ms whole-GTT
+  sampling. All six final IDs are 9707; both tracked and whole-GTT ownership
+  return to baseline. Raw hashes are `a9bd9419...0216` and
+  `9275d6d3...f1ab`; partial-matrix hash is `1aef30ff...59c34`.
+- The allocator mechanism is real. At 512, phase-sampled HIP used and whole-GTT
+  both fall exactly **236 MiB** to **20.752251/20.769661 GiB**, putting
+  hipEngine **62.473 MiB below** pinned fork F16 whole-GTT. At 4K they fall
+  exactly **292 MiB** to **21.196861/21.214272 GiB**, still **54.820 MiB
+  above** fork F16. Physical owner padding raises tracked peaks only
+  **0.571/0.562 MiB**.
+- Reject retention because canonical prefill regresses
+  **1369.489 -> 1347.470 tok/s (-1.608%)** at 512 and
+  **1430.215 -> 1404.341 (-1.809%)** at 4K, failing the declared <=1% loss
+  guard twice. Decode improves **54.330 -> 55.076 (+1.373%)** and
+  **54.798 -> 55.700 (+1.648%)**, but cannot waive prefill. Stop without a
+  favorable rerun before 32K/64K, the expensive 18-prompt continuation, or the
+  conditional 80-MiB compact-Q4 stack.
+- Remove the environment switch, gfx1151 capability, generic arena primitive,
+  materializer/session planners, allocator routing, benchmark telemetry, and
+  candidate tests. The reverted runtime/test files are byte-identical to
+  `d4d36e675^` (the SH15-M1 production parent). Publish the no-claim rejection
+  artifact
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json`
+  (SHA-256 `206205ac...0f36`). Focused post-removal validation passes **19
+  tests** plus six-module compile, and production contains no remaining arena
+  flag/planner symbols. SH15-M2 is closed; no packing was retained, so
+  the conditional post-packing cumulative gate is not applicable. The
+  beat-fork objective remains unmet.

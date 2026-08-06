@@ -17,9 +17,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipError, HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
-    DeviceArenaPlanner,
     DeviceBuffer,
-    DeviceMemoryArena,
     copy_device_to_host,
     copy_host_to_device,
     free,
@@ -1919,7 +1917,6 @@ class Qwen35GGUFFullStackRunner:
     resident_weights: Qwen35GGUFResidentWeights | None = field(default=None, repr=False)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
-    use_weight_arena: bool = False
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
@@ -1954,8 +1951,6 @@ class Qwen35GGUFFullStackRunner:
             }
             if placement == "host":
                 materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
-            if self.use_weight_arena:
-                materialize_kwargs["use_weight_arena"] = True
             self.weights = materialize_qwen35_gguf_weights(
                 self.model_path,
                 **materialize_kwargs,
@@ -2017,17 +2012,13 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime or self.runtime,
                 backend=self.backend,
             )
-            resident = self.weights
-            root_weights = dict(resident.root_weights)
+            root_weights = dict(self.weights.root_weights)
             root_weights["token_embedding"] = materialized
             self.weights = Qwen35GGUFResidentWeights(
-                config=resident.config,
+                config=self.weights.config,
                 root_weights=MappingProxyType(root_weights),
-                layers=resident.layers,
-                backend=resident.backend,
-                allocation_arena=resident.allocation_arena,
-                allocation_mode=resident.allocation_mode,
-                allocation_arena_reason=resident.allocation_arena_reason,
+                layers=self.weights.layers,
+                backend=self.weights.backend,
             )
             self.token_embedding_placement = "device"
             return materialized
@@ -7947,7 +7938,6 @@ _GGUF_INT8_KV_BLOCK16_ENV = "HIPENGINE_GGUF_INT8_KV_BLOCK16"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
-_GGUF_PRIVATE_C1_SESSION_ARENA_ENV = "HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA"
 _GGUF_IQ_GROUPED_PREFILL_ENV = "HIPENGINE_GGUF_IQ_GROUPED_PREFILL"
 _GGUF_MOE_TAIL_NEXT_RMS_ENV = "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
@@ -8186,7 +8176,6 @@ def _try_allocate_gguf_aotriton_head_major_kv_scratch(
     capacity_tokens: int,
     kv_width: int,
     runtime: HipRuntime,
-    allocator: DeviceArenaPlanner | DeviceMemoryArena | None = None,
 ) -> tuple[DeviceBuffer, DeviceBuffer] | None:
     """Best-effort tracked allocation for one cross-layer BF16 K/V pair.
 
@@ -8216,21 +8205,13 @@ def _try_allocate_gguf_aotriton_head_major_kv_scratch(
     )
     if max_bytes <= 0 or total_bytes > max_bytes:
         return None
-    allocate = (
-        (lambda nbytes: malloc(nbytes, runtime=runtime))
-        if allocator is None
-        else allocator.allocate
-    )
     key_buffer: DeviceBuffer | None = None
     try:
-        key_buffer = allocate(per_buffer_bytes)
-        value_buffer = allocate(per_buffer_bytes)
+        key_buffer = malloc(per_buffer_bytes, runtime=runtime)
+        value_buffer = malloc(per_buffer_bytes, runtime=runtime)
     except (HipError, MemoryError):
         if key_buffer is not None:
-            if allocator is None:
-                free(key_buffer, runtime=runtime)
-            else:
-                allocator.release(key_buffer)
+            free(key_buffer, runtime=runtime)
         return None
     return key_buffer, value_buffer
 
@@ -8292,47 +8273,6 @@ def _resolve_gguf_token_embedding_placement(
     ):
         return "host", "gfx1151_private_c1_auto"
     return "device", "backend_device_fallback"
-
-
-def _resolve_gguf_private_c1_session_arena(
-    *,
-    backend: str,
-    max_batch_size: int,
-    has_shared_runner: bool,
-    requested: bool | None = None,
-) -> tuple[bool, str]:
-    """Admit the candidate only for its allocator-owned private-c1 scope."""
-
-    enabled = (
-        _env_flag(_GGUF_PRIVATE_C1_SESSION_ARENA_ENV, False)
-        if requested is None
-        else bool(requested)
-    )
-    if not enabled:
-        return False, "disabled"
-    if int(max_batch_size) != 1:
-        return False, "multi_row_fallback"
-    if has_shared_runner:
-        return False, "shared_runner_fallback"
-    if not bool(
-        backend_package_capability(
-            backend,
-            "GGUF_PRIVATE_C1_SESSION_ARENA",
-            False,
-        )
-    ):
-        return False, "backend_capability_fallback"
-    return True, "private_c1_candidate"
-
-
-class _DeviceArenaPlanRuntime:
-    """No-op copy target used only to replay deterministic allocation plans."""
-
-    def memcpy(self, *args, **kwargs) -> None:
-        del args, kwargs
-
-    def memset(self, *args, **kwargs) -> None:
-        del args, kwargs
 
 
 def _gguf_host_token_embedding_requested() -> bool:
@@ -10222,7 +10162,6 @@ class Qwen35GGUFResidentSession:
     kv_scale_granularity: str = "per_token_head"
     defer_kv_allocation: bool = False
     token_embedding_placement: str = "auto"
-    use_session_arena: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _target_scratch_owner: object | None = field(default=None, init=False)
@@ -10315,13 +10254,10 @@ class Qwen35GGUFResidentSession:
     _host_token_embedding_cache: dict[int, np.ndarray] = field(default_factory=dict, init=False)
     host_token_embedding_enabled: bool = field(default=False, init=False)
     host_token_embedding_reason: str | None = field(default=None, init=False)
-    session_arena_enabled: bool = field(default=False, init=False)
-    session_arena_reason: str = field(default="disabled", init=False)
     _owns_runner: bool = field(default=True, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
-    _session_arena: DeviceMemoryArena | None = field(default=None, init=False, repr=False)
     _position: int = field(default=0, init=False)
     _last_target_hidden_ptr: int = field(default=0, init=False)
     _reset_current_slot_only: bool = field(default=False, init=False)
@@ -10371,14 +10307,6 @@ class Qwen35GGUFResidentSession:
             has_shared_runner=self.shared_runner is not None,
             requested=self.token_embedding_placement,
         )
-        self.session_arena_enabled, self.session_arena_reason = (
-            _resolve_gguf_private_c1_session_arena(
-                backend=resolved_backend,
-                max_batch_size=self.max_batch_size,
-                has_shared_runner=self.shared_runner is not None,
-                requested=self.use_session_arena,
-            )
-        )
         if self.shared_runner is None:
             self.runner = Qwen35GGUFFullStackRunner(
                 self.model_path,
@@ -10387,7 +10315,6 @@ class Qwen35GGUFResidentSession:
                 require_cached_build=self.require_cached_build,
                 backend=resolved_backend,
                 token_embedding_placement=embedding_placement,
-                use_weight_arena=self.session_arena_enabled,
             )
             self._owns_runner = True
         else:
@@ -10522,30 +10449,6 @@ class Qwen35GGUFResidentSession:
                     layer_id: self._load_expert_sidecar_host_layer(layer_id)
                     for layer_id in range(self.runner.weights.config.block_count)
                 }
-        total_memory_bytes = 0
-        try:
-            _free_bytes, total_memory_bytes = runtime.mem_get_info()
-        except Exception:
-            total_memory_bytes = 0
-        self.prefill_config, self.prefill_chunk_tuning = resolve_prefill_config_for_sequence(
-            self.prefill_config or PrefillConfig(),
-            max_sequence_length=int(rounded_positions),
-            total_memory_bytes=int(total_memory_bytes),
-        )
-        session_arena_plan: DeviceArenaPlanner | None = None
-        if self.session_arena_enabled:
-            try:
-                session_arena_plan = self._plan_initial_session_arena()
-                self._session_arena = DeviceMemoryArena.create(
-                    session_arena_plan.capacity_bytes,
-                    runtime=runtime,
-                    alignment=session_arena_plan.alignment,
-                )
-                self.session_arena_reason = "packed_initial_state"
-            except (HipError, MemoryError, RuntimeError, ValueError) as exc:
-                self._session_arena = None
-                self.session_arena_reason = f"state_arena_fallback:{exc}"
-        session_allocator = self._session_arena
         self._target_scratch_owner = _FullStackScratch.allocate(
             self.runner,
             runtime=runtime,
@@ -10559,7 +10462,6 @@ class Qwen35GGUFResidentSession:
             int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
             int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
             allocate_kv_cache=not bool(self.defer_kv_allocation),
-            allocator=session_allocator,
         )
         self.scratch = self._target_scratch_owner.for_slot(0)
         self._target_layout = Qwen35GGUFResidentTargetLayout(
@@ -10570,26 +10472,30 @@ class Qwen35GGUFResidentSession:
             block_size=int(self.scratch.block_size),
         )
         self._device_kv_layout = _qwen35_gguf_session_kv_chunk_layout(self)
-        def session_buf(nbytes: int) -> DeviceBuffer:
-            return _allocate_with_arena(
-                nbytes,
-                runtime=runtime,
-                allocator=session_allocator,
-            )
-
+        total_memory_bytes = 0
+        try:
+            _free_bytes, total_memory_bytes = runtime.mem_get_info()
+        except Exception:
+            total_memory_bytes = 0
+        self.prefill_config, self.prefill_chunk_tuning = resolve_prefill_config_for_sequence(
+            self.prefill_config or PrefillConfig(),
+            max_sequence_length=int(self.scratch.max_positions),
+            total_memory_bytes=int(total_memory_bytes),
+        )
         self._token_host = np.empty((self.max_batch_size,), dtype=np.int64)
-        self._token_buf = session_buf(self._token_host.nbytes)
+        self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
-        self._hidden_a = session_buf(self.max_batch_size * hidden_bytes)
-        self._hidden_b = session_buf(self.max_batch_size * hidden_bytes)
+        self._hidden_a = malloc(self.max_batch_size * hidden_bytes, runtime=runtime)
+        self._hidden_b = malloc(self.max_batch_size * hidden_bytes, runtime=runtime)
         self._logits_host = np.empty((1, self.runner.vocab_size), dtype=np.float32)
-        self._logits_buf = session_buf(
+        self._logits_buf = malloc(
             self.max_batch_size * self.runner.vocab_size * DType.FP32.itemsize,
+            runtime=runtime,
         )
         native_cu = np.arange(self.max_batch_size + 1, dtype=np.int32)
         native_state_indices = np.arange(self.max_batch_size, dtype=np.int64)
-        self._native_cu_seqlens_buf = session_buf(native_cu.nbytes)
-        self._native_state_indices_buf = session_buf(native_state_indices.nbytes)
+        self._native_cu_seqlens_buf = malloc(native_cu.nbytes, runtime=runtime)
+        self._native_state_indices_buf = malloc(native_state_indices.nbytes, runtime=runtime)
         copy_host_to_device(
             self._native_cu_seqlens_buf,
             host_array_ptr(native_cu),
@@ -10605,20 +10511,22 @@ class Qwen35GGUFResidentSession:
         self._native_token_ids_host = np.empty((self.max_batch_size,), dtype=np.int32)
         self._lm_head_threads = 128
         self._lm_head_stage1_blocks = lm_head_argmax_stage1_blocks(self.runner.vocab_size, threads=self._lm_head_threads)
-        self._lm_block_values = session_buf(
+        self._lm_block_values = malloc(
             self.max_batch_size * self._lm_head_stage1_blocks * DType.FP32.itemsize,
+            runtime=runtime,
         )
-        self._lm_block_indices = session_buf(
+        self._lm_block_indices = malloc(
             self.max_batch_size * self._lm_head_stage1_blocks * DType.INT64.itemsize,
+            runtime=runtime,
         )
-        self._lm_out_index = session_buf(self.max_batch_size * DType.INT64.itemsize)
-        self._lm_out_value = session_buf(self.max_batch_size * DType.FP32.itemsize)
+        self._lm_out_index = malloc(self.max_batch_size * DType.INT64.itemsize, runtime=runtime)
+        self._lm_out_value = malloc(self.max_batch_size * DType.FP32.itemsize, runtime=runtime)
         prefill_capacity = int(self.scratch.max_positions)
         prefill_rows = self._prefill_scratch_rows(prefill_capacity)
         alloc_capacity = prefill_capacity if self.use_expert_sidecar else prefill_rows
-        self._prefill_token_buf = session_buf(alloc_capacity * DType.INT64.itemsize)
-        self._prefill_hidden_a = session_buf(alloc_capacity * hidden_bytes)
-        self._prefill_hidden_b = session_buf(alloc_capacity * hidden_bytes)
+        self._prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
+        self._prefill_hidden_a = malloc(alloc_capacity * hidden_bytes, runtime=runtime)
+        self._prefill_hidden_b = malloc(alloc_capacity * hidden_bytes, runtime=runtime)
         self._bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
             self.runner,
             rows=prefill_rows,
@@ -10626,14 +10534,12 @@ class Qwen35GGUFResidentSession:
             allocate_kv_cache=False,
             runtime=runtime,
             runtime_state_library=self._runtime_state_library,
-            allocator=session_allocator,
         )
         head_major_pair = _try_allocate_gguf_aotriton_head_major_kv_scratch(
             backend=self.backend,
             capacity_tokens=prefill_capacity,
             kv_width=self.runner.kv_width,
             runtime=runtime,
-            allocator=session_allocator,
         )
         if head_major_pair is not None:
             head_major_key_cache, head_major_value_cache = head_major_pair
@@ -10660,32 +10566,6 @@ class Qwen35GGUFResidentSession:
             self._prefill_hidden_b,
             *self._bulk_prefill_scratch.buffers,
         )
-        if session_allocator is not None and session_arena_plan is not None:
-            actual_signature = (
-                session_allocator.allocation_count,
-                session_allocator.requested_bytes,
-                session_allocator.capacity_bytes,
-            )
-            planned_signature = (
-                session_arena_plan.allocation_count,
-                session_arena_plan.requested_bytes,
-                session_arena_plan.capacity_bytes,
-            )
-            if actual_signature != planned_signature:
-                session_allocator.close()
-                self._session_arena = None
-                if self._owns_runner and self.runner is not None:
-                    self.runner.close()
-                raise RuntimeError(
-                    "GGUF session arena allocation plan changed during construction: "
-                    f"actual={actual_signature} planned={planned_signature}"
-                )
-            self.session_arena_reason = (
-                "packed_initial_state:"
-                f"{session_allocator.allocation_count}:"
-                f"{session_allocator.requested_bytes}:"
-                f"{session_allocator.capacity_bytes}"
-            )
         # Lazily-created per-layer MoE FFN graph cache (rows==1 resident decode),
         # gated by HIPENGINE_GGUF_MOE_GRAPH. None until first graphed decode.
         self._moe_graph: MoeGraphCache | None = None
@@ -10704,24 +10584,6 @@ class Qwen35GGUFResidentSession:
         """Next token position that will be consumed by :meth:`step`."""
 
         return int(self._position)
-
-    def allocation_arena_audit(self) -> dict[str, object]:
-        weights = None if self.runner is None else self.runner.weights
-        weight_arena = None if weights is None else weights.allocation_arena
-        state_arena = self._session_arena
-        return {
-            "requested": bool(self.session_arena_enabled),
-            "reason": str(self.session_arena_reason),
-            "weight_mode": None if weights is None else str(weights.allocation_mode),
-            "weight_reason": None if weights is None else weights.allocation_arena_reason,
-            "weight_owner_bytes": 0 if weight_arena is None else int(weight_arena.capacity_bytes),
-            "weight_requested_bytes": 0 if weight_arena is None else int(weight_arena.requested_bytes),
-            "weight_allocation_count": 0 if weight_arena is None else int(weight_arena.allocation_count),
-            "state_mode": "dedicated" if state_arena is None else "packed_arena",
-            "state_owner_bytes": 0 if state_arena is None else int(state_arena.capacity_bytes),
-            "state_requested_bytes": 0 if state_arena is None else int(state_arena.requested_bytes),
-            "state_allocation_count": 0 if state_arena is None else int(state_arena.allocation_count),
-        }
 
     @property
     def device_kv_allocation(self) -> DeviceKVPoolAllocation | None:
@@ -12179,71 +12041,6 @@ class Qwen35GGUFResidentSession:
         ):
             return None
         return self._ensure_prefill_aotriton_bridge()
-
-    def _plan_initial_session_arena(self) -> DeviceArenaPlanner:
-        """Replay deterministic startup allocations without touching HIP memory."""
-
-        if self.runner is None or self.runner.weights is None:
-            raise RuntimeError("GGUF session arena planning requires resident weights")
-        planner = DeviceArenaPlanner(alignment=4096)
-        planning_runtime = _DeviceArenaPlanRuntime()
-        target = _FullStackScratch.allocate(
-            self.runner,
-            runtime=planning_runtime,  # type: ignore[arg-type]
-            max_sequence_length=self.max_sequence_length,
-            max_batch_size=self.max_batch_size,
-            kv_storage_dtype=self.kv_storage_dtype,
-            kv_storage_layout=self.kv_storage_layout,
-            kv_scale_dtype=self.kv_scale_dtype,
-            kv_scale_granularity=self.kv_scale_granularity,
-            int8_kv_value_bf16=self.int8_kv_value_bf16,
-            int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
-            int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
-            allocate_kv_cache=not bool(self.defer_kv_allocation),
-            allocator=planner,
-        )
-        prefill_capacity = int(target.max_positions)
-        prefill_rows = self._prefill_scratch_rows(prefill_capacity)
-        alloc_capacity = prefill_capacity if self.use_expert_sidecar else prefill_rows
-        hidden_bytes = int(self.runner.hidden_size) * DType.BF16.itemsize
-        stage1_blocks = lm_head_argmax_stage1_blocks(
-            self.runner.vocab_size,
-            threads=128,
-        )
-        direct_sizes = (
-            self.max_batch_size * DType.INT64.itemsize,
-            self.max_batch_size * hidden_bytes,
-            self.max_batch_size * hidden_bytes,
-            self.max_batch_size * self.runner.vocab_size * DType.FP32.itemsize,
-            (self.max_batch_size + 1) * DType.INT32.itemsize,
-            self.max_batch_size * DType.INT64.itemsize,
-            self.max_batch_size * stage1_blocks * DType.FP32.itemsize,
-            self.max_batch_size * stage1_blocks * DType.INT64.itemsize,
-            self.max_batch_size * DType.INT64.itemsize,
-            self.max_batch_size * DType.FP32.itemsize,
-            alloc_capacity * DType.INT64.itemsize,
-            alloc_capacity * hidden_bytes,
-            alloc_capacity * hidden_bytes,
-        )
-        for nbytes in direct_sizes:
-            planner.reserve(nbytes)
-        _GGUFFullAttentionPrefillScratch.allocate(
-            self.runner,
-            rows=prefill_rows,
-            capacity=prefill_capacity,
-            allocate_kv_cache=False,
-            runtime=planning_runtime,  # type: ignore[arg-type]
-            runtime_state_library=self._runtime_state_library,
-            allocator=planner,
-        )
-        _try_allocate_gguf_aotriton_head_major_kv_scratch(
-            backend=self.backend,
-            capacity_tokens=prefill_capacity,
-            kv_width=self.runner.kv_width,
-            runtime=planning_runtime,  # type: ignore[arg-type]
-            allocator=planner,
-        )
-        return planner
 
     def _prefill_scratch_rows(self, capacity: int) -> int:
         capacity = int(capacity)
@@ -18973,14 +18770,6 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
-        session_arena = self._session_arena
-
-        def release_initial(buffer: DeviceBuffer) -> None:
-            if session_arena is not None and session_arena.owns(buffer):
-                session_arena.release(buffer)
-            else:
-                free(buffer, runtime=runtime)
-
         recorder = self._prefill_flight_recorder
         if recorder is not None:
             # Never unmap the GPU-visible cursor until all queued markers retire.
@@ -19046,7 +18835,7 @@ class Qwen35GGUFResidentSession:
         self._free_packed_verify_workspace(runtime=runtime)
         for buffer in reversed(self._buffers):
             if buffer is not None:
-                release_initial(buffer)
+                free(buffer, runtime=runtime)
         self._buffers = ()
         for buffer in reversed(self._linear_state_snapshot_backups):
             if buffer is not None:
@@ -19054,13 +18843,10 @@ class Qwen35GGUFResidentSession:
         self._linear_state_snapshot_backups = ()
         if self._target_scratch_owner is not None:
             for buffer in reversed(self._target_scratch_owner.buffers):
-                release_initial(buffer)
+                free(buffer, runtime=runtime)
             self._target_scratch_owner = None
             self.scratch = None
         self._target_layout = None
-        if session_arena is not None:
-            session_arena.close()
-            self._session_arena = None
         if self.runner is not None and self._owns_runner:
             self.runner.close()
         self.runner = None
@@ -19232,24 +19018,10 @@ def _align_prefill_scratch(value: int, alignment: int = 256) -> int:
     return (int(value) + alignment - 1) // alignment * alignment
 
 
-def _allocate_with_arena(
-    nbytes: int,
-    *,
-    runtime: HipRuntime,
-    allocator: DeviceArenaPlanner | DeviceMemoryArena | None,
-) -> DeviceBuffer:
-    return (
-        malloc(nbytes, runtime=runtime)
-        if allocator is None
-        else allocator.allocate(nbytes)
-    )
-
-
 def _allocate_prefill_scratch_liveness_arena(
     sizes: Mapping[str, int],
     *,
     runtime: HipRuntime,
-    allocator: DeviceArenaPlanner | DeviceMemoryArena | None = None,
 ) -> tuple[DeviceBuffer, dict[str, DeviceBuffer], Mapping[str, tuple[int, int]]]:
     missing = sorted(set(sizes) - set(_GGUF_PREFILL_SCRATCH_LIFETIMES))
     if missing:
@@ -19283,11 +19055,7 @@ def _allocate_prefill_scratch_liveness_arena(
         else:  # pragma: no cover - candidate set always includes the current end
             raise RuntimeError(f"failed to place bulk-prefill liveness field {name}")
     arena_nbytes = _align_prefill_scratch(max(offset + size for offset, size in offsets.values()))
-    arena = _allocate_with_arena(
-        arena_nbytes,
-        runtime=runtime,
-        allocator=allocator,
-    )
+    arena = malloc(arena_nbytes, runtime=runtime)
     views = {
         name: DeviceBuffer(ptr=arena.ptr + offset, nbytes=size)
         for name, (offset, size) in offsets.items()
@@ -19299,7 +19067,6 @@ def _allocate_prefill_scratch_liveness_owner_slots(
     sizes: Mapping[str, int],
     *,
     runtime: HipRuntime,
-    allocator: DeviceArenaPlanner | DeviceMemoryArena | None = None,
 ) -> tuple[
     tuple[DeviceBuffer, ...],
     dict[str, DeviceBuffer],
@@ -19332,14 +19099,7 @@ def _allocate_prefill_scratch_liveness_owner_slots(
             slot_members.append([name])
             slot_sizes.append(size)
 
-    owners = tuple(
-        _allocate_with_arena(
-            _align_prefill_scratch(size),
-            runtime=runtime,
-            allocator=allocator,
-        )
-        for size in slot_sizes
-    )
+    owners = tuple(malloc(_align_prefill_scratch(size), runtime=runtime) for size in slot_sizes)
     views: dict[str, DeviceBuffer] = {}
     virtual_offsets: dict[str, tuple[int, int]] = {}
     field_groups: dict[str, str] = {}
@@ -19365,7 +19125,6 @@ def _allocate_prefill_scratch_liveness_arenas(
     *,
     grouping: str,
     runtime: HipRuntime,
-    allocator: DeviceArenaPlanner | DeviceMemoryArena | None = None,
 ) -> tuple[
     tuple[DeviceBuffer, ...],
     dict[str, DeviceBuffer],
@@ -19376,14 +19135,12 @@ def _allocate_prefill_scratch_liveness_arenas(
         return _allocate_prefill_scratch_liveness_owner_slots(
             sizes,
             runtime=runtime,
-            allocator=allocator,
         )
     if grouping != "single":  # pragma: no cover - validated by capability lookup
         raise ValueError(f"unsupported prefill scratch arena grouping {grouping!r}")
     arena, views, offsets = _allocate_prefill_scratch_liveness_arena(
         sizes,
         runtime=runtime,
-        allocator=allocator,
     )
     return (
         (arena,),
@@ -19591,7 +19348,6 @@ class _GGUFFullAttentionPrefillScratch:
         segments: int = 1,
         runtime: HipRuntime,
         runtime_state_library: object | None = None,
-        allocator: DeviceArenaPlanner | DeviceMemoryArena | None = None,
     ):
         if rows <= 0:
             raise ValueError("rows must be positive")
@@ -19609,11 +19365,7 @@ class _GGUFFullAttentionPrefillScratch:
         max_positions = blocks * block_size
 
         def buf(nbytes: int):
-            return _allocate_with_arena(
-                nbytes,
-                runtime=runtime,
-                allocator=allocator,
-            )
+            return malloc(nbytes, runtime=runtime)
 
         hidden_bytes = rows * runner.hidden_size * 2
         hidden_f32_bytes = rows * runner.hidden_size * DType.FP32.itemsize
@@ -19762,7 +19514,6 @@ class _GGUFFullAttentionPrefillScratch:
                     active_sizes,
                     grouping=_gguf_prefill_scratch_arena_grouping(runner.backend),
                     runtime=runtime,
-                    allocator=allocator,
                 )
             )
             fields = {
@@ -20194,14 +19945,9 @@ class _FullStackScratch:
         int8_bf16_prefix_full_attention_layers: int = 0,
         int8_bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
         allocate_kv_cache: bool = True,
-        allocator: DeviceArenaPlanner | DeviceMemoryArena | None = None,
     ):
         def buf(nbytes: int):
-            return _allocate_with_arena(
-                nbytes,
-                runtime=runtime,
-                allocator=allocator,
-            )
+            return malloc(nbytes, runtime=runtime)
 
         assert runner.weights is not None
         cfg = runner.weights.config
