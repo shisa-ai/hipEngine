@@ -10,7 +10,8 @@ import ctypes
 from dataclasses import dataclass
 from threading import Lock
 
-from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
+from hipengine.core.hip import get_hip_runtime
+from hipengine.core.runtime import DeviceRuntime, MemcpyKind
 
 
 @dataclass(frozen=True)
@@ -25,7 +26,7 @@ class DeviceBuffer:
             raise ValueError("buffer size must be non-negative")
 
 
-def malloc(nbytes: int, *, runtime: HipRuntime | None = None) -> DeviceBuffer:
+def malloc(nbytes: int, *, runtime: DeviceRuntime | None = None) -> DeviceBuffer:
     runtime = runtime or get_hip_runtime()
     ptr = runtime.malloc(nbytes)
     buffer = DeviceBuffer(ptr=ptr, nbytes=nbytes)
@@ -33,7 +34,7 @@ def malloc(nbytes: int, *, runtime: HipRuntime | None = None) -> DeviceBuffer:
     return buffer
 
 
-def free(buffer: DeviceBuffer, *, runtime: HipRuntime | None = None) -> None:
+def free(buffer: DeviceBuffer, *, runtime: DeviceRuntime | None = None) -> None:
     runtime = runtime or get_hip_runtime()
     runtime.free(buffer.ptr)
     _MEMORY_STATS.record_free(buffer)
@@ -44,12 +45,12 @@ def copy_host_to_device(
     host_ptr: int,
     nbytes: int | None = None,
     *,
-    runtime: HipRuntime | None = None,
+    runtime: DeviceRuntime | None = None,
 ) -> None:
     runtime = runtime or get_hip_runtime()
     count = buffer.nbytes if nbytes is None else nbytes
     _check_copy_size(count, buffer.nbytes)
-    runtime.memcpy(buffer.ptr, host_ptr, count, HipMemcpyKind.HOST_TO_DEVICE)
+    runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
 
 
 def copy_device_to_host(
@@ -57,12 +58,12 @@ def copy_device_to_host(
     buffer: DeviceBuffer,
     nbytes: int | None = None,
     *,
-    runtime: HipRuntime | None = None,
+    runtime: DeviceRuntime | None = None,
 ) -> None:
     runtime = runtime or get_hip_runtime()
     count = buffer.nbytes if nbytes is None else nbytes
     _check_copy_size(count, buffer.nbytes)
-    runtime.memcpy(host_ptr, buffer.ptr, count, HipMemcpyKind.DEVICE_TO_HOST)
+    runtime.memcpy(host_ptr, buffer.ptr, count, MemcpyKind.DEVICE_TO_HOST)
 
 
 def host_array_ptr(array: object) -> int:

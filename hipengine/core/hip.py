@@ -8,20 +8,16 @@ from __future__ import annotations
 
 import ctypes
 from dataclasses import dataclass
-from enum import IntEnum
 from typing import Final
+
+from hipengine.core.runtime import MemcpyKind
 
 HIP_SUCCESS: Final[int] = 0
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
 
 
-class HipMemcpyKind(IntEnum):
-    HOST_TO_HOST = 0
-    HOST_TO_DEVICE = 1
-    DEVICE_TO_HOST = 2
-    DEVICE_TO_DEVICE = 3
-    DEFAULT = 4
+HipMemcpyKind = MemcpyKind
 
 
 class HipError(RuntimeError):

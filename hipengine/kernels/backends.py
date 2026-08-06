@@ -1,9 +1,9 @@
 """Backend metadata, target-arch mapping, and public backend selection.
 
 Backend selection stays outside the engine hot path: model/runtime code receives a
-backend key (for example ``hip_gfx1151``), while this module records the native
-HIP offload architecture needed by the JIT build layer and maps ``backend="auto"``
-to a concrete backend at load/serve time.
+backend key (for example ``hip_gfx1151`` or ``cuda_sm120a``), while this module
+records the native HIP/CUDA architecture needed by the JIT build layer and maps
+``backend="auto"`` to a concrete backend at load/serve time.
 """
 
 from __future__ import annotations
@@ -30,6 +30,12 @@ HIP_BACKEND_TARGET_ARCH: dict[str, str] = {
 }
 HIP_TARGET_ARCH_BACKEND: dict[str, str] = {
     arch: backend for backend, arch in HIP_BACKEND_TARGET_ARCH.items()
+}
+CUDA_BACKEND_TARGET_ARCH: dict[str, str] = {
+    "cuda_sm120a": "sm_120a",
+}
+CUDA_TARGET_ARCH_BACKEND: dict[str, str] = {
+    arch: backend for backend, arch in CUDA_BACKEND_TARGET_ARCH.items()
 }
 # Process-start HIP runtime defaults are backend metadata, not dispatch logic.
 # ROCm's documented default is four hardware queues. Clean Laguna branch-
@@ -77,16 +83,33 @@ def hip_target_arch_for_backend(backend: str) -> str:
         raise ValueError(f"unsupported HIP backend {backend!r}; expected one of: {valid}") from exc
 
 
+def cuda_target_arch_for_backend(backend: str) -> str:
+    """Return the CUDA target arch for a supported CUDA backend key."""
+
+    try:
+        return CUDA_BACKEND_TARGET_ARCH[backend]
+    except KeyError as exc:
+        valid = ", ".join(sorted(CUDA_BACKEND_TARGET_ARCH))
+        raise ValueError(
+            f"unsupported CUDA backend {backend!r}; expected one of: {valid}"
+        ) from exc
+
+
 def load_backend_kernel_package(backend: str) -> ModuleType:
-    """Load and refresh one concrete HIP backend's kernel registrations.
+    """Load and refresh one concrete hardware backend's kernel registrations.
 
     Backend packages may expose a conventional ``register_backend_kernels``
-    hook.  Calling it with ``replace=False`` fills registrations that are
-    missing after test isolation or lazy family imports without overwriting a
-    caller-provided registry fixture.
+    hook. Calling it with ``replace=False`` fills registrations missing after
+    test isolation without overwriting a caller-provided registry fixture.
     """
 
-    hip_target_arch_for_backend(backend)
+    if backend in HIP_BACKEND_TARGET_ARCH:
+        hip_target_arch_for_backend(backend)
+    elif backend in CUDA_BACKEND_TARGET_ARCH:
+        cuda_target_arch_for_backend(backend)
+    else:
+        valid = ", ".join(sorted((*HIP_BACKEND_TARGET_ARCH, *CUDA_BACKEND_TARGET_ARCH)))
+        raise ValueError(f"unsupported hardware backend {backend!r}; expected one of: {valid}")
     module = import_module(f"hipengine.kernels.{backend}")
     registrar = getattr(module, "register_backend_kernels", None)
     if callable(registrar):
@@ -97,7 +120,9 @@ def load_backend_kernel_package(backend: str) -> ModuleType:
 def backend_package_capability(backend: str, name: str, default=None):
     """Read backend-package metadata without rerunning kernel registration."""
 
-    hip_target_arch_for_backend(backend)
+    if backend not in HIP_BACKEND_TARGET_ARCH and backend not in CUDA_BACKEND_TARGET_ARCH:
+        valid = ", ".join(sorted((*HIP_BACKEND_TARGET_ARCH, *CUDA_BACKEND_TARGET_ARCH)))
+        raise ValueError(f"unsupported hardware backend {backend!r}; expected one of: {valid}")
     module = import_module(f"hipengine.kernels.{backend}")
     return getattr(module, str(name), default)
 

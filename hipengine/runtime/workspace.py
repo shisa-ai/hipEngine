@@ -7,8 +7,8 @@ from typing import Sequence
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType, dtype_itemsize
-from hipengine.core.hip import HipRuntime
 from hipengine.core.memory import DeviceBuffer, free, malloc
+from hipengine.core.runtime import DeviceRuntime
 from hipengine.core.tensor import Tensor
 
 
@@ -18,7 +18,7 @@ class WorkspaceAllocation:
     buffer: DeviceBuffer
     tensor: Tensor
 
-    def free(self, *, runtime: HipRuntime | None = None) -> None:
+    def free(self, *, runtime: DeviceRuntime | None = None) -> None:
         free(self.buffer, runtime=runtime)
 
 
@@ -30,7 +30,12 @@ class RuntimeWorkspace:
     freed before allocating the replacement.
     """
 
-    def __init__(self, *, device: Device | None = None, runtime: HipRuntime | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        device: Device | None = None,
+        runtime: DeviceRuntime | None = None,
+    ) -> None:
         self.device = device or Device("hip", 0)
         self.runtime = runtime
         self._allocations: dict[str, WorkspaceAllocation] = {}
