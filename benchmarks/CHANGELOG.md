@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [SH2-D1 mixed-T16 composite closed; no production change] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / c1 top8 actual-weight 37-Q5/3-Q6 mix: exact down+tail improves **1580.242 -> 1500.048 us/token (1.053x, -0.080 ms)** but misses both frozen admission gates, while complete cooperative and lifecycle-correct standard-queue composites regress to **0.520x/0.739x**; standard named traces are scratch-free, the cooperative trace crashes in ROCr, and all transient surfaces are removed before SH2-C1; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`.
+
 - [retained/default SH2-M3 768-row scratch owner slots] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/128: extend the exact 21 independent owner slots to the short class, reducing physical scratch **355,182,664 -> 69,790,760 bytes**, tracked peak **21.479979 -> 21.214187 GiB (-0.265792)**, and whole-GTT **21.916004 -> 21.648426 (-0.267578)** while prefill/decode improve **1361.744/53.322 -> 1370.204/53.408 tok/s (+0.621%/+0.160%)** with byte-exact state and committed clean lifecycle; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json`.
 
 - [SH2-M2 code/library residency precondition closed; no implementation] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K: complete process-owned untracked GTT is bounded at **0.4186/0.5315 GiB** on device eager and **0.4784/0.5308 GiB** on the host stack; both 512 complete-set bounds miss the frozen **0.49-GiB-at-each-context** gate, so no phase-exclusive subset can qualify and no lazy loader/`dlclose` path is added; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json`.
