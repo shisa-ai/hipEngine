@@ -205583,3 +205583,71 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   order to `docs/GGUF.md`, `benchmarks/README.md`, and
   `benchmarks/CHANGELOG.md`; no metric is remeasured or promoted by this docs
   sync.
+
+## 2026-08-06 — SH10-A1 short-context c1 attention trace and RED
+
+- Confirm tracked production source is clean at `0bf635424`, ROCm loads, and the
+  active device is gfx1151. Kernel lineage remains blocked by the absent
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; this is not a green
+  verdict and no external source is copied.
+- Reuse the immutable cached SH6-C1 512 trace because SH7-SH9 and the audit docs
+  do not change this kernel. It contains **90** true private-c1 calls (10 full-
+  attention layers x warmup+8 tokens) to
+  `qwen35_paged_full_attn_decode_context_tensor_kernel`: median **150.042 us**,
+  sum **1.501 ms/token**, local256/grid16, **40 VGPR, 128 SGPR, LDS0,
+  scratch0**. CSV SHA-256 is `f2ddc3da...72f2`.
+- Before writing a new device body, screen the already-landed compact fixed256
+  batch leaf at `rows=1`. A 32-copy / 50,331,648-byte cycling screen over
+  actual 513/576/640 contexts is F32 byte-exact to production, within
+  **1.86e-8** of NumPy, wins all **63/63** pairs, and moves medians
+  **127.909 -> 81.848 us (1.563x)**,
+  **162.483 -> 98.894 (1.643x)**, and
+  **193.449 -> 117.334 (1.649x)**. Raw JSON SHA-256 is
+  `456b83fc...c091`.
+- A cached-only one-launch trace names production and candidate at identical
+  local256/grid16, **40 VGPR, 128 SGPR, LDS0, scratch0**; representative
+  durations are **120.947 -> 73.257 us** at context640. Trace SHA-256 is
+  `86aa32e4...a6bc`, and no compiler child appears.
+- Add RED routing contracts: gfx1151 context512 must resolve the existing
+  `context_batch` plugin while gfx1100 remains direct, the unfused gate remains,
+  and active context1024 under a raised split threshold must fall back to the
+  direct owner. RED fails only the new gfx1151 context512 assertion; the 1,024
+  fallback already passes. Implement only a package-scoped dispatch transfer,
+  not a new HIP kernel.
+- GREEN adds gfx1151 capability
+  `GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT=1023`. The runner resolves the existing
+  `paged_attn_decode/w4_paro/bf16_context_batch_c1_exact_spans` plugin once and
+  calls it with rows1 only through that cap. gfx1100, context1024+, default split
+  routing, INT8-without-mirror, and all unsupported paths keep their prior
+  owners; the separate BF16 gate remains unfused and unchanged.
+- Independent control/candidate state children at 512 have byte-identical
+  complete `contexts`: prefill logits (`cbf90a59...6ef34`), 40 layer outputs,
+  30 Conv/GDN pairs, 10 live BF16-KV pairs, four teacher-forced logits/IDs, and
+  final state. State hashes are control `a3cb5078...aa05`, candidate
+  `ab1c45bf...34fd`, comparison `c626e04f...aff8`.
+- The context1023 / 64-MiB cycling boundary leaf is also exact with NumPy max
+  abs **1.49e-8** and improves **305.624 -> 187.923 us (1.626x, 21/21
+  wins)**. Structural GREEN proves context1024 falls back direct when the split
+  threshold is raised, while the default threshold selects split at that point.
+  Boundary JSON SHA-256 is `b0eb95cf...f00e`.
+- One-queue independent one-warmup/three-measurement 512/128 processes move
+  control -> candidate decode **51.541 -> 53.591 tok/s (+3.978%, -0.7422
+  ms/token)**; every candidate sample exceeds every control sample. Prefill
+  **1365.551 -> 1357.196 tok/s (-0.612%)** stays inside the 1% guard. Tracked
+  peak is identical at **20.566421 GiB**, candidate whole-GTT reproduces the
+  unchanged control/SH9 **21.000130 GiB**, IDs are all 9707, and all eight
+  warmup/measured closes return tracked bytes to zero. A summary-only parser
+  accessed a nonexistent close key after the completed control process; repair
+  the parser and reuse that completed child rather than rerunning it. Wall
+  summary SHA-256 is `e0e34a47...8d01`.
+- The final cached full-process candidate trace contains **90** expected batch
+  calls and zero old context calls. Over the eight measured tokens it costs
+  **0.928096 ms/token** versus the immutable control kernel's **1.499680
+  ms/token**, saving **0.571584 ms/token** on device. Candidate resources stay
+  local256/grid16, **40 VGPR, 128 SGPR, LDS0, scratch0**, queue1/stream0. Kernel
+  CSV SHA-256 is `504c036d...f537`; no compiler child appears.
+- GREEN validation: changed dispatch file **10 passed**; gfx1151 backend plus
+  paged-attention registry/primitive bundle **32 passed**; KV dispatch **6
+  passed**; focused compileall passes. Retain the package-scoped transfer,
+  commit source, then run one clean
+  publication row before updating the artifact and rollups. C1 remains open.
