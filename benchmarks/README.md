@@ -4168,6 +4168,17 @@ scratch-free. Full Q4+Q5 compaction projects **+1.598%** decode, so all Q4
 selected tensors remain current T16. SH2-C2 follows; this partial memory win is
 not a campaign stop.
 
+The [SH2-C2 cumulative checkpoint](results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json)
+freshly measures committed `e39aba0e1` at every depth. 512/4K/32K/64K decode is
+**53.374/55.851/46.315/39.673 tok/s**, tracked peak is
+**21.070/21.454/22.100/22.839 GiB**, and whole-GTT is
+**21.504/22.003/22.656/23.394 GiB**. All IDs and lifecycle checks pass, and the
+compact Q5 owner reproduces its exact **0.144531-GiB** tracked reduction at all
+four depths. C1/C2/fork-F16 decode/fork-F16 whole-GTT nevertheless remain
+**0/4**. The mandatory next step is a fresh SH2-G pinned-fork rerun; if parity
+still misses, the frozen next owners are the complete Q8T16 shared-expert
+composite and runner-safe exact host embedding, not another compact-Q4 retry.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4214,6 +4225,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C2 cumulative re-attribution | 2026-08-06 | clean `e39aba0e1`; fresh four-depth one-warmup/three-run tg128 wall; 10-ms whole-GTT; cached role trace | **Diagnostic continue:** decode **53.374/55.851/46.315/39.673 tok/s**, whole-GTT **21.504/22.003/22.656/23.394 GiB**, exact IDs/lifecycle, and compact-Q5 saving reproduced; C1/C2/fork-F16 decode/fork-F16 whole-GTT all remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json). | No — milestone-selection evidence, not parity | Run mandatory fresh SH2-G pinned-fork recertification; on miss, continue to frozen SH3 shared-expert and host-embedding owners. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M4 compact selected Q5 T16 metadata | 2026-08-06 | parent `70b338a0e`; actual all-256-expert Q4/Q5 leaf; one-warmup/three-run 512/128 wall; 10-ms GTT; cached production trace; clean-parent vs candidate four-depth state | **Retained/default Q5 subset:** 37 Q5 tensors save **0.144531 GiB tracked / 0.144363 GiB whole-GTT**; prefill/decode change **-0.426%/-0.459%** and complete state is byte-exact. Full Q4+Q5 is rejected at **+1.598%** projected decode, so Q4 remains current T16. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json). | Yes — exact memory/non-regression/trace/state/lifecycle gates pass for Q5 | Run SH2-C2 cumulative re-attribution immediately; do not treat the partial owner as fork parity. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C1 cumulative re-attribution | 2026-08-06 | clean `b8989cbb4`; fresh 512/128 non-profiled+role trace+10-ms GTT; mechanically unchanged SH-G 4K+ rows; complete expert-T16 metadata census | **Diagnostic continue:** fresh 512 is **53.332 tok/s, 21.214/21.648 GiB tracked/GTT**; C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the exact **0.457031-GiB** compact Q4/Q5 T16 metadata owner; no layout exists yet. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json). | No — re-attribution and next-owner selection only | Execute SH2-M4 under exact/perf/trace/four-depth GTT gates, then rerun SH2-C2; do not proceed to SH2-G yet. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-D1 mixed-T16 selected-MoE composite | 2026-08-06 | source `995c4743e` plus transient exact cached gfx1151 kernels; all-256-expert actual weights; 37-Q5/3-Q6 aggregate; counterbalanced HIP events; cached named traces | **Closed/rejected; production unchanged:** down+tail is only **1.053x / 0.080 ms/token** aggregate; full cooperative/standard-queue composites are **0.520x/0.739x**. Lifecycle-correct standard kernels are exact and scratch-free, but miss both admission gates. All transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json). | No — exact candidates fail >=1.15x and >=0.5-ms/token admission | Do not route or revive these ownership schedules; proceed immediately to SH2-C1 cumulative re-attribution. |

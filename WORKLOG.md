@@ -204908,3 +204908,36 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`.
   Retain Q5 compact metadata as default, keep Q4 legacy T16 in production, and
   proceed immediately to SH2-C2 rather than stopping the campaign.
+
+## 2026-08-06 — SH2-C2 cumulative re-attribution requires SH2-G
+
+- Run the full four-depth SH-C0 wall/GTT/role protocol on clean committed
+  `e39aba0e1`, one independent right-sized process per depth, one discarded
+  complete run plus three 128-token measurements, 10-ms whole-GTT sampling, and
+  a separate cached-only 8-token kernel/HIP-API/ROCTX trace. Matrix SHA-256 is
+  `6d8809bc8ebb7f8ca65a4b5918d76056f803b435a8afd42fdeb252012f4c1e7c`.
+- Fresh 512/4K/32K/64K decode is
+  **53.3740827/55.8512342/46.3147855/39.6730649 tok/s**. Tracked peak is
+  **21.069656/21.454266/22.100490/22.839031 GiB** and whole-GTT is
+  **21.504063/22.003361/22.655777/23.394058 GiB**. Every baseline/profile token
+  is exact, tracked ownership returns to zero, and each trace has 628
+  dispatches/token.
+- Compact Q5 runs 37 times/token at **35.322/35.409/35.589/35.905 us/call**
+  with zero scratch. Its exact **155,189,248-byte / 0.14453125-GiB** tracked
+  saving reproduces at every depth. This is retained production evidence, not a
+  new speed claim.
+- The frozen SH-G fork comparator still yields **0/4 C1, 0/4 C2, 0/4 F16
+  decode, 0/4 F16 whole-GTT**, and also 0/4 Q8_0 decode/GTT. F16 decode time
+  gaps are **3.259/1.919/2.806/3.318 ms/token** and whole-GTT gaps are
+  **0.673/0.843/0.660/0.552 GiB**. The higher-level beat-fork objective remains
+  open; a fresh pinned-fork rerun is mandatory at SH2-G.
+- Freeze post-milestone owners rather than reopening closed ladders. Prospective
+  SH3-D1 is the complete Q8T16 shared-expert gate/up -> exact BF16 SiLU -> down
+  -> residual producer/consumer chain, owning **1.061-1.075 ms/token**, with a
+  RED CPU oracle and >=1.15x or >=0.5-ms projected admission gate. Prospective
+  SH3-M1 is a runner-safe exact **540,344,320-byte** host embedding policy that
+  preserves c>N, packed AR, MTP, graph, and device-pointer fallbacks.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`.
+  This checkpoint selects SH2-G; if SH2-G misses policy, extend the campaign to
+  the frozen SH3 owners rather than marking the thread complete.
