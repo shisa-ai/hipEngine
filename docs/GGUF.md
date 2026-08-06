@@ -3237,14 +3237,15 @@ materialization, not scratch/KV:
 | 5 | **Pack8 layout opt** | -2-3 GiB mem | Tradeoff | **Done** (2026-06-17). Avoided Pack8 expansion, saving ~1.15 GiB peak memory at the cost of a small prefill/decode throughput regression (114.60 -> 114.42 tok/s on 4K DC). |
 | 6 | **Drop T16 for Q8_0** | -0.5-1 GiB mem | Low | **Done** (2026-06-17). Saved ~0.55 GiB peak memory with negligible decode regression. |
 
-## gfx1151 4,096-row scratch owner slots (SH-M2, 2026-08-06)
+## gfx1151 scratch owner slots (SH-M2 / SH2-M3, 2026-08-06)
 
 The exact compact GDN prefill route no longer gives every logical temporary a
-separate physical allocation at the fixed 4,096-row class. A conservative
-linear/full-attention/common-stage interval map graph-colors disjoint lifetimes
-into 21 independently allocated owner slots. Overlapping lifetimes always have
-distinct owners. Rows below 4,096 and all diagnostic, unvalidated-route, and
-peer-backend paths retain dedicated allocation.
+separate physical allocation. A conservative linear/full-attention/common-stage
+interval map graph-colors disjoint lifetimes into 21 independently allocated
+owner slots. Overlapping lifetimes always have distinct owners. SH-M2 first
+admitted the fixed 4,096-row class; SH2-M3 extends the identical topology to the
+right-sized 768-row class. All diagnostic, unvalidated-route, capability-denied,
+and peer-backend paths retain dedicated allocation.
 
 This is deliberately not one contiguous arena. The single-arena and
 attention/common split-arena layouts saved memory but missed the 4K prefill
@@ -3254,6 +3255,15 @@ state is byte-identical, tracked close delta is zero, prefill/decode stay within
 1%, and simultaneous whole-GTT falls **1.4043 GiB** at every 4K+ row. The
 retained evidence and exact commands are in
 [`2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json).
+
+At 768 rows, the same 21-slot map reduces physical scratch
+**355,182,664 -> 69,790,760 bytes**. The D->L->L->D 512/128 screen moves
+prefill/decode **1361.744/53.322 -> 1370.204/53.408 tok/s**
+(**+0.621%/+0.160%**), tracked peak **21.479979 -> 21.214187 GiB**, and
+whole-GTT **21.916004 -> 21.648426 GiB**. Complete prefill plus four-transition
+state is byte exact; the committed checkpoint reproduces the owner bytes,
+tracked/whole-GTT peaks, and zero close delta. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json).
 
 ## gfx1151 page-internal BF16 KV decode screen (SH-A1, 2026-08-06)
 

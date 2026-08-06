@@ -204662,3 +204662,17 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `7bf72760e01143e41d18d96d0f4a83e230e3ba64d0e192d5c33e447c1d0cda7d`.
   Retain the 768-row capability and commit the code/test unit; run one
   committed-source confirmation before publishing SH2-M3 and closing Task #36.
+- Implementation commit `edb151447` is followed immediately by the same cached
+  production command with no comparison wrapper. It records
+  **1364.442 prefill / 53.293 decode tok/s**, **21.214187 GiB tracked**,
+  **21.648426 GiB whole-GTT**, `liveness_aliased`, exactly **69,790,760**
+  scratch-owner bytes, stable `9707` IDs, and zero tracked bytes after close.
+  This reproduces the retained memory/lifecycle result and stays within 1% of
+  the same-source dedicated medians.
+- Publish the retained production-default result at
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json`
+  (SHA-256 `70c81e13e50c140fdad1fecf92c93020f3c2fe9e8c4dbef63cc7a26f433ae901`),
+  update `docs/GGUF.md`, the Strix campaign table, benchmark rollup/changelog,
+  and correct the capability comment to say *capability* denial rather than
+  implying an allocation-exception fallback. SH2-M3 is complete; proceed to
+  SH2-D1 without stopping the campaign.
