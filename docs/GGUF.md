@@ -2353,10 +2353,22 @@ SH2-C2 confirms the retained layout at every production context on committed
 calls/token, scratch-free, exact, lifecycle-clean, and exactly 0.144531 GiB
 smaller than the pre-M4 tracked state at each depth. This does not establish
 fork parity: C1, C2, fork-F16 decode, and fork-F16 whole-GTT each remain **0/4**.
-SH2-G is the mandatory fresh pinned-fork recertification; if it misses, the
-campaign proceeds to the separately frozen complete shared-expert composite and
-runner-safe host-embedding owners rather than retrying Q4 compaction. Evidence:
+Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json).
+
+SH2-G completes the mandatory fresh pinned-fork recertification without closing
+the beat-fork objective. hipEngine prefill/decode is
+**1368.737/53.319**, **1445.181/55.895**, **1151.255/46.353**, and
+**938.924/39.644 tok/s** at 512/4K/32K/64K; fork F16 decode is
+**64.411/62.590/53.042/45.818** and Q8_0 is
+**64.179/63.087/57.379/52.167 tok/s**. All four hipEngine prefill guards and the
+18-prompt exact-state/lifecycle/trace gate pass, but C1/C2/fork-F16 decode/
+fork-F16 whole-GTT each remain **0/4**. The next mandatory owner is SH3-D1's
+complete Q8T16 shared-expert gate/up -> exact-BF16 SiLU -> down -> residual
+chain, followed by SH3-M1's runner-safe exact 540,344,320-byte host embedding
+and SH3-C1 cumulative re-attribution. Do not stop at this milestone or retry
+compact Q4. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [SH2-G fork parity recertification complete; objective continues to SH3] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/4K/32K/64K tg128: fresh hipEngine decode is **53.319/55.895/46.353/39.644 tok/s** versus pinned-fork F16 **64.411/62.590/53.042/45.818** and Q8_0 **64.179/63.087/57.379/52.167**; all four prefill guards plus exact 18-prompt state/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**, so continue to SH3-D1, SH3-M1, and SH3-C1; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`.
+
 - [SH2-C2 cumulative re-attribution; continue to mandatory SH2-G] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/4K/32K/64K tg128: fresh committed decode is **53.374/55.851/46.315/39.673 tok/s** and whole-GTT is **21.504/22.003/22.656/23.394 GiB**; compact Q5 reproduces its **0.144531-GiB** tracked saving at every depth, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**, so SH2-G must rerun the pinned fork before the frozen shared-expert/host-embedding continuation; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`.
 
 - [retained/default SH2-M4 compact selected Q5 T16 metadata] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/128: compact 37 Q5 down tensors reduce tracked/whole-GTT **21.214187/21.648426 -> 21.069656/21.504063 GiB (-0.144531/-0.144363)** while matching prefill/decode changes **1372.347/53.383 -> 1366.497/53.138 tok/s (-0.426%/-0.459%)**, with scratch-free named kernels and byte-exact four-depth state; full Q4+Q5 is rejected at **+1.598%** projected decode and Q4 remains current T16; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`.

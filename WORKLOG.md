@@ -204941,3 +204941,34 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`.
   This checkpoint selects SH2-G; if SH2-G misses policy, extend the campaign to
   the frozen SH3 owners rather than marking the thread complete.
+
+## 2026-08-06 — SH2-G recertified; beat-fork objective advances to SH3
+
+- Reuse the fresh clean `e39aba0e1` SH2-C2 attribution matrix as the hipEngine
+  wall/GTT/role half because `53537b05a` changes publication files only. Run
+  fresh independent prefill/decode rows and the required pinned-fork
+  `b7b85da9` build-10283 F16 then Q8_0 split-phase matrix at 512/4K/32K/64K,
+  built-in warmup plus five repetitions, `-b/-ub 1024`, and 10-ms whole-GTT.
+  The payload remains hash-identical: `llama-bench` SHA-256
+  `a5923323...50877c4`.
+- Fresh hipEngine prefill/decode is **1368.737/53.319**,
+  **1445.181/55.895**, **1151.255/46.353**, and **938.924/39.644 tok/s**.
+  Pinned-fork F16 decode is **64.411/62.590/53.042/45.818 tok/s**; Q8_0 is
+  **64.179/63.087/57.379/52.167**. All four prior-production prefill guards
+  pass and hipEngine wins fresh fork prefill at 4K/32K/64K, but C1, C2,
+  fork-F16 decode, and fork-F16 whole-GTT each remain **0/4**.
+- F16 decode deficits are **17.135%/10.767%/12.683%/13.411%** and hipEngine
+  whole-GTT remains **0.673/0.843/0.660/0.558 GiB** higher. The Q8_0 lane is
+  also 0/4 decode/GTT and remains approximate diagnostic evidence.
+- Freshly run the canonical ten prompts plus eight category heldouts, three
+  repeats, c4+c4+c2 and c4+c4. All **1,350 token**, **54,000 hidden**, and
+  initial/final Conv/GDN/live-BF16-KV state comparisons pass; repeated rows are
+  deterministic, tracked ownership closes to zero, and cached compact-Q5 role
+  traces remain valid. Raw F16/Q8/oracle SHA-256 values are
+  `c592f314...18fe07` / `ce2dd546...1aa147` / `eccb1576...95bda5`.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`
+  (SHA-256 `9b33a8c9...f5536e1`). SH2-G is complete, but policy and the thread
+  objective are not. Continue immediately to SH3-D1's complete Q8T16
+  shared-expert chain, then SH3-M1's runner-safe exact 540,344,320-byte host
+  embedding and SH3-C1 cumulative re-attribution; do not stop at this milestone.
