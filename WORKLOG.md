@@ -205882,3 +205882,51 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (SHA-256 `c0d71824...654b`) and update the campaign review, GGUF guide,
   benchmark rollup, and changelog. SH14-C1 is complete; the beat-fork thread
   objective is not achieved and must not be marked complete.
+
+## 2026-08-06 — Admit SH15-M2 from allocation-granularity evidence
+
+- Resume the active beat-fork objective from clean `110b8e419`; the live task
+  list is empty despite stale notification snapshots naming SH7. Do not rerun
+  SH7 or another closed kernel family. SH14's tracked ownership is already below
+  fork whole-GTT at every depth, so test whether allocator physical commit—not
+  requested model bytes—owns the residual.
+- Fresh synchronized calibration with ordinary `hipMalloc` proves a minimum
+  **2-MiB** physical commit: one byte commits 2 MiB, while 64 small allocations
+  share one backing chunk. Therefore summing one rounded chunk per allocation is
+  invalid. `hipExtMallocWithFlags` default/fine-grained/uncached modes retain the
+  same granularity. The default `hipMallocAsync` pool is rejected: a
+  **67,108,928-byte** screen commits **283,189,248 bytes** and retains
+  **148,971,520 bytes** after free plus `hipMemPoolTrimTo(0)`.
+- Use temporary `/tmp` `sitecustomize` instrumentation only. It brackets every
+  production `hipMalloc` with `hipMemGetInfo`, records pointer/request/origin,
+  and leaves allocation/copy/free behavior unchanged. Run independent
+  right-sized cached package-default private-c1 pp/tg1 children at
+  512/4K/32K/64K. Raw hashes are `1e9d792d...afe3`, `f78b46d4...bb6c`,
+  `d9450653...341e`, and `3d05a731...779a`. Every child has token 9707 and
+  returns tracked bytes to zero; timings receive no performance credit because
+  instrumentation perturbs load.
+- Every depth has exactly **921** persistent allocations. The invariant weight
+  family is **732 allocations / 21,918,738,944 requested bytes**; its mallocs
+  commit **22,187,868,160 bytes**, an exact **269,129,216-byte** excess.
+  Non-`hipMalloc` after-load residency is independently constant at
+  **148,975,616 bytes** across all four processes.
+- Replacing all persistent requests with one ordinary 4-KiB-suballocated owner
+  rounded once to 2 MiB projects malloc-commit savings of
+  **236/294/300/300 MiB** at 512/4K/32K/64K. Against SH14's pinned fork gaps,
+  arena-only margins become **-62.473/+52.820/-140.629/-244.730 MiB**: it can
+  cross three rows but not 4K. This is a mechanical admission projection, not a
+  measured candidate result.
+- Preserve a conditional exact byte stack rather than silently reopening all
+  Q4 metadata. SH2-M4 proves compact Q4 primitive bytes exactly and measures
+  **+5.802873 us/layer**. The model-defined ten full-attention layers contain
+  two selected-Q4 tensors each; restricting the representation to that class
+  saves exactly **80 MiB** and projects **+0.058029 ms/token**. Arena plus that
+  class projects fork-memory margins
+  **-142.473/-27.180/-220.629/-324.730 MiB**. Do not implement it unless the
+  actual 4K arena remains above fork and then only under fresh exact-state,
+  <=1% prefill/decode, trace, fallback, GTT, and lifecycle gates.
+- Publish the no-claim structural artifact
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json`
+  (SHA-256 `25c65a15...bde8c`). SH15-M1 passes its implementation precondition
+  and admits SH15-M2's bounded private-c1 ordinary session arena. Production is
+  unchanged and the beat-fork objective remains active.
