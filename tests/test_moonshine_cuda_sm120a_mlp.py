@@ -16,7 +16,6 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference.moonshine import (
     moonshine_decoder_mlp,
     moonshine_gated_silu,
-    moonshine_projection,
     moonshine_residual,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
@@ -341,7 +340,7 @@ def test_moonshine_cuda_fused_mlp_wrappers_keep_raw_pointer_abi() -> None:
     )
     assert (
         library.hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual.calls
-        == [(1, 2, 3, 4, 5, 1, 1664, 416, 64, 7)]
+        == [(1, 2, 3, 4, 5, 1, 1664, 416, 256, 7)]
     )
 
 

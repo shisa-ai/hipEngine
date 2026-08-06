@@ -203007,3 +203007,49 @@ registered in the C1c projection module, completing C1d.
 - No commit or remote publication at the time of writing. Next: C1e attention
   (self dim-52 + masked cross 40/207/1248), C1f tied LM/argmax, C2 resident
   decoder composition.
+
+## 2026-08-06 — C1c/C1d review closure: measured schedules and codified gates
+
+### C1C-R1 (row pair/head-major schedule) — closed
+Batch-timed CUDA-event screen on exclusive GPU0 (`/tmp/cuda_projection_schedule_screen/screen_batch.py`),
+threads 32/64/128/256 x rows 40/207/1,248, medians over 200-launch batches (40 at
+1,248 rows), pre/post foreign-compute-process gate on GPU0:
+- pair 416->416: 64 threads best at every bucket (16.615/78.955/467.997 us vs
+  29.846/151.850/910.742 us at t256 => 1.80x/1.92x/1.95x).
+- head-major pair 416->416 (head_dim=52): 64 best at every bucket
+  (16.744/78.978/466.611 vs 33.439/165.805/993.218 => 2.00x/2.10x/2.13x).
+- single/triple M=1 416->416: flat across threads (2.447-2.477 / 2.787-2.812 us),
+  keep 256.
+`_default_pair_threads()` now auto-selects 64 for both pair wrappers (explicit
+`threads=` overrides), mirroring the LayerNorm schedule-selection pattern.
+Retained schedule-selection test
+`test_moonshine_cuda_projection_schedule_auto_selects_measured_threads`.
+
+### C1D-R2 (fused fc2 schedule) — closed
+Same screen, bias_residual 1664->416: M=1 decode 256 threads best (2.700 us vs
+3.324 at t64, ~1.23x); M=40 batch 64 best (15.523 us). `_default_residual_threads()`
+auto-selects 256 for rows <= 1, else 64 (override preserved). MLP ABI test updated
+to the measured 256 default; schedule-selection test covers the fc2 buckets.
+
+### C1D-R3 (per-shape MLP reporting) — closed
+Retained `scripts/moonshine_cuda_mlp_profile.py` reports per-shape medians with
+M=1 (decoder) first and auxiliary rows separately; no aggregate across unlike row
+counts. On exclusive GPU0: standalone gated-SiLU M=1 2.237 us; fused fc1 (t32)
+M=1 2.615 us; fused fc2 (auto-select) M=1 2.691 us; fc1+fc2 5.306 us (leaf sum),
+consistent with the independent review leaf numbers.
+
+### C1D-R4 (unused import) — closed
+Removed the unused `moonshine_projection` import from
+`tests/test_moonshine_cuda_sm120a_mlp.py`; isolated `ruff check` clean.
+
+### C1C-R2 (model-derived projection gates) — closed
+Added opt-in pinned-checkpoint fixture gates to
+`tests/test_moonshine_cuda_sm120a_projection.py`:
+- `test_moonshine_cuda_projection_head_major_cross_kv_on_model_derived_fixtures`:
+  all 8 layers x 2 fixtures, `encoder_attn.k_proj`/`v_proj` weights -> head-major
+  cross K/V vs `cross.layer_N.key/value`; max-abs <= 0.00390625 (observed worst,
+  matches the independent diagnostic) plus finiteness.
+- `test_moonshine_cuda_projection_tied_lm_selected_tokens_on_model_derived_fixtures`:
+  7 positions x 2 fixtures, tied `embed_tokens` weight -> logits; every argmax
+  token ID equals `selected_token` (14/14 exact) and logits max-abs <= 0.00390625.
+Both pass under the real `sm_120a` gate on GPU0.

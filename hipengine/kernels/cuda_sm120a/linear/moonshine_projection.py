@@ -16,6 +16,40 @@ _OUTPUT_NAME = "moonshine_projection.so"
 _BACKEND = "cuda_sm120a"
 _TARGET_ARCH = cuda_target_arch_for_backend(_BACKEND)
 _ALLOWED_THREADS = {32, 64, 128, 256}
+# Measured on exclusive GPU0 (RTX PRO 6000 Blackwell, driver 610.43.03) with a
+# batch-timed CUDA-event screen (medians over 200-launch batches, 40 at 1,248
+# rows) at threads {32,64,128,256} x rows {40,207,1248}. 64 threads is the
+# best family schedule for the pair/head-major row projections across every
+# bucket (1.80-2.15x faster than the inherited 256 default); single/triple at
+# M=1 are flat across threads so they keep 256. The fused fc2
+# (bias_residual 1664->416) is best at 256 threads for the decode M=1 bucket
+# and at 64 for batch M=40.
+_PAIR_THREADS = 64
+_RESIDUAL_DECODE_THREADS = 256
+_RESIDUAL_BATCH_THREADS = 64
+_RESIDUAL_BATCH_THRESHOLD = 1
+
+
+def _default_pair_threads() -> int:
+    """Measured thread schedule for pair/head-major row projections.
+
+    A batch-timed screen shows 64 threads is 1.80-2.15x faster than 256 across
+    the 40/207/1,248-row production buckets on the target, so the auto-select
+    is a flat 64. Explicit ``threads=`` always overrides.
+    """
+    return _PAIR_THREADS
+
+
+def _default_residual_threads(rows: int) -> int:
+    """Measured thread schedule for the fused fc2 (bias_residual) boundary.
+
+    Batch-timed screen: 256 threads is ~1.19-1.27x faster than 64 for the
+    auto-regressive decode bucket (M=1) and 64 is best at M=40. Explicit
+    ``threads=`` always overrides.
+    """
+    if rows <= _RESIDUAL_BATCH_THRESHOLD:
+        return _RESIDUAL_DECODE_THREADS
+    return _RESIDUAL_BATCH_THREADS
 _SINGLE_ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -344,11 +378,12 @@ def moonshine_f16_projection_bias_residual(
     in_features: int,
     out_features: int,
     *,
-    threads: int = 64,
+    threads: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: CudaRuntime | None = None,
 ) -> None:
+    threads = _default_residual_threads(rows) if threads is None else threads
     _validate(rows, in_features, (out_features,), threads)
     library = library or build_moonshine_projection(load=True)
     runtime = runtime or get_cuda_runtime()
@@ -383,11 +418,12 @@ def moonshine_f16_projection_pair(
     out_a_features: int,
     out_b_features: int,
     *,
-    threads: int = 256,
+    threads: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: CudaRuntime | None = None,
 ) -> None:
+    threads = _default_pair_threads() if threads is None else threads
     _validate(rows, in_features, (out_a_features, out_b_features), threads)
     library = library or build_moonshine_projection(load=True)
     runtime = runtime or get_cuda_runtime()
@@ -424,11 +460,12 @@ def moonshine_f16_projection_pair_head_major(
     out_b_features: int,
     head_dim: int,
     *,
-    threads: int = 256,
+    threads: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: CudaRuntime | None = None,
 ) -> None:
+    threads = _default_pair_threads() if threads is None else threads
     _validate(rows, in_features, (out_a_features, out_b_features), threads)
     if head_dim <= 0 or out_a_features % head_dim or out_b_features % head_dim:
         raise ValueError("head_dim must positively divide both output widths")
