@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH2-G parity continuation recertified and SH3 launched:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH2-G recertified, SH3-D1 closed, and SH3-M1 activated:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -64,9 +64,11 @@ owners are decided, not because cross-engine parity was reached.
 pinned fork after the retained short-scratch and compact-Q5 units. Exact/default
 hipEngine still reaches **0/4 F16 decode and 0/4 F16 whole-GTT parity** despite
 passing all four prefill guards and the full correctness/lifecycle/trace gate.
-The higher-level objective therefore remains open and advances to the frozen
-SH3-D1 complete shared-expert composite, SH3-M1 runner-safe host embedding, and
-SH3-C1 cumulative re-attribution packages rather than stopping at recertification.
+SH3-D1 then closes the complete shared-expert composite as exact but slower
+(**0.899x** actual-weight wall; **0.929x** named kernel-only), with no production
+change. The higher-level objective therefore remains open and advances to
+SH3-M1 runner-safe host embedding and SH3-C1 cumulative re-attribution rather
+than stopping at either recertification or the rejected decode leaf.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -588,9 +590,9 @@ evidence.
 | **SH2-M4** | Compact selected-expert Q4/Q5 T16 scale/min metadata. | **Complete: retain/default Q5 subset; reject Q4 production route.** Compact Q5 removes exactly **155,189,248 bytes / 0.144531 GiB** with 512 prefill/decode changes **-0.426%/-0.459%**, whole-GTT **-0.144363 GiB**, scratch-free named kernels, and byte-exact four-depth state. Full Q4+Q5 projects **+1.598%** decode, so all 80 Q4 tensors remain current T16. |
 | **SH2-C2** | Post-M4 cumulative re-attribution. | **Checkpoint complete: continue to SH2-G.** Fresh 512/4K/32K/64K decode is **53.374/55.851/46.315/39.673 tok/s** and whole-GTT is **21.504/22.003/22.656/23.394 GiB**. Compact Q5 saves 0.144 GiB at every depth, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. Freeze the complete shared-expert composite and runner-safe host embedding as post-milestone owners. |
 | **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | **Complete: milestone passes, objective continues to SH3.** All four prefill guards and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. Fresh F16 decode is **64.411/62.590/53.042/45.818 tok/s** versus hipEngine **53.319/55.895/46.353/39.644**, and F16 whole-GTT remains **0.673/0.843/0.660/0.558 GiB** lower. |
-| **SH3-D1** | Complete Q8T16 shared-expert gate/up -> exact BF16 SiLU -> down -> residual producer/consumer chain. | **Next / mandatory.** Start from the fresh named **1.061-1.075-ms/token** complete owner. Require a RED CPU oracle, registered unfused fallback, exact BF16 output/state, cached named spill-free trace, and at least **1.15x** or **0.5 ms/token** projected admission before full-model routing. |
-| **SH3-M1** | Runner-safe exact 540,344,320-byte host embedding policy. | **Queued after SH3-D1.** Eliminate load-order high water while preserving c>N, packed AR, MTP, graph, allocation-denial, and device-pointer fallback contracts; require exact state, <=1% prefill/decode regression, same-scope GTT, and clean teardown. |
-| **SH3-C1** | Post-SH3 cumulative four-depth re-attribution and beat-fork policy gate. | **Queued after SH3-D1/M1.** Freshly rerun current production and the required comparator dimensions; complete the objective only if the declared policy passes, otherwise select another structurally new measured owner. |
+| **SH3-D1** | Complete Q8T16 shared-expert gate/up -> exact BF16 SiLU -> down -> residual producer/consumer chain. | **Complete: exact, below admission; no production change.** RED/GREEN and CPU-oracle gates pass with byte-identical gate/up, intermediate, shared-down, and final BF16 outputs. The best actual-weight 128-block candidate is **0.899x** wall and **0.929x** kernel-only; 40/64/80-block siblings regress further. The named trace is **72 VGPR, 512 B LDS, 0 scratch**. All transient surfaces are removed. |
+| **SH3-M1** | Runner-safe exact 540,344,320-byte host embedding policy. | **Next / mandatory.** Eliminate load-order high water while preserving c>N, packed AR, MTP, graph, allocation-denial, and device-pointer fallback contracts; require exact state, <=1% prefill/decode regression, same-scope GTT, and clean teardown. |
+| **SH3-C1** | Post-SH3 cumulative four-depth re-attribution and beat-fork policy gate. | **Queued after SH3-M1.** Freshly rerun current production and the required comparator dimensions; complete the objective only if the declared policy passes, otherwise select another structurally new measured owner. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -725,11 +727,30 @@ Thus SH2-G is complete, but the declared beat-fork policy and thread objective
 are not. Proceed immediately to SH3-D1, then SH3-M1 and SH3-C1. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json).
 
+SH3-D1 implements the complete decode-only Q8T16 shared-expert chain under its
+frozen first gate, without routing it into the model. A RED CPU/unfused oracle
+becomes GREEN at **2/2**, and the cooperative K-block scale-LDS candidate is
+byte-identical at gate/up, exact-BF16 SiLU intermediate, shared-down, and final
+routed/shared-gate/residual output. On actual layer-0 `2048 -> 512 -> 2048`
+weights with a 24-copy **80,216,064-byte** cycling pool, five counterbalanced
+2,000-iteration repeats measure **34.719 us** for the four-kernel fallback and
+**38.611 us** for the best 128-block composite (**0.899x**, projected
+**-0.156 ms/token** over 40 layers). The bounded 40/64/80-block siblings reach
+only **0.444x/0.754x/0.749x**. Cached tracing names the candidate at median
+**25.287 us, 72 VGPR, 512 B LDS, 0 scratch**, versus **23.482 us** summed
+baseline kernels (**0.929x**); rocprof writes the complete CSV before a recorded
+ROCr signal-path teardown fault. The separate exactness and wall screens are
+clean. Neither `1.15x` nor `0.5 ms/token` passes, so all transient kernel,
+wrapper, registry, test, and harness surfaces are removed. Production and the
+registered unfused chain remain unchanged; continue immediately to SH3-M1.
+Evidence:
+[`2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json).
+
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).
 `python3 scripts/check_lineage.py --kind kernel --diff stat` is currently blocked
-because the read-only Atlas reference path is absent. That tooling failure must
-be recorded for SH2-D1 and is not a green lineage verdict.
+because the read-only Atlas reference path is absent. That tooling failure is
+recorded for SH3-D1 and is not a green lineage verdict.
 
 ### Cumulative decode targets
 

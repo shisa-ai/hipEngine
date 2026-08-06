@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [SH3-D1 complete Q8T16 shared-expert composite closed; no production change] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / actual layer-0 `2048 -> 512 -> 2048`: exact gate/up, BF16-SiLU, shared-down, and final bytes pass, but the best 128-block cooperative K-block scale-LDS chain regresses **34.719 -> 38.611 us (0.899x)** wall and **23.482 -> 25.287 us (0.929x)** kernel-only; named trace is **72 VGPR / 512 B LDS / 0 scratch**, all transient surfaces are removed, and the campaign advances to SH3-M1; `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`.
+
 - [SH2-G fork parity recertification complete; objective continues to SH3] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/4K/32K/64K tg128: fresh hipEngine decode is **53.319/55.895/46.353/39.644 tok/s** versus pinned-fork F16 **64.411/62.590/53.042/45.818** and Q8_0 **64.179/63.087/57.379/52.167**; all four prefill guards plus exact 18-prompt state/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**, so continue to SH3-D1, SH3-M1, and SH3-C1; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`.
 
 - [SH2-C2 cumulative re-attribution; continue to mandatory SH2-G] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/4K/32K/64K tg128: fresh committed decode is **53.374/55.851/46.315/39.673 tok/s** and whole-GTT is **21.504/22.003/22.656/23.394 GiB**; compact Q5 reproduces its **0.144531-GiB** tracked saving at every depth, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**, so SH2-G must rerun the pinned fork before the frozen shared-expert/host-embedding continuation; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`.
