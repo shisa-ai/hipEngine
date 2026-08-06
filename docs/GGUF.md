@@ -2706,6 +2706,23 @@ beat-fork campaign from new structural evidence, and do not stack compact Q4 or
 the rejected SH15 state arena. Evidence:
 [`SH16-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json).
 
+SH17-C0 performs the required post-retention residual admission audit without
+rerunning the completed matrix or oracle. SH16 changes only pointer placement;
+all moved weights map to existing GDN/output, full-attention projection,
+shared-expert, norm, or control roles. Their kernel bodies/routes are unchanged,
+and every exact schedule/composite alternative is already retained or closed.
+A new profile would remeasure cache coloring but would not establish a new
+algorithmic owner, so no profiler run is manufactured.
+
+The current C1 time gaps are **0.914/0.903/1.100/1.160 ms/token** and fork decode
+remains **0/4**. The **134.820-MiB** 4K memory remainder also has no sufficient
+single owner: <=32-MiB packing leaves **94.820 MiB**, the rejected global/state
+arena or compact-Q4 stack each leaves **54.820 MiB**, and code unload leaves
+**134.102 MiB**. No Task-66 implementation is admitted. Preserve SH16 and resume
+only with genuinely new source/hardware/runtime evidence or separately approved
+system-memory scope. Evidence:
+[`SH17-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

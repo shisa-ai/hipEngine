@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06; **SH16-M2 selective arena retained/default, fork memory 3/4:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06; **SH16-M2 selective arena retained/default, fork memory 3/4:** 2026-08-06; **SH17-C0 residual admission closed without a new owner:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -223,6 +223,17 @@ Fork-F16 whole-GTT parity is now **3/4**: margins are
 rollback seam temporarily; do not stack compact Q4 or the rejected SH15 state
 arena. Evidence:
 [`SH16-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json).
+
+**SH17-C0 residual update (2026-08-06): no new package admitted.** Current C1
+time gaps are **0.914/0.903/1.100/1.160 ms/token**, but SH16 moved pointers only;
+every moved weight maps to an existing named role with unchanged device code and
+an already retained/closed exact alternative. A fresh trace would only remeasure
+cache-color redistribution. The **134.820-MiB** 4K memory gap likewise has no
+sufficient single owner: <=32-MiB packing leaves **94.820 MiB**, the rejected
+global/state arena or compact-Q4 stack each leaves **54.820 MiB**, and code
+unload leaves **134.102 MiB**. Close conditional implementation without transient
+code and preserve SH16 pending genuinely new evidence. Evidence:
+[`SH17-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json).
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -764,6 +775,7 @@ evidence.
 | **SH15-M2** | Bounded private-c1 two-owner 4-KiB-suballocated weight/state arena. | **Complete: memory mechanism confirmed, wall gate failed, implementation removed.** Whole-GTT falls **236/292 MiB** at 512/4K and 512 beats fork F16 by **62.473 MiB**, but 4K remains **54.820 MiB** high. Prefill regresses **1.608%/1.809%**, beyond the <=1% contract, despite decode improving **1.373%/1.648%** and exact state/lifecycle. Stop before 32K/64K, full categories, or compact Q4; restore SH14 allocation paths. |
 | **SH16-M1** | Reclassify exact SH15 allocation commits by weight size/family and preserve large-owner alignment. | **Complete: narrower structural precondition passes; admit SH16-M2, no production change.** Packing only **571 allocations <=16 MiB** bounds one owner at **844 MiB** versus **1,060 MiB** captured commit, projecting **216 MiB** saved and 512/32K/64K parity. All **161 >16-MiB owners / 95.965% of bytes** stay dedicated and 2-MiB aligned. Start at 512; stop on >1% wall or any exactness/lifecycle failure; no state arena or compact-Q4 stack. |
 | **SH16-M2** | Implement and gate one selective private-c1 owner for allocations <=16 MiB. | **Complete: retained/default.** The exact 571/161 owner saves **190/212/210/210 MiB whole-GTT**, every four-depth wall/frozen-prefill guard passes, and the full 18-prompt state oracle is exact. Fork-F16 memory parity becomes **3/4**; 4K remains **134.820 MiB** high and decode remains **0/4**. Keep no SH15 state arena or compact-Q4 stack. |
+| **SH17-C0** | Read-only post-SH16 residual admission audit. | **Complete: no new owner admitted.** All SH16-moved families map to named roles with closed alternatives; no fresh trace is justified. Every single 4K allocator/code extension leaves at least **54.820 MiB**, and no new decode candidate has >=0.5-ms evidence. Conditional Task #66 closes without implementation. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -1292,6 +1304,22 @@ determinism. Whole-GTT now beats fork F16 by **16.473/50.629/154.730 MiB** at
 all four depths, so retain the allocation win without claiming the overall
 objective or admitting the rejected state-arena/compact-Q4 stack. Evidence:
 [`SH16-M2`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json).
+
+SH17-C0 then applies the frozen admission threshold without another GPU run.
+SH16's only execution effect is address placement; the selected families map to
+GDN input/output, full-attention K/V/output, shared experts, norms, and control
+weights already present in the complete role trace. Their bodies, selectors,
+launch counts, and arithmetic do not change, and their exact alternatives are
+closed. The measured wall already contains the net address effect, so a new
+trace cannot establish a structurally new >=0.5-ms candidate.
+
+Memory arithmetic reaches the same stop. From the retained **134.820-MiB** 4K
+gap, extending through 32 MiB leaves **94.820 MiB**; either the rejected
+weight/state arena increment or compact Q4 leaves **54.820 MiB**; phase code
+unload leaves **134.102 MiB**. No single evidence-backed owner crosses the row.
+Close the conditional implementation rather than stack rejected components.
+Evidence:
+[`SH17-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json).
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by
