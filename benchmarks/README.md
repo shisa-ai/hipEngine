@@ -4304,6 +4304,18 @@ surfaces are removed; production remains retained SH7. The next open backend
 transfer is SH9-D1's compact-WMMA no-read scheduler bound, not another
 producer/reducer/layout retry.
 
+The [SH9-D1 compact-WMMA no-read transfer](results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json)
+is retained on gfx1151 through 4,096 selected **prefill** rows. Corrected scope:
+rows==1 decode bypasses this helper; pp512 carries 4,096 selected rows and 40
+scalar reads per request. Complete prefill/layer/Conv/GDN/live-KV/four-step
+state is byte-exact. Unprofiled pp512 prefill is neutral at **1366.040 ->
+1366.013 tok/s (-0.002%)**, tracked/whole-GTT are identical, and every child
+closes to zero. The fully cached one-queue trace removes **44 -> 4 hipMemcpy**,
+**43 -> 3 copy kernels**, and **1,409 -> 1,369 dispatches** while all 80
+selected-WMMA launches/resources stay unchanged; marker span improves **381.308
+-> 379.572 ms (-1.736 ms)**. SH9-C1 continues the campaign because this result
+does not change decode or fork-memory parity.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4350,6 +4362,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH9-D1 compact-WMMA no-read prefill | 2026-08-06 | parent `5c3d9912d`; gfx1151 package cap 0->4096; exact pp512 state pair; one-queue one-discard/three-run wall/GTT; globally version-pinned cached HIP/kernel/ROCTX trace | **Retained/default through 4,096 selected prefill rows:** pp512 wall is neutral **1366.040 -> 1366.013 tok/s (-0.002%)**, state/memory/lifecycle are exact, and the trace removes **40 hipMemcpy + 40 copy dispatches / -1.736 ms span** with unchanged 80 selected-WMMA launches. Decode bypasses this helper. [`artifact`](results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json). | Yes — exact launch/D2H reduction with non-regressive wall; no decode credit | Execute SH9-C1 scope-correct completion audit and select the next open decode owner. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH8-A1 grouped-GQA qgroup4 producer | 2026-08-06 | parent `cad45d291`; transient exact qgroup4 body/wrapper/key; cached gfx1151 primitive and trace; 21 counterbalanced ten-launch pairs at 32K/64K | **Closed/rejected; production unchanged:** qgroup4 lowers **72 -> 56 VGPR** but complete producer+parallel-reducer wall regresses **0.425068 -> 0.474481 ms (0.8959x)** and **0.759873 -> 0.858382 (0.8852x)**, with **0/42 wins** and projected **-0.494/-0.985 ms/token**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json). | No — exact leaf fails both continuation alternatives | Transient surfaces removed; execute SH9-D1 compact-WMMA no-read gfx1151 transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH7-A1 parallel split reducer | 2026-08-06 | parent `6464e6e45`; package-default one hardware queue; same-source env-controlled serial/candidate 32K/64K one-discard/three-run eager wall; 10-ms whole-GTT; cached kernel/HIP/ROCTX traces; NumPy primitive; exact 18-prompt semantic gate | **Retained/default from 32K:** decode **46.066 -> 46.785 tok/s (+1.560%, -0.333 ms/token)** and **39.441 -> 40.386 (+2.394%, -0.593 ms/token)**; reducer **424.162 -> 109.346** and **744.973 -> 207.485 us/token**. All 1,296 semantic logits are byte-exact; tracked peak/GTT/lifecycle are unchanged; serial remains below 32K/under opt-out. [`artifact`](results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json). | Yes — exact own-engine long-context decode performance claim | Execute SH8-A1's 72-VGPR grouped-GQA producer four-query occupancy screen; C1/fork decode and fork whole-GTT parity remain open. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH6-C1 cumulative beat-fork gate | 2026-08-06 | clean production source `b074e8054`; inherited two-queue process cap with profiled decode confined to queue 1 / stream 0; fresh four-depth canonical and right-sized attribution children; 10-ms whole-GTT; cached role traces; exact 18-prompt oracle; pinned fork `b7b85da9` comparator | **Gate complete; objective continues:** canonical decode **53.153/55.832/46.196/39.579 tok/s**, whole-GTT **21.000/21.499/22.152/22.890 GiB**, and all prefill/exact-oracle/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json). | No — diagnostic cumulative gate, not a performance claim | Execute SH7-A1's independent gfx1151 parallel split-reducer gate with a fresh package-default one-queue serial/candidate pair; keep serial below 32K and require semantic, wall, trace, memory, and lifecycle admission. |

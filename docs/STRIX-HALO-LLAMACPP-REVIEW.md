@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH8-A1 rejected and SH9-D1 activated:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH9-D1 retained and SH9-C1 activated:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -61,15 +61,16 @@ matched exact-model diagnostic; Campaign 2 is closed because all declared
 owners are decided, not because cross-engine parity was reached.
 
 **Beat-fork continuation update (2026-08-06): active.** SH7-A1 remains retained
-from 32K. SH8-A1 then tests the next structurally new grouped-GQA producer
-ownership: splitting each eight-query/KV group into two exact four-query blocks
-lowers **72 -> 56 VGPR**, but duplicates K/V traffic and loses every one of 42
-actual-shape timing pairs. Complete producer+parallel-reducer wall regresses
-**0.4251 -> 0.4745 ms/layer (0.896x)** at 32K and **0.7599 -> 0.8584
-(0.885x)** at 64K, projecting **-0.494/-0.985 ms/token**. The candidate is
-removed before model routing. C1, C2, fork decode, and fork memory parity remain
-open, so the objective continues to SH9-D1's independent gfx1151 transfer of
-the existing compact-WMMA no-read scheduler bound.
+from 32K and SH8-A1's four-query producer is rejected. SH9-D1 independently
+transfers the exact compact-WMMA no-read bound to gfx1151. Its scope is corrected:
+this is multi-row prefill, not c1 decode. At pp512 it removes **40 synchronous
+hipMemcpy plus 40 copy-kernel dispatches per request**, preserves all 80 selected
+WMMA launches and complete state exactly, and improves the cached marker span
+**381.308 -> 379.572 ms (-1.736 ms)** while unprofiled prefill is neutral at
+**1366.040 -> 1366.013 tok/s (-0.002%)** and memory is unchanged. Retain the
+package cap, but give it no decode-parity credit. C1, C2, fork decode, and fork
+memory parity remain open; SH9-C1 now audits the corrected scope and selects the
+next genuinely open decode owner.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -600,7 +601,8 @@ evidence.
 | **SH6-C1** | Post-SH6 cumulative four-depth re-attribution and fork policy gate. | **Complete: policy fails; objective continues.** Canonical decode is **53.153/55.832/46.196/39.579 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. All four prefill/exact-oracle/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. |
 | **SH7-A1** | Independently transfer the registered prepare-plus-coalesced parallel split-K reducer to gfx1151 long-context decode. | **Complete: retained/default from 32K.** One-queue wall improves **+1.560%/+2.394% (-0.333/-0.593 ms/token)** at 32K/64K; the reducer falls **424.162 -> 109.346** and **744.973 -> 207.485 us/token**. Primitive and 1,296-logit semantic gates are exact, memory/lifecycle are unchanged, traces are named and scratch-free, and serial fallback remains below 32K/under opt-out. |
 | **SH8-A1** | Split the 72-VGPR grouped-GQA producer's eight query heads into exact four-head ownership groups to test register occupancy against duplicated K/V traffic. | **Complete: exact, rejected at leaf gate.** qgroup4 lowers **72 -> 56 VGPR** and remains byte-exact, but complete producer+parallel-reducer wall is only **0.896x/0.885x** at 32K/64K with **0/42 wins**, projecting **-0.494/-0.985 ms/token**. All transient surfaces are removed. |
-| **SH9-D1** | Independently transfer gfx1100 LCP-2B's exact compact-WMMA static upper bound to gfx1151 and remove the selected-Q4 scalar `wmma_total` D2H boundary. | **Active.** gfx1151 remains explicitly scoped to zero while gfx1100 admits 4,096 selected rows. Prove the exact tile bound and fallback first, then require a same-source private-c1 wall/trace gate with 40 scalar reads removed and no prefill/state regression. |
+| **SH9-D1** | Independently transfer gfx1100 LCP-2B's exact compact-WMMA static upper bound to gfx1151 and remove the selected-Q4 scalar `wmma_total` D2H boundary. | **Complete: retained/default through 4,096 selected prefill rows.** Corrected scope is pp512 multi-row prefill, not decode. Full state is byte-exact; wall is neutral **1366.040 -> 1366.013 tok/s (-0.002%)**; cached trace removes **40 hipMemcpy + 40 dispatches** and **1.736 ms** marker span with unchanged selected kernels/memory/lifecycle. |
+| **SH9-C1** | Scope-correct cumulative completion audit after SH9-D1. | **Active.** Credit only the pp512 prefill launch/sync reduction, carry retained SH7 decode/memory rows unchanged, and select the next genuinely open decode owner without replaying closed ladders. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -932,15 +934,31 @@ model semantic/wall work and remove the HIP body, C/Python wrappers, key,
 export, smoke extension, and RED/GREEN contract. Evidence:
 [`SH8-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json).
 
-Select **SH9-D1**, an explicit open backend transfer rather than another producer
-subdivision. gfx1100 LCP-2B uses an exact routing-independent upper bound for
-compact selected-Q4 WMMA tiles and removes the per-layer scalar `wmma_total`
-D2H read through 4,096 selected rows; gfx1151 is deliberately held at zero
-pending its independent gate. This route applies to private-c1 decode
-(`selected_rows=8`) and can remove 40 host synchronization boundaries/token
-without changing the selected kernels. First prove bound/fallback contracts,
-then require exact state plus a same-source wall/HIP/ROCTX gate; reject and
-restore scalar reads on any regression.
+SH9-D1 corrects its initial premise and retains the useful transfer. The helper
+is reached only for multi-row MoE prefill; rows==1 decode enters
+`_run_post_attention_moe_c1` first. Binding pp512 therefore has **4,096 selected
+rows** and 40 scalar reads per request, not eight rows and 40 boundaries/token.
+The exact bound is 496 tiles / 7,936 padded rows within 8,192-row capacity;
+selected rows above 4,096, capacity denial, and env opt-out retain the scalar
+fallback.
+
+Scalar/no-read state children match prefill logits, every layer/Conv/GDN/live-KV
+checkpoint, four teacher-forced transitions, and final state byte-for-byte. A
+one-queue one-discard/three-run wall pair is neutral at **1366.040 -> 1366.013
+tok/s (-0.002%)**, with identical **20.566421-GiB tracked** and
+**21.000130-GiB whole-GTT** peaks plus clean close. The fully cached ROCTX/HIP
+trace removes **44 -> 4 hipMemcpy**, **43 -> 3 copy kernels**, and
+**1,409 -> 1,369 dispatches**; all 80 selected-WMMA symbols stay on queue 1 /
+stream 0 at 48/72 VGPR and scratch0. Marker span improves **381.308 -> 379.572
+ms (-1.736 ms)** while selected time is flat within +0.073%. Retain the gfx1151
+cap under the project's launch/D2H reduction policy, but credit no decode gain.
+Evidence:
+[`SH9-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json).
+
+Activate **SH9-C1** as a scope-correct completion audit. It carries SH7's
+retained decode/memory rows unchanged, records that SH9 affects only pp512
+prefill, and selects the next genuinely open decode owner instead of mistaking a
+prefill scheduler transfer for fork-decode progress.
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).
