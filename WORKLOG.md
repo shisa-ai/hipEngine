@@ -205823,3 +205823,62 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   is not promoted. Publish
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json`
   (SHA-256 `481f53ba...1090`) and activate mandatory SH14-C1.
+
+## 2026-08-06 — Close SH14-C1 cumulative continuation gate
+
+- Start from tracked-clean `1f7e2f164` with ROCm/gfx1151 alive; production
+  runtime remains SH12 implementation `8e461708e` because SH12 publication and
+  SH13 change only benchmark/docs/worklog files. Run one independent right-sized
+  process per 512/4K/32K/64K depth with package-default one queue, one full
+  warmup plus three measured pp/tg128 eager runs, cached builds, host embedding,
+  and 10-ms whole-card GTT polling. The resumable `/tmp` harness is
+  `/tmp/run_sh14_c1_matrix.py`; matrix SHA-256 is `c734a6b1...b13c`.
+- Fresh prefill is **1369.489/1430.215/1144.713/936.218 tok/s** and decode is
+  **54.330/54.798/46.405/40.180 tok/s**. Tracked peak remains
+  **20.566421/20.951031/21.597255/22.335796 GiB**, phase-sampled HIP-used is
+  **20.982719/21.482018/22.134434/22.872715 GiB**, and whole-GTT is exactly
+  **21.000130/21.499428/22.151844/22.890125 GiB**. All three measured IDs at
+  every depth are 9707, tracked bytes after each process close are zero, and
+  final whole-GTT is within **0.000042 GiB** of its process baseline.
+- Against the frozen SH6 prefill rows, changes are
+  **-0.296%/-1.151%/-0.435%/-0.229%**: the guard is **3/4**, with 4K missing by
+  0.1506 percentage points. Do not rerun or hide this no-claim gate result; the
+  decode/memory objective already fails independently.
+- Run the established current-production exact gate with package-default one
+  queue:
+  `GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_BACKEND=hip_gfx1151 python3 scripts/gguf_packed_ar_category_oracle.py
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldouts
+  benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --decode-steps 24
+  --repeats 3 --group-size 4 --compiler-version-file
+  /tmp/hipengine-hipcc-version.txt --require-cached-build --json
+  /tmp/hipengine-sh14-c1-20260806/current-natural-heldout.json`.
+  All **18/18** prompts, **1,350** token comparisons, **54,000** hidden
+  comparisons, initial/final state checks, and deterministic repeats pass;
+  oracle SHA-256 is `7168efc1...0d57`.
+- Carry the immutable pinned fork `b7b85da9` F16 five-repeat rows and qualified
+  role traces rather than duplicating either. SH10 supplies the changed 512
+  fixed256 symbol (**0.928096 ms/token**), SH11 the unchanged 4K split route
+  (**0.844368 ms/transition**), SH7/SH8 the current long producer/reducer, and
+  SH12 proves zero kernel/copy-count change while deleting the host drain. All
+  other device roles carry from SH6 because SH7-SH13 do not change them.
+- C1 gaps remain **1.214/1.241/1.286/1.314 ms/token** and fork-F16 decode gaps
+  **2.881/2.272/2.696/3.062 ms/token**. C1, C2, fork-F16 decode, and fork-F16
+  whole-GTT are each **0/4**. Whole-GTT gaps are
+  **173.527/346.820/159.371/55.270 MiB**.
+- Tracked hipEngine ownership alone is already
+  **0.264/0.210/0.399/0.500 GiB below** each fork whole-GTT row, while current
+  tracked-to-GTT residual is **0.434/0.548/0.555/0.554 GiB**. Therefore the
+  remaining memory parity gap belongs to untracked runtime/page-table/allocator/
+  active-mapping residency, not a measured reclaimable code object; SH13 bounds
+  the complete HSA code set at only **3.497 MiB**. Decode traces still name GDN
+  input, selected experts, lm-head, and context-dependent attention, but every
+  admitted exact alternative in this review is retained or closed by a measured
+  stop rule. Admit no new package without new structural evidence or separate
+  approval for a system/runtime-memory experiment.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json`
+  (SHA-256 `c0d71824...654b`) and update the campaign review, GGUF guide,
+  benchmark rollup, and changelog. SH14-C1 is complete; the beat-fork thread
+  objective is not achieved and must not be marked complete.
