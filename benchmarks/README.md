@@ -4529,51 +4529,52 @@ under [`benchmarks/llama.cpp/`](llama.cpp/).
 <!-- BEGIN TOPLINE:SPECULATIVE -->
 #### Qwen3.6-27B Q4_K_M llama.cpp Vulkan campaign floor, W7900/gfx1100
 
-Latest tracked-clean llama.cpp `ee0445c99` (build 10250), Release Vulkan,
+Latest tracked-clean llama.cpp `c8e03ce81` (build 10290), Release Vulkan,
 RADV/Mesa 26.1.4, `Vulkan0`, full GPU offload, flash attention, and F16 K/V on
 the exact 17,106,773,120-byte GGUF (`a7cbd3ec...29e0f`):
 
 | AR shape | Result | Samples / boundary |
 | --- | ---: | --- |
-| `pp512` | **792.308 tok/s** | 5 samples, stddev 1.300 tok/s; llama-bench default warmup |
-| `pp4096` | **754.093 tok/s** | 5 samples, stddev 4.584 tok/s; llama-bench default warmup |
-| `tg128` | **12.61795 tok/s** | 5 samples, stddev 0.00126 tok/s; standalone llama-bench generation, not context-matched |
+| `pp512` | **792.621 tok/s** | 5 samples, stddev 1.338 tok/s; llama-bench default warmup |
+| `pp4096` | **753.758 tok/s** | 5 samples, stddev 4.129 tok/s; llama-bench default warmup |
+| `tg128` | **12.61632 tok/s** | 5 samples, stddev 0.00291 tok/s; standalone llama-bench generation, not context-matched |
 
 The separate stateful server boundary uses raw `[9707] * N` prompts, prompt
-cache off, one discarded warmup, five samples, and 127 timed transitions per
-128 returned tokens:
+cache off, one discarded warmup, five alternating samples, and 127 timed
+transitions per 128 returned tokens:
 
 | Context-matched shape | Prefill | AR decode | Samples / correctness |
 | --- | ---: | ---: | --- |
-| `512/128` | **79.805 tok/s** | **12.57431 tok/s** | 5; captured output is `[9707] * 128` |
-| `4096/128` | **81.792 tok/s** | **12.48779 tok/s** | 5; two captured trajectories exactly match 512/128 |
+| `512/128` | **79.351 tok/s** | **12.53468 tok/s** | 5; every captured output is `[9707] * 128` |
+| `4096/128` | **80.622 tok/s** | **12.45871 tok/s** | 5; every captured output is `[9707] * 128` |
 
-The roughly 10x llama-bench/server prefill difference is real for their
+The roughly 10x llama-bench/server prefill difference remains real for their
 respective benchmark-versus-stateful-request boundaries; neither number is
 substituted for the other.
 
-The full 10-prompt natural25 category suite selects B3 after a same-run B1-B4
-sweep. Transition-normalized decode is **12.546 AR -> 68.082 MTP tok/s
-(5.4265x)**; native llama.cpp generation accounting is **13.069 -> 70.919
-tok/s**, while complete client/request accounting is **9.607 -> 36.122 tok/s
-(3.7600x)**. Draft acceptance is **77.25%** and accepted/output is **65.20%**.
-B3 beats B4 on weighted engine and complete client throughput even though B4
-accepts more per output. All four categories improve; base/MTP content hashes
-match for 6/10 prompts, with the four differences classified as external
-llama.cpp batching/numerical diagnostics rather than a hipEngine correctness
-gate.
+The full 10-prompt natural25 category suite now selects **B4** after a
+candidate-local warmup and an explicit-`Vulkan0` B1-B4 sweep. The same-harness
+matched B3 row is **67.682 tok/s**, while selected B4 reaches **69.798 tok/s
+(+3.126%)**. Transition-normalized decode is **12.528 AR -> 69.798 B4 tok/s
+(5.5714x)**; native llama.cpp generation accounting is **13.050 -> 72.706
+tok/s**, while complete client/request accounting is **9.528 -> 35.791 tok/s
+(3.7566x)**. B4 accepts **171 / 241 drafts (70.95%)**, or **68.40%** per output.
+All four categories improve; base/B4 content hashes match for 6/10 prompts.
 
-The non-concurrent Vulkan query logger also reconciles both sampled walls.
-For base 512/8, 5.783 s of query intervals is +1.89% versus 5.676 s client
-wall; dense FFN is 49.04%, elementwise/transport 26.08%, other projections
-14.07%, and GDN/activations 9.37%. For one natural B3 request, the separate
-draft/target contexts total 69.562/553.562 ms = 623.124 ms, -2.94% versus
-642.030 ms client wall; combined dense FFN is 46.52%, other projections
-27.34%, elementwise/transport 13.19%, and LM head 7.53%. These synchronized
-profiles rank work only and are not toplines.
+The prior B4 budget row was depressed by one cold first prompt at 48.60 tok/s;
+its other nine rows and 171/242 acceptance ledger match the refresh. The
+candidate-local warmup moves that prompt into the mid-70s, so the old B3
+selection is superseded rather than treated as a source-level B4 regression.
+Current hipEngine B3 **60.262 tok/s** is **10.96% below matched Vulkan B3** and
+**13.66% below selected Vulkan B4**, requiring a **15.82%** hipEngine speedup.
 
-This is the external floor for the new dense campaign, not a hipEngine result.
-Artifact:
+The old `ee0445c99` query attribution is not carried forward as a latest-source
+module ledger. Fresh matched B3/B4 Vulkan and current hipEngine profiles are the
+next campaign unit; profiler numbers remain ranking evidence, never toplines.
+
+This is an external floor, not a hipEngine result. Latest artifact:
+[`2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`](results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json).
+The superseded source/profile floor remains archived in
 [`2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json`](results/2026-08-04-qwen36-27b-llamacpp-vulkan-baseline.json).
 
 #### Qwen3.6-27B Q4_K_M hipEngine dense baseline, W7900/gfx1100

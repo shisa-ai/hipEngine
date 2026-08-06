@@ -208026,3 +208026,86 @@ Vulkan local sizes verbatim will close the measured gap.
   Resume only for a materially new verifier/speculative algorithm, proposer-
   quality shift, hardware primitive, changed baseline, or newly demonstrated
   >=5%-wall production ceiling.
+
+## 2026-08-06 — Refresh latest llama.cpp Vulkan and reopen Qwen3.6 parity
+
+- The human refreshed `/home/lhl/llama.cpp/llama.cpp-vulkan` from the prior
+  `ee0445c99` comparator to tracked-clean `c8e03ce8122b7af76f836d53efde6df1ce5ec437`
+  (`b10289-1-gc8e03ce81`, build 10290); its only untracked path is
+  `.pi/tasks/`. Reconfigure/rebuild succeeds with:
+
+  ```bash
+  cd /home/lhl/llama.cpp/llama.cpp-vulkan
+  cmake -S . -B build -DGGML_VULKAN=ON -DGGML_HIP=OFF \
+    -DCMAKE_BUILD_TYPE=Release
+  cmake --build build -j 16
+  ```
+
+  `llama-server --version` reports **10290 / c8e03ce81**, GNU 16.1.1. The
+  final `llama-bench --version` probe in the wrapper command exits 1 only
+  because that binary has no version option; all targets finished first.
+  `libggml-vulkan.so` SHA-256 is `a512556a...ba1bac7`, `libllama.so` is
+  `3af6e9a...f34da1`, and the executable wrappers retain their prior hashes.
+- Audit the 40-commit source delta before interpreting a timing shift. The only
+  Vulkan device-code addition is `f26efa02a` GATED_LINEAR_ATTN, which this model
+  does not use (Qwen3.6 uses GATED_DELTA_NET). `7bd8282c3` refactors speculative
+  config admission and `9a688e51e` fixes fit/load memory accounting for MTP
+  layers. No Qwen3.6 GDN or Q4/Q5/Q6 shader changed, so the low-level result is
+  expected to be flat rather than credited to new arithmetic.
+- Re-run the exact five-sample W7900 low-level command:
+
+  ```bash
+  DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1 \
+  VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json \
+  GGML_VK_VISIBLE_DEVICES=0 \
+  /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench \
+    -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf -dev Vulkan0 -ngl 99 \
+    -fa on -ctk f16 -ctv f16 -p 512,4096 -n 128 -r 5 -o json
+  ```
+
+  pp512/pp4096/tg128 move **792.308/754.093/12.61795 ->
+  792.621/753.758/12.61632 tok/s (+0.040%/-0.045%/-0.013%)**. This is
+  noise-flat and confirms the same physical W7900 (`gpu_info` now contains only
+  Vulkan0 because device visibility is explicit).
+- Re-run the stateful same-server `[9707] * N` boundary with one discarded
+  32/8 warmup and five alternating samples per shape. All ten captured
+  128-token trajectories are exactly token 9707. Median 512/128 prefill/AR is
+  **79.351 / 12.53468 tok/s** versus prior **79.805 / 12.57431**
+  (**-0.570%/-0.315%**); 4096/128 is **80.622 / 12.45871** versus
+  **81.792 / 12.48779** (**-1.430%/-0.233%**). Keep llama-bench prefill and
+  this stateful boundary separate as before.
+- Re-run the canonical ten-prompt/four-category natural25 packet with
+  `temperature=0`, `top_k=1`, `min_p=0`, explicit target and draft
+  `Vulkan0`, F16 K/V, prompt cache off, and the harness's candidate-local
+  discarded warmup. True base AR is **12.527916 transition tok/s**. Matched B3
+  is **67.682372 tok/s**, **163/211** accepted; selected B4 is
+  **69.797836 tok/s**, **171/241** accepted, **70.95%** draft acceptance and
+  **68.40%** accepted/output. B4 beats same-harness B3 by **3.126%**. Native
+  accounting is **13.049913 -> 72.706080 tok/s (5.5714x)** and complete client
+  predicted accounting is **9.527580 -> 35.791175 (3.7566x)**. Every category
+  improves; base/B4 output hashes match 6/10, an external diagnostic only.
+- Correct a budget-selection protocol trap rather than carrying it forward.
+  The first refreshed sweep accidentally omitted `--spec-draft-device
+  Vulkan0`, which changes the proposal ledger and is excluded. The corrected
+  explicit-device B1/B2/B3/B4 transition rows are **51.441/63.472/67.557/69.100
+  tok/s**, and B4 wins client transition **40.872 vs 39.900**. The old B4 row's
+  only material anomaly was its first `code_merge_intervals` request at **48.60
+  tok/s**; its other nine rows and 171/242 ledger match the refresh. A
+  candidate-local warmup moves that row into the mid-70s. The old B3 selection
+  was therefore cold-first-request contaminated and is superseded; do not
+  select unique-row budgets without warming their own graph/pipelines.
+- The latest external selected floor moves **68.082 B3 -> 69.798 B4 tok/s
+  (+2.520%)**. Canonical hipEngine B3 **60.261907** is now **10.96% below
+  matched Vulkan B3** and **13.66% below selected Vulkan B4**; closure requires
+  **+15.82%** hipEngine throughput. Reopen the campaign under the user's strict
+  module rule: refresh matched Vulkan B3/B4 and current hipEngine B3 profiles,
+  reconcile the complete ledger, then make each slower hipEngine module meet or
+  beat Vulkan before advancing. Matched B3 module closure is necessary but the
+  final endpoint remains selected Vulkan B4.
+- Publish compact raw hashes, commands, build identity, category rows, warmup
+  diagnosis, controls, and deltas in
+  `benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`.
+  Update the campaign, benchmark README, and changelog. No llama.cpp benchmark
+  or server remains active. Fresh B3/B4 Vulkan and hipEngine profile capture is
+  the next logical unit; the old `ee0445c99` query ledger must not rank current
+  module work.
