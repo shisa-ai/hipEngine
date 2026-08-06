@@ -2540,13 +2540,23 @@ SH9-C1 closes the scope audit without duplicating unaffected GPU rows. Current
 512/4K decode carries from SH6-C1, 32K/64K carries retained SH7-A1, and all
 memory rows remain unchanged: **53.153/55.832/46.785/40.386 tok/s** and
 **21.000/21.499/22.152/22.890 GiB** whole-GTT. C1, C2, fork-F16 decode, and
-fork-F16 whole-GTT remain **0/4**. The next package is SH10-A1 on the actual
-single-row short-context c1 attention kernel; later bounded packages cover the
-current-model direct-4K diagnostic, decode sync/D2H census, 4K-first
-phase-residency census, and mandatory cumulative gate. Do not credit SH9 toward
-decode, stack the peak-regressive SH-K1 path, or reopen approximately 1% graph
-replay. Evidence:
+fork-F16 whole-GTT remain **0/4**. Do not credit SH9 toward decode, stack the
+peak-regressive SH-K1 path, or reopen approximately 1% graph replay. Evidence:
 [`SH9-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json).
+
+SH10-A1 retains an exact gfx1151 short-context dispatch transfer through active
+context 1,023. The trace-first baseline names the actual old single-row owner at
+**1.499680 ms/token**; the already-registered fixed256 batch leaf is byte-exact
+at rows1 and lowers the full-process role to **0.928096 ms/token** without new
+HIP code or resource growth. Independent 512/128 processes move decode
+**51.541 -> 53.591 tok/s (+3.978%, -0.742 ms/token)** while prefill changes
+**-0.612%**, tracked/whole-GTT remain **20.566421/21.000130 GiB**, lifecycle is
+clean, and context 1,024+ retains its prior direct/split fallback. Clean
+committed production measures **53.445 tok/s**, still **1.518 ms/token** short
+of C1 and **3.186 ms/token** behind pinned fork F16, so the campaign continues
+to SH11-A1's current direct-4K diagnostic, then the decode sync/D2H census,
+4K-first phase-residency census, and mandatory cumulative gate. Evidence:
+[`SH10-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
