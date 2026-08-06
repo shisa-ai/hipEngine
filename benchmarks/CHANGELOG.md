@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [retained/default SH2-M3 768-row scratch owner slots] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/128: extend the exact 21 independent owner slots to the short class, reducing physical scratch **355,182,664 -> 69,790,760 bytes**, tracked peak **21.479979 -> 21.214187 GiB (-0.265792)**, and whole-GTT **21.916004 -> 21.648426 (-0.267578)** while prefill/decode improve **1361.744/53.322 -> 1370.204/53.408 tok/s (+0.621%/+0.160%)** with byte-exact state and committed clean lifecycle; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json`.
+
 - [SH2-M2 code/library residency precondition closed; no implementation] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K: complete process-owned untracked GTT is bounded at **0.4186/0.5315 GiB** on device eager and **0.4784/0.5308 GiB** on the host stack; both 512 complete-set bounds miss the frozen **0.49-GiB-at-each-context** gate, so no phase-exclusive subset can qualify and no lazy loader/`dlclose` path is added; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json`.
 
 - [SH2-M1 retained exact c1 opt-in; global default blocked] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/4K tg128: host Q8 embedding changes device-eager decode **53.521 -> 53.378 tok/s (-0.267%)** and **56.054 -> 55.972 (-0.147%)**, keeps prefill inside 1%, removes exactly **0.503235 GiB live ownership**, and lowers whole-GTT **21.9160 -> 21.4726 GiB (-0.4434)** / **22.1477 -> 21.6438 (-0.5039)** with complete byte-state equality; retain the env route but keep device residency default for shared c>N/packed/MTP fallback and load-time high water; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json`.

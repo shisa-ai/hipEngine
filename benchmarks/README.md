@@ -4124,6 +4124,17 @@ phase-exclusive subset must be smaller. Both 512 bounds miss the frozen
 **0.49-GiB-at-each-context** precondition, so no lazy loader, module unload, or
 `dlclose` experiment is admitted. Production is unchanged and SH2-M3 follows.
 
+The retained [SH2-M3 short owner-slot result](results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json)
+extends SH-M2's same 21 independent allocations to the right-sized 768-row
+class. Physical scratch falls **355,182,664 -> 69,790,760 bytes**. A
+same-source D->L->L->D 512/128 screen moves prefill/decode
+**1361.744/53.322 -> 1370.204/53.408 tok/s (+0.621%/+0.160%)**, tracked peak
+**21.479979 -> 21.214187 GiB (-0.265792)**, and whole-GTT
+**21.916004 -> 21.648426 GiB (-0.267578)**. Complete prefill and
+four-transition state is byte exact, while committed `edb151447` reproduces the
+owner bytes, memory peaks, IDs, and zero close delta. Diagnostics and capability
+denial retain dedicated owners; no single/split arena or comparison flag lands.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4170,6 +4181,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M3 768-row scratch owner slots | 2026-08-06 | implementation `edb151447`; BF16 KV; same-source D->L->L->D one-warmup/three-run 512/128 A/B; 10-ms whole-GTT; complete byte-state children; committed checkpoint | **Retained/default on gfx1151:** 21 owner slots save **0.265792 GiB tracked** and **0.267578 GiB whole-GTT** while prefill/decode improve **0.621%/0.160%**. State/lifecycle are exact; diagnostics and capability denial retain dedicated fallback. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json). | Yes — exact memory/wall gates and committed checkpoint pass | Keep the 768-row capability default and proceed immediately to SH2-D1; no arena/comparison seam remains. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M2 code/library residency gate | 2026-08-06 | source `33875d75b`; fresh SH2-M1 device/host 512/4K cached processes; 10-ms whole-GTT minus sampler baseline and live owned/tracked bytes; exact lifecycle reused | **Closed precondition / no implementation:** complete untracked residency is at most **0.4186/0.5315 GiB** device and **0.4784/0.5308 GiB** host at 512/4K. The 512 complete-set bounds are below the required 0.49 GiB, so no phase-exclusive code/library subset can qualify. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json). | No performance claim; safe aggregate upper-bound decision | Do not add lazy-load or `dlclose` churn; proceed directly to SH2-M3 short owner slots. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M1 exact c1 host embedding | 2026-08-06 | parent `ab71d0966`; BF16 KV; device graph/device eager/host-copy eager at 512/4K; one warmup plus three measurements; 10-ms whole-GTT; complete byte-state equality | **Retained exact c1 opt-in / global default blocked:** host-copy saves **0.4434/0.5039 GiB whole-GTT** and exactly **0.5032 GiB live ownership**, with all wall deltas inside 1% and exact state. Allocate-then-free high water and shared c>N/packed/MTP device-pointer fallback block global promotion. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json). | No topline replacement; exact own-engine memory/non-regression claim only | Keep the env route; run SH2-M2/M3, and revisit loader ownership only with shared-runner-safe automatic device fallback. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-G final campaign recertification | 2026-08-06 | hipEngine `915f64182`; retained Q5 tile8 + 21 scratch owner slots + bounded head-major prefill scratch; BF16 KV; four right-sized one-warmup/three-run rows; exact 18-prompt oracle; cached role/Q5 traces; Nathan fork `b7b85da9` F16/Q8_0 five-repeat rows; 10-ms whole-GTT | **Diagnostic retained; campaign closed:** hipEngine decode is cross-day **0.840%-1.314%** above SH-C0 and 4K+ tracked/whole-GTT stay **1.4086/1.4043 GiB** lower. Exact state/lifecycle passes, but final results reach **0/4 C1, 0/4 C2, 0/4 fork decode, and 0/4 fork whole-GTT** rows; prefill wins 3/4 rows against each fork lane. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json). | No new topline claim — final current-production recertification plus qualified external diagnostic | Campaign complete; retain exact Q5 tile8, owner slots, and head-major prefill scratch. Reopen only for a newly measured owner, aligned cross-engine oracle, or a new campaign. |
