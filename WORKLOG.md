@@ -203164,3 +203164,58 @@ synthetic position 32). First eager profile: one resident `token_step` about
 `384 us` device-side (position 32) and a full 194-position eager run about
 `76.6 ms` host-wall including per-step token readback syncs — the C3
 CUDA-graph/replay baseline, not a tuned target.
+
+## 2026-08-06 — C3: Nsight Amdahl profile and fixed-address CUDA graph replay
+
+### Nsight Amdahl profile
+`nsys` trace of the eager resident decoder on exclusive GPU0 places one
+`token_step` at about `241 us` device kernel time against about `394 us`
+host-wall, so roughly `150 us/step` is host dispatch (200+ kernel launches per
+token DAG) — the graph-replay target.
+
+### CUDA token-graph capture/replay
+Added `MoonshineCudaTokenGraph`, `capture_token_graphs`, `graph_token_step`,
+`token_graph_contract`, and `_close_token_graphs` to
+`hipengine/runtime/moonshine_cuda.py`. The HIP graph-bucket hypotheses `0`,
+`1`, `2-3`, `4-193` are re-evaluated rather than imported: the measured CUDA
+self-attention schedule has exactly two variants (t32 below 8 visible tokens,
+parallel t256 at/above), so exactly two fixed-address token graphs are captured
+— `positions_0_6` at route 0 and `positions_7_193` at route 7. Every kernel
+reads the current position from the fixed position tensor at launch, so each
+captured DAG is position-generic within its bucket and replays after
+`set_decode_state` updates token/position under fixed addresses. `close` tears
+the graphs down in reverse order and reports parity.
+
+### Measured (exclusive GPU0, RTX PRO 6000 Blackwell)
+- Capture of the retained decoder: `1.74 ms` with `0.26 ms` instantiate
+  (`graph_count=2`, `buckets=['positions_0_6','positions_7_193']`,
+  `capture_positions=[0,7]`).
+- Graph replay reproduces the exact 194-position token stream on both retained
+  fixtures (`audio-konichiwa-fp16` 42 frames, `synthetic-1s-seed1234-fp16` 40
+  frames), zero mismatches, `replay_count=194`.
+- Full 194-position host-wall: eager `76.315 ms` (`393.4 us/pos`) -> graph
+  `58.519 ms` (`301.6 us/pos`) = `1.30x`.
+- Device-side back-to-back enqueue (fair GPU-work comparison, readback
+  excluded): pos 32 eager `341.2 us` vs graph `257.5 us` (`1.33x`); pos 128
+  eager `342.3 us` vs graph `296.6 us` (`1.15x`). Retained matrix
+  `0/1/8/32/64/128/193` graph = `240.0/239.4/247.2/257.5/271.6/296.6/321.7 us`
+  (peaks `0.32 ms/pos` at pos 193).
+- The graph decoder meets the primary per-token target (`<= 0.5 ms/pos` over
+  the retained matrix) in isolation. The complete-route milestone (beat the
+  compiled PyTorch full route `12.869 ms` encoder+generation) is not yet met:
+  the decoder-only graph run is `58.5 ms`; this is gated on the C4 encoder and
+  complete-ASR composition, not on decode dispatch. Bounded-fusion verdict:
+  no persistent whole-token megakernel; replay establishes the launch ceiling.
+
+### RED/GREEN
+`tests/test_moonshine_cuda_sm120a_runtime.py` grows to 18 tests and passes
+18/18 on GPU0. CPU-side: token-graph bucket boundaries, capture contract
+(2 graphs, idempotent, contract fields), capture-guard errors (unprepared /
+cross-cache-not-ready / decode-state-set), `graph_token_step` bucket dispatch
+(no per-kernel launches, `graph_launch` per replay, no timed allocation),
+close destroys both graph+graph_exec in reverse and clears the registry,
+and a partial-capture failure destroys the un-instantiated graph. GPU-gated:
+`graph_replay_generates_exact_token_stream_on_fixtures` asserts both fixtures'
+194 positions under graph replay plus `graph_count=2`, `replay_count=194`.
+Full combined bundle (CUDA + moonshine + HIP runtime + reference + w8a16 +
+HIP moonshine kernels): `183 passed, 14 skipped, 0 failures`.

@@ -56,8 +56,68 @@ def _self_attention_threads(visible: int) -> int:
     return _default_self_threads(visible)
 
 
+def _moonshine_cuda_token_graph_bucket(
+    position: int,
+    *,
+    capacity: int = 194,
+) -> tuple[str, int, int]:
+    """Return the CUDA self-attention launch bucket for one decode position.
+
+    The measured CUDA schedule has exactly two self-attention variants (t32
+    below 8 visible tokens, parallel t256 at/above), so there are two CUDA
+    graph buckets: route positions 0-6 (visible 1-7, one-wave t32) and route
+    positions 7+ (visible 8+, parallel t256).  This is the CUDA-measured
+    counterpart to the HIP ``_moonshine_token_graph_bucket`` hypotheses, which
+    C3 re-evaluates rather than importing.
+    """
+
+    if isinstance(position, bool) or not isinstance(position, int):
+        raise ValueError("position must be an integer")
+    if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
+        raise ValueError("capacity must be a positive integer")
+    if position < 0 or position >= capacity:
+        raise ValueError("position is outside self-cache capacity")
+    if position <= 6:
+        return ("positions_0_6", 0, min(6, capacity - 1))
+    return (f"positions_7_{capacity - 1}", 7, capacity - 1)
+
+
 class NoAllocationError(RuntimeError):
     """Raised when a future timed region allocates through hipEngine memory."""
+
+
+@dataclass
+class MoonshineCudaTokenGraph:
+    """One captured fixed-address token DAG for a CUDA self-cache launch bucket."""
+
+    owner: "MoonshineCudaResidentRuntime"
+    bucket: str
+    minimum_position: int
+    maximum_position: int
+    capture_position: int
+    graph: int
+    graph_exec: int
+    capture_wall_ms: float
+    instantiate_wall_ms: float
+    replay_count: int = 0
+    closed: bool = False
+
+    @property
+    def position_range(self) -> tuple[int, int]:
+        return (self.minimum_position, self.maximum_position)
+
+    def accepts(self, position: int) -> bool:
+        return self.minimum_position <= int(position) <= self.maximum_position
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.owner.runtime.graph_exec_destroy(self.graph_exec)
+        self.owner.runtime.graph_destroy(self.graph)
+        current = self.owner._token_graphs.get(self.bucket)
+        if current is self:
+            del self.owner._token_graphs[self.bucket]
 
 
 @dataclass(frozen=True)
@@ -124,6 +184,7 @@ class MoonshineCudaResidentRuntime:
         self.encoder_state_valid = False
         self.decode_position: int | None = None
         self.decoder_libraries: MoonshineCudaDecoderLibraries | None = None
+        self._token_graphs: dict[str, MoonshineCudaTokenGraph] = {}
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
         self._allocation_baseline = memory_stats()["current_allocated_bytes"]
@@ -797,6 +858,123 @@ class MoonshineCudaResidentRuntime:
             raise RuntimeError(f"Moonshine decoder returned invalid token ID {token_id}")
         return token_id
 
+    def capture_token_graphs(self) -> tuple[MoonshineCudaTokenGraph, ...]:
+        """Capture one reusable token DAG for each CUDA self-attention bucket.
+
+        The measured CUDA schedule has exactly two variants (t32 below 8
+        visible tokens, parallel t256 at/above), so two graphs are captured: at
+        route positions 0 (visible 1, one-wave t32) and 7 (visible 8, parallel
+        t256).  Every kernel reads the current position from the fixed position
+        tensor at launch, so a captured graph is position-generic within its
+        bucket and is replayed after ``set_decode_state`` updates token and
+        position under fixed addresses.
+        """
+
+        import time
+
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if self.decoder_libraries is None:
+            raise RuntimeError("Moonshine decoder kernels are not prepared")
+        if not self.cross_cache_valid or not self.encoder_state_valid:
+            raise RuntimeError("Moonshine cross cache is not ready")
+        if self.decode_position is not None:
+            raise RuntimeError("capture token graphs before setting device decode state")
+        if self._token_graphs:
+            return tuple(self._token_graphs.values())
+
+        representatives = tuple(
+            position for position in (0, 7) if position < self.spec.self_cache_capacity
+        )
+        captures: list[MoonshineCudaTokenGraph] = []
+        try:
+            for position in representatives:
+                bucket, minimum, maximum = _moonshine_cuda_token_graph_bucket(
+                    position,
+                    capacity=self.spec.self_cache_capacity,
+                )
+                self.runtime.stream_synchronize(self.stream)
+                graph = 0
+                capture_start = time.perf_counter_ns()
+                self.runtime.stream_begin_capture(self.stream)
+                try:
+                    self._enqueue_token_step(
+                        route_position=position,
+                        stream=self.stream,
+                    )
+                    graph = self.runtime.stream_end_capture(self.stream)
+                except Exception:
+                    try:
+                        self.runtime.stream_end_capture(self.stream)
+                    except Exception:
+                        pass
+                    raise
+                capture_wall_ms = (time.perf_counter_ns() - capture_start) / 1.0e6
+                instantiate_start = time.perf_counter_ns()
+                try:
+                    graph_exec = self.runtime.graph_instantiate(graph)
+                except Exception:
+                    self.runtime.graph_destroy(graph)
+                    raise
+                instantiate_wall_ms = (time.perf_counter_ns() - instantiate_start) / 1.0e6
+                captures.append(
+                    MoonshineCudaTokenGraph(
+                        owner=self,
+                        bucket=bucket,
+                        minimum_position=minimum,
+                        maximum_position=maximum,
+                        capture_position=position,
+                        graph=graph,
+                        graph_exec=graph_exec,
+                        capture_wall_ms=float(capture_wall_ms),
+                        instantiate_wall_ms=float(instantiate_wall_ms),
+                    )
+                )
+        except Exception:
+            for capture in reversed(captures):
+                capture.close()
+            raise
+        self._token_graphs = {capture.bucket: capture for capture in captures}
+        return tuple(captures)
+
+    def graph_token_step(self) -> None:
+        """Launch the captured token DAG selected by the current cache position."""
+
+        route_position = self._require_token_step_ready()
+        assert self.spec is not None
+        bucket, _, _ = _moonshine_cuda_token_graph_bucket(
+            route_position,
+            capacity=self.spec.self_cache_capacity,
+        )
+        capture = self._token_graphs.get(bucket)
+        if capture is None or capture.closed:
+            raise RuntimeError(f"Moonshine token graph bucket {bucket!r} is not captured")
+        if not capture.accepts(route_position):
+            raise RuntimeError("Moonshine token graph bucket does not cover decode position")
+        self.runtime.graph_launch(capture.graph_exec, self.stream)
+        capture.replay_count += 1
+        self.self_cache_length += 1
+        self.decode_position = None
+
+    def token_graph_contract(self) -> dict[str, object]:
+        captures = tuple(self._token_graphs.values())
+        return {
+            "captured": bool(captures),
+            "graph_count": len(captures),
+            "buckets": [capture.bucket for capture in captures],
+            "capture_positions": [capture.capture_position for capture in captures],
+            "capture_wall_ms": sum(capture.capture_wall_ms for capture in captures),
+            "instantiate_wall_ms": sum(
+                capture.instantiate_wall_ms for capture in captures
+            ),
+            "replay_count": sum(capture.replay_count for capture in captures),
+        }
+
+    def _close_token_graphs(self) -> None:
+        for capture in reversed(tuple(self._token_graphs.values())):
+            capture.close()
+        self._token_graphs.clear()
+
     def allocation_contract(self) -> dict[str, int | bool | None]:
         """Fixed-address contract for the resident decoder."""
 
@@ -813,12 +991,14 @@ class MoonshineCudaResidentRuntime:
         }
 
     def close(self) -> None:
-        """Free weights, workspace, events/stream, and report teardown parity."""
+        """Free weights, workspace, graphs, events/stream, and report teardown parity."""
 
         if self.closed:
             return
         self.closed = True
         try:
+            if self._token_graphs:
+                self._close_token_graphs()
             if self.workspace is not None:
                 self.workspace.free()
             if self.loaded_model is not None and self.weights is not None:
