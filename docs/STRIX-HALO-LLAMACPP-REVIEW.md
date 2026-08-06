@@ -573,7 +573,7 @@ evidence.
 | --- | --- | --- |
 | **SH2-C0** | Post-SH-G role, allocation, graph, and closed-frontier audit. | **Complete.** The table above and the compact audit artifact freeze the residual owners; no production change. |
 | **SH2-M1** | Current-gfx1151 exact c1 host-embedding matrix: device graph, device eager, existing host-copy eager, tracked and whole-GTT. | **Complete: retain the existing exact c1 opt-in; global default blocked.** Complete state is byte exact, live ownership falls 0.503 GiB, whole-GTT falls 0.443/0.504 GiB at 512/4K, and all prefill/decode deltas are inside 1%. The current load path and shared c>N/packed/MTP device-pointer contracts block default promotion. Full-table mapped work remains blocked by the 8-MiB hard limit. |
-| **SH2-M2** | Phase-resolved code-object/library GTT census, then bounded lazy/deferred ownership if sufficient. | Require >=0.49-GiB phase-exclusive headroom before implementation; no compiler in measured processes, no unsafe `dlclose`, and exact lifecycle/performance gates. |
+| **SH2-M2** | Phase-resolved code-object/library GTT census, then bounded lazy/deferred ownership if sufficient. | **Complete: precondition failed; no implementation.** At 512, the complete untracked process-residency upper bound is only 0.418588 GiB on the device route and 0.478414 GiB on the host stack. Any active/prefill/decode/never-used code-object subset is smaller than the complete set, so neither can reach the frozen 0.49-GiB two-context gate. No lazy loader or `dlclose` path is added. |
 | **SH2-M3** | 768-row owner-slot map with dedicated fallback. | Require exact complete state, projected ~0.146-GiB recovery to be measured, clean teardown, and <=1% prefill/decode loss; reject arena-style address coupling. |
 | **SH2-D1** | P10.D1 mixed Q4T16 -> Q5/Q6T16 output-tiled selected-MoE composite. | CPU/unfused byte oracle, actual-weight leaf, named cached trace, no spills, >=1.15x or >=0.5-ms/token projection before model routing, then the four-depth exact gate. |
 | **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | If any C2 or whole-GTT row is still missing, schedule the next structurally new owner. Never relabel a closed Campaign-2 retry as new work. |
@@ -593,6 +593,17 @@ high water drops only **0.418797 GiB** there. Keep the exact c1 env route, but d
 not make it global default until a shared-runner-safe policy preserves
 multi-row, packed-AR, and MTP device-pointer fallback. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json).
+
+SH2-M2 closes before unsafe module-lifecycle work. Subtracting each 10-ms GTT
+baseline and live owned bytes from the fresh SH2-M1 process peak bounds **all**
+untracked code-object, runtime-library, driver, page-table, and other process
+residency at **0.418588/0.531532 GiB** for device eager and
+**0.478414/0.530792 GiB** for host-copy at 512/4K. Because a phase-exclusive
+code/library subset cannot exceed the complete residual, both 512 routes miss
+the required **0.49 GiB** even under the impossible assumption that every
+untracked byte is removable. No `dlclose`, lazy loader, or extra benchmark can
+repair that precondition; proceed directly to SH2-M3. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

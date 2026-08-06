@@ -204601,3 +204601,28 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   window. Two subsequent completed child runs stopped only in one-off collector
   schema parsing. The final resumable collector reran every leg whose GTT sample
   had not been checkpointed; no failed/parser-only timing is retained.
+
+## 2026-08-06 — Close SH2-M2 code-object/library residency precondition
+
+- Task #35 requires at least **0.49 GiB** of phase-exclusive code-object/library
+  GTT at both 512 and 4K before any lazy loader, module unload, or `dlclose`
+  implementation. Reuse the fresh, cached-only, lifecycle-clean SH2-M1
+  processes rather than perturbing them with unload behavior. For each route,
+  subtract the 10-ms sampler baseline and live owned bytes from whole-GTT peak;
+  this residual is a conservative upper bound over *all* active, prefill-only,
+  decode-only, never-used, runtime, driver, and page-table bytes outside
+  hipEngine ownership.
+- Device eager residual is **0.418588 GiB** at 512 and **0.531532 GiB** at 4K.
+  The host-embedding stack residual against live ownership is
+  **0.478414/0.530792 GiB**. Thus even the complete 512 sets miss 0.49 GiB by
+  **0.071412/0.011586 GiB**, respectively. A phase-exclusive code/library
+  subset cannot be larger than its complete set, so the frozen two-context
+  precondition is mathematically impossible.
+- Close SH2-M2 without implementation or another GPU run. No unsafe unload,
+  compiler invocation, correctness exposure, or production change is justified.
+  Reused SH2-M1 state/lifecycle remains exact and every process returns tracked
+  bytes to zero. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json`
+  (SHA-256 `9604f2abe034967a213e3e7ee2677a1020d40f4efac9034ce96ba8d5d2848e29`),
+  update the campaign/benchmark rollups, and proceed directly to SH2-M3's
+  separately exact 768-row owner slots.
