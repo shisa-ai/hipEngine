@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "status": "retained_exact_default_new_canonical_topline",
+  "performance_claim": true,
+  "performance_claim_scope": "Clean W7900 natural25 B1/B2/B3 promotion, 17-pair same-loaded-model B3 control/candidate screen, and a warm-cached post-keep B3 kernel/marker/copy profile.",
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_direct_proposal_target_handoff_w7900",
+  "timestamp": "2026-08-06T10:30:00Z",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "implementation_commit": "92e823a2dc8fe17aee3cc48ae529dd42161a06e1",
+    "profile_marker_commit": "a75ec4121ed5ba8f0cb791fb98b927dc95522862",
+    "natural_measurement_tree_clean": true,
+    "profile_measurement_tree_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "max_visible_outputs": 25,
+    "timed_transitions": 240,
+    "candidate_budgets": [1, 2, 3],
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "seed": 12345,
+    "reasoning": "off",
+    "warmups": 1,
+    "repetitions": 1
+  },
+  "commands": {
+    "component": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-27b/direct-proposal-target-screen.py",
+    "natural25": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-92e823a2d/natural25-proposal-target-handoff-b1-b3.json",
+    "profile": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib:/opt/rocm/lib HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/suite.json"
+  },
+  "change": {
+    "mechanism": "Launch an already-cached NextN graph asynchronously, record a private completion event, make the already-cached N2 stream wait, inject each proposal ID into both i64 embedding and i32 acceptance metadata columns, append proposal ID/value rows to the existing bounded N2 result payload, and let the target synchronization retire both submissions.",
+    "scheduler_contract": "Plan with shape-only rows, reconstruct real draft rows from the bounded payload, rebind the unchanged transaction, and require the independent CPU acceptance oracle before commit.",
+    "fallbacks": "Capture misses, diagnostic logits, caller streams, output-cap tails, long contexts, and unsupported shapes retain the independently synchronized exact route. No in-flight proposal triggers target capture or post-launch fallback.",
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "correctness": {
+    "focused_w7900_transaction": "1 passed: B3 reject/partial/full target top-1 and acceptance, selected BF16 hidden, all Conv/GDN and live K/V state, cursors, graph reuse, correction, forced outer rollback, natural output, N2/N1 tail split, ownership, and teardown.",
+    "gpu1_real_nextn_graph": "1 passed: dense NextN eager/graph IDs, logits, and complete state hash.",
+    "nextn_provider_cpu_fake": "13 passed",
+    "native_cycle_cpu_fake": "15 passed",
+    "native_graph_launcher": "17 passed",
+    "benchmark_contract": "6 passed",
+    "natural25": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "all_acceptance_ledgers_equal": true,
+      "accepted_proposed": {
+        "B1": [115, 127],
+        "B2": [151, 182],
+        "B3": [169, 219]
+      },
+      "all_candidate_allocations_freed": true
+    }
+  },
+  "component_screen": {
+    "protocol": "Same-loaded-model 17-pair counterbalanced synchronized-control/device-handoff B3 code_merge_intervals natural25 decode after both routes are warm.",
+    "control_median_decode_ms": 361.138051841408,
+    "candidate_median_decode_ms": 359.8281089216471,
+    "median_difference_ms": -1.3099429197609425,
+    "median_paired_difference_ms": -1.8205931410193443,
+    "speedup_from_medians": 1.0036404685661902,
+    "pair_wins": 15,
+    "pairs": 17,
+    "candidate_chained_cycles_per_sample": 7,
+    "exact": true
+  },
+  "natural25": {
+    "prior_proposal_canonical_tok_s": {
+      "true_ar": 24.08482525608581,
+      "B1": 44.03528835080576,
+      "B2": 56.01430746202714,
+      "B3": 61.02045876262607
+    },
+    "immediate_n2_control_tok_s": {
+      "true_ar": 24.157587176266514,
+      "B1": 44.223637552791686,
+      "B2": 56.03674678814435,
+      "B3": 60.902549863338564
+    },
+    "direct_handoff_tok_s": {
+      "true_ar": 23.52428632619274,
+      "B1": 44.49583550251068,
+      "B2": 56.34972651071357,
+      "B3": 61.39440170570785
+    },
+    "delta_percent_vs_immediate_n2_B1_B2_B3": [0.6155033027169132, 0.5585258611683797, 0.8076046790700397],
+    "delta_percent_vs_prior_canonical_B1_B2_B3": [1.0458592845719261, 0.5988095968406215, 0.6128156861888723],
+    "prompt_wins_vs_immediate_n2": {"B1": 9, "B2": 10, "B3": 10},
+    "scope_wins_vs_immediate_n2": {"B1": 7, "B2": 7, "B3": 7},
+    "scope_count_per_budget": 7,
+    "chained_device_total_cycles": {
+      "B1": [124, 125, 127],
+      "B2": [87, 88, 91],
+      "B3": [68, 68, 76]
+    },
+    "tracked_peak_bytes": 32724839112,
+    "tracked_peak_delta_bytes_vs_n2": 48,
+    "memory_after_close_bytes": 0
+  },
+  "warm_cached_profile": {
+    "protocol": "One code_merge_intervals B3 measurement after candidate-local warmup; measured window has seven direct proposal-to-target handoffs and no graph capture. Profiler values are attribution, never the throughput topline.",
+    "prior_n2_capture_normalized": {
+      "wall_ms": 364.0035695,
+      "kernel_dispatches": 6459,
+      "kernel_ms": 315.01828716666665,
+      "copy_count": 0,
+      "nonkernel_ms": 48.98528233333337
+    },
+    "direct_handoff": {
+      "wall_ms": 366.033872,
+      "kernel_dispatches": 6480,
+      "kernel_ms": 321.778728,
+      "copy_count": 0,
+      "nonkernel_ms": 44.25514399999997
+    },
+    "delta_vs_prior_n2": {
+      "wall_ms": 2.030302499999948,
+      "kernel_ms": 6.760440833333348,
+      "kernel_dispatches": 21,
+      "nonkernel_ms": -4.7301383333334,
+      "nonkernel_percent": -9.656243892085625
+    },
+    "full_stack_vs_pre_submission_control": {
+      "wall_ms": -10.535236333333387,
+      "wall_percent": -2.7976900123224513,
+      "nonkernel_ms": -20.879291166666718,
+      "nonkernel_percent": -32.05568776829117
+    },
+    "vulkan_b3_inferred_nonkernel_ms": 23.788561894986742,
+    "remaining_nonkernel_gap_vs_vulkan_b3_ms": 20.46658210501323,
+    "interpretation": "Kernel sum rose under the distinct warm profiled run, so wall did not improve versus the older profile. The production paired and natural suites improved, while the profiler isolates the intended submission reduction."
+  },
+  "latest_vulkan_comparison": {
+    "llama_cpp_commit": "c8e03ce81",
+    "matched_B3_tok_s": 67.68237226714795,
+    "selected_B4_tok_s": 69.79783638340183,
+    "canonical_hipengine_B3_tok_s": 61.39440170570785,
+    "canonical_gap_percent_vs_matched_B3": -9.290411004834409,
+    "canonical_gap_percent_vs_selected_B4": -12.039677894216716,
+    "required_speedup_percent_vs_selected_B4": 13.687623698941763
+  },
+  "remaining_matched_module_ledger": {
+    "rows": [
+      {"module": "steady graph/queue/host residual after direct handoff", "hipengine_ms": 44.25514399999997, "vulkan_ms": 23.788561894986742, "gap_ms": 20.46658210501323, "status": "largest_remaining_deficit"},
+      {"module": "Q5 ssm_out", "hipengine_ms": 22.5767, "vulkan_ms": 15.144, "gap_ms": 7.4327, "status": "hipengine_slower"},
+      {"module": "FFN-down Q6", "hipengine_ms": 32.6016, "vulkan_ms": 28.8565, "gap_ms": 3.7451, "status": "hipengine_slower"},
+      {"module": "full-attention K/V", "hipengine_ms": 4.958, "vulkan_ms": 2.03952, "gap_ms": 2.91848, "status": "hipengine_slower"},
+      {"module": "linear-attention Q6 qkv", "hipengine_ms": 14.0347, "vulkan_ms": 12.2678, "gap_ms": 1.7669, "status": "hipengine_slower"},
+      {"module": "target root projection", "hipengine_ms": 11.7623, "vulkan_ms": 10.692826666666667, "gap_ms": 1.0694733333333328, "status": "hipengine_slower"},
+      {"module": "complete target arithmetic", "hipengine_ms": 255.48481, "vulkan_ms": 277.2031848484848, "gap_ms": -21.718374848484786, "status": "hipengine_faster"}
+    ]
+  },
+  "source_artifacts": {
+    "component_harness": {"path": "/tmp/hipengine-qwen36-27b/direct-proposal-target-screen.py", "sha256": "526867a8bbd1c0ddc95e546832360c82cba2e4df2f527eaa7cab3354fec83d3c"},
+    "component": {"path": "/tmp/hipengine-qwen36-27b/direct-proposal-target-screen-w7900.json", "sha256": "52547a0ea6696f3135f8a64994e7cc453c16c9a37a0ef1d81cbf913af565b22c"},
+    "natural25": {"path": "/tmp/hipengine-qwen36-27b/final-92e823a2d/natural25-proposal-target-handoff-b1-b3.json", "sha256": "72c56179d0a56b83f1bdf50dfe7a34e56de377d1b532ac6cd2768732d5341d58"},
+    "natural_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-92e823a2d/natural25-comparison.json", "sha256": "5142f38ba3af2604745a81904e1ce53e5400fca45a095236c1fdc7d8272a9d73"},
+    "profile_summary": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/summary.json", "sha256": "9e3d1daf0e924aebea86840191fb1efe99a9be159c865005512ed9c389c18eaf"},
+    "profile_suite": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/suite.json", "sha256": "2bd6869fce007e409491512a48c4fc1ecb2111e783de0c0a21c712da29fbbe61"},
+    "kernel_trace": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/mtp-b3_kernel_trace.csv", "sha256": "eb4dd5ce809e373aaca0cf3a09b81c66cf57f0540468c3290975a64c779cfedc"},
+    "marker_trace": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/mtp-b3_marker_api_trace.csv", "sha256": "5a57ecdcc49e150c41acd06efef260601f23309ea30873baa690da50c0e58bf2"},
+    "copy_trace": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/mtp-b3_memory_copy_trace.csv", "sha256": "edbb65086ed5d1105ce7759008652415711328fc2fd04aa61c94f3bc3c686e04"}
+  },
+  "next_target": "Continue D27-R2 at the remaining 20.467-ms submission residual. If no materially different one-submit parent/child graph route qualifies, advance in fixed order to Q5 ssm_out, Q6 FFN-down, full-attention K/V, linear-attention Q6 QKV, and target root."
+}
