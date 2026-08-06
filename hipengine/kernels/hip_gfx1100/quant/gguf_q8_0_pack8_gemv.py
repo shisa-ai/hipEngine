@@ -37,7 +37,9 @@ _Q8_0_SINGLE_BF16 = "hipengine_gguf_q8_0_pack8_gemv_decode_bf16_bf16_out"
 _Q8_0_SINGLE_FP16 = "hipengine_gguf_q8_0_pack8_gemv_decode_fp16_fp16_out"
 _Q8_0_DUAL_BF16 = "hipengine_gguf_q8_0_pack8_dual_gate_up_gemv_decode_bf16_bf16_out"
 _Q8_0_DUAL_FP16 = "hipengine_gguf_q8_0_pack8_dual_gate_up_gemv_decode_fp16_fp16_out"
+_Q8_0_ROWVEC8_DUAL_SPLIT_BF16 = "hipengine_gguf_q8_0_rowvec8_dual_split_gemv_decode_bf16_bf16_out"
 _Q8_0_BLOCK = 32
+_ROWVEC8_THREADS = frozenset({32, 64, 128})
 
 
 def plan_gguf_q8_0_pack8_gemv_build(
@@ -166,6 +168,65 @@ def gguf_q8_0_pack8_dual_gate_up_gemv_decode_bf16_bf16_out(
         library=library,
         runtime=runtime,
     )
+
+
+def gguf_q8_0_rowvec8_dual_split_gemv_decode_bf16_bf16_out(
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 64,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the SH5-D1 raw-row, eight-K-per-lane BF16 pair leaf."""
+
+    _check_common(rows, in_features)
+    if rows != 1:
+        raise ValueError("rowvec8 is a decode-only leaf and requires rows == 1")
+    if out_features_a <= 0 or out_features_b <= 0:
+        raise ValueError("out_features_a and out_features_b must be positive")
+    if threads not in _ROWVEC8_THREADS:
+        raise ValueError(f"threads must be one of {sorted(_ROWVEC8_THREADS)}")
+    library = library or build_gguf_q8_0_pack8_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _Q8_0_ROWVEC8_DUAL_SPLIT_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def gguf_q8_0_pack8_dual_gate_up_gemv_decode_fp16_fp16_out(
@@ -336,6 +397,16 @@ def register_gguf_q8_0_pack8_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q8_0_pack8_dual_gate_up_gemv_decode_fp16_fp16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q8_0",
+            "rowvec8_dual_split_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q8_0_rowvec8_dual_split_gemv_decode_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 register_gguf_q8_0_pack8_gemv_kernels()
@@ -347,6 +418,7 @@ __all__ = [
     "gguf_q8_0_pack8_dual_gate_up_gemv_decode_fp16_fp16_out",
     "gguf_q8_0_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_pack8_gemv_decode_fp16_fp16_out",
+    "gguf_q8_0_rowvec8_dual_split_gemv_decode_bf16_bf16_out",
     "plan_gguf_q8_0_pack8_gemv_build",
     "register_gguf_q8_0_pack8_gemv_kernels",
 ]

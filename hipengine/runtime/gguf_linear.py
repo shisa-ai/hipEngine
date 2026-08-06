@@ -87,6 +87,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
+    gguf_q8_0_rowvec8_pair_enabled,
 )
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
@@ -95,6 +96,7 @@ GGUF_ACTIVATION_F32 = "f32"
 GGUF_OUTPUT_BF16 = "bf16"
 GGUF_OUTPUT_FP16 = "fp16"
 GGUF_OUTPUT_F32 = "f32"
+_Q8_0_ROWVEC8_PAIR_VARIANT = "rowvec8_dual_split_gemv_decode_bf16_bf16_out"
 
 # Opt-in env var for the GGUF WMMA batched prefill family (P8). See
 # docs/GGUF.md "P8: real batched prefill GEMM" for the wider plan.
@@ -1652,6 +1654,13 @@ def launch_gguf_linear_pair(
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     out_features_b = out_features if out_features_b is None else int(out_features_b)
+    if (
+        registered_decode_variant is None
+        and use_gemv
+        and rows == 1
+        and gguf_q8_0_rowvec8_pair_enabled()
+    ):
+        registered_decode_variant = _Q8_0_ROWVEC8_PAIR_VARIANT
 
     cache_key = (
         generation(),

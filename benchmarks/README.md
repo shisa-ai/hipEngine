@@ -4240,6 +4240,21 @@ It misses both frozen gates, every transient surface is removed, and SH5-D1 now
 starts a genuinely different byte-neutral row-1 dense-Q8 vector/layout audit;
 this rejection is not campaign completion.
 
+The [SH5-D1 raw rowvec8 result](results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json)
+closes the audit but remains blocked from production. Pinned-fork dispatch and
+shader source establish a raw-output-row, eight-K-per-lane traversal genuinely
+distinct from hipEngine's T16 and older raw-pack8 bodies. On actual layer-0
+`2048->8192 + 2048->4096` weights, local64 improves **0.134737 -> 0.116588 ms
+(1.15566x, 15/15 wins)** and traces at **24 VGPR / 512 B LDS / zero scratch**.
+Replacing exactly 60 T16 tensors / **802,160,640 bytes** with raw allocations
+creates no sidecar and improves matched 512/128 decode **52.876 -> 54.427 tok/s
+(+2.934%, -0.539 ms/token)** at unchanged tracked peak. It also regresses
+prefill **1369.120 -> 1184.884 tok/s (-13.457%)**, while changed reduction
+preserves four top-1 tokens but not hidden/KV state. The exact-tree repair is
+only **0.779x**. Production stays Q8T16; SH6-P1 must prove a one-buffer
+raw-to-T16 prefill bridge and complete category quality before any promotion.
+This blocked decode win is not a topline claim or campaign completion.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4286,6 +4301,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH5-D1 raw rowvec8 dense-Q8 pair | 2026-08-06 | parent `bb81b221f`; pinned fork `b7b85da9` source attribution; actual layer-0 qkv+gate >2x-MALL cycling leaf; cached trace; byte-neutral 512/128 matched route; bounded exact-tree repair | **Closed blocked / production Q8T16 unchanged:** leaf is **1.15566x** and decode improves **52.876 -> 54.427 tok/s (+2.934%, -0.539 ms/token)** at unchanged tracked peak, but prefill regresses **13.457%** and fast reduction is not state-exact; exact repair is **0.779x**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json). | No — prefill and complete-quality gates remain open | Execute SH6-P1 one-buffer raw-to-T16 prefill bridge plus complete category quality; remove the model route on failure, then run SH6-C1 on success. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH4-D1 routed/shared MoE branch overlap | 2026-08-06 | parent `cbd5bc9c7`; transient private-c1 auxiliary stream/events/2-KiB concat row; five alternating same-resident 512/128 pairs; exact hidden/Conv/GDN/KV snapshot; cached 8-token kernel/HIP/ROCTX trace | **Closed/rejected; production unchanged:** real queue-1/queue-2 overlap hides **0.456 ms/token / 33.4%** of the **1.363-ms/token** shared branch, but wall regresses **18.811 -> 19.207 ms/token (-2.058%)**. All transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json). | No — exact candidate fails both >=1% wall and >=0.5-ms/token gates | Do not retry stream overlap; execute SH5-D1 byte-neutral row-1 dense-Q8 vector/layout audit. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH3-C1 cumulative beat-fork gate | 2026-08-06 | committed `16b961a6b`; private-c1 host embedding; fresh four-depth canonical and right-sized attribution children; 10-ms whole-GTT; cached role traces; exact 18-prompt oracle; pinned fork `b7b85da9` comparator | **Gate complete; objective continues:** canonical decode **53.177/55.664/46.241/39.602 tok/s**, whole-GTT **21.000/21.499/22.152/22.890 GiB**, all four prefill and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json). | No — diagnostic cumulative gate, not a performance claim | Execute SH4-D1 private-c1 routed/shared MoE branch overlap; require real cross-queue overlap, exact fallbacks, and >=1% wall or >=0.5-ms/token saving. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH3-M1 runner-safe host embedding | 2026-08-06 | parent `8c39cda03`; loader-time private-c1 host ownership; device/auto-host 512/4K one-warmup/three-run eager A/B; BF16 KV; 10-ms whole-GTT; complete four-transition state; 62 focused tests | **Retained/default for private c1:** exact **0.503235-GiB tracked** and **0.503933-GiB whole-GTT** savings at both depths; prefill/decode deltas are **+0.488%/-0.035%** and **-0.229%/-0.403%**; state/lifecycle exact. Shared/c>N and pointer-fed graph/packed/MTP routes retain or restore device ownership. [`artifact`](results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json). | Yes — exact loader/policy/wall/GTT/state/lifecycle/fallback gates pass | SH3-C1 reproduces the policy at all four depths; rerun if token layout, loader ownership, capability, or pointer-fed fallback changes. |
