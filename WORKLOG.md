@@ -203419,6 +203419,11 @@ length and never reached).
 | PyTorch encoder + custom CUDA decoder | 3 | 3.971 | 4.005 | 3.254x |
 | Decoder-only custom CUDA (partial) | 3 | 1.699 | 1.703 | 7.608x |
 
+The `vs compiled PyTorch` column uses the campaign's paired nine-run compiled
+median (`12.924 ms`); against the retained six-run `12.869-ms` baseline (the
+README number) the standalone route is `3.30x`, PyTorch-encoder is `3.24x`,
+and decoder-only is `7.58x`.
+
 Per-file standalone medians: hai 2.53 ms, konichiwa 4.19 ms,
 konichiwa.ogenkidesuka 8.57 ms, kumbawa 3.95 ms, sosososo 3.83 ms,
 sumimasen 3.86 ms.
