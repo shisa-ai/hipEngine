@@ -4292,6 +4292,18 @@ below 32K and under explicit opt-out. C1/fork parity remains open, so SH8-A1
 screens the remaining 72-VGPR grouped-GQA producer rather than stopping the
 campaign.
 
+The [SH8-A1 qgroup4 producer screen](results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json)
+is exact but rejected before model routing. Two four-query blocks reduce
+producer registers **72 -> 56 VGPR** while doubling K/V grid ownership. Across
+21 pairs per context, complete producer+parallel-reducer wall regresses
+**0.425068 -> 0.474481 ms/layer (0.8959x)** at 32K and **0.759873 ->
+0.858382 (0.8852x)** at 64K, with **0/42 wins** and projected
+**-0.494/-0.985 ms/token** effects. Cached producer medians also regress
+**405.676 -> 455.813 us** and **725.396 -> 820.053 us**. All transient
+surfaces are removed; production remains retained SH7. The next open backend
+transfer is SH9-D1's compact-WMMA no-read scheduler bound, not another
+producer/reducer/layout retry.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4338,6 +4350,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH8-A1 grouped-GQA qgroup4 producer | 2026-08-06 | parent `cad45d291`; transient exact qgroup4 body/wrapper/key; cached gfx1151 primitive and trace; 21 counterbalanced ten-launch pairs at 32K/64K | **Closed/rejected; production unchanged:** qgroup4 lowers **72 -> 56 VGPR** but complete producer+parallel-reducer wall regresses **0.425068 -> 0.474481 ms (0.8959x)** and **0.759873 -> 0.858382 (0.8852x)**, with **0/42 wins** and projected **-0.494/-0.985 ms/token**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json). | No — exact leaf fails both continuation alternatives | Transient surfaces removed; execute SH9-D1 compact-WMMA no-read gfx1151 transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH7-A1 parallel split reducer | 2026-08-06 | parent `6464e6e45`; package-default one hardware queue; same-source env-controlled serial/candidate 32K/64K one-discard/three-run eager wall; 10-ms whole-GTT; cached kernel/HIP/ROCTX traces; NumPy primitive; exact 18-prompt semantic gate | **Retained/default from 32K:** decode **46.066 -> 46.785 tok/s (+1.560%, -0.333 ms/token)** and **39.441 -> 40.386 (+2.394%, -0.593 ms/token)**; reducer **424.162 -> 109.346** and **744.973 -> 207.485 us/token**. All 1,296 semantic logits are byte-exact; tracked peak/GTT/lifecycle are unchanged; serial remains below 32K/under opt-out. [`artifact`](results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json). | Yes — exact own-engine long-context decode performance claim | Execute SH8-A1's 72-VGPR grouped-GQA producer four-query occupancy screen; C1/fork decode and fork whole-GTT parity remain open. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH6-C1 cumulative beat-fork gate | 2026-08-06 | clean production source `b074e8054`; inherited two-queue process cap with profiled decode confined to queue 1 / stream 0; fresh four-depth canonical and right-sized attribution children; 10-ms whole-GTT; cached role traces; exact 18-prompt oracle; pinned fork `b7b85da9` comparator | **Gate complete; objective continues:** canonical decode **53.153/55.832/46.196/39.579 tok/s**, whole-GTT **21.000/21.499/22.152/22.890 GiB**, and all prefill/exact-oracle/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json). | No — diagnostic cumulative gate, not a performance claim | Execute SH7-A1's independent gfx1151 parallel split-reducer gate with a fresh package-default one-queue serial/candidate pair; keep serial below 32K and require semantic, wall, trace, memory, and lifecycle admission. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH6-P1 raw-to-T16 prefill bridge | 2026-08-06 | SH5 dependency `0dace5c1b`; converter leaf `88188232d`; exact pair-byte oracle; cached no-spill trace; transactional one-owner runtime; matched 512/128 wall/state | **Closed/rejected; production Q8T16 unchanged:** converter and complete prefill state are exact, but charged prefill regresses **1369.120 -> 1318.196 tok/s (-3.720%)**, beyond the 1% guard. Model-route/env/runtime/scratch surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json). | No — first mandatory prefill row fails | SH6-C1 is complete; retain only standalone rowvec8 and transform leaves as evidence, and rerun only if production routing changes. |

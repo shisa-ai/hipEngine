@@ -205437,3 +205437,48 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   pressure. Require exact per-head order and >=1.10x producer speed or >=0.5-ms
   projection before full-model routing; do not reopen reducer, split-count,
   page-layout, compact-KV, raw-Q8, or overlap retries.
+
+## 2026-08-06 — Reject SH8-A1 qgroup4 producer; activate SH9-D1
+
+- Start from retained SH7 commit `cad45d291`. ROCm is healthy on gfx1151.
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  by the absent read-only Atlas checkout and is not treated as a green verdict.
+  Audit the local256 grouped-GQA producer: one block owns each `(kv_head,
+  split)`, shares K/V across all eight query heads, compiles at 72 VGPR, and
+  owns **4.037/7.212 ms/token** at 32K/64K after SH7.
+- Add a RED registry contract for a transient qgroup4 wrapper/key; it fails only
+  because the candidate is absent. Implement a template-preserving sibling with
+  two four-query blocks per KV head, the same per-head dot/value accumulation
+  order, unchanged partial ABI and retained parallel reducer. GREEN registry
+  passes and a cached gfx1151 build succeeds.
+- Extend the existing 8,448-token / 33-split / 16-query / 2-KV primitive while
+  the candidate exists. qgroup4 is byte-exact versus both NumPy and retained SH7:
+  **0 BF16 mismatches, max abs 0** through complete `KVLiveSpans`. Primitive log
+  SHA-256 is `e5fc7a0d...e9e4d`.
+- Run 21 counterbalanced pairs of ten complete producer+parallel-reducer HIP
+  launches at actual 129/257-split shapes under one hardware queue. At 32K,
+  control **0.425068 ms/layer** becomes qgroup4 **0.474481 ms (0.8959x,
+  +11.625%)**. At 64K, **0.759873 -> 0.858382 ms (0.8852x, +12.964%)**.
+  The candidate wins **0/42** pairs and projects **-0.494/-0.985 ms/token**
+  over ten full-attention layers, opposite both frozen continuation gates.
+- Cached `rocprofv3` confirms the intended mechanism rather than a spill:
+  qgroup4 lowers **72 -> 56 VGPR**, keeps local256 and scratch0, and doubles
+  grid X **512 -> 1,024**. Producer medians still regress
+  **405.676 -> 455.813 us** at 32K and **725.396 -> 820.053 us** at 64K;
+  duplicated K/V traffic dominates the occupancy gain. Trace SHA-256 is
+  `77dcb38a...d841`.
+- Stop before model semantic/wall/memory work per the leaf gate. Remove the
+  transient HIP body/C wrapper, Python wrapper/symbol/key/export, smoke
+  extension, and RED/GREEN assertion. Production source is byte-clean against
+  `cad45d291`; the retained 40-test backend/registry/dispatch bundle passes.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json`
+  (SHA-256 `605b2d2b...3ee9`). This is exact negative evidence, not a performance
+  claim.
+- Select **SH9-D1**, an explicit open package transfer: gfx1100 LCP-2B admits a
+  routing-independent compact-WMMA static upper bound through 4,096 selected
+  rows, while gfx1151 remains at zero. Private-c1 uses eight selected rows, so
+  the path can remove exactly 40 scalar `wmma_total` D2H synchronizations/token
+  without changing selected kernels. Require bound/fallback RED/GREEN, exact
+  state, cached HIP/ROCTX proof, and same-source wall non-regression; do not
+  reopen the closed attention producer subdivision.
