@@ -293,7 +293,7 @@ the prior exact loop.
 ### N3P — proposal submission collapse
 
 `N3P` stages changing proposal inputs into fixed runner buffers and captures the
-strict B1/B2 NextN device chain:
+strict B1/B2/B3 NextN device chain:
 
 - FP32 hidden seed and root embedding;
 - RoPE, position, and context rows;
@@ -310,8 +310,23 @@ scheduler
        -> provider repair/accounting
 ```
 
-This is two graph submissions, not one combined proposal+target native call and
-not child-kernel fusion.
+This remains two graph submissions, not child-kernel fusion. The exact
+production retirement path no longer requires an intermediate host
+synchronization, however. Once both proposal and N2 target buckets are cached,
+the proposal graph records a private completion event; the N2 stream waits on
+that event, copies each device top-1 ID into both dynamic-metadata token columns
+(i64 embedding and i32 acceptance), and appends the proposal `(ID, value)` rows
+to the existing bounded target result payload. The target graph then executes
+and its one synchronization retires both submissions. Scheduler planning starts
+with shape-only rows and is rebound to the real IDs only after the same CPU
+acceptance oracle validates the bounded result.
+
+Capture misses, diagnostics, caller streams, output-cap tails, and unsupported
+shapes retain the independently synchronized route. No in-flight proposal may
+trigger target capture or post-launch fallback. A 17-pair same-loaded-model B3
+W7900 screen moves complete decode median **361.138 -> 359.828 ms
+(1.003640x, -1.310 ms)** with **15/17** pair wins; median paired change is
+**-1.821 ms** and every token/acceptance ledger is exact.
 
 ### N4 — provider-neutral expansion
 

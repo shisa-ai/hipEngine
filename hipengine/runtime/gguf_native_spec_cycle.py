@@ -142,6 +142,8 @@ class Qwen35GGUFNativeAcceptCommitResult:
     hidden_seed_row_count: int
     hidden_size: int
     target_top1: list[int] = dataclass_field(default_factory=list)
+    proposal_top1_values: tuple[float, ...] = ()
+    proposal_device_handoff: bool = False
     verify_buffers: TargetVerifyBuffers | None = None
     state_commit_buffers: TargetStateCommitBuffers | None = None
     linear_state_rows_captured: bool = True
@@ -178,6 +180,13 @@ class Qwen35GGUFNativeAcceptCommitResult:
             len(self.target_top1) != rows or any(token < 0 for token in self.target_top1)
         ):
             raise ValueError("target_top1 must contain one non-negative token per target row")
+        if self.proposal_device_handoff:
+            if len(self.proposal_top1_values) != rows - 1:
+                raise ValueError("device handoff must return one proposal value per candidate")
+            if not np.all(np.isfinite(np.asarray(self.proposal_top1_values, dtype=np.float32))):
+                raise ValueError("device handoff proposal values must be finite")
+        elif self.proposal_top1_values:
+            raise ValueError("proposal values require a device-handoff result")
         if self.verify_buffers is not None and self.verify_buffers.rows != rows:
             raise ValueError("native verify buffers must match the target row count")
         if (
@@ -451,6 +460,48 @@ def _stage_dynamic_metadata(tensor: Tensor, batch: TargetVerifyBatch, *, runtime
     _copy_array_to_tensor(tensor, _pack_dynamic_metadata(batch), runtime=runtime)
 
 
+def _enqueue_device_proposal_handoff(
+    *,
+    runtime: Any,
+    stream: int,
+    dynamic_metadata_ptr: int,
+    result_payload_ptr: int,
+    proposal_result_ptr: int,
+    proposal_result_nbytes: int,
+    proposal_event: int,
+    proposal_budget: int,
+    target_rows: int,
+) -> None:
+    """Wait for proposal IDs and inject both i64/i32 metadata source columns."""
+
+    runtime.stream_wait_event(int(stream), int(proposal_event))
+    metadata_row_nbytes = 5 * DType.INT64.itemsize
+    result_row_nbytes = 2 * DType.INT32.itemsize
+    for depth in range(int(proposal_budget)):
+        proposal_token_ptr = int(proposal_result_ptr) + depth * result_row_nbytes
+        metadata_token_ptr = (
+            int(dynamic_metadata_ptr) + (depth + 1) * metadata_row_nbytes
+        )
+        # The unpack kernel reads distinct source columns for its i64 embedding
+        # IDs and i32 acceptance IDs. Both must receive the exact proposal ID.
+        for token_column in (0, DType.INT64.itemsize):
+            runtime.memcpy_async(
+                metadata_token_ptr + token_column,
+                proposal_token_ptr,
+                DType.INT32.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+    proposal_payload_start = ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + 2 * int(target_rows)
+    runtime.memcpy_async(
+        int(result_payload_ptr) + proposal_payload_start * DType.INT32.itemsize,
+        int(proposal_result_ptr),
+        int(proposal_result_nbytes),
+        HipMemcpyKind.DEVICE_TO_DEVICE,
+        int(stream),
+    )
+
+
 def _native_target_configuration_key(
     *,
     bulk_attention_mode: str,
@@ -694,6 +745,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         transaction_id: int | None = None,
         request_id: int = 0,
         remaining_decode: int | None = None,
+        device_proposal: Any | None = None,
     ):
         """Stage live metadata, replay once, and return one bounded result."""
 
@@ -701,7 +753,40 @@ class Qwen35GGUFNativeB2TargetGraph:
             raise RuntimeError("native target graph is closed")
         if _native_target_binding_signature(self.session) != self.binding_signature:
             raise RuntimeError("native target graph captured allocation identity changed")
-        tokens = self.batch.tokens if input_token_ids is None else tuple(int(token) for token in input_token_ids)
+        if device_proposal is not None:
+            if input_token_ids is not None:
+                raise ValueError("device proposal launch does not accept host candidate IDs")
+            if not self.device_accept_commit:
+                raise NativeSpecTargetGraphUnsupportedError(
+                    "device proposal handoff requires an N2 target graph"
+                )
+            proposal_budget = int(getattr(device_proposal, "budget", -1))
+            proposal_request_id = int(getattr(device_proposal, "request_id", -1))
+            proposal_root = int(getattr(device_proposal, "root_token", -1))
+            proposal_position = int(getattr(device_proposal, "root_position", -1))
+            proposal_result_ptr = int(getattr(device_proposal, "result_ptr", 0))
+            proposal_result_nbytes = int(getattr(device_proposal, "result_nbytes", 0))
+            proposal_event = int(getattr(device_proposal, "completion_event", 0))
+            if proposal_budget + 1 != int(self.rows):
+                raise NativeSpecTargetGraphUnsupportedError(
+                    "device proposal budget does not match the cached target bucket"
+                )
+            if proposal_request_id != int(request_id):
+                raise ValueError("device proposal request id drifted before target launch")
+            if proposal_position != int(self.session.position):
+                raise ValueError("device proposal root position drifted before target launch")
+            if proposal_root < 0 or proposal_result_ptr <= 0 or proposal_event <= 0:
+                raise ValueError("device proposal descriptor is incomplete")
+            expected_result_nbytes = proposal_budget * 2 * DType.INT32.itemsize
+            if proposal_result_nbytes != expected_result_nbytes:
+                raise ValueError("device proposal result span has an invalid size")
+            tokens = (proposal_root, *(0 for _ in range(proposal_budget)))
+        else:
+            tokens = (
+                self.batch.tokens
+                if input_token_ids is None
+                else tuple(int(token) for token in input_token_ids)
+            )
         if len(tokens) != int(self.rows):
             raise NativeSpecTargetGraphUnsupportedError(
                 f"native target graph B{self.rows - 1} bucket requires {self.rows} rows"
@@ -729,6 +814,20 @@ class Qwen35GGUFNativeB2TargetGraph:
             )
         elif remaining_decode is not None:
             raise ValueError("remaining_decode is only valid for N2 native accept/commit")
+        if device_proposal is not None:
+            if self.result_payload is None:
+                raise RuntimeError("device proposal target payload is missing")
+            _enqueue_device_proposal_handoff(
+                runtime=runtime,
+                stream=self.stream,
+                dynamic_metadata_ptr=self.dynamic_metadata.ptr,
+                result_payload_ptr=self.result_payload.ptr,
+                proposal_result_ptr=proposal_result_ptr,
+                proposal_result_nbytes=proposal_result_nbytes,
+                proposal_event=proposal_event,
+                proposal_budget=proposal_budget,
+                target_rows=self.rows,
+            )
         control = replace(
             self.control,
             cycle_id=self.control.cycle_id if cycle_id is None else int(cycle_id),
@@ -793,6 +892,31 @@ class Qwen35GGUFNativeB2TargetGraph:
                 int(token)
                 for token in payload[target_top1_start:target_top1_start + self.rows].tolist()
             ]
+            proposal_top1_values: tuple[float, ...] = ()
+            if device_proposal is not None:
+                proposal_payload_start = target_top1_start + self.rows
+                proposal_payload_end = proposal_payload_start + 2 * proposal_budget
+                if proposal_payload_end > payload.size:
+                    raise RuntimeError("N2 device proposal payload is truncated")
+                proposal_pairs = np.ascontiguousarray(
+                    payload[proposal_payload_start:proposal_payload_end]
+                ).reshape(proposal_budget, 2)
+                proposal_tokens = tuple(int(token) for token in proposal_pairs[:, 0])
+                proposal_top1_values = tuple(
+                    float(value)
+                    for value in np.ascontiguousarray(proposal_pairs[:, 1]).view(np.float32)
+                )
+                if any(token < 0 for token in proposal_tokens):
+                    raise RuntimeError("N2 device proposal returned an invalid candidate ID")
+                if not np.all(
+                    np.isfinite(np.asarray(proposal_top1_values, dtype=np.float32))
+                ):
+                    raise RuntimeError("N2 device proposal returned NaN or Inf")
+                batch = build_native_b2_target_batch(
+                    (proposal_root, *proposal_tokens),
+                    start_position=start,
+                    request_id=request_id,
+                )
             if self.accept_buffers is None or self.pre_output_commit_buffers is None:
                 raise RuntimeError("N2 native device buffer descriptors are missing")
             live_verify_buffers = replace(
@@ -832,6 +956,8 @@ class Qwen35GGUFNativeB2TargetGraph:
                 hidden_seed_row_count=self.rows,
                 hidden_size=hidden_size,
                 target_top1=target_top1,
+                proposal_top1_values=proposal_top1_values,
+                proposal_device_handoff=device_proposal is not None,
                 verify_buffers=live_verify_buffers,
                 state_commit_buffers=live_state_commit_buffers,
             )
@@ -1218,7 +1344,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
             )
             result_payload = workspace.reserve_tensor(
                 "native_spec_result_payload",
-                (ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + 2 * rows,),
+                (ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + 2 * rows + 2 * (rows - 1),),
                 DType.INT32,
             )
             visible_output_lengths = Tensor.from_handle(
@@ -1880,6 +2006,72 @@ def verify_qwen35_gguf_native_b2_target(
         raise
 
 
+def verify_qwen35_gguf_native_target_from_device_proposal(
+    session: Any,
+    device_proposal: Any,
+    *,
+    cycle_id: int = 0,
+    transaction_id: int = 0,
+    request_id: int = 0,
+    remaining_decode: int,
+    bulk_attention_mode: str = "native",
+    use_wmma_prefill: bool = False,
+    capture_linear_state_rows: bool = True,
+    capture_pre_output_norm_hidden: bool = True,
+    capture_lm_head_logits: bool = False,
+    defer_linear_state_commit: bool = True,
+):
+    """Retire a cached proposal and cached N2 target behind one synchronization.
+
+    This route is intentionally cached-only. A miss is reported before target
+    launch so the caller can use the established host-materialized proposal on
+    a later cycle; capture is never attempted with an in-flight proposal.
+    """
+
+    session.last_native_spec_target_submitted = False
+    session.last_native_spec_target_fallback_reason = None
+    session.last_native_spec_target_capture_ms = 0.0
+    session.last_native_spec_target_submit_ms = 0.0
+    session.last_native_spec_target_readback_ms = 0.0
+    if capture_lm_head_logits:
+        raise NativeSpecTargetGraphUnsupportedError(
+            "device proposal handoff does not support diagnostic logits"
+        )
+    rows = int(getattr(device_proposal, "budget", -1)) + 1
+    if rows not in {2, 3, 4}:
+        raise NativeSpecTargetGraphUnsupportedError(
+            "device proposal requires one cached B1-B3 target bucket"
+        )
+    cache_name = f"_native_spec_b{rows - 1}_target_graph_n2"
+    graph = getattr(session, cache_name, None)
+    if graph is None or graph.closed or not graph.compatible_with(
+        session,
+        bulk_attention_mode=bulk_attention_mode,
+        use_wmma_prefill=bool(use_wmma_prefill),
+        capture_linear_state_rows=bool(capture_linear_state_rows),
+        capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+        defer_linear_state_commit=bool(defer_linear_state_commit),
+        device_accept_commit=True,
+    ):
+        reason = "device proposal handoff requires a compatible cached N2 target graph"
+        session.last_native_spec_target_fallback_reason = reason
+        raise NativeSpecTargetGraphUnsupportedError(reason)
+    try:
+        return graph.launch(
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            remaining_decode=int(remaining_decode),
+            device_proposal=device_proposal,
+        )
+    except Exception:
+        try:
+            graph.close()
+        except Exception:
+            pass
+        raise
+
+
 __all__ = [
     "NativeSpecTargetGraphUnsupportedError",
     "Qwen35GGUFNativeAcceptCommitResult",
@@ -1889,4 +2081,5 @@ __all__ = [
     "capture_qwen35_gguf_native_b2_target_graph",
     "run_qwen35_gguf_native_mtp_cycle",
     "verify_qwen35_gguf_native_b2_target",
+    "verify_qwen35_gguf_native_target_from_device_proposal",
 ]

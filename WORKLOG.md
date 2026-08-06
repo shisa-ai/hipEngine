@@ -208350,3 +208350,37 @@ Vulkan local sizes verbatim will close the measured gap.
   Q6 QKV, and target root. Aggregate target arithmetic remains **21.718 ms
   ahead** of matched Vulkan, so arithmetic-only tuning cannot replace queue and
   command-boundary closure.
+
+## 2026-08-06 — Chain cached proposal and target retirement
+
+- Close the next exact submission boundary without changing arithmetic. The
+  production loop previously synchronized and drained the cached NextN graph,
+  rebuilt scheduler rows, then submitted/synchronized N2. Cached-only steady
+  cycles now record a proposal completion event, make the N2 stream wait,
+  inject proposal IDs into both graph dynamic-metadata token columns, append
+  the proposal `(ID, value)` rows to the existing bounded N2 payload, and let
+  the target synchronization retire both graphs. Shape-only scheduler rows are
+  rebound only after the bounded payload reconstructs the real draft and the
+  unchanged CPU acceptance oracle passes. Captures, diagnostics, caller
+  streams, output-cap tails, and misses retain the old exact route.
+- The first dense run failed closed only at that independent CPU oracle. Target
+  arithmetic used the updated i64 embedding-ID metadata column, while device
+  acceptance still read the untouched duplicate i32 token column and rejected
+  the chain. Stage both columns from the same proposal ID and pin the six B3
+  copies plus payload append in a focused fake-runtime test. The repaired W7900
+  dense transaction node passes **1/1**, including reject/partial/full state,
+  live K/V, BF16 hidden, graph reuse, rollback, correction, natural output,
+  B1 N2/N1 tail split, and direct-handoff telemetry. GPU1's real dense NextN
+  graph-vs-eager state/ID/logit test also passes **1/1**.
+- Counterbalanced same-loaded-model W7900 command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-27b/direct-proposal-target-screen.py`.
+  Across 17 B3 natural25 pairs, synchronized control versus event/device handoff
+  moves decode median **361.138052 -> 359.828109 ms (1.003640x, -1.309943
+  ms)**; **15/17** pairs improve and median paired change is **-1.820593 ms**.
+  All token IDs and acceptance ledgers match, and every candidate sample owns
+  seven chained full-room cycles. Raw result SHA-256 is
+  `52547a0e...565b22c`; harness SHA-256 is `526867a8...c83d3c`.
+- Adjacent CPU/fake gates pass: NextN provider **13/13**, native-cycle adapter
+  **15/15**, native graph launcher **17/17**; Ruff, py_compile, and diff checks
+  pass. Commit the exact physical default, then run the clean ten-prompt B1-B3
+  promotion and a marked post-keep B3 profile before updating the topline.
