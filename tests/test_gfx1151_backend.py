@@ -21,6 +21,9 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
     laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
 )
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
 )
@@ -883,7 +886,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
-    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is False
+    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
     assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
@@ -1163,7 +1166,16 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
         )
-        is False
+        is True
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="paged_attn_decode",
+            quant="w4_paro",
+            variant="bf16_split_k_gqa_gate_bf16_parallel_reduce_spans",
+        )
+        is qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans
     )
     assert (
         backend_package_capability(

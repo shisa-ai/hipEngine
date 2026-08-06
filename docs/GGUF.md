@@ -2482,15 +2482,28 @@ zero tracked bytes, cached traces preserve 628 dispatches/token, and the fresh
 initial/final state comparisons. C1/C2 and pinned-fork F16 decode/GTT remain
 **0/4**, so this is a cumulative diagnostic rather than parity.
 
-Proceed to SH7-A1's independent gfx1151 gate for the already-registered
-prepare-plus-coalesced parallel split-K reducer. The current serial reducer owns
-**0.428/0.751 ms/token** at 32K/64K inside a **4.520/8.069-ms/token**
-full-attention core. Keep serial below 32K and as fallback; require CPU and
-18-prompt semantic correctness, a named scratch-free trace, unchanged
-memory/lifecycle, and at least 1% or 0.5-ms/token 64K whole-wall saving in a
-fresh package-default one-queue serial/candidate pair before promotion. The
-qualified two-queue SH6-C1 row selects scope but is not that denominator. Evidence:
-[`SH6-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json).
+SH7-A1 independently admits the already-registered prepare-plus-coalesced
+parallel split-K reducer on gfx1151 from 32K. A fresh package-default one-queue
+same-source pair moves decode **46.066 -> 46.785 tok/s (+1.560%, -0.333
+ms/token)** at 32K and **39.441 -> 40.386 tok/s (+2.394%, -0.593 ms/token)**
+at 64K. Tracked peaks stay byte-identical at **21.597/22.336 GiB**, 10-ms
+whole-GTT stays **22.152/22.890 GiB**, and every child closes to zero.
+
+The named 24-VGPR prepare plus 16-VGPR coalesced output kernels reduce the
+reducer from **424.162 -> 109.346 us/token** and **744.973 -> 207.485
+us/token** at 1 KiB LDS and zero scratch. The 8,448-token/33-split primitive is
+exact versus NumPy; the 18-prompt, three-repeat gate passes **1,296/1,296
+byte-exact logits, KL 0, top-1 100%**, deterministic repeats, and clean
+lifecycle. Serial remains selected below 32K and under explicit opt-out; the
+capability is decode-only, so no prefill route or owner changes.
+
+C1 and fork parity still miss at both affected depths, while memory does not
+move. Proceed to SH8-A1's structurally new grouped-GQA producer occupancy
+screen: the remaining 72-VGPR producer owns **4.037/7.212 ms/token**. Test an
+exact four-query ownership sibling under a >=1.10x leaf or >=0.5-ms/token
+projected gate before model routing; do not reopen reducer, split-count,
+page-layout, compact-KV, or raw-Q8 retries. Evidence:
+[`SH7-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
