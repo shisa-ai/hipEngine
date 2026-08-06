@@ -205385,3 +205385,55 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json`
   (SHA-256 `8e0a0aa6...d7797`). This is a cumulative diagnostic, not a retained
   performance claim or campaign completion.
+
+## 2026-08-06 — Retain SH7-A1 parallel split reducer; activate SH8-A1
+
+- Audit the existing gfx1100 LCP-D2 wrapper, raw-pointer registry key, serial
+  fallback, gfx1151 package capability, runtime threshold, tests, and kernel
+  catalog before changing dispatch. `scripts/check_lineage.py --kind kernel
+  --diff stat` remains blocked by the already-recorded absent read-only Atlas
+  checkout; this is not treated as a green lineage result. Add RED contracts
+  proving gfx1151 uses serial reduction at active context 32K-1 and the
+  registered parallel wrapper at 32K, then flip only the package capability.
+- Primitive admission uses the existing cached gfx1151 GQA smoke at 8,448
+  tokens / 33 splits / 16 query heads / 2 KV heads / head-dim 256. The parallel
+  path has **0 BF16 mismatches / max abs 0** versus NumPy; the serial path differs
+  by one BF16 code (`max_abs=0.000122`). The focused backend/registry/dispatch
+  bundle exits zero with **40/40 passed**.
+- Run `/tmp/sh7_parallel_reduce_semantic.py` under one hardware queue and forced
+  split coverage. All 18 category+heldout prompts, three repeats, and 24 matched
+  decode steps pass: **1,296/1,296 byte-exact logits, mean/max KL 0, top-1 100%**,
+  deterministic repeats, and tracked ownership returns to baseline. Raw semantic
+  SHA-256 is `964a5e9a...aac8`.
+- Run the binding fresh package-default `GPU_MAX_HW_QUEUES=1` same-source pair
+  via `scripts/gguf_sh_c0_profile.py`, with serial env 0 followed by candidate
+  env 1, independent right-sized 32K/64K processes, one discarded 128-token run,
+  three measurements, 10-ms whole-GTT, and cached eight-token kernel/HIP/ROCTX
+  traces. At 32K, serial **21.7080 ms/token / 46.066 tok/s** becomes candidate
+  **21.3746 / 46.785** (**+1.560%, -0.3334 ms/token**). At 64K, serial
+  **25.3541 / 39.441** becomes **24.7614 / 40.386** (**+2.394%, -0.5928
+  ms/token**), clearing both the 1% and 0.5-ms alternatives. All repeated IDs
+  remain exact.
+- Tracked peaks are byte-identical at **21.597255/22.335796 GiB** and every
+  process closes to zero. Whole-GTT is unchanged at
+  **22.151844/22.890125 GiB**. The decode-only route cannot enter prefill;
+  threshold contracts preserve serial below 32K and explicit opt-out.
+- Cached queue-1/stream-0 traces replace serial reduction
+  **424.162 -> 109.346 us/token** at 32K and **744.973 -> 207.485 us/token** at
+  64K. The prepare/output pair uses **24/16 VGPR**, **1 KiB LDS**, and zero
+  scratch. Total profiled GPU time drops **20.6845 -> 20.2161** and
+  **24.0704 -> 23.5503 ms/token**.
+- Retain `GGUF_PAGED_ATTN_PARALLEL_REDUCE=True` for gfx1151 from 32K and retain
+  serial fallback. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json`
+  (SHA-256 `5ccd2453...e9fc`) plus the review, GGUF, kernel-catalog, scoreboard,
+  and changelog updates. This is an exact own-engine performance claim.
+- The objective remains open. Candidate 32K/64K is still **1.111/1.187
+  ms/token** short of C1 and **2.522/2.936 ms/token** short of pinned-fork F16;
+  whole-GTT does not move. Select **SH8-A1**, a structurally new producer
+  occupancy screen: the 72-VGPR grouped-GQA producer now owns
+  **4.037/7.212 ms/token**. Compare exact eight-query ownership with a
+  four-query-group sibling that duplicates K/V reads but lowers register
+  pressure. Require exact per-head order and >=1.10x producer speed or >=0.5-ms
+  projection before full-model routing; do not reopen reducer, split-count,
+  page-layout, compact-KV, raw-Q8, or overlap retries.

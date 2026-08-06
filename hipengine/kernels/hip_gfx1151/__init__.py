@@ -728,9 +728,10 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
 # LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
 # compact-WMMA row read until its independent post-merge transfer gate.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
-# LCP-D2 is admitted only on W7900/gfx1100. gfx1151 keeps the serial reduction
-# until it receives an independent long-context correctness/performance gate.
-GGUF_PAGED_ATTN_PARALLEL_REDUCE = False
+# SH7-A1 retains LCP-D2's registered prepare-plus-coalesced split reducer on
+# gfx1151 from 32K onward after exact primitive/semantic admission and measured
+# 32K/64K wall wins. Shorter contexts and explicit opt-out keep the serial path.
+GGUF_PAGED_ATTN_PARALLEL_REDUCE = True
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 # Clean PARO G3/G5 physical-width and server gates certify c4/c8 with whole-row
 # full-attention execution. Diagnostic c2 row chunking changes row-local
