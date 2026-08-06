@@ -1318,6 +1318,27 @@ def test_cuda_encoder_runtime_encode_validation() -> None:
         encoder.close()
 
 
+def test_cuda_encoder_runtime_upload_run_encode_split() -> None:
+    """C4/C5: ``upload_input`` + ``run_encode`` is equivalent to ``encode`` but
+    lets a timing harness exclude the (KB-scale) initial H2D."""
+
+    runtime = FakeCudaRuntime()
+    encoder, trace = _encoder_ready(runtime)
+    try:
+        with pytest.raises(RuntimeError, match="input is not uploaded"):
+            encoder.run_encode()
+        encoder.upload_input(np.ones((1, 16000), dtype=np.float32))
+        assert encoder._input_uploaded is True
+        encoder.run_encode()
+        # The split dispatches the same full 101-launch DAG as ``encode``.
+        assert len(trace) == 101
+        # Upload validation errors are preserved on the split path.
+        with pytest.raises(ValueError, match=r"\(1, 16000\)"):
+            encoder.upload_input(np.zeros((1, 100), dtype=np.float32))
+    finally:
+        encoder.close()
+
+
 def test_cuda_encoder_runtime_encode_dispatch_and_contract() -> None:
     runtime = FakeCudaRuntime()
     encoder, trace = _encoder_ready(runtime, audio_samples=16000)

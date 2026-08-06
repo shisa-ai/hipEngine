@@ -137,6 +137,7 @@ class MoonshineCudaEncoderRuntime:
         self.encoder_libraries: MoonshineCudaEncoderLibraries | None = None
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
+        self._input_uploaded = False
         self._allocation_baseline = memory_stats()["current_allocated_bytes"]
         try:
             if self.loaded_model is None:
@@ -260,19 +261,19 @@ class MoonshineCudaEncoderRuntime:
 
         return self.tensor("encoder_attention_mask")
 
-    def encode(
+    def upload_input(
         self,
         input_values: np.ndarray,
         attention_mask: np.ndarray | None = None,
-        *,
-        stream: int | None = None,
     ) -> None:
-        """Upload one audio bucket and run the full fixed-address encoder DAG.
+        """Upload one audio bucket and its mask without running the encoder DAG.
 
         ``input_values`` must be a finite ``[1, audio_samples]`` float32 (or
         float16) array and ``attention_mask`` (optional) a ``[1, audio_samples]``
-        int64/int32 mask.  On return the device-resident ``encoder_output`` and
-        ``encoder_attention_mask`` tensors are ready for a decoder handoff.
+        int64/int32 mask.  After upload the bucket is resident and
+        :meth:`run_encode` can run the fixed-address DAG.  This split lets a
+        timing harness exclude the (KB-scale) initial H2D, matching the
+        framework baseline timing scope.
         """
 
         if self.closed:
@@ -297,9 +298,39 @@ class MoonshineCudaEncoderRuntime:
             runtime=self.runtime,
         )
         self._upload_mask(attention_mask)
+        self._input_uploaded = True
+
+    def run_encode(self, *, stream: int | None = None) -> None:
+        """Run the fixed-address encoder DAG and synchronize the stream.
+
+        The audio bucket and mask must already be uploaded with
+        :meth:`upload_input` (or :meth:`encode`).  On return the device-resident
+        ``encoder_output`` and ``encoder_attention_mask`` tensors are ready for a
+        decoder handoff.
+        """
+
+        if not self._input_uploaded:
+            raise RuntimeError("Moonshine encoder input is not uploaded")
         use_stream = self.stream if stream is None else int(stream)
         self._enqueue_encode(stream=use_stream)
         self.runtime.stream_synchronize(use_stream)
+
+    def encode(
+        self,
+        input_values: np.ndarray,
+        attention_mask: np.ndarray | None = None,
+        *,
+        stream: int | None = None,
+    ) -> None:
+        """Upload one audio bucket and run the full fixed-address encoder DAG.
+
+        Equivalent to :meth:`upload_input` followed by :meth:`run_encode`.
+        On return the device-resident ``encoder_output`` and
+        ``encoder_attention_mask`` tensors are ready for a decoder handoff.
+        """
+
+        self.upload_input(input_values, attention_mask)
+        self.run_encode(stream=stream)
 
     def _upload_mask(self, attention_mask: np.ndarray | None) -> None:
         if attention_mask is None:
