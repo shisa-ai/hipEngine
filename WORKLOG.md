@@ -206043,3 +206043,36 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json`
   (SHA-256 `21f23f2b...1428`). Production is unchanged and the objective remains
   active.
+
+## 2026-08-06 — SH16-M2 selective small-weight arena implementation
+
+- Add a default-off, gfx1151-capability-gated private-c1 route under
+  `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=1`. Exact metadata planning
+  creates one 4-KiB-view owner only for allocations <=16 MiB; the hybrid
+  allocator keeps all larger weights on ordinary owning `hipMalloc`. Shared
+  runners, c>N, unsupported layouts, and owner denial remain fully dedicated.
+  No state/scratch or compact-Q4 path is included.
+- RED collection fails only on the absent arena primitive, selective plan, and
+  route resolver. GREEN passes **26 focused tests** covering aligned one-owner
+  accounting, borrowed-view materialization, exact 571/161 model planning,
+  unsupported-layout fail-closed behavior, owner denial, private-shape policy,
+  and runner propagation. The six changed Python modules compile and
+  `git diff --check` is clean.
+- A cached one-queue 512/tg1 lifecycle smoke exercises the actual hybrid owner:
+  **571 selected views / 884,460,032 requested bytes** share one
+  **884,867,072-byte** owner, while all **161 dedicated allocations /
+  21,034,278,912 bytes** remain 2-MiB aligned. Token 9707 is stable, the
+  physical weight-owner count is **162**, and tracked ownership closes exactly
+  **22,083,433,728 -> 0 bytes**. Phase snapshots report **20.755966 GiB** HIP
+  used after load and **20.797173 GiB** at the sampled peak; this one-run smoke
+  makes no timing claim. Artifact
+  `/tmp/hipengine-sh16-m2-smoke-final.json` has SHA-256
+  `ee326a37...359a5`.
+- Because the first state-oracle artifact predated the final accounting edits,
+  rerun the mandatory oracle once against the live candidate. All four repeated
+  token/greedy transitions, hidden rows, Conv/GDN state, and live KV prefixes
+  are byte-exact against fresh serial-prefix recomputation. Artifact
+  `/tmp/hipengine-sh16-m2-eager-oracle-final.json` has SHA-256
+  `0c67aba7...35db`. The candidate is ready to freeze before canonical 512
+  actual-GTT and wall screening; no 4K/32K/64K or category gate is admitted
+  unless the 512 <=1%-loss stop rule passes.

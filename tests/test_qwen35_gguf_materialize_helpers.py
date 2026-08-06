@@ -1,22 +1,77 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
 import pytest
 
-from hipengine.loading.gguf import GGUFTensorInfo
+from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
+from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    HIPENGINE_GGUF_DECODE_REPACK_ENV,
     LAYOUT_GGUF_Q5_K_QMICRO_T16,
+    LAYOUT_Q4_K_PACK8,
     Qwen35GGUFMaterializationPlan,
     Qwen35GGUFWeightSpec,
     _gguf_ssm_a_to_kernel_a_log,
     audit_qwen35_gguf_precision_contractions,
+    plan_qwen35_gguf_materialization,
+    plan_qwen35_gguf_selective_weight_arena,
     plan_qwen35_gguf_weight_spec,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
+
+
+MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+
+
+def test_qwen35moe_selective_weight_arena_plan_matches_exact_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not MOE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
+    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
+    reader = GGUFReader(MOE_MODEL)
+    plan = plan_qwen35_gguf_materialization(build_qwen35_gguf_tensor_map(reader.info))
+
+    arena = plan_qwen35_gguf_selective_weight_arena(
+        plan,
+        deferred_device_slots=("root.token_embedding",),
+    )
+
+    assert arena.supported is True
+    assert arena.reason is None
+    assert arena.alignment == 4096
+    assert arena.max_allocation_bytes == 16 * 1024 * 1024
+    assert arena.allocation_count == 571
+    assert arena.requested_bytes == 884_460_032
+    assert arena.capacity_bytes == 884_867_072
+    assert arena.dedicated_allocation_count == 161
+    assert arena.dedicated_requested_bytes == 21_034_278_912
+
+
+def test_selective_weight_arena_plan_fails_closed_for_unplanned_pack8_layout() -> None:
+    spec = _spec(
+        "layers.0.attn_gate",
+        "blk.0.attn_gate.weight",
+        GGMLQuantizationType.Q4_K,
+        LAYOUT_Q4_K_PACK8,
+        "gguf_q4_k_pack8_v1",
+    )
+    plan = Qwen35GGUFMaterializationPlan(
+        config=None,
+        root_specs=MappingProxyType({}),
+        layer_specs=(MappingProxyType({"attn_gate": spec}),),
+    )
+
+    arena = plan_qwen35_gguf_selective_weight_arena(plan)
+
+    assert arena.supported is False
+    assert arena.capacity_bytes == 0
+    assert "q4_k_pack8" in str(arena.reason)
 
 
 def test_selected_q5_decode_repack_uses_qmicro_t16_by_default(

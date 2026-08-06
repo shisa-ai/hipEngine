@@ -14,6 +14,22 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## SH16 gfx1151 private-c1 selective small-weight arena
+
+- Added 2026-08-06 as default-off
+  `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=1` after SH16-M1 bounded one
+  owner for the exact **571 allocations <=16 MiB** while preserving all **161
+  larger owners / 95.965% of weight bytes**, all state/scratch, shared/c>N, and
+  unsupported/denied routes as dedicated allocations.
+- If the 512 exact-state, lifecycle, actual-GTT, prefill, or decode gate fails,
+  remove the environment switch, gfx1151 capability, selective planner/allocator
+  route, arena ownership fields, telemetry, and candidate tests. Retain generic
+  `DeviceMemoryArena` only if another validated production owner uses it.
+- If 512 passes, continue only through the declared four-depth and category
+  gates. Promote only exact <=1%-loss memory wins; keep no state-arena or compact-
+  Q4 stack in this package. Remove the opt-out and obsolete dedicated private-c1
+  small-weight path after the cumulative fork-policy gate stabilizes.
+
 ## SH15 gfx1151 private-c1 persistent allocation arena — closed
 
 - Added 2026-08-06 as default-off

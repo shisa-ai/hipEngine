@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from hipengine.core.memory import free, malloc, memory_stats, reset_memory_stats
+import pytest
+
+from hipengine.core.memory import DeviceMemoryArena, free, malloc, memory_stats, reset_memory_stats
 
 
 class FakeRuntime:
@@ -53,3 +55,40 @@ def test_memory_stats_track_current_peak_and_reset_live_allocations() -> None:
     assert stats["active_allocations"] == 0
 
     reset_memory_stats()
+
+
+def test_device_arena_allocates_aligned_views_and_tracks_one_owner() -> None:
+    runtime = FakeRuntime()
+    reset_memory_stats()
+    arena = DeviceMemoryArena.create(20_480, runtime=runtime, alignment=4096)  # type: ignore[arg-type]
+
+    views = tuple(arena.allocate(nbytes) for nbytes in (1, 4097, 8192))
+
+    assert tuple(view.ptr - arena.owner.ptr for view in views) == (0, 4096, 12_288)
+    assert arena.requested_bytes == 12_290
+    assert arena.used_bytes == 20_480
+    assert arena.allocation_count == 3
+    assert memory_stats()["current_allocated_bytes"] == 20_480
+    assert memory_stats()["active_allocations"] == 1
+
+    for view in views:
+        arena.release(view)
+    assert runtime.freed == []
+    arena.close()
+    assert runtime.freed == [arena.owner.ptr]
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+def test_device_arena_rejects_overflow_and_double_close_is_safe() -> None:
+    runtime = FakeRuntime()
+    reset_memory_stats()
+    arena = DeviceMemoryArena.create(4096, runtime=runtime, alignment=4096)  # type: ignore[arg-type]
+
+    arena.allocate(4096)
+    with pytest.raises(MemoryError, match="arena capacity"):
+        arena.allocate(1)
+
+    arena.close()
+    arena.close()
+    assert runtime.freed == [arena.owner.ptr]

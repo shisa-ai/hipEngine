@@ -842,6 +842,7 @@ def _run_existing_session_once(
         "rocprof_selected_region": rocprof_selected_region,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "allocation_arena": session.allocation_arena_audit(),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
@@ -1015,6 +1016,7 @@ def _run_once(
         "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "allocation_arena": session.allocation_arena_audit(),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
@@ -1159,8 +1161,12 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
 
 def _owned_device_bytes(session: Qwen35GGUFResidentSession) -> int:
     total = 0
-    if session.runner is not None and session.runner.weights is not None:
-        for weight in session.runner.weights.weights:
+    weights = None if session.runner is None else session.runner.weights
+    arena = None if weights is None else weights.allocation_arena
+    if arena is not None:
+        total += int(arena.capacity_bytes)
+    if weights is not None:
+        for weight in weights.weights:
             for allocation in weight.allocations.values():
                 if allocation.owns_buffer:
                     total += int(allocation.buffer.nbytes)
@@ -1176,17 +1182,20 @@ def _owned_device_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any
     weights = _owned_weight_breakdown(session)
     decode_scratch = _decode_scratch_breakdown(getattr(session, "scratch", None))
     session_buffers = _session_buffer_breakdown(session)
-    total_bytes = int(weights["total_bytes"]) + int(decode_scratch["total_bytes"]) + int(session_buffers["total_bytes"])
+    logical_bytes = int(weights["total_bytes"]) + int(decode_scratch["total_bytes"]) + int(session_buffers["total_bytes"])
+    total_bytes = _owned_device_bytes(session)
     return {
         "total_bytes": total_bytes,
         "total_gib": _bytes_to_gib(total_bytes),
+        "logical_requested_bytes": logical_bytes,
+        "allocation_arena_padding_bytes": max(0, total_bytes - logical_bytes),
         "families": {
             "weights": weights,
             "decode_scratch": decode_scratch,
             "session_buffers": session_buffers,
         },
         "notes": [
-            "weights counts unique resident GGUF allocations that own their device buffer; tied aliases are not double-counted.",
+            "weights counts unique resident GGUF logical allocations; selective arena views and dedicated large owners are reported separately.",
             "decode_scratch is the persistent c=1 decode workspace, including full-attention KV cache and linear-attention recurrent state.",
             "session_buffers includes logits/lm-head temporaries, full-sequence prefill token/hidden buffers, and the bulk-prefill scratch workspace.",
         ],
@@ -1200,17 +1209,30 @@ def _owned_weight_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any
     by_allocation: dict[str, int] = {}
     total = 0
     count = 0
-    if session.runner is not None and session.runner.weights is not None:
-        for weight in session.runner.weights.weights:
+    physical_owner_bytes = 0
+    physical_owner_count = 0
+    seen_ptrs: set[int] = set()
+    weights = None if session.runner is None else session.runner.weights
+    arena = None if weights is None else weights.allocation_arena
+    if arena is not None:
+        physical_owner_bytes += int(arena.capacity_bytes)
+        physical_owner_count += 1
+    if weights is not None:
+        for weight in weights.weights:
             spec = weight.spec
             quant_key = str(spec.quant_key)
             layout = str(spec.layout)
             for allocation_name, allocation in weight.allocations.items():
-                if not allocation.owns_buffer:
+                ptr = int(allocation.buffer.ptr)
+                if ptr in seen_ptrs:
                     continue
+                seen_ptrs.add(ptr)
                 nbytes = _buffer_nbytes(allocation.buffer)
                 total += nbytes
                 count += 1
+                if allocation.owns_buffer:
+                    physical_owner_bytes += nbytes
+                    physical_owner_count += 1
                 _add_bytes(by_quant, quant_key, nbytes)
                 _add_bytes(by_layout, layout, nbytes)
                 _add_bytes(by_quant_layout, f"{quant_key}:{layout}", nbytes)
@@ -1219,6 +1241,9 @@ def _owned_weight_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any
         "total_bytes": total,
         "total_gib": _bytes_to_gib(total),
         "allocation_count": count,
+        "physical_owner_count": physical_owner_count,
+        "physical_owner_bytes": physical_owner_bytes,
+        "alignment_padding_bytes": max(0, physical_owner_bytes - total),
         "by_quant_key_bytes": by_quant,
         "by_layout_bytes": by_layout,
         "by_quant_layout_bytes": by_quant_layout,
