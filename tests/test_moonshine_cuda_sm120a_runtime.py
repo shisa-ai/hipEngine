@@ -1,4 +1,4 @@
-"""C2/C3: resident eager CUDA decoder composition (MoonshineCudaResidentRuntime).
+"""C2/C3/C4: resident eager CUDA decoder composition (MoonshineCudaResidentRuntime).
 
 CPU-side tests drive the fixed-address token DAG through fake libraries and a
 fake CUDA runtime, verifying dispatch order and measured schedules without a
@@ -11,6 +11,14 @@ DAGs (t32 positions 0-6, parallel t256 positions 7-193): CPU-side capture
 contract, bucket dispatch, graph launch, and close teardown through the fake
 runtime, plus a GPU-gated gate that the replayed graphs reproduce the eager
 token stream exactly across all 194 positions on both fixtures.
+
+The C4 encoder-handoff tests cover set_encoder_state_from_device (D2D copy of
+a caller-owned device encoder prefix into the fixed padded bucket) and
+precompute_cross_kv (projecting all eight head-major cross K/V caches from the
+resident encoder hidden): CPU-side validation/dispatch/contract tests through
+the fake runtime, plus a GPU-gated gate that uploads each fixture's real
+encoder hidden + int32 mask, hands it off D2D, precomputes the caches, and
+reproduces the exact 194-position token stream.
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import (
     DeviceBuffer,
     MemcpyKind,
+    copy_host_to_device,
     host_array_ptr,
     memory_stats,
     reset_memory_stats,
@@ -204,6 +213,7 @@ def fake_decoder_libraries(
             "hipengine_cuda_sm120a_moonshine_f16_projection",
             "hipengine_cuda_sm120a_moonshine_f16_projection_bias_gated_silu",
             "hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major",
             "hipengine_cuda_sm120a_moonshine_f16_projection_triple",
         ),
         attention=FakeLibrary(
@@ -399,6 +409,136 @@ def test_cuda_resident_runtime_rejects_nonmatching_cross_cache_shapes() -> None:
         assert resident.encoder_state_valid is True
         assert resident.self_cache_length == 0
         assert resident.decode_position is None
+    finally:
+        resident.close()
+
+
+def test_cuda_resident_runtime_set_encoder_state_from_device_validation() -> None:
+    runtime = FakeCudaRuntime()
+    resident = MoonshineCudaResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    try:
+        with pytest.raises(ValueError, match="positive integers"):
+            resident.set_encoder_state_from_device(
+                hidden_fp16_ptr=0, attention_mask_int32_ptr=0x2000, source_frames=40
+            )
+        with pytest.raises(ValueError, match="positive integers"):
+            resident.set_encoder_state_from_device(
+                hidden_fp16_ptr=0x1000, attention_mask_int32_ptr=0, source_frames=40
+            )
+        with pytest.raises(ValueError, match="source_frames"):
+            resident.set_encoder_state_from_device(
+                hidden_fp16_ptr=0x1000, attention_mask_int32_ptr=0x2000, source_frames=41
+            )
+        # Valid handoff copies D2D into the fixed padded bucket, marks encoder
+        # valid and invalidates any prior cross cache.
+        resident.set_encoder_state_from_device(
+            hidden_fp16_ptr=0x1000,
+            attention_mask_int32_ptr=0x2000,
+            source_frames=40,
+        )
+        assert resident.encoder_state_valid is True
+        assert resident.cross_cache_valid is False
+        hidden_buf = resident.workspace.allocation("encoder_hidden").buffer
+        mask_buf = resident.workspace.allocation("encoder_attention_mask").buffer
+        d2d = [
+            (dst, src, nbytes, kind)
+            for dst, src, nbytes, kind, _stream in (
+                entry for entry in runtime.copies if len(entry) == 5
+            )
+            if kind == int(MemcpyKind.DEVICE_TO_DEVICE)
+        ]
+        assert (
+            hidden_buf.ptr,
+            0x1000,
+            40 * 416 * DType.FP16.itemsize,
+            int(MemcpyKind.DEVICE_TO_DEVICE),
+        ) in d2d
+        assert (
+            mask_buf.ptr,
+            0x2000,
+            40 * DType.INT32.itemsize,
+            int(MemcpyKind.DEVICE_TO_DEVICE),
+        ) in d2d
+    finally:
+        resident.close()
+
+
+def test_cuda_resident_runtime_set_encoder_state_requires_reset() -> None:
+    runtime = FakeCudaRuntime()
+    resident, _ = _graph_ready_resident(runtime)
+    try:
+        resident.set_decode_state(token_id=1, position=0)
+        with pytest.raises(RuntimeError, match="reset generation"):
+            resident.set_encoder_state_from_device(
+                hidden_fp16_ptr=0x1000, attention_mask_int32_ptr=0x2000, source_frames=40
+            )
+    finally:
+        resident.close()
+
+
+def test_cuda_resident_runtime_precompute_cross_kv_requires_prepared_and_state() -> None:
+    runtime = FakeCudaRuntime()
+    resident = MoonshineCudaResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    try:
+        with pytest.raises(RuntimeError, match="prepared"):
+            resident.precompute_cross_kv()
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries([]))
+        with pytest.raises(RuntimeError, match="encoder state"):
+            resident.precompute_cross_kv()
+    finally:
+        resident.close()
+
+
+def test_cuda_resident_runtime_precompute_cross_kv_dispatch_and_contract() -> None:
+    runtime = FakeCudaRuntime()
+    resident = MoonshineCudaResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+    try:
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries(trace))
+        resident.set_encoder_state_from_device(
+            hidden_fp16_ptr=0x1000, attention_mask_int32_ptr=0x2000, source_frames=40
+        )
+        resident.precompute_cross_kv()
+        assert resident.cross_cache_valid is True
+        assert resident.encoder_state_valid is True
+        assert resident.self_cache_length == 0
+        names = [name for name, _ in trace]
+        assert names == [
+            "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major"
+        ] * 8
+        per_layer = [
+            args
+            for name, args in trace
+            if name == "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major"
+        ]
+        assert len(per_layer) == 8
+        for layer, args in enumerate(per_layer):
+            # args: input, wA, wB, outA, outB, rows, in_feat, outA, outB, head_dim,
+            #       threads, stream
+            cache = resident.cross_cache(layer)
+            assert args[0] == resident.tensor("encoder_hidden").ptr
+            assert args[3] == cache.key.ptr
+            assert args[4] == cache.value.ptr
+            assert args[5] == 40  # rows = encoder frames
+            assert args[6] == 416
+            assert args[9] == 52  # head_major head_dim
+        # Decode is now ready through the normal eager path.
+        resident.set_decode_state(token_id=1, position=0)
+        with resident.no_allocation_region("token-step"):
+            resident.token_step()
+        assert resident.self_cache_length == 1
     finally:
         resident.close()
 
@@ -903,3 +1043,111 @@ def test_cuda_resident_runtime_graph_replay_generates_exact_token_stream_on_fixt
         assert mismatches == [], (
             f"{fixture_name}: {len(mismatches)} graph token mismatches: {mismatches[:10]}"
         )
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _fixtures_available(),
+    reason="CUDA sm_120a gate or model-derived fixtures are not available",
+)
+def test_cuda_resident_runtime_encoder_handoff_precompute_and_decode_on_fixtures() -> None:
+    """C4: D2D encoder handoff + precomputed cross K/V reproduce the token stream.
+
+    Uploads the fixture's real encoder hidden state and int32 mask to device
+    buffers, hands them to the resident decoder with
+    set_encoder_state_from_device (D2D into the fixed padded bucket), projects
+    all eight head-major cross K/V caches with precompute_cross_kv, then runs
+    the eager token DAG across all 194 positions.  The precomputed caches and
+    the token stream must match the model-derived fixture gates.
+    """
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    for fixture_name in _FIXTURES:
+        with open(os.path.join(_FIXTURE_DIR, f"{fixture_name}.json")) as handle:
+            manifest = json.load(handle)
+        frames = int(manifest["input"]["encoder_frames"])
+        reference = [int(token) for token in manifest["decoder"]["token_ids"]]
+        with np.load(os.path.join(_FIXTURE_DIR, f"{fixture_name}.npz")) as fixture:
+            ref_keys = [fixture[f"cross.layer_{layer}.key"] for layer in range(8)]
+            ref_values = [fixture[f"cross.layer_{layer}.value"] for layer in range(8)]
+            enc_hidden = fixture["encoder.output"]
+            enc_mask = fixture["encoder.attention_mask"]
+
+        hidden_nbytes = frames * 416 * np.dtype(np.float16).itemsize
+        mask_nbytes = frames * np.dtype(np.int32).itemsize
+        hidden_ptr = cuda_runtime.malloc(hidden_nbytes)
+        mask_ptr = cuda_runtime.malloc(mask_nbytes)
+        try:
+            copy_host_to_device(
+                DeviceBuffer(hidden_ptr, hidden_nbytes),
+                host_array_ptr(np.ascontiguousarray(enc_hidden, dtype=np.float16)),
+                runtime=cuda_runtime,
+            )
+            copy_host_to_device(
+                DeviceBuffer(mask_ptr, mask_nbytes),
+                host_array_ptr(np.ascontiguousarray(enc_mask, dtype=np.int32)),
+                runtime=cuda_runtime,
+            )
+            resident = MoonshineCudaResidentRuntime(
+                model_path=_SNAPSHOT,
+                encoder_frames=frames,
+            )
+            resident.prepare_decoder_kernels()
+            resident.set_encoder_state_from_device(
+                hidden_fp16_ptr=hidden_ptr,
+                attention_mask_int32_ptr=mask_ptr,
+                source_frames=frames,
+            )
+            assert resident.cross_cache_valid is False
+            resident.precompute_cross_kv()
+            assert resident.cross_cache_valid is True
+            # The precomputed head-major caches must match the fixture gates.
+            for layer in range(8):
+                cache = resident.cross_cache(layer)
+                for side, ref_array in (
+                    (cache.key, ref_keys[layer]),
+                    (cache.value, ref_values[layer]),
+                ):
+                    cuda_runtime.stream_synchronize(resident.stream)
+                    host = np.empty(ref_array.shape, dtype=np.float16)
+                    copy_device_to_host(
+                        host_array_ptr(host),
+                        DeviceBuffer(
+                            side.ptr, side.numel * side.dtype.itemsize
+                        ),
+                        runtime=cuda_runtime,
+                    )
+                    diff = np.abs(
+                        host.astype(np.float32) - ref_array.astype(np.float32)
+                    )
+                    assert float(diff.max()) <= _FINAL_HIDDEN_MAX_ABS, (
+                        f"{fixture_name} layer {layer} precomputed cross cache "
+                        f"max_abs={float(diff.max())}"
+                    )
+            mismatches: list[tuple[int, int, int]] = []
+            token_id = reference[0]
+            try:
+                for position in range(194):
+                    resident.set_decode_state(token_id=token_id, position=position)
+                    with resident.no_allocation_region("token-step"):
+                        resident.token_step()
+                    token_id = resident.read_token()
+                    expected = (
+                        reference[position + 1]
+                        if position + 1 < len(reference)
+                        else reference[position]
+                    )
+                    if token_id != expected:
+                        mismatches.append((position, token_id, expected))
+            finally:
+                resident.close()
+            assert mismatches == [], (
+                f"{fixture_name}: {len(mismatches)} handoff token mismatches: "
+                f"{mismatches[:10]}"
+            )
+        finally:
+            cuda_runtime.free(hidden_ptr)
+            cuda_runtime.free(mask_ptr)

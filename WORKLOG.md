@@ -203219,3 +203219,66 @@ and a partial-capture failure destroys the un-instantiated graph. GPU-gated:
 194 positions under graph replay plus `graph_count=2`, `replay_count=194`.
 Full combined bundle (CUDA + moonshine + HIP runtime + reference + w8a16 +
 HIP moonshine kernels): `183 passed, 14 skipped, 0 failures`.
+
+## 2026-08-06 — C4: PyTorch encoder D2D integration (bring-up)
+
+### D2D handoff and precomputed cross K/V
+Added two methods to `MoonshineCudaResidentRuntime` in
+`hipengine/runtime/moonshine_cuda.py`, mirroring the HIP
+`set_encoder_state_from_device`/`precompute_cross_kv` boundary pattern:
+
+- `set_encoder_state_from_device(hidden_fp16_ptr, attention_mask_int32_ptr,
+  source_frames)`: synchronously copies a caller-owned contiguous device FP16
+  hidden prefix and int32 mask into the fixed padded encoder bucket (zero-fill
+  first, then D2D `memcpy_async` on the resident stream, then sync). Guards:
+  closed runtime, decode already started (must `reset_generation` first),
+  non-positive/bool pointers, and `source_frames` outside `1..encoder_frames`.
+  Marks `encoder_state_valid=True` and invalidates any prior cross cache.
+- `precompute_cross_kv()`: projects the resident encoder hidden through all
+  eight layers' `k_proj`/`v_proj` with the existing
+  `moonshine_f16_projection_pair_head_major` kernel into the head-major cross
+  caches, then syncs, marks `cross_cache_valid=True`, and resets generation
+  under fixed addresses. Guards: closed, unprepared kernels, no encoder state.
+
+The encoder hidden/mask live in the same fixed-address workspace slots that
+`load_cross_cache` already used, so the D2D route and the host-upload route
+share one allocation/address contract.
+
+### E2E bring-up (exclusive GPU0, RTX PRO 6000 Blackwell)
+Driver `/tmp/c4_bringup.py` runs the HF PyTorch CUDA FP16 encoder on each of
+the six fixture inputs, hands the FP16 hidden + int32 mask over D2D, precomputes
+cross K/V, captures the two token graphs, decodes to EOS, and compares tokens to
+the fixture reference. The encoder output matches the fixture
+`encoder.output` exactly (`max_abs=0.00000`). All six files decode exact token
+streams to EOS with correct Japanese text:
+
+| fixture | cross-K/V | decode steps | decode | us/step | text |
+|---|---|---|---|---|---|
+| hai | 0.525 ms | 2 | 0.621 ms | 310.3 | はい。 |
+| konichiwa | 0.570 ms | 6 | 1.709 ms | 284.9 | こんにちは。 |
+| konichiwa.ogenkidesuka | 0.748 ms | 11 | 3.428 ms | 311.6 | こんにちはお元気元気ですか？ |
+| kumbawa | 0.555 ms | 6 | 1.675 ms | 279.2 | こんばんは。 |
+| sosososo | 0.536 ms | 6 | 1.663 ms | 277.2 | そうそうそうそう。 |
+| sumimasen | 0.550 ms | 5 | 1.424 ms | 284.7 | すみません。 |
+
+The custom-owned portion (cross-K/V + graph decode) is 1.15-4.18 ms per file
+versus the compiled PyTorch full-route median 7.86-19.54 ms (benchmark
+`results/raw/benchmark-pytorch-cuda-compiled-generation-default-diagnostic-low
+.json`), i.e. roughly 4.7-6.9x faster per file. Adding the bring-up PyTorch
+encoder (~1.9-3.0 ms on the 1s inputs) keeps the composed route ~2-3x faster
+than the full torch route, so the remaining encoder work (standalone fixed-bucket
+C4 part 2) decides how much of that margin becomes exclusive custom CUDA.
+
+### RED/GREEN
+`tests/test_moonshine_cuda_sm120a_runtime.py` grows to 23 tests. New CPU-side:
+`set_encoder_state_from_device` pointer/source-frame validation + exact D2D
+copy contract into the padded bucket, requires-reset guard, `precompute_cross_kv`
+requires-prepared/requires-encoder-state guards, and a dispatch test asserting
+all 8 pair-head-major projections with the correct rows/features/head_dim plus a
+working eager `token_step` after the handoff. New GPU-gated:
+`encoder_handoff_precompute_and_decode_on_fixtures` uploads each retained
+fixture's real `encoder.output` + int32 mask, hands it off D2D, precomputes all
+eight caches (each within FP16 tolerance of the fixture cross K/V), and
+reproduces the exact 194-position token stream. Full combined bundle (CUDA +
+moonshine + HIP runtime + reference + w8a16 + HIP moonshine kernels) on GPU0:
+`184 passed, 16 skipped, 0 failures`; the CUDA sm_120a suites alone pass 104/104.
