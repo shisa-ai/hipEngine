@@ -7,12 +7,9 @@ import pytest
 
 from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.qwen35_gguf_materialize import (
-    HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV,
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q5_K_QMICRO_T16,
-    LAYOUT_GGUF_Q8_0_T16,
-    LAYOUT_RAW_GGUF,
     Qwen35GGUFMaterializationPlan,
     Qwen35GGUFWeightSpec,
     _gguf_ssm_a_to_kernel_a_log,
@@ -47,38 +44,6 @@ def test_selected_q5_decode_repack_uses_qmicro_t16_by_default(
     assert spec.layout == LAYOUT_GGUF_Q5_K_QMICRO_T16
     assert spec.quant_key == "gguf_q5_k_qmicro_t16_v1"
     assert spec.allocation_names == ("tiles",)
-
-
-def test_sh5_d1_rowvec8_pair_is_raw_replacement_not_sidecar(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV, "1")
-    tensor = GGUFTensorInfo(
-        name="blk.0.attn_qkv.weight",
-        shape=(8192, 2048),
-        ggml_shape=(2048, 8192),
-        ggml_type=int(GGMLQuantizationType.Q8_0),
-        ggml_type_name="Q8_0",
-        n_elements=8192 * 2048,
-        nbytes=17_825_792,
-        offset=0,
-        data_offset=0,
-        byte_shape=(8192, 2176),
-    )
-
-    candidate = plan_qwen35_gguf_weight_spec(
-        "layers.0.attn_qkv", tensor, decode_repack=True
-    )
-    non_pair = plan_qwen35_gguf_weight_spec(
-        "layers.0.ffn_gate_shexp", tensor, decode_repack=True
-    )
-
-    assert candidate.layout == LAYOUT_RAW_GGUF
-    assert candidate.quant_key == "gguf_q8_0"
-    assert candidate.allocation_names == ("raw",)
-    assert non_pair.layout == LAYOUT_GGUF_Q8_0_T16
-    assert non_pair.quant_key == "gguf_q8_0_t16_v1"
-    assert non_pair.allocation_names == ("tiles",)
 
 
 def test_gguf_ssm_a_materialization_converts_decay_coefficients_to_kernel_log() -> None:

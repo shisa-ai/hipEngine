@@ -52,7 +52,6 @@ HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV = "HIPENGINE_GGUF_SELECTED_DOWN_RAW"
 HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"
 HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV = "HIPENGINE_GGUF_SELECTED_GATE_UP_X8"
 HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV = "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"
-HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV = "HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR"
 HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV = "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"
 
@@ -461,18 +460,6 @@ def gguf_q8_0_raw_sidecar_all_enabled() -> bool:
     return raw.strip().lower() not in {"", "0", "false", "off", "no"}
 
 
-def gguf_q8_0_rowvec8_pair_enabled(value: bool | str | None = None) -> bool:
-    """Return whether SH5-D1 replaces linear-attention Q8T16 pairs with raw rows."""
-
-    if value is None:
-        raw = os.environ.get(HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV, "")
-    elif isinstance(value, bool):
-        raw = "1" if value else ""
-    else:
-        raw = str(value)
-    return raw.strip().lower() not in {"", "0", "false", "off", "no"}
-
-
 def gguf_lm_head_q6_x8_sidecar_enabled(value: bool | str | None = None) -> bool:
     """Return whether the Q6_K lm-head T16 resident keeps an X8 top-1 sidecar."""
 
@@ -634,14 +621,6 @@ def _spec_for_tensor(
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
     if qtype == GGMLQuantizationType.Q8_0 and decode_repack and slot_path.startswith("layers.") and len(tensor.shape) == 2:
-        if gguf_q8_0_rowvec8_pair_enabled() and _is_linear_attention_q8_pair_tensor(slot_path, tensor):
-            return Qwen35GGUFWeightSpec(
-                slot_path=slot_path,
-                source=tensor,
-                quant_key="gguf_q8_0",
-                layout=LAYOUT_RAW_GGUF,
-                allocation_names=("raw",),
-            )
         allocation_names = ("tiles",)
         if gguf_q8_0_raw_sidecar_enabled() and (
             gguf_q8_0_raw_sidecar_all_enabled() or _is_linear_attention_q8_pair_tensor(slot_path, tensor)
@@ -958,7 +937,6 @@ __all__ = [
     "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV",
     "HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV",
     "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV",
-    "HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV",
     "HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV",
     "HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV",
     "HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV",
@@ -986,7 +964,6 @@ __all__ = [
     "gguf_lm_head_q6_x8_sidecar_enabled",
     "gguf_q8_0_raw_sidecar_all_enabled",
     "gguf_q8_0_raw_sidecar_enabled",
-    "gguf_q8_0_rowvec8_pair_enabled",
     "gguf_selected_down_raw_enabled",
     "gguf_selected_down_raw_mode",
     "gguf_selected_gate_up_raw_enabled",
