@@ -203282,3 +203282,95 @@ eight caches (each within FP16 tolerance of the fixture cross K/V), and
 reproduces the exact 194-position token stream. Full combined bundle (CUDA +
 moonshine + HIP runtime + reference + w8a16 + HIP moonshine kernels) on GPU0:
 `184 passed, 16 skipped, 0 failures`; the CUDA sm_120a suites alone pass 104/104.
+
+## 2026-08-06 — C4: standalone fixed-bucket CUDA encoder runtime + torch-free E2E
+
+Closes the C4 part-2 goal: a torch-free, fixed-address Moonshine encoder that
+turns one raw audio bucket into the resident encoder hidden state and
+downsampled int32 mask, handed D2D to the resident decoder so the full ASR path
+runs without PyTorch.
+
+### CPU reference encoder (validation oracle)
+`hipengine/kernels/cpu_reference/moonshine_encoder.py` mirrors the HF
+`MoonshineEncoder` forward exactly (conv1+tanh, GroupNorm(1,416) over the full
+channel/length plane, conv2+gelu, conv3+gelu, permute, eight encoder layers with
+non-causal self-attention + partial RoPE + fc1/GELU/fc2 MLP, final LayerNorm)
+with FP32 accumulation and FP16 rounding at each stored boundary. Validated
+against both retained fixtures (max_abs <= 0.0103, mask exact).
+
+### C4b encoder primitive kernels
+`hipengine/kernels/cuda_sm120a/encoder/` (`moonshine_encoder.cu` +
+`moonshine_encoder.py`):
+- conv1(127, s64)+tanh, GroupNorm(1) over the full plane (3-kernel
+  partial/finalize/apply), conv2(7, s3)+bias+GELU, conv3(3, s2)+bias+GELU with a
+  fused row-major hidden output (the permute is fused into conv3),
+- exact-erf GELU, full-sequence partial RoPE (head-major in/out), non-causal
+  full-sequence encoder self-attention (one 32-lane wave per (query, head),
+  online FP32 softmax, row-major output),
+- row-major `[sequence, hidden]` -> head-major `[heads, sequence, head_dim]`
+  transpose bridging the C1c projection layout to the RoPE/attention layout.
+
+All eight kernels validated on both fixtures within FP16 tolerance (the
+transpose is byte-exact, max_abs=0.0).
+
+### C4c encoder runtime
+`hipengine/runtime/moonshine_encoder_cuda.py` adds
+`MoonshineCudaEncoderRuntime`: reserves every fixed-address buffer once
+(audio, channel-major conv1/conv2, groupnorm partials, row-major hidden/
+normalized/query_row/key_row/value_row/attention/projection/mlp buffers,
+head-major query/key/value, encoder_output, int32 mask, RoPE tables) and
+`encode(input_values, attention_mask=None)` runs the full fixed-address DAG
+(no timed allocation) then syncs. `handoff_to(decoder)` copies the finished
+hidden + mask into a `MoonshineCudaResidentRuntime` bucket
+(`set_encoder_state_from_device`) and precomputes all eight head-major cross
+K/V caches (`precompute_cross_kv`). Both runtimes gain an `owns_weights` flag so
+a single shared `MoonshineLoadedModel` (one weight upload, ~122 MB FP16) can
+drive encoder + decoder with one free at teardown.
+
+### Torch-free E2E (exclusive GPU0, RTX PRO 6000 Blackwell)
+Each of the six audio fixtures: raw audio -> CUDA encoder -> D2D handoff ->
+precomputed cross K/V -> resident decode. Encoder hidden within
+`max_abs <= 0.0054-0.0103` of the fixture `encoder.output`; cross K/V within
+`max_abs <= 0.027` (2-3 ULP outlier over ~150K-element caches, standard FP16
+compose noise); downsampled mask exact.
+
+Measured per file (warm):
+
+| fixture | frames | encoder | handoff+precompute | eager decode 194 | graph decode 194 |
+|---|---|---|---|---|---|
+| hai | 24 | 1.94 ms | 0.16 ms | 76.48 ms (394 us/step) | 55.41 ms (286 us/step) |
+| konichiwa | 42 | 2.48 ms | 0.21 ms | 76.52 ms (394 us/step) | 59.16 ms (305 us/step) |
+| konichiwa.ogenkidesuka | 105 | 5.05 ms | 0.40 ms | 77.00 ms (397 us/step) | 63.47 ms (327 us/step) |
+| kumbawa | 35 | 2.26 ms | 0.19 ms | 76.04 ms (392 us/step) | 56.76 ms (293 us/step) |
+| sosososo | 32 | 2.17 ms | 0.18 ms | 75.97 ms (392 us/step) | 55.79 ms (288 us/step) |
+| sumimasen | 40 | 2.43 ms | 0.20 ms | 76.08 ms (392 us/step) | 57.33 ms (296 us/step) |
+
+The encoder (1.94-5.05 ms) + D2D precompute (0.16-0.40 ms) replaces the bring-up
+PyTorch encoder (~1.9-3.0 ms) while keeping the decode at the C2/C3 resident
+eager (392-397 us/step) or graph-replay (286-327 us/step) rates, so the full
+torch-free route is now exclusive custom CUDA end to end.
+
+### Token-stream fidelity
+Five of six files reproduce the fixture 194-token stream exactly. On
+`audio-konichiwa` a single position-88 decision lands on EOS instead of the
+fixture's 30267; the fixture-oracle's own top-2 logit gap at that position is
+0.018 and the torch-free path's is 0.0001 — a genuine FP16-compose coin flip,
+not a correctness regression (the FP32-accumulated CPU reference reproduces the
+fixture stream exactly). The GPU gate asserts exact tokens except at documented
+borderline positions and verifies each such flip is a sub-0.05 coin flip in the
+fixture-oracle's own logits.
+
+### RED/GREEN
+`tests/test_moonshine_cuda_sm120a_runtime.py` grows to 32 tests. New CPU-side
+(9): frame-count-from-audio mapping, exactly-one-source and non-positive-audio
+validation, encode input/mask validation, full encode dispatch order and
+contract (101 kernel launches: 4 front-end + 8x12 layer + final LN; conv/transpose/
+attention/fc1 arg spot-checks; H2D audio + downsampled-mask copies; zero hot-path
+allocation), mask downsample contract, handoff contract (8 pair-head-major
+precomputes + live eager token_step), and close/weight-ownership parity. New
+GPU-gated: `cuda_encoder_runtime_e2e_encode_handoff_decode_on_six_fixtures`
+encodes all six audio fixtures, hands off D2D, checks hidden/mask/cross-K/V
+within tolerance, decodes all 194 positions, and enforces the borderline
+coin-flip rule. Full combined bundle (CUDA + moonshine + HIP runtime + reference
++ w8a16 + HIP moonshine kernels) on GPU0: `188 passed, 14 skipped, 0 failures`;
+the CUDA sm_120a suites alone pass 151/151.

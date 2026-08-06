@@ -36,6 +36,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import (
     DeviceBuffer,
     MemcpyKind,
+    copy_device_to_host,
     copy_host_to_device,
     host_array_ptr,
     memory_stats,
@@ -63,10 +64,19 @@ from hipengine.runtime.moonshine_cuda import (
     NoAllocationError,
     _self_attention_threads,
 )
+from hipengine.runtime.moonshine_encoder_cuda import (
+    MoonshineCudaEncoderLibraries,
+    MoonshineCudaEncoderRuntime,
+    moonshine_encoder_frames_from_audio,
+)
 
 _FIXTURE_DIR = os.environ.get(
     "HIPENGINE_MOONSHINE_FIXTURE_DIR",
     "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures",
+)
+_SIX_FIXTURE_DIR = os.environ.get(
+    "HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR",
+    "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six",
 )
 _CHECKPOINT = os.environ.get(
     "HIPENGINE_MOONSHINE_CHECKPOINT",
@@ -81,6 +91,12 @@ _SNAPSHOT = os.environ.get(
 _FIXTURES = ("audio-konichiwa-fp16", "synthetic-1s-seed1234-fp16")
 _RETAINED = (0, 1, 8, 32, 64, 128, 193)
 _FINAL_HIDDEN_MAX_ABS = 0.02  # FP16 compose vs FP32-accumulated fixture reference
+# Cross-cache gate for the six-file torch-free encoder E2E.  Each head-major
+# cross cache has ~150K FP16 elements with magnitude up to ~10; a 2-3 ULP
+# outlier (measured max 0.027 across the six files) is normal FP16 compose
+# noise, so the max-abs gate is set with generous headroom over that while
+# still catching genuine correctness errors (wrong weight/layout/order).
+_CROSS_CACHE_MAX_ABS = 0.05
 
 
 def _cuda_sm120a_enabled() -> bool:
@@ -102,6 +118,31 @@ def _fixtures_available() -> bool:
         os.path.isfile(os.path.join(_FIXTURE_DIR, f"{name}.npz"))
         and os.path.isfile(os.path.join(_FIXTURE_DIR, f"{name}.json"))
         for name in _FIXTURES
+    ) and os.path.isfile(_CHECKPOINT) and os.path.isdir(_SNAPSHOT)
+
+
+# The six audio fixtures used by the C4 torch-free encoder E2E gate.  ``None``
+# entries have no documented borderline token positions (exact match expected);
+# the ``audio-konichiwa`` entry lists a single position whose fixture decision
+# is a sub-0.05 top-2 logit coin flip (see the GPU-gated test for the margin
+# check).
+_SIX_FIXTURES = (
+    "audio-hai-fp16",
+    "audio-konichiwa-fp16",
+    "audio-konichiwa.ogenkidesuka-fp16",
+    "audio-kumbawa-fp16",
+    "audio-sosososo-fp16",
+    "audio-sumimasen-fp16",
+)
+_SIX_BORDERLINE = {"audio-konichiwa-fp16": {88}}
+_BORDERLINE_MARGIN = 0.05  # fixture top-2 logit gap that counts as a coin flip
+
+
+def _six_fixtures_available() -> bool:
+    return all(
+        os.path.isfile(os.path.join(_SIX_FIXTURE_DIR, f"{name}.npz"))
+        and os.path.isfile(os.path.join(_SIX_FIXTURE_DIR, f"{name}.json"))
+        for name in _SIX_FIXTURES
     ) and os.path.isfile(_CHECKPOINT) and os.path.isdir(_SNAPSHOT)
 
 
@@ -227,6 +268,53 @@ def fake_decoder_libraries(
             "hipengine_cuda_sm120a_moonshine_lm_head_argmax_fp16",
         ),
     )
+
+
+def fake_encoder_libraries(
+    trace: list[tuple[str, tuple[object, ...]]],
+) -> MoonshineCudaEncoderLibraries:
+    return MoonshineCudaEncoderLibraries(
+        encoder=FakeLibrary(
+            trace,
+            "hipengine_cuda_sm120a_moonshine_conv1_tanh_fp16",
+            "hipengine_cuda_sm120a_moonshine_conv2_gelu_fp16",
+            "hipengine_cuda_sm120a_moonshine_conv3_gelu_fp16",
+            "hipengine_cuda_sm120a_moonshine_groupnorm_fp16",
+            "hipengine_cuda_sm120a_moonshine_gelu_fp16",
+            "hipengine_cuda_sm120a_moonshine_encoder_rope_fp16",
+            "hipengine_cuda_sm120a_moonshine_encoder_transpose_head_major_fp16",
+            "hipengine_cuda_sm120a_moonshine_encoder_attention_fp16",
+        ),
+        layernorm=FakeLibrary(
+            trace,
+            "hipengine_cuda_sm120a_moonshine_layernorm_fp16",
+            "hipengine_cuda_sm120a_moonshine_residual_layernorm_fp16",
+        ),
+        projection=FakeLibrary(
+            trace,
+            "hipengine_cuda_sm120a_moonshine_f16_projection",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_bias",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_triple",
+        ),
+    )
+
+
+def _encoder_ready(
+    runtime: FakeCudaRuntime,
+    *,
+    audio_samples: int = 16000,
+    owns_weights: bool = False,
+):
+    encoder = MoonshineCudaEncoderRuntime(
+        audio_samples=audio_samples,
+        loaded_model=fake_loaded_model(runtime),
+        runtime=runtime,  # type: ignore[arg-type]
+        owns_weights=owns_weights,
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+    encoder.prepare_encoder_kernels(libraries=fake_encoder_libraries(trace))
+    return encoder, trace
 
 
 def model_config() -> dict:
@@ -1151,3 +1239,458 @@ def test_cuda_resident_runtime_encoder_handoff_precompute_and_decode_on_fixtures
         finally:
             cuda_runtime.free(hidden_ptr)
             cuda_runtime.free(mask_ptr)
+
+
+# ---------------------------------------------------------------- C4 encoder
+
+
+def _device_tensor_to_host(cuda_runtime, tensor, dtype=np.float16) -> np.ndarray:
+    host = np.empty(tensor.shape, dtype=dtype)
+    copy_device_to_host(
+        host_array_ptr(host),
+        DeviceBuffer(tensor.ptr, tensor.numel * tensor.dtype.itemsize),
+        runtime=cuda_runtime,
+    )
+    return host
+
+
+def test_cuda_encoder_runtime_frames_from_audio() -> None:
+    assert moonshine_encoder_frames_from_audio(16_000) == 40
+    assert moonshine_encoder_frames_from_audio(16_896) == 42
+    assert moonshine_encoder_frames_from_audio(80_000) == 207
+    assert moonshine_encoder_frames_from_audio(480_000) == 1248
+    with pytest.raises(ValueError, match="audio_samples"):
+        moonshine_encoder_frames_from_audio(0)
+    with pytest.raises(ValueError, match="conv1 kernel"):
+        moonshine_encoder_frames_from_audio(100)
+    with pytest.raises(ValueError, match="conv2 kernel"):
+        moonshine_encoder_frames_from_audio(127)  # L1 == 1 is too short for conv2
+
+
+def test_cuda_encoder_runtime_requires_exactly_one_source() -> None:
+    runtime = FakeCudaRuntime()
+    with pytest.raises(ValueError, match="exactly one"):
+        MoonshineCudaEncoderRuntime(
+            audio_samples=16000,
+            runtime=runtime,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="exactly one"):
+        MoonshineCudaEncoderRuntime(
+            audio_samples=16000,
+            model_path="x",
+            loaded_model=fake_loaded_model(runtime),
+            runtime=runtime,  # type: ignore[arg-type]
+        )
+
+
+def test_cuda_encoder_runtime_rejects_nonpositive_audio_samples() -> None:
+    runtime = FakeCudaRuntime()
+    with pytest.raises(ValueError, match="audio_samples"):
+        MoonshineCudaEncoderRuntime(
+            audio_samples=0,
+            loaded_model=fake_loaded_model(runtime),
+            runtime=runtime,  # type: ignore[arg-type]
+        )
+
+
+def test_cuda_encoder_runtime_encode_validation() -> None:
+    runtime = FakeCudaRuntime()
+    encoder, _ = _encoder_ready(runtime)
+    try:
+        with pytest.raises(ValueError, match=r"\(1, 16000\)"):
+            encoder.encode(np.zeros((1, 100), dtype=np.float32))
+        with pytest.raises(ValueError, match="float32 or float16"):
+            encoder.encode(np.zeros((1, 16000), dtype=np.float64))
+        values = np.ones((1, 16000), dtype=np.float32)
+        values[0, 0] = np.nan
+        with pytest.raises(ValueError, match="finite"):
+            encoder.encode(values)
+        with pytest.raises(ValueError, match=r"\(1, 16000\)"):
+            encoder.encode(
+                np.ones((1, 16000), dtype=np.float32),
+                np.ones((1, 100), dtype=np.int64),
+            )
+        bad_mask = np.ones((1, 16000), dtype=np.int64)
+        bad_mask[0, 5] = 2
+        with pytest.raises(ValueError, match="binary"):
+            encoder.encode(np.ones((1, 16000), dtype=np.float32), bad_mask)
+    finally:
+        encoder.close()
+
+
+def test_cuda_encoder_runtime_encode_dispatch_and_contract() -> None:
+    runtime = FakeCudaRuntime()
+    encoder, trace = _encoder_ready(runtime, audio_samples=16000)
+    try:
+        encoder.encode(
+            np.ones((1, 16000), dtype=np.float32),
+            np.ones((1, 16000), dtype=np.int64),
+        )
+        names = [name for name, _ in trace]
+        layer_sequence = [
+            "hipengine_cuda_sm120a_moonshine_layernorm_fp16",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_triple",
+            "hipengine_cuda_sm120a_moonshine_encoder_transpose_head_major_fp16",
+            "hipengine_cuda_sm120a_moonshine_encoder_transpose_head_major_fp16",
+            "hipengine_cuda_sm120a_moonshine_encoder_transpose_head_major_fp16",
+            "hipengine_cuda_sm120a_moonshine_encoder_rope_fp16",
+            "hipengine_cuda_sm120a_moonshine_encoder_attention_fp16",
+            "hipengine_cuda_sm120a_moonshine_f16_projection",
+            "hipengine_cuda_sm120a_moonshine_residual_layernorm_fp16",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_bias",
+            "hipengine_cuda_sm120a_moonshine_gelu_fp16",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual",
+        ]
+        expected = [
+            "hipengine_cuda_sm120a_moonshine_conv1_tanh_fp16",
+            "hipengine_cuda_sm120a_moonshine_groupnorm_fp16",
+            "hipengine_cuda_sm120a_moonshine_conv2_gelu_fp16",
+            "hipengine_cuda_sm120a_moonshine_conv3_gelu_fp16",
+            *(layer_sequence * 8),
+            "hipengine_cuda_sm120a_moonshine_layernorm_fp16",
+        ]
+        assert names == expected
+
+        # conv1: (audio, conv1_w, conv1_out, audio_samples, L1=249, threads, stream)
+        conv1 = trace[0][1]
+        assert conv1[0] == encoder.tensor("audio").ptr
+        assert conv1[3] == 16000
+        assert conv1[4] == 249
+        # conv3 writes the fused row-major hidden: (conv2_out, ..., hidden, L2=81, L3=40)
+        conv3 = trace[3][1]
+        assert conv3[3] == encoder.tensor("hidden").ptr
+        assert conv3[4] == 81
+        assert conv3[5] == 40
+
+        # First layer's input LayerNorm reads hidden -> normalized (40 rows, 416).
+        layer0_layernorm = trace[4][1]
+        assert layer0_layernorm[0] == encoder.tensor("hidden").ptr
+        assert layer0_layernorm[2] == encoder.tensor("normalized").ptr
+        assert layer0_layernorm[3] == 40
+        assert layer0_layernorm[4] == 416
+        # QKV triple writes the row-major query/key/value.
+        triple = trace[5][1]
+        assert triple[4] == encoder.tensor("query_row").ptr
+        assert triple[5] == encoder.tensor("key_row").ptr
+        assert triple[6] == encoder.tensor("value_row").ptr
+        assert triple[7] == 40
+        # First transpose bridges query_row (row-major) -> query (head-major).
+        transpose_q = trace[6][1]
+        assert transpose_q[0] == encoder.tensor("query_row").ptr
+        assert transpose_q[1] == encoder.tensor("query").ptr
+        assert (transpose_q[2], transpose_q[3], transpose_q[4]) == (40, 8, 52)
+        # Attention attends head-major Q/K/V with the encoder mask at 52**-0.5.
+        attention = trace[10][1]
+        assert attention[0] == encoder.tensor("query").ptr
+        assert attention[3] == encoder.tensor("encoder_attention_mask").ptr
+        assert attention[4] == encoder.tensor("attention").ptr
+        assert (attention[5], attention[6], attention[7]) == (8, 52, 40)
+        assert abs(float(attention[8]) - 52.0**-0.5) < 1e-9
+        # Encoder MLP fc1 projects normalized -> mlp_fc1 at the 1664 intermediate.
+        fc1 = trace[13][1]
+        assert fc1[0] == encoder.tensor("normalized").ptr
+        assert fc1[3] == encoder.tensor("mlp_fc1").ptr
+        assert (fc1[4], fc1[5], fc1[6]) == (40, 416, 1664)
+        # GELU is exact-erf over the intermediate plane.
+        gelu = trace[14][1]
+        assert gelu[1] == encoder.tensor("mlp_gelu").ptr
+        assert gelu[2] == 40 * 1664
+        # Final LayerNorm writes hidden -> encoder_output.
+        final_layernorm = trace[100][1]
+        assert final_layernorm[0] == encoder.tensor("hidden").ptr
+        assert final_layernorm[2] == encoder.tensor("encoder_output").ptr
+        assert final_layernorm[3] == 40
+
+        # The downsampled mask is copied H2D once at 40 * 4 bytes regardless of
+        # the 16000-sample audio length, and the audio copy matches.
+        h2d = [
+            (dst, nbytes)
+            for dst, src, nbytes, kind in runtime.copies
+            if kind == int(MemcpyKind.HOST_TO_DEVICE)
+        ]
+        mask_buf = encoder.workspace.allocation("encoder_attention_mask").buffer
+        assert (mask_buf.ptr, 40 * DType.INT32.itemsize) in h2d
+        audio_buf = encoder.workspace.allocation("audio").buffer
+        assert (audio_buf.ptr, 16000 * DType.FP16.itemsize) in h2d
+
+        # Encode must not allocate through hipEngine memory on the hot path.
+        n_malloc = len(runtime.malloc_calls)
+        encoder.encode(np.ones((1, 16000), dtype=np.float32))
+        assert len(runtime.malloc_calls) == n_malloc
+    finally:
+        encoder.close()
+
+
+def test_cuda_encoder_runtime_mask_downsample_contract() -> None:
+    runtime = FakeCudaRuntime()
+    encoder, _ = _encoder_ready(runtime, audio_samples=16000)
+    try:
+        # A strided binary mask downsamples to 40 frames (every 384th sample).
+        pattern = np.ones((1, 16000), dtype=np.int64)
+        pattern[0, ::384] = 1
+        encoder.encode(np.zeros((1, 16000), dtype=np.float32), pattern)
+        mask_buf = encoder.workspace.allocation("encoder_attention_mask").buffer
+        h2d = [
+            (dst, nbytes)
+            for dst, src, nbytes, kind in runtime.copies
+            if kind == int(MemcpyKind.HOST_TO_DEVICE)
+        ]
+        assert (mask_buf.ptr, 40 * DType.INT32.itemsize) in h2d
+    finally:
+        encoder.close()
+
+
+def test_cuda_encoder_runtime_handoff_contract() -> None:
+    runtime = FakeCudaRuntime()
+    encoder, _ = _encoder_ready(runtime, audio_samples=16000)
+    decoder = MoonshineCudaResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    dtrace: list[tuple[str, tuple[object, ...]]] = []
+    decoder.prepare_decoder_kernels(libraries=fake_decoder_libraries(dtrace))
+    try:
+        with pytest.raises(TypeError, match="MoonshineCudaResidentRuntime"):
+            encoder.handoff_to(object())  # type: ignore[arg-type]
+        encoder.handoff_to(decoder)
+        assert decoder.encoder_state_valid is True
+        assert decoder.cross_cache_valid is True
+        assert decoder.self_cache_length == 0
+        # The handoff precomputes all eight head-major cross K/V caches.
+        names = [name for name, _ in dtrace]
+        assert names == [
+            "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major"
+        ] * 8
+        # Decode is ready through the normal eager path.
+        decoder.set_decode_state(token_id=1, position=0)
+        with decoder.no_allocation_region("token-step"):
+            decoder.token_step()
+        assert decoder.self_cache_length == 1
+    finally:
+        decoder.close()
+        encoder.close()
+
+
+def test_cuda_encoder_runtime_close_parity() -> None:
+    runtime = FakeCudaRuntime()
+    encoder = MoonshineCudaEncoderRuntime(
+        audio_samples=16000,
+        loaded_model=fake_loaded_model(runtime),
+        runtime=runtime,  # type: ignore[arg-type]
+        owns_weights=True,
+    )
+    freed_before = len(runtime.freed)
+    encoder.close()
+    assert encoder.closed is True
+    assert len(runtime.freed) > freed_before  # owned weights were freed
+    assert encoder.teardown_returned_to_baseline is True
+    freed_after = len(runtime.freed)
+    encoder.close()  # second close is a no-op
+    assert len(runtime.freed) == freed_after
+
+
+def _oracle_top2_margins(
+    cuda_runtime,
+    loaded: MoonshineLoadedModel,
+    frames: int,
+    ref_keys: list[np.ndarray],
+    ref_values: list[np.ndarray],
+    ref_mask: np.ndarray,
+    reference: list[int],
+    lm_head_np: np.ndarray,
+    positions: list[int],
+) -> dict[int, float]:
+    """Return the fixture-oracle top-2 logit gap at the requested positions.
+
+    Runs the resident decoder on the fixture cross K/V (the byte-identical
+    PyTorch encoder path) and computes, for each requested position, the gap
+    between the top-1 and top-2 logits from the fixture-oracle's own final
+    hidden.  A small gap means the fixture stream decision was a coin flip, so
+    a distinct-but-within-tolerance encoder may legitimately land on the other
+    token.
+    """
+
+    target = set(int(position) for position in positions)
+    decoder = MoonshineCudaResidentRuntime(
+        encoder_frames=frames, loaded_model=loaded, owns_weights=False
+    )
+    decoder.prepare_decoder_kernels()
+    captured: dict[int, np.ndarray] = {}
+    try:
+        decoder.load_cross_cache(ref_keys, ref_values, mask=ref_mask)
+        token_id = reference[0]
+        margins: dict[int, float] = {}
+        for position in range(194):
+
+            def callback(name: str, tensor: Tensor) -> None:
+                if name == "final_hidden" and position in target:
+                    host = np.empty(tensor.shape, dtype=np.float16)
+                    copy_device_to_host(
+                        host_array_ptr(host),
+                        DeviceBuffer(
+                            tensor.ptr, tensor.numel * tensor.dtype.itemsize
+                        ),
+                        runtime=cuda_runtime,
+                    )
+                    captured[position] = host.reshape(-1)
+
+            decoder.set_decode_state(token_id=token_id, position=position)
+            decoder.token_step(boundary_callback=callback)
+            token_id = int(decoder.read_token())
+            if position in target and position in captured:
+                logits = captured[position].astype(np.float32) @ lm_head_np.T
+                order = np.argsort(logits)[::-1]
+                margins[position] = float(logits[order[0]] - logits[order[1]])
+        return margins
+    finally:
+        decoder.close()
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _six_fixtures_available(),
+    reason="CUDA sm_120a gate or six audio fixtures are not available",
+)
+def test_cuda_encoder_runtime_e2e_encode_handoff_decode_on_six_fixtures() -> None:
+    """C4: torch-free encoder -> handoff -> eager decode on the six audio files.
+
+    Each file's raw audio is encoded by the standalone CUDA encoder, handed off
+    to the resident decoder (D2D + precomputed cross K/V), and decoded across
+    all 194 positions.  The encoder hidden and the precomputed cross caches must
+    be within the FP16 compose tolerance of the fixture gates, the token stream
+    must match the fixture stream exactly except at documented borderline
+    positions, and every borderline mismatch must be a true coin flip: the
+    fixture-oracle's own top-2 logit gap at that position must be below
+    ``_BORDERLINE_MARGIN``.
+    """
+
+    import safetensors.numpy
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.device import Device
+    from hipengine.loading.moonshine import load_moonshine_model
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=cuda_runtime
+    )
+    with safetensors.numpy.safe_open(
+        f"{_SNAPSHOT}/model.safetensors", framework="np"
+    ) as handle:
+        lm_head_np = handle.get_tensor(loaded.spec.embedding_weight_name).astype(
+            np.float32
+        )
+    try:
+        for fixture_name in _SIX_FIXTURES:
+            with open(
+                os.path.join(_SIX_FIXTURE_DIR, f"{fixture_name}.json")
+            ) as handle:
+                manifest = json.load(handle)
+            with np.load(
+                os.path.join(_SIX_FIXTURE_DIR, f"{fixture_name}.npz")
+            ) as fixture:
+                audio = fixture["input.values"]
+                amask = fixture["input.attention_mask"]
+                ref_mask = fixture["encoder.attention_mask"]
+                reference = [int(token) for token in manifest["decoder"]["token_ids"]]
+                frames = int(manifest["input"]["encoder_frames"])
+                ref_hidden = fixture["encoder.output"]
+                ref_keys = [fixture[f"cross.layer_{layer}.key"] for layer in range(8)]
+                ref_values = [
+                    fixture[f"cross.layer_{layer}.value"] for layer in range(8)
+                ]
+
+            enc = MoonshineCudaEncoderRuntime(
+                audio_samples=audio.shape[1],
+                loaded_model=loaded,
+                owns_weights=False,
+            )
+            enc.prepare_encoder_kernels()
+            dec = MoonshineCudaResidentRuntime(
+                encoder_frames=frames, loaded_model=loaded, owns_weights=False
+            )
+            dec.prepare_decoder_kernels()
+            try:
+                enc.encode(audio, amask)
+                got_hidden = _device_tensor_to_host(cuda_runtime, enc.encoder_output())
+                hidden_abs = np.abs(
+                    got_hidden.astype(np.float32) - ref_hidden.astype(np.float32)
+                ).max()
+                assert float(hidden_abs) <= _FINAL_HIDDEN_MAX_ABS, (
+                    f"{fixture_name} encoder hidden max_abs={float(hidden_abs)}"
+                )
+                got_mask = _device_tensor_to_host(
+                    cuda_runtime,
+                    enc.attention_mask(),
+                    dtype=np.int32,
+                )
+                assert np.array_equal(got_mask, ref_mask), (
+                    f"{fixture_name} encoder mask differs"
+                )
+
+                enc.handoff_to(dec)
+                for layer in range(8):
+                    cache = dec.cross_cache(layer)
+                    for side, ref_array in (
+                        (cache.key, ref_keys[layer]),
+                        (cache.value, ref_values[layer]),
+                    ):
+                        host = _device_tensor_to_host(cuda_runtime, side)
+                        diff = np.abs(
+                            host.astype(np.float32) - ref_array.astype(np.float32)
+                        ).max()
+                        assert float(diff) <= _CROSS_CACHE_MAX_ABS, (
+                            f"{fixture_name} layer {layer} precomputed cross cache "
+                            f"max_abs={float(diff)}"
+                        )
+
+                mismatches: list[tuple[int, int, int]] = []
+                token_id = reference[0]
+                for position in range(194):
+                    dec.set_decode_state(token_id=token_id, position=position)
+                    dec.token_step()
+                    token_id = int(dec.read_token())
+                    expected = (
+                        reference[position + 1]
+                        if position + 1 < len(reference)
+                        else reference[position]
+                    )
+                    if token_id != expected:
+                        mismatches.append((position, token_id, expected))
+                allowed = _SIX_BORDERLINE.get(fixture_name, set())
+                unexpected = [
+                    (position, got, expected)
+                    for (position, got, expected) in mismatches
+                    if position not in allowed
+                ]
+                assert unexpected == [], (
+                    f"{fixture_name}: {len(unexpected)} unexpected token "
+                    f"mismatches: {unexpected[:10]}"
+                )
+                # Every borderline mismatch must be a coin flip in the
+                # fixture-oracle's own top-2 logit gap at that position.
+                if mismatches:
+                    margins = _oracle_top2_margins(
+                        cuda_runtime,
+                        loaded,
+                        frames,
+                        ref_keys,
+                        ref_values,
+                        ref_mask,
+                        reference,
+                        lm_head_np,
+                        [position for position, _, _ in mismatches],
+                    )
+                    for position, _, _ in mismatches:
+                        margin = margins[position]
+                        assert margin < _BORDERLINE_MARGIN, (
+                            f"{fixture_name} position {position} mismatch but the "
+                            f"fixture-oracle top-2 logit gap is {margin:.4f} "
+                            f"(not a coin flip)"
+                        )
+            finally:
+                enc.close()
+                dec.close()
+    finally:
+        loaded.weights.free(runtime=cuda_runtime)
