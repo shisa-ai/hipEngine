@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "status": "rejected_exact_regression",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_parent_child_proposal_target_submission_w7900",
+  "timestamp": "2026-08-06T10:38:57Z",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "binding_screen": "AMD Radeon Pro W7900 / gfx1100 / GPU0",
+    "api_screen": "AMD Radeon RX 7900 XTX / gfx1100 / GPU1",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "software": {
+    "baseline_commit": "92d7fa5ae7d557dde24834487d98c278e42e5456",
+    "production_control": "retained asynchronous proposal graph, event/device handoff, and cached N2 target graph",
+    "candidate_tree_change": false,
+    "candidate_kind": "temporary harness-only parent graph assembled with hipGraphAddChildGraphNode and hipGraphAddMemcpyNode1D"
+  },
+  "commands": {
+    "api_screen": "HIP_VISIBLE_DEVICES=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-27b/child-graph-api-screen.py",
+    "binding_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-27b/parent-child-proposal-target-screen.py"
+  },
+  "candidate": {
+    "mechanism": "Clone the cached NextN proposal and N2 target graphs into two dependent child-graph nodes under one parent executable. Seven fixed-address D2D memcpy nodes inject B3 token IDs into both target metadata columns and append proposal ID/value rows to the existing bounded payload between the children.",
+    "submission_count": 1,
+    "production_control_submission_count": 2,
+    "production_control_preserves_early_async_proposal_start": true,
+    "candidate_defers_proposal_start_until_the_target_transaction_is_ready": true,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "api_screen": {
+    "protocol": "Two tiny captured child graphs on GPU1, counterbalanced nine batches of 2,000 launch+synchronize iterations; compare two direct launches against one dependent parent launch.",
+    "correct": true,
+    "two_launch_median_us": 39.061023500000005,
+    "parent_launch_median_us": 42.090334000000006,
+    "parent_minus_two_us": 3.029310500000001,
+    "parent_speedup": 0.9280283568194065
+  },
+  "binding_w7900_screen": {
+    "protocol": "Same-loaded-model code_merge_intervals natural25 B3, both routes warm, 13 counterbalanced direct/parent pairs.",
+    "direct_median_decode_ms": 358.1599211320281,
+    "parent_median_decode_ms": 360.861464869231,
+    "parent_minus_direct_ms": 2.7015437372028828,
+    "median_paired_difference_ms": 2.8806012123823166,
+    "parent_faster_pairs": 0,
+    "pairs": 13,
+    "speedup_from_medians": 0.9925136264184321,
+    "chained_cycles_per_sample": 7,
+    "all_token_ids_equal": true,
+    "all_acceptance_ledgers_equal": true
+  },
+  "decision": {
+    "action": "reject",
+    "reason": "HIP child-graph composition adds launch overhead in the primitive screen, and the production-shaped parent also loses the retained proposal's early asynchronous overlap with scheduler/transaction planning. The binding screen regresses every pair by a 2.881-ms paired median, so no runtime wrapper, graph API surface, cache, flag, or fallback is retained.",
+    "production_default_unchanged": true,
+    "next_target": "Advance D27-R2 to the refreshed Q5T16 ssm_out module ledger, reusing the prior exhaustive representation evidence and reopening only for a materially new source-faithful primitive."
+  },
+  "source_artifacts": {
+    "api_harness": {
+      "path": "/tmp/hipengine-qwen36-27b/child-graph-api-screen.py",
+      "sha256": "bf612cfd91e335f62824ffb78001b9108a1bfeccba3f419159527db5359e3b3f"
+    },
+    "binding_harness": {
+      "path": "/tmp/hipengine-qwen36-27b/parent-child-proposal-target-screen.py",
+      "sha256": "3e7e5892687013668cdec2acf8fd63e8c1f4d234fb7a0de83672d548432fa1a0"
+    },
+    "binding_result": {
+      "path": "/tmp/hipengine-qwen36-27b/parent-child-proposal-target-screen-w7900.json",
+      "sha256": "1f5fc2e951d12a096004a2e14a0801b258d671daa23f85a8d6fae0b3257091e8"
+    }
+  }
+}

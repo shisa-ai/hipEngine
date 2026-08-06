@@ -1820,11 +1820,24 @@ rises **315.018 -> 321.779 ms**, but non-kernel residual falls unambiguously
 residual **65.134 -> 44.255 ms (-32.056%)** and leaves **20.467 ms** versus
 Vulkan B3's inferred **23.789 ms**. Canonical hipEngine B3 is now **9.290%
 below** matched Vulkan B3 and **12.040% below** selected Vulkan B4, requiring
-**13.688%**. Submission remains first; then Q5 `ssm_out`, Q6 FFN-down,
-full-attention K/V, Q6 QKV, and root follow. Artifacts:
-`benchmarks/results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json`
+**13.688%**.
+
+The final materially different submission screen is exact but rejected. A
+single parent executable clones the cached proposal and N2 graphs as dependent
+child nodes and places the six B3 metadata-ID copies plus bounded proposal
+payload copy between them. HIP child composition already loses in a tiny GPU1
+screen (**39.061 -> 42.090 us**, 0.9280x). On W7900, the production-shaped
+13-pair B3 screen moves decode **358.160 -> 360.861 ms (0.99251x)** with a
+**+2.881-ms** paired median and **0/13** wins, despite identical IDs and
+acceptance. Besides child-node overhead, one-submit assembly defers the proposal
+until the target transaction is ready and therefore gives up the retained early
+asynchronous proposal overlap. No code or flag is kept. The direct event/device
+handoff is the current submission optimum; D27-R2 advances to Q5 `ssm_out`, then
+Q6 FFN-down, full-attention K/V, Q6 QKV, and root. Artifacts:
+`benchmarks/results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json`,
+`benchmarks/results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json`,
 and
-`benchmarks/results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json`.
+`benchmarks/results/2026-08-06-qwen36-27b-parent-child-submission-rejected.json`.
 
 ---
 
@@ -1836,7 +1849,7 @@ and
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass. | in progress; proposal/target graphs and direct retirement retained, submission residual **41.346 -> 20.467 ms**; continue submission before Q5/Q6/KV/root |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; proposal/target graphs and direct retirement retained, submission residual **41.346 -> 20.467 ms**; one-submit parent/child is exact but 0/13 and rejected; advance to Q5/Q6/KV/root |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 

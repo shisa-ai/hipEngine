@@ -208422,3 +208422,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `edbb6508...e04`; compact artifact SHA-256 before publication staging is
   `dfbcb023...bed3`. Continue D27-R2 at one-submit parent/child graph assembly
   before advancing to Q5 only if that mechanism fails to qualify.
+
+## 2026-08-06 — Reject parent/child proposal-target submission
+
+- Screen the remaining one-submit mechanism without retaining runtime surface.
+  A tiny GPU1 graph API harness composes two captured graphs as dependent child
+  nodes. It is exact, but two direct launch+synchronize calls beat one parent
+  call **39.061024 -> 42.090334 us**; parent composition is **0.92803x**.
+- Bind the same mechanism to the full W7900 B3 path. A temporary parent graph
+  clones the cached NextN proposal and N2 target graphs, inserts the six distinct
+  i64/i32 metadata token copies and the proposal ID/value payload copy between
+  them, and submits one executable. Both routes are warm and every sample has
+  seven full-room chained cycles. Across 13 counterbalanced natural25 pairs,
+  direct event/device handoff versus parent-child moves decode median
+  **358.159921 -> 360.861465 ms (0.992514x, +2.701544 ms)**; median paired
+  regression is **+2.880601 ms** and the parent wins **0/13**. IDs and acceptance
+  ledgers are identical.
+- Reject and retain no code, flag, cache, or fallback. HIP child-node overhead is
+  independently negative, and delaying the proposal until the target
+  transaction is ready also gives up the retained asynchronous overlap with host
+  scheduler planning. Raw W7900 result/harness SHA-256 values are
+  `1f5fc2e9...091e8` / `3e7e5892...fa1a0`; API harness is
+  `bf612cfd...e3b3f`. Compact artifact is
+  `benchmarks/results/2026-08-06-qwen36-27b-parent-child-submission-rejected.json`
+  (pre-commit SHA-256 `91bbcee5...676f`). The direct handoff remains the current
+  submission optimum. Advance D27-R2 to refreshed Q5T16 `ssm_out`, reusing the
+  prior exhaustive representation evidence and reopening only for a materially
+  new source-faithful primitive.
