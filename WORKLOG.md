@@ -205546,3 +205546,36 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (SHA-256 `8cfc967b...e630`) and activate **SH9-C1** to carry decode/memory rows
   unchanged, correct the campaign scope everywhere, and select the next genuine
   decode owner rather than treating this prefill result as fork progress.
+
+## 2026-08-06 — Close SH9-C1 and extend the Strix Halo campaign
+
+- Close SH9-C1 without duplicate GPU work. SH9-D1 is mechanically prefill-only,
+  SH7-A1 is the only post-SH6 retained decode change, and neither changes
+  memory. Hash-bound carry-forward therefore gives current 512/4K/32K/64K
+  decode **53.153/55.832/46.785/40.386 tok/s** and whole-GTT
+  **21.000/21.499/22.152/22.890 GiB**. C1, C2, fork-F16 decode, and fork-F16
+  whole-GTT remain **0/4**; the higher-level objective is not complete.
+- Audit two external review packets against source and existing evidence. Their
+  strongest lead survives with a mechanism correction: private-c1 eager below
+  1,024 uses fixed-256-thread
+  `qwen35_paged_full_attn_decode_context_tensor_kernel` over 16 q-head blocks,
+  not the compact/batched `context_tensor_batch_kernel<true,2>`. The actual c1
+  owner has only an old 128-thread arithmetic-changing rejection and no
+  gfx1151 exact address-hoist/packed-load leaf. Add SH10-A1 with a trace-first,
+  exact-order gate.
+- Add SH11-A1 to remeasure June's faster-but-divergent direct 4K route on the
+  current exact model; drift remains a hard promotion blocker. Add SH12-C0 for
+  a complete decode sync/D2H census independent of SH9. Add SH13-M1 as a
+  4K-first phase-resolved code-residency precondition audit under the smaller
+  current memory gaps. Add mandatory SH14-C1 cumulative completion after all
+  four packages; do not stop after one leaf.
+- Do not add the withdrawn raw lm-head leaf, post-SH9 graph replay, or the
+  proposed SH3-M1+SH-K1 stack. SH9 removes no decode boundary; graph replay is
+  still about 1% and below the >3% host/C++ trigger. SH-K1 already loses decode
+  and raises whole-GTT **0.0703/0.1328 GiB** at 32K/64K; host embedding shifts
+  control and candidate equally. SH3-M1 already removes the full 0.503-GiB
+  private-c1 device embedding, so a memlock change is a separate system/graph
+  decision rather than another memory saving.
+- Publish the no-claim audit at
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json`
+  (SHA-256 `d2b5a81d...2c17`) and update the campaign package table/guardrails.
