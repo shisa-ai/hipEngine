@@ -205198,3 +205198,73 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   layout leaf. Require CPU-oracle correctness, cached no-spill execution, no
   duplicate resident weights, and >=1.15x or >=0.5-ms/token projected saving
   before model routing; preserve current Q8T16 prefill and exact fallback.
+
+## 2026-08-06 — SH5-D1 raw rowvec8 closes blocked; activate SH6-P1
+
+- Audit pinned fork `b7b85da9`: `dst->ne[1] == 1` dispatches through
+  `ggml_vk_mul_mat_vec_q_f16`, and `GGML_TYPE_Q8_0 + F16` resolves to
+  `mul_mat_vec_q8_0_f16_f32`. The generated quant shader uses raw output-major
+  34-byte Q8_0 blocks, one workgroup per output row, eight contiguous K values
+  per lane, and one scalar subgroup reduction. hipEngine already has raw
+  local256 one-output/scalar-K and raw local128 eight-output/eight-K kernels;
+  neither duplicates the missing local64 one-output/eight-K geometry. The
+  required `scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+- Add RED/GREEN CPU-oracle, wrapper, registry, materialization, dispatch, and
+  no-sidecar contracts for a combined split-output
+  `attn_qkv[2048->8192] + attn_gate[2048->4096]` raw rowvec8 leaf. Enabling
+  `HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR=1` replaces exactly **60** linear-attention
+  Q8T16 tensors / **802,160,640 bytes (0.747070 GiB)** with one raw allocation
+  each, creates no sidecars, and leaves all other Q8T16 owners unchanged.
+  Rows>1 use the existing raw WMMA prefill and disabling the option restores
+  production Q8T16.
+- Run the frozen actual-weight leaf with three pair copies / **80,216,064
+  bytes**, greater than twice 32-MiB MALL, 18 warmups, 15 counterbalanced
+  samples, and 64-launch HIP-event bursts. Production Q8T16 median is
+  **0.134737 ms**; local64 is **0.116588 ms**, or **1.15566x / 0.018148 ms
+  saved**, with **15/15** wins. Actual outputs differ by at most one BF16 code
+  and pass the independent CPU Q8_0 oracle. Raw result SHA-256 is
+  `8748bb42...6cea`.
+- Prebuild outside profiling and run cached `rocprofv3 --kernel-trace` over one
+  actual pair. The named rowvec8 body uses local64 / grid786432,
+  **24 VGPR, 128 SGPR, 512 B LDS, 0 scratch**, and a plausible 138.939-us
+  profiled duration. Kernel/agent CSV SHA-256 values are
+  `bbca581a...8cfa3` and `451e2511...6078`.
+- Run independent persistent-session one-warmup/three-run 512/128 eager
+  baseline/candidate children with cached builds, forced bulk prefill, WMMA
+  prefill, GEMV decode, and the retained private-c1 host embedding. Median
+  prefill/decode moves **1369.120/52.876 -> 1184.884/54.427 tok/s**. Decode
+  improves **+2.9337% / 18.9121 -> 18.3731 ms/token (-0.5390 ms)** at unchanged
+  **20.566421-GiB** tracked peak, but prefill regresses **-13.4565%**. Raw
+  hashes are `f5353efa...6109` and `11e04c39...b4a7c`.
+- Independent 512 prefill plus four fixed-input eager transitions confirms
+  prefill logits, all 40 layer outputs, 30 Conv/GDN state pairs, ten live BF16
+  KV pairs, and prefill hidden are byte-identical. All four candidate transitions
+  preserve top-1 token 9707, but logits, hidden, recurrent, and KV state diverge
+  because local64 changes the FP32 reduction tree. State SHA-256 values are
+  `8adff28c...49b6` and `13745120...717`.
+- Apply one bounded exactness repair: emulate the production 128 logical K
+  lanes with two virtual lanes per local64 thread. It restores production-T16
+  BF16 output but slows local64 to **0.173478 ms / 0.7786x**. The fast local128
+  sibling reaches **0.117878 ms / 1.1458x**, below the frozen 1.15x gate and
+  still differs by two BF16 codes. Remove the exact-tree specialization. Exact
+  screen SHA-256 is `8f978d60...abeb`.
+- Final focused command:
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt
+  python3 -m pytest tests/test_gguf_q8_0_pack8_gemv_decode.py
+  tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_materialize_helpers.py
+  tests/test_qwen35_gguf_materialize.py -q` exits zero with **104 passed, 21
+  skipped**. JSON syntax, `git diff --check`, and scoped validation pass.
+- Close SH5-D1 as **blocked from production**, not rejected source evidence and
+  not campaign completion. Production remains Q8T16. Retain the kernel and
+  explicit default-off model route only as SH6-P1's dependency. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json`
+  (SHA-256 `13af8147...0185`).
+- Activate **SH6-P1**: build one GPU raw-Q8_0 -> host-packer-identical Q8T16 pair
+  converter with one reusable <=**26,738,688-byte** scratch owner, then charge
+  converter + existing T16 WMMA at 512/4K/32K/64K. Require exact prefill state,
+  <=1% prefill loss at every depth, no persistent duplicate weights, cached
+  no-spill converter execution, transactional fallback/lifecycle, and the
+  complete natural/category KL/top-1 gate for changed decode arithmetic. Remove
+  the SH5 model route on failure; on pass promote through a gfx1151 capability
+  and proceed to SH6-C1. The whole beat-fork campaign remains active.
