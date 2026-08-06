@@ -14,6 +14,22 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## SH15 gfx1151 private-c1 persistent allocation arena
+
+- Added 2026-08-06 as default-off
+  `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1` after SH15-M1 measured a
+  2-MiB HIP commit mechanism and exact metadata-derived plans reproduced all
+  **732 weight + 189 state/scratch** requests at 512/4K/32K/64K.
+- The screen is restricted by the gfx1151 package capability to an owned
+  private-c1 runner. Shared runners, c>N, unsupported resident layouts, and
+  either owner-allocation denial retain dedicated allocations.
+- If full-state or <=1% wall gates fail, remove the environment switch,
+  capability, arena routing, and planning code while retaining the generic
+  `DeviceMemoryArena` primitive only if another validated owner uses it. If the
+  canonical four-depth gate passes, promote the package default, retain an
+  explicit opt-out only through the cumulative fork-parity gate, then remove
+  the env branch and obsolete dedicated private-c1 construction path.
+
 ## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 
 - Added 2026-07-31 as a gfx1151 default plus

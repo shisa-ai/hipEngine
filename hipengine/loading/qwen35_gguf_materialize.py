@@ -10,7 +10,8 @@ from typing import Iterable, Mapping
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime
+from hipengine.core.hip import HipError, HipRuntime
+from hipengine.core.memory import DeviceArenaPlanner, DeviceMemoryArena
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
@@ -24,8 +25,17 @@ from hipengine.loading.qwen35_gguf import (
     build_qwen35_gguf_tensor_map,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
-from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
+from hipengine.quant.gguf_q4_k import (
+    GGUF_Q4_K_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    GGUF_Q4_K_TILE16_COLS,
+    repack_gguf_q4_k_pack8,
+    repack_gguf_q4_k_tile16,
+)
 from hipengine.quant.gguf_t16 import (
+    GGUF_Q5_K_BLOCK_BYTES,
+    GGUF_Q5_K_T16_BLOCK_BYTES,
+    GGUF_T16_COLS,
     repack_gguf_q5_k_qmicro_tile16,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
@@ -66,6 +76,19 @@ class Qwen35GGUFWeightSpec:
     layout: str
     allocation_names: tuple[str, ...]
     sidecar_layouts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFWeightArenaPlan:
+    """Exact aligned resident-weight allocation plan for one GGUF route."""
+
+    supported: bool
+    alignment: int
+    requested_bytes: int
+    capacity_bytes: int
+    allocation_count: int
+    allocation_nbytes: tuple[tuple[str, str, int], ...]
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -142,13 +165,17 @@ class Qwen35GGUFResidentWeights:
     """Device-resident Qwen3.5 GGUF weights.
 
     The map owns all device buffers. ``root_weights['lm_head']`` aliases
-    ``root_weights['token_embedding']`` for the local tied-output GGUF.
+    ``root_weights['token_embedding']`` for the local tied-output GGUF. Packed
+    routes keep non-owning tensor views and free their one arena owner here.
     """
 
     config: Qwen35GGUFConfig
     root_weights: Mapping[str, Qwen35GGUFDeviceWeight]
     layers: tuple[Qwen35GGUFResidentLayerWeights, ...]
     backend: str
+    allocation_arena: DeviceMemoryArena | None = None
+    allocation_mode: str = "dedicated"
+    allocation_arena_reason: str | None = None
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -174,6 +201,8 @@ class Qwen35GGUFResidentWeights:
     def free(self, *, runtime: HipRuntime | None = None) -> None:
         for weight in reversed(self.weights):
             weight.free(runtime=runtime)
+        if self.allocation_arena is not None:
+            self.allocation_arena.close()
 
 
 def plan_qwen35_gguf_materialization(
@@ -220,6 +249,115 @@ def plan_qwen35_gguf_materialization(
     )
 
 
+def plan_qwen35_gguf_weight_arena(
+    plan: Qwen35GGUFMaterializationPlan,
+    *,
+    selected_slots: Iterable[str] | None = None,
+    deferred_device_slots: Iterable[str] | None = None,
+    alignment: int = 4096,
+) -> Qwen35GGUFWeightArenaPlan:
+    """Return an exact fail-closed arena plan without reading tensor payloads."""
+
+    selected = None if selected_slots is None else {str(slot) for slot in selected_slots}
+    deferred = set() if deferred_device_slots is None else {str(slot) for slot in deferred_device_slots}
+    planner = DeviceArenaPlanner(alignment=int(alignment))
+    records: list[tuple[str, str, int]] = []
+    seen: set[tuple[str, str]] = set()
+    specs = (*tuple(plan.root_specs.values()), *(spec for layer in plan.layer_specs for spec in layer.values()))
+    try:
+        for spec in specs:
+            if selected is not None and spec.slot_path not in selected:
+                continue
+            if spec.slot_path in deferred:
+                continue
+            key = (spec.source.name, spec.layout)
+            if key in seen:
+                continue
+            seen.add(key)
+            for allocation_name, nbytes in _planned_weight_allocation_nbytes(spec):
+                planner.reserve(nbytes)
+                records.append((spec.source.name, allocation_name, int(nbytes)))
+    except (TypeError, ValueError) as exc:
+        return Qwen35GGUFWeightArenaPlan(
+            supported=False,
+            alignment=int(alignment),
+            requested_bytes=0,
+            capacity_bytes=0,
+            allocation_count=0,
+            allocation_nbytes=(),
+            reason=str(exc),
+        )
+    return Qwen35GGUFWeightArenaPlan(
+        supported=True,
+        alignment=planner.alignment,
+        requested_bytes=planner.requested_bytes,
+        capacity_bytes=planner.capacity_bytes,
+        allocation_count=planner.allocation_count,
+        allocation_nbytes=tuple(records),
+    )
+
+
+def _planned_weight_allocation_nbytes(
+    spec: Qwen35GGUFWeightSpec,
+) -> tuple[tuple[str, int], ...]:
+    source = spec.source
+    if spec.layout == LAYOUT_Q4_K_PACK8:
+        raise ValueError(f"unsupported arena layout {spec.layout!r} for {spec.slot_path}")
+    if spec.layout == LAYOUT_DENSE_F32:
+        primary_nbytes = int(source.n_elements) * DType.FP32.itemsize
+    elif spec.layout == LAYOUT_DENSE_BF16:
+        primary_nbytes = int(source.n_elements) * DType.BF16.itemsize
+    elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
+        if len(source.byte_shape) != 3:
+            raise ValueError(f"Q4 T16 arena plan requires rank-3 storage for {spec.slot_path}")
+        experts, out_features, bytes_per_row = (int(dim) for dim in source.byte_shape)
+        if out_features % GGUF_Q4_K_TILE16_COLS or bytes_per_row % GGUF_Q4_K_BLOCK_BYTES:
+            raise ValueError(f"Q4 T16 arena shape is not tile-aligned for {spec.slot_path}")
+        primary_nbytes = (
+            experts
+            * (out_features // GGUF_Q4_K_TILE16_COLS)
+            * (bytes_per_row // GGUF_Q4_K_BLOCK_BYTES)
+            * GGUF_Q4_K_TILE16_BLOCK_BYTES
+        )
+    elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
+        if len(source.byte_shape) != 3:
+            raise ValueError(f"Q5 T16 arena plan requires rank-3 storage for {spec.slot_path}")
+        experts, out_features, bytes_per_row = (int(dim) for dim in source.byte_shape)
+        if out_features % GGUF_T16_COLS or bytes_per_row % GGUF_Q5_K_BLOCK_BYTES:
+            raise ValueError(f"Q5 T16 arena shape is not tile-aligned for {spec.slot_path}")
+        primary_nbytes = (
+            experts
+            * (out_features // GGUF_T16_COLS)
+            * (bytes_per_row // GGUF_Q5_K_BLOCK_BYTES)
+            * GGUF_Q5_K_T16_BLOCK_BYTES
+        )
+    elif spec.layout in {
+        LAYOUT_RAW_GGUF,
+        LAYOUT_GGUF_Q4_K_X8,
+        LAYOUT_GGUF_Q5_K_QMICRO_T16,
+        LAYOUT_GGUF_Q5_K_X8,
+        LAYOUT_GGUF_Q6_K_T16,
+        LAYOUT_GGUF_Q6_K_X8,
+        LAYOUT_GGUF_Q8_0_T16,
+    }:
+        primary_nbytes = int(source.nbytes)
+    else:
+        raise ValueError(f"unsupported arena layout {spec.layout!r} for {spec.slot_path}")
+
+    records: list[tuple[str, int]] = []
+    for allocation_name in spec.allocation_names:
+        if allocation_name == "tiles" or allocation_name == "raw":
+            nbytes = primary_nbytes if allocation_name == spec.allocation_names[0] else int(source.nbytes)
+        elif allocation_name == "x8":
+            nbytes = int(source.nbytes)
+        else:
+            raise ValueError(
+                f"unsupported arena allocation {allocation_name!r} for {spec.slot_path}"
+            )
+        records.append((allocation_name, nbytes))
+    return tuple(records)
+
+
 def audit_qwen35_gguf_precision_contractions(
     plan: Qwen35GGUFMaterializationPlan,
 ) -> tuple[Qwen35GGUFPrecisionContraction, ...]:
@@ -260,6 +398,7 @@ def materialize_qwen35_gguf_weights(
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     backend: str = "hip_gfx1100",
+    use_weight_arena: bool = False,
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -282,6 +421,30 @@ def materialize_qwen35_gguf_weights(
             "unknown deferred GGUF device slot(s): " + ", ".join(unknown_deferred)
         )
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
+    allocation_arena: DeviceMemoryArena | None = None
+    allocation_mode = "dedicated"
+    allocation_arena_reason: str | None = None
+    arena_plan: Qwen35GGUFWeightArenaPlan | None = None
+    if use_weight_arena:
+        arena_plan = plan_qwen35_gguf_weight_arena(
+            plan,
+            selected_slots=selected,
+            deferred_device_slots=deferred,
+        )
+        if not arena_plan.supported:
+            allocation_mode = "dedicated_arena_unsupported"
+            allocation_arena_reason = arena_plan.reason
+        elif arena_plan.capacity_bytes > 0:
+            try:
+                allocation_arena = DeviceMemoryArena.create(
+                    arena_plan.capacity_bytes,
+                    runtime=runtime,
+                    alignment=arena_plan.alignment,
+                )
+                allocation_mode = "packed_arena"
+            except (HipError, MemoryError) as exc:
+                allocation_mode = "dedicated_arena_denied"
+                allocation_arena_reason = str(exc)
 
     def load(spec: Qwen35GGUFWeightSpec) -> Qwen35GGUFDeviceWeight:
         if spec.slot_path in deferred:
@@ -298,6 +461,7 @@ def materialize_qwen35_gguf_weights(
             device=device,
             runtime=runtime,
             backend=backend,
+            allocator=allocation_arena,
         )
 
     try:
@@ -320,15 +484,31 @@ def materialize_qwen35_gguf_weights(
             )
             for layer in model_map.layers
         )
+        if allocation_arena is not None and arena_plan is not None:
+            if allocation_arena.allocation_count != arena_plan.allocation_count:
+                raise RuntimeError(
+                    "GGUF weight arena allocation count changed after planning: "
+                    f"{allocation_arena.allocation_count} != {arena_plan.allocation_count}"
+                )
+            if allocation_arena.requested_bytes != arena_plan.requested_bytes:
+                raise RuntimeError(
+                    "GGUF weight arena requested bytes changed after planning: "
+                    f"{allocation_arena.requested_bytes} != {arena_plan.requested_bytes}"
+                )
     except Exception:
         for weight in reversed(tuple(materialized.values())):
             weight.free(runtime=runtime)
+        if allocation_arena is not None:
+            allocation_arena.close()
         raise
     return Qwen35GGUFResidentWeights(
         config=plan.config,
         root_weights=MappingProxyType(root_weights),
         layers=layers,
         backend=backend,
+        allocation_arena=allocation_arena,
+        allocation_mode=allocation_mode,
+        allocation_arena_reason=allocation_arena_reason,
     )
 
 
@@ -749,6 +929,7 @@ def _materialize_or_alias(
     device: Device | None,
     runtime: HipRuntime | None,
     backend: str,
+    allocator: DeviceMemoryArena | None = None,
 ) -> Qwen35GGUFDeviceWeight:
     del selected  # selection is handled by callers before materialization.
     key = (spec.source.name, spec.layout)
@@ -760,6 +941,7 @@ def _materialize_or_alias(
             device=device,
             runtime=runtime,
             backend=backend,
+            allocator=allocator,
         )
         materialized[key] = weight
     return weight
@@ -791,6 +973,7 @@ def _materialize_spec(
     device: Device | None,
     runtime: HipRuntime | None,
     backend: str,
+    allocator: DeviceMemoryArena | None = None,
 ) -> Qwen35GGUFDeviceWeight:
     import numpy as np
 
@@ -808,6 +991,7 @@ def _materialize_spec(
                 source_dtype="I32",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             ),
             "scales": load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.pack8.scales",
@@ -816,6 +1000,7 @@ def _materialize_spec(
                 source_dtype="F32",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             ),
             "mins": load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.pack8.mins",
@@ -824,6 +1009,7 @@ def _materialize_spec(
                 source_dtype="F32",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             ),
         }
     elif spec.layout in {
@@ -860,6 +1046,7 @@ def _materialize_spec(
                 source_dtype="I8",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             )
         }
         if "x8" in spec.allocation_names:
@@ -874,6 +1061,7 @@ def _materialize_spec(
                 source_dtype="I8",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             )
         if "raw" in spec.allocation_names:
             allocations["raw"] = load_host_array_to_device_as_dtype(
@@ -883,6 +1071,7 @@ def _materialize_spec(
                 source_dtype="I8",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             )
     elif spec.layout == LAYOUT_RAW_GGUF:
         allocations = {
@@ -893,6 +1082,7 @@ def _materialize_spec(
                 source_dtype="I8",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             )
         }
     elif spec.layout == LAYOUT_DENSE_F32:
@@ -904,6 +1094,7 @@ def _materialize_spec(
                 source_dtype="F32",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             )
         }
     elif spec.layout == LAYOUT_DENSE_BF16:
@@ -919,6 +1110,7 @@ def _materialize_spec(
                 source_dtype="BF16",
                 device=device,
                 runtime=runtime,
+                allocator=allocator,
             )
         }
     else:
@@ -955,6 +1147,7 @@ __all__ = [
     "Qwen35GGUFDeviceWeight",
     "Qwen35GGUFMaterializationPlan",
     "Qwen35GGUFPrecisionContraction",
+    "Qwen35GGUFWeightArenaPlan",
     "Qwen35GGUFResidentLayerWeights",
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
@@ -972,5 +1165,6 @@ __all__ = [
     "gguf_selected_x8_repack_mode",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",
+    "plan_qwen35_gguf_weight_arena",
     "plan_qwen35_gguf_weight_spec",
 ]

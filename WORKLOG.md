@@ -205930,3 +205930,36 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (SHA-256 `25c65a15...bde8c`). SH15-M1 passes its implementation precondition
   and admits SH15-M2's bounded private-c1 ordinary session arena. Production is
   unchanged and the beat-fork objective remains active.
+
+## 2026-08-06 — SH15-M2 private-c1 arena implementation and first exact smoke
+
+- Implement a default-off, gfx1151-package-gated private-c1 candidate using two
+  ordinary `hipMalloc` owners: one metadata-planned weight arena and one
+  replay-planned state/scratch arena. All subviews are 4-KiB aligned; memory
+  stats track only physical owners. Shared runners, c>N, unsupported weight
+  layouts, and owner-allocation denial retain dedicated allocations. Add the
+  temporary flag/removal trigger to `docs/REFACTOR.md`.
+- RED/GREEN unit coverage proves aligned capacity/overflow/single-free
+  accounting, non-owning materialization, exact weight sizing, unsupported and
+  denied fallback, private-c1 admission, and the four-depth state plan. The
+  metadata-only plans reproduce SH15-M1 exactly: **732 weights /
+  21,918,738,944 requested bytes** and **189 state/scratch requests /
+  164,287,744, 577,259,576, 1,271,136,760, 2,064,139,256 bytes** at canonical
+  512/4K/32K/64K+tg128 capacities.
+- A real cached 512/1 candidate smoke activates exactly **732 + 189 logical
+  allocations** behind **two physical tracked owners** of **21,919,145,984 +
+  164,478,976 bytes**. Token 9707 is stable, phase-sampled HIP used is
+  **20.752251 GiB** versus SH14's **20.982719 GiB** (about **236 MiB** lower,
+  matching projection), and tracked ownership closes **22,083,624,960 -> 0
+  bytes**. Timing receives no claim from this one-run smoke.
+- Mandatory eager state oracle command with
+  `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1` passes all four transitions:
+  repeated token/greedy stream, hidden rows, all Conv/GDN state, and live KV
+  prefixes are byte-exact against fresh serial-prefix recomputation; artifact
+  `/tmp/hipengine-sh15-m2-eager-oracle.json` (SHA-256
+  `67aa42fa...0506`).
+- Final focused admission validation passes **30 tests** across memory,
+  materialization, arena planning, route/fallback, and host-embedding coverage;
+  the six changed Python modules compile. The optional `ruff` executable is not
+  installed in this environment, so no lint result is claimed. Continue to
+  canonical wall/GTT and full 18-prompt exact gates before retention.
