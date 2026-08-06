@@ -185,6 +185,11 @@ class MoonshineCudaResidentRuntime:
         self.cross_cache_valid = False
         self.encoder_state_valid = False
         self.decode_position: int | None = None
+        # Device-owned decode (C5/§7.3): token/position live on device across
+        # steps; the graph tail advances the position scalar instead of a
+        # per-step H2D re-upload.  Off by default (the exact eager/upload path
+        # remains the contract).
+        self._device_owned_decode = False
         self.decoder_libraries: MoonshineCudaDecoderLibraries | None = None
         self._token_graphs: dict[str, MoonshineCudaTokenGraph] = {}
         self.closed = False
@@ -494,12 +499,16 @@ class MoonshineCudaResidentRuntime:
         hidden_fp16_ptr: int,
         attention_mask_int32_ptr: int,
         source_frames: int,
+        synchronize: bool = True,
     ) -> None:
         """Copy a contiguous device encoder prefix into the fixed padded bucket.
 
         The producing runtime owns and validates finite FP16 hidden values plus a
         binary int32 mask, and must synchronize its producer stream before this
-        handoff.  The source tensors remain caller-owned (C4 D2D bring-up).
+        handoff (unless ``synchronize=False``, in which case the caller has
+        ordered the producer work onto this stream and the D2D copy is queued
+        without a terminal host sync).  The source tensors remain caller-owned
+        (C4 D2D bring-up).
         """
 
         if self.closed or self.spec is None:
@@ -543,11 +552,12 @@ class MoonshineCudaResidentRuntime:
             MemcpyKind.DEVICE_TO_DEVICE,
             self.stream,
         )
-        self.runtime.stream_synchronize(self.stream)
+        if synchronize:
+            self.runtime.stream_synchronize(self.stream)
         self.encoder_state_valid = True
         self.cross_cache_valid = False
 
-    def precompute_cross_kv(self) -> None:
+    def precompute_cross_kv(self, *, synchronize: bool = True, reset: bool = True) -> None:
         """Project encoder rows once into all eight resident head-major caches."""
 
         if self.closed or self.spec is None or self.weights is None:
@@ -580,10 +590,12 @@ class MoonshineCudaResidentRuntime:
                 library=libraries.projection,
                 runtime=self.runtime,
             )
-        self.runtime.stream_synchronize(self.stream)
         self.cross_cache_valid = True
         self.encoder_state_valid = True
-        self.reset_generation(clear_cross_cache=False)
+        if reset:
+            self.reset_generation(clear_cross_cache=False)
+        if synchronize:
+            self.runtime.stream_synchronize(self.stream)
 
     def reset_generation(self, *, clear_cross_cache: bool = False) -> None:
         """Reset generation state without changing any allocation or address."""
@@ -670,6 +682,65 @@ class MoonshineCudaResidentRuntime:
         )
         self.decode_position = position
 
+    def set_device_owned_decode(self, enabled: bool = True) -> None:
+        """Enable device-owned decode state (token/position live on device).
+
+        Must be called before ``capture_token_graphs`` so the captured DAGs
+        include the graph-tail position-advance state kernel, and before the
+        first decode step.  With device ownership the per-token H2D token and
+        position re-upload is dropped; ``set_decode_seed`` seeds the buffers
+        once and the graph advances the position scalar each replay.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if enabled and self._token_graphs:
+            raise RuntimeError(
+                "device-owned decode must be enabled before graph capture"
+            )
+        self._device_owned_decode = bool(enabled)
+
+    def set_decode_seed(self, *, token_id: int) -> None:
+        """Seed the device token/position buffers for a device-owned decode run.
+
+        Uploads the first input token and position 0 once, then clears the host
+        step bookkeeping.  The per-step ``set_decode_state`` re-upload is not
+        needed afterwards: the graph tail advances the device position and the
+        fused LM head writes each next token into the same device token buffer.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if not self._device_owned_decode:
+            raise RuntimeError("device-owned decode is not enabled")
+        if not self.cross_cache_valid or not self.encoder_state_valid:
+            raise RuntimeError("Moonshine cross cache is not ready")
+        if isinstance(token_id, bool) or not isinstance(token_id, int):
+            raise ValueError("token_id must be an integer")
+        if token_id < 0 or token_id >= self.spec.vocab_size:
+            raise ValueError("token_id is outside the Moonshine vocabulary")
+        if self.self_cache_length != 0:
+            raise ValueError(
+                "set_decode_seed requires a fresh generation (reset first)"
+            )
+        token = np.asarray([token_id], dtype=np.int64)
+        position_array = np.asarray([0], dtype=np.int64)
+        copy_host_to_device(
+            self.workspace.allocation("token").buffer,
+            host_array_ptr(token),
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.workspace.allocation("position").buffer,
+            host_array_ptr(position_array),
+            runtime=self.runtime,
+        )
+        self.runtime.stream_synchronize(self.stream)
+        # The seed consumes position 0: decode_position stays None and the
+        # graph tail advances the device position from here on.
+        self.decode_position = None
+        self.self_cache_length = 0
+
     def _require_token_step_ready(self) -> int:
         if self.closed or self.spec is None or self.weights is None:
             raise RuntimeError("Moonshine runtime is closed")
@@ -677,6 +748,13 @@ class MoonshineCudaResidentRuntime:
             raise RuntimeError("Moonshine decoder kernels are not prepared")
         if not self.cross_cache_valid or not self.encoder_state_valid:
             raise RuntimeError("Moonshine cross cache is not ready")
+        if self._device_owned_decode:
+            # The device position scalar is advanced by the graph tail; the
+            # host mirrors it as ``self_cache_length`` (decode_position stays
+            # None once the seed consumed position 0).
+            if self.decode_position is not None:
+                raise RuntimeError("device-owned decode position is not consumed")
+            return int(self.self_cache_length)
         if self.decode_position != self.self_cache_length:
             raise RuntimeError("Moonshine device token/position state is not set")
         return int(self.decode_position)
@@ -961,6 +1039,21 @@ class MoonshineCudaResidentRuntime:
             library=libraries.lm_head,
             **common,
         )
+        if self._device_owned_decode:
+            # Graph-tail state kernel: advance the device position scalar so the
+            # next replay consumes device-owned state (C5/§7.3).  Bounded by the
+            # self-cache capacity; the host loop stops at EOS or max positions.
+            from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
+                moonshine_advance_position_fp16,
+            )
+
+            moonshine_advance_position_fp16(
+                self.tensor("position").ptr,
+                spec.self_cache_capacity,
+                stream=stream,
+                library=libraries.glue,
+                runtime=self.runtime,
+            )
 
     def read_token(self) -> int:
         """Synchronize the resident stream and read the selected int64 token."""

@@ -64,6 +64,18 @@ __global__ void moonshine_argmax_fp16_kernel(
   if (threadIdx.x == 0) output[0] = indices[0];
 }
 
+__global__ void moonshine_advance_position_fp16_kernel(
+    int64_t* __restrict__ position,
+    int64_t capacity) {
+  // Device-owned decode state: advance the fixed position scalar by one after
+  // each token step (graph-tail state kernel, C5/§7.3).  The bound keeps the
+  // position inside the self-cache capacity so an overlong run cannot
+  // overrun the cache; the host decode loop stops at EOS or max positions.
+  if (position[0] < capacity) {
+    position[0] += 1;
+  }
+}
+
 __global__ void moonshine_embedding_lookup_fp16_kernel(
     const half_t* __restrict__ embedding,
     const int64_t* __restrict__ token,
@@ -200,6 +212,18 @@ extern "C" int hipengine_cuda_sm120a_moonshine_argmax_fp16(
   }
   moonshine_argmax_fp16_kernel<<<dim3(1), dim3(threads), 0, stream>>>(
       logits, output, vocab_size);
+  return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_advance_position_fp16(
+    int64_t* position,
+    int64_t capacity,
+    cudaStream_t stream) {
+  if (position == nullptr || capacity <= 0) {
+    return cudaErrorInvalidValue;
+  }
+  moonshine_advance_position_fp16_kernel<<<dim3(1), dim3(1), 0, stream>>>(
+      position, capacity);
   return cudaGetLastError();
 }
 

@@ -385,20 +385,30 @@ class MoonshineCudaEncoderRuntime:
         self._last_real_samples = real_samples
         self._input_uploaded = True
 
-    def run_encode(self, *, stream: int | None = None) -> None:
-        """Run the fixed-address encoder DAG and synchronize the stream.
+    def run_encode(
+        self,
+        *,
+        stream: int | None = None,
+        synchronize: bool = True,
+    ) -> None:
+        """Run the fixed-address encoder DAG (optionally without a terminal sync).
 
         The audio bucket and mask must already be uploaded with
-        :meth:`upload_input` (or :meth:`encode`).  On return the device-resident
-        ``encoder_output`` and ``encoder_attention_mask`` tensors are ready for a
-        decoder handoff.
+        :meth:`upload_input` (or :meth:`encode`).  With ``synchronize=False``
+        the DAG is queued on ``stream`` (default: this runtime's stream) and
+        the caller is responsible for ordering and eventually synchronizing
+        (e.g. enqueue onto the decoder stream and sync at the decode boundary
+        for the C5/§7.3 async chain).  With ``synchronize=True`` (default) the
+        stream is synchronized on return so the device-resident ``encoder_output``
+        and ``encoder_attention_mask`` tensors are ready for a decoder handoff.
         """
 
         if not self._input_uploaded:
             raise RuntimeError("Moonshine encoder input is not uploaded")
         use_stream = self.stream if stream is None else int(stream)
         self._enqueue_encode(stream=use_stream)
-        self.runtime.stream_synchronize(use_stream)
+        if synchronize:
+            self.runtime.stream_synchronize(use_stream)
 
     def encode(
         self,
@@ -674,12 +684,15 @@ class MoonshineCudaEncoderRuntime:
             **common,
         )
 
-    def handoff_to(self, decoder: "object") -> None:
+    def handoff_to(self, decoder: "object", *, synchronize: bool = True) -> None:
         """Hand the resident hidden + mask to a ``MoonshineCudaResidentRuntime``.
 
         Copies the finished encoder output into the decoder's fixed padded
         bucket (D2D) and precomputes all eight head-major cross K/V caches so
-        the decoder is ready to decode from position 0.
+        the decoder is ready to decode from position 0.  With
+        ``synchronize=False`` the copy/cross-KV work is queued on the decoder's
+        stream without terminal host syncs and the caller orders/synchronizes at
+        the decode boundary (C5/§7.3 async chain).
         """
 
         from hipengine.runtime.moonshine_cuda import MoonshineCudaResidentRuntime
@@ -690,8 +703,12 @@ class MoonshineCudaEncoderRuntime:
             hidden_fp16_ptr=self.tensor("encoder_output").ptr,
             attention_mask_int32_ptr=self.tensor("encoder_attention_mask").ptr,
             source_frames=self.real_frames,
+            synchronize=synchronize,
         )
-        decoder.precompute_cross_kv()
+        decoder.precompute_cross_kv(
+            synchronize=synchronize,
+            reset=synchronize,
+        )
 
     def close(self) -> None:
         """Free workspace, weights, and stream, and report teardown parity."""
