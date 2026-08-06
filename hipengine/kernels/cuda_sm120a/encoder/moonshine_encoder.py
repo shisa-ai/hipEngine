@@ -335,8 +335,11 @@ def moonshine_encoder_rope_fp16(
         raise ValueError("heads, sequence, and head_dim must be positive")
     if rotary_dim <= 0 or rotary_dim > head_dim or rotary_dim % 2:
         raise ValueError("rotary_dim must be positive, even, and <= head_dim")
-    if sequence >= max_positions:
-        raise ValueError("sequence must be below the RoPE table size")
+    # A table with ``max_positions`` rows serves positions 0..max_positions-1,
+    # so a sequence of exactly ``max_positions`` is valid; only longer
+    # sequences are rejected.
+    if sequence > max_positions:
+        raise ValueError("sequence must not exceed the RoPE table size")
     if threads != 256:
         raise ValueError("threads must be 256")
     library = library or build_moonshine_encoder(load=True)

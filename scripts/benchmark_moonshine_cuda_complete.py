@@ -78,6 +78,61 @@ def git_state(root: Path) -> dict[str, str]:
     }
 
 
+def _packed_artifact_info(snapshot_dir: Path) -> dict[str, Any]:
+    """Report the deployable packed artifact's manifest fields (C5-R1)."""
+
+    manifest_path = Path(snapshot_dir) / "pack_manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"--packed requires {manifest_path} (run scripts/pack_moonshine_fp16.py)"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packed = manifest.get("packed", {})
+    sha = packed.get("model.safetensors_sha256")
+    if not isinstance(sha, str):
+        raise ValueError(f"pack_manifest.json missing model.safetensors_sha256: {manifest_path}")
+    return {
+        "artifact": manifest.get("artifact"),
+        "model.safetensors_sha256": sha,
+        "model.safetensors_bytes": packed.get("model.safetensors_bytes"),
+        "fp16_payload_bytes": _PACKED_MODEL_FP16_BYTES,
+        "sidecar_total_bytes": packed.get("sidecar_total_bytes"),
+    }
+
+
+def _implementation_files(repo_root: Path) -> dict[str, Path]:
+    """Every implementation/driver source that this report depends on.
+
+    C5-R4 closure: the driver itself plus the resident decoder runtime, the
+    encoder runtime, and the sm_120a kernel wrappers/headers used by the
+    standalone/torch-encoder/decoder-only routes are all hashed so a raw
+    report is reproducible only from the exact sources that produced it.
+    """
+
+    files = {
+        "driver": repo_root / "scripts" / "benchmark_moonshine_cuda_complete.py",
+        "runtime/decoder": repo_root / "hipengine/runtime/moonshine_cuda.py",
+        "runtime/encoder": repo_root / "hipengine/runtime/moonshine_encoder_cuda.py",
+    }
+    kernel_dir = repo_root / "hipengine/kernels/cuda_sm120a"
+    if kernel_dir.is_dir():
+        for path in sorted(kernel_dir.rglob("*.py")):
+            files[str(path.relative_to(repo_root))] = path
+        for path in sorted(kernel_dir.rglob("*.cu")):
+            files[str(path.relative_to(repo_root))] = path
+    return files
+
+
+def implementation_sha256(repo_root: Path) -> dict[str, str]:
+    """SHA-256 of every implementation/driver source (path -> digest)."""
+
+    return {
+        str(rel): sha256_file(path)
+        for rel, path in sorted(_implementation_files(repo_root).items())
+        if path.is_file()
+    }
+
+
 def latency_summary(values_ms: list[float]) -> dict[str, float]:
     return {
         "count": len(values_ms),
@@ -126,13 +181,14 @@ class Route:
     """A complete custom-CUDA ASR route for one fixture."""
 
     def __init__(
-        self, mode: str, fixture: Fixture, loaded, cuda_runtime, snapshot: str
+        self, mode: str, fixture: Fixture, loaded, cuda_runtime, snapshot: str, packed: bool = False
     ) -> None:
         self.mode = mode
         self.fixture = fixture
         self.loaded = loaded
         self.cuda_runtime = cuda_runtime
         self.snapshot = snapshot
+        self.packed = packed
         self.enc = None
         self.dec = None
         self.torch_encoder = None
@@ -151,7 +207,10 @@ class Route:
 
         if self.loaded is None:
             self.loaded = load_moonshine_model(
-                self.snapshot, device=Device("cuda", 0), runtime=self.cuda_runtime
+                self.snapshot,
+                device=Device("cuda", 0),
+                runtime=self.cuda_runtime,
+                packed=self.packed,
             )
         loaded = self.loaded
 
@@ -374,6 +433,7 @@ def main() -> int:
     parser.add_argument("--gpu-index", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--iterations", type=int, default=10)
+    parser.add_argument("--packed", action="store_true", help="load the deployable FP16 artifact (scripts/pack_moonshine_fp16.py)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -397,7 +457,10 @@ def main() -> int:
 
     load_started = time.perf_counter()
     loaded = load_moonshine_model(
-        args.snapshot_dir, device=Device("cuda", args.gpu_index), runtime=cuda_runtime
+        args.snapshot_dir,
+        device=Device("cuda", args.gpu_index),
+        runtime=cuda_runtime,
+        packed=args.packed,
     )
     weight_load_s = time.perf_counter() - load_started
 
@@ -442,14 +505,19 @@ def main() -> int:
             "packed_model_fp16_bytes": _PACKED_MODEL_FP16_BYTES,
             "generated_kernel_bytes": generated_kernel_bytes(repo_root),
         },
+        # C5-R1: when loading the deployable packed artifact, record its
+        # on-disk bytes and SHA-256 so the deployment identity is explicit.
+        "packed_artifact": _packed_artifact_info(args.snapshot_dir) if args.packed else None,
         "git": git_state(repo_root),
+        # C5-R4: hash every implementation/driver source this report depends on.
+        "implementation_sha256": implementation_sha256(repo_root),
         "files": {},
     }
 
     route_results: dict[str, Any] = {}
     try:
         for fixture in fixtures:
-            route = Route(args.mode, fixture, loaded, cuda_runtime, str(args.snapshot_dir))
+            route = Route(args.mode, fixture, loaded, cuda_runtime, str(args.snapshot_dir), packed=args.packed)
             try:
                 prepare = route.prepare()
                 report["preparation"].update(prepare)
@@ -468,8 +536,19 @@ def main() -> int:
                     steps_list.append(steps)
 
                 expected_steps = fixture.eos_steps()
+                reference = fixture.reference[1 : expected_steps + 1]
+                # Validate EVERY timed output, not just the first iteration
+                # (C5-R5): all ten token streams must match the retained
+                # reference to EOS and every step count must be identical.
+                all_exact = all(
+                    tokens[:expected_steps] == reference for tokens in all_tokens
+                )
+                deterministic_steps = len(set(steps_list)) == 1
+                deterministic_tokens = all(
+                    tokens == all_tokens[0] for tokens in all_tokens[1:]
+                )
                 tokens = all_tokens[0]
-                exact = tokens[:expected_steps] == fixture.reference[1 : expected_steps + 1]
+                exact = tokens[:expected_steps] == reference
                 route_results[fixture.name] = {
                     "input": {
                         "id": fixture.json_path.with_suffix("").name.replace(
@@ -485,6 +564,10 @@ def main() -> int:
                     "steps": steps_list,
                     "token_ids": tokens,
                     "tokens_exact_to_eos": bool(exact),
+                    "all_timed_tokens_exact_to_eos": bool(all_exact),
+                    "deterministic_steps": bool(deterministic_steps),
+                    "deterministic_tokens": bool(deterministic_tokens),
+                    "preparation": prepare,
                     "footprint": route.footprint(),
                 }
             finally:
@@ -503,6 +586,23 @@ def main() -> int:
         "all_six_tokens_exact_to_eos": all(
             row["tokens_exact_to_eos"] for row in route_results.values()
         ),
+        # C5-R5: every timed iteration (not just the first) is validated.
+        "all_timed_tokens_exact_to_eos": all(
+            row["all_timed_tokens_exact_to_eos"] for row in route_results.values()
+        ),
+        "all_deterministic_steps": all(
+            row["deterministic_steps"] for row in route_results.values()
+        ),
+        "all_deterministic_tokens": all(
+            row["deterministic_tokens"] for row in route_results.values()
+        ),
+        # Per-fixture preparation is retained on each file row; the report
+        # keeps the first fixture's cold-ish preparation plus the per-file
+        # breakdown so a one-time preparation row is never presented as a
+        # campaign-wide warm measurement (C5-R5).
+        "preparation_per_file": {
+            name: row["preparation"] for name, row in route_results.items()
+        },
     }
     report["files"] = route_results
 

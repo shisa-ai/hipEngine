@@ -355,15 +355,28 @@ class MoonshineCudaResidentRuntime:
 
     @property
     def resident_nbytes(self) -> int:
+        """Owning resident device bytes for this runtime's weights.
+
+        Only allocations that own their buffer are counted, so the tied
+        embedding/LM-head alias (a zero-copy view over the embedding owner) is
+        not double-counted.  This matches ``MoonshineLoadedModel.owned_weight_bytes``
+        (the raw FP16 payload) plus any W8A16 sidecar.
+        """
+
         if self.loaded_model is None:
             return 0
-        return (
-            self.loaded_model.weights.resident_bytes
-            if hasattr(self.loaded_model.weights, "resident_bytes")
-            else sum(
-                allocation.buffer.nbytes
-                for allocation in self.loaded_model.weights.tensors.values()
-            )
+        loaded = self.loaded_model
+        owned = getattr(loaded, "owned_weight_bytes", None)
+        if owned is not None:
+            return owned
+        weights = loaded.weights
+        resident = getattr(weights, "resident_bytes", None)
+        if resident is not None:
+            return resident
+        return sum(
+            allocation.buffer.nbytes
+            for allocation in weights.tensors.values()
+            if allocation.owns_buffer
         )
 
     def _cache_view(self, name: str, layer: int) -> MoonshineCudaCacheView:
@@ -459,6 +472,15 @@ class MoonshineCudaResidentRuntime:
             copy_host_to_device(
                 self.workspace.allocation("encoder_attention_mask").buffer,
                 host_array_ptr(flat),
+                runtime=self.runtime,
+            )
+        else:
+            # An omitted mask must mean "every encoder frame is valid", never
+            # the zero-initialized (all-frames-masked) buffer left from setup.
+            ones = np.ones(self.encoder_frames, dtype=np.int32)
+            copy_host_to_device(
+                self.workspace.allocation("encoder_attention_mask").buffer,
+                host_array_ptr(ones),
                 runtime=self.runtime,
             )
         self.runtime.stream_synchronize(self.stream)
@@ -1004,7 +1026,9 @@ class MoonshineCudaResidentRuntime:
                     graph = self.runtime.stream_end_capture(self.stream)
                 except Exception:
                     try:
-                        self.runtime.stream_end_capture(self.stream)
+                        leaked_graph = self.runtime.stream_end_capture(self.stream)
+                        if leaked_graph:
+                            self.runtime.graph_destroy(leaked_graph)
                     except Exception:
                         pass
                     raise

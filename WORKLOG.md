@@ -203170,8 +203170,9 @@ CUDA-graph/replay baseline, not a tuned target.
 ### Nsight Amdahl profile
 `nsys` trace of the eager resident decoder on exclusive GPU0 places one
 `token_step` at about `241 us` device kernel time against about `394 us`
-host-wall, so roughly `150 us/step` is host dispatch (200+ kernel launches per
-token DAG) — the graph-replay target.
+host-wall, so roughly `150 us/step` is host dispatch for the exactly
+**100-kernel/step** token DAG (96 across eight decoder layers plus embedding,
+final LayerNorm, and two LM-head stages) — the graph-replay target.
 
 ### CUDA token-graph capture/replay
 Added `MoonshineCudaTokenGraph`, `capture_token_graphs`, `graph_token_step`,

@@ -78,6 +78,53 @@ def moonshine_encoder_frames_from_audio(audio_samples: int) -> int:
     return int(length)
 
 
+# Certified production encoder frame buckets.  A fixed-bucket arena is sized
+# to the smallest bucket that fits the audio (see
+# ``moonshine_encoder_bucket_for_frames``); shorter audio is zero-padded and
+# the downsampled encoder mask is zero-padded past the real frame count so
+# padded frames never leak into self/cross attention.
+MOONSHINE_CUDA_ENC_BUCKETS = (40, 207, 1248)
+
+
+def moonshine_encoder_bucket_for_frames(frames: int) -> int:
+    """Return the smallest certified encoder frame bucket that fits ``frames``."""
+
+    if isinstance(frames, bool) or not isinstance(frames, int):
+        raise ValueError("frames must be an integer")
+    if frames <= 0:
+        raise ValueError("frames must be positive")
+    for bucket in MOONSHINE_CUDA_ENC_BUCKETS:
+        if frames <= bucket:
+            return bucket
+    raise ValueError(
+        f"frames {frames} exceeds the largest encoder bucket "
+        f"{MOONSHINE_CUDA_ENC_BUCKETS[-1]}"
+    )
+
+
+def moonshine_encoder_bucket_audio_samples(bucket_frames: int) -> int:
+    """Return the arena audio-sample capacity for a certified frame bucket.
+
+    The largest ``audio_samples`` that still produces exactly ``bucket_frames``
+    encoder frames, so every file whose frame count fits the bucket also fits
+    the arena (``upload_input`` only requires ``real_samples <= audio_samples``).
+    """
+
+    if bucket_frames not in MOONSHINE_CUDA_ENC_BUCKETS:
+        raise ValueError(
+            f"bucket_frames {bucket_frames} is not a certified bucket "
+            f"{MOONSHINE_CUDA_ENC_BUCKETS}"
+        )
+    # Inverse of the conv chain: for L3 == B, L2 in [2B+1, 2B+2], L1 in
+    # [6B+7, 6B+12], S in [384B+511, 384B+894]; the max is 384B+894.
+    capacity = 384 * bucket_frames + 894
+    assert moonshine_encoder_frames_from_audio(capacity) == bucket_frames
+    assert (
+        moonshine_encoder_frames_from_audio(capacity + 1) != bucket_frames
+    )
+    return capacity
+
+
 @dataclass(frozen=True)
 class MoonshineCudaEncoderLibraries:
     """Prebuilt code objects used by the CUDA Moonshine encoder chain."""
@@ -138,6 +185,8 @@ class MoonshineCudaEncoderRuntime:
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
         self._input_uploaded = False
+        self._last_real_frames: int | None = None
+        self._last_real_samples: int | None = None
         self._allocation_baseline = memory_stats()["current_allocated_bytes"]
         try:
             if self.loaded_model is None:
@@ -167,8 +216,12 @@ class MoonshineCudaEncoderRuntime:
         hidden = spec.hidden_size
         intermediate = spec.intermediate_size
         reserve = self.workspace.reserve_tensor
-        reserve("rope_cos", (spec.max_positions, spec.rotary_dim // 2), DType.FP16)
-        reserve("rope_sin", (spec.max_positions, spec.rotary_dim // 2), DType.FP16)
+        # Encoder RoPE tables cover the admitted encoder bucket, not the decoder
+        # self-cache limit (``spec.max_positions`` == 194).  The 207/1,248-frame
+        # buckets need 207/1,248 positions, so size the tables from the bucket.
+        rope_rows = self.encoder_frames
+        reserve("rope_cos", (rope_rows, spec.rotary_dim // 2), DType.FP16)
+        reserve("rope_sin", (rope_rows, spec.rotary_dim // 2), DType.FP16)
         reserve("audio", (1, self.audio_samples), DType.FP16)
         length = (self.audio_samples - _CONV1_KERNEL) // _CONV1_STRIDE + 1
         reserve("conv1_out", (hidden, length), DType.FP16)
@@ -198,7 +251,7 @@ class MoonshineCudaEncoderRuntime:
             )
         self.runtime.stream_synchronize(self.stream)
         cos, sin = moonshine_rope_tables(
-            self.spec.max_positions,
+            self.encoder_frames,
             rotary_dim=self.spec.rotary_dim,
             theta=self.spec.rope_theta,
         )
@@ -257,9 +310,21 @@ class MoonshineCudaEncoderRuntime:
         return self.tensor("encoder_output")
 
     def attention_mask(self) -> Tensor:
-        """The downsampled int32 ``[1, frames]`` encoder attention mask."""
+        """The downsampled int32 ``[1, frames]`` encoder attention mask.
+
+        The bucket tensor is zero-padded past ``real_frames``; only the first
+        ``real_frames`` entries belong to the uploaded audio.
+        """
 
         return self.tensor("encoder_attention_mask")
+
+    @property
+    def real_frames(self) -> int:
+        """The frame count of the last uploaded (unpadded) audio."""
+
+        if self._last_real_frames is None:
+            raise RuntimeError("Moonshine encoder input is not uploaded")
+        return self._last_real_frames
 
     def upload_input(
         self,
@@ -268,21 +333,32 @@ class MoonshineCudaEncoderRuntime:
     ) -> None:
         """Upload one audio bucket and its mask without running the encoder DAG.
 
-        ``input_values`` must be a finite ``[1, audio_samples]`` float32 (or
-        float16) array and ``attention_mask`` (optional) a ``[1, audio_samples]``
-        int64/int32 mask.  After upload the bucket is resident and
-        :meth:`run_encode` can run the fixed-address DAG.  This split lets a
-        timing harness exclude the (KB-scale) initial H2D, matching the
-        framework baseline timing scope.
+        ``input_values`` must be a finite ``[1, real_samples]`` float32 (or
+        float16) array with ``real_samples <= audio_samples`` (the bucket's max
+        sample count).  Shorter audio is zero-padded to the bucket so a reusable
+        fixed-size arena serves any file that fits; the downsampled encoder mask
+        is zero-padded past the real frame count so padded frames never leak
+        into self/cross attention.  ``attention_mask`` (optional) is the
+        ``[1, real_samples]`` int64/int32 mask.  After upload the bucket is
+        resident and :meth:`run_encode` can run the fixed-address DAG.  This
+        split lets a timing harness exclude the (KB-scale) initial H2D, matching
+        the framework baseline timing scope.
         """
 
         if self.closed:
             raise RuntimeError("Moonshine encoder runtime is closed")
         audio = np.asarray(input_values)
-        if audio.ndim != 2 or audio.shape != (1, self.audio_samples):
+        if audio.ndim != 2 or audio.shape[0] != 1:
+            raise ValueError("input_values must have shape (1, real_samples)")
+        real_samples = int(audio.shape[1])
+        if not (1 <= real_samples <= self.audio_samples):
             raise ValueError(
-                f"input_values must have shape (1, {self.audio_samples})"
+                f"real_samples {real_samples} must be in 1..{self.audio_samples}"
             )
+        try:
+            real_frames = moonshine_encoder_frames_from_audio(real_samples)
+        except ValueError as error:
+            raise ValueError(f"audio too short for the encoder bucket: {error}") from error
         if audio.dtype == np.float32:
             values = audio.astype(np.float16)
         elif audio.dtype == np.float16:
@@ -292,12 +368,21 @@ class MoonshineCudaEncoderRuntime:
         if not bool(np.isfinite(values.astype(np.float32)).all()):
             raise ValueError("input_values must contain only finite values")
         values = np.ascontiguousarray(values)
+        # The arena is bucket-capacity: the exact (unpadded) audio is written
+        # into the first ``real_samples`` slots and ``_enqueue_encode`` processes
+        # exactly ``real_samples``/``real_frames`` rows.  Moonshine GroupNorm(1,
+        # C) normalizes across all positions, so zero-padding the audio would
+        # corrupt the encoder statistics; the decoder masks the unused bucket
+        # tail instead (``handoff_to`` passes ``source_frames=real_frames``).
         copy_host_to_device(
             self.workspace.allocation("audio").buffer,
             host_array_ptr(values),
+            nbytes=values.nbytes,
             runtime=self.runtime,
         )
-        self._upload_mask(attention_mask)
+        self._upload_mask(attention_mask, real_samples=real_samples)
+        self._last_real_frames = real_frames
+        self._last_real_samples = real_samples
         self._input_uploaded = True
 
     def run_encode(self, *, stream: int | None = None) -> None:
@@ -332,22 +417,30 @@ class MoonshineCudaEncoderRuntime:
         self.upload_input(input_values, attention_mask)
         self.run_encode(stream=stream)
 
-    def _upload_mask(self, attention_mask: np.ndarray | None) -> None:
+    def _upload_mask(
+        self,
+        attention_mask: np.ndarray | None,
+        *,
+        real_samples: int,
+    ) -> None:
         if attention_mask is None:
-            mask_values = np.ones((1, self.audio_samples), dtype=np.int64)
+            mask_values = np.ones((1, real_samples), dtype=np.int64)
         else:
             mask_values = np.asarray(attention_mask)
-            if mask_values.shape != (1, self.audio_samples):
+            if mask_values.ndim != 2 or mask_values.shape != (1, real_samples):
                 raise ValueError(
-                    f"attention_mask must have shape (1, {self.audio_samples})"
+                    f"attention_mask must have shape (1, {real_samples})"
                 )
         if not bool(((mask_values == 0) | (mask_values == 1)).all()):
             raise ValueError("attention_mask must be binary")
-        output = (
-            mask_values[..., ::_DOWNSAMPLE_STRIDE][..., : self.encoder_frames]
+        real_frames = moonshine_encoder_frames_from_audio(real_samples)
+        downsampled = (
+            mask_values[..., ::_DOWNSAMPLE_STRIDE][..., :real_frames]
             .astype(np.int32)
-            .copy()
+            .reshape(-1)
         )
+        output = np.zeros(self.encoder_frames, dtype=np.int32)
+        output[:real_frames] = downsampled
         copy_host_to_device(
             self.workspace.allocation("encoder_attention_mask").buffer,
             host_array_ptr(output),
@@ -384,7 +477,10 @@ class MoonshineCudaEncoderRuntime:
         )
 
         spec = self.spec
-        frames = self.encoder_frames
+        # The bucket arena holds up to ``self.encoder_frames`` rows, but this
+        # encode processes exactly the uploaded (unpadded) audio length.
+        real_samples = self._last_real_samples
+        frames = self._last_real_frames
         hidden = spec.hidden_size
         intermediate = spec.intermediate_size
         heads = _ENCODER_HEADS
@@ -392,12 +488,12 @@ class MoonshineCudaEncoderRuntime:
         common = {"stream": stream, "runtime": self.runtime}
 
         # ---- conv front end -------------------------------------------------
-        length = (self.audio_samples - _CONV1_KERNEL) // _CONV1_STRIDE + 1
+        length = (real_samples - _CONV1_KERNEL) // _CONV1_STRIDE + 1
         moonshine_conv1_tanh_fp16(
             self.tensor("audio").ptr,
             self.weights["model.encoder.conv1.weight"].ptr,
             self.tensor("conv1_out").ptr,
-            self.audio_samples,
+            real_samples,
             length,
             library=libraries.encoder,
             **common,
@@ -498,7 +594,7 @@ class MoonshineCudaEncoderRuntime:
                 frames,
                 head_dim,
                 spec.rotary_dim,
-                spec.max_positions,
+                self.encoder_frames,
                 library=libraries.encoder,
                 **common,
             )
@@ -593,7 +689,7 @@ class MoonshineCudaEncoderRuntime:
         decoder.set_encoder_state_from_device(
             hidden_fp16_ptr=self.tensor("encoder_output").ptr,
             attention_mask_int32_ptr=self.tensor("encoder_attention_mask").ptr,
-            source_frames=self.encoder_frames,
+            source_frames=self.real_frames,
         )
         decoder.precompute_cross_kv()
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -168,6 +169,17 @@ def convert_moonshine_weight_to_fp16(name: str, value: Any) -> np.ndarray:
     return converted
 
 
+def _validate_packed_fp16(name: str, value: Any) -> np.ndarray:
+    """Validate an already-FP16 packed weight (no dtype conversion)."""
+
+    source = np.asarray(value)
+    if source.dtype != np.float16:
+        raise ValueError(f"packed Moonshine weight {name} dtype must be float16, got {source.dtype}")
+    if not bool(np.isfinite(source).all()):
+        raise ValueError(f"packed Moonshine weight {name} must contain only finite values")
+    return np.ascontiguousarray(source)
+
+
 def normalize_moonshine_w8a16_families(
     families: str | Iterable[str] | None,
 ) -> tuple[str, ...]:
@@ -312,6 +324,34 @@ def read_generation_config(model_path: Path) -> dict[str, Any]:
     return value
 
 
+def _verify_packed_manifest(model_path: Path, index: WeightIndex) -> None:
+    """Verify the deployable FP16 artifact hash against its manifest.
+
+    The packer writes ``pack_manifest.json`` alongside ``model.safetensors``
+    recording the packed file's SHA-256.  Loading with ``packed=True`` refuses
+    to proceed if the on-disk packed weights do not match that recorded hash,
+    so the deployed artifact is byte-identifiable (C5-R1).
+    """
+
+    manifest_path = Path(model_path) / "pack_manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"packed load requires {manifest_path} (run scripts/pack_moonshine_fp16.py)"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    recorded = manifest.get("packed", {}).get("model.safetensors_sha256")
+    if not isinstance(recorded, str):
+        raise ValueError(f"pack_manifest.json missing model.safetensors_sha256: {manifest_path}")
+    shards = index.shards
+    if len(shards) != 1:
+        raise ValueError(f"packed artifact must have exactly one shard, found {len(shards)}")
+    actual = hashlib.sha256(shards[0].read_bytes()).hexdigest()
+    if actual != recorded:
+        raise ValueError(
+            f"packed artifact hash mismatch: recorded {recorded}, actual {actual}"
+        )
+
+
 def _source_allocation(
     info: TensorInfo,
     array: np.ndarray,
@@ -339,10 +379,17 @@ def materialize_moonshine_weights(
     *,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
+    packed: bool = False,
 ) -> DeviceWeightMap:
-    """Convert every stored F32 tensor once and upload fixed-address FP16 weights."""
+    """Upload fixed-address FP16 weights.
 
-    validate_moonshine_weight_index(spec, index)
+    With ``packed=False`` (the default) every stored F32 tensor is converted to
+    FP16 once here.  With ``packed=True`` the source artifact already stores FP16
+    weights (``scripts/pack_moonshine_fp16.py``) so no conversion happens; the
+    finite-value check and the owning-byte contract still apply.
+    """
+
+    validate_moonshine_weight_index(spec, index, packed=packed)
     target_device = device or Device("hip", 0)
     expected = expected_moonshine_weight_shapes(spec)
     names_by_shard: dict[Path, list[str]] = {}
@@ -361,7 +408,11 @@ def materialize_moonshine_weights(
                             f"Moonshine weight {name} changed shape while loading: "
                             f"{source.shape} != {info.shape}"
                         )
-                    converted = convert_moonshine_weight_to_fp16(name, source)
+                    converted = (
+                        convert_moonshine_weight_to_fp16(name, source)
+                        if not packed
+                        else _validate_packed_fp16(name, source)
+                    )
                     allocations[name] = _source_allocation(
                         info,
                         converted,
@@ -399,19 +450,28 @@ def load_moonshine_model(
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     w8a16_families: str | Iterable[str] | None = None,
+    packed: bool = False,
 ) -> MoonshineLoadedModel:
-    """Validate the pinned snapshot and take ownership of all resident FP16 weights."""
+    """Validate the pinned snapshot and take ownership of all resident FP16 weights.
+
+    ``packed=True`` loads the deployable FP16 artifact written by
+    ``scripts/pack_moonshine_fp16.py`` (already-FP16 ``model.safetensors`` plus a
+    ``pack_manifest.json`` recording its SHA-256).  The packed file's hash is
+    verified against the manifest before materialization.
+    """
 
     baseline = memory_stats()
     index = load_weight_index(model_path)
+    if packed:
+        _verify_packed_manifest(model_path, index)
     generation = read_generation_config(index.model_path)
     spec = parse_moonshine_model_spec(index.config, generation)
-    validate_moonshine_weight_index(spec, index)
     weights = materialize_moonshine_weights(
         index,
         spec,
         device=device,
         runtime=runtime,
+        packed=packed,
     )
     try:
         w8a16 = materialize_moonshine_w8a16_weights(
