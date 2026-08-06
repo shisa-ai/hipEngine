@@ -1715,14 +1715,53 @@ tok/s**, and is **3.126% above** same-harness B3. Canonical hipEngine B3
 **60.262 tok/s** is **10.96% below matched Vulkan B3** and **13.66% below
 selected Vulkan B4**, so end-to-end closure requires **+15.82%**.
 
-The old query profile is superseded for current module decisions. Reprofile
-latest Vulkan B3/B4 and current hipEngine B3, reconcile an exhaustive
-critical-path ledger to wall, then close deficits strictly one module at a
-time. A module advances only when the matched hipEngine aggregate/per-call row
-is at least Vulkan performance with its correctness/transaction gate intact.
-The final gate remains complete natural25 against selected Vulkan B4; beating
-shape-matched B3 modules alone does not satisfy closure. Compact baseline:
-`benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`.
+The old query profile is superseded. Fresh latest-source B3/B4 Vulkan query
+profiles and a clean current hipEngine B3 kernel/marker/copy trace now reconcile
+to their own walls: Vulkan B3/B4 query totals are **625.042/606.104 ms**, within
+**4.97%/5.83%** of client wall, while the hipEngine **455.694-ms** marker is
+within **0.01%** of its suite decode wall. Explicit row/call normalization
+removes Vulkan's `n=36` prefill and first-shape graph-build executions and
+replaces hipEngine's first target/commit capture with passes 2-7.
+
+The exhaustive result changes the optimization diagnosis. For seven matched
+rows=4 target passes, hipEngine kernels total **255.485 ms** versus Vulkan
+**277.203 ms** (hipEngine ahead **21.718 ms**). Proposal/update is also ahead at
+**52.139 vs 65.224 ms**, and complete call-normalized GPU work is **311.225 vs
+342.427 ms** (ahead **31.202 ms**). The complete wall still loses because the
+capture-normalized hipEngine non-kernel residual is **65.134 ms** versus
+Vulkan's inferred **23.789 ms**: a **41.346-ms** graph/queue/host deficit, almost
+exactly the natural matched-B3 wall gap of **43.664 ms**.
+
+| Refreshed matched bucket | hipEngine | llama.cpp Vulkan | HIP - Vulkan | Status |
+| --- | ---: | ---: | ---: | --- |
+| Steady graph/queue/host residual | 65.134 ms | 23.789 ms | **+41.346 ms** | largest deficit |
+| Q5 `ssm_out` | 22.577 ms | 15.144 ms | **+7.433 ms** | slower |
+| Q6 FFN-down | 32.602 ms | 28.857 ms | **+3.745 ms** | slower |
+| Full-attention K/V | 4.958 ms | 2.040 ms | **+2.918 ms** | slower |
+| Linear-attention Q6 QKV | 14.035 ms | 12.268 ms | **+1.767 ms** | slower |
+| Target root projection | 11.762 ms | 10.693 ms | **+1.069 ms** | slower |
+| All FFN | 128.995 ms | 138.501 ms | -9.507 ms | hipEngine ahead |
+| GDN fused core | 16.765 ms | 19.697 ms | -2.932 ms | hipEngine ahead |
+| Complete target kernels | 255.485 ms | 277.203 ms | -21.718 ms | hipEngine ahead |
+
+This means the user's module rule remains necessary but must include submission
+as the first and largest module. Arithmetic rows alone cannot close the gap
+because aggregate hipEngine arithmetic is already faster. A steady target
+replay spends **5.2-5.6 ms** in internal device gaps across 835 dispatches;
+first-pass capture adds another **~80.3 ms** but is normalized out. Graph upload
+and four-way graph splitting are already rejected, so the reopened source audit
+must find a materially different command-buffer/persistent-composite mechanism
+before repeating those screens. After submission, close Q5, Q6-down,
+full-attention K/V, Q6-QKV, and root sequentially.
+
+Selected Vulkan B4 is a separate topology endpoint: it trades one fewer target
+cycle (**275.59 -> 246.21 ms** normalized target GPU work) for more draft work
+(**65.22 -> 71.69 ms**). Thus matching B3 shaders and queue behavior is still
+not sufficient; the final gate remains complete natural25 against B4. Compact
+artifacts:
+`benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`
+and
+`benchmarks/results/2026-08-06-qwen36-27b-latest-vulkan-profile-ledger.json`.
 
 ---
 
@@ -1733,8 +1772,8 @@ shape-matched B3 modules alone does not satisfy closure. Compact baseline:
 | Priority | ID | Work | Exit gate / impact rule | Status |
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
-| 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | in progress |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass. | pending profile ledger |
+| 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass. | in progress; submission first, then Q5/Q6/KV/root |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 
