@@ -132,6 +132,9 @@ def test_timed_wrappers_publish_profile_markers_for_each_mtp_phase() -> None:
         def advance_full_accept_tail(self, value: int) -> int:
             return value + 2
 
+        def launch_device_proposal(self, value: int) -> int:
+            return value + 6
+
     class Verifier:
         def prepare(self, value: int) -> int:
             return value + 3
@@ -148,6 +151,7 @@ def test_timed_wrappers_publish_profile_markers_for_each_mtp_phase() -> None:
 
     assert provider.propose(1) == 2
     assert provider.advance_full_accept_tail(1) == 3
+    assert provider.launch_device_proposal(1) == 7
     assert verifier.prepare(1) == 4
     assert verifier.commit(1) == 5
     assert verifier.finish(1) == 6
@@ -161,8 +165,9 @@ def test_timed_wrappers_publish_profile_markers_for_each_mtp_phase() -> None:
         "target_verify",
     ]
     assert all(value >= 0.0 for value in snapshot["totals_seconds"].values())
-    assert len([call for call in marker_calls if call.startswith("push:")]) == 5
-    assert marker_calls.count("pop") == 5
+    assert len(snapshot["samples_seconds"]["proposal"]) == 2
+    assert len([call for call in marker_calls if call.startswith("push:")]) == 6
+    assert marker_calls.count("pop") == 6
 
 
 def test_scope_aggregation_uses_transition_normalized_wall_and_fixed_heldouts() -> None:
