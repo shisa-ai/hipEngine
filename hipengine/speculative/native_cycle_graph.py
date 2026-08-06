@@ -1,14 +1,14 @@
 """Reusable small-chain target graph submission through NativeSpecCycle ABI v1.
 
-This launcher is intentionally narrow: one chain request, one or two candidates,
-two or three active target rows, int64 metadata, FP32 hidden rows, and BF16 KV.  The
+This launcher is intentionally narrow: one chain request, one to three candidates,
+two to four active target rows, int64 metadata, FP32 hidden rows, and BF16 KV.  The
 provider owns a state-generation-bound graph executable and its allocations.
 The launcher owns nothing; it performs one native call that submits the graph
 and synchronizes the control block's session-owned stream.
 
 The N2 bucket may also capture device acceptance, selected state/hidden commit,
 and cursor update behind the same submission. A separate proposal-only bucket
-can submit an existing strict B1/B2 NextN device chain through the same ABI.
+can submit an existing strict B1/B2/B3 NextN device chain through the same ABI.
 The provider-target variant reuses the launcher for the shared PARO MTP/DFlash
 single-request B1/B2/B3/B4/B5/B8 target+accept graph, with FP16 verifier rows
 or BF16 sidecar hidden taps. An opt-in FP16/PARO bucket may also capture selected
@@ -98,7 +98,7 @@ def build_native_spec_cycle_graph_launcher(
 
 
 class NativeSpecTargetGraphLauncher:
-    """Submit one pre-bound B2 target graph through one C++ boundary.
+    """Submit one pre-bound B1/B2/B3 target graph through one C++ boundary.
 
     ``graph_exec`` and both function addresses are borrowed.  The caller must
     keep the graph executable, HIP runtime library, stream, and every control
@@ -472,11 +472,7 @@ def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
     if control.stages not in {NativeSpecCycleStage.VERIFY, n2_stages}:
         raise ValueError("native target graph supports VERIFY or N2 accept/commit stages")
     candidate_rows = int(shape.row_count) - 1
-    supported_rows = (
-        {2, 3, 4}
-        if control.stages == NativeSpecCycleStage.VERIFY
-        else {2, 3}
-    )
+    supported_rows = {2, 3, 4}
     if (
         shape.request_count != 1
         or shape.row_count not in supported_rows
@@ -485,10 +481,6 @@ def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
         or shape.active_candidate_count != candidate_rows
         or shape.candidate_budget != candidate_rows
     ):
-        if control.stages == n2_stages:
-            raise ValueError(
-                "native target graph N2 B1/B2 accepts one request with 2-3 rows"
-            )
         raise ValueError(
             "native target graph supports one B1/B2/B3 chain bucket "
             "(1 request, 2-4 rows)"

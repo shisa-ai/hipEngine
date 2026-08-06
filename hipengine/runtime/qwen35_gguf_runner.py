@@ -11068,6 +11068,8 @@ class Qwen35GGUFResidentSession:
     _native_spec_b3_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b1_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b3_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_selected_hidden_bf16: object | None = field(default=None, init=False, repr=False)
     _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_layout: Qwen35GGUFKVChunkLayout | None = field(default=None, init=False, repr=False)
@@ -19569,7 +19571,7 @@ class Qwen35GGUFResidentSession:
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
     ):
-        """Capture a reusable B1-B3 N1 or B1/B2 N2 native target graph."""
+        """Capture a reusable B1-B3 N1 or N2 native target graph."""
 
         from hipengine.runtime.gguf_native_spec_cycle import (
             capture_qwen35_gguf_native_b2_target_graph,
@@ -19608,7 +19610,7 @@ class Qwen35GGUFResidentSession:
         device_accept_commit: bool = False,
         remaining_decode: int | None = None,
     ):
-        """Run reusable B1-B3 N1 or B1/B2 N2, else preserve eager fallback."""
+        """Run reusable B1-B3 N1 or N2, else preserve eager fallback."""
 
         from hipengine.runtime.gguf_native_spec_cycle import (
             verify_qwen35_gguf_native_b2_target,
@@ -19825,6 +19827,7 @@ class Qwen35GGUFResidentSession:
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._buffers = ()
+        self._native_spec_selected_hidden_bf16 = None
         for buffer in reversed(self._linear_state_snapshot_backups):
             if buffer is not None:
                 free(buffer, runtime=runtime)

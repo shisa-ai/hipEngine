@@ -3,7 +3,8 @@
 The adapter captures two- through four-row target buckets against stable
 session/device addresses, binds each capture to a versioned
 :class:`NativeSpecCycleControl`, and submits it through one C++ launcher call.
-Proposal and acceptance/commit remain unchanged.
+N1 leaves proposal and host acceptance/commit unchanged; N2 can fold strict
+acceptance, selected state/hidden commit, and cursor update into the same graph.
 
 Unsupported shapes and capture-unsafe session configurations use the existing
 Python verifier when ``fallback=True``.  Launch or correctness failures never
@@ -21,8 +22,15 @@ import numpy as np
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
-from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, host_array_ptr
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    host_array_ptr,
+    malloc,
+)
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.convert import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.runtime import unpack_verify_chain_dynamic_metadata_i64
 from hipengine.kernels.hip_gfx1100.speculative import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
@@ -143,8 +151,8 @@ class Qwen35GGUFNativeAcceptCommitResult:
 
     def __post_init__(self) -> None:
         rows = len(self.input_token_ids)
-        if rows not in {2, 3}:
-            raise ValueError("native accept/commit result requires B1/B2 input rows")
+        if rows not in {2, 3, 4}:
+            raise ValueError("native accept/commit result requires B1/B2/B3 input rows")
         if self.accepted_draft_tokens < 0 or self.accepted_draft_tokens >= rows:
             raise ValueError("accepted_draft_tokens is outside the target bucket")
         if len(self.token_ids) != self.accepted_draft_tokens + 1:
@@ -608,6 +616,8 @@ class Qwen35GGUFNativeB2TargetGraph:
     hidden_f32_a: Tensor
     hidden_f32_b: Tensor
     pre_output_norm_hidden_rows: Tensor | None
+    pre_output_norm_hidden_bf16_rows: Tensor | None
+    selected_pre_output_norm_hidden_bf16: Tensor | None
     dynamic_metadata: Tensor
     token_ids_i32: Tensor
     positions_i32: Tensor
@@ -760,6 +770,11 @@ class Qwen35GGUFNativeB2TargetGraph:
                 int(token)
                 for token in payload[output_start:output_start + visible_length].tolist()
             ]
+            if self.selected_pre_output_norm_hidden_bf16 is None:
+                raise RuntimeError("N2 native selected trunk-hidden buffer is missing")
+            self.session._last_target_hidden_ptr = int(
+                self.selected_pre_output_norm_hidden_bf16.ptr
+            )
             end = start + visible_length
             result = replace(result, visible_output_count=visible_length)
             result.validate_for(control)
@@ -889,6 +904,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             "_native_spec_b3_target_graph",
             "_native_spec_b1_target_graph_n2",
             "_native_spec_b2_target_graph_n2",
+            "_native_spec_b3_target_graph_n2",
         ):
             if getattr(self.session, cache_name, None) is self:
                 setattr(self.session, cache_name, None)
@@ -931,10 +947,6 @@ def capture_qwen35_gguf_native_b2_target_graph(
         record_stage_timings=bool(record_stage_timings),
         sync_stage_timings=bool(sync_stage_timings),
     )
-    if device_accept_commit and rows == 4:
-        raise NativeSpecTargetGraphUnsupportedError(
-            "N2 device accept/commit currently supports only B1/B2 target graphs"
-        )
     if device_accept_commit and not (
         bool(capture_linear_state_rows) and bool(defer_linear_state_commit)
     ):
@@ -1041,15 +1053,44 @@ def capture_qwen35_gguf_native_b2_target_graph(
             (rows, hidden_size),
             DType.FP32,
         )
+        capture_pre_output_rows = bool(capture_pre_output_norm_hidden) or bool(
+            device_accept_commit
+        )
         pre_output_norm_hidden_rows = (
             workspace.reserve_tensor(
                 "native_spec_pre_output_norm_hidden_rows",
                 (rows, hidden_size),
                 DType.FP32,
             )
-            if capture_pre_output_norm_hidden
+            if capture_pre_output_rows
             else None
         )
+        pre_output_norm_hidden_bf16_rows = None
+        selected_pre_output_norm_hidden_bf16 = None
+        if device_accept_commit:
+            pre_output_norm_hidden_bf16_rows = workspace.reserve_tensor(
+                "native_spec_pre_output_norm_hidden_bf16_rows",
+                (rows, hidden_size),
+                DType.BF16,
+            )
+            selected_hidden = getattr(
+                session,
+                "_native_spec_selected_hidden_bf16",
+                None,
+            )
+            if selected_hidden is None:
+                selected_hidden = malloc(
+                    hidden_size * DType.BF16.itemsize,
+                    runtime=runtime,
+                )
+                session._native_spec_selected_hidden_bf16 = selected_hidden
+                session._buffers = (*session._buffers, selected_hidden)
+            selected_pre_output_norm_hidden_bf16 = Tensor.from_handle(
+                selected_hidden.ptr,
+                (1, 1, hidden_size),
+                DType.BF16,
+                workspace.device,
+            )
         native_decode_row_scratches = (
             _dynamic_native_decode_row_scratches(
                 session,
@@ -1082,6 +1123,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
         visible_output_ids = None
         visible_output_lengths = None
         commit_buffers = None
+        pre_output_commit_buffers = None
         candidate_counts = None
         if device_accept_commit:
             accept_owner = TargetVerifyBufferOwner.allocate(
@@ -1171,6 +1213,23 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 hidden_taps_dst=hidden_dst,
                 mode="verify_chain",
             )
+            assert pre_output_norm_hidden_bf16_rows is not None
+            assert selected_pre_output_norm_hidden_bf16 is not None
+            pre_output_commit_buffers = TargetStateCommitBuffers(
+                request_ids=batch.request_ids,
+                transaction_id=int(transaction_id),
+                accepted_counts=accept_buffers.accepted_counts,
+                commit_rows=accept_buffers.commit_rows,
+                commit_positions=accept_buffers.commit_positions,
+                hidden_taps_src=Tensor.from_handle(
+                    pre_output_norm_hidden_bf16_rows.ptr,
+                    (1, rows, hidden_size),
+                    DType.BF16,
+                    workspace.device,
+                ),
+                hidden_taps_dst=selected_pre_output_norm_hidden_bf16,
+                mode="verify_chain",
+            )
         _stage_dynamic_metadata(dynamic_metadata, batch, runtime=runtime)
         runtime.device_synchronize()
         stream = runtime.stream_create()
@@ -1240,7 +1299,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 use_wmma_prefill=bool(use_wmma_prefill),
                 stream=stream,
                 capture_linear_state_rows=bool(capture_linear_state_rows),
-                capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+                capture_pre_output_norm_hidden=capture_pre_output_rows,
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 _pre_staged_token_ids_ptr=buffers.token_ids.ptr,
                 _target_top1_i64_ptr=(
@@ -1269,10 +1328,21 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 assert result_payload is not None
                 assert visible_output_ids is not None and visible_output_lengths is not None
                 assert commit_buffers is not None
+                assert pre_output_commit_buffers is not None
+                assert pre_output_norm_hidden_rows is not None
+                assert pre_output_norm_hidden_bf16_rows is not None
                 assert accept_kernel is not None
                 assert linear_commit_kernel is not None
                 assert hidden_commit_kernel is not None
                 assert accept_library is not None and commit_library is not None
+                f32_to_bf16(
+                    pre_output_norm_hidden_rows.ptr,
+                    pre_output_norm_hidden_bf16_rows.ptr,
+                    rows * hidden_size,
+                    stream=stream,
+                    library=session.runner._cast_library(),
+                    runtime=runtime,
+                )
                 accept_kernel(
                     token_ids_i32.ptr,
                     positions_i32.ptr,
@@ -1322,6 +1392,13 @@ def capture_qwen35_gguf_native_b2_target_graph(
                     library=commit_library,
                     runtime=runtime,
                 )
+                hidden_commit_kernel(
+                    pre_output_commit_buffers,
+                    target_rows=rows,
+                    stream=stream,
+                    library=commit_library,
+                    runtime=runtime,
+                )
             graph = runtime.stream_end_capture(stream)
         except Exception:
             try:
@@ -1364,6 +1441,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
             hidden_f32_a=hidden_f32_a,
             hidden_f32_b=hidden_f32_b,
             pre_output_norm_hidden_rows=pre_output_norm_hidden_rows,
+            pre_output_norm_hidden_bf16_rows=pre_output_norm_hidden_bf16_rows,
+            selected_pre_output_norm_hidden_bf16=selected_pre_output_norm_hidden_bf16,
             dynamic_metadata=dynamic_metadata,
             token_ids_i32=token_ids_i32,
             positions_i32=positions_i32,

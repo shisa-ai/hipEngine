@@ -1100,10 +1100,10 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 )
                 oracle: list[int] = []
                 current = root
-                for _ in range(3):
+                for _ in range(4):
                     current = int(reference.step(current, return_logits=False).token_id)
                     oracle.append(current)
-                candidates = list(oracle)
+                candidates = list(oracle[:3])
                 if accepted_count < 3:
                     candidates[accepted_count] = _wrong_token(
                         oracle[accepted_count],
@@ -1203,6 +1203,44 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 assert dynamic_prepared.native_graph_fallback_reason is None
                 verifier.rollback(dynamic_prepared)
                 assert target.position == dynamic_start
+
+                # The submission successor keeps the same B3 target arithmetic,
+                # but moves strict accept, selected-state/hidden commit, and
+                # target cursor update into the reusable graph.  Prove all
+                # reject/partial/full rows against the scalar transaction before
+                # production wiring can select it.
+                target.reset()
+                reference.reset()
+                n2_root = int(
+                    target.prefill(prompt, use_bulk=False, return_logits=False).token_id
+                )
+                assert n2_root == int(
+                    reference.prefill(prompt, use_bulk=False, return_logits=False).token_id
+                )
+                n2_result = target.verify_target_block_native_cycle(
+                    [n2_root, *candidates],
+                    fallback=False,
+                    cycle_id=300 + accepted_count,
+                    transaction_id=400 + accepted_count,
+                    request_id=0,
+                    bulk_attention_mode="native",
+                    use_wmma_prefill=False,
+                    capture_linear_state_rows=True,
+                    defer_linear_state_commit=True,
+                    device_accept_commit=True,
+                    remaining_decode=4,
+                )
+                assert n2_result.device_accept_commit
+                assert n2_result.accepted_draft_tokens == accepted_count
+                assert n2_result.token_ids == [
+                    *candidates[:accepted_count],
+                    oracle[accepted_count],
+                ]
+                reference.step(n2_root, return_logits=False)
+                for token in candidates[:accepted_count]:
+                    reference.step(token, return_logits=False)
+                _assert_committed_state_matches(target, reference)
+                assert target.position == len(prompt) + accepted_count + 1
 
         assert int(target._verify_linear_initial_snapshot_users) == 0
         natural_prompt = (
