@@ -202748,3 +202748,262 @@ Vulkan local sizes verbatim will close the measured gap.
   prefill-publication/native-batch tests. Python compile-all, staged whitespace,
   conflict-marker, and WORKLOG union checks are clean. Untracked benchmark
   artifacts remain untouched.
+
+## 2026-08-05 — Start Moonshine CUDA sm120a target bring-up
+
+- Continue the retained `moonshine-prod-inference/docs/CUDA-SM120A-HANDOFF.md`
+  on target host `dev` without touching the unrelated `/home/lhl/hipEngine`
+  `sm120` worktree or its untracked `hipengine/.gitignore`/`uv.lock`. Create the
+  isolated `moonshine-cuda-sm120a` worktree from current clean
+  `origin/main@b97e95af4`. The target is GPU0, NVIDIA RTX PRO 6000 Blackwell
+  Workstation Edition, compute capability 12.0, driver 610.43.03, 97,887 MiB;
+  CUDA 13.3 / NVCC 13.3.73 accepts both `sm_120` and architecture-qualified
+  `sm_120a`. The project requirement remains `cuda_sm120a` / `-arch=sm_120a`.
+- Baseline smoke before editing reuses only the read-only CUDA scaffold from the
+  old `sm120` branch and compiles it as `sm_120a`: 4,097 FP32 additions pass
+  exactly on GPU0 (`max_abs=0`). No target-host PyTorch environment, pinned
+  Moonshine checkpoint, or six-file bulk fixture directory is present, so full
+  model/ASR and PyTorch/ORT CUDA comparisons are blocked until provisioning.
+- RED first:
+  `PYTHONPATH=. uv run --no-project --with pytest --with numpy --with safetensors
+  python -m pytest -q tests/test_cuda_runtime.py
+  tests/test_cuda_sm120a_backend.py` fails at collection only because
+  `core.cuda`, `plan_cuda_build`, and `build_cuda` are absent. The C1 glue RED
+  similarly fails three CPU-reachable nodes only because
+  `cuda_sm120a.fused.moonshine_glue` is absent; five GPU nodes are intentionally
+  skipped before implementation.
+- C0 adds a lazy CUDA 13 Runtime API wrapper (device, allocation/copies/memset,
+  streams/events, stream wait, capture, graph instantiate/replay/teardown),
+  deterministic NVCC build planning/cache separation with explicit
+  `-arch=sm_120a`, backend metadata/peer-package loading, a backend-neutral
+  `DeviceRuntime`/`MemcpyKind` owner used by memory/workspace, and an independent
+  raw-pointer CUDA smoke kernel. The scaffold is adapted from the independently
+  validated `sm120` branch's `161792436` C0 implementation but does not merge or
+  alias that Qwen backend and does not enable CUDA auto-detection.
+- Real C0 GPU0 capture/replay passes: one `cudaGraphLaunch` over the 4,097-element
+  smoke gives exact output, event time **0.011072 ms**, and clean graph/event/
+  stream/buffer teardown. The focused build/runtime/HIP-memory regression bundle
+  passes **35/35**.
+- C1 ports the first exact Moonshine family from the in-tree HIP/NumPy lineage:
+  embedding lookup, rounded residual, interleaved partial RoPE, fixed self-cache
+  append, the bounded RoPE+cache composite with separate fallbacks, and stable
+  lowest-ID FP16 argmax. All wrappers live under peer
+  `kernels/cuda_sm120a/fused`, use CUDA-specific C ABI symbols/errors/runtime,
+  and register exact `(cuda_sm120a, layer, fp16, variant)` keys; no HIP wrapper
+  alias or model/backend branch is introduced.
+- GPU0 GREEN:
+  `CUDA_VISIBLE_DEVICES=0 HIPENGINE_CUDA_ARCH=sm_120a
+  HIPENGINE_RUN_CUDA_SM120A=1 PYTHONPATH=. uv run --no-project --with pytest
+  --with numpy --with safetensors python -m pytest -q
+  tests/test_moonshine_cuda_sm120a_glue.py tests/test_cuda_runtime.py
+  tests/test_cuda_sm120a_backend.py` passes **18/18**. Primitive outputs match
+  the independent NumPy oracle; the fused/separate CUDA RoPE-cache routes are
+  byte-equal at positions **0/1/63/193**; embedding/residual are byte-exact and
+  a vocabulary tie at IDs 7/11 selects 7. All device allocations are freed.
+- Cache-only Nsight Systems 2026.1.3 tracing of the eight-test GPU gate observes
+  every expected kernel and no compiler child: one residual/embedding/argmax at
+  **0.576/1.024/8.256 us**, plus four RoPE/cache/composite instances with
+  medians **1.168/0.784/1.200 us**. These are launch-level bring-up diagnostics,
+  not an optimized decoder or performance claim. Raw `.nsys-rep`/SQLite remain
+  under `/tmp/moonshine-cuda-glue-trace*` and are not committed.
+- `python scripts/check_lineage.py --kind kernel --diff stat` remains
+  mechanically blocked by absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas`, the same recorded infrastructure
+  issue for the net-new Moonshine lineage. The adjacent Moonshine/build/HIP
+  runtime/memory/materialization bundle passes **97 passed / 14 intentional
+  non-gfx1151 skips** with GPU0 CUDA gates enabled. Targeted Ruff, compileall,
+  and `git diff --check` pass. At this point C2 resident decoding remains
+  blocked on checkpoint/fixture provisioning and the remaining LayerNorm/
+  projection/MLP/attention CUDA primitive families. No commit or remote
+  publication is performed without explicit approval from the Moonshine task
+  owner.
+
+### Target-host provisioning follow-up
+
+- The model owner installed the CUDA PyTorch/Transformers stack and downloaded
+  the current tune. Cache inspection and the full contract gate prove it is the
+  exact pinned `cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d` snapshot: 210 tensors,
+  63,217,856 parameters, contract fingerprint
+  `2a736011e38f5099cc5b66022ddcd41428a82303a509adbd483f8a4cceea7785`,
+  and byte-for-byte equality with the retained contract JSON.
+- Complete the `moonshine` environment with SciPy 1.18.0, soundfile 0.14.0,
+  pytest 9.1.1, Ninja 1.13.0, PyYAML 6.0.3, and a nvitop-compatible
+  `nvidia-ml-py 13.580.126`; `pip check` passes. GPU0 Torch FP16 GEMM is finite
+  under Torch 2.13.0+cu130 / Triton 3.7.1. The Moonshine ledger's ignored `.env`
+  points at this worktree and the exact `/data/huggingface` snapshot.
+- Recover the six Japanese WAVs from the local `speed-benchmarking` checkout,
+  prepare mono 16-kHz copies, and regenerate CUDA-local full and minimal fixture
+  sets. All arrays are finite and each extraction is bit-exact across two
+  same-process runs. CUDA manifest hashes differ from retained ROCm manifests
+  by design (producer/backend metadata and FP16 boundaries), while every token
+  through EOS remains exact.
+- The independent NumPy decoder gate passes 231 comparisons on both full CUDA
+  fixtures. Synthetic max-abs/relative-L2/KL is
+  **0.5 / 0.00050219 / 2.332e-7**; `konichiwa.wav` is
+  **0.5 / 0.00062380 / 1.347e-7**. Both have 100% logit top-1, exact selected
+  tokens, and finite outputs.
+- Direct CUDA C1 tests in the provisioned environment pass **18/18**. The
+  Moonshine ledger passes **113/113**. Eager PyTorch FP16/SDPA six-file full
+  generation retains all exact IDs at **19.041 ms** median-of-medians; the
+  default-compiled one-second decoder reaches **1.123 ms initial / 1.113 ms
+  cached past-1**, with expected tokens 29871/36564 after approximately
+  10.645/9.076-second cold compilation.
+- Host provisioning is no longer a C1/C2 blocker. Remaining work is the exact
+  CUDA LayerNorm/projection/MLP/attention families and resident decoder
+  composition. ONNX Runtime CUDA comparison, full compiled-generation
+  qualification, and broader labeled CER remain later gates.
+
+## 2026-08-06 — Moonshine CUDA sm_120a C1b: LayerNorm and residual+LayerNorm
+
+### Scope
+Port the correctness-qualified HIP FP16 LayerNorm family to the peer
+`cuda_sm120a` backend. LayerNorm is bias-free with FP32 mean/variance
+statistics and a rounded FP16 boundary; the fused
+residual+LayerNorm composite writes the rounded residual before computing
+statistics over that same buffer. Model code gains no backend branch.
+
+### Implementation
+- Added `hipengine/kernels/cuda_sm120a/norm/moonshine_layernorm.{cu,py}`
+  plus a package `__init__.py`. Two raw-pointer C ABI symbols:
+  `hipengine_cuda_sm120a_moonshine_layernorm_fp16` and
+  `hipengine_cuda_sm120a_moonshine_residual_layernorm_fp16`, built only with
+  the architecture-qualified `-arch=sm_120a` target.
+- CUDA kernels mirror the HIP reference exactly: ordered FP32 warp-butterfly
+  plus cross-warp shared reduction using full-mask `__shfl_down_sync`, two-pass
+  mean/variance, and `rsqrtf(variance + eps)`; the residual+LayerNorm launch
+  reads back the rounded FP16 boundary it just wrote after `__syncthreads()`.
+- Registered explicit keys `moonshine_layernorm/fp16/fp32_stats` and
+  `moonshine_residual+moonshine_layernorm/rounded_fp32_stats` under
+  `cuda_sm120a`; wired into `register_backend_kernels`. Updated the HIP
+  layernorm registry test so `cuda_sm120a` now resolves to the CUDA kernel
+  instead of the CPU-reference fallback.
+
+### GPU verification (RTX PRO 6000 Blackwell, GPU0, driver 610.43.03)
+- New `tests/test_moonshine_cuda_sm120a_layernorm.py` passes **14/14**:
+  registry resolution, build-plan target `sm_120a`, raw-pointer ABI, invalid
+  contract rejection, and GPU gates across decoder/encoder row counts
+  1/7/40/207/1248. LayerNorm matches the independent NumPy FP32-stats oracle
+  within rtol/atol 3.0e-3 and all outputs are finite; the fused residual
+  boundary is byte-exact to the primitive chain and its norm is allclose.
+- The built `moonshine_layernorm.so` exports both symbols; `cuobjdump` reports
+  `arch = sm_120a` SASS with both kernel bodies.
+- Combined bundle (HIP layernorm/glue/projection/mlp/attention + runtime/build/
+  workspace/model-contract + CUDA glue/layernorm/runtime/backend) passes
+  **90 passed, 13 skipped** (skips are the expected non-gfx1151 hardware gates).
+- A cache-only Nsight Systems 2026.1.3 trace
+  (`/tmp/cuda_layernorm_trace/layernorm-trace.nsys-rep`, sha256
+  `3c420b53f045e892df7cb5d2d89a0e832189cbed95e41fb4a55a648a9675e7d8`) observes
+  both expected kernels and no compiler child. Single-run launch-level medians
+  are about 2.0 us (LayerNorm) and 2.2 us (residual+LayerNorm) across the five
+  row counts. These are bring-up diagnostics, not a performance promotion.
+- The Moonshine ledger `make check HIPENGINE_DIR=/home/lhl/hipEngine-moonshine-cuda`
+  passes **122/122** plus pycompile, `bash -n`, and `git diff --check`.
+
+### Notes and next steps
+- `test_memory_stats` fails (42 vs 10) only when run after the Moonshine HIP
+  bundle in one session; reproduced on pristine origin/main, so it is a
+  pre-existing session-ordering leak on this host, unrelated to C1b. It passes
+  in isolation.
+- No commit or remote publication was performed. Next implementation order:
+  C1c projections and head-major cross K/V, then C1d MLP boundaries, C1e
+  attention, C1f tied LM head, and C2 resident decoder composition.
+
+## 2026-08-06 — Moonshine CUDA sm_120a C1c: projections and head-major cross K/V
+
+### Scope
+Port the correctness-qualified HIP source-F16 projection family to the peer
+`cuda_sm120a` backend: single projection, triple self Q/K/V, bias-aware single
+(416->3328 and 1664->416 boundaries), row pair, direct head-major cross K/V,
+and the tied LM head (plain and wave8). The gated-SiLU and bias+residual
+boundary kernels ride in the same module for parity but are gated in C1d.
+
+### Implementation
+- Added `hipengine/kernels/cuda_sm120a/linear/moonshine_projection.{cu,py}`
+  plus a package `__init__.py`. Nine raw-pointer C ABI symbols, built only with
+  `-arch=sm_120a`; `cuobjdump` reports `arch = sm_120a` SASS for all kernel
+  bodies and the exports are present in the built `.so`.
+- CUDA kernels mirror the HIP reference exactly: per-column ordered FP32
+  accumulation, full-mask `__shfl_down_sync` warp-butterfly plus cross-warp
+  shared reduction, FP16 output boundaries, and the head-major cross-K/V write
+  `(head, row, dim)` layout. `__launch_bounds__(32)` gated-SiLU kernel uses one
+  warp computing value+gate accumulators. Model code gains no backend branch.
+- Registered explicit keys under `cuda_sm120a`:
+  `moonshine_projection/single_fp32_accum`,
+  `moonshine_projection_rows/single_fp32_accum`,
+  `moonshine_projection_bias/single_fp32_accum`,
+  `moonshine_qkv_proj/triple_fp32_accum`,
+  `moonshine_projection_pair/pair_fp32_accum`,
+  `moonshine_cross_kv_precompute/pair_head_major_fp32_accum`,
+  `moonshine_lm_head/tied_fp32_accum` and `tied_wave8_fp32_accum`,
+  plus the C1d `moonshine_mlp_fc1`/`moonshine_mlp_fc2_residual` keys. Wired
+  into `register_backend_kernels`.
+
+### GPU verification (RTX PRO 6000 Blackwell, GPU0, driver 610.43.03)
+- New `tests/test_moonshine_cuda_sm120a_projection.py` passes **6/6**: registry
+  resolution, build-plan target `sm_120a`, raw-pointer ABI, invalid-contract
+  rejection, single/pair/triple/bias/LM/head-major GPU oracle gate, and the
+  bias-aware 416->3328 + 1664->416 boundaries plus full 36,864-row tied LM head
+  with wave8 equality. All outputs finite, allclose rtol/atol 2.0e-3.
+- Cache-only Nsight Systems 2026.1.3 trace
+  (`/tmp/cuda_projection_trace/projection-trace.nsys-rep`, sha256
+  `a86f6aa01426d6e3ed677877caca90115fb216318d4bd04a74f17467997f8f79`) observes
+  all seven projection kernels and no compiler child. Single-run launch-level
+  medians: single 1.7 us, triple 2.6 us, bias 2.4 us (3 instances), pair
+  31.4 us (40 rows), cross-K/V head-major 33.0 us, LM tied 31.0 us, LM wave8
+  7.0 us. The tied-vs-wave8 LM gap is a leaf hint for C3 and is not promoted
+  without enclosing-layer/generation evidence.
+- Regression: combined HIP Moonshine + build/runtime/workspace/model-contract +
+  CUDA glue/layernorm/projection/runtime/backend bundle passes
+  **96 passed, 13 skipped** (skips are the expected non-gfx1151 hardware gates).
+- No commit or remote publication. Next: C1d gated MLP boundaries, then C1e
+  attention, C1f tied LM head gating, C2 resident decoder composition.
+
+## 2026-08-06 — Moonshine CUDA sm_120a C1d: gated MLP boundaries and C1b review response
+
+### C1d scope
+Port the standalone gated-SiLU activation and gate the fused MLP boundaries
+registered in the C1c projection module, completing C1d.
+
+### Implementation
+- Added `hipengine/kernels/cuda_sm120a/fused/moonshine_mlp.{cu,py}`: raw-pointer
+  `hipengine_cuda_sm120a_moonshine_gated_silu_fp16` symbol, `-arch=sm_120a` only,
+  `cuobjdump` confirms `sm_120a` SASS. Consumes the bias-aware FP16 `fc1`
+  boundary as `[value, gate]`, evaluates SiLU in FP32, multiplies in FP32, writes
+  FP16. Wired into the fused package `__init__` and `register_backend_kernels`.
+- Gated the C1c-registered fused MLP boundaries:
+  `moonshine_mlp_fc1/bias_gated_silu_fp32_accum` and
+  `moonshine_mlp_fc2_residual/bias_rounded_residual_fp32_accum` with registry,
+  raw-pointer ABI, and a fused-chain GPU oracle gate (byte-exact to the NumPy
+  decoder-MLP-plus-residual oracle).
+
+### C1b review response (independent review C1B-R1..R5)
+- R1 schedule: reproducible batch-timed CUDA-event harness
+  (`/tmp/cuda_layernorm_schedule_screen/screen_batch.py`, 2000-launch batches) on
+  exclusive GPU0 across rows 1/128/256/512/768/1000/1248 x threads 32/64/128/256.
+  256 threads is best below 768 rows; 128 is best from 768 upward for both
+  LayerNorm kernels (256 ~1.4-1.5x slower at 1248 rows). Wrappers now auto-select
+  128 for `rows >= 768`, else 256; explicit `threads=` overrides. Correctness
+  checked at every admitted thread count.
+- R2 status/docs, R3 HIP-test isolation, R4 per-shape profiler reporting, R5
+  coverage (thread-sweep, poisoned/epsilon, constant/extreme, and an opt-in
+  byte-exact fixture-backed final-LayerNorm gate) all resolved; see
+  `moonshine-prod-inference/docs/OPTIMIZATION-CUDA-review.md`.
+
+### GPU verification (RTX PRO 6000 Blackwell, GPU0, driver 610.43.03)
+- `tests/test_moonshine_cuda_sm120a_mlp.py` passes **9/9** including the fused
+  chain oracle gate (byte-exact). `tests/test_moonshine_cuda_sm120a_layernorm.py`
+  passes **40/40** with 0 skips (original 14 plus auto-select, thread-sweep 16,
+  fused sweep 6, poisoned/epsilon, constant/extreme, and the opt-in
+  fixture-backed byte-exact final-LayerNorm gate at positions
+  0/1/8/32/64/128/193 against `audio-konichiwa`/`synthetic` fixtures).
+- Gated-SiLU cache-only Nsight trace (`/tmp/cuda_mlp_trace/mlp-trace.nsys-rep`)
+  names the kernel five times, no compiler child; fused-chain trace
+  (`fused-mlp-trace.nsys-rep`) names fc1/fc2 fused kernels (medians 2.304/3.072
+  us), no compiler child. Bring-up diagnostics only.
+- Regression: combined HIP Moonshine + build/runtime/workspace/model-contract +
+  CUDA glue/layernorm/projection/mlp/runtime/backend bundle passes
+  **169 passed, 14 skipped** (exit 0). Ledger `make check` 122/122 plus
+  pycompile, `bash -n`, `git diff --check`.
+- No commit or remote publication at the time of writing. Next: C1e attention
+  (self dim-52 + masked cross 40/207/1248), C1f tied LM/argmax, C2 resident
+  decoder composition.
