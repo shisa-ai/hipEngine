@@ -204551,3 +204551,53 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   --diff stat` remains blocked because the read-only
   `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent; this is not a
   green lineage verdict.
+
+## 2026-08-06 — SH2-M1 current-gfx1151 host-embedding screen
+
+- Execute Task #34 on Radeon 8060S/gfx1151 at clean runtime/kernel source
+  `ab71d0966` (the sole tracked measurement-time difference is unrelated
+  `docs/ROCM-AI.md`). Use the exact
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, BF16 KV, fixed five-surface
+  q4096, `GPU_MAX_HW_QUEUES=1`, cached builds, one discarded warmup plus three
+  runs, and 10-ms whole-GTT. The matrix is device graph, device eager, and
+  existing `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=1` eager at 512/128 and
+  4K/128; exact commands and raw hashes are in the compact artifact.
+- At 512, graph/eager/host decode is
+  **53.301/53.521/53.378 tok/s** and prefill is
+  **1357.517/1358.810/1359.968 tok/s**. Host versus device eager changes
+  prefill **+0.085%** and decode **-0.267%**; versus graph it changes
+  **+0.181%/+0.144%**. Whole-GTT is
+  **21.916279/21.916004/21.472595 GiB**, so host saves
+  **0.443409 GiB** versus eager.
+- At 4K, graph/eager/host decode is
+  **55.813/56.054/55.972 tok/s** and prefill is
+  **1435.046/1432.994/1435.513 tok/s**. Host versus device eager changes
+  prefill **+0.176%** and decode **-0.147%**; versus graph it changes
+  **+0.033%/+0.285%**. Whole-GTT is
+  **22.147999/22.147724/21.643791 GiB**, so host saves
+  **0.503933 GiB** versus eager. All six legs return tracked bytes to zero and
+  retain exact repeated-token edge IDs.
+- The separate device/host state children use one q4096 session for 512 and 4K.
+  Prefill FP32 logits plus prefill/final hidden, all 40 layer outputs, 30
+  Conv/GDN state pairs, 10 live BF16 K/V pairs, and the four-transition
+  trajectory match byte for byte at both contexts. Live owned memory falls
+  exactly **540,344,320 bytes / 0.503235 GiB**. At 512 the current path first
+  materializes then frees the device table, so allocator high water falls only
+  **0.418797 GiB**; 4K's later scratch high water exposes the full
+  **0.503235-GiB** tracked saving.
+- Decision: retain the existing exact c1 env route and overturn the old gfx1100
+  throughput extrapolation for current gfx1151, but do not make it the global
+  default. Shared c>N, packed AR, and MTP still require device-token-pointer
+  embedding, and no shared-runner-safe automatic fallback/load-time ownership
+  policy exists. This is an exact own-engine memory/non-regression claim, not a
+  production-topline or fork-parity claim. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json`
+  (SHA-256 `4b30080a362b07fbe35a5b9f042bd9d7db8470357454fed0b4349a2308cc847a`)
+  and update the benchmark rollup/changelog, campaign review, and refactor
+  ledger. No pytest is needed for this benchmark/docs-only unit; JSON replay,
+  state equality, raw hashes, and `git diff --check` are the gates.
+- Collector note: an initial persistent `qwen35_gguf_bench.py` graph attempt
+  correctly failed because cumulative reuse exceeded its declared 128-step
+  window. Two subsequent completed child runs stopped only in one-off collector
+  schema parsing. The final resumable collector reran every leg whose GTT sample
+  had not been checkpointed; no failed/parser-only timing is retained.
