@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH9-D1 retained and SH9-C1 activated:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH9-C1 audited and SH10-A1 selected:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -68,9 +68,9 @@ hipMemcpy plus 40 copy-kernel dispatches per request**, preserves all 80 selecte
 WMMA launches and complete state exactly, and improves the cached marker span
 **381.308 -> 379.572 ms (-1.736 ms)** while unprofiled prefill is neutral at
 **1366.040 -> 1366.013 tok/s (-0.002%)** and memory is unchanged. Retain the
-package cap, but give it no decode-parity credit. C1, C2, fork decode, and fork
-memory parity remain open; SH9-C1 now audits the corrected scope and selects the
-next genuinely open decode owner.
+package cap, but give it no decode-parity credit. SH9-C1's hash-bound audit
+confirms C1, C2, fork decode, and fork memory parity remain **0/4** and selects
+SH10-A1 on the actual short-context private-c1 attention owner.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -602,7 +602,12 @@ evidence.
 | **SH7-A1** | Independently transfer the registered prepare-plus-coalesced parallel split-K reducer to gfx1151 long-context decode. | **Complete: retained/default from 32K.** One-queue wall improves **+1.560%/+2.394% (-0.333/-0.593 ms/token)** at 32K/64K; the reducer falls **424.162 -> 109.346** and **744.973 -> 207.485 us/token**. Primitive and 1,296-logit semantic gates are exact, memory/lifecycle are unchanged, traces are named and scratch-free, and serial fallback remains below 32K/under opt-out. |
 | **SH8-A1** | Split the 72-VGPR grouped-GQA producer's eight query heads into exact four-head ownership groups to test register occupancy against duplicated K/V traffic. | **Complete: exact, rejected at leaf gate.** qgroup4 lowers **72 -> 56 VGPR** and remains byte-exact, but complete producer+parallel-reducer wall is only **0.896x/0.885x** at 32K/64K with **0/42 wins**, projecting **-0.494/-0.985 ms/token**. All transient surfaces are removed. |
 | **SH9-D1** | Independently transfer gfx1100 LCP-2B's exact compact-WMMA static upper bound to gfx1151 and remove the selected-Q4 scalar `wmma_total` D2H boundary. | **Complete: retained/default through 4,096 selected prefill rows.** Corrected scope is pp512 multi-row prefill, not decode. Full state is byte-exact; wall is neutral **1366.040 -> 1366.013 tok/s (-0.002%)**; cached trace removes **40 hipMemcpy + 40 dispatches** and **1.736 ms** marker span with unchanged selected kernels/memory/lifecycle. |
-| **SH9-C1** | Scope-correct cumulative completion audit after SH9-D1. | **Active.** Credit only the pp512 prefill launch/sync reduction, carry retained SH7 decode/memory rows unchanged, and select the next genuinely open decode owner without replaying closed ladders. |
+| **SH9-C1** | Scope-correct cumulative completion audit after SH9-D1. | **Complete: policy fails; objective continues.** SH9 receives no decode/memory credit. Carried decode is **53.153/55.832/46.785/40.386 tok/s**, whole-GTT is **21.000/21.499/22.152/22.890 GiB**, and all four C1/C2/fork-F16 decode/fork-F16 memory classes remain **0/4**. |
+| **SH10-A1** | Exact short-context private-c1 attention screen on the actual single-row context kernel. | **Next.** First capture a cached 512 actual-shape trace. Continue only with arithmetic-order-preserving address hoists/packed loads/ILP; require exact primitive/full state, named resources, repeated 512 wall, <=1% prefill loss, lifecycle, and no 1,024-boundary regression. The review's 0.8-1.4-ms estimate is unmeasured and receives no credit. |
+| **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | Re-measure `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=8192` in independent cached processes. Any state/logit/ID drift blocks promotion; only a surviving material lever admits a separately designed exact-emulation package. |
+| **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | Attribute every per-token sync/copy/scalar read and separate mandatory next-token/host-embedding ownership from removable boundaries. Implement nothing without measured repeated impact; SH9 is prefill-only and does not reopen graph replay. |
+| **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | Re-scope SH2-M2 as a precondition audit only. Continue beyond 4K or add loader churn only if the eligible phase-exclusive subset exceeds the actual fork gap and peak timing permits safe deferral/unload. |
+| **SH14-C1** | Cumulative four-depth campaign completion gate. | After SH10-SH13, refresh or carry qualified canonical/fork rows, exactness, lifecycle, role, and memory evidence. Complete the objective only if the declared policy passes; otherwise name only evidence-backed residual owners. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -955,10 +960,35 @@ cap under the project's launch/D2H reduction policy, but credit no decode gain.
 Evidence:
 [`SH9-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json).
 
-Activate **SH9-C1** as a scope-correct completion audit. It carries SH7's
-retained decode/memory rows unchanged, records that SH9 affects only pp512
-prefill, and selects the next genuinely open decode owner instead of mistaking a
-prefill scheduler transfer for fork-decode progress.
+SH9-C1 closes as a scope-correct carry-forward audit without duplicating GPU
+runs. SH9 affects only pp512 prefill, so 512/4K decode and all memory rows carry
+from SH6-C1 while 32K/64K decode carries SH7-A1. Current decode is
+**53.153/55.832/46.785/40.386 tok/s** and whole-GTT is
+**21.000/21.499/22.152/22.890 GiB**. C1, C2, fork-F16 decode, and fork-F16
+whole-GTT remain **0/4**. Evidence:
+[`SH9-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json).
+
+Two external reviews supplied useful leads, but their mechanisms required
+correction. The 512 private-c1 eager owner is the fixed-256-thread
+`qwen35_paged_full_attn_decode_context_tensor_kernel` with 16 q-head blocks,
+not the compact/batched `context_tensor_batch_kernel<true,2>`. It has only an
+old arithmetic-changing 128-thread rejection and no gfx1151 exact
+address-hoist/packed-load leaf. Select **SH10-A1** around that actual owner.
+Then run **SH11-A1** as a default-off current-model remeasurement of June's
+faster-but-divergent direct 4K route, **SH12-C0** as a complete decode
+synchronization/D2H census independent of SH9, and **SH13-M1** as a 4K-first
+phase-resolved code-residency precondition audit. **SH14-C1** is the required
+cumulative four-depth completion gate; the campaign does not stop after one
+leaf.
+
+Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
+SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by
+**0.0703/0.1328 GiB** and loses decode at 32K/64K; removing the embedding table
+shifts control and candidate equally. SH9 removes no decode graph break, and
+current graph replay remains about a 1% lever below the >3% host/C++ trigger.
+The existing private-c1 host policy already removes the full 0.503-GiB device
+embedding table, so raising memlock is a separate system/graph decision, not an
+additional memory saving.
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).
@@ -977,6 +1007,7 @@ heldouts with no token-, prompt-, or candidate-ID-conditioned branch.
 | SH-C0 hipEngine BF16 | 52.857 | 55.389 | 46.004 | 39.419 |
 | Final SH-G hipEngine BF16 | **53.446** | **56.116** | **46.489** | **39.750** |
 | SH7-A1 one-queue candidate (32K+ scoped) | — | — | **46.785** | **40.386** |
+| SH9-C1 carried production (SH9 is prefill-only) | **53.153** | **55.832** | **46.785** | **40.386** |
 | C1: close at least half the F16 **time** gap | **58.165** | **58.795** | **49.350** | **42.419** |
 | C2: match the local fork F16 lane | **64.658** | **62.648** | **53.220** | **45.913** |
 
@@ -998,7 +1029,7 @@ tracked/owned comparison.
 | **SH-M2 — exact scratch-liveness aliases** | **Completed/retained 2026-08-06** | Keep every 4,096-row execution shape fixed and graph-color route/stage-disjoint fields into 21 independent allocator-owned slots. Rows below 4,096, diagnostics, unvalidated routes, and peer backends keep dedicated owners. | Exact state and lifecycle pass at 512/4K/32K/64K. The default saves **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row; prefill/decode remain within 1%. Contiguous and split arenas are rejected. SH-K1 later fails to stack another peak-memory win. |
 | **SH-K1 — strict compact-KV frontier** | **Completed/rejected for default 2026-08-06** | The fixed `0-7` BF16 / `8-9` per-token/head INT8 K+V map passes the actual no-mirror 65,792-capacity category+heldout gate at **3.344e-5 mean KL, 7.875e-4 max KL, and 100% aggregate/min-prompt top-1**. Broader and key-only/block formats remain closed by prior evidence. | Reject default promotion: 32K/64K decode changes **-0.436%/-0.670%**, live ownership saves only **0.0620/0.1235 GiB**, and layer-local BF16 prefill oracles instead raise tracked peak **0.0640/0.1274 GiB** plus whole-GTT **0.0703/0.1328 GiB**. Named direct-consumer traces pass; BF16 remains default and SH-A1 is next. |
 | **SH-A1 — page-internal head-major decode screen** | **Completed/rejected 2026-08-06** | The bounded current-vs-page-head grouped-GQA leaf is exact on dense/permuted/evicted page fixtures, but candidate attention+reducer is only **0.756x/0.797x** at 32K/64K before conversion. | Reject runtime plumbing: append+copy-inclusive speedup is only **0.277x/0.263x**, projecting **-58.3%/-97.8%** decode across ten full-attention layers. Remove every transient surface and keep token-major BF16 KV. |
-| **SH-G — retained recertification** | **Completed 2026-08-06; campaign closed** | Final production passes the four one-warmup/three-measurement rows, exact 18-prompt oracle, allocator/GTT lifecycle, cached role/Q5 trace, and fresh five-repetition fork milestone rerun. Decode is diagnostically **0.840%-1.314%** above SH-C0 and 4K+ tracked peak stays **1.4086 GiB** lower. | Final correctness/lifecycle/trace gates pass, but **0/4 C1**, **0/4 C2**, **0/4 fork decode**, and **0/4 fork whole-GTT** rows pass. Publish the prior same-revision own-engine gains and qualified final diagnostic; close the declared campaign without claiming fork parity. |
+| **SH-G — retained recertification** | **Completed 2026-08-06; milestone closed, objective continued** | Final production passes the four one-warmup/three-measurement rows, exact 18-prompt oracle, allocator/GTT lifecycle, cached role/Q5 trace, and fresh five-repetition fork milestone rerun. Decode is diagnostically **0.840%-1.314%** above SH-C0 and 4K+ tracked peak stays **1.4086 GiB** lower. | Final correctness/lifecycle/trace gates pass, but **0/4 C1**, **0/4 C2**, **0/4 fork decode**, and **0/4 fork whole-GTT** rows pass. Preserve the qualified milestone and continue through the ordered SH2-SH14 packages below; do not claim fork parity or higher-level campaign completion. |
 
 #### SH-D1 GDN-input audit update
 
@@ -1178,6 +1209,9 @@ weight schedules.
 - Do not call fork Q8_0 an exact target. Existing GGUF pure INT8 and component-
   only formats have prompt-dependent quality failures; a new strict lane needs a
   new fixed policy/format and complete quality evidence.
+- Do not credit SH9 toward decode, reopen graph replay after SH9, rerun raw
+  lm-head at the bandwidth floor, or stack SH-K1 under host embedding. SH9 is
+  prefill-only; SH-K1 loses decode and raises rather than lowers measured peak.
 - Do not optimize the repeated token or the four publication lengths with
   prompt-conditioned behavior. Development screens must include all natural
   prompt categories and heldouts before retention.
