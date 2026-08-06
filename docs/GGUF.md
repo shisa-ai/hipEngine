@@ -2239,7 +2239,7 @@ IDs are stable for `WORKLOG.md` and commit messages.
 | P10.C4 | Compact scheduler launch reduction (fuse `group_count + group_prefix + wmma_tile_map` to one launch) | +20 to +60 (residual `other` bucket) | ~0 | 0 | S | rejected for decode in P9.D3; **revisit for rows>1 prefill** with new acceptance bench | | | P9.D3 WORKLOG; `qwen35_moe_group_*` kernels |
 | P10.C5 | Drop redundant BF16↔F32 casts on the prefill path (fold cast into consumer kernel where safe) | +20 to +60 | +1 to +3 | 0 | S | pending | | | mirror P9.D2 method on the prefill side; P9.D2 decode variant was rejected |
 | **Wave 3 — decode push from 98 to ≥120 tok/s** | | | | | | | | | |
-| P10.D1 | Fused Q4T16 selected dual gate+up + SiLU + Q5T16/Q6T16 down + scatter combine — output-tiled producer/consumer composite | ~0 | **+8 to +15** | 0 | L (parent has analog: PARO `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`) | **post-SH-G admitted; SH2-D1 pending** | | | SH-G final selected Q4+down+router/combine owns ~4.689 ms/token; preserve deployed mixed-T16 bytes and current reduction/BF16 boundaries. The existing raw-Q4 eight-block megakernel is not format- or occupancy-compatible. Leaf gate: exact unfused bytes, named cached trace, no spills, and >=1.15x or >=0.5 ms/token projected before model routing. |
+| P10.D1 | Fused Q4T16 selected dual gate+up + SiLU + Q5T16/Q6T16 down + scatter combine — output-tiled producer/consumer composite | ~0 | **+8 to +15** | 0 | L (parent has analog: PARO `gemv_awq_selected_dual_pack8_strided_rotate_out_kernel`) | **SH2-D1 complete/rejected; no production change** | | | Exact down+tail reaches only **1.053x / 0.080 ms/token** deployed aggregate; complete cooperative/standard-queue composites regress to **0.520x/0.739x**. Scratch-free standard traces pass, but no leaf clears >=1.15x or >=0.5 ms/token. All transient surfaces removed; artifact `2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`. |
 | P10.D2 | Wider tile or block-launch tuning on Q4T16 selected decode (currently `compact32`); try `compact64`/`compact96` for hot experts | ~0 | +3 to +8 | 0 | S | pending | | | follows P9.D10 width-tuning method on dual_split GEMV |
 | P10.D3 | Q8T16 shared-expert gate+up+SiLU+down fused decode kernel | ~0 | +3 to +8 | 0 | M | re-attempt (P9.D11 failed on 128/64-thread variants; try a different K-tile + LDS plan) | | | parent: `w8a16_shared_gate_up_bulk_kernel` + `w8a16_shared_down_bulk_combine_kernel` |
 | P10.D4 | Decode-only Q4T16 fused-K micro-batch (write 2 tokens per launch when capture allows) | ~0 | +5 to +10 | small scratch | M | pending | | | hipGraph 2-step replay extension; needs P9.E3 graph bucket update |
@@ -2301,6 +2301,16 @@ The 2026-08-06 post-SH-G audit re-admits it as **SH2-D1** after individual
 byte-neutral SH-D1 schedules closed without reaching C1. The new work must be a
 mixed Q4T16-to-Q5/Q6T16 output-tiled producer/consumer composite; do not wire or
 retune the existing raw-Q4 eight-block megakernel and call that P10.D1.
+
+The SH2-D1 implementation screen closes that re-admission without routing a
+candidate. The exact output-tiled down+last-producer tail reaches only
+**1.053x / 0.080 ms/token** for the actual 37-Q5/3-Q6 model mix. A complete
+cooperative Q4->BF16->Q5/Q6->combine launch is **0.520x** and crashes
+`rocprofv3` in ROCr; a lifecycle-correct standard queued replacement is exact,
+named, scratch-free at **104/112 VGPR**, but only **0.739x** aggregate. Both
+frozen admission alternatives fail, so all transient code is removed and
+SH2-C1 must re-attribute a structurally different owner. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 

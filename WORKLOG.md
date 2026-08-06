@@ -204692,3 +204692,94 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - This is a docs/process unit with no performance claim or runtime change. The
   complete 1,007-line document was reread; all relative Markdown link targets
   exist, and `git diff --check` passes.
+
+## 2026-08-06 — Start SH2-D1 mixed-T16 selected-MoE composite
+
+- Task #37 starts from the frozen post-SH audit, not the rejected raw-Q4
+  eight-block megakernel. The production selected chain is Q4T16 gate/up with
+  an exact BF16 SiLU boundary, then 37 Q5T16 and three Q6T16 down layers, then
+  route-weight/shared-gate/residual combine. Existing Q4 producer and Q5 tile8
+  remain the registered exact primitives/fallback.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is blocked before
+  any diff by the already-recorded missing optional
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. HIP is healthy and `rocminfo`
+  reports gfx1151. This is an in-tree producer/consumer ownership change; no
+  external kernel body is copied, and the blocked lineage command is not
+  treated as green.
+- Freeze the first bounded leaf as a registered Qwen c1/top8 output-tiled down
+  producer plus last-producer tail. Each route keeps the current local128 K/FMA,
+  wave32 tree, ordered wave-0..3 sum, and BF16 store. A per-output-tile
+  completion counter lets the last producer replay route 0..7 FMA order, round
+  the selected aggregate to BF16, and then reproduce the existing shared-gate
+  plus residual tail. Q5 retains the deployed eight-column owner; Q6 retains
+  the deployed 16-column owner. The unfused registered down plus registered
+  combine chain remains fallback.
+- RED adds Q5/Q6 production-byte, CPU-down-oracle, registry, and reusable-counter
+  coverage. `uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py -k
+  sh2_d1_mixed_t16_output_tiled_tail --tb=short` fails collection on the absent
+  `gguf_q5_k_t16_selected_qwen_output_tiled_tail_gemv_bf16_bf16_out`, exactly
+  before implementation. Continue only through byte-exact GREEN, a cached named
+  trace with zero scratch, and the frozen >=1.15x or >=0.5-ms/token actual-weight
+  composite leaf gate before model routing.
+
+## 2026-08-06 — SH2-D1 first output-tiled tail leaf is exact but below gate
+
+- GREEN after implementation: the focused Q5/Q6 production-byte, CPU-down,
+  registry, completion-reset, and immediate same-counter-reuse gate passes 2/2.
+  The candidate preserves the Q5 tile8 and Q6 tile16 local128/FMA/wave trees,
+  publishes the same BF16 down slab, and reproduces the registered ordered
+  route-weight/shared-gate/residual tail byte for byte.
+- The immutable actual-file screen uses sampled model fingerprint
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`,
+  Q5 layer 0, Q6 layer 34, all 256 experts in 32 deterministic top-8 groups,
+  D->C/C->D counterbalanced HIP events, and the deployed 37-Q5/3-Q6 mix. Q5
+  moves **39.027 -> 37.529 us (1.040x)** and Q6 **45.414 -> 37.162 us
+  (1.222x)**. The aggregate is only **1580.242 -> 1500.048 us/token =
+  1.053x / 0.080 ms saved**, below both the frozen `1.15x` and `0.5 ms/token`
+  gates. Do not route this epilogue-only schedule.
+- Cached `rocprofv3 --kernel-trace` confirms the exact expected
+  `qk_t16_selected_qwen_output_tiled_tail_gemv_kernel` Q5/Q6 symbols. Q5 uses
+  56 VGPR / 512 B LDS / **0 scratch**; Q6 uses 96 VGPR / 512 B LDS /
+  **0 scratch**. Raw screen/trace are under
+  `/tmp/hipengine-sh2-d1-first-leaf{.json,-trace/}`; profiler timing is
+  diagnostic only and the event medians above decide the leaf.
+- This does not close Task #37. Advance from down-tail-only ownership to the
+  actual P10.D1 premise: a bounded persistent cooperative launch that runs the
+  current Q4T16 dual+SiLU producer, grid-synchronizes at the exact BF16 slab,
+  runs the Q5/Q6T16 output-tiled consumer, and grid-synchronizes before the
+  ordered combine tail. Preserve one-block-per-output arithmetic inside each
+  phase and keep the registered three-launch chain as fallback.
+
+## 2026-08-06 — Close SH2-D1 mixed-T16 composite without production change
+
+- Full-composite RED fails collection exactly on the absent cooperative wrapper;
+  transient GREEN then passes Q5/Q6 production-byte and CPU gate/up/down oracles.
+  Across the actual model's all-256-expert permutation, complete intermediate,
+  down, and tail BF16 bytes match the registered three-launch chain.
+- The first true cooperative persistent grid is decisively negative: Q5/Q6 move
+  **97.393/103.680 -> 190.436/160.484 us**, giving a deployed 37/3 aggregate
+  **3914.597 -> 7527.590 us/token (0.520x, -3.613 ms)**. Its required cached
+  `rocprofv3` trace also SIGSEGVs in
+  `rocr::HSA::hsa_signal_store_screlease`; this is a hard trace-gate failure,
+  not accepted missing evidence.
+- A standard-grid eight-column-Q4 dynamic producer/consumer queue restores a
+  profileable single launch. The first queue screen is invalid for retention
+  because block 0 can reset counters before unscheduled blocks enter. Add an
+  all-block arrival counter and launch exactly the occupancy-reported grid;
+  repeated same-counter correctness remains byte exact. The lifecycle-correct
+  result is still negative: Q5 **97.694 -> 133.319 us (0.733x)**, Q6
+  **104.371 -> 128.182 (0.814x)**, and aggregate **3927.785 -> 5317.336
+  us/token (0.739x, -1.390 ms)**.
+- Final cached named trace confirms
+  `qk_t16_selected_qwen_mixed_q4_queued_tail_gemv_kernel`: Q5 is **93,374 ns,
+  104 VGPR, 512 B LDS, 0 scratch**, Q6 **87,243 ns, 112 VGPR, 512 B LDS,
+  0 scratch**. The trace is mechanically green but cannot rescue the negative
+  event gate. CSV SHA-256 is
+  `a402d25b33c1e548edf87fd57abaca3cbcc76de157a3bdfc5d03deb04ee5fcf6`.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`,
+  update the campaign/GGUF/benchmark rollups, and remove every transient kernel,
+  wrapper, registry key, test, and harness. Production returns exactly to the
+  registered Q4T16 + Q5/Q6T16 + combine chain. SH2-D1 is complete/rejected;
+  continue immediately to SH2-C1 cumulative re-attribution rather than ending
+  the beat-fork objective.

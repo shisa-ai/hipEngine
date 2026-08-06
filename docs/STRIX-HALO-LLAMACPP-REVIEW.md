@@ -575,7 +575,7 @@ evidence.
 | **SH2-M1** | Current-gfx1151 exact c1 host-embedding matrix: device graph, device eager, existing host-copy eager, tracked and whole-GTT. | **Complete: retain the existing exact c1 opt-in; global default blocked.** Complete state is byte exact, live ownership falls 0.503 GiB, whole-GTT falls 0.443/0.504 GiB at 512/4K, and all prefill/decode deltas are inside 1%. The current load path and shared c>N/packed/MTP device-pointer contracts block default promotion. Full-table mapped work remains blocked by the 8-MiB hard limit. |
 | **SH2-M2** | Phase-resolved code-object/library GTT census, then bounded lazy/deferred ownership if sufficient. | **Complete: precondition failed; no implementation.** At 512, the complete untracked process-residency upper bound is only 0.418588 GiB on the device route and 0.478414 GiB on the host stack. Any active/prefill/decode/never-used code-object subset is smaller than the complete set, so neither can reach the frozen 0.49-GiB two-context gate. No lazy loader or `dlclose` path is added. |
 | **SH2-M3** | 768-row owner-slot map with dedicated fallback. | **Complete: retained/default.** Reuse the existing 21 independent owner slots from 768 rows: physical scratch falls 355,182,664 -> 69,790,760 bytes, tracked/whole-GTT fall 0.265792/0.267578 GiB, prefill/decode improve 0.621%/0.160%, complete state is byte exact, and committed teardown is clean. Diagnostics/capability denial retain dedicated owners; no arena coupling. |
-| **SH2-D1** | P10.D1 mixed Q4T16 -> Q5/Q6T16 output-tiled selected-MoE composite. | CPU/unfused byte oracle, actual-weight leaf, named cached trace, no spills, >=1.15x or >=0.5-ms/token projection before model routing, then the four-depth exact gate. |
+| **SH2-D1** | P10.D1 mixed Q4T16 -> Q5/Q6T16 output-tiled selected-MoE composite. | **Complete: exact, below admission; no production change.** Down+tail reaches only **1.053x / 0.080 ms/token** aggregate. Full cooperative and lifecycle-correct standard-queue composites regress to **0.520x/0.739x**; the cooperative trace also crashes in ROCr. Named standard traces are scratch-free. All transient surfaces are removed; no model routing. |
 | **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | If any C2 or whole-GTT row is still missing, schedule the next structurally new owner. Never relabel a closed Campaign-2 retry as new work. |
 | **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | Mark the thread objective complete only when the declared beat-fork policy passes; otherwise return to SH2-C1. |
 
@@ -616,6 +616,21 @@ reproduces the 69,790,760-byte owner, memory peaks, IDs, and clean teardown.
 F32/capture diagnostics and capability denial retain dedicated allocation. This
 is not a single/split arena and adds no runtime comparison flag. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json).
+
+SH2-D1 closes the newly admitted mixed-T16 ownership without weakening its
+frozen gate. The exact output-tiled down+tail leaf moves the deployed 37-Q5/
+3-Q6 aggregate **1580.242 -> 1500.048 us/token (1.053x, 0.080 ms saved)**:
+Q5 is only **1.040x**, while the three Q6 layers reach **1.222x** but contribute
+too little total time. The complete one-launch cooperative producer/consumer
+then regresses to **0.520x** and cannot produce the required cached trace because
+`rocprofv3` crashes in ROCr's signal path. Replacing the cooperative barrier
+with lifecycle-correct standard task queues is exact and profileable at
+**104/112 VGPR, 0 scratch**, but still regresses the deployed aggregate
+**3927.785 -> 5317.336 us/token (0.739x, -1.390 ms)**. No leaf clears `1.15x`
+or `0.5 ms/token`; nothing reaches model routing. Remove every transient kernel,
+wrapper, registry key, test, and harness, then proceed to SH2-C1 rather than
+ending the beat-fork objective. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

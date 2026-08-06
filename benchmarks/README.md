@@ -4135,6 +4135,17 @@ four-transition state is byte exact, while committed `edb151447` reproduces the
 owner bytes, memory peaks, IDs, and zero close delta. Diagnostics and capability
 denial retain dedicated owners; no single/split arena or comparison flag lands.
 
+The [SH2-D1 mixed-T16 closeout](results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json)
+leaves production unchanged. The exact actual-weight down+tail leaf moves the
+deployed 37-Q5/3-Q6 aggregate **1580.242 -> 1500.048 us/token (1.053x,
+0.080 ms saved)**, below both frozen admission gates. The full cooperative
+producer/consumer is only **0.520x** and its profiler dispatch crashes in ROCr;
+the lifecycle-correct standard queue is exact and named with **0 scratch**, but
+regresses **3927.785 -> 5317.336 us/token (0.739x, -1.390 ms)**. All transient
+kernels, wrappers, registry keys, tests, and harness code are removed. SH2-C1
+must now re-attribute a structurally different owner; this rejection does not
+end the beat-fork campaign.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4181,6 +4192,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-D1 mixed-T16 selected-MoE composite | 2026-08-06 | source `995c4743e` plus transient exact cached gfx1151 kernels; all-256-expert actual weights; 37-Q5/3-Q6 aggregate; counterbalanced HIP events; cached named traces | **Closed/rejected; production unchanged:** down+tail is only **1.053x / 0.080 ms/token** aggregate; full cooperative/standard-queue composites are **0.520x/0.739x**. Lifecycle-correct standard kernels are exact and scratch-free, but miss both admission gates. All transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json). | No — exact candidates fail >=1.15x and >=0.5-ms/token admission | Do not route or revive these ownership schedules; proceed immediately to SH2-C1 cumulative re-attribution. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M3 768-row scratch owner slots | 2026-08-06 | implementation `edb151447`; BF16 KV; same-source D->L->L->D one-warmup/three-run 512/128 A/B; 10-ms whole-GTT; complete byte-state children; committed checkpoint | **Retained/default on gfx1151:** 21 owner slots save **0.265792 GiB tracked** and **0.267578 GiB whole-GTT** while prefill/decode improve **0.621%/0.160%**. State/lifecycle are exact; diagnostics and capability denial retain dedicated fallback. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json). | Yes — exact memory/wall gates and committed checkpoint pass | Keep the 768-row capability default and proceed immediately to SH2-D1; no arena/comparison seam remains. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M2 code/library residency gate | 2026-08-06 | source `33875d75b`; fresh SH2-M1 device/host 512/4K cached processes; 10-ms whole-GTT minus sampler baseline and live owned/tracked bytes; exact lifecycle reused | **Closed precondition / no implementation:** complete untracked residency is at most **0.4186/0.5315 GiB** device and **0.4784/0.5308 GiB** host at 512/4K. The 512 complete-set bounds are below the required 0.49 GiB, so no phase-exclusive code/library subset can qualify. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json). | No performance claim; safe aggregate upper-bound decision | Do not add lazy-load or `dlclose` churn; proceed directly to SH2-M3 short owner slots. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M1 exact c1 host embedding | 2026-08-06 | parent `ab71d0966`; BF16 KV; device graph/device eager/host-copy eager at 512/4K; one warmup plus three measurements; 10-ms whole-GTT; complete byte-state equality | **Retained exact c1 opt-in / global default blocked:** host-copy saves **0.4434/0.5039 GiB whole-GTT** and exactly **0.5032 GiB live ownership**, with all wall deltas inside 1% and exact state. Allocate-then-free high water and shared c>N/packed/MTP device-pointer fallback block global promotion. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json). | No topline replacement; exact own-engine memory/non-regression claim only | Keep the env route; run SH2-M2/M3, and revisit loader ownership only with shared-runner-safe automatic device fallback. |

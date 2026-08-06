@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh2_d1_mixed_t16_composite_closeout",
+  "date": "2026-08-06",
+  "status": "closed_rejected_no_production_change",
+  "performance_claim": false,
+  "production_revision_at_closeout": "995c4743eca615c612bdefa605488a03579b92d6",
+  "prototype_parent_revisions": [
+    "3e9ef3fcb685add06e9f18e65549ceeaf295624b",
+    "995c4743eca615c612bdefa605488a03579b92d6"
+  ],
+  "hardware": {
+    "host": "strix-halo",
+    "cpu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "down_layer_mix": {
+      "Q5_K": 37,
+      "Q6_K": 3
+    }
+  },
+  "scope": {
+    "shape": "c1/top8, hidden=2048, expert_intermediate=512, experts=256",
+    "selected_expert_protocol": "32 deterministic top-8 groups cover all 256 experts",
+    "control": "registered Q4T16 dual+SiLU, registered selected Q5T16 tile8 or Q6T16 tile16 down, then registered ordered route/shared-gate/residual combine",
+    "candidate_contract": "mixed Q4T16 -> exactly rounded BF16 SiLU -> Q5/Q6T16 output-tiled down -> exactly rounded BF16 down -> ordered route/shared-gate/residual tail",
+    "timing": "counterbalanced HIP events, 12-16 warmups, 7 samples, 40-80 launches/sample",
+    "admission_gate": "deployed 37/3 aggregate >=1.15x or >=0.5 ms/token saving before model routing"
+  },
+  "correctness": {
+    "transient_red": "collection failed on the absent mixed-T16 wrapper before implementation",
+    "transient_green_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py -k 'sh2_d1_mixed_t16_persistent_tail or sh2_d1_mixed_t16_output_tiled_tail' --tb=short",
+    "transient_green_result": "4 passed",
+    "coverage": [
+      "Q5/Q6 production-byte equality at BF16 SiLU, down, and complete tail boundaries",
+      "CPU GGUF gate/up and down oracles",
+      "all-256-expert actual-weight equality",
+      "reusable completion/task counter reset"
+    ],
+    "final_state": "all rejected prototype kernels, wrappers, registry keys, tests, and harness removed"
+  },
+  "attempts": [
+    {
+      "name": "output_tiled_down_plus_last_producer_tail",
+      "validity": "exact_profileable_below_gate",
+      "q5": {
+        "control_us": 39.02703821659088,
+        "candidate_us": 37.528687715530396,
+        "speedup": 1.0399254701474794,
+        "projected_saving_ms_per_token": 0.05543896853923798
+      },
+      "q6": {
+        "control_us": 45.4136997461319,
+        "candidate_us": 37.1622234582901,
+        "speedup": 1.2220393593268992,
+        "projected_saving_ms_per_token": 0.024754428863525392
+      },
+      "aggregate": {
+        "control_us_per_token": 1580.2415132522583,
+        "candidate_us_per_token": 1500.048115849495,
+        "speedup": 1.053460550068655,
+        "saving_ms_per_token": 0.08019339740276336,
+        "gate_pass": false
+      },
+      "trace": {
+        "q5": {
+          "kernel": "qk_t16_selected_qwen_output_tiled_tail_gemv_kernel<unsigned short,5,8>",
+          "vgpr": 56,
+          "scratch_bytes": 0,
+          "lds_bytes": 512
+        },
+        "q6": {
+          "kernel": "qk_t16_selected_qwen_output_tiled_tail_gemv_kernel<unsigned short,6,16>",
+          "vgpr": 96,
+          "scratch_bytes": 0,
+          "lds_bytes": 512
+        }
+      },
+      "raw_json_sha256": "0528e0f6643303257ca4fa5969e6072900a20ad46daa9da5f962de22a789e5d2"
+    },
+    {
+      "name": "cooperative_persistent_full_composite",
+      "validity": "exact_but_performance_negative_and_profiler_crash",
+      "q5": {
+        "control_us": 97.39347696304321,
+        "candidate_us": 190.43614864349365,
+        "speedup": 0.5114232652613073
+      },
+      "q6": {
+        "control_us": 103.6795973777771,
+        "candidate_us": 160.4841947555542,
+        "speedup": 0.6460424189167006
+      },
+      "aggregate": {
+        "control_us_per_token": 3914.59743976593,
+        "candidate_us_per_token": 7527.590084075928,
+        "speedup": 0.5200332903417493,
+        "saving_ms_per_token": -3.6129926443099976,
+        "gate_pass": false
+      },
+      "trace": "rocprofv3 SIGSEGV in rocr::HSA::hsa_signal_store_screlease on cooperative dispatch; no trace accepted",
+      "raw_json_sha256": "1b35c17181ebc953a53533d5fb098c544c361db92fe9a08e8f0ec4e19c7c6c04"
+    },
+    {
+      "name": "standard_dynamic_queue_pre_arrival_fix",
+      "validity": "invalid_scheduler_lifecycle_diagnostic",
+      "reason": "block 0 could reset counters before unscheduled blocks entered; result is not a retain decision",
+      "aggregate_speedup": 0.8858646486951988,
+      "raw_json_sha256": "52a5556e41accb499606400dc815510d24c0e11fc89d646a66400c04f970b79c"
+    },
+    {
+      "name": "standard_dynamic_queue_lifecycle_correct",
+      "validity": "exact_profileable_performance_negative",
+      "q5": {
+        "control_us": 97.69384860992432,
+        "candidate_us": 133.31869840621948,
+        "speedup": 0.7327842964101934,
+        "projected_saving_ms_per_token": -1.3181194424629212
+      },
+      "q6": {
+        "control_us": 104.37084436416626,
+        "candidate_us": 128.1815528869629,
+        "speedup": 0.8142423150092889,
+        "projected_saving_ms_per_token": -0.07143212556838989
+      },
+      "aggregate": {
+        "control_us_per_token": 3927.7849316596985,
+        "candidate_us_per_token": 5317.3364996910095,
+        "speedup": 0.7386752619263314,
+        "saving_ms_per_token": -1.389551568031311,
+        "gate_pass": false
+      },
+      "trace": {
+        "q5": {
+          "kernel": "qk_t16_selected_qwen_mixed_q4_queued_tail_gemv_kernel<unsigned short,5,8>",
+          "duration_ns": 93374,
+          "vgpr": 104,
+          "scratch_bytes": 0,
+          "lds_bytes": 512,
+          "grid_threads": 17920
+        },
+        "q6": {
+          "kernel": "qk_t16_selected_qwen_mixed_q4_queued_tail_gemv_kernel<unsigned short,6,16>",
+          "duration_ns": 87243,
+          "vgpr": 112,
+          "scratch_bytes": 0,
+          "lds_bytes": 512,
+          "grid_threads": 15360
+        },
+        "trace_csv_sha256": "a402d25b33c1e548edf87fd57abaca3cbcc76de157a3bdfc5d03deb04ee5fcf6"
+      },
+      "raw_json_sha256": "08e529b21592d26c81269dedc38467fb86f14886c2f3188783224b46fd50ace3"
+    }
+  ],
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked before diff because optional /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "external_kernel_body_copied": false
+  },
+  "decision": {
+    "retain": false,
+    "production_change": false,
+    "reason": "No complete mixed-T16 leaf passes either frozen admission threshold; the only locally positive down-tail schedule saves 0.080 ms/token aggregate, while both full one-launch ownership schedules regress.",
+    "next_package": "SH2-C1 cumulative re-attribution"
+  }
+}
