@@ -14,6 +14,9 @@ from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import dflash_accept_chain_i32
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kvcache import KVTransaction
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+)
 import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFMTPDecodeSession,
@@ -717,6 +720,54 @@ def full_attn_k_grid_y_calls() -> Iterator[list[tuple[int, int, int]]]:
 
 
 @pytest.fixture
+def full_attn_v_qmicro_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
+    """Count planar-Q6 ownership of real full-attention V AR/verifier rows."""
+
+    keys = {
+        "decode": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        ),
+        "rowtile": KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_bf16_bf16_out",
+        ),
+    }
+    originals = {
+        name: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for name, key in keys.items()
+    }
+    calls: dict[str, list[tuple[int, int, int]]] = {
+        "decode": [],
+        "rowtile": [],
+    }
+
+    def counted(name: str):
+        def wrapped(*args, **kwargs):
+            calls[name].append((int(args[3]), int(args[4]), int(args[5])))
+            return originals[name](*args, **kwargs)
+
+        return wrapped
+
+    for name, key in keys.items():
+        register(key, counted(name), replace=True)
+    try:
+        yield calls
+    finally:
+        for name, key in keys.items():
+            register(key, originals[name], replace=True)
+
+
+@pytest.fixture
 def q4_dual_rowtile_silu_calls() -> Iterator[dict[str, list[tuple[int, int, int]]]]:
     """Count compact-T16 ownership and its exact pack8 fallback."""
 
@@ -912,6 +963,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     shared_kv_write_calls: list[tuple[int, ...]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
+    full_attn_v_qmicro_calls: dict[str, list[tuple[int, int, int]]],
     q4_dual_rowtile_silu_calls: dict[str, list[tuple[int, int, int]]],
     q4_single_rowtile_calls: dict[str, list[tuple[int, int, int]]],
     down_residual_calls: dict[str, list[tuple[int, int, int]]],
@@ -929,6 +981,20 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     ) as target:
         target.select_prefill_quant("gguf_q4_k_m")
         assert target.runner is not None
+        assert target.runner.weights is not None
+        q6_attn_v_weights = [
+            layer.weight("attn_v")
+            for layer in target.runner.weights.layers
+            if "attn_v" in layer.weights
+            and layer.weight("attn_v").spec.source.ggml_type_name == "Q6_K"
+        ]
+        assert len(q6_attn_v_weights) == 8
+        assert all(
+            weight.spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+            and weight.spec.quant_key == "gguf_q6_k_t16_qmicro_planar_v1"
+            and tuple(weight.allocations) == ("tiles",)
+            for weight in q6_attn_v_weights
+        )
         with Qwen35GGUFResidentSession(
             _DENSE_MODEL,
             max_sequence_length=64,
@@ -1334,8 +1400,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         if (in_features, out_features) == (5_120, 1_024)
     } == {2, 4}
     assert set(q4_single_rowtile_calls["pack8"]) == {(2, 5_120, 10_240)}
-    assert dense_virtual256_calls
-    assert {rows for rows, _, _ in dense_virtual256_calls} == {1}
+    # Narrow V no longer owns a dense-BF16 allocation; scalar AR and
+    # verifier rows consume one planar-Q6 representation.
+    assert not dense_virtual256_calls
     # The exact dense alpha/beta pair and both cross-family composites remain
     # registry primitives only after their W7900 marked-wall/kernel gates fail;
     # production keeps scalar projections plus snapshot Conv/GDN owners.
@@ -1387,9 +1454,25 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         in shared_full_attn_batch_calls
     } == {(256, 24, 4, 256, 1)}
     assert all(rows == live_rows for rows, *_, live_rows in shared_full_attn_batch_calls)
-    # The retained compact col4 sidecar now owns K; the old pack8 grid-Y
-    # batch remains registered only as the exact missing-sidecar fallback.
+    # Compact K and sole-resident planar-Q6 V own the verifier rows; scalar AR
+    # and prefill consume the same V bytes, and pack8 grid-Y remains K fallback.
     assert not full_attn_k_grid_y_calls
+    q6_attn_v_decode_calls = [
+        call
+        for call in full_attn_v_qmicro_calls["decode"]
+        if call[1:] == (5_120, 1_024)
+    ]
+    q6_attn_v_rowtile_calls = [
+        call
+        for call in full_attn_v_qmicro_calls["rowtile"]
+        if call[1:] == (5_120, 1_024)
+    ]
+    assert q6_attn_v_decode_calls
+    assert {rows for rows, _, _ in q6_attn_v_decode_calls} == {1}
+    # Mirrors the compact-K col4 owner: B2/rows3 is owned by the separate N2
+    # bulk graph, so the shared-page attention leaf sees only B1/B3 (2,4).
+    assert q6_attn_v_rowtile_calls
+    assert {rows for rows, _, _ in q6_attn_v_rowtile_calls} == {2, 4}
     assert q4_dual_rowtile_silu_calls["t16"]
     assert {
         rows for rows, _, _ in q4_dual_rowtile_silu_calls["t16"]
