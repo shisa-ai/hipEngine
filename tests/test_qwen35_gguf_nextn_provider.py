@@ -14,7 +14,7 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
-from hipengine.core.memory import free, malloc
+from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
@@ -121,6 +121,158 @@ def test_nextn_provider_emits_only_candidate_rows_under_locked_abi() -> None:
     with pytest.raises(ValueError, match="one of 1, 2, 3, 5"):
         provider.propose(context, candidate_budget=4)
     assert len(executor.calls) == 4
+
+
+def test_nextn_provider_prefers_an_executor_chain_without_changing_draft_abi() -> None:
+    executor = _FakeExecutor()
+    chain_calls: list[tuple[int, int, int, int, int, bool]] = []
+
+    def run_chain(
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+        *,
+        candidate_budget: int,
+        return_logits: bool = False,
+    ) -> tuple[Qwen35GGUFNextNStepResult, ...]:
+        chain_calls.append(
+            (
+                request_id,
+                token_id,
+                position,
+                target_hidden.ptr,
+                candidate_budget,
+                return_logits,
+            )
+        )
+        rows = []
+        hidden = target_hidden
+        current = token_id
+        for depth in range(candidate_budget):
+            current += 1
+            hidden = Tensor.from_handle(2000 + depth, (1, 8), DType.BF16, Device("hip", 0))
+            rows.append(
+                Qwen35GGUFNextNStepResult(
+                    request_id=request_id,
+                    input_token=current - 1,
+                    position=position + depth,
+                    token_id=current,
+                    logit=float(current),
+                    hidden=hidden,
+                )
+            )
+        return tuple(rows)
+
+    executor.run_chain = run_chain  # type: ignore[attr-defined]
+    provider = Qwen35GGUFNextNDraftProvider(executor)
+    target_hidden = Tensor.from_handle(77, (1, 8), DType.BF16, Device("hip", 0))
+
+    draft = provider.propose(
+        MtpProposalContext(
+            request_ids=(41,),
+            root_tokens=(9,),
+            root_positions=(12,),
+            target_hidden=target_hidden,
+        ),
+        candidate_budget=3,
+    )
+
+    assert chain_calls == [(41, 9, 12, 77, 3, False)]
+    assert executor.calls == []
+    assert draft.candidate_tokens == (10, 11, 12)
+    assert draft.parent_positions == (12, 13, 14)
+    assert draft.draft_depths == (1, 2, 3)
+    assert tuple(row.input_token for row in provider.last_results[41]) == (9, 10, 11)
+
+
+def test_nextn_executor_chain_falls_back_to_eager_steps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.closed = False
+    executor.weights = object()
+    executor.hidden_size = 8
+    executor.vocab_size = 64
+    executor.scratch = SimpleNamespace(max_positions=64)
+    graph_calls: list[tuple[int, int, int, int, int]] = []
+    step_calls: list[tuple[int, int, int, int, bool]] = []
+
+    def graph_chain(request_id, token_id, position, target_hidden, *, candidate_budget):
+        graph_calls.append((request_id, token_id, position, target_hidden.ptr, candidate_budget))
+        return None
+
+    def run_step(request_id, token_id, position, target_hidden, *, return_logits=False):
+        step_calls.append((request_id, token_id, position, target_hidden.ptr, return_logits))
+        hidden = Tensor.from_handle(3000 + len(step_calls), (1, 8), DType.BF16, Device("hip", 0))
+        return Qwen35GGUFNextNStepResult(
+            request_id=request_id,
+            input_token=token_id,
+            position=position,
+            token_id=token_id + 1,
+            logit=float(token_id + 1),
+            hidden=hidden,
+        )
+
+    monkeypatch.setattr(executor, "_run_exact_graph_chain", graph_chain, raising=False)
+    monkeypatch.setattr(executor, "run_step", run_step)
+    hidden = Tensor.from_handle(77, (1, 8), DType.BF16, Device("hip", 0))
+
+    rows = executor.run_chain(41, 9, 12, hidden, candidate_budget=3)
+
+    assert graph_calls == [(41, 9, 12, 77, 3)]
+    assert step_calls == [
+        (41, 9, 12, 77, False),
+        (41, 10, 13, 3001, False),
+        (41, 11, 14, 3002, False),
+    ]
+    assert tuple(row.token_id for row in rows) == (10, 11, 12)
+
+
+def test_nextn_proposal_graph_keeps_split_attention_context_on_eager_path() -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.scratch = SimpleNamespace(max_positions=2048)
+    executor._proposal_target_hidden = object()
+    executor._proposal_results = object()
+    executor._proposal_results_host = object()
+    executor._proposal_graph_last_status = "ready"
+    hidden = Tensor.from_handle(77, (1, 8), DType.BF16, Device("hip", 0))
+
+    rows = executor._run_exact_graph_chain(
+        41,
+        9,
+        1021,
+        hidden,
+        candidate_budget=3,
+    )
+
+    assert rows is None
+    assert executor._proposal_graph_last_status == "eager_long_context"
+
+
+def test_nextn_proposal_graph_capture_failure_is_cached_as_eager_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor._proposal_graphs = {}
+    executor._proposal_graph_unavailable = set()
+    executor._proposal_graph_last_status = "ready"
+    executor._proposal_graph_last_error = None
+    executor._proposal_graph_captures = 0
+    capture_calls: list[tuple[int, int, int]] = []
+
+    def fail_capture(request_id: int, slot: int, budget: int):
+        capture_calls.append((request_id, slot, budget))
+        raise RuntimeError("unsupported graph")
+
+    monkeypatch.setattr(executor, "_capture_exact_chain_graph", fail_capture)
+
+    assert executor._proposal_graph(41, 0, 3) is None
+    assert executor._proposal_graph(41, 0, 3) is None
+    assert capture_calls == [(41, 0, 3)]
+    assert executor._proposal_graph_unavailable == {(0, 3)}
+    assert executor._proposal_graph_last_status == "capture_fallback"
+    assert executor._proposal_graph_last_error == "RuntimeError: unsupported graph"
 
 
 def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
@@ -386,6 +538,17 @@ def test_nextn_executor_logits_diagnostic_keeps_full_scoring_fallback(
     assert launch_calls[0][1]["stream"] == 11
 
 
+def _device_sha256(runtime, buffers: tuple[DeviceBuffer, ...]) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    for buffer in buffers:
+        host = np.empty((buffer.nbytes,), dtype=np.uint8)
+        copy_device_to_host(host_array_ptr(host), buffer, buffer.nbytes, runtime=runtime)
+        digest.update(host)
+    return digest.hexdigest()
+
+
 def _require_real_nextn(model: Path) -> None:
     if not model.exists():
         pytest.skip(f"local GGUF fixture not found: {model}")
@@ -471,7 +634,9 @@ def test_real_dense_blk64_one_step_logits_match_llamacpp_oracle() -> None:
     hidden = Tensor.from_handle(hidden_buf.ptr, (1, 5120), DType.BF16, Device("hip", 0))
     executor = Qwen35GGUFNextNExecutor(
         _DENSE_MODEL,
-        max_positions=256,
+        # Keep the allocation above the scalar-attention graph ceiling to prove
+        # short live contexts still use the exact graph in a server-sized cache.
+        max_positions=2048,
         max_requests=1,
         runtime=runtime,
         require_cached_build=os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1",
@@ -526,6 +691,39 @@ def test_real_dense_blk64_one_step_logits_match_llamacpp_oracle() -> None:
         assert draft.candidate_tokens == (direct.token_id,)
         assert draft.parent_positions == (0,)
         assert draft.draft_depths == (1,)
+
+        executor.reset_request(7)
+        current_token = 9707
+        current_hidden = hidden
+        eager_rows = []
+        for depth in range(3):
+            row = executor.run_step(7, current_token, depth, current_hidden, return_logits=False)
+            eager_rows.append(row)
+            current_token = row.token_id
+            current_hidden = row.hidden
+        key_cache, value_cache = executor.scratch.full_cache(0)
+        state_buffers = (
+            DeviceBuffer(executor._final_hidden_buf.ptr, executor.hidden_size * DType.BF16.itemsize),
+            key_cache,
+            value_cache,
+        )
+        eager_state = _device_sha256(runtime, state_buffers)
+        executor.reset_request(7)
+
+        graph_rows = executor.run_chain(
+            7,
+            9707,
+            0,
+            hidden,
+            candidate_budget=3,
+            return_logits=False,
+        )
+        graph_state = _device_sha256(runtime, state_buffers)
+        assert tuple(row.token_id for row in graph_rows) == tuple(row.token_id for row in eager_rows)
+        assert tuple(row.logit for row in graph_rows) == tuple(row.logit for row in eager_rows)
+        assert graph_state == eager_state
+        assert executor.proposal_graph_contract()["replays"] >= 1
+        assert executor.proposal_graph_contract()["last_status"] == "replay"
     finally:
         executor.close()
         free(hidden_buf, runtime=runtime)
