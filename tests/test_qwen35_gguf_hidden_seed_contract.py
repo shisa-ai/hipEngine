@@ -354,9 +354,10 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
 
     runtime = Runtime()
     output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x6000)))
+    token_embedding = SimpleNamespace(name="token_embedding", allocations={"raw": object()})
     weights = SimpleNamespace(
         config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6, ssm_conv_kernel=2),
-        root=lambda name: output_norm if name == "output_norm" else SimpleNamespace(name=name),
+        root=lambda name: output_norm if name == "output_norm" else token_embedding,
     )
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(weights=weights, hidden_size=8, vocab_size=100)
@@ -381,6 +382,7 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
     session._verify_block_rows_capacity = 0
     session._hidden_seed_fp32_populated = True
     session._int8_prefill_oracle_buffers = {}
+    session.host_token_embedding_enabled = False
 
     def fake_ensure(rows: int, *, runtime) -> None:
         calls.append(("ensure_verify", int(rows), runtime))
@@ -457,6 +459,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     monkeypatch.setattr(gguf_runner, "set_decode_position_i64", fake_set_decode_position_i64)
 
     runtime = Runtime()
+    token_embedding = SimpleNamespace(name="token_embedding", allocations={"raw": object()})
     weights = SimpleNamespace(
         config=SimpleNamespace(
             layer_types=(gguf_runner.LINEAR_ATTENTION, gguf_runner.LINEAR_ATTENTION),
@@ -464,7 +467,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
             ssm_conv_kernel=2,
             is_moe=False,
         ),
-        root=lambda name: SimpleNamespace(name=name),
+        root=lambda name: token_embedding,
     )
 
     def fake_linear_layer(layer_id, src_ptr, dst_ptr, scratch, **kwargs: object) -> None:
@@ -507,6 +510,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     session._verify_block_rows_capacity = 0
     session._hidden_seed_fp32_populated = True
     session._int8_prefill_oracle_buffers = {}
+    session.host_token_embedding_enabled = False
     session.use_expert_sidecar = False
     session.prefill_queue_drain = "layer"
     session._linear_prefill_layer_chunk_size = lambda rows: int(rows)
