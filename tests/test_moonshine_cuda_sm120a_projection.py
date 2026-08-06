@@ -155,6 +155,63 @@ def test_moonshine_cuda_projection_wrappers_keep_raw_pointer_abi() -> None:
     ]
 
 
+def test_moonshine_cuda_projection_schedule_auto_selects_measured_threads() -> None:
+    """Auto-select reflects the measured schedule; explicit ``threads=`` overrides.
+
+    Batch-timed screen on exclusive GPU0: 64 threads is best for pair/head-major
+    row projections across 40/207/1,248 rows (C1C-R1), and the fused fc2
+    bias_residual is best at 256 threads for decode M=1 and 64 at M=40 (C1D-R2).
+    """
+    from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+        moonshine_f16_projection_bias_residual,
+        moonshine_f16_projection_pair,
+        moonshine_f16_projection_pair_head_major,
+    )
+
+    class FakeKernel:
+        def __init__(self) -> None:
+            self.calls: list[tuple[object, ...]] = []
+
+        def __call__(self, *args):
+            self.calls.append(args)
+            return 0
+
+    class FakeLibrary:
+        hipengine_cuda_sm120a_moonshine_f16_projection_pair = FakeKernel()
+        hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major = FakeKernel()
+        hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual = FakeKernel()
+
+    library = FakeLibrary()
+    common = {"stream": 7, "library": library, "runtime": object()}
+
+    # Pair/head-major auto-select 64 threads at every production row bucket.
+    for rows in (40, 207, 1_248):
+        moonshine_f16_projection_pair(
+            1, 2, 3, 4, 5, rows, 416, 416, 416, **common
+        )
+        moonshine_f16_projection_pair_head_major(
+            1, 2, 3, 4, 5, rows, 416, 416, 416, 52, **common
+        )
+    assert library.hipengine_cuda_sm120a_moonshine_f16_projection_pair.calls == [
+        (1, 2, 3, 4, 5, rows, 416, 416, 416, 64, 7) for rows in (40, 207, 1_248)
+    ]
+    assert library.hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major.calls == [
+        (1, 2, 3, 4, 5, rows, 416, 416, 416, 52, 64, 7)
+        for rows in (40, 207, 1_248)
+    ]
+
+    # Fused fc2 auto-select: 256 at decode M=1, 64 at M=40; override wins.
+    moonshine_f16_projection_bias_residual(1, 2, 3, 4, 5, 1, 1664, 416, **common)
+    moonshine_f16_projection_bias_residual(1, 2, 3, 4, 5, 40, 1664, 416, **common)
+    moonshine_f16_projection_bias_residual(
+        1, 2, 3, 4, 5, 1, 1664, 416, threads=32, **common
+    )
+    assert (
+        library.hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual.calls
+        == [(1, 2, 3, 4, 5, 1, 1664, 416, 256, 7), (1, 2, 3, 4, 5, 40, 1664, 416, 64, 7), (1, 2, 3, 4, 5, 1, 1664, 416, 32, 7)]
+    )
+
+
 def test_moonshine_cuda_projection_rejects_invalid_shapes_before_build() -> None:
     from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
         moonshine_f16_projection,
@@ -362,6 +419,170 @@ def test_moonshine_cuda_projection_bias_boundaries_and_lm_head_36k() -> None:
     np.testing.assert_allclose(actual_lm_wave8, actual_lm, rtol=2e-3, atol=2e-3)
     assert np.isfinite(actual_lm).all()
     assert np.isfinite(actual_lm_wave8).all()
+
+
+_FIXTURE_DIR = os.environ.get(
+    "HIPENGINE_MOONSHINE_FIXTURE_DIR",
+    "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures",
+)
+_CHECKPOINT = os.environ.get(
+    "HIPENGINE_MOONSHINE_CHECKPOINT",
+    "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d/model.safetensors",
+)
+_FIXTURE_NAMES = ("audio-konichiwa-fp16", "synthetic-1s-seed1234-fp16")
+# Observed worst max-absolute error on GPU0 (RTX PRO 6000 Blackwell) for the
+# real-weight head-major cross K/V and tied LM logits against the pinned
+# fixtures is exactly 2^-8 = 0.00390625 (matching the independent review
+# diagnostic). The CUDA kernels are deterministic, so the gate asserts this
+# Tier-B-style boundary directly.
+_FIXTURE_ATOL = 0.00390625
+_POSITIONS = (0, 1, 8, 32, 64, 128, 193)
+
+
+def _projection_fixture_inputs_available() -> bool:
+    return all(
+        os.path.isfile(os.path.join(_FIXTURE_DIR, f"{name}.npz"))
+        for name in _FIXTURE_NAMES
+    ) and os.path.isfile(_CHECKPOINT)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _projection_fixture_inputs_available(),
+    reason="CUDA sm_120a gate or model-derived fixtures are not available",
+)
+def test_moonshine_cuda_projection_head_major_cross_kv_on_model_derived_fixtures() -> None:
+    """All-layer head-major cross K/V matches the pinned model fixtures (C1C-R2)."""
+    from safetensors import safe_open
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+        build_moonshine_projection,
+        moonshine_f16_projection_pair_head_major,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library = build_moonshine_projection(load=True)
+    allocations = []
+    try:
+        with safe_open(_CHECKPOINT, framework="np") as store:
+            k_weights = [
+                store.get_tensor(
+                    f"model.decoder.layers.{n}.encoder_attn.k_proj.weight"
+                ).astype(np.float16)
+                for n in range(8)
+            ]
+            v_weights = [
+                store.get_tensor(
+                    f"model.decoder.layers.{n}.encoder_attn.v_proj.weight"
+                ).astype(np.float16)
+                for n in range(8)
+            ]
+
+        for name in _FIXTURE_NAMES:
+            with np.load(os.path.join(_FIXTURE_DIR, f"{name}.npz")) as fx:
+                encoder = fx["encoder.output"]  # (1, frames, 416)
+                frames = int(encoder.shape[1])
+                device_enc = _upload(encoder[0], runtime, allocations)
+                device_k = _alloc((8, frames, 52), runtime, allocations)
+                device_v = _alloc((8, frames, 52), runtime, allocations)
+                for n in range(8):
+                    device_kw = _upload(k_weights[n], runtime, allocations)
+                    device_vw = _upload(v_weights[n], runtime, allocations)
+                    moonshine_f16_projection_pair_head_major(
+                        device_enc.ptr,
+                        device_kw.ptr,
+                        device_vw.ptr,
+                        device_k.ptr,
+                        device_v.ptr,
+                        frames,
+                        416,
+                        416,
+                        416,
+                        52,
+                        library=library,
+                        runtime=runtime,
+                    )
+                    runtime.device_synchronize()
+                    actual_k = _download(device_k, (8, frames, 52), runtime)
+                    actual_v = _download(device_v, (8, frames, 52), runtime)
+                    reference_k = fx[f"cross.layer_{n}.key"][0]
+                    reference_v = fx[f"cross.layer_{n}.value"][0]
+                    err_k = np.max(
+                        np.abs(actual_k.astype(np.float32) - reference_k.astype(np.float32))
+                    )
+                    err_v = np.max(
+                        np.abs(actual_v.astype(np.float32) - reference_v.astype(np.float32))
+                    )
+                    assert err_k <= _FIXTURE_ATOL, (name, n, "K", err_k)
+                    assert err_v <= _FIXTURE_ATOL, (name, n, "V", err_v)
+                    assert np.isfinite(actual_k).all()
+                    assert np.isfinite(actual_v).all()
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _projection_fixture_inputs_available(),
+    reason="CUDA sm_120a gate or model-derived fixtures are not available",
+)
+def test_moonshine_cuda_projection_tied_lm_selected_tokens_on_model_derived_fixtures() -> None:
+    """Tied LM head argmax reproduces every pinned selected token (C1C-R2)."""
+    from safetensors import safe_open
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+        build_moonshine_projection,
+        moonshine_f16_lm_head_projection,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library = build_moonshine_projection(load=True)
+    allocations = []
+    try:
+        with safe_open(_CHECKPOINT, framework="np") as store:
+            lm_weight = store.get_tensor(
+                "model.decoder.embed_tokens.weight"
+            ).astype(np.float16)
+        device_lm = _upload(lm_weight, runtime, allocations)
+        device_logits = _alloc((1, 36_864), runtime, allocations)
+
+        for name in _FIXTURE_NAMES:
+            with np.load(os.path.join(_FIXTURE_DIR, f"{name}.npz")) as fx:
+                for pos in _POSITIONS:
+                    final_hidden = fx[f"decoder.position_{pos}.final_hidden"]
+                    reference_logits = fx[f"decoder.position_{pos}.logits"][0]
+                    reference_token = int(
+                        fx[f"decoder.position_{pos}.selected_token"][0, 0]
+                    )
+                    device_input = _upload(final_hidden[0, 0], runtime, allocations)
+                    moonshine_f16_lm_head_projection(
+                        device_input.ptr,
+                        device_lm.ptr,
+                        device_logits.ptr,
+                        1,
+                        416,
+                        36_864,
+                        library=library,
+                        runtime=runtime,
+                    )
+                    runtime.device_synchronize()
+                    actual_logits = _download(device_logits, (1, 36_864), runtime)
+                    actual_token = int(np.argmax(actual_logits[0]))
+                    err = np.max(
+                        np.abs(
+                            actual_logits[0].astype(np.float32)
+                            - reference_logits.astype(np.float32)
+                        )
+                    )
+                    assert err <= _FIXTURE_ATOL, (name, pos, err)
+                    assert actual_token == reference_token, (name, pos, actual_token, reference_token)
+                    assert np.isfinite(actual_logits).all()
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
 
 
 def _upload(array: np.ndarray, runtime, allocations):
