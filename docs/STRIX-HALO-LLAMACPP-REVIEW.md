@@ -577,7 +577,7 @@ evidence.
 | **SH2-M3** | 768-row owner-slot map with dedicated fallback. | **Complete: retained/default.** Reuse the existing 21 independent owner slots from 768 rows: physical scratch falls 355,182,664 -> 69,790,760 bytes, tracked/whole-GTT fall 0.265792/0.267578 GiB, prefill/decode improve 0.621%/0.160%, complete state is byte exact, and committed teardown is clean. Diagnostics/capability denial retain dedicated owners; no arena coupling. |
 | **SH2-D1** | P10.D1 mixed Q4T16 -> Q5/Q6T16 output-tiled selected-MoE composite. | **Complete: exact, below admission; no production change.** Down+tail reaches only **1.053x / 0.080 ms/token** aggregate. Full cooperative and lifecycle-correct standard-queue composites regress to **0.520x/0.739x**; the cooperative trace also crashes in ROCr. Named standard traces are scratch-free. All transient surfaces are removed; no model routing. |
 | **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | **Checkpoint complete: continue.** Fresh clean 512 is **53.332 tok/s, 21.214 GiB tracked, 21.648 GiB whole-GTT**; unchanged 4K+ rows carry from SH-G. C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the new 0.457031-GiB compact-T16 metadata owner. |
-| **SH2-M4** | Compact selected-expert Q4/Q5 T16 scale/min metadata. | **Pending.** Bit-losslessly remove the exact **490,733,568-byte** resident expansion across 80 Q4 and 37 Q5 tensors; registered current-T16 fallback, exact/perf/trace/four-depth GTT gates before promotion. |
+| **SH2-M4** | Compact selected-expert Q4/Q5 T16 scale/min metadata. | **Complete: retain/default Q5 subset; reject Q4 production route.** Compact Q5 removes exactly **155,189,248 bytes / 0.144531 GiB** with 512 prefill/decode changes **-0.426%/-0.459%**, whole-GTT **-0.144363 GiB**, scratch-free named kernels, and byte-exact four-depth state. Full Q4+Q5 projects **+1.598%** decode, so all 80 Q4 tensors remain current T16. |
 | **SH2-C2** | Post-M4 cumulative re-attribution. | Recompute all four parity rows and select another structurally new owner if any required row still misses. |
 | **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | Run only after SH2-C2. Mark the thread objective complete only when the declared beat-fork policy passes; otherwise continue cumulative re-attribution. |
 
@@ -653,6 +653,28 @@ not evidence. SH2-M4 must earn pack/unpack, CPU/GPU byte, prefill/decode,
 trace, four-depth state/lifecycle, and whole-GTT gates before any default change.
 Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json).
+
+SH2-M4 closes the 0.457031-GiB owner by retaining only its separable Q5 subset.
+Both compact layouts preserve FP16 `d/dmin` and quant planes while encoding each
+four-column scale/min quartet in 24 bits. Host roundtrip/dequant and direct/WMMA
+GPU oracles are exact. On the actual all-256-expert leaf, full Q4+Q5 compaction
+projects **+0.299674 ms/token / +1.598%**, above the frozen 1% gate; two bounded
+unpack schedules worsen that to **+2.494%/+3.239%**. Q4 therefore remains
+`gguf_q4_k_t16_v1` in production.
+
+The 37 Q5 tensors independently remove exactly **155,189,248 bytes /
+0.14453125 GiB**. Same-protocol 512 prefill/decode moves
+**1372.347/53.383 -> 1366.497/53.138 tok/s (-0.426%/-0.459%)**. Fresh tracked
+and whole-GTT fall **21.214187/21.648426 -> 21.069656/21.504063 GiB**, all
+measured IDs are exact, and teardown returns tracked ownership to zero. Clean
+parent-vs-candidate state children at 512/4K/32K/64K match FP32 logits,
+hidden/layer/Conv/GDN/live-BF16-KV state, four-transition trajectories, and
+final state byte-for-byte. Production tracing names 333 compact Q5 decode
+launches at **56 VGPR, 512 B LDS, 0 scratch** and 37 compact WMMA prefill
+launches at **72 VGPR, 0 LDS/scratch**. Promote Q5 compact metadata by default,
+retain current Q5/Q4 T16 registry fallbacks, and proceed immediately to SH2-C2;
+this memory win does not end the beat-fork objective. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

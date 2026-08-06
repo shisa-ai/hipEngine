@@ -2327,6 +2327,25 @@ only production layout and all stacking arithmetic is explicitly projected.
 Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json).
 
+SH2-M4 retains the separable Q5 portion of that owner and rejects the Q4
+production route. Compact Q4/Q5 records preserve FP16 `d/dmin` and quant bytes
+but pack four 6-bit scale/min values into each 24-bit record. Host raw-byte and
+dequant oracles plus direct/WMMA GPU checks are exact. Full Q4+Q5 compaction
+projects **+1.598%** decode on the actual 256-expert leaf, above the frozen 1%
+gate; preload-all and wave-broadcast unpack variants worsen it. All 80 Q4
+tensors therefore remain `gguf_q4_k_t16_v1`.
+
+The 37 selected Q5 down tensors now default to
+`gguf_q5_k_qmicro_t16_v1`, reducing each tile **2,880 -> 2,816 bytes** and
+resident ownership by exactly **155,189,248 bytes / 0.14453125 GiB**. Matching
+512 prefill/decode changes **-0.426%/-0.459%**, tracked/whole-GTT falls
+**0.144531/0.144363 GiB**, and complete 512/4K/32K/64K state is byte-identical
+to clean parent `70b338a0e`. Cached production tracing records compact Q5
+decode at **56 VGPR / 512 B LDS / 0 scratch** and WMMA prefill at
+**72 VGPR / 0 LDS / 0 scratch**. Legacy Q5/Q4 T16 keys remain registered
+fallbacks. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

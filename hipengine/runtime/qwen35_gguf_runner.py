@@ -20465,6 +20465,12 @@ _COMPACT_MOE_DOWN_KEYS = {
         "gguf_q5_k_t16_v1",
         "selected_wmma_prefill_compact_bf16_bf16_out",
     ),
+    "gguf_q5_k_qmicro_t16_v1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q5_k_qmicro_t16_v1",
+        "selected_wmma_prefill_compact_bf16_bf16_out",
+    ),
     # P10.B3: Q6T16 selected single-output WMMA prefill.
     "gguf_q6_k_t16_v1": KernelKey(
         "hip_gfx1100",
@@ -20505,6 +20511,12 @@ _COMPACT_MOE_DOWN_GEMV_KEYS = {
         "moe_linear",
         "gguf_q5_k_t16_v1",
         "selected_t16_gemv_decode_compact_bf16_bf16_out",
+    ),
+    "gguf_q5_k_qmicro_t16_v1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q5_k_qmicro_t16_v1",
+        "selected_gemv_decode_bf16_bf16_out",
     ),
     "gguf_q6_k_t16_v1": KernelKey(
         "hip_gfx1100",
@@ -22781,12 +22793,14 @@ def _resolve_exact_selected_moe_kernel(quant_key: str, variant: str):
     )
 
 
-def _raw_selected_moe_weight_ptr(weight: Qwen35GGUFDeviceWeight) -> int:
+def _selected_moe_weight_ptr(weight: Qwen35GGUFDeviceWeight) -> int:
+    allocation = _selected_gemv_allocation_name(weight)
     try:
-        return int(weight.allocation("raw").tensor.ptr)
+        return int(weight.allocation(allocation).tensor.ptr)
     except KeyError as exc:
         raise ValueError(
-            f"registered raw selected-MoE kernel requires a 'raw' allocation for {weight.spec.source.name!r}"
+            f"registered selected-MoE kernel requires a {allocation!r} allocation "
+            f"for {weight.spec.source.name!r}"
         ) from exc
 
 
@@ -22827,8 +22841,8 @@ def _launch_selected_raw_gguf_moe_pair_silu(
             fn(
                 x_ptr,
                 selected_ptr,
-                _raw_selected_moe_weight_ptr(weight_a),
-                _raw_selected_moe_weight_ptr(weight_b),
+                _selected_moe_weight_ptr(weight_a),
+                _selected_moe_weight_ptr(weight_b),
                 out_ptr,
                 x_rows=x_rows,
                 rows=rows,
@@ -23106,7 +23120,7 @@ def _launch_selected_raw_gguf_moe_linear(
         fn(
             x_ptr,
             selected_ptr,
-            _raw_selected_moe_weight_ptr(weight),
+            _selected_moe_weight_ptr(weight),
             out_ptr,
             x_rows=x_rows,
             rows=rows,
@@ -23338,7 +23352,7 @@ def _launch_weighted_selected_raw_gguf_moe_linear(
         x_ptr,
         selected_ptr,
         routing_weights_ptr,
-        _raw_selected_moe_weight_ptr(weight),
+        _selected_moe_weight_ptr(weight),
         out_ptr,
         tokens=tokens,
         top_k=top_k,

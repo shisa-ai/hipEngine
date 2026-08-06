@@ -65,6 +65,12 @@ _Q4_DENSE_DUAL_INTERLEAVED_TILE2_LOCAL32_SILU_BF16 = (
 _Q4_DUAL_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out"
 _Q4_DUAL_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out"
 _Q4_DUAL_SILU_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out"
+_Q4_QMICRO_DUAL_DIRECT_BF16 = (
+    "hipengine_gguf_q4_k_qmicro_t16_selected_dual_gemv_bf16_bf16_out"
+)
+_Q4_QMICRO_DUAL_SILU_DIRECT_BF16 = (
+    "hipengine_gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out"
+)
 _Q4_DUAL_DIRECT_Q8_DP4A_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_q8_1_dp4a_bf16_bf16_out"
 _Q4_DUAL_SILU_DIRECT_Q8_DP4A_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_silu_gemv_q8_1_dp4a_bf16_bf16_out"
 _Q4_SINGLE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out"
@@ -84,6 +90,9 @@ _Q4_SINGLE_NATURAL_PARALLEL_PAIRCOEFF_WEIGHTED_BF16 = (
 )
 _Q4_SINGLE_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out"
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
+_Q5_QMICRO_SINGLE_DIRECT_BF16 = (
+    "hipengine_gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out"
+)
 _Q5_SINGLE_QWEN_TILE8_BF16 = (
     "hipengine_gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out"
 )
@@ -897,6 +906,80 @@ def _launch_dense_dual_interleaved_local32_silu(
         )
 
 
+def gguf_q4_k_qmicro_t16_selected_dual_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact byte-neutral qmicro Q4 gate/up without fused SiLU."""
+
+    _launch_dual_direct(
+        _Q4_QMICRO_DUAL_DIRECT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact byte-neutral qmicro Q4 gate/up fused with BF16 SiLU."""
+
+    _launch_dual_silu_direct(
+        _Q4_QMICRO_DUAL_SILU_DIRECT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -1257,6 +1340,50 @@ def gguf_q4_k_t16_selected_natural_parallel_paircoeff_weighted_gemv_bf16_bf16_ou
         library=library,
         runtime=runtime,
     )
+
+
+def gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact byte-neutral qmicro Q5 selected-down GEMV."""
+
+    _launch_single_direct(
+        _Q5_QMICRO_SINGLE_DIRECT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out(
+    *args,
+    **kwargs,
+) -> None:
+    """Qwen-shaped alias for the exact eight-column compact Q5 owner."""
+
+    _check_qwen_selected_down_shape(args[4], args[5], args[7], args[8])
+    gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out(*args, **kwargs)
 
 
 def gguf_q5_k_t16_selected_gemv_bf16_bf16_out(
@@ -2743,6 +2870,52 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
 
     for variant, fn in (
         (
+            "selected_dual_t16_gemv_decode_bf16_bf16_out",
+            gguf_q4_k_qmicro_t16_selected_dual_gemv_bf16_bf16_out,
+        ),
+        (
+            "selected_dual_silu_gemv_decode_bf16_bf16_out",
+            gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                "gguf_q4_k_qmicro_t16_v1",
+                variant,
+            ),
+            fn,
+            replace=replace,
+        )
+
+    for variant, fn in (
+        (
+            "selected_gemv_decode_bf16_bf16_out",
+            gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out,
+        ),
+        (
+            "selected_t16_gemv_decode_bf16_bf16_out",
+            gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out,
+        ),
+        (
+            "selected_t16_qwen_tile8_gemv_decode_bf16_bf16_out",
+            gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                "gguf_q5_k_qmicro_t16_v1",
+                variant,
+            ),
+            fn,
+            replace=replace,
+        )
+
+    for variant, fn in (
+        (
             "selected_dual_t16_gemv_decode_compact_bf16_bf16_out",
             gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
         ),
@@ -3049,6 +3222,8 @@ __all__ = [
     "gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_single_local32_bf16_bf16_out",
+    "gguf_q4_k_qmicro_t16_selected_dual_gemv_bf16_bf16_out",
+    "gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_natural_tile8_gemv_bf16_bf16_out",
@@ -3077,6 +3252,8 @@ __all__ = [
     "gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
     "gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
+    "gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out",
+    "gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out",

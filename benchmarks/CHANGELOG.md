@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [retained/default SH2-M4 compact selected Q5 T16 metadata] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/128: compact 37 Q5 down tensors reduce tracked/whole-GTT **21.214187/21.648426 -> 21.069656/21.504063 GiB (-0.144531/-0.144363)** while matching prefill/decode changes **1372.347/53.383 -> 1366.497/53.138 tok/s (-0.426%/-0.459%)**, with scratch-free named kernels and byte-exact four-depth state; full Q4+Q5 is rejected at **+1.598%** projected decode and Q4 remains current T16; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`.
+
 - [SH2-C1 cumulative re-attribution; continue to SH2-M4] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/128 plus carried same-production 4K+: fresh clean short decode/GTT is **53.332 tok/s / 21.648426 GiB**, while C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**; census selects a structurally new exact **490,733,568-byte (0.457031-GiB)** compact Q4/Q5 T16 metadata owner for gated implementation, not a parity claim; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`.
 
 - [SH2-D1 mixed-T16 composite closed; no production change] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / c1 top8 actual-weight 37-Q5/3-Q6 mix: exact down+tail improves **1580.242 -> 1500.048 us/token (1.053x, -0.080 ms)** but misses both frozen admission gates, while complete cooperative and lifecycle-correct standard-queue composites regress to **0.520x/0.739x**; standard named traces are scratch-free, the cooperative trace crashes in ROCr, and all transient surfaces are removed before SH2-C1; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`.
