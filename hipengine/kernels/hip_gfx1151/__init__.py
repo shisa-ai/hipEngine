@@ -734,6 +734,11 @@ GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 4096
 # 32K/64K wall wins. Shorter contexts and explicit opt-out keep the serial path.
 GGUF_PAGED_ATTN_PARALLEL_REDUCE = True
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
+# SH10-A1 reuses the existing exact fixed256 compact-row leaf for private-c1
+# BF16 attention below the split threshold. The rows=1 actual-shape screen is
+# F32 byte-exact and 1.56-1.65x faster at contexts 513/576/640. Context 1024+
+# keeps the established direct/split routes.
+GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT = 1023
 # Clean PARO G3/G5 physical-width and server gates certify c4/c8 with whole-row
 # full-attention execution. Diagnostic c2 row chunking changes row-local
 # numerics at these widths and must therefore remain an explicit override.
@@ -1587,6 +1592,7 @@ __all__ = [
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+    "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_ARENA_GROUPING",

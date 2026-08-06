@@ -25,6 +25,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.kernels.hip_gfx1100.attention import (
@@ -2033,6 +2034,7 @@ class Qwen35GGUFFullStackRunner:
         self.__dict__.pop("_gguf_gdn_prefill_plan_cache", None)
         self.__dict__.pop("_gguf_gdn_decode_output_cast_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_decode_batch_native_fn_cache", None)
+        self.__dict__.pop("_gguf_full_attn_decode_short_batch_fn_cache", None)
         self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
 
     def _gdn_decode_output_cast_fn(self):
@@ -2069,6 +2071,21 @@ class Qwen35GGUFFullStackRunner:
             if fn is None:
                 fn = qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans
             self._gguf_full_attn_decode_batch_native_fn_cache = fn
+        return fn
+
+    def _full_attn_decode_short_batch_fn(self, spans: KVLiveSpans):
+        """Return the backend's exact short-context batch attention leaf."""
+
+        missing = object()
+        fn = getattr(self, "_gguf_full_attn_decode_short_batch_fn_cache", missing)
+        if fn is missing:
+            fn = resolve_paged_attn_decode(
+                backend=self.backend,
+                spans=spans,
+                kind="context_batch",
+                model_quant="w4_paro",
+            )
+            self._gguf_full_attn_decode_short_batch_fn_cache = fn
         return fn
 
     def _full_attn_prefill_native_fn(self):
@@ -6232,22 +6249,51 @@ class Qwen35GGUFFullStackRunner:
                     runtime=runtime,
                 )
             else:
-                qwen35_paged_full_attn_decode_context_bf16_spans(
-                    scratch.full_query.ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    scratch.full_attn_context.ptr,
-                    decode_spans,
-                    attention_context_cap,
-                    scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
+                short_batch_max_context = max(
+                    0,
+                    int(
+                        backend_package_capability(
+                            self.backend,
+                            "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+                            0,
+                        )
+                    ),
                 )
+                if 0 < attention_context_cap <= short_batch_max_context:
+                    self._full_attn_decode_short_batch_fn(decode_spans)(
+                        scratch.full_query.ptr,
+                        key_cache.ptr,
+                        value_cache.ptr,
+                        scratch.full_attn_context.ptr,
+                        decode_spans,
+                        1,
+                        attention_context_cap,
+                        scratch.block_size,
+                        cfg.head_count,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        cfg.key_length ** -0.5,
+                        stream=stream,
+                        library=paged_attn_library,
+                        runtime=runtime,
+                    )
+                else:
+                    qwen35_paged_full_attn_decode_context_bf16_spans(
+                        scratch.full_query.ptr,
+                        key_cache.ptr,
+                        value_cache.ptr,
+                        scratch.full_attn_context.ptr,
+                        decode_spans,
+                        attention_context_cap,
+                        scratch.block_size,
+                        cfg.head_count,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        cfg.key_length ** -0.5,
+                        stream=stream,
+                        library=paged_attn_library,
+                        runtime=runtime,
+                    )
                 qwen35_full_attn_gate_mul_bf16(
                     scratch.full_attn_context.ptr,
                     scratch.full_gate.ptr,
