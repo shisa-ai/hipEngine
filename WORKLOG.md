@@ -203120,3 +203120,47 @@ with explicit override preserved. The C1c `_wave8` projection leaf alone is 7.17
 us (vs 31.13 us plain) and is recorded as a C3 target-native tuning hint because
 its accumulation order is not byte-identical to the exact baseline. The
 quantized LM head remains closed until the exact FP16 decoder is promoted.
+
+## 2026-08-06 — C2: resident eager CUDA decoder composition
+
+Added `hipengine/runtime/moonshine_cuda.py` (`MoonshineCudaResidentRuntime`),
+mirroring the HIP `MoonshineResidentRuntime` composition contract on the peer
+CUDA backend. Exactly one of `model_path`/`loaded_model`; every pinned FP16
+weight materialized once on the CUDA device with the tied embedding/LM head
+aliased to a single owner; a fixed-address `RuntimeWorkspace` reserving rope
+cos/sin, encoder hidden/mask, self/cross caches, hidden/residual/normalized,
+query/key/value/attention, projection/MLP scratch, logits, token/position/argmax,
+and the bounded C1f LM-head scratch before timed execution. `prepare_decoder_kernels()`
+is an explicit step (not in `__init__`, matching the HIP contract and enabling
+fake-library tests). `load_cross_cache` accepts the retained head-major
+`[1, kv_heads, frames, head_dim]` fixture layout (or a future C4 encoder handoff)
+plus the encoder mask and resets generation state under fixed addresses;
+`reset_generation(clear_cross_cache=...)` reuses every address; `read_token`
+synchronizes the resident stream before the legacy host readback (fixing stale
+token reads); `close` reports teardown parity to the allocation baseline.
+
+The eager token DAG composes the measured C1 schedules: cross attention flat
+parallel t256; self attention one-wave t32 below 8 visible tokens and parallel
+t256 at/above; fused bounded LM head (`rows_per_block=8`) writes the next token
+directly into the fixed token buffer. No allocation occurs inside any
+`token_step` (no-allocation region contract holds).
+
+RED/GREEN: `tests/test_moonshine_cuda_sm120a_runtime.py` passes 11/11 on GPU0
+(CPU-side: self-attention thread buckets, constructor source/encoder
+validation, bad-cache-layer rejection, cross-cache shape/mask validation,
+cache-view layer offsets, no-allocation-region detection, full token-step
+dispatch order + self/cross/LM schedules, reset/close teardown parity; GPU-gated:
+exact 194-position token stream on both retained fixtures, and final_hidden
+within FP16 compose tolerance at positions 0/1/8/32/64/128/193). The CPU-side
+dispatch test verifies the measured schedule leaves and the `t32 -> t256`
+self-attention switch exactly at visible=8.
+
+Measured on exclusive GPU0: the resident decoder runs the full 194-position
+autonomous generation on both retained fixtures (`audio-konichiwa-fp16`, 42
+encoder frames; `synthetic-1s-seed1234-fp16`, 40 frames), matching all 194
+fixture reference tokens exactly and keeping `final_hidden` within FP16 compose
+tolerance of the FP32-accumulated fixture reference (worst max-abs 0.0161 at
+synthetic position 32). First eager profile: one resident `token_step` about
+`384 us` device-side (position 32) and a full 194-position eager run about
+`76.6 ms` host-wall including per-step token readback syncs — the C3
+CUDA-graph/replay baseline, not a tuned target.
