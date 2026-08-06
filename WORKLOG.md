@@ -203053,3 +203053,38 @@ Added opt-in pinned-checkpoint fixture gates to
   7 positions x 2 fixtures, tied `embed_tokens` weight -> logits; every argmax
   token ID equals `selected_token` (14/14 exact) and logits max-abs <= 0.00390625.
 Both pass under the real `sm_120a` gate on GPU0.
+
+## 2026-08-06 — C1e: CUDA self and masked cross attention
+
+Ported self attention (fixed visible cache prefix, logical dim 52) and masked
+resident cross attention to the peer `cuda_sm120a` backend:
+`hipengine/kernels/cuda_sm120a/attention/moonshine_attention.{cu,py}` plus
+package wiring in `attention/__init__.py` and `register_backend_kernels`.
+Five raw-pointer C ABI symbols build only under `-arch=sm_120a`; `cuobjdump`
+confirms two `arch = sm_120a` cubins and all five exports (self one-wave,
+self parallel, cross one-wave, cross grouped-heads, cross parallel). Kernels
+mirror the HIP reference: one query over 8 heads x dim-52, online FP32 softmax
+over the visible prefix (self) or masked encoder frames (cross), no material
+score plane, FP16 output boundaries. Registered keys:
+`moonshine_self_attention/fixed_cache_logical_dim` + `fixed_cache_parallel_tokens`,
+`moonshine_cross_attention/resident_masked_logical_dim` + `resident_masked_grouped_heads`
++ `resident_masked_parallel_tokens`.
+
+RED/GREEN: `tests/test_moonshine_cuda_sm120a_attention.py` passes 7/7 (registry,
+build-plan `sm_120a`, raw-pointer ABI, invalid-contract rejection, measured
+schedule buckets, and two GPU oracle gates). Self matches the NumPy oracle over
+visible `0/1/2/8/32/64/128/193`; cross (one-wave/grouped/parallel t64/128/256)
+matches over masked lengths `40/207/1248` (allclose `2.0e-3`, all finite).
+
+Measured schedule (`/tmp/cuda_attention_schedule_screen/screen_batch.py`,
+batch-timed CUDA events, 500-launch batches, 12 medians, pre/post foreign
+compute gate on exclusive GPU0): cross attention is flat parallel t256 at every
+production encoder length (4.015/14.861/80.191 us vs one-wave
+17.397/85.965/512.085 us => 4.3x/5.8x/6.4x); self is parallel t256 from ~8
+visible tokens upward (1.61x at visible 16, 2.1-3.3x at 33-194 per the focused
+crossover run, tied at visible 4/8) with the one-wave t32 path tied below 8.
+`_default_cross_threads()` is flat t256; `_default_self_threads()` is t32 below
+8 visible tokens and t256 at/above, mirroring the LayerNorm/projection
+schedule-selection pattern (explicit `threads=`/variant overrides). General
+cache-position buckets only (visible prefix length, encoder length), no
+token-conditioned routes.
