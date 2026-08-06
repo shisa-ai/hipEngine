@@ -18527,8 +18527,9 @@ class Qwen35GGUFResidentSession:
         runtime = self.runtime or get_hip_runtime()
         if stream:
             runtime.stream_synchronize(stream)
-        else:
-            runtime.device_synchronize()
+        # _read_sample starts with a blocking D2H token-index copy. On the
+        # default stream that copy is already the required completion boundary;
+        # a device-wide drain here only serializes the same work twice.
         return self._read_sample(return_logits=return_logits)
 
     def _read_sample(self, *, return_logits: bool = True) -> Qwen35GGUFNextTokenProbeResult:
