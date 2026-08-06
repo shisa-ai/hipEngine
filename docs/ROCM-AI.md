@@ -1,9 +1,9 @@
 # ROCm.AI: relevance to hipEngine
 
-_Research snapshot: 2026-08-05. This is a source-backed decision document, not
-a benchmark report. Product status, support matrices, repository branches, and
-cloud offers can change; recheck the linked primary sources before acting on a
-recommendation._
+_Research snapshot: 2026-08-05; adoption inventory rechecked 2026-08-06. This
+is a source-backed decision document, not a benchmark report. Product status,
+support matrices, repository branches, and cloud offers can change; recheck the
+linked primary sources before acting on a recommendation._
 
 ## Executive conclusion
 
@@ -48,6 +48,59 @@ new Core SDK distribution and observability surfaces more systematically,
 pilot hipBLASLt tuning and TraceLens on already-cached hipEngine workloads,
 and selectively mine AITER/Opus/CK for ideas that survive hipEngine's own
 correctness and benchmark gates.
+
+## Current adoption inventory
+
+This is the consolidated answer to “what are we already using, and what are we
+not using yet?” It records hipEngine tree state, not merely upstream
+availability. The 2026-08-06 check searched production code, kernels, scripts,
+tests, and package metadata; a name appearing only in documentation or a model
+artifact is not counted as an integration.
+
+### Already used or partially used
+
+| Surface | Current hipEngine state | Remaining gap |
+| --- | --- | --- |
+| HIP runtime, ROCr-facing APIs, native `hipcc`, and HIP graphs | **Actively used.** The torch-free runtime owns raw pointers, streams, events, graph capture/replay, native gfx1100/gfx1151 builds, and cached shared-object loading. | Continue version-pinned upgrade tests; do not replace native code objects with the currently problematic generic SPIR-V path. |
+| TheRock / ROCm SDK wheel layout | **Partially used.** Scripts resolve TheRock roots and architecture-specific libraries, including the SDK ROCTx library. | There is no single normalized benchmark manifest capturing SDK version, targets, package lock, driver, compiler, profiler, SMI, and memory policy together. |
+| rocBLAS and hipBLASLt | **Actively used.** Direct `ctypes` bindings and shape-qualified hipBLASLt heuristic schedules exist; some workloads exhaustively screen returned zero-workspace heuristics. | The official offline tuner and version/target-qualified tuning override files are not used. The generic convenience selector still defaults to a fixed preferred position where a more specific route does not override it. |
+| `rocprofv3`, HIP traces, and ROCTx selected regions | **Actively used.** Cached final-child kernel/HIP traces, selected regions, resource rows, and compact summaries are established evidence paths. | Counter discovery with `rocprofv3-avail`, a standard architecture-qualified counter set, and repeatable counter-to-bottleneck reports are absent. |
+| AOTriton | **Selectively used.** A versioned runtime is retained for separately gated prefill attention paths. | This does not provide AITER, CK, rocWMMA, `KVLiveSpans` compatibility, or general framework integration. Each target/shape remains separately gated. |
+| AMD matrix instructions | **Actively used through handwritten HIP/compiler builtins.** hipEngine has in-tree gfx11 WMMA kernels. | This is not an integration of the rocWMMA header library; there are no rocWMMA includes or calls in the production tree. |
+| Hardware inventory | **Manually used.** `rocminfo`, compiler versions, profiler versions, and machine-specific facts appear in benchmark protocols and artifacts. | AMD SMI APU/GTT/power/clock/throttle capture is not yet a uniform automated artifact field. |
+
+### Not yet used
+
+“Not yet used” does not automatically mean “should be installed.” The
+disposition column distinguishes the next useful pilots from capabilities that
+should remain deferred under the current architecture and hardware.
+
+| Surface not currently integrated | Evidence of current state | Disposition / next gate |
+| --- | --- | --- |
+| Reproducible ROCm platform manifest | TheRock paths are resolved in several scripts, but no helper captures `rocm_sdk version`, `rocm_sdk targets`, package set, driver/compiler/profiler versions, AMD SMI state, and GTT policy as one normalized record. | **P0 adopt.** Add a read-only helper or common artifact section with negligible benchmark overhead. |
+| hipBLASLt offline tuner | No `hipblaslt-bench`, `HIPBLASLT_TUNING_FILE`, or `HIPBLASLT_TUNING_OVERRIDE_FILE` use exists. Current screens enumerate the algorithms returned through the C API. | **P0 bounded pilot.** Tune only real production descriptors; key results by library build, gfx target, shape/layout/types, epilogue, and workspace ceiling. Compare against the strong existing manual screens rather than assuming a win. |
+| `rocprofv3-avail` and standardized hardware counters | No scripted counter-availability query or retained common counter bundle exists. Existing profiling is predominantly kernel/HIP/marker tracing. | **P0 adopt/pilot.** Enumerate on each exact agent, collect the smallest question-specific set, and never use profiler-perturbed throughput as a performance claim. |
+| TraceLens | No code, script, dependency, or report artifact uses it. | **P0 isolated offline pilot.** Run it in a disposable environment against a copy of an existing gfx11 ROCprof JSON/PFTrace; retain only if it preserves kernel identity and adds actionable attribution. |
+| Automated AMD SMI provenance | No production or benchmark script invokes `amd-smi`; current hardware metadata is assembled through other/manual paths. | **P0 adopt for read-only metadata.** Capture clocks, power, temperature, throttling, memory, and `node --gtt` where available. Keep privileged mutations separate. |
+| AITER Opus and device-only HSACO loading | The build path invokes `hipcc -shared -fPIC` and loads `.so` files with `ctypes`. There is no Opus include, `-D__HIPCC_RTC__`, `hipcc --genco`, or raw HIP-module loader path. | **P1 build-time pilot.** Compare one isolated kernel's cold compile wall, artifact size, cached load, graph compatibility, trace identity, and exact output on both native targets. |
+| ROCm Systems Profiler / ROCPD | No `rocprofiler-systems`, `rocprof-sys`, or ROCPD workflow exists in code or scripts. | **P1 pilot.** Use only for a measured host-minus-device gap in an isolated final process. |
+| AMD Quark tooling/importer | No Quark dependency, converter, or importer fixture exists. References to older “Quark” model artifacts are model names, not use of AMD Quark. | **P1 offline fixture.** Generate one tiny artifact, inspect packing/scales/metadata, and require a quant-registry key plus CPU/quality gates before any new runtime path. |
+| gfx1151 GTT/carve-out tuning | GTT size has been observed, but hipEngine has not run a controlled alternate-policy matrix through AMD SMI. | **P2 privileged experiment.** Reboot-scoped, explicitly scheduled, fully reversible, and measured separately for capacity and speed. |
+| TransferBench | No invocation or retained artifact exists. | **Deferred diagnostic.** Use for a concrete copy/topology/residency question; it is not an LLM streaming-bandwidth benchmark. |
+| RCCL | No RCCL/NCCL binding, plugin, or collective path exists. | **P2 future plugin.** Start only with suitable multi-GPU hardware, topology, failure semantics, and a matched single-GPU baseline. |
+| HIP Execution Context / CU partitioning | No execution-context API path exists. | **Deferred research.** Relevant to QoS or multi-tenancy, not a default single-request speed path. |
+| Batch managed-memory discard/prefetch APIs | No `hipMemDiscardBatchAsync` or `hipMemPrefetchBatchAsync` path exists. | **Deferred until paging exists.** Do not make resident weights/workspaces pageable merely to use the API. |
+| Direct AITER, Composable Kernel, or rocWMMA dependency | No production integration exists. AOTriton's internal `aiter` namespace is unrelated to installing AMD AITER; handwritten WMMA builtins are not rocWMMA. | **Reference/narrow target-qualified pilots only.** Preserve in-tree source ownership, raw-pointer ABI, exact fallback, and gfx-specific gates. |
+| Hyperloom, Magpie, and AMD Skills automation | None is installed or invoked by hipEngine. | **Intentional non-adoption except isolated pilots.** TraceLens is the first useful component; Magpie is optional for one microbenchmark. Do not run Hyperloom end to end or blanket-install Skills on current gfx11/shared-worktree scope. |
+| MIGraphX, ONNX Runtime ROCm EP, Enterprise AI stack, and Infinity Hub | No integration exists. | **Intentional defer/reject for current scope.** Their validated hardware/runtime/deployment layers do not match the current gfx11 kernel-first engine. |
+
+The shortest useful implementation sequence is therefore: (1) normalized ROCm
+and AMD SMI provenance, (2) standardized counter availability/capture, (3) an
+offline hipBLASLt tuner comparison against existing manual heuristic screens,
+then (4) one disposable TraceLens trial. The Opus/HSACO, Systems Profiler, and
+Quark experiments follow only when their stated build-time, host-gap, or quant
+questions are active. Multi-GPU, paging, QoS, and deployment-stack work remains
+conditional rather than latent required work.
 
 ## Scope and method
 

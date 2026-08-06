@@ -204676,3 +204676,19 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   and correct the capability comment to say *capability* denial rather than
   implying an allocation-exception fallback. SH2-M3 is complete; proceed to
   SH2-D1 without stopping the campaign.
+
+## 2026-08-06 — Consolidate the ROCm.AI adoption inventory
+
+- Expand `docs/ROCM-AI.md` with a tree-state inventory of seven actively or
+  partially used surfaces and sixteen not-yet-used or intentionally deferred
+  surfaces. Each row records current evidence, the remaining gap, and a
+  P0/P1/P2 or deferred disposition rather than treating upstream availability
+  as an integration.
+- The recommended sequence is normalized ROCm/AMD SMI provenance, standardized
+  counter availability and capture, an offline hipBLASLt tuner comparison, and
+  one disposable TraceLens trial. Opus/HSACO, Systems Profiler, and Quark stay
+  question-driven follow-ups; multi-GPU, paging, QoS, and deployment stacks
+  remain conditional.
+- This is a docs/process unit with no performance claim or runtime change. The
+  complete 1,007-line document was reread; all relative Markdown link targets
+  exist, and `git diff --check` passes.
