@@ -26,6 +26,7 @@ from hipengine.loading.qwen35_gguf import (
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
 from hipengine.quant.gguf_t16 import (
+    repack_gguf_q5_k_qmicro_tile16,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
     repack_gguf_q8_0_tile16,
@@ -40,6 +41,7 @@ LAYOUT_GGUF_EXPERT_PACK8_SIDECAR = "gguf_expert_pack8_v1"
 LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
 LAYOUT_GGUF_Q4_K_X8 = "gguf_q4_k_x8_v1"
 LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
+LAYOUT_GGUF_Q5_K_QMICRO_T16 = "gguf_q5_k_qmicro_t16_v1"
 LAYOUT_GGUF_Q6_K_T16 = "gguf_q6_k_t16_v1"
 LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
 LAYOUT_GGUF_Q5_K_X8 = "gguf_q5_k_x8_v1"
@@ -550,8 +552,8 @@ def _spec_for_tensor(
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
                 source=tensor,
-                quant_key="gguf_q5_k_t16_v1",
-                layout=LAYOUT_GGUF_Q5_K_T16,
+                quant_key="gguf_q5_k_qmicro_t16_v1",
+                layout=LAYOUT_GGUF_Q5_K_QMICRO_T16,
                 allocation_names=("tiles",),
             )
         return Qwen35GGUFWeightSpec(
@@ -816,6 +818,7 @@ def _materialize_spec(
         LAYOUT_GGUF_Q4_K_T16,
         LAYOUT_GGUF_Q4_K_X8,
         LAYOUT_GGUF_Q5_K_T16,
+        LAYOUT_GGUF_Q5_K_QMICRO_T16,
         LAYOUT_GGUF_Q6_K_T16,
         LAYOUT_GGUF_Q8_0_T16,
         LAYOUT_GGUF_Q5_K_X8,
@@ -827,6 +830,8 @@ def _materialize_spec(
             packed = repack_gguf_q4_k_x8(raw)
         elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
             packed = repack_gguf_q5_k_tile16(raw)
+        elif spec.layout == LAYOUT_GGUF_Q5_K_QMICRO_T16:
+            packed = repack_gguf_q5_k_qmicro_tile16(raw)
         elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
             packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
         elif spec.layout == LAYOUT_GGUF_Q5_K_X8:
@@ -927,6 +932,7 @@ __all__ = [
     "LAYOUT_GGUF_EXPERT_PACK8_SIDECAR",
     "LAYOUT_GGUF_Q4_K_T16",
     "LAYOUT_GGUF_Q4_K_X8",
+    "LAYOUT_GGUF_Q5_K_QMICRO_T16",
     "LAYOUT_GGUF_Q5_K_T16",
     "LAYOUT_GGUF_Q5_K_X8",
     "LAYOUT_GGUF_Q6_K_T16",

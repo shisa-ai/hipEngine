@@ -9,12 +9,41 @@ from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q5_K_QMICRO_T16,
     Qwen35GGUFMaterializationPlan,
     Qwen35GGUFWeightSpec,
     _gguf_ssm_a_to_kernel_a_log,
     audit_qwen35_gguf_precision_contractions,
+    plan_qwen35_gguf_weight_spec,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
+
+
+def test_selected_q5_decode_repack_uses_qmicro_t16_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_DOWN_RAW", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_X8_REPACK", raising=False)
+    tensor = GGUFTensorInfo(
+        name="blk.0.ffn_down_exps.weight",
+        shape=(256, 2048, 512),
+        ggml_shape=(512, 2048, 256),
+        ggml_type=int(GGMLQuantizationType.Q5_K),
+        ggml_type_name="Q5_K",
+        n_elements=256 * 2048 * 512,
+        nbytes=184_549_376,
+        offset=0,
+        data_offset=0,
+        byte_shape=(256, 2048, 352),
+    )
+
+    spec = plan_qwen35_gguf_weight_spec(
+        "layers.0.ffn_down_exps", tensor, decode_repack=True
+    )
+
+    assert spec.layout == LAYOUT_GGUF_Q5_K_QMICRO_T16
+    assert spec.quant_key == "gguf_q5_k_qmicro_t16_v1"
+    assert spec.allocation_names == ("tiles",)
 
 
 def test_gguf_ssm_a_materialization_converts_decay_coefficients_to_kernel_log() -> None:

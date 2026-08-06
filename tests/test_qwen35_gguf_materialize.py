@@ -23,6 +23,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_EXPERT_PACK8_SIDECAR,
     LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q4_K_X8,
+    LAYOUT_GGUF_Q5_K_QMICRO_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q5_K_X8,
     LAYOUT_GGUF_Q6_K_T16,
@@ -128,8 +129,8 @@ def test_qwen35moe_decode_repack_plan_replaces_covered_weights(monkeypatch: pyte
     assert layer0["ffn_gate_exps"].allocation_names == ("tiles",)
     assert layer0["ffn_gate_exps"].sidecar_layouts == ()
     assert layer0["ffn_up_exps"].layout == LAYOUT_GGUF_Q4_K_T16
-    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
-    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_t16_v1"
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_QMICRO_T16
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_qmicro_t16_v1"
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
     assert layer0["ffn_gate_shexp"].quant_key == "gguf_q8_0_t16_v1"
     assert layer0["ffn_gate_inp"].layout == LAYOUT_DENSE_F32
@@ -237,8 +238,8 @@ def test_qwen35moe_decode_repack_can_plan_q6_only_x8(monkeypatch: pytest.MonkeyP
     plan = plan_qwen35_gguf_materialization(model_map)
 
     layer0 = plan.layer_specs[0]
-    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
-    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_t16_v1"
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_QMICRO_T16
+    assert layer0["ffn_down_exps"].quant_key == "gguf_q5_k_qmicro_t16_v1"
 
     q6_down = next(
         layer["ffn_down_exps"]
@@ -295,7 +296,7 @@ def test_qwen35moe_decode_repack_can_plan_selected_gate_up_x8(monkeypatch: pytes
     assert layer0["ffn_gate_exps"].allocation_names == ("tiles",)
     assert layer0["ffn_up_exps"].layout == LAYOUT_GGUF_Q4_K_X8
     assert layer0["ffn_up_exps"].quant_key == "gguf_q4_k_x8_v1"
-    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_QMICRO_T16
 
 
 def test_qwen35moe_decode_repack_can_keep_selected_gate_up_raw(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -316,7 +317,7 @@ def test_qwen35moe_decode_repack_can_keep_selected_gate_up_raw(monkeypatch: pyte
     assert layer0["ffn_up_exps"].layout == LAYOUT_RAW_GGUF
     assert layer0["ffn_up_exps"].quant_key == "gguf_q4_k"
     assert layer0["ffn_up_exps"].allocation_names == ("raw",)
-    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_T16
+    assert layer0["ffn_down_exps"].layout == LAYOUT_GGUF_Q5_K_QMICRO_T16
 
 
 def test_qwen35moe_selected_gate_up_raw_takes_precedence_over_x8(monkeypatch: pytest.MonkeyPatch) -> None:

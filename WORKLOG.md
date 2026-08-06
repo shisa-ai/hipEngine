@@ -204840,3 +204840,71 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   176-byte Q5_K blocks; inverse reconstruction and dequantized values are
   exact. Both compact layouts now have four-axis quant plugin keys while legacy
   T16 remains untouched. Focused Q4/Q5 host validation passes **34/34**.
+
+### SH2-M4 device and actual-weight admission
+
+- Add registered exact compact Q4 selected dual/SILU decode, Q5 selected-down
+  decode, and Q4/Q5 compact WMMA prefill wrappers while retaining every legacy
+  T16 key as fallback. Focused BF16/FP16 GPU byte/CPU-reference coverage passes;
+  the current post-route focused bundle passes **18/18**.
+- Cached `rocprofv3 --kernel-trace` passes all four representative compact
+  routes. Direct compact Q4 is **31,379 ns, 176 VGPR, 1,024 B LDS, 0 scratch**;
+  direct compact Q5 is **121,909 ns, 56 VGPR, 512 B LDS, 0 scratch**. Compact
+  Q4 WMMA is **44,483 ns, 56 VGPR, 0 LDS/scratch** and compact Q5 WMMA is
+  **30,578 ns, 72 VGPR, 0 LDS/scratch**. Trace CSV SHA-256 is
+  `391d2c959f7b7c0d1ebb2ed7b25b328007423d439e17058419ababe28c9cf576`.
+- Freeze `scripts/gguf_sh2_m4_compact_t16_leaf.py` against the actual
+  22,663,387,424-byte Qwen3.6 GGUF. The deterministic permutation covers all
+  256 experts in 32 top-8 groups. Current and compact outputs are BF16-bit
+  exact and the byte census reproduces **490,733,568 bytes / 0.45703125 GiB**.
+- The full Q4+Q5 leaf misses the frozen <=1% decode gate: Q4 is
+  **36.740 -> 42.543 us (+5.803 us/call)**, Q5 is
+  **25.850 -> 27.676 us (+1.826 us/call)**, projecting
+  **+0.299674 ms/token / +1.598%** at the deployed 40-Q4/37-Q5 call mix.
+  Two bounded unpack schedules remain exact but worsen the projection to
+  **+2.494%** (preload all metadata) and **+3.239%** (wave broadcast), matching
+  the already-closed qmicro/tile-ladder failure modes. Restore the best
+  per-block LDS expansion; do not route compact Q4.
+- Split the separable owner rather than discard an exact retainable win. Q5
+  alone removes **155,189,248 bytes / 0.14453125 GiB** and projects only
+  **+0.067559 ms/token / +0.360%**. RED for default Q5 materialization fails on
+  the absent compact layout; GREEN plans all 37 selected Q5 down tensors as
+  `gguf_q5_k_qmicro_t16_v1`, leaves all 80 Q4 tensors on legacy T16, and maps
+  decode/prefill through four-axis registry keys. CPU materializer/resolver
+  coverage passes **15/15**. Full state, prefill/decode wall, whole-GTT, and
+  lifecycle gates remain pending before this partial owner can be retained.
+
+### SH2-M4 Q5 retention closeout
+
+- The first `gguf_sh_c0_profile.py` preflight fails before model load because
+  its default `.venv` ROCTX SDK path is absent. Re-run with the explicit
+  TheRock `librocprofiler-sdk-roctx.so.1`; the full 512 wall/GTT/trace process
+  then passes. This is a tooling-path correction, not a changed protocol.
+- Fresh Q5-compact 512/128 is **52.983235 tok/s**, all tokens exact, versus the
+  SH2-C1 **53.332177 tok/s (-0.654%)**. Profiled GPU is **17.447772 ms/token**.
+  Tracked ownership falls **21.214187 -> 21.069656 GiB** (exactly
+  **155,189,248 bytes**) and whole-GTT falls **21.648426 -> 21.504063 GiB**
+  (**155,009,024 bytes** sampled). Before-close ownership is 22,623,371,008
+  bytes and tracked after close is zero.
+- Matching qwen sweep prefill/decode moves **1372.347/53.383 ->
+  1366.497/53.138 tok/s (-0.426%/-0.459%)**, both inside the frozen 1% gate,
+  with stable exact token 9707. Raw sweep SHA-256 is
+  `33bdf217...a709`; fresh wall/GTT artifact SHA-256 is `b97d32ba...b810`.
+- The production trace names exactly **333**
+  `q5_k_qmicro_t16_selected_gemv_kernel<uint16_t,8>` calls at median
+  **35,427 ns, VGPR56, LDS512, scratch0** and exactly **37**
+  `gguf_k_t16_selected_wmma_prefill_compact_kernel<uint16_t,5,true>` calls at
+  median **1,489,917 ns, VGPR72, LDS0, scratch0**. CSV SHA-256 is
+  `66a91c5d5fa7c5130f26919b201260600ed6a9bfc971af94c37b8895d83c1b15`.
+- Run clean-parent `70b338a0e` and candidate state children in isolated
+  worktrees at **512/4K/32K/64K**, four fixed-input transitions each. FP32
+  prefill logits, hidden/layer/Conv/GDN/live-BF16-KV prompt state, trajectory,
+  and final state are byte-identical and finite at every depth. Baseline/
+  candidate JSON SHA-256 values are `3e4abeca...ebeb` / `5e859e17...77dd`.
+  Remove the temporary baseline worktree after comparison.
+- Affected CPU dispatch/materializer coverage passes **76/76**; post-restore
+  compact GPU coverage passes **18/18** and the selected GEMV build hash returns
+  to the first/best `08f78adef7812de5` object. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`.
+  Retain Q5 compact metadata as default, keep Q4 legacy T16 in production, and
+  proceed immediately to SH2-C2 rather than stopping the campaign.

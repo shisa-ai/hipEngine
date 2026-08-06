@@ -5979,6 +5979,27 @@ BF16-byte exact, but actual layer-1 natural-M512 timing regresses
 more cache fills outweighs the smaller workgroup; local128 remains production
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`).
 
+### SH2-M4 compact selected T16 metadata
+
+`quant/gguf_t16_selected_gemv.{hip,py}` and the selected-prefill T16 families
+register exact `gguf_q4_k_qmicro_t16_v1` and
+`gguf_q5_k_qmicro_t16_v1` consumers. The layouts preserve FP16 `d/dmin` and
+quant planes while replacing each expanded four-column scale/min group with a
+24-bit record. Legacy 2,368-byte Q4 and 2,880-byte Q5 T16 keys remain registered
+fallbacks.
+
+The full Q4+Q5 route is not a production kernel policy: its actual-weight leaf
+projects **+1.598%** decode, and bounded preload/wave-broadcast unpack variants
+regress further. Q4 stays on current T16. The separable 2,816-byte Q5 route is
+production-default for the 37 selected down tensors and removes exactly
+**155,189,248 bytes / 0.14453125 GiB**. Production tracing names
+`q5_k_qmicro_t16_selected_gemv_kernel<unsigned short,8>` at local128,
+VGPR56, LDS512, scratch0 and
+`gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short,5,true>` at
+local32, VGPR72, LDS0, scratch0. Four-depth state is byte-exact and 512
+prefill/decode remain within 1%. Evidence:
+[`SH2-M4 retained Q5`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json).
+
 ## DFlash / MTP lineage map
 
 DFlash and MTP are tracked in `docs/source_lineage.json` before any native port
