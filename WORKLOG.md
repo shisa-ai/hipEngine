@@ -205579,3 +205579,7 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Publish the no-claim audit at
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json`
   (SHA-256 `d2b5a81d...2c17`) and update the campaign package table/guardrails.
+- Publication follow-up adds the same no-claim carried matrix and SH10-SH14
+  order to `docs/GGUF.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`; no metric is remeasured or promoted by this docs
+  sync.
