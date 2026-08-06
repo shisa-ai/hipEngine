@@ -2408,6 +2408,21 @@ remains the fallback. Proceed to SH3-C1 rather than treating this memory result
 as campaign closure. Evidence:
 [`2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json).
 
+SH3-C1 freshly certifies that committed host-policy stack at every publication
+depth. Canonical 512/4K/32K/64K prefill/decode is
+**1368.743/53.177**, **1436.083/55.664**, **1148.130/46.241**, and
+**939.441/39.602 tok/s**. Independent tracked peak is
+**20.566/20.951/21.597/22.336 GiB** and 10-ms whole-GTT is
+**21.000/21.499/22.152/22.890 GiB**; all allocations close to zero. All four
+prefill guards, repeated IDs, 628-dispatch cached traces, and the fresh 18-prompt
+oracle pass **1,350 token plus 54,000 hidden comparisons** without mismatch.
+Pinned-fork F16 remains faster at every depth and uses
+**0.169/0.339/0.156/0.054 GiB** less whole-GTT, so C1, C2, fork-F16 decode, and
+fork-F16 memory parity all remain **0/4**. The campaign continues to SH4-D1's
+private-c1 routed/shared MoE branch-overlap screen; the current 512 trace bounds
+its perfect-hide opportunity at **1.066 ms/token**. Evidence:
+[`2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat
