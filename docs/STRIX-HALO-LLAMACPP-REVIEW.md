@@ -578,8 +578,8 @@ evidence.
 | **SH2-D1** | P10.D1 mixed Q4T16 -> Q5/Q6T16 output-tiled selected-MoE composite. | **Complete: exact, below admission; no production change.** Down+tail reaches only **1.053x / 0.080 ms/token** aggregate. Full cooperative and lifecycle-correct standard-queue composites regress to **0.520x/0.739x**; the cooperative trace also crashes in ROCr. Named standard traces are scratch-free. All transient surfaces are removed; no model routing. |
 | **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | **Checkpoint complete: continue.** Fresh clean 512 is **53.332 tok/s, 21.214 GiB tracked, 21.648 GiB whole-GTT**; unchanged 4K+ rows carry from SH-G. C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the new 0.457031-GiB compact-T16 metadata owner. |
 | **SH2-M4** | Compact selected-expert Q4/Q5 T16 scale/min metadata. | **Complete: retain/default Q5 subset; reject Q4 production route.** Compact Q5 removes exactly **155,189,248 bytes / 0.144531 GiB** with 512 prefill/decode changes **-0.426%/-0.459%**, whole-GTT **-0.144363 GiB**, scratch-free named kernels, and byte-exact four-depth state. Full Q4+Q5 projects **+1.598%** decode, so all 80 Q4 tensors remain current T16. |
-| **SH2-C2** | Post-M4 cumulative re-attribution. | Recompute all four parity rows and select another structurally new owner if any required row still misses. |
-| **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | Run only after SH2-C2. Mark the thread objective complete only when the declared beat-fork policy passes; otherwise continue cumulative re-attribution. |
+| **SH2-C2** | Post-M4 cumulative re-attribution. | **Checkpoint complete: continue to SH2-G.** Fresh 512/4K/32K/64K decode is **53.374/55.851/46.315/39.673 tok/s** and whole-GTT is **21.504/22.003/22.656/23.394 GiB**. Compact Q5 saves 0.144 GiB at every depth, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. Freeze the complete shared-expert composite and runner-safe host embedding as post-milestone owners. |
+| **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | **Next / mandatory.** Rerun the pinned fork only after this fresh C2 matrix. Mark the thread objective complete only when the declared beat-fork policy passes; otherwise advance to the frozen SH3 decode/memory owners and continue cumulative re-attribution. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -675,6 +675,26 @@ launches at **72 VGPR, 0 LDS/scratch**. Promote Q5 compact metadata by default,
 retain current Q5/Q4 T16 registry fallbacks, and proceed immediately to SH2-C2;
 this memory win does not end the beat-fork objective. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json).
+
+SH2-C2 freshly measures committed `e39aba0e1` at all four depths rather than
+carrying long rows. Decode is **53.374/55.851/46.315/39.673 tok/s**, tracked
+peak is **21.070/21.454/22.100/22.839 GiB**, and whole-GTT is
+**21.504/22.003/22.656/23.394 GiB** at 512/4K/32K/64K. Every repeated token is
+exact, tracked ownership returns to zero, each trace has 628 dispatches/token,
+and compact Q5 is named at 37 calls/token with **0 scratch**. The exact
+0.144531-GiB owner saving therefore reproduces at every depth.
+
+The frozen comparator still yields **0/4 C1, 0/4 C2, 0/4 fork-F16 decode, and
+0/4 fork-F16 whole-GTT**. F16 decode time gaps are
+**3.259/1.919/2.806/3.318 ms/token** and whole-GTT gaps are
+**0.673/0.843/0.660/0.552 GiB**. Independently stacking SH2-M1's measured host
+embedding delta would still be projection, not parity. SH2-G must now freshly
+rerun the pinned fork. If that milestone remains below policy, the next
+structurally new owners are a complete Q8T16 shared-expert gate/up + exact-BF16
+SiLU + down + residual composite (**1.061-1.075 ms/token** scope) and a
+runner-safe exact **540,344,320-byte** host-embedding policy that preserves
+c>N, packed AR, MTP, and device-pointer fallbacks. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

@@ -2346,6 +2346,18 @@ decode at **56 VGPR / 512 B LDS / 0 scratch** and WMMA prefill at
 fallbacks. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json).
 
+SH2-C2 confirms the retained layout at every production context on committed
+`e39aba0e1`. Fresh 512/4K/32K/64K decode is
+**53.374/55.851/46.315/39.673 tok/s** and whole-GTT is
+**21.504/22.003/22.656/23.394 GiB**. The compact Q5 owner remains named at 37
+calls/token, scratch-free, exact, lifecycle-clean, and exactly 0.144531 GiB
+smaller than the pre-M4 tracked state at each depth. This does not establish
+fork parity: C1, C2, fork-F16 decode, and fork-F16 whole-GTT each remain **0/4**.
+SH2-G is the mandatory fresh pinned-fork recertification; if it misses, the
+campaign proceeds to the separately frozen complete shared-expert composite and
+runner-safe host-embedding owners rather than retrying Q4 compaction. Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat
