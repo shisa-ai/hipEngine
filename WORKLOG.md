@@ -208267,3 +208267,33 @@ Vulkan local sizes verbatim will close the measured gap.
   improves and the median paired speedup is **1.020530x**. At the observed seven
   B3 cycles this projects to roughly **6.66 ms/prompt**. This qualifies
   production wiring; it is not yet a retained natural25 topline.
+
+### Production transactional wiring
+
+- Extend the one bounded N2 payload with all target top-1 rows through one
+  stream-ordered 16-byte D2D append; there is still exactly one host readback.
+  Return the graph-owned `TargetVerifyBuffers` and BF16
+  `TargetStateCommitBuffers` descriptors with live request/transaction identity.
+  `Qwen35GGUFTransactionalVerifier.prepare()` now selects this path for
+  full-room, no-logit, session-stream B1/B2/B3 chains, reconstructs the shared
+  accept summary, and checks it against `TargetVerifyBatch.accept_from_top1()`.
+  Caller streams, diagnostic logits, output-cap tails, and pre-launch
+  unsupported captures retain N1/eager behavior. Post-launch failures restore
+  the producer-folded journal and never replay through another path.
+- `commit()` is validation-only for N2: it verifies the scheduler plan, graph
+  buffer identity, and already-published target cursor, then exposes the same
+  device state descriptors to the scheduler. This removes the second accept
+  readback and separate selected-state/hidden commit synchronization instead of
+  re-running host policy after the graph. Compact cycle telemetry reports
+  `target_native_device_accept_commit`; the fixed B1 natural smoke proves both
+  full-room N2 and its independently cached output-cap N1 tail.
+- Final focused W7900 node passes **1/1** with exact B3 reject/partial/full
+  top-1 and acceptance, device-selected Conv/GDN/BF16 hidden state, live K/V,
+  dynamic-position reuse, forced outer rollback after device commit, correction
+  logits, natural provider IDs, N2/N1 fallback telemetry, ownership, and
+  teardown. The first run reached only the expected old one-capture assertion;
+  the repaired assertion records two distinct full-room/tail graph captures and
+  the focused rerun is GREEN. Native-cycle CPU/fake tests pass **29/29** and
+  suite/benchmark contract tests pass **136/136**; Ruff, py_compile, and diff
+  checks pass. Commit this wiring, then run the clean ten-prompt natural25
+  B1-B3 promotion gate against `a3e4912ee`.

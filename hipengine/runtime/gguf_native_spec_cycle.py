@@ -141,6 +141,9 @@ class Qwen35GGUFNativeAcceptCommitResult:
     hidden_seed_rows_ptr: int
     hidden_seed_row_count: int
     hidden_size: int
+    target_top1: list[int] = dataclass_field(default_factory=list)
+    verify_buffers: TargetVerifyBuffers | None = None
+    state_commit_buffers: TargetStateCommitBuffers | None = None
     linear_state_rows_captured: bool = True
     final_linear_state_committed: bool = True
     device_accept_commit: bool = True
@@ -171,6 +174,18 @@ class Qwen35GGUFNativeAcceptCommitResult:
             raise ValueError("native accept/commit result requires all device hidden rows")
         if self.hidden_size <= 0:
             raise ValueError("hidden_size must be positive")
+        if self.target_top1 and (
+            len(self.target_top1) != rows or any(token < 0 for token in self.target_top1)
+        ):
+            raise ValueError("target_top1 must contain one non-negative token per target row")
+        if self.verify_buffers is not None and self.verify_buffers.rows != rows:
+            raise ValueError("native verify buffers must match the target row count")
+        if (
+            self.state_commit_buffers is not None
+            and self.state_commit_buffers.request_ids
+            != (() if self.verify_buffers is None else self.verify_buffers.request_ids)
+        ):
+            raise ValueError("native verify/state buffer request ids must match")
         if self.hidden_seeds.shape != (0, 0) or self.hidden_seeds.dtype != np.float32:
             raise ValueError("device accept/commit must not return host hidden rows")
 
@@ -626,6 +641,8 @@ class Qwen35GGUFNativeB2TargetGraph:
     result_payload: Tensor | None
     visible_output_ids: Tensor | None
     visible_output_lengths: Tensor | None
+    target_top1_payload: Tensor | None
+    pre_output_commit_buffers: TargetStateCommitBuffers | None
     accept_library: Any | None
     commit_library: Any | None
     device_accept_commit: bool
@@ -756,6 +773,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             committed_length = int(payload[6])
             visible_length = int(payload[ACCEPT_PACKED_PAYLOAD_FIELDS])
             output_start = ACCEPT_PACKED_PAYLOAD_FIELDS + 1
+            target_top1_start = output_start + self.rows
             if (
                 accepted < 0
                 or accepted >= self.rows
@@ -763,13 +781,33 @@ class Qwen35GGUFNativeB2TargetGraph:
                 or committed_length != accepted + 1
                 or visible_length != accepted + 1
                 or next_token < 0
-                or output_start + visible_length > payload.size
+                or output_start + visible_length > target_top1_start
+                or target_top1_start + self.rows > payload.size
             ):
                 raise RuntimeError("N2 native accept/commit returned an invalid bounded payload")
             output_tokens = [
                 int(token)
                 for token in payload[output_start:output_start + visible_length].tolist()
             ]
+            target_top1 = [
+                int(token)
+                for token in payload[target_top1_start:target_top1_start + self.rows].tolist()
+            ]
+            if self.accept_buffers is None or self.pre_output_commit_buffers is None:
+                raise RuntimeError("N2 native device buffer descriptors are missing")
+            live_verify_buffers = replace(
+                self.accept_buffers,
+                request_ids=batch.request_ids,
+                transaction_id=int(control.transaction_id),
+                candidate_counts=batch.candidate_counts,
+                draft_depth=batch.draft_depth,
+                tree_shape=batch.tree_shape,
+            )
+            live_state_commit_buffers = replace(
+                self.pre_output_commit_buffers,
+                request_ids=batch.request_ids,
+                transaction_id=int(control.transaction_id),
+            )
             if self.selected_pre_output_norm_hidden_bf16 is None:
                 raise RuntimeError("N2 native selected trunk-hidden buffer is missing")
             self.session._last_target_hidden_ptr = int(
@@ -793,6 +831,9 @@ class Qwen35GGUFNativeB2TargetGraph:
                 hidden_seed_rows_ptr=int(self.hidden_seed_rows.ptr),
                 hidden_seed_row_count=self.rows,
                 hidden_size=hidden_size,
+                target_top1=target_top1,
+                verify_buffers=live_verify_buffers,
+                state_commit_buffers=live_state_commit_buffers,
             )
         else:
             token_host = np.empty((self.rows,), dtype=np.int64)
@@ -1122,6 +1163,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
         result_payload = None
         visible_output_ids = None
         visible_output_lengths = None
+        target_top1_payload = None
         commit_buffers = None
         pre_output_commit_buffers = None
         candidate_counts = None
@@ -1176,7 +1218,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
             )
             result_payload = workspace.reserve_tensor(
                 "native_spec_result_payload",
-                (ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + rows,),
+                (ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + 2 * rows,),
                 DType.INT32,
             )
             visible_output_lengths = Tensor.from_handle(
@@ -1187,6 +1229,13 @@ def capture_qwen35_gguf_native_b2_target_graph(
             )
             visible_output_ids = Tensor.from_handle(
                 result_payload.ptr + (ACCEPT_PACKED_PAYLOAD_FIELDS + 1) * DType.INT32.itemsize,
+                (rows,),
+                DType.INT32,
+                workspace.device,
+            )
+            target_top1_payload = Tensor.from_handle(
+                result_payload.ptr
+                + (ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + rows) * DType.INT32.itemsize,
                 (rows,),
                 DType.INT32,
                 workspace.device,
@@ -1327,6 +1376,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 assert remaining_decode_tensor is not None
                 assert result_payload is not None
                 assert visible_output_ids is not None and visible_output_lengths is not None
+                assert target_top1_payload is not None
                 assert commit_buffers is not None
                 assert pre_output_commit_buffers is not None
                 assert pre_output_norm_hidden_rows is not None
@@ -1399,6 +1449,13 @@ def capture_qwen35_gguf_native_b2_target_graph(
                     library=commit_library,
                     runtime=runtime,
                 )
+                runtime.memcpy_async(
+                    target_top1_payload.ptr,
+                    accept_buffers.target_top1.ptr,
+                    rows * DType.INT32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
             graph = runtime.stream_end_capture(stream)
         except Exception:
             try:
@@ -1451,6 +1508,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
             result_payload=result_payload,
             visible_output_ids=visible_output_ids,
             visible_output_lengths=visible_output_lengths,
+            target_top1_payload=target_top1_payload,
+            pre_output_commit_buffers=pre_output_commit_buffers,
             accept_library=accept_library,
             commit_library=commit_library,
             device_accept_commit=bool(device_accept_commit),
