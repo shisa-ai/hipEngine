@@ -255,6 +255,7 @@ def materialize_qwen35_gguf_weights(
     reader_or_path: GGUFReader | str | Path,
     *,
     selected_slots: Iterable[str] | None = None,
+    deferred_device_slots: Iterable[str] | None = None,
     decode_repack: bool | None = None,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
@@ -264,25 +265,44 @@ def materialize_qwen35_gguf_weights(
 
     ``selected_slots`` is a test/debug hook using slot paths such as
     ``root.output_norm`` or ``layers.0.attn_qkv``. Production callers leave it
-    unset to materialize the full model.
+    unset to materialize the full model. ``deferred_device_slots`` retains the
+    validated weight specs but performs no device allocation for those slots;
+    callers must materialize them before passing the records to a kernel.
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
     plan = plan_qwen35_gguf_materialization(model_map, decode_repack=decode_repack)
     selected = None if selected_slots is None else set(selected_slots)
+    deferred = set() if deferred_device_slots is None else {str(slot) for slot in deferred_device_slots}
+    known_slots = {spec.slot_path for spec in plan.specs}
+    unknown_deferred = tuple(sorted(deferred - known_slots))
+    if unknown_deferred:
+        raise ValueError(
+            "unknown deferred GGUF device slot(s): " + ", ".join(unknown_deferred)
+        )
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
-    try:
-        root_weights = {
-            slot: _materialize_or_alias(
-                spec,
-                reader,
-                materialized,
-                selected,
-                device=device,
-                runtime=runtime,
+
+    def load(spec: Qwen35GGUFWeightSpec) -> Qwen35GGUFDeviceWeight:
+        if spec.slot_path in deferred:
+            return Qwen35GGUFDeviceWeight(
+                spec=spec,
+                allocations=MappingProxyType({}),
                 backend=backend,
             )
+        return _materialize_or_alias(
+            spec,
+            reader,
+            materialized,
+            selected,
+            device=device,
+            runtime=runtime,
+            backend=backend,
+        )
+
+    try:
+        root_weights = {
+            slot: load(spec)
             for slot, spec in plan.root_specs.items()
             if selected is None or spec.slot_path in selected
         }
@@ -292,15 +312,7 @@ def materialize_qwen35_gguf_weights(
                 layer_type=layer.layer_type,
                 weights=MappingProxyType(
                     {
-                        slot: _materialize_or_alias(
-                            plan.layer_specs[layer.layer_id][slot],
-                            reader,
-                            materialized,
-                            selected,
-                            device=device,
-                            runtime=runtime,
-                            backend=backend,
-                        )
+                        slot: load(plan.layer_specs[layer.layer_id][slot])
                         for slot in plan.layer_specs[layer.layer_id]
                         if selected is None or plan.layer_specs[layer.layer_id][slot].slot_path in selected
                     }
