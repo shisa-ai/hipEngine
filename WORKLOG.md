@@ -205712,3 +205712,45 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json`
   (SHA-256 `4ce96103...a4b8`) and activate SH12-C0's complete private-c1 eager
   synchronization/D2H census.
+
+## 2026-08-06 — Retain SH12-C0 default-stream sample drain deletion
+
+- Complete the marker-qualified private-c1 eager boundary census from the
+  immutable SH6-C1 512 trace and cross-check it against current SH10. Each
+  canonical `return_logits=False` transition has one required 4-KiB host-
+  embedding H2D, one explicit device drain before sampling readback, one
+  required 8-byte token-index D2H, and one profiler-harness-only post-step
+  drain. There are no per-layer D2H/scalar reads. SH6 -> SH10 changes
+  `hipMemcpy` **815 -> 775** while `hipDeviceSynchronize` remains **20** and
+  launches remain **6,840**, confirming SH9's 40-copy reduction is prefill-only.
+  Census JSON SHA-256 is `a61fdf55...1219`.
+- Remove only the eager default-stream `device_synchronize()` immediately before
+  `_read_sample()`: its first operation is a synchronous 8-byte D2H and is
+  already the required completion boundary. Preserve explicit
+  `stream_synchronize(stream)` for every non-default stream. Add CPU contracts
+  for both call sequences.
+- A one-session, one-discard, nine-counterbalanced-pair 512/128 screen moves
+  decode **53.524 -> 54.608 tok/s (+2.027%, -0.371 ms/token)** with **9/9 pair
+  wins** and identical 128-token trajectories. Raw SHA-256 is
+  `5c7a3bdb...d322`. Treat this as the sensitive paired measurement, not an
+  independent-process topline.
+- Independent one-discard/three-run control/candidate processes are positive but
+  overlap: decode **53.898 -> 54.132 tok/s (+0.433%, -0.080 ms/token)** and
+  prefill **1358.809 -> 1367.195 (+0.617%)**. Tracked and sampled whole-GTT
+  peaks are identical at **20.566421/20.982719 GiB**, final IDs remain 9707,
+  and both closes return to zero. Summary SHA-256 is `2b407eaa...9f1`; do not
+  advertise the paired +2.027% as an independent-process gain.
+- Complete prefill plus all 40 layer outputs, 30 Conv/GDN state pairs, 10 live
+  BF16-KV pairs, four teacher-forced logits/IDs, and final state remain byte-
+  exact. Candidate/comparison SHA-256 values are `74f349a0...97e9` and
+  `c994bcd4...cb01`.
+- A final fully cached 512/8 HIP/kernel trace removes exactly the ten production
+  sample drains: `hipDeviceSynchronize` **20 -> 10**, while `hipMemcpy` stays
+  **775** and kernel launches stay **6,840**. The remaining ten drains belong to
+  the profiling harness. HIP/kernel/profile hashes are
+  `a599b308...5ad4`, `8f4cbe9b...e7a6`, and `4cbffa31...3f8`; no compiler child
+  appears.
+- GREEN validation: sample-sync plus decode-graph bundle **8 passed**; focused
+  compileall and `git diff --check` pass. Retain this exact redundant-boundary
+  deletion as a default-stream launch/synchronization reduction with unchanged
+  memory; SH13-M1 remains next because the campaign objective is open.
