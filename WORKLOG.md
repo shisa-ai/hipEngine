@@ -205151,3 +205151,50 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json`
   (SHA-256 `96aa2686...97b1e`). SH3-C1 is a diagnostic cumulative gate, not a
   performance claim and not campaign completion; proceed immediately to SH4-D1.
+
+## 2026-08-06 — SH4-D1 branch overlap rejected; activate SH5-D1
+
+- Freeze the SH4-D1 contract before routing: gfx1151/private-c1/ordinary eager/
+  default-stream only; fork after router completion; complete shared branch on a
+  nonblocking auxiliary stream; selected branch on caller stream; join before
+  the unchanged combine. Prefill, graph, packed AR, MTP/verifier, diagnostics,
+  shared/c>N, peer backends, and nondefault streams remain serial. Lazy session
+  ownership must clean up stream, two disable-timing events, and one dedicated
+  2-KiB concat row transactionally, including partial allocation failure.
+- Add RED/GREEN fake-HIP contracts, then implement the default-off screen. The
+  dedicated concat row removes the active selected/shared `ffn_gate_up` conflict.
+  `python3 -m pytest tests/test_gfx1151_backend.py
+  tests/test_qwen35_gguf_moe_branch_concurrency.py -q` passes **28/28**. A
+  real-HIP teacher-forced child passes four transitions against fresh serial
+  prefixes, matching final hidden, all Conv/GDN state, live BF16 KV, and token
+  trajectory exactly (SHA-256 `08ba4675...376b`).
+- Run one resident serial/candidate warmup and five counterbalanced 512/128 pairs
+  from `/tmp/sh4_d1_ab.py`. Serial samples are
+  **18.802768/18.860602/18.812951/18.797576/18.811444 ms/token**; candidate is
+  **19.187101/19.206655/19.220771/19.187782/19.231909**. Medians are
+  **18.811444 -> 19.206655 ms/token**, or **53.159130 -> 52.065287 tok/s
+  (-2.057677%, +0.395211 ms/token regression)**. The first complete 128-step
+  trajectory/final BF16 hidden/30 Conv-GDN/10 live-KV-pair snapshot is byte
+  exact. Raw SHA-256 is `82675d99...705a`.
+- Prebuild outside profiling and run a cached-only eight-token
+  `rocprofv3 --kernel-trace --marker-trace --hip-trace` child. The timed windows
+  retain **5,024 dispatches / 628 per token**: **4,064** caller dispatches use
+  queue 1 / stream 0, while **960** shared gate-up/SiLU/down dispatches use queue
+  2 / stream 1. Timestamp intersection proves **189** auxiliary kernels and
+  **0.455550 ms/token** overlap selected gate/up, **33.420%** of the
+  **1.363092-ms/token** auxiliary kernel sum. Thus concurrency is real but
+  incomplete; queue/event overhead and bandwidth contention still lose wall.
+  Kernel/marker/HIP CSV SHA-256 values are `06341b04...ee8`,
+  `6c8ab3f8...130f`, and `fc400415...d90`.
+- Reject because neither >=1% wall nor >=0.5-ms/token saving passes. Remove every
+  transient bridge, capability, policy, scratch, routing, and test surface; final
+  production at parent `cbd5bc9c7` remains the exact serial chain. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json`
+  (SHA-256 `18f636f4...0603`).
+- The beat-fork objective remains open. Do not retry stream overlap or the closed
+  graph/KV/page-head/metadata/schedule ladders. Activate **SH5-D1**, first auditing
+  current and pinned-fork row-1 dense-Q8 arithmetic/layout and then admitting
+  only an actual-weight `2048 -> 8192` plus `2048 -> 4096` byte-neutral vector/
+  layout leaf. Require CPU-oracle correctness, cached no-spill execution, no
+  duplicate resident weights, and >=1.15x or >=0.5-ms/token projected saving
+  before model routing; preserve current Q8T16 prefill and exact fallback.
