@@ -208109,3 +208109,57 @@ Vulkan local sizes verbatim will close the measured gap.
   or server remains active. Fresh B3/B4 Vulkan and hipEngine profile capture is
   the next logical unit; the old `ee0445c99` query ledger must not rank current
   module work.
+
+## 2026-08-06 — Reconcile latest Vulkan/HIP Qwen3.6 critical path
+
+- Capture fresh one-prompt `code_merge_intervals` query profiles from latest
+  tracked-clean llama.cpp `c8e03ce81`: explicit W7900 `Vulkan0`, F16 K/V,
+  prompt cache off, deterministic natural25 request, and B3/B4 draft maxima.
+  B3 returns the same content hash and **17/19** reported draft acceptance at
+  **283.109 ms prompt / 364.603 ms generation / 657.741 ms client wall**; B4
+  returns the same hash and **18/22** at **274.957 / 358.965 / 643.619 ms**.
+  The non-concurrent query logger totals **625.042/606.104 ms**, reconciling to
+  client wall within **4.97%/5.83%**. These synchronized rows rank work only.
+- Capture a clean current hipEngine `07c797c24` B3 trace with the hermetic
+  TheRock ROCm environment, cached builds, SDK ROCTX override, kernel/marker/
+  copy traces, one prompt, and no warmup. Exact greedy output and GPU/CPU accept
+  match pass with **17/21** and cycle ledger `[3,3,2,3,3,0,3]`. Suite decode is
+  **455.737 ms** and the marker is **455.694 ms (-0.009%)**, containing **6,590
+  kernels / 311.225 ms** plus **21 copies / 0.187 ms**.
+- Normalize topology explicitly rather than comparing raw query sums. Remove
+  Vulkan `n=36` prompt rows and first-shape graph-build occurrences; compare
+  seven B3 rows=4 target equivalents, and normalize Vulkan proposal root/TOP_K
+  from 22 to hipEngine's 21 calls. Replace hipEngine's first target/commit
+  graph-capture markers with the mean of passes 2-7. The inferred Vulkan B3
+  decode GPU work is **340.814 ms** versus **364.603 ms** server generation,
+  leaving a disclosed **23.789-ms / 6.52%** host/submission/sampling residual.
+- The exhaustive module result reverses the prior arithmetic-only diagnosis.
+  hipEngine proposal/update kernels are **52.139 vs 65.224 ms** (ahead 13.084),
+  target kernels **255.485 vs 277.203 ms** (ahead 21.718), and complete
+  call-normalized GPU work **311.225 vs 342.427 ms** (ahead 31.202). Semantic
+  rows plus an explicit norm/transport/control remainder sum exactly to both
+  target totals; no unmatched work is silently dropped.
+- Remaining slower semantic rows are Q5 `ssm_out` **22.577 vs 15.144 ms
+  (+7.433)**, Q6 FFN-down **32.602 vs 28.857 (+3.745)**, full-attention K/V
+  **4.958 vs 2.040 (+2.918)**, linear-attention Q6 QKV **14.035 vs 12.268
+  (+1.767)**, and target root **11.762 vs 10.693 (+1.069)**. Counterweights are
+  FFN gate/up+SiLU ahead **12.487 ms**, alpha/beta ahead **3.510**, GDN core
+  ahead **2.932**, and the residual/norm/transport/control remainder ahead
+  **17.015**. Aggregate GPU arithmetic already beats Vulkan.
+- The actual largest deficit is therefore submission. First target capture
+  spends **80.253 ms** in internal gaps. Passes 2-7 still spend **5.215-5.633
+  ms** of internal gap per **835-dispatch** replay. Replacing first target and
+  commit with steady means gives **376.569 ms wall / 311.248 ms kernels / 0.187
+  ms copies**, or **65.134 ms** non-kernel residual versus Vulkan's inferred
+  **23.789 ms**: a **41.346-ms** deficit, almost exactly the canonical natural
+  matched-B3 wall gap **398.262 - 354.598 = 43.664 ms**.
+- Selected Vulkan B4 confirms a separate topology advantage: one fewer target
+  cycle moves normalized target GPU work **275.59 -> 246.21 ms**, while draft
+  work rises **65.22 -> 71.69 ms**. Final closure must still beat complete B4;
+  matching B3 modules is only an intermediate gate.
+- Publish the diagnostic ledger, formulas, exact commands, and raw hashes in
+  `benchmarks/results/2026-08-06-qwen36-27b-latest-vulkan-profile-ledger.json`.
+  D27-R1 is complete. D27-R2 starts with graph/queue/host submission as the
+  largest module, then Q5, Q6-down, full-attention K/V, Q6-QKV, and root. Do not
+  repeat already-rejected graph upload/four-way splitting without a materially
+  different command-buffer or persistent-composite mechanism.

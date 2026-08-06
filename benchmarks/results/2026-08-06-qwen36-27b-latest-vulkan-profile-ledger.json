@@ -1,0 +1,267 @@
+{
+  "schema": 1,
+  "status": "retained_profile_ledger",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_latest_vulkan_hipengine_profile_ledger",
+  "timestamp": "2026-08-06T02:45:00Z",
+  "scope": "Profiler-only, one-prompt call-normalized attribution for current hipEngine B3 and llama.cpp c8e03ce81 Vulkan B3/B4. Unprofiled natural25 throughput remains the performance denominator.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "vulkan_device": "Vulkan0",
+    "vulkan_driver": "RADV NAVI31",
+    "mesa_version": "26.1.4",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "software": {
+    "hipengine_commit": "07c797c247bbe81e924aaee2875e6a880f29d730",
+    "hipengine_tree_clean": true,
+    "llama_cpp_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "llama_cpp_build": 10290,
+    "llama_cpp_tracked_clean": true,
+    "hipengine_backend": "hip_gfx1100",
+    "hipengine_kv_dtype": "bf16",
+    "llama_cpp_kv_dtype": "f16"
+  },
+  "workload": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_id": "code_merge_intervals",
+    "category": "code",
+    "max_visible_outputs": 25,
+    "timed_transitions": 24,
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "seed": 12345,
+    "reasoning": "off",
+    "prompt_cache": false,
+    "correctness": {
+      "content_sha256_all_three_profiles": "618944d0e2233b9235c46307470b0e0ed0bd96b3e4830bdd5a00376c1a3c0240",
+      "hipengine_exact_greedy": true,
+      "hipengine_gpu_accept_matches_cpu": true,
+      "hipengine_b3_accepted_drafts": 17,
+      "hipengine_b3_proposed_drafts": 21,
+      "hipengine_b3_cycle_accepts": [3, 3, 2, 3, 3, 0, 3],
+      "vulkan_b3_accepted_drafts": 17,
+      "vulkan_b3_reported_drafts": 19,
+      "vulkan_b4_accepted_drafts": 18,
+      "vulkan_b4_reported_drafts": 22
+    }
+  },
+  "commands": {
+    "vulkan_b3_server": "DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json GGML_VK_VISIBLE_DEVICES=0 GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=100000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 1 --host 127.0.0.1 --port 8094 --alias qwen36 --no-cache-prompt -dev Vulkan0 --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-device Vulkan0 --reasoning off --perf",
+    "vulkan_b4_server": "DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json GGML_VK_VISIBLE_DEVICES=0 GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=100000 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server -m /models/gguf/Qwen3.6-27B-Q4_K_M.gguf -ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 -np 1 --host 127.0.0.1 --port 8095 --alias qwen36 --no-cache-prompt -dev Vulkan0 --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-device Vulkan0 --reasoning off --perf",
+    "vulkan_request": "POST /v1/chat/completions with the code_merge_intervals messages, max_tokens=25, temperature=0, top_k=1, top_p=1, min_p=0, seed=12345, cache_prompt=false",
+    "hipengine_profile": "env -i [... TheRock hermetic ROCm paths ...] HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=$PWD rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/hip-b3 -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/hip-b3/suite.json"
+  },
+  "unprofiled_natural25_denominator": {
+    "protocol": "Canonical ten-prompt, four-category, train/heldout natural25 transition wall; candidate-local warmup for llama.cpp budget selection.",
+    "hipengine_b3_tok_s": 60.26190653283626,
+    "vulkan_b3_tok_s": 67.68237226714795,
+    "vulkan_b4_tok_s": 69.79783638340183,
+    "wall_ms_per_prompt": {
+      "hipengine_b3": 398.26154499314725,
+      "vulkan_b3": 354.5975,
+      "vulkan_b4": 343.8502000000001
+    },
+    "hipengine_gap_ms": {
+      "versus_matched_b3": 43.66404499314723,
+      "versus_selected_b4": 54.41134499314717
+    },
+    "hipengine_required_speedup_percent_versus_selected_b4": 15.824142313468826
+  },
+  "raw_profile_reconciliation": {
+    "vulkan_b3": {
+      "server_prompt_ms": 283.109,
+      "server_generation_ms": 364.603,
+      "server_phase_total_ms": 647.712,
+      "client_wall_ms": 657.740939874202,
+      "query_draft_context_ms": 70.5906,
+      "query_target_context_ms": 554.451,
+      "query_total_ms": 625.0416,
+      "query_minus_server_phase_percent": -3.499,
+      "query_minus_client_wall_percent": -4.971
+    },
+    "vulkan_b4": {
+      "server_prompt_ms": 274.957,
+      "server_generation_ms": 358.965,
+      "server_phase_total_ms": 633.922,
+      "client_wall_ms": 643.6188849620521,
+      "query_draft_context_ms": 77.0514,
+      "query_target_context_ms": 529.053,
+      "query_total_ms": 606.1044,
+      "query_minus_server_phase_percent": -4.388,
+      "query_minus_client_wall_percent": -5.829
+    },
+    "hipengine_b3": {
+      "suite_decode_ms": 455.7365099899471,
+      "marker_span_ms": 455.69378,
+      "marker_minus_suite_percent": -0.009376,
+      "kernel_dispatches": 6590,
+      "kernel_ms": 311.224944,
+      "copy_count": 21,
+      "copy_ms": 0.18704,
+      "nonkernel_marker_residual_ms": 144.281796
+    }
+  },
+  "call_normalization": {
+    "purpose": "Separate shader/kernel efficiency from different speculative topology and first-graph capture. Values are ranking diagnostics, not throughput.",
+    "vulkan_b3_target": {
+      "observed_target_graph_shapes": "n=36 prompt plus three n=2 and seven n=4 query groups; the 17/19 draft ledger implies one real n=2 and six real n=4 target passes, with two n=2 and one n=4 groups attributable to first-shape graph construction. Shape-free rows have eleven graph occurrences.",
+      "matched_module_rule": "Compare hipEngine's seven rows=4 target passes with seven Vulkan n=4 equivalents. Shape-free target operations are multiplied by 7/11. The six-call Vulkan target root n=4 row is multiplied by 7/6.",
+      "actual_trajectory_decode_gpu_estimate_ms": 275.59092294372294,
+      "seven_n4_matched_target_gpu_ms": 277.2031848484848
+    },
+    "vulkan_b3_draft": {
+      "rule": "Exclude n=36 draft prefill rows; multiply shape-free operations by 30/31. Root/TOP_K is call-normalized from 22 to hipEngine's 21 root calls for its module row.",
+      "decode_gpu_estimate_ms": 65.22351516129032
+    },
+    "vulkan_b3_decode": {
+      "actual_trajectory_gpu_estimate_ms": 340.81443810501327,
+      "server_generation_ms": 364.603,
+      "inferred_host_submission_sampling_residual_ms": 23.788561894986742,
+      "residual_percent": 6.524510740445565
+    },
+    "vulkan_b4_decode": {
+      "rule": "Keep the one real n=3 and five real n=5 target groups, multiply shape-free target operations by 6/10, and remove n=36 draft/target prefill rows.",
+      "target_gpu_estimate_ms": 246.20975199999998,
+      "draft_gpu_estimate_ms": 71.68998090909092,
+      "decode_gpu_estimate_ms": 317.8997329090909,
+      "server_generation_ms": 358.965,
+      "inferred_host_submission_sampling_residual_ms": 41.06526709090912,
+      "explanation": "The normalized B4 decode residual is 11.44%, while the raw full-request query sum reconciles within 5.83%. The excess is explicitly attributed to first-shape graph construction and shape-free-operation allocation uncertainty; B4 is used for topology direction, not matched module timing."
+    },
+    "hipengine_b3_first_capture_normalization": {
+      "observed_first_target_pass": {
+        "host_ms": 117.073192,
+        "kernel_ms": 36.463679,
+        "internal_device_gap_ms": 80.2531
+      },
+      "steady_target_passes_2_to_7": {
+        "host_ms_mean": 42.106665,
+        "kernel_ms_mean": 36.503522,
+        "internal_device_gap_ms_range": [5.2154, 5.6334]
+      },
+      "observed_first_commit_pass": {
+        "host_ms": 4.924605,
+        "kernel_ms": 0.529124
+      },
+      "steady_commit_passes_2_to_7": {
+        "host_ms_mean": 0.76646,
+        "kernel_ms_mean": 0.51197
+      },
+      "steady_normalized_marker_ms": 376.56910833333336,
+      "steady_normalized_kernel_ms": 311.2476331666667,
+      "copy_ms": 0.18704,
+      "steady_normalized_nonkernel_residual_ms": 65.13443516666669,
+      "steady_nonkernel_residual_gap_versus_vulkan_b3_ms": 41.34587327167995
+    }
+  },
+  "hipengine_phase_ledger": {
+    "raw": [
+      {"phase": "proposal", "markers": 7, "host_ms": 64.919281, "kernel_dispatches": 588, "kernel_ms": 48.500923, "host_minus_kernel_ms": 16.418358},
+      {"phase": "proposal_update", "markers": 6, "host_ms": 7.322997, "kernel_dispatches": 96, "kernel_ms": 3.638265, "host_minus_kernel_ms": 3.684732},
+      {"phase": "target_verify", "markers": 7, "host_ms": 369.713182, "kernel_dispatches": 5853, "kernel_ms": 255.48481, "host_minus_kernel_ms": 114.228372},
+      {"phase": "target_commit", "markers": 7, "host_ms": 9.523367, "kernel_dispatches": 53, "kernel_ms": 3.600946, "host_minus_kernel_ms": 5.922421},
+      {"phase": "target_finish", "markers": 7, "host_ms": 0.0242, "kernel_dispatches": 0, "kernel_ms": 0.0, "host_minus_kernel_ms": 0.0242},
+      {"phase": "inter_marker_scheduler", "host_ms": 4.190753, "kernel_ms": 0.0, "host_minus_kernel_ms": 4.190753}
+    ],
+    "steady_capture_normalized": [
+      {"phase": "proposal", "host_ms": 64.919281, "kernel_ms": 48.500923, "host_minus_kernel_ms": 16.418358},
+      {"phase": "proposal_update", "host_ms": 7.322997, "kernel_ms": 3.638265, "host_minus_kernel_ms": 3.684732},
+      {"phase": "target_verify", "host_ms": 294.746655, "kernel_ms": 255.52465283333336, "host_minus_kernel_ms": 39.22200216666661},
+      {"phase": "target_commit", "host_ms": 5.3652223333333335, "kernel_ms": 3.5837923333333332, "host_minus_kernel_ms": 1.78143},
+      {"phase": "target_finish", "host_ms": 0.0242, "kernel_ms": 0.0, "host_minus_kernel_ms": 0.0242},
+      {"phase": "inter_marker_scheduler", "host_ms": 4.190753, "kernel_ms": 0.0, "host_minus_kernel_ms": 4.190753}
+    ]
+  },
+  "proposal_module_ledger": {
+    "protocol": "hipEngine proposal plus proposal_update kernels versus the Vulkan draft-context decode estimate; Vulkan root/TOP_K is normalized from 22 to 21 calls.",
+    "rows": [
+      {"module": "proposal root + top-1", "hipengine_ms": 31.608483, "vulkan_ms": 32.39064325513197, "gap_ms_hip_minus_vulkan": -0.7821602551319689, "status": "hipengine_faster"},
+      {"module": "proposal/update quantized linears", "hipengine_ms": 17.425407, "vulkan_ms": 17.39008, "gap_ms_hip_minus_vulkan": 0.035327, "status": "parity_noise"},
+      {"module": "proposal prep/norm/attention/transport remainder", "hipengine_ms": 3.105298, "vulkan_ms": 15.442791906158353, "gap_ms_hip_minus_vulkan": -12.337493906158354, "status": "hipengine_faster"}
+    ],
+    "total": {"hipengine_ms": 52.139188, "vulkan_ms": 65.22351516129032, "gap_ms_hip_minus_vulkan": -13.084327161290318, "status": "hipengine_faster"}
+  },
+  "target_module_ledger": {
+    "protocol": "Seven rows=4 target passes. Fused/unfused operations are grouped at equivalent semantic boundaries; all rows plus the explicit remainder sum exactly to each normalized target GPU total.",
+    "rows": [
+      {"module": "FFN gate/up + SiLU", "hipengine_ms": 76.3116, "vulkan_ms": 88.79858545454546, "gap_ms_hip_minus_vulkan": -12.486985454545461, "status": "hipengine_faster"},
+      {"module": "FFN-down Q6", "hipengine_ms": 32.6016, "vulkan_ms": 28.8565, "gap_ms_hip_minus_vulkan": 3.7451, "status": "hipengine_slower"},
+      {"module": "FFN-down Q4", "hipengine_ms": 20.081361, "vulkan_ms": 20.8464, "gap_ms_hip_minus_vulkan": -0.765039, "status": "hipengine_faster"},
+      {"module": "linear-attention Q6 qkv", "hipengine_ms": 14.0347, "vulkan_ms": 12.2678, "gap_ms_hip_minus_vulkan": 1.7669, "status": "hipengine_slower"},
+      {"module": "linear-attention Q4 qkv", "hipengine_ms": 8.833, "vulkan_ms": 8.83512, "gap_ms_hip_minus_vulkan": -0.00212, "status": "parity_noise"},
+      {"module": "linear-attention Q4 gate", "hipengine_ms": 11.5738, "vulkan_ms": 11.5222, "gap_ms_hip_minus_vulkan": 0.0516, "status": "parity_noise"},
+      {"module": "Q5 ssm_out", "hipengine_ms": 22.5767, "vulkan_ms": 15.144, "gap_ms_hip_minus_vulkan": 7.4327, "status": "hipengine_slower"},
+      {"module": "linear-attention alpha/beta", "hipengine_ms": 3.5404, "vulkan_ms": 7.04996, "gap_ms_hip_minus_vulkan": -3.50956, "status": "hipengine_faster"},
+      {"module": "linear-attention Conv", "hipengine_ms": 1.7493, "vulkan_ms": 1.9857345454545454, "gap_ms_hip_minus_vulkan": -0.23643454545454534, "status": "hipengine_faster"},
+      {"module": "linear-attention GDN core", "hipengine_ms": 16.7645, "vulkan_ms": 19.696553165289256, "gap_ms_hip_minus_vulkan": -2.932053165289254, "status": "hipengine_faster"},
+      {"module": "full-attention Q", "hipengine_ms": 6.6859, "vulkan_ms": 6.8332, "gap_ms_hip_minus_vulkan": -0.1473, "status": "hipengine_faster"},
+      {"module": "full-attention K/V", "hipengine_ms": 4.958, "vulkan_ms": 2.03952, "gap_ms_hip_minus_vulkan": 2.91848, "status": "hipengine_slower"},
+      {"module": "full-attention output", "hipengine_ms": 4.034547, "vulkan_ms": 4.27404, "gap_ms_hip_minus_vulkan": -0.239493, "status": "hipengine_faster"},
+      {"module": "full-attention core/prep", "hipengine_ms": 6.3285, "vulkan_ms": 7.696968181818181, "gap_ms_hip_minus_vulkan": -1.368468181818181, "status": "hipengine_faster"},
+      {"module": "target root projection", "hipengine_ms": 11.7623, "vulkan_ms": 10.692826666666667, "gap_ms_hip_minus_vulkan": 1.0694733333333328, "status": "hipengine_slower"},
+      {"module": "residual/norm/transport/control remainder", "hipengine_ms": 13.648602000000011, "vulkan_ms": 30.66377683471069, "gap_ms_hip_minus_vulkan": -17.015174834710677, "status": "hipengine_faster"}
+    ],
+    "composites": [
+      {"module": "all FFN", "hipengine_ms": 128.994561, "vulkan_ms": 138.50148545454545, "gap_ms_hip_minus_vulkan": -9.506924454545462, "status": "hipengine_faster"},
+      {"module": "all linear attention", "hipengine_ms": 79.0724, "vulkan_ms": 76.5013677107438, "gap_ms_hip_minus_vulkan": 2.571032289256202, "status": "hipengine_slower"},
+      {"module": "all full attention", "hipengine_ms": 22.006947, "vulkan_ms": 20.843728181818182, "gap_ms_hip_minus_vulkan": 1.1632188181818193, "status": "hipengine_slower"}
+    ],
+    "total": {"hipengine_ms": 255.48481, "vulkan_ms": 277.2031848484848, "gap_ms_hip_minus_vulkan": -21.718374848484786, "status": "hipengine_faster"},
+    "positive_actionable_module_gap_sum_ms": 16.93315333333333
+  },
+  "complete_decode_kernel_ledger": {
+    "hipengine_proposal_update_target_commit_kernel_ms": 311.224944,
+    "vulkan_call_normalized_draft_plus_target_gpu_ms": 342.4267000097751,
+    "gap_ms_hip_minus_vulkan": -31.201756009775084,
+    "status": "hipengine GPU kernels are faster in aggregate",
+    "caveat": "The Vulkan value is query-interval GPU work and hipEngine is summed rocprof kernel duration; use directionally after each profiler reconciles to its own wall, not as a throughput ratio."
+  },
+  "ranked_deficits": [
+    {"rank": 1, "bucket": "steady graph/queue/host submission residual", "hipengine_minus_vulkan_ms": 41.34587327167995, "evidence": "Capture-normalized hipEngine nonkernel residual 65.134 ms versus Vulkan B3 inferred 23.789 ms; this nearly equals the 43.664-ms natural matched-B3 wall gap."},
+    {"rank": 2, "bucket": "Q5 ssm_out", "hipengine_minus_vulkan_ms": 7.4327},
+    {"rank": 3, "bucket": "FFN-down Q6", "hipengine_minus_vulkan_ms": 3.7451},
+    {"rank": 4, "bucket": "full-attention K/V", "hipengine_minus_vulkan_ms": 2.91848},
+    {"rank": 5, "bucket": "linear-attention Q6 qkv", "hipengine_minus_vulkan_ms": 1.7669},
+    {"rank": 6, "bucket": "target root projection", "hipengine_minus_vulkan_ms": 1.0694733333333328}
+  ],
+  "decision": {
+    "finding": "The refreshed exhaustive ledger reverses the old interpretation: hipEngine already uses about 31.2 ms less call-normalized GPU kernel time than Vulkan B3, but loses the complete wall in graph/queue/host scheduling. The steady normalized nonkernel residual gap is about 41.35 ms, almost the complete 43.66-ms matched-B3 natural wall deficit.",
+    "module_rule": "Every slower semantic module remains a closure item, but arithmetic closure alone is insufficient. Treat graph/queue/host scheduling as the first and largest module; then close Q5 ssm_out, Q6 FFN-down, full-attention K/V, linear-attention Q6 qkv, and target root in descending gap order.",
+    "selected_b4_implication": "Vulkan B4 saves one target cycle: normalized target GPU work falls from about 275.59 to 246.21 ms while draft work rises from 65.22 to 71.69 ms. This topology shift, not a new shader, is why selected B4 remains the final endpoint.",
+    "next_action": "Inspect the exact Vulkan command-buffer submission and hipEngine steady target graph gap distribution before another arithmetic port. A candidate must materially reduce the approximately 5.2-5.6 ms internal gap per steady 835-dispatch target replay; graph upload and four-way graph splitting are already measured and rejected."
+  },
+  "raw_sources": {
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/vulkan-b3-perf.log": {"sha256": "a258993314ed847e3de456760b4a9d7fe65336c6597baafa108ec1e3a443e0b3", "bytes": 11156},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/vulkan-b3-response.json": {"sha256": "a6962c542517c447cf2c254e6da60283de2b3dffd3e14efcc3b1e0b64d204d7f"},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/vulkan-b3-summary.json": {"sha256": "73cd83a32e6cb8f6c14c142268b08de36c7bb2ac6d09d3414c80522e0a724aa2"},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/vulkan-b4-perf.log": {"sha256": "e86292b55f74fdf51db3084ce563f1b1ba7f1742ad0697ce6a0dc7744deb5df3", "bytes": 15624},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/vulkan-b4-response.json": {"sha256": "5f51834e8588ad9373b6231d395db6346c9c9cba5846d655a384056fcc662888"},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/vulkan-b4-summary.json": {"sha256": "fe6166d25063dfa6b9600628cef5748e61cf932a71af1378287d9cdc49a186fd"},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/hip-b3/mtp-b3_kernel_trace.csv": {"sha256": "f1e076a959adc2f26b1b5c0091f08aac6a4a9aca8bdc75d36ece9bd6386269ac", "bytes": 30680569},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/hip-b3/mtp-b3_marker_api_trace.csv": {"sha256": "42fdbe778b93a9ef78706c3bc18e0f7fce9066d463522f23d9432615c3dc3845", "bytes": 4200},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/hip-b3/mtp-b3_memory_copy_trace.csv": {"sha256": "4b551814a528aab75d63f7380085b5d764bdec4e91f5778f2165aa132dc21119", "bytes": 214189},
+    "/tmp/hipengine-qwen36-27b/latest-vulkan-c8e03ce81/profiles/hip-b3/suite.json": {"sha256": "8535746bd17b43a56ac7baf945233cd1945865802b1cb7ce8a34ffda1ef6152e", "bytes": 31122}
+  },
+  "notes": [
+    "GGML_VK_PERF_LOGGER synchronizes query reads and is not a throughput benchmark.",
+    "The Vulkan query contexts include prompt-prefill work. Call normalization removes the explicit n=36 rows and allocates shape-free operation rows by graph occurrence counts.",
+    "The hipEngine first target and first commit markers include graph-capture construction. The steady normalization replaces each with the mean of passes 2-7 without changing source or claiming throughput.",
+    "The target module remainder is explicit so semantic rows sum to both normalized target totals; no unseen positive bucket is hidden by dropping unmatched operations.",
+    "Natural25 throughput remains sourced from benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json and benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json."
+  ]
+}
