@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH5-D1 closed blocked and SH6-P1 activated:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH6-P1 rejected and SH6-C1 activated:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -60,20 +60,18 @@ fork KV lanes at 4K/32K/64K and loses at 512. Therefore hipEngine does **not** b
 matched exact-model diagnostic; Campaign 2 is closed because all declared
 owners are decided, not because cross-engine parity was reached.
 
-**Beat-fork continuation update (2026-08-06): active.** SH5-D1 confirms the
-pinned fork's relevant Q8_0/F16 decode is a raw-row, output-major vector
-traversal and implements the genuinely missing local64 one-output/eight-K
-geometry. The actual-weight leaf clears admission at **1.1557x**, and a
-byte-neutral 512/128 route improves decode **52.876 -> 54.427 tok/s (+2.934%,
--0.539 ms/token)**. It is not production-ready: replacing the covered T16
-residents with raw rows regresses prefill **13.457%**, and the fast local64
-reduction changes hidden/KV state despite matching all four fixed top-1 tokens.
-A bounded production-tree repair is byte-exact but only **0.779x**; its local128
-sibling reaches **1.1458x**, below the frozen 1.15x gate. Production therefore
-remains Q8T16. The default-off SH5 dependency advances immediately to SH6-P1:
-one reusable raw-to-T16 prefill bridge plus the complete natural/category
-quality gate. The higher-level objective remains open because fork-F16 decode
-and whole-GTT parity are still **0/4**.
+**Beat-fork continuation update (2026-08-06): active.** SH6-P1 proves the
+phase-exclusive bridge is mechanically exact but rejects it at the first binding
+performance row. One GPU transform writes host-packer-identical T16 bytes into
+one **26,738,688-byte** owner, complete 512 prefill state is byte exact, and
+teardown is clean. Charging 30 transforms moves prefill **1369.120 -> 1318.196
+tok/s (-3.720%)**, beyond the frozen 1% per-depth guard. The later-depth and
+complete-quality conjunction cannot recover, so those expensive continuations
+stop. Every SH5 model-route/env and SH6 runtime/scratch surface is removed;
+production remains Q8T16 and only the standalone tested leaves remain as source
+evidence. SH6-C1 now re-attributes clean production. The higher-level objective
+remains open because fork-F16 decode and whole-GTT parity were still **0/4** at
+the prior cumulative gate.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -600,8 +598,8 @@ evidence.
 | **SH3-C1** | Post-SH3 cumulative four-depth re-attribution and beat-fork policy gate. | **Complete: policy fails; objective continues.** Fresh canonical decode is **53.177/55.664/46.241/39.602 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. All four prefill, exact-oracle, lifecycle, and trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. |
 | **SH4-D1** | Exact gfx1151 private-c1 routed/shared MoE branch overlap. | **Complete: exact, rejected; no production change.** A real second hardware queue overlaps **0.456 ms/token / 33.4%** of the **1.363-ms/token** auxiliary branch, but five same-resident pairs regress **18.811 -> 19.207 ms/token (-2.058%)**. All transient surfaces are removed. |
 | **SH5-D1** | Byte-neutral row-1 dense-Q8 replacement-layout/vector algorithm. | **Complete: decode-positive, blocked from production.** The fork-attributed raw local64 leaf reaches **1.1557x** and the byte-neutral model route improves 512 decode **+2.934% / -0.539 ms/token**, but raw prefill loses **13.457%** and changed reduction is not byte-exact. The exact-tree repair is **0.779x**; production stays Q8T16. |
-| **SH6-P1** | Phase-exclusive raw-to-T16 prefill bridge plus complete quality gate. | **Active / mandatory.** Repack one raw Q8 pair at a time into one reusable <=25.5-MiB T16 buffer, use the production T16 WMMA prefill consumer, and retain raw rowvec8 only for c1 decode. Require exact pack/prefill state, <=1% prefill loss at all four depths, no persistent duplicate weights, cached no-spill trace, and the complete natural/category KL/top-1 gate. Remove the SH5 model route on failure; on pass promote through a gfx1151 capability and run SH6-C1. |
-| **SH6-C1** | Post-SH6 cumulative four-depth re-attribution and fork policy gate. | **Pending SH6-P1.** Fresh canonical wall/GTT/trace/quality rows decide C1/C2 and pinned-fork parity; this campaign does not end at the bridge implementation. |
+| **SH6-P1** | Phase-exclusive raw-to-T16 prefill bridge plus complete quality gate. | **Complete: exact bridge, rejected; all model routing removed.** The converter is host-packer-byte-exact, scratch-free, and lifecycle-correct with one 25.5-MiB owner; complete 512 prefill state is exact. Charged prefill regresses **1369.120 -> 1318.196 tok/s (-3.720%)**, failing the first 1% guard, so 4K-64K/quality continuation stops and production remains Q8T16. |
+| **SH6-C1** | Post-SH6 cumulative four-depth re-attribution and fork policy gate. | **Active / mandatory.** Fresh clean-production wall/GTT/trace/quality rows decide C1/C2 and pinned-fork parity, then select the next structurally new owner if parity remains open. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -860,16 +858,25 @@ the FP32 reduction tree. The bounded exact-tree local64 repair restores T16
 bytes but regresses to **0.7786x**; the fast local128 point reaches only
 **1.1458x** and still differs by two BF16 codes. Production remains Q8T16.
 
-Retain the kernel and explicit default-off replacement only as SH6-P1's bounded
-dependency. SH6-P1 may allocate at most one reusable **26,738,688-byte** pair
-buffer, GPU-repack raw rows to host-packer-identical T16 bytes during prefill,
-and invoke the existing T16 WMMA consumer. It must charge conversion at
-512/4K/32K/64K, keep every prefill row within 1%, pass complete natural/category
-KL and top-1 for changed decode arithmetic, preserve byte-neutral persistent
-residency, and provide exact fallback/lifecycle/no-spill evidence. Failure
-removes the SH5 model route; success proceeds to SH6-C1 rather than campaign
-closure. Evidence:
-[`2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json).
+SH6-P1 then implements the bounded repair exactly. The registered byte-only
+transform reproduces host-packed Q8T16 for both production tensors at
+local64/128/256; local64 measures **0.360914 ms/pair** and traces at **40 VGPR,
+128 SGPR, 0 scratch**. Runtime owns one **26,738,688-byte** buffer, creates no
+persistent duplicate, falls back transactionally on allocation denial, and
+returns tracked ownership to zero. Prefill logits and complete 512 state are
+byte exact.
+
+The binding one-warmup/three-run 512/128 gate nevertheless moves baseline to
+candidate prefill **1369.120 -> 1318.196 tok/s (-3.720%)** while decode moves
+**52.876 -> 54.488 tok/s (+3.047%)**. The frozen conjunction requires every
+prefill depth within 1%, so 512 failure makes the 4K-64K and complete category
+continuations non-admissible. Remove the SH5 materializer, dispatcher, env, and
+model route plus SH6 runtime bridge and scratch owner. Retain only the standalone
+rowvec8 and transform leaves as diagnostic/source evidence; production remains
+Q8T16. Proceed to clean-production SH6-C1 rather than campaign closure.
+Evidence:
+[`SH5-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json),
+[`SH6-P1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

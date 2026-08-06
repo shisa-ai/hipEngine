@@ -205294,3 +205294,49 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   10.827 ms** serial conversion floor already makes the <=1% 512 prefill gate
   demanding; SH6-P1 still proceeds to one-owner transactional runtime routing,
   exact prefill state, and the binding wall gate before any quality promotion.
+
+## 2026-08-06 — SH6-P1 exact bridge rejected at 512 prefill; activate SH6-C1
+
+- Complete the phase-exclusive runtime screen on SH5's byte-neutral raw-Q8
+  representation. The registered `layout_transform/gguf_q8_0/raw_pair_to_t16`
+  leaf remains host-packer-byte-exact for both production tensors, and the
+  cached gfx1151 trace remains local64 / 40 VGPR / 128 SGPR / zero scratch.
+  Runtime uses one exactly **26,738,688-byte** transactional owner, no persistent
+  duplicate, allocation-denial fallback to raw WMMA, and clean teardown.
+- Independent 512 prefill plus the full 40-layer/30 Conv-GDN/10 live-KV state
+  oracle is byte exact. State hashes are production
+  `8adff28c...49b6` and bridge `16ff5eb2...6565`; the differing aggregate file
+  hash reflects route metadata rather than numerical state.
+- Run the frozen one-warmup/three-run 512/128 gate. Baseline prefill/decode
+  medians are **1369.120/52.876 tok/s**; the charged bridge is
+  **1318.196/54.488 tok/s**. Decode improves **+3.047%**, but prefill regresses
+  **-3.720%** (**+3.863% wall**) and fails the required <=1% first row. Tracked
+  peak increases by the exact scratch owner, **20.566421 -> 20.591324 GiB**, and
+  all measured closes return tracked ownership to zero. Raw result hashes are
+  `f5353efa...6109` and `35ad6444...4b66`.
+- Stop 4K/32K/64K and complete natural/category continuation: the frozen
+  admission is a conjunction and the already-failed 512 row cannot be repaired
+  by later rows. This is policy-compliant early stopping, not a quality waiver
+  or performance promotion.
+- Apply the predeclared failure cleanup. Remove
+  `HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR`, raw replacement materialization, model
+  dispatcher selection, runtime transform-plus-T16 bridge, cached bridge
+  libraries, session scratch ownership, and candidate-only route tests. Restore
+  Q8T16 as the sole covered production resident/dispatch. Retain only the
+  independently tested standalone SH5 rowvec8 and SH6 byte-transform leaves as
+  source evidence.
+- Final focused command:
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt
+  python3 -m pytest tests/test_gguf_q8_0_raw_to_t16.py
+  tests/test_gguf_q8_0_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py
+  tests/test_qwen35_gguf_prefill_scratch_liveness.py
+  tests/test_qwen35_gguf_materialize_helpers.py
+  tests/test_qwen35_gguf_materialize.py -q` exits zero with **116 passed, 20
+  skipped**. Artifact JSON parsing, Python compileall, and `git diff --check`
+  pass.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json`
+  (SHA-256 `fc3a66b1...9dfc`). SH6-P1 is complete/rejected with production
+  unchanged. Activate mandatory **SH6-C1** clean-production four-depth
+  re-attribution; campaign completion remains forbidden while fork parity is
+  open.

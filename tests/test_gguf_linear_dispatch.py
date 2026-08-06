@@ -12,7 +12,6 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
 import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
-    HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV,
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q8_0_T16,
@@ -2146,54 +2145,6 @@ def test_registered_q4_lm_head_local32_is_explicit_and_fails_closed() -> None:
             register(key, original, replace=True)
 
     assert calls == ["candidate", "fallback"]
-
-
-def test_sh5_d1_rowvec8_env_selects_registered_raw_q8_unequal_pair(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
-    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
-    candidate_key = KernelKey(
-        "hip_gfx1100",
-        "linear_pair",
-        "gguf_q8_0",
-        "rowvec8_dual_split_gemv_decode_bf16_bf16_out",
-    )
-    original = resolve(
-        backend=candidate_key.backend,
-        layer=candidate_key.layer,
-        quant=candidate_key.quant,
-        variant=candidate_key.variant,
-    )
-    calls: list[tuple[tuple, dict]] = []
-
-    def candidate(*args, **kwargs):
-        calls.append((args, kwargs))
-
-    register(candidate_key, candidate, replace=True)
-    monkeypatch.setenv(HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV, "1")
-    try:
-        assert launch_gguf_linear_pair(
-            weight_a,
-            weight_b,
-            x_ptr=100,
-            out_a_ptr=200,
-            out_b_ptr=300,
-            rows=1,
-            in_features=2048,
-            out_features=8192,
-            out_features_b=4096,
-            use_gemv_decode=True,
-            stream=7,
-            runtime="runtime-sentinel",
-        )
-    finally:
-        register(candidate_key, original, replace=True)
-
-    assert len(calls) == 1
-    args, kwargs = calls[0]
-    assert args == (100, 10, 10, 200, 300, 1, 2048, 8192, 4096)
-    assert kwargs == {"stream": 7, "runtime": "runtime-sentinel"}
 
 
 def test_registered_q5_wave32x2_pair_is_c1_only_with_pack8_fallback() -> None:

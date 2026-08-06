@@ -14,24 +14,6 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
-## Qwen gfx1151 SH5 raw-Q8 rowvec8 dependency
-
-- Added 2026-08-06 as the explicit default-off
-  `HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR` replacement after the actual-weight leaf
-  passed **1.15566x** and matched 512 decode improved **+2.934% / -0.539
-  ms/token** at byte-neutral residency.
-- It is not a production option: raw WMMA prefill regresses **13.457%**, and the
-  fast local64 reduction changes hidden/recurrent/KV state. Production remains
-  Q8T16. Retain the kernel, materializer branch, dispatcher branch, env helper,
-  and focused tests only through SH6-P1's phase-exclusive raw-to-T16 prefill
-  bridge and complete natural/category quality gate.
-- If SH6-P1 fails exact GPU repack, <=1% four-depth prefill, bounded one-buffer
-  lifecycle, or complete quality, remove every SH5 model-route/materialization/
-  env surface; retain the fork/source evidence and artifact only. If SH6-P1
-  passes, replace the environment-positive route with one gfx1151 capability,
-  keep Q8T16 as the exact peer/shape/allocation fallback, and remove the
-  experiment flag after SH6-C1 publication.
-
 ## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 
 - Added 2026-07-31 as a gfx1151 default plus

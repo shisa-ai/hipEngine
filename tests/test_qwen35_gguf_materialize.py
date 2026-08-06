@@ -14,7 +14,6 @@ from hipengine.loading.qwen35_gguf_materialize import (
     HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV,
     HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR_ENV,
     HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV,
-    HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV,
     HIPENGINE_GGUF_SELECTED_DOWN_RAW_ENV,
     HIPENGINE_GGUF_SELECTED_GATE_UP_RAW_ENV,
     HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV,
@@ -35,7 +34,6 @@ from hipengine.loading.qwen35_gguf_materialize import (
     gguf_decode_repack_enabled,
     gguf_lm_head_q6_x8_sidecar_enabled,
     gguf_q8_0_raw_sidecar_enabled,
-    gguf_q8_0_rowvec8_pair_enabled,
     gguf_selected_down_raw_enabled,
     gguf_selected_down_raw_mode,
     gguf_selected_gate_up_raw_enabled,
@@ -174,34 +172,6 @@ def test_qwen35moe_decode_repack_can_keep_q8_attention_raw_sidecar(monkeypatch: 
     assert layer0["attn_gate"].allocation_names == ("tiles", "raw")
     assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
     assert layer0["ffn_gate_shexp"].allocation_names == ("tiles",)
-
-
-def test_sh5_d1_rowvec8_pair_replaces_only_linear_attention_q8_t16(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    if not MOE_MODEL.exists():
-        pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
-    monkeypatch.setenv(HIPENGINE_GGUF_DECODE_REPACK_ENV, "1")
-    monkeypatch.setenv(HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR_ENV, "1")
-    monkeypatch.setenv(HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV, "1")
-    reader = GGUFReader(MOE_MODEL)
-    model_map = build_qwen35_gguf_tensor_map(reader.info)
-
-    assert gguf_q8_0_rowvec8_pair_enabled() is True
-    plan = plan_qwen35_gguf_materialization(model_map)
-
-    layer0 = plan.layer_specs[0]
-    for slot in ("attn_qkv", "attn_gate"):
-        assert layer0[slot].layout == LAYOUT_RAW_GGUF
-        assert layer0[slot].quant_key == "gguf_q8_0"
-        assert layer0[slot].allocation_names == ("raw",)
-    # No candidate sidecar or global Q8 replacement: shared expert and full
-    # attention projections retain the production Q8T16 resident/fallback.
-    assert layer0["ffn_gate_shexp"].layout == LAYOUT_GGUF_Q8_0_T16
-    assert layer0["ffn_gate_shexp"].allocation_names == ("tiles",)
-    full_attn_layer = next(layer for layer in plan.layer_specs if "attn_q" in layer)
-    assert full_attn_layer["attn_q"].layout == LAYOUT_GGUF_Q8_0_T16
-    assert full_attn_layer["attn_q"].allocation_names == ("tiles",)
 
 
 def test_qwen35moe_decode_repack_can_keep_all_dense_q8_raw_sidecars(monkeypatch: pytest.MonkeyPatch) -> None:

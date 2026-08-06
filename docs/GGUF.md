@@ -2438,36 +2438,35 @@ dense-Q8 vector/layout audit rather than another stream or closed schedule retry
 Evidence:
 [`2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json).
 
-SH5-D1 adds one explicit default-off raw-Q8_0 replacement route for the 30
-linear-attention `attn_qkv + attn_gate` pairs. It follows the pinned fork's
-actual row-1 Q8_0/F16 primitive: one output row, local64, eight contiguous K
-values per lane, and subgroup reduction. This is distinct from both production
-Q8T16's 16-output traversal and the older raw eight-output pack8 kernel. The
-registered pair key is
-`linear_pair/gguf_q8_0/rowvec8_dual_split_gemv_decode_bf16_bf16_out`, and
-`HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR=1` replaces—not duplicates—exactly 60 Q8T16
-residents / **802,160,640 bytes** with raw GGUF allocations. Rows greater than
-one retain the existing raw-Q8 WMMA path; disabling the option restores the
-production Q8T16 plan.
+SH5-D1 and SH6-P1 close the fork-attributed raw-Q8_0 replacement ladder without
+a production route. The standalone rowvec8 leaf follows the pinned fork's
+row-1 Q8_0/F16 primitive: one output row, local64, eight contiguous K values per
+lane, and subgroup reduction. It is distinct from both production Q8T16's
+16-output traversal and the older raw eight-output pack8 kernel. On actual
+`attn_qkv + attn_gate` bytes it improves **0.134737 -> 0.116588 ms (1.15566x,
+15/15 wins)** and traces at **24 VGPR / 512 B LDS / zero scratch**. A temporary
+byte-neutral replacement of exactly 60 Q8T16 residents / **802,160,640 bytes**
+improves matched 512/128 decode **52.876 -> 54.427 tok/s (+2.934%, -0.539
+ms/token)**, but raw prefill regresses **13.457%** and the fast reduction changes
+hidden/KV state. The exact-tree repair is only **0.779x**.
 
-The actual-weight pair leaf clears its gate at **0.134737 -> 0.116588 ms
-(1.15566x, 15/15 wins)** and traces at local64 / **24 VGPR / 512 B LDS / zero
-scratch**. A matched 512/128 route then improves decode **52.876 -> 54.427 tok/s
-(+2.934%, -0.539 ms/token)** at unchanged tracked peak. It is not promoted:
-raw WMMA prefill regresses **1369.120 -> 1184.884 tok/s (-13.457%)**, and the
-fast local64 reduction changes four-transition hidden/KV state despite preserving
-all top-1 tokens. An exact production-tree repair is only **0.779x**; its fast
-local128 alternative is **1.1458x**, below admission and still not T16-byte
-exact.
+SH6-P1 then proves the only bounded prefill repair mechanically. Its registered
+`layout_transform/gguf_q8_0/raw_pair_to_t16` leaf writes host-packer-identical
+T16 bytes into one **26,738,688-byte** owner, selects local64 at **0.360914
+ms/pair**, and traces at **40 VGPR / 128 SGPR / zero scratch**. The complete
+runtime bridge has one transactional scratch owner, no persistent duplicate,
+clean teardown, and byte-exact 512 prefill state. Charging 30 transforms still
+moves prefill **1369.120 -> 1318.196 tok/s (-3.720%)**, failing the frozen 1%
+per-depth gate at the first binding row. The 4K-64K and complete category
+continuations therefore stop because the conjunction cannot pass.
 
-Production therefore remains Q8T16. Keep the environment route only through
-SH6-P1, which must use one reusable <=**26,738,688-byte** raw-to-T16 GPU prefill
-buffer, reproduce host-packer T16 bytes and production prefill state exactly,
-keep all four prefill depths within 1%, and pass the complete natural/category
-KL/top-1 gate for changed decode arithmetic. Remove the route if that bridge or
-quality gate fails; if both pass, promote through a gfx1151 capability and run
-SH6-C1. Evidence:
-[`2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json).
+Production remains Q8T16. Per the frozen stop rule, remove the SH5 environment,
+materializer, dispatcher, model route, SH6 runtime bridge, and scratch owner.
+Retain only the two standalone tested leaves and their source evidence; neither
+is a production option. Continue to clean-production SH6-C1 re-attribution.
+Evidence:
+[`SH5-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json),
+[`SH6-P1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
