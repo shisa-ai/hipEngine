@@ -8,7 +8,10 @@ from hipengine.kernels.cuda_sm120a.fused import (
     register_moonshine_glue_kernels,
     register_moonshine_mlp_kernels,
 )
-from hipengine.kernels.cuda_sm120a.linear import register_moonshine_projection_kernels
+from hipengine.kernels.cuda_sm120a.linear import (
+    register_moonshine_lm_head_kernels,
+    register_moonshine_projection_kernels,
+)
 from hipengine.kernels.cuda_sm120a.norm import register_moonshine_layernorm_kernels
 from hipengine.kernels.cuda_sm120a.smoke import register_smoke_add_kernel
 from hipengine.kernels.registry import KernelKey, is_registered
@@ -45,6 +48,14 @@ def register_backend_kernels(*, replace: bool = True) -> None:
     mlp_key = KernelKey(BACKEND, "moonshine_gated_silu", "fp16", "value_gate_split")
     if replace or not is_registered(mlp_key):
         register_moonshine_mlp_kernels(replace=replace)
+    lm_head_key = KernelKey(
+        BACKEND,
+        "moonshine_lm_head",
+        "fp16",
+        "fused_argmax_fp32_accum",
+    )
+    if replace or not is_registered(lm_head_key):
+        register_moonshine_lm_head_kernels(replace=replace)
     attention_key = KernelKey(
         BACKEND,
         "moonshine_self_attention",

@@ -203088,3 +203088,35 @@ crossover run, tied at visible 4/8) with the one-wave t32 path tied below 8.
 schedule-selection pattern (explicit `threads=`/variant overrides). General
 cache-position buckets only (visible prefix length, encoder length), no
 token-conditioned routes.
+
+## 2026-08-06 — C1f: bounded fused FP16 LM-head + stable argmax
+
+Added the bounded fused candidate:
+`hipengine/kernels/cuda_sm120a/linear/lm_head.{cu,py}` plus package wiring. The
+single raw-pointer C ABI symbol `hipengine_cuda_sm120a_moonshine_lm_head_argmax_fp16`
+builds only under `-arch=sm_120a` (cuobjdump confirms sm_120a SASS). Stage 1
+computes each vocab row's FP16 logit with the exact ordered FP32 accumulation of
+the C1c plain 256-thread `moonshine_f16_lm_head_projection` baseline (byte-identical
+to the two-step path), tracks a stable lowest-index tie break on the fly, and
+emits only per-block partial maxima; stage 2 reduces them. No logit plane is
+materialized; scratch is bounded to `num_blocks` (value, index) partials plus the
+final pair (caller-owned via `lm_head_argmax_scratch_elements`). Registered
+`moonshine_lm_head/fp16/fused_argmax_fp32_accum` under `cuda_sm120a`; wired into
+`register_backend_kernels`.
+
+RED/GREEN: `tests/test_moonshine_cuda_sm120a_lm_head.py` passes 7/7 on GPU0
+(registry, build-plan sm_120a, raw-pointer ABI, invalid-contract rejection,
+CPU-oracle gate vs `moonshine_lm_head_argmax` over the full 36,864 vocab,
+byte-exact two-step agreement at rows_per_block 8/16/32, and a deterministic-tie
+gate stable across ten launches: all-equal logits -> index 0, identical maximal
+rows 5/9 -> index 5).
+
+Measured on exclusive GPU0 (`/tmp/cuda_lm_head_schedule_screen/screen_batch.py`,
+batch-timed CUDA events, 20-launch batches, pre/post foreign-compute gate) over
+the full 36,864x416 weight stream: two-step projection+argmax 39.62 us; fused
+rows_per_block 4/8/16 = 29.90/29.04/31.52 us, so the wrapper defaults to
+rows_per_block=8 (1.36x vs two-step, scratch ~55 KiB vs the 72 KiB logit plane)
+with explicit override preserved. The C1c `_wave8` projection leaf alone is 7.17
+us (vs 31.13 us plain) and is recorded as a C3 target-native tuning hint because
+its accumulation order is not byte-identical to the exact baseline. The
+quantized LM head remains closed until the exact FP16 decoder is promoted.
