@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "status": "source_audited_exhausted_no_new_candidate",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "kind": "qwen36_27b_gguf_latest_vulkan_q5_ssm_out_source_audit",
+  "timestamp": "2026-08-06T10:45:00Z",
+  "scope": "Source and evidence reconciliation only. No kernel, runtime, allocation, route, benchmark, or default changed.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_family": "48 Q5_K ssm_out weights",
+    "shape_k_n": [6144, 5120]
+  },
+  "latest_matched_profile": {
+    "hipengine_rows4_calls": 336,
+    "hipengine_ms": 22.5767,
+    "llama_cpp_vulkan_rows4_calls": 336,
+    "llama_cpp_vulkan_ms": 15.144,
+    "gap_ms": 7.4327,
+    "source": "benchmarks/results/2026-08-06-qwen36-27b-latest-vulkan-profile-ledger.json"
+  },
+  "llama_cpp_source_audit": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "prior_commit": "ee0445c99",
+    "latest_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "backend_files_changed": [
+      "ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/gla.comp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp"
+    ],
+    "backend_change": "f26efa02a vulkan backend ops: implemented GATED_LINEAR_ATTN (#25601)",
+    "q5_shader_or_dispatch_hunks_changed": false,
+    "q5_blobs": [
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q5_k.comp",
+        "prior_blob": "54d7e1bcdca6703856ab3a9d8250e20d213f023b",
+        "latest_blob": "54d7e1bcdca6703856ab3a9d8250e20d213f023b",
+        "latest_sha256": "175bd27fc8281f8ec72087f9c36ed51266c74f8bfca0f01719ec66d899324c70"
+      },
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq.comp",
+        "prior_blob": "18d441ead40e11f7d86f924b8af138e31a20b8bb",
+        "latest_blob": "18d441ead40e11f7d86f924b8af138e31a20b8bb",
+        "latest_sha256": "5c7078feed144c6b4706e25390be63a18666f27382119b11d8361fb9a7559260"
+      },
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq_funcs.glsl",
+        "prior_blob": "a5403ac82121d5294b3b46426ba46a900450efa3",
+        "latest_blob": "a5403ac82121d5294b3b46426ba46a900450efa3",
+        "latest_sha256": "d6394df8252736a9f4c430722646c94ed9bd45f0c3a619d8ca3ea324abfcf4f6"
+      }
+    ],
+    "latest_observed_operation": "MUL_MAT_VEC q5_K m=5120 n=4 k=6144: 336 x 45.071 us = 15.144 ms",
+    "profile_log_sha256": "a258993314ed847e3de456760b4a9d7fe65336c6597baafa108ec1e3a443e0b3"
+  },
+  "hipengine_current_owner": {
+    "implementation_commit": "24fef47da5fed5036bc96b050d3007db0c58198d",
+    "quant_key": "gguf_q5_k_t16_v1",
+    "representation": "sole-resident byte-neutral Q5T16",
+    "rows1": "direct producer",
+    "rows2_to_4": "exact local128/col4 rowtile",
+    "larger_rows": "direct fallback",
+    "prefill": "dense WMMA",
+    "producer_handoff": "retained exact GDN BF16 dual output removes the standalone cast",
+    "retained_profile": "37.004292 -> 22.910906 ms for 336 calls (-38.09%)",
+    "latest_profile_value_ms": 22.5767,
+    "q5_specific_changes_since_retention": false,
+    "note": "Shared T16 files gained unrelated Q4/Q6 routes after retention; the diff contains no Q5 implementation or selector hunk."
+  },
+  "existing_candidate_ladder": [
+    "dense BF16",
+    "raw Q5_K wave/SWAR/pack8/column/rowbatch",
+    "direct Q5T16 and exact rows2-4 rowtiles at local32/64/128 and col4/8/16",
+    "raw-Q5 Q8_1 sudot4 row reuse",
+    "Q5T16 Q8_1 sudot4 row reuse",
+    "dense WMMA prefill",
+    "all-48-plane rotating residency",
+    "GDN F32/BF16 producer-consumer handoffs"
+  ],
+  "binding_prior_evidence": [
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json",
+      "sha256": "3d09075ec85a122ced934de5281ad9cfbc6bc1cab39d964c966b1984967c77f0",
+      "result": "Retained rotating-cache Q5T16 owner; W7900 family -38.09%, natural25 B1/B2/B3 +3.994/+5.094/+4.839%, populated prefill +12.58/+11.80%."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-rowreuse-rejected.json",
+      "sha256": "3d149d1fa098a6cc2c78f9c8f38a50b143d25ddc9282e7104f6017b76d10d44f",
+      "result": "Exact local/thread/column geometry screen; candidate schedules did not beat the then-resident dense control."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-raw-q5-q8-1-dp4a-rowreuse-rejected.json",
+      "sha256": "df7bca0d07b0b0a497fc45566cc30d6ec1b25027e3b9b071653b02890a4f8694",
+      "result": "Raw-Q5 sudot4 row reuse best rows2/3/4 total 0.646x/0.713x/0.798x dense; 0/11 final wins."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-q5t16-q8-1-dp4a-rowreuse-rejected.json",
+      "sha256": "b1353b83f4eaa428ceb7360a4015c2622a1d88606784cc532c61a4e07c121936",
+      "result": "Q5T16 sudot4 row reuse best final total 0.887x dense; even prequantized dot only 0.934x."
+    }
+  ],
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "Completed. Four reported external-reference drifts are pre-existing nano-vllm-amd catalog entries and do not affect this unchanged llama.cpp Vulkan Q5 source audit."
+  },
+  "decision": {
+    "action": "close_as_exhausted_for_current_source_and_hardware_primitives",
+    "reason": "The refreshed comparator changed neither Q5 shader bytes nor Q5 dispatch generation. Its measured 0.16% timing movement is not a new mechanism. The exact Vulkan floating and Q8_1/sudot4 dataflows and the relevant HIP representation, row-reuse, geometry, residency, WMMA, and handoff combinations are already measured. Repeating them would duplicate rejected evidence.",
+    "reopen_condition": "A genuinely new Q5 representation, RDNA3 hardware primitive, cross-family fusion with a credible complete-wall saving, or changed comparator source.",
+    "next_target": "Advance D27-R2 to the refreshed FFN-down Q6 gap (32.602 ms hipEngine versus 28.857 ms Vulkan)."
+  }
+}
