@@ -548,20 +548,30 @@ Current blockers that keep project-wide c>N incomplete:
   glossary, ownership distinctions, and qualified scorecard are in
   [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The provider-neutral
   `NativeSpecCycleLauncher` N0 ABI plus gfx1100 reusable B1/B2 N1 target graphs
-  are landed. The exact dense Qwen3.6 native verifier now extends N1 VERIFY to
-  an independent B3 bucket with dynamic row positions/`KVLiveSpans` and exact
-  pre-output-norm trunk-row capture; N2 device accept/commit remains B1/B2.
-  Clean exact dense natural25 selects B3 at 25.193 tok/s / 1.2362x own AR, with
-  every prompt/category/heldout and transaction gate exact. N1 is byte-exact
-  across dynamic positions and cached-session resets; the
-  retained accuracy-traded llama-compat suite reaches 122.667 tok/s
-  versus llama.cpp's 115.444 tok/s W7900 floor. N2 device acceptance, selected
-  hidden/Conv/GDN commit, cursor update, and bounded summary readback are also
-  landed behind the explicit llama-compat native-cycle route. N2 keeps verifier
-  hidden rows graph-owned so prompt-prefill scratch growth cannot invalidate a
-  captured pointer, and matches all 240 IDs / 96 cycle semantics in the full
-  category+heldout suite. Its first same-tree aggregate screen is neutral within
-  run variance, while state/KV commit and host-seed sub-windows shrink. N3 now
+  are landed. The exact dense Qwen3.6 native verifier extends N1 VERIFY to an
+  independent B3 bucket with dynamic row positions/`KVLiveSpans` and exact
+  pre-output-norm trunk-row capture. N2 device accept/commit originally remained
+  B1/B2; the 2026-08-06 dense extension now admits B3 and the exact transactional
+  verifier selects N2 for eligible full-room, no-logit, session-stream B1/B2/B3
+  cycles. Diagnostic logits, caller streams, output-cap tails, and unsupported
+  captures retain N1/eager execution. The initial clean exact dense natural25
+  graph gate selected B3 at 25.193 tok/s / 1.2362x own AR, with every prompt/
+  category/heldout and transaction gate exact. Later arithmetic and submission
+  work raises the canonical exact B3 packet to **61.020 tok/s**. N1 remains
+  byte-exact across dynamic positions and cached-session resets; the retained
+  accuracy-traded llama-compat suite reaches 122.667 tok/s versus llama.cpp's
+  115.444 tok/s W7900 floor. N2 device acceptance, selected hidden/Conv/GDN
+  commit, cursor update, and bounded summary readback are landed both behind that
+  explicit compatibility route and in the exact dense transactional path. N2
+  keeps verifier hidden rows graph-owned so prompt-prefill scratch growth cannot
+  invalidate a captured pointer; the B3 extension also commits the selected BF16
+  trunk row in stable session storage and returns all target top-1 rows through
+  the same bounded payload. Its current exact-route screen improves target+
+  policy median **42.441009 -> 41.489807 ms/cycle (1.022926x, 17/17 pairs)**;
+  capture-normalized complete wall improves **366.417 -> 364.004 ms** and removes
+  110 dispatches plus 21 copies. The immediate natural B1/B2/B3 packet is mixed
+  at **+0.428%/+0.040%/-0.193%**, so canonical B3 remains 61.020 tok/s while the
+  exact physical default is retained. N3 historically
   joins strict device-chained proposal, the N2 target transaction, MTP-KV
   rollback/accepted-row repair, reseed, and cursor/result accounting behind one
   GGUF scheduler-facing call. The public single-request GGUF MTP loop uses that

@@ -2,8 +2,9 @@
 
 Status: reopened on 2026-08-06 after the comparator moved to latest
 tracked-clean llama.cpp `c8e03ce81` (build 10290). The refreshed steady-state
-natural floor selects B4 at 69.798 tok/s; canonical hipEngine B3 is 13.66%
-short. A source-faithful, one-module-at-a-time parity pass is active.
+natural floor selects B4 at 69.798 tok/s; canonical hipEngine B3 is now
+61.020 tok/s / 12.575% short after retained proposal and target-policy submission
+graphs. A source-faithful, one-module-at-a-time parity pass is active.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -1711,9 +1712,10 @@ sweep had one unique-row first prompt at 48.60 tok/s while its other nine rows
 and 171/242 ledger match the refresh. Candidate-local warmup moves that prompt
 to the mid-70s; the explicit-device B1-B4 sweep and rich direct packet both
 select B4. Latest B4 accepts **171/241 drafts**, reaches **69.798 transition
-tok/s**, and is **3.126% above** same-harness B3. Canonical hipEngine B3
-**60.262 tok/s** is **10.96% below matched Vulkan B3** and **13.66% below
-selected Vulkan B4**, so end-to-end closure requires **+15.82%**.
+tok/s**, and is **3.126% above** same-harness B3. After the retained submission
+graphs below, canonical hipEngine B3 is **61.020 tok/s**, **9.843% below matched
+Vulkan B3** and **12.575% below selected Vulkan B4**; end-to-end closure requires
+**+14.384%**.
 
 The old query profile is superseded. Fresh latest-source B3/B4 Vulkan query
 profiles and a clean current hipEngine B3 kernel/marker/copy trace now reconcile
@@ -1763,6 +1765,45 @@ artifacts:
 and
 `benchmarks/results/2026-08-06-qwen36-27b-latest-vulkan-profile-ledger.json`.
 
+### D27-R2 submission progress: proposal and target-policy graphs
+
+The first materially different submission mechanism is retained. Clean
+`a3e4912ee` captures a complete fixed-address B1/B2/B3 NextN chain with device
+token handoff and one result drain. Against `01291b066`, natural25 B1/B2/B3
+improves **43.792/55.254/60.262 -> 44.035/56.014/61.020 tok/s
+(+0.555%/+1.376%/+1.259%)**. Every one of the 30 prompt-budget rows and every
+train/heldout/category scope improves with exact IDs and acceptance. A
+same-loaded-model B3 transaction cuts proposal median **67.593 -> 58.429 ms
+(-13.56%)** and complete decode median **370.917 -> 365.821 ms (1.01393x)**.
+
+Clean `09abd51968` then extends the existing N2 device
+`VERIFY|ACCEPT|selected COMMIT|UPDATE_CURSORS` contract through B3 and wires it
+into the exact transactional verifier. Full-room session-stream cycles return
+acceptance and every target top-1 row in the same bounded payload; selected
+Conv/GDN/BF16-hidden state and target cursors are already committed when the
+graph retires. Diagnostic logits, caller streams, output-cap tails, and misses
+remain on N1/eager paths. The reject/partial/full, forced-rollback, dynamic-
+reuse, correction, K/V, hidden/state, ownership, and teardown gate is exact.
+
+The immediate N2 natural packet is mixed at **44.224/56.037/60.903 tok/s
+(+0.428%/+0.040%/-0.193%)** versus the proposal graph. Nine of ten prompts
+improve at every budget, but one transient row per budget makes some aggregate
+scopes negative. Keep the exact physical default without replacing canonical
+B3 **61.020 tok/s**. The physical evidence is decisive: all 17 paired target+
+policy samples improve **42.441009 -> 41.489807 ms (1.022926x)**, and suite-wide
+`target_commit_finish` falls **96.675/68.441/57.919 ->
+2.032/2.646/6.354 ms** at B1/B2/B3.
+
+Capture-normalized profiling moves complete wall **376.569 -> 366.417 ->
+364.004 ms** across control, proposal graph, and N2 target policy. The N2 step
+removes **110 dispatches / 21 copies** and cuts non-kernel residual **51.491 ->
+48.985 ms**, leaving **25.197 ms** versus Vulkan B3's inferred **23.789 ms**.
+Canonical hipEngine B3 is now **9.843% below** matched Vulkan B3 and **12.575%
+below** selected Vulkan B4, requiring **14.384%**. Submission remains first;
+then Q5 `ssm_out`, Q6 FFN-down, full-attention K/V, Q6 QKV, and root follow.
+Artifact:
+`benchmarks/results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1773,7 +1814,7 @@ and
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass. | in progress; submission first, then Q5/Q6/KV/root |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass. | in progress; proposal and target-policy graphs retained, submission residual **41.346 -> 25.197 ms**; continue submission before Q5/Q6/KV/root |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 
@@ -1948,6 +1989,8 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | 2026-08-05 | hipEngine `24fef47da`, sole-resident Q5T16 `ssm_out` | W7900 | 512/128, 4K/128; natural25 B1-B3 | 234.014 / 215.771 | 23.241 / 21.841; natural AR 24.049 | B1 43.170, B2 54.621, B3 59.551 | 1.7951x / 2.2712x / 2.4762x | aggregate Q5 quality 7.38e-5 KL / 99.79% top-1; candidate MTP exact vs own AR; all scopes and all B2/B3 prompts improve; one B1 timing and one fluent prior-route trajectory change disclosed; peaks -1.824 GiB | `benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json` |
 | 2026-08-05 | hipEngine `a5f25c9ad`, exact GDN BF16 handoff | W7900 | 512/128, 4K/128; natural25 B1-B3 | 234.580 / 215.127 | 23.284 / 21.903; natural AR 23.750 | B1 43.357, B2 54.678, B3 59.790 | 1.8256x / 2.3023x / 2.5175x | all IDs/acceptance/state exact; 336 casts removed; target physical windows improve; marker-wall variance disclosed | `benchmarks/results/2026-08-05-qwen36-27b-gdn-bf16-handoff-retained.json` |
 | 2026-08-05 | hipEngine `01291b066`, one-launch rollback snapshots | W7900 | inherited unchanged 512/128, 4K/128; natural25 B1-B3 | 234.580 / 215.127 | 23.284 / 21.903; natural AR 24.114 | B1 43.792, B2 55.254, B3 60.262 | 1.8161x / 2.2914x / 2.4991x | all 30 prompt-budget rows and scopes improve; IDs/acceptance/state exact; 665 launches removed; +1,540 bytes; clean teardown | `benchmarks/results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json` |
+| 2026-08-06 | llama.cpp Vulkan `c8e03ce81`, latest selected budget | W7900 | stateful 512/128, 4K/128; natural25 matched B3 / selected B4 | 79.351 / 80.622 | 12.535 / 12.459; natural AR 12.528 | B3 67.682, **B4 69.798** | selected B4 5.5714x | tracked-clean build 10290; candidate-local warmup; B4 accepts 171/241; all categories improve | `benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json` |
+| 2026-08-06 | hipEngine `a3e4912ee` + `09abd51968`, native submission graphs | W7900 | inherited unchanged 512/128, 4K/128; natural25 B1-B3 | 234.580 / 215.127 | 23.284 / 21.903; canonical-packet natural AR 24.085 | **B1 44.035, B2 56.014, B3 61.020** | 1.8283x / 2.3257x / 2.5336x | proposal graph: all 30 rows/scopes exact and improved; N2 target policy retained physically with mixed immediate 44.224/56.037/60.903 packet; clean teardown | `benchmarks/results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json` |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

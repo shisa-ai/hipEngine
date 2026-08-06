@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "status": "retained_exact_physical_submission_wins_canonical_topline_from_proposal_graph",
+  "performance_claim": true,
+  "performance_claim_scope": "Clean W7900 natural25 proposal-graph promotion, same-loaded-model paired proposal and target-policy screens, and capture-normalized one-prompt kernel/marker/copy profiles. The immediate N2 natural25 packet is mixed and does not replace the proposal-graph canonical topline.",
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_native_submission_graphs_w7900",
+  "timestamp": "2026-08-06T04:58:00Z",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "architecture": "qwen35",
+    "quant": "MOSTLY_Q4_K_M",
+    "tensor_count": 866
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor"
+  },
+  "software": {
+    "proposal_graph_commit": "a3e4912ee6d0b86a13a94f26b5e63b00ee14099a",
+    "b3_n2_admission_commit": "5ed96190b2b11b762cb426f12f4667afed098b93",
+    "production_device_policy_commit": "09abd51968914d589cd8aecfd6bf3c74433392dd",
+    "measurement_trees_clean": true,
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "max_visible_outputs": 25,
+    "timed_transitions": 240,
+    "candidate_budgets": [1, 2, 3],
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "seed": 12345,
+    "reasoning": "off",
+    "warmups": 1,
+    "repetitions": 1
+  },
+  "commands": {
+    "proposal_component": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-27b/screen-nextn-production-b3-e2e-w7900.py",
+    "proposal_natural25": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-a3e4912ee/natural25-nextn-chain-graph-b1-b3.json",
+    "proposal_profile": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib:/opt/rocm/lib HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/hipengine-qwen36-27b/final-a3e4912ee/profile-nextn-chain-graph-b3-marked -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-a3e4912ee/profile-nextn-chain-graph-b3-marked/suite.json",
+    "target_policy_component": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/hipengine-qwen36-27b/screen-native-b3-n2-w7900.py --output /tmp/hipengine-qwen36-27b/b3-n2-device-accept-screen-w7900.json",
+    "target_policy_natural25": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-09abd51968/natural25-device-accept-commit-b1-b3.json",
+    "target_policy_profile": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib:/opt/rocm/lib HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=/home/lhl/hipEngine-main /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked/suite.json"
+  },
+  "change": {
+    "proposal_graph": "Replace three eager NextN proposal steps and three compact top-1 host drains with one fixed-address B1/B2/B3 graph, device token handoff between depths, and one bounded result drain.",
+    "target_device_policy": "Extend N2 VERIFY|ACCEPT|selected COMMIT|UPDATE_CURSORS to B3, commit the selected BF16 trunk hidden row in-graph, append all target top-1 rows to the same bounded payload, and make transactional commit validation-only after successful N2 retirement.",
+    "fallbacks": "Diagnostic logits, caller streams, output-cap tails, unsupported captures, and pre-launch misses retain N1/eager execution. Post-launch failures restore the producer-folded journal and never replay through another mutating path.",
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "correctness": {
+    "focused_w7900_transaction": "1 passed: B3 reject/partial/full target top-1 and acceptance, selected BF16 hidden, all Conv/GDN and live K/V state, cursors, dynamic reuse, correction, forced outer rollback, natural provider output, fallback telemetry, ownership, and teardown.",
+    "host_cpp_launcher_tests": "17 passed",
+    "native_cycle_cpu_fake_tests": "29 passed",
+    "suite_benchmark_contract_tests": "136 passed",
+    "natural25": {
+      "all_true_ar_and_mtp_ids_equal_between_proposal_graph_and_n2_packets": true,
+      "all_gpu_accept_summaries_match_cpu": true,
+      "all_acceptance_ledgers_equal": true,
+      "accepted_proposed": {
+        "B1": [115, 127],
+        "B2": [151, 182],
+        "B3": [169, 219]
+      },
+      "all_candidate_allocations_freed": true
+    }
+  },
+  "component_screens": {
+    "proposal_graph": {
+      "protocol": "Same-loaded-model 12-pair counterbalanced W7900 code_merge_intervals B3 transaction; one exact 25-token trajectory, 17/21 drafts, cycle accepts [3,3,2,3,3,0,3].",
+      "proposal_median_ms": {"eager": 67.5929666031152, "graph": 58.42864839360118},
+      "proposal_delta_percent": -13.558117,
+      "median_paired_proposal_saving_ms": 9.341605706140399,
+      "complete_decode_median_ms": {"eager": 370.91720197349787, "graph": 365.82128913141787},
+      "complete_decode_speedup": 1.013930,
+      "median_paired_complete_saving_ms": 5.964265204966068,
+      "exact": true
+    },
+    "target_device_policy": {
+      "protocol": "Same-loaded-model 17-pair counterbalanced W7900 B3 N1 host-policy versus N2 device-policy screen after both graphs are warm; complete target state SHA-256 and IDs are equal.",
+      "median_ms": {"n1_host_policy": 42.441009, "n2_device_policy": 41.489807},
+      "delta_percent": -2.241233237409601,
+      "speedup_from_medians": 1.022926161117115,
+      "median_paired_speedup": 1.0205296990605255,
+      "median_paired_saving_ms": 0.8545919999999967,
+      "pair_wins": 17,
+      "pairs": 17,
+      "exact": true
+    }
+  },
+  "natural25": {
+    "protocol": "Hermetic cached-only W7900 process; true AR followed by B1/B2/B3; one warmup and one measured run; first output from prefill and 24 timed transitions per prompt.",
+    "baseline_one_launch_snapshot": {
+      "commit": "01291b066",
+      "true_ar_tok_s": 24.11377551783828,
+      "B1_tok_s": 43.792176855996814,
+      "B2_tok_s": 55.25420093867832,
+      "B3_tok_s": 60.26190653283626
+    },
+    "proposal_graph_canonical": {
+      "commit": "a3e4912ee",
+      "true_ar_tok_s": 24.08482525608581,
+      "B1_tok_s": 44.03528835080576,
+      "B2_tok_s": 56.01430746202714,
+      "B3_tok_s": 61.02045876262607,
+      "delta_percent_B1_B2_B3": [0.5551482302612598, 1.3756538153404607, 1.2587590958087036],
+      "all_30_prompt_budget_rows_improve": true,
+      "all_full_train_heldout_category_scopes_improve": true,
+      "proposal_graph_captures": 3,
+      "proposal_graph_replays": 299,
+      "proposal_graph_fallbacks": 0,
+      "tracked_peak_bytes": 32724008004,
+      "memory_after_close_bytes": 0
+    },
+    "device_policy_immediate_packet": {
+      "commit": "09abd51968",
+      "true_ar_tok_s": 24.157587176266514,
+      "B1_tok_s": 44.223637552791686,
+      "B2_tok_s": 56.03674678814435,
+      "B3_tok_s": 60.902549863338564,
+      "delta_percent_vs_proposal_graph_B1_B2_B3": [0.42772333062850443, 0.040059990266638756, -0.19322847071042704],
+      "prompt_rows_improving_per_budget": {"B1": 9, "B2": 9, "B3": 9},
+      "prompt_rows_total_per_budget": 10,
+      "scope_rows_improving_per_budget": {"B1": 5, "B2": 5, "B3": 4},
+      "scope_rows_total_per_budget": 7,
+      "target_commit_finish_ms": {
+        "B1": {"baseline": 96.67508397251368, "candidate": 2.032169606536627, "delta_percent": -97.89793861765416},
+        "B2": {"baseline": 68.44073953107, "candidate": 2.6455712504684925, "delta_percent": -96.13450808890298},
+        "B3": {"baseline": 57.91883356869221, "candidate": 6.35433429852128, "delta_percent": -89.02889801641984}
+      },
+      "device_policy_cycles": {"B1": 125, "B2": 88, "B3": 68},
+      "total_cycles": {"B1": 127, "B2": 91, "B3": 76},
+      "fallback_errors": 0,
+      "tracked_peak_bytes": 32724839064,
+      "memory_after_close_bytes": 0,
+      "decision": "Retain the exact physical default because paired component and profile gates improve, but preserve 61.020 tok/s from the proposal-graph packet as the canonical B3 topline; do not rerun the six-minute broad suite solely to resolve timing variance."
+    }
+  },
+  "capture_normalized_profile": {
+    "protocol": "Separate clean cached-only rocprofv3 kernel+marker+copy traces of code_merge_intervals B3. Replace each first graph-capture sample with the mean of steady samples 2-7; profiler values are attribution, not throughput.",
+    "rows": [
+      {"route": "pre-submission control", "commit": "07c797c24", "wall_ms": 376.56910833333336, "kernel_ms": 311.2476331666667, "copy_count": 21, "copy_ms": 0.18704, "nonkernel_ms": 65.13443516666669},
+      {"route": "plus proposal graph", "commit": "a3e4912ee", "wall_ms": 366.4172081666667, "kernel_ms": 314.73889483333335, "copy_count": 21, "copy_ms": 0.187602, "nonkernel_ms": 51.49071133333334},
+      {"route": "plus N2 target device policy", "commit": "09abd51968", "wall_ms": 364.0035695, "kernel_ms": 315.01828716666665, "copy_count": 0, "copy_ms": 0.0, "nonkernel_ms": 48.98528233333337}
+    ],
+    "proposal_graph_vs_control": {"wall_delta_ms": -10.151900166666678, "wall_delta_percent": -2.695892982724535, "nonkernel_delta_ms": -13.643723833333354, "nonkernel_delta_percent": -20.947021031842294},
+    "device_policy_vs_proposal_graph": {"wall_delta_ms": -2.4136386666666567, "wall_delta_percent": -0.6587132407735563, "kernel_delta_ms": 0.2793923333333055, "nonkernel_delta_ms": -2.505428999999964, "nonkernel_delta_percent": -4.865788285154327, "dispatch_delta": -110, "copy_count_delta": -21},
+    "full_submission_stack_vs_control": {"wall_delta_ms": -12.565538833333356, "wall_delta_percent": -3.3368480194638006, "nonkernel_delta_ms": -16.14915283333332, "nonkernel_delta_percent": -24.793571621540423},
+    "vulkan_b3_inferred_nonkernel_ms": 23.788561894986742,
+    "remaining_nonkernel_gap_vs_vulkan_b3_ms": 25.19672043834663,
+    "correctness": {"exact_greedy": true, "gpu_accept_matches_cpu": true, "accepted_proposed": [17, 21], "cycle_accepts": [3, 3, 2, 3, 3, 0, 3]}
+  },
+  "latest_vulkan_comparison": {
+    "llama_cpp_commit": "c8e03ce81",
+    "matched_B3_tok_s": 67.68237226714795,
+    "selected_B4_tok_s": 69.79783638340183,
+    "canonical_hipengine_B3_tok_s": 61.02045876262607,
+    "canonical_gap_percent_vs_matched_B3": -9.842907807998746,
+    "canonical_gap_percent_vs_selected_B4": -12.575429376580294,
+    "required_speedup_percent_vs_selected_B4": 14.384319290224257,
+    "immediate_head_B3_tok_s": 60.902549863338564,
+    "immediate_head_gap_percent_vs_selected_B4": -12.744358537421075
+  },
+  "remaining_matched_module_ledger": {
+    "note": "Arithmetic rows come from the source-reconciled pre-submission profile and remain the semantic ranking. The new profiles update submission/copy totals; they do not reassign fused arithmetic rows.",
+    "rows": [
+      {"module": "steady graph/queue/host residual after both submission graphs", "hipengine_ms": 48.98528233333337, "vulkan_ms": 23.788561894986742, "gap_ms": 25.19672043834663, "status": "largest_remaining_deficit"},
+      {"module": "Q5 ssm_out", "hipengine_ms": 22.5767, "vulkan_ms": 15.144, "gap_ms": 7.4327, "status": "hipengine_slower"},
+      {"module": "FFN-down Q6", "hipengine_ms": 32.6016, "vulkan_ms": 28.8565, "gap_ms": 3.7451, "status": "hipengine_slower"},
+      {"module": "full-attention K/V", "hipengine_ms": 4.958, "vulkan_ms": 2.03952, "gap_ms": 2.91848, "status": "hipengine_slower"},
+      {"module": "linear-attention Q6 qkv", "hipengine_ms": 14.0347, "vulkan_ms": 12.2678, "gap_ms": 1.7669, "status": "hipengine_slower"},
+      {"module": "target root projection", "hipengine_ms": 11.7623, "vulkan_ms": 10.692826666666667, "gap_ms": 1.0694733333333328, "status": "hipengine_slower"},
+      {"module": "all FFN", "hipengine_ms": 128.994561, "vulkan_ms": 138.50148545454545, "gap_ms": -9.506924454545462, "status": "hipengine_faster"},
+      {"module": "complete target arithmetic", "hipengine_ms": 255.48481, "vulkan_ms": 277.2031848484848, "gap_ms": -21.718374848484786, "status": "hipengine_faster"}
+    ]
+  },
+  "source_artifacts": {
+    "proposal_component_harness": {"path": "/tmp/hipengine-qwen36-27b/screen-nextn-production-b3-e2e-w7900.py", "sha256": "8d66cd9a711fd4ab087582005ed7ce49f3cc29adbf855bdeca3797f4a8e2f216"},
+    "proposal_component": {"path": "/tmp/qwen36-nextn-production-b3-e2e-w7900.json", "sha256": "6e9bf1f0941f2d84f2bb6c0e0adba2461e2ed9ce54e51cf1b66e3f0a9c7804e7"},
+    "proposal_natural25": {"path": "/tmp/hipengine-qwen36-27b/final-a3e4912ee/natural25-nextn-chain-graph-b1-b3.json", "sha256": "912052d0fa2f053618487dda4c7fc381d669297fb20e7ad60948dab8de11adb7"},
+    "proposal_profile_summary": {"path": "/tmp/hipengine-qwen36-27b/final-a3e4912ee/profile-nextn-chain-graph-b3-marked/summary.json", "sha256": "7ed5754019d917159945206ca93687820e7225c5ecdf78a6ceb79ff4f4a55c65"},
+    "target_policy_component_harness": {"path": "/tmp/hipengine-qwen36-27b/screen-native-b3-n2-w7900.py", "sha256": "45ae1c5bf8ebf290611e50834472e854a85f5b86835b79976a7ae62d97e7360e"},
+    "target_policy_component": {"path": "/tmp/hipengine-qwen36-27b/b3-n2-device-accept-screen-w7900.json", "sha256": "052dcc7dca5695679deb549194736e9b51235e71748f8da04e212a9ddeeb3c68"},
+    "target_policy_natural25": {"path": "/tmp/hipengine-qwen36-27b/final-09abd51968/natural25-device-accept-commit-b1-b3.json", "sha256": "279ec6f4cfafd36a894423791769caeb7ee3540f6bfc067c7fa4e5db5c00ff8d"},
+    "target_policy_natural_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-09abd51968/natural25-vs-a3e4912ee.json", "sha256": "aac478ad55c5da15f975476dfa3dfbdf8088d64feaa3a9d5200d7aaee79e1c80"},
+    "profile_summary_harness": {"path": "/tmp/hipengine-qwen36-27b/summarize-qwen36-marker-profile.py", "sha256": "0e3418b34e0b31dc3d6951a5780c4062d284ad95d87e17038c382f44268e0474"},
+    "target_policy_profile_summary": {"path": "/tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked/summary.json", "sha256": "0d46e6d506e2c64cc7cdacb1b7ef6e5df74ddd3b677b7af165a6b52cbe78ebd4"},
+    "target_policy_kernel_trace": {"path": "/tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked/mtp-b3_kernel_trace.csv", "sha256": "dad4b2c4882b5c8b11c6960933ec9c43910defc94a244078870b3069db1e7fbe"},
+    "target_policy_marker_trace": {"path": "/tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked/mtp-b3_marker_api_trace.csv", "sha256": "c877d37d1e2e487e544b2d2daea412f831c9f515ee8e9dba8c8fe43d42eed9af"},
+    "target_policy_copy_trace": {"path": "/tmp/hipengine-qwen36-27b/final-09abd51968/profile-device-accept-commit-b3-marked/mtp-b3_memory_copy_trace.csv", "sha256": "83be0ba3ef5e4d21303b61afb9ad4c12c49b1e518f7cf677180c4a562295da50"}
+  },
+  "next_target": "Continue D27-R2 at the remaining 25.197-ms submission residual; then close Q5 ssm_out, Q6 FFN-down, full-attention K/V, linear-attention Q6 QKV, and target root in profiler order. Final closure remains complete natural25 against selected Vulkan B4."
+}
