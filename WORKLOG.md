@@ -204818,3 +204818,25 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`;
   wire Task #40 SH2-M4 -> Task #41 SH2-C2 -> Task #39 SH2-G. SH2-C1 is a
   diagnostic decision, not a performance or parity claim.
+
+## 2026-08-06 — Start SH2-M4 compact selected T16 metadata
+
+- ROCm is healthy on the Framework Strix Halo (`gfx1151`). The required broad
+  kernel-lineage audit remains mechanically blocked only by the absent
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; this is an
+  in-tree T16 layout evolution, not an external port.
+- Freeze a byte-neutral compact representation: preserve T16's FP16 `d/dmin`
+  and quant planes, but replace the expanded 8-bit scale/min planes with exact
+  four-column 24-bit records. Q4 reuses the retained host qmicro oracle; Q5
+  adds the corresponding 2,816-byte tile. Current 2,368/2,880-byte T16 stays
+  registered as fallback.
+- RED: `uv run pytest -q tests/test_gguf_t16_repack.py` fails collection on the
+  absent Q5 compact constants/materializer. The test also requires registered
+  `gguf_q4_k_qmicro_t16_v1` and `gguf_q5_k_qmicro_t16_v1` plugin keys, exact
+  raw-byte roundtrip, exact dequant equivalence, and byte-neutral storage.
+- GREEN: the Q5 compact transform converts expanded T16 metadata to the same
+  independently decodable 24-bit quartet records while preserving d/dmin,
+  low-nibble, and high-bit planes. Its 2,816-byte tile equals sixteen raw
+  176-byte Q5_K blocks; inverse reconstruction and dequantized values are
+  exact. Both compact layouts now have four-axis quant plugin keys while legacy
+  T16 remains untouched. Focused Q4/Q5 host validation passes **34/34**.

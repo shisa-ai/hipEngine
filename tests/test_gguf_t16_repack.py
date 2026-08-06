@@ -7,6 +7,7 @@ from hipengine.quant import resolve_quant
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_t16 import (
     GGUF_Q5_K_BLOCK_BYTES,
+    GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES,
     GGUF_Q5_K_T16_BLOCK_BYTES,
     GGUF_Q6_K_BLOCK_BYTES,
     GGUF_Q6_K_T16_BLOCK_BYTES,
@@ -16,11 +17,13 @@ from hipengine.quant.gguf_t16 import (
     GGUF_T16_COLS,
     convert_gguf_q6_k_tile16_to_qmicro,
     convert_gguf_q6_k_tile16_to_qmicro_planar,
+    repack_gguf_q5_k_qmicro_tile16,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
     repack_gguf_q6_k_tile16_qmicro,
     repack_gguf_q6_k_tile16_qmicro_planar,
     repack_gguf_q8_0_tile16,
+    unpack_gguf_q5_k_qmicro_tile16,
     unpack_gguf_q5_k_tile16,
     unpack_gguf_q6_k_tile16,
     unpack_gguf_q6_k_tile16_qmicro,
@@ -77,7 +80,9 @@ def _raw_q8_0_bytes(*, out_features: int, blocks_per_row: int) -> np.ndarray:
     ("name", "family"),
     [
         ("gguf_q4_k_t16_v1", "gguf_t16_gemv"),
+        ("gguf_q4_k_qmicro_t16_v1", "gguf_t16_qmicro_gemv"),
         ("gguf_q5_k_t16_v1", "gguf_t16_gemv"),
+        ("gguf_q5_k_qmicro_t16_v1", "gguf_t16_qmicro_gemv"),
         ("gguf_q6_k_t16_v1", "gguf_t16_gemv"),
         ("gguf_q8_0_t16_v1", "gguf_t16_gemv"),
     ],
@@ -98,6 +103,25 @@ def test_q5_k_tile16_roundtrips_raw_bytes_and_dequantizes_equivalently() -> None
 
     assert GGUF_Q5_K_T16_BLOCK_BYTES == 2880
     assert packed.tiles.shape == (3, 2, 2, GGUF_Q5_K_T16_BLOCK_BYTES)
+    assert packed.in_features == 512
+    np.testing.assert_array_equal(restored, raw)
+    np.testing.assert_allclose(
+        dequantize_gguf_data(restored.reshape(-1, 2 * GGUF_Q5_K_BLOCK_BYTES), GGMLQuantizationType.Q5_K),
+        dequantize_gguf_data(raw.reshape(-1, 2 * GGUF_Q5_K_BLOCK_BYTES), GGMLQuantizationType.Q5_K),
+        rtol=0,
+        atol=0,
+    )
+
+
+def test_q5_k_qmicro_tile16_is_byte_neutral_and_roundtrips() -> None:
+    raw = _raw_q5_k_bytes(experts=3, out_features=32, blocks_per_row=2)
+
+    packed = repack_gguf_q5_k_qmicro_tile16(raw)
+    restored = unpack_gguf_q5_k_qmicro_tile16(packed)
+
+    assert GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES == 16 * GGUF_Q5_K_BLOCK_BYTES == 2816
+    assert packed.tiles.shape == (3, 2, 2, GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES)
+    assert packed.tiles.nbytes == raw.nbytes
     assert packed.in_features == 512
     np.testing.assert_array_equal(restored, raw)
     np.testing.assert_allclose(
