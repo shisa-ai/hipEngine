@@ -2532,10 +2532,21 @@ same-process ROCTX trace removes **40 hipMemcpy calls and 40 copy-kernel
 dispatches** (**1,409 -> 1,369 total**) while preserving all 80 selected-WMMA
 launches on queue 1/stream 0; marker span improves **381.308 -> 379.572 ms
 (-1.736 ms)** and selected time is flat within +0.073%. Retain the gfx1151
-package cap and scalar fallback above scope/under opt-out. Activate SH9-C1 to
-publish the prefill-only credit and select a genuinely open decode owner;
-SH9-D1 does not move decode parity. Evidence:
+package cap and scalar fallback above scope/under opt-out. SH9-D1 does not move
+decode parity. Evidence:
 [`SH9-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json).
+
+SH9-C1 closes the scope audit without duplicating unaffected GPU rows. Current
+512/4K decode carries from SH6-C1, 32K/64K carries retained SH7-A1, and all
+memory rows remain unchanged: **53.153/55.832/46.785/40.386 tok/s** and
+**21.000/21.499/22.152/22.890 GiB** whole-GTT. C1, C2, fork-F16 decode, and
+fork-F16 whole-GTT remain **0/4**. The next package is SH10-A1 on the actual
+single-row short-context c1 attention kernel; later bounded packages cover the
+current-model direct-4K diagnostic, decode sync/D2H census, 4K-first
+phase-residency census, and mandatory cumulative gate. Do not credit SH9 toward
+decode, stack the peak-regressive SH-K1 path, or reopen approximately 1% graph
+replay. Evidence:
+[`SH9-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
