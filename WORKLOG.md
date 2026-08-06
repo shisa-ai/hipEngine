@@ -208384,3 +208384,22 @@ Vulkan local sizes verbatim will close the measured gap.
   **15/15**, native graph launcher **17/17**; Ruff, py_compile, and diff checks
   pass. Commit the exact physical default, then run the clean ten-prompt B1-B3
   promotion and a marked post-keep B3 profile before updating the topline.
+- Clean committed `92e823a2d` natural25 promotion is `complete_exact` at
+  **44.496/56.350/61.394 tok/s**. Versus immediate N2
+  **44.224/56.037/60.903**, this is **+0.616%/+0.559%/+0.808%**; B2/B3 improve
+  all **10/10 prompts and 7/7 full/train/heldout/category scopes**, while B1
+  improves **9/10 prompts and 7/7 scopes** (minimum row **-0.183%**). Versus the
+  old canonical proposal packet, all headlines improve
+  **+1.046%/+0.599%/+0.613%**. IDs, acceptance ledgers, and GPU/CPU summaries
+  are exact; chained/device/full cycles are **124/125/127**, **87/88/91**, and
+  **68/68/76**. Tracked peak rises only **48 bytes** for the three enlarged
+  bounded payloads and all allocations free. Raw suite SHA-256 is
+  `72c56179...341d58`; comparison SHA-256 is `5142f38b...a9d73`.
+- The suite's ROCTX wrapper previously reached asynchronous launch through
+  `__getattr__`, so direct cycles had no proposal-start marker even though
+  decoder stage accounting remained reconciled. Add a measured
+  `launch_device_proposal()` wrapper: its marker intentionally closes after
+  launch, preserving the complete profile window while dependent proposal
+  kernels retire inside target verify. The six benchmark-contract tests and
+  Ruff pass. Commit this instrumentation before the post-keep profile; do not
+  repeat the equivalent six-minute natural suite.

@@ -271,6 +271,13 @@ class _TimedDraftProvider:
         with self._ledger.measure("proposal_update"):
             return self._provider.advance_full_accept_tail(*args, **kwargs)
 
+    def launch_device_proposal(self, *args: Any, **kwargs: Any) -> Any:
+        # The marker closes after the asynchronous launch. Its primary purpose
+        # is to preserve the complete-cycle profile window; the dependent
+        # proposal kernels retire inside the following target-verify marker.
+        with self._ledger.measure("proposal"):
+            return self._provider.launch_device_proposal(*args, **kwargs)
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self._provider, name)
 
