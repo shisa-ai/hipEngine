@@ -2040,3 +2040,200 @@ def test_cuda_encoder_runtime_bucket_207_1248_execution() -> None:
                 dec.close()
     finally:
         loaded.weights.free(runtime=cuda_runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _fixtures_available(),
+    reason="CUDA sm_120a gate or model-derived fixtures are not available",
+)
+def test_cuda_resident_runtime_device_owned_decode_exact_token_stream_on_fixtures() -> None:
+    """C5/§7.3: device-owned decode reproduces the exact eager token stream.
+
+    With device-owned decode the token/position buffers are seeded once and the
+    captured graphs include the graph-tail position-advance state kernel; the
+    replayed DAGs must produce a byte-identical token stream to the host-upload
+    eager path across all 194 positions on both retained fixtures.
+    """
+
+    from hipengine.core.cuda import get_cuda_runtime
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    for fixture_name in _FIXTURES:
+        with open(os.path.join(_FIXTURE_DIR, f"{fixture_name}.json")) as handle:
+            manifest = json.load(handle)
+        frames = int(manifest["input"]["encoder_frames"])
+        reference = [int(token) for token in manifest["decoder"]["token_ids"]]
+        with np.load(os.path.join(_FIXTURE_DIR, f"{fixture_name}.npz")) as fixture:
+            keys = [fixture[f"cross.layer_{layer}.key"] for layer in range(8)]
+            values = [fixture[f"cross.layer_{layer}.value"] for layer in range(8)]
+            mask = fixture["encoder.attention_mask"]
+
+        resident = MoonshineCudaResidentRuntime(
+            model_path=_SNAPSHOT,
+            encoder_frames=frames,
+        )
+        resident.prepare_decoder_kernels()
+        resident.load_cross_cache(keys, values, mask=mask)
+        # Device-owned must be enabled before graph capture so the captured
+        # DAGs include the graph-tail position-advance state kernel.
+        resident.set_device_owned_decode(True)
+        captures = resident.capture_token_graphs()
+        assert len(captures) == 2
+        mismatches: list[tuple[int, int, int]] = []
+        try:
+            resident.set_decode_seed(token_id=reference[0])
+            token_id = reference[0]
+            for position in range(194):
+                resident.graph_token_step()
+                token_id = resident.read_token()
+                expected = (
+                    reference[position + 1]
+                    if position + 1 < len(reference)
+                    else reference[position]
+                )
+                if token_id != expected:
+                    mismatches.append((position, token_id, expected))
+            contract = resident.token_graph_contract()
+            assert contract["graph_count"] == 2
+            assert contract["replay_count"] == 194
+        finally:
+            resident.close()
+        assert mismatches == [], (
+            f"{fixture_name}: {len(mismatches)} device-owned token mismatches: {mismatches[:10]}"
+        )
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _six_fixtures_available(),
+    reason="CUDA sm_120a gate or six audio fixtures are not available",
+)
+def test_cuda_encoder_runtime_async_chain_e2e_on_six_fixtures() -> None:
+    """C5/§7.3: the no-terminal-sync encoder->handoff->cross-KV chain is exact.
+
+    The async chain enqueues the standalone encoder DAG onto the decoder stream
+    (``synchronize=False``) and hands off D2D + precomputes cross K/V without
+    intermediate host syncs; the decode loop's first sync covers the whole
+    chain.  The produced encoder hidden and cross caches must match the fixture
+    gates and the token stream must match the fixture stream exactly except at
+    documented borderline positions (each a sub-margin top-2 coin flip).
+    """
+
+    import safetensors.numpy
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.device import Device
+    from hipengine.loading.moonshine import load_moonshine_model
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=cuda_runtime
+    )
+    with safetensors.numpy.safe_open(
+        f"{_SNAPSHOT}/model.safetensors", framework="np"
+    ) as handle:
+        lm_head_np = handle.get_tensor(loaded.spec.embedding_weight_name).astype(
+            np.float32
+        )
+    try:
+        for fixture_name in _SIX_FIXTURES:
+            with open(
+                os.path.join(_SIX_FIXTURE_DIR, f"{fixture_name}.json")
+            ) as handle:
+                manifest = json.load(handle)
+            with np.load(
+                os.path.join(_SIX_FIXTURE_DIR, f"{fixture_name}.npz")
+            ) as fixture:
+                audio = fixture["input.values"]
+                amask = fixture["input.attention_mask"]
+                ref_mask = fixture["encoder.attention_mask"]
+                reference = [int(token) for token in manifest["decoder"]["token_ids"]]
+                frames = int(manifest["input"]["encoder_frames"])
+                ref_keys = [fixture[f"cross.layer_{layer}.key"] for layer in range(8)]
+                ref_values = [
+                    fixture[f"cross.layer_{layer}.value"] for layer in range(8)
+                ]
+
+            enc = MoonshineCudaEncoderRuntime(
+                audio_samples=audio.shape[1],
+                loaded_model=loaded,
+                owns_weights=False,
+            )
+            enc.prepare_encoder_kernels()
+            dec = MoonshineCudaResidentRuntime(
+                encoder_frames=frames, loaded_model=loaded, owns_weights=False
+            )
+            dec.prepare_decoder_kernels()
+            try:
+                enc.upload_input(audio, amask)
+                # Async chain: encoder DAG on the decoder stream, D2D handoff and
+                # cross-K/V with no terminal host syncs; the first decode sync
+                # (inside set_decode_state) covers the whole chain.  The direct
+                # cache reads below sync the decoder stream first because the
+                # D2H copy issues on the default stream.
+                enc.run_encode(stream=dec.stream, synchronize=False)
+                enc.handoff_to(dec, synchronize=False)
+                cuda_runtime.stream_synchronize(dec.stream)
+                for layer in range(8):
+                    cache = dec.cross_cache(layer)
+                    for side, ref_array in (
+                        (cache.key, ref_keys[layer]),
+                        (cache.value, ref_values[layer]),
+                    ):
+                        host = _device_tensor_to_host(cuda_runtime, side)
+                        diff = np.abs(
+                            host.astype(np.float32) - ref_array.astype(np.float32)
+                        ).max()
+                        assert float(diff) <= _CROSS_CACHE_MAX_ABS, (
+                            f"{fixture_name} layer {layer} async cross cache "
+                            f"max_abs={float(diff)}"
+                        )
+
+                mismatches: list[tuple[int, int, int]] = []
+                token_id = reference[0]
+                for position in range(194):
+                    dec.set_decode_state(token_id=token_id, position=position)
+                    dec.token_step()
+                    token_id = int(dec.read_token())
+                    expected = (
+                        reference[position + 1]
+                        if position + 1 < len(reference)
+                        else reference[position]
+                    )
+                    if token_id != expected:
+                        mismatches.append((position, token_id, expected))
+                allowed = _SIX_BORDERLINE.get(fixture_name, set())
+                unexpected = [
+                    (position, got, expected)
+                    for (position, got, expected) in mismatches
+                    if position not in allowed
+                ]
+                assert unexpected == [], (
+                    f"{fixture_name}: {len(unexpected)} unexpected token "
+                    f"mismatches: {unexpected[:10]}"
+                )
+                if mismatches:
+                    margins = _oracle_top2_margins(
+                        cuda_runtime,
+                        loaded,
+                        frames,
+                        ref_keys,
+                        ref_values,
+                        ref_mask,
+                        reference,
+                        lm_head_np,
+                        [position for position, _, _ in mismatches],
+                    )
+                    for position, _, _ in mismatches:
+                        margin = margins[position]
+                        assert margin < _BORDERLINE_MARGIN, (
+                            f"{fixture_name} position {position} mismatch but the "
+                            f"fixture-oracle top-2 logit gap is {margin:.4f} "
+                            f"(not a coin flip)"
+                        )
+            finally:
+                enc.close()
+                dec.close()
+    finally:
+        loaded.weights.free(runtime=cuda_runtime)

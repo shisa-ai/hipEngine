@@ -67,6 +67,11 @@ _FUSED_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ADVANCE_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 
 
 def plan_moonshine_glue_build(
@@ -372,6 +377,39 @@ def moonshine_partial_rope_cache_append_fp16(
     )
 
 
+def moonshine_advance_position_fp16(
+    position_ptr: int,
+    capacity: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Advance the device-owned int64 position scalar by one (graph-tail state).
+
+    Bound to ``capacity`` (the self-cache capacity) so an overlong run cannot
+    overrun the cache; the host decode loop stops at EOS or max positions.
+    """
+
+    if isinstance(position_ptr, bool) or not isinstance(position_ptr, int):
+        raise ValueError("position_ptr must be a positive device pointer")
+    if position_ptr <= 0:
+        raise ValueError("position_ptr must be a positive device pointer")
+    if isinstance(capacity, bool) or not isinstance(capacity, int):
+        raise ValueError("capacity must be a positive integer")
+    if capacity <= 0:
+        raise ValueError("capacity must be a positive integer")
+    library = library or build_moonshine_glue(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_advance_position_fp16",
+        _ADVANCE_ARGS,
+        (position_ptr, capacity, stream),
+        runtime,
+    )
+
+
 def register_moonshine_glue_kernels(*, replace: bool = True) -> None:
     registrations = (
         (
@@ -408,6 +446,15 @@ def register_moonshine_glue_kernels(*, replace: bool = True) -> None:
             ),
             moonshine_partial_rope_cache_append_fp16,
         ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_advance_position",
+                "fp16",
+                "device_owned_state",
+            ),
+            moonshine_advance_position_fp16,
+        ),
     )
     for key, kernel in registrations:
         register(key, kernel, replace=replace)
@@ -418,6 +465,7 @@ register_moonshine_glue_kernels()
 __all__ = [
     "build_moonshine_glue",
     "moonshine_argmax_fp16",
+    "moonshine_advance_position_fp16",
     "moonshine_embedding_lookup_fp16",
     "moonshine_partial_rope_cache_append_fp16",
     "moonshine_partial_rope_fp16",

@@ -181,7 +181,16 @@ class Route:
     """A complete custom-CUDA ASR route for one fixture."""
 
     def __init__(
-        self, mode: str, fixture: Fixture, loaded, cuda_runtime, snapshot: str, packed: bool = False
+        self,
+        mode: str,
+        fixture: Fixture,
+        loaded,
+        cuda_runtime,
+        snapshot: str,
+        packed: bool = False,
+        async_chain: bool = False,
+        device_owned: bool = False,
+        encoder_graph: bool = False,
     ) -> None:
         self.mode = mode
         self.fixture = fixture
@@ -189,10 +198,18 @@ class Route:
         self.cuda_runtime = cuda_runtime
         self.snapshot = snapshot
         self.packed = packed
+        # C5/§7.3: async encoder->handoff->cross-KV chain (no terminal sync
+        # until the decode boundary), device-owned token/position state, and
+        # one captured encoder+handoff+cross-KV graph per bucket.
+        self.async_chain = bool(async_chain)
+        self.device_owned = bool(device_owned)
+        self.encoder_graph = bool(encoder_graph)
         self.enc = None
         self.dec = None
         self.torch_encoder = None
         self._device_buffers = []
+        self._enc_chain_graph = 0
+        self._enc_chain_exec = None
 
     # -- preparation ---------------------------------------------------------
 
@@ -268,6 +285,11 @@ class Route:
         self._set_encoder_state(self.dec, source_frames=self.fixture.frames)
         self.dec.reset_generation(clear_cross_cache=False)
 
+        # Device-owned decode must be enabled before graph capture so the
+        # captured DAGs include the graph-tail position-advance state kernel.
+        if self.device_owned:
+            self.dec.set_device_owned_decode(True)
+
         t0 = time.perf_counter()
         graphs = self.dec.capture_token_graphs()
         prepare["capture_token_graphs_s"] = time.perf_counter() - t0
@@ -275,7 +297,66 @@ class Route:
         prepare["graph_count"] = contract["graph_count"]
         prepare["capture_wall_ms"] = contract["capture_wall_ms"]
         prepare["instantiate_wall_ms"] = contract["instantiate_wall_ms"]
+
+        # C5/§7.3: capture the whole encoder+handoff+cross-KV chain as one
+        # fixed-address graph on the decoder stream, so each timed iteration
+        # replays it instead of dispatching ~101 encoder kernels plus the D2D
+        # handoff and cross-K/V projections from Python.  Per-bucket reusable:
+        # the driver sizes one runtime per fixture, so the capture is per
+        # (bucket, fixture length); a production arena would reuse one graph
+        # per certified bucket for fixed-length uploads.
+        if self.encoder_graph:
+            if self.mode != "standalone":
+                raise ValueError("--encoder-graph requires --mode standalone")
+            prepare["encoder_chain_graph"] = self._capture_encoder_chain()
         return prepare
+
+    def _capture_encoder_chain(self) -> dict[str, float]:
+        """Capture encoder DAG + D2D handoff + cross-K/V on the decoder stream.
+
+        Returns capture/instantiate wall timing for the report.  Replaying the
+        resulting graph replaces the per-iteration Python dispatch of the ~101
+        encoder kernels plus handoff and the eight cross-K/V projections; the
+        decode readback still synchronizes at the externally visible result
+        boundary.
+        """
+
+        import time as _time
+
+        dec = self.dec
+        stream = dec.stream
+        self.cuda_runtime.stream_synchronize(stream)
+        capture_start = _time.perf_counter_ns()
+        graph = 0
+        self.cuda_runtime.stream_begin_capture(stream)
+        try:
+            self.enc.run_encode(stream=stream, synchronize=False)
+            self.enc.handoff_to(dec, synchronize=False)
+            graph = self.cuda_runtime.stream_end_capture(stream)
+        except Exception:
+            try:
+                leaked = self.cuda_runtime.stream_end_capture(stream)
+                if leaked:
+                    self.cuda_runtime.graph_destroy(leaked)
+            except Exception:
+                pass
+            raise
+        capture_wall_ms = (_time.perf_counter_ns() - capture_start) / 1.0e6
+        instantiate_start = _time.perf_counter_ns()
+        try:
+            self._enc_chain_exec = self.cuda_runtime.graph_instantiate(graph)
+        except Exception:
+            self.cuda_runtime.graph_destroy(graph)
+            raise
+        instantiate_wall_ms = (_time.perf_counter_ns() - instantiate_start) / 1.0e6
+        self._enc_chain_graph = graph
+        # The captured chain left the cross cache resident; re-seed the decode
+        # host state so the timed iterations start from a fresh generation.
+        self.dec.reset_generation(clear_cross_cache=False)
+        return {
+            "capture_wall_ms": float(capture_wall_ms),
+            "instantiate_wall_ms": float(instantiate_wall_ms),
+        }
 
     def _prepare_torch_encoder(self, prepare: dict[str, Any]) -> None:
         import torch
@@ -299,27 +380,44 @@ class Route:
 
     # -- per-iteration route -------------------------------------------------
 
-    def _set_encoder_state(self, dec, source_frames: int) -> None:
+    def _set_encoder_state(
+        self, dec, source_frames: int, *, synchronize: bool = True
+    ) -> None:
         if self.mode == "standalone":
-            self.enc.handoff_to(dec)
+            self.enc.handoff_to(dec, synchronize=synchronize)
         elif self.mode == "torch-encoder":
             dec.set_encoder_state_from_device(
                 hidden_fp16_ptr=self._torch_hidden_ptr,
                 attention_mask_int32_ptr=self._torch_mask_ptr,
                 source_frames=source_frames,
+                synchronize=synchronize,
             )
-            dec.precompute_cross_kv()
+            dec.precompute_cross_kv(
+                synchronize=synchronize,
+                reset=synchronize,
+            )
         elif self.mode == "decoder-only":
             dec.set_encoder_state_from_device(
                 hidden_fp16_ptr=self._decoder_only_hidden_ptr,
                 attention_mask_int32_ptr=self._decoder_only_mask_ptr,
                 source_frames=source_frames,
+                synchronize=synchronize,
             )
-            dec.precompute_cross_kv()
+            dec.precompute_cross_kv(
+                synchronize=synchronize,
+                reset=synchronize,
+            )
 
     def _enqueue_encoder(self, fixture: Fixture) -> None:
         if self.mode == "standalone":
-            self.enc.run_encode()
+            if self.async_chain:
+                # C5/§7.3 async chain: enqueue the encoder DAG onto the decoder
+                # stream with no terminal sync so handoff D2D + cross-K/V +
+                # decode follow on one ordered stream and a single sync at the
+                # decode boundary covers the whole chain.
+                self.enc.run_encode(stream=self.dec.stream, synchronize=False)
+            else:
+                self.enc.run_encode()
         elif self.mode == "torch-encoder":
             self._run_torch_encoder(fixture)
         # decoder-only: encoder state is already resident on device.
@@ -342,9 +440,33 @@ class Route:
 
         dec = self.dec
         fixture = self.fixture
-        self._enqueue_encoder(fixture)
-        self._set_encoder_state(dec, source_frames=fixture.frames)
-        tokens: list[int] = []
+        if self._enc_chain_exec is not None:
+            # Replay the captured encoder+handoff+cross-KV graph (C5/§7.3):
+            # no per-iteration Python dispatch of the encoder chain; the decode
+            # readback synchronizes the chain at the result boundary.
+            self.cuda_runtime.graph_launch(self._enc_chain_exec, dec.stream)
+        else:
+            synchronize = not self.async_chain
+            self._enqueue_encoder(fixture)
+            self._set_encoder_state(
+                dec,
+                source_frames=fixture.frames,
+                synchronize=synchronize,
+            )
+        if self.device_owned:
+            # Seed token/position once; the graph tail advances the device
+            # position and the fused LM head writes each next token into the
+            # same device token buffer (no per-step H2D re-upload).
+            dec.set_decode_seed(token_id=fixture.reference[0])
+            tokens: list[int] = []
+            for _ in range(_MAX_POSITIONS):
+                dec.graph_token_step()
+                token_id = int(dec.read_token())
+                tokens.append(token_id)
+                if token_id == _EOS_TOKEN:
+                    break
+            return tokens, len(tokens)
+        tokens = []
         token_id = fixture.reference[0]
         position = 0
         while True:
@@ -390,6 +512,12 @@ class Route:
     def close(self) -> None:
         from hipengine.core.memory import free
 
+        if self._enc_chain_exec is not None:
+            self.cuda_runtime.graph_exec_destroy(self._enc_chain_exec)
+            self._enc_chain_exec = None
+        if self._enc_chain_graph:
+            self.cuda_runtime.graph_destroy(self._enc_chain_graph)
+            self._enc_chain_graph = 0
         if self.enc is not None:
             self.enc.close()
         if self.dec is not None:
@@ -434,6 +562,9 @@ def main() -> int:
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--packed", action="store_true", help="load the deployable FP16 artifact (scripts/pack_moonshine_fp16.py)")
+    parser.add_argument("--async-chain", action="store_true", help="enqueue encoder->handoff->cross-KV on the decoder stream without terminal syncs (C5/§7.3 async chain)")
+    parser.add_argument("--device-owned", action="store_true", help="device-owned token/position decode state (graph-tail position advance, C5/§7.3)")
+    parser.add_argument("--encoder-graph", action="store_true", help="capture encoder+handoff+cross-KV as one fixed-address graph per bucket (standalone only, C5/§7.3)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -486,6 +617,9 @@ def main() -> int:
         "scope": {
             "gpu_index": args.gpu_index,
             "mode": args.mode,
+            "async_chain": bool(args.async_chain),
+            "device_owned": bool(args.device_owned),
+            "encoder_graph": bool(args.encoder_graph),
             "preprocessing_timed": False,
             "initial_h2d_timed": False,
             "encoder_and_generation_timed": True,
@@ -517,7 +651,7 @@ def main() -> int:
     route_results: dict[str, Any] = {}
     try:
         for fixture in fixtures:
-            route = Route(args.mode, fixture, loaded, cuda_runtime, str(args.snapshot_dir), packed=args.packed)
+            route = Route(args.mode, fixture, loaded, cuda_runtime, str(args.snapshot_dir), packed=args.packed, async_chain=args.async_chain, device_owned=args.device_owned, encoder_graph=args.encoder_graph)
             try:
                 prepare = route.prepare()
                 report["preparation"].update(prepare)
