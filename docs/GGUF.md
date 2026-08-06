@@ -2312,6 +2312,21 @@ frozen admission alternatives fail, so all transient code is removed and
 SH2-C1 must re-attribute a structurally different owner. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json).
 
+SH2-C1 then re-attributes clean current production at 512 and carries SH-G's
+mechanically unchanged 4K+ rows. The short row is **53.332 tok/s,
+21.214187 GiB tracked, 21.648426 GiB whole-GTT**; no C1, C2, fork-F16 decode,
+or fork-F16 GTT row passes. The next admitted memory owner is a compact
+selected-expert T16 metadata variant, not a new quant or a replayed kernel-width
+ladder. Current Q4/Q5 T16 expands packed scale/min metadata by exactly
+**335,544,320 + 155,189,248 = 490,733,568 bytes (0.457031 GiB)** across
+80 Q4 gate/up and 37 Q5 down tensors. SH2-M4 may change that resident layout
+only after bit-lossless pack/unpack, registered current-T16 fallback, CPU/GPU
+byte oracles, <=1% prefill/decode regression, named trace, complete four-depth
+state/lifecycle, and measured whole-GTT. Until then, current T16 remains the
+only production layout and all stacking arithmetic is explicitly projected.
+Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

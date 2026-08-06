@@ -576,8 +576,10 @@ evidence.
 | **SH2-M2** | Phase-resolved code-object/library GTT census, then bounded lazy/deferred ownership if sufficient. | **Complete: precondition failed; no implementation.** At 512, the complete untracked process-residency upper bound is only 0.418588 GiB on the device route and 0.478414 GiB on the host stack. Any active/prefill/decode/never-used code-object subset is smaller than the complete set, so neither can reach the frozen 0.49-GiB two-context gate. No lazy loader or `dlclose` path is added. |
 | **SH2-M3** | 768-row owner-slot map with dedicated fallback. | **Complete: retained/default.** Reuse the existing 21 independent owner slots from 768 rows: physical scratch falls 355,182,664 -> 69,790,760 bytes, tracked/whole-GTT fall 0.265792/0.267578 GiB, prefill/decode improve 0.621%/0.160%, complete state is byte exact, and committed teardown is clean. Diagnostics/capability denial retain dedicated owners; no arena coupling. |
 | **SH2-D1** | P10.D1 mixed Q4T16 -> Q5/Q6T16 output-tiled selected-MoE composite. | **Complete: exact, below admission; no production change.** Down+tail reaches only **1.053x / 0.080 ms/token** aggregate. Full cooperative and lifecycle-correct standard-queue composites regress to **0.520x/0.739x**; the cooperative trace also crashes in ROCr. Named standard traces are scratch-free. All transient surfaces are removed; no model routing. |
-| **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | If any C2 or whole-GTT row is still missing, schedule the next structurally new owner. Never relabel a closed Campaign-2 retry as new work. |
-| **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | Mark the thread objective complete only when the declared beat-fork policy passes; otherwise return to SH2-C1. |
+| **SH2-C1** | Cumulative role/memory re-attribution after each retained unit. | **Checkpoint complete: continue.** Fresh clean 512 is **53.332 tok/s, 21.214 GiB tracked, 21.648 GiB whole-GTT**; unchanged 4K+ rows carry from SH-G. C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the new 0.457031-GiB compact-T16 metadata owner. |
+| **SH2-M4** | Compact selected-expert Q4/Q5 T16 scale/min metadata. | **Pending.** Bit-losslessly remove the exact **490,733,568-byte** resident expansion across 80 Q4 and 37 Q5 tensors; registered current-T16 fallback, exact/perf/trace/four-depth GTT gates before promotion. |
+| **SH2-C2** | Post-M4 cumulative re-attribution. | Recompute all four parity rows and select another structurally new owner if any required row still misses. |
+| **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | Run only after SH2-C2. Mark the thread objective complete only when the declared beat-fork policy passes; otherwise continue cumulative re-attribution. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -631,6 +633,26 @@ or `0.5 ms/token`; nothing reaches model routing. Remove every transient kernel,
 wrapper, registry key, test, and harness, then proceed to SH2-C1 rather than
 ending the beat-fork objective. Evidence:
 [`2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json).
+
+SH2-C1 reproduces the current short row on clean commit `b8989cbb4`:
+**53.332 tok/s**, **21.214187 GiB tracked**, **21.648426 GiB whole-GTT**, exact
+IDs, 628 profiled dispatches/token, and the retained **69,790,760-byte** scratch
+owner. Because SH2-M3 changes only the 768-row class and SH2-D1 changes no
+production code, SH-G's 4K/32K/64K rows remain mechanically current. The four
+rows still pass **0/4 C1, 0/4 C2, 0/4 fork-F16 decode, and 0/4 fork-F16
+whole-GTT**; F16 whole-GTT gaps are **0.818/0.987/0.804/0.696 GiB**.
+
+The next owner is not another closed graph/KV/page-head/tile-width retry. All 80
+Q4 selected gate/up T16 tensors expand packed scale/min metadata by exactly
+**335,544,320 bytes**, and the 37 Q5 selected-down tensors add **155,189,248**;
+Q6 adds none. A compact bit-lossless T16 metadata variant therefore targets
+**490,733,568 bytes / 0.457031 GiB**. Stacking that *unimplemented projection*
+with the independently measured host-embedding deltas would project F16 GTT
+gaps of **-0.083/+0.026 GiB** at 512/4K; 32K/64K remain ideal-byte projections,
+not evidence. SH2-M4 must earn pack/unpack, CPU/GPU byte, prefill/decode,
+trace, four-depth state/lifecycle, and whole-GTT gates before any default change.
+Evidence:
+[`2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

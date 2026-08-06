@@ -204783,3 +204783,38 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   registered Q4T16 + Q5/Q6T16 + combine chain. SH2-D1 is complete/rejected;
   continue immediately to SH2-C1 cumulative re-attribution rather than ending
   the beat-fork objective.
+
+## 2026-08-06 — SH2-C1 selects compact selected-expert T16 metadata
+
+- Run a fresh current-commit 512/128 non-profiled wall/whole-GTT process plus
+  cached 8-token kernel/HIP-API/ROCTX role trace. Do not replay the >5-minute
+  four-depth matrix: SH2-M3 changes only the 768-row short class, SH2-M1 is an
+  opt-in, and SH2-M2/D1 change no production code, so committed SH-G
+  4K/32K/64K remains mechanically current.
+- Clean `b8989cbb4` records **53.332177 tok/s**, **18.750406 ms/token**,
+  **21.214187 GiB tracked**, **21.648426 GiB whole-GTT**, exact tokens, clean
+  teardown, 628 dispatches/token, and **17.421773 ms/token** profiled GPU. This
+  exactly reproduces the retained **69,790,760-byte** short scratch owner and
+  the expected **0.267578-GiB** whole-GTT reduction versus SH-G's dedicated
+  short owner.
+- Remaining C1 time gaps at 512/4K/32K/64K are
+  **1.558/0.812/1.247/1.583 ms/token**. C1, C2, fork-F16 decode, and fork-F16
+  whole-GTT each remain **0/4**; current F16 GTT gaps are
+  **0.818/0.987/0.804/0.696 GiB**. The higher-level objective is not complete.
+- Fresh 512 roles are GDN input **4.135 ms**, selected gate/up/down/router
+  **2.315/1.397/0.974 ms**, LM head **1.843 ms**, full-attention core
+  **1.585 ms**, and GDN output **1.452 ms**. GDN input and selected-MoE
+  ownership are closed by SH-D1/SH2-D1, while graph/KV/page-head retries remain
+  prohibited.
+- Census all 120 selected expert tensors. The 80 Q4 gate/up T16 tensors expand
+  packed scale/min metadata by exactly **335,544,320 bytes**; the 37 Q5 down
+  tensors add **155,189,248**; three Q6 tensors add zero. Select SH2-M4 to
+  bit-losslessly compact this structurally new **490,733,568-byte /
+  0.45703125-GiB** resident owner with current T16 registered fallback.
+  Stacking with host embedding is only arithmetic until measured: projected
+  F16 GTT residual is **-0.083/+0.026 GiB** at measured-delta 512/4K, while
+  32K/64K use ideal embedding bytes and are not evidence.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`;
+  wire Task #40 SH2-M4 -> Task #41 SH2-C2 -> Task #39 SH2-G. SH2-C1 is a
+  diagnostic decision, not a performance or parity claim.
