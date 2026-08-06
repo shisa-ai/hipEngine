@@ -1,0 +1,167 @@
+{
+  "schema": 1,
+  "status": "source_audited_exhausted_no_new_candidate",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "kind": "qwen36_27b_gguf_latest_vulkan_wide_q6_source_audit",
+  "timestamp": "2026-08-06T19:48:44+09:00",
+  "scope": "Source and prior-evidence reconciliation for the FFN-down and linear-attention QKV source-Q6 family. No kernel, runtime, allocation, route, benchmark, or default changed.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_family": "32 Q6_K FFN-down plus 24 Q6_K linear-attention QKV weights",
+    "shapes_k_n": [
+      [17408, 5120],
+      [5120, 10240]
+    ]
+  },
+  "latest_matched_profile": {
+    "source": "benchmarks/results/2026-08-06-qwen36-27b-latest-vulkan-profile-ledger.json",
+    "ffn_down_rows4": {
+      "calls": 224,
+      "hipengine_ms": 32.6016,
+      "llama_cpp_vulkan_ms": 28.8565,
+      "gap_ms": 3.7451
+    },
+    "linear_attention_qkv_rows4": {
+      "calls": 168,
+      "hipengine_ms": 14.0347,
+      "llama_cpp_vulkan_ms": 12.2678,
+      "gap_ms": 1.7669
+    },
+    "combined": {
+      "calls": 392,
+      "hipengine_ms": 46.6363,
+      "llama_cpp_vulkan_ms": 41.1243,
+      "gap_ms": 5.512
+    },
+    "vulkan_observed_operations": [
+      "MUL_MAT_VEC q6_K m=5120 n=4 k=17408: 224 x 128.823 us = 28.8565 ms",
+      "MUL_MAT_VEC q6_K m=10240 n=4 k=5120: 168 x 73.022 us = 12.2678 ms"
+    ],
+    "profile_log_sha256": "a258993314ed847e3de456760b4a9d7fe65336c6597baafa108ec1e3a443e0b3"
+  },
+  "llama_cpp_source_audit": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "prior_commit": "ee0445c99",
+    "latest_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "backend_files_changed": [
+      "ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/gla.comp",
+      "ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp"
+    ],
+    "backend_change": "f26efa02a vulkan backend ops: implemented GATED_LINEAR_ATTN (#25601)",
+    "q6_shader_or_dispatch_hunks_changed": false,
+    "q6_path": "On AMD, ggml_vk_should_use_mmvq rejects Q6 MMVQ and the rows-4 calls use the floating mul_mat_vec_q6_k path. The AMD selector retains subgroup-sized DMMV and chooses the NUM_COLS=4 pipeline. Both selector functions and all shader dependencies are unchanged.",
+    "dispatch_functions": [
+      {
+        "name": "ggml_vk_get_dequantize_mul_mat_vec",
+        "prior_sha256": "50630e7ab85dda5245b301357b9616dc2ef1cbc1fa9e2004b89ce176cc845ac9",
+        "latest_sha256": "50630e7ab85dda5245b301357b9616dc2ef1cbc1fa9e2004b89ce176cc845ac9"
+      },
+      {
+        "name": "ggml_vk_should_use_mmvq",
+        "prior_sha256": "c3c6a72ff6bae4538d0542b513a216f39cb845ff89c3d64b2a54e9ac114899f6",
+        "latest_sha256": "c3c6a72ff6bae4538d0542b513a216f39cb845ff89c3d64b2a54e9ac114899f6"
+      }
+    ],
+    "shader_dependencies": [
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q6_k.comp",
+        "prior_blob": "3e89d91cbb0476f82bf04899a6d90863f9cc737b",
+        "latest_blob": "3e89d91cbb0476f82bf04899a6d90863f9cc737b",
+        "latest_sha256": "bc785a2457aa5b04d416e18f5ae2304da267e35cea7b54ac67b5d20987e450af"
+      },
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec.comp",
+        "prior_blob": "5a9d0e778fdf3866ac77d576cd218d307507afae",
+        "latest_blob": "5a9d0e778fdf3866ac77d576cd218d307507afae",
+        "latest_sha256": "d1375d407004ac5e2f7c590340be9aa7edcb203dd966ec3af29f807e5d866865"
+      },
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_base.glsl",
+        "prior_blob": "4aeda68c7f2dbc21755ecd9be5f7d7b150861e45",
+        "latest_blob": "4aeda68c7f2dbc21755ecd9be5f7d7b150861e45",
+        "latest_sha256": "fc7bb5cc47bd9761f8a3484466e10b61d7866df41a150cdd47cfa1f389110323"
+      },
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_iface.glsl",
+        "prior_blob": "e8d053cdd4325189f0b3def989b05dcdc73c7bdd",
+        "latest_blob": "e8d053cdd4325189f0b3def989b05dcdc73c7bdd",
+        "latest_sha256": "e5b825d83c6250e4b75459c2584e6530bb443e08252df7069e107ec1eb6bd001"
+      },
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/dequant_funcs.glsl",
+        "prior_blob": "d902ff3a67bd2f311950db3bef5ec40b849fb374",
+        "latest_blob": "d902ff3a67bd2f311950db3bef5ec40b849fb374",
+        "latest_sha256": "d70cf26d67104b333fdd2dedefdb060ea1409091465cfc81829c1f6d1b14683a"
+      },
+      {
+        "path": "ggml/src/ggml-vulkan/vulkan-shaders/types.glsl",
+        "prior_blob": "9616a26c7b39c5afcbf4c5428843a1818d5cf14d",
+        "latest_blob": "9616a26c7b39c5afcbf4c5428843a1818d5cf14d",
+        "latest_sha256": "770122344546ec9b8ee443c38093df76ed3287fffc4e643e08f3150ffef5d03e"
+      }
+    ]
+  },
+  "hipengine_current_owner": {
+    "implementation_commit": "3728531ba1682deefdeaa79318e03a2f733c543e",
+    "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+    "representation": "byte-neutral sole-resident planar-qmicro Q6T16",
+    "decode": "exact c1 and local128/col8 rows2-4; rows5-6 exact per-row fallback",
+    "prefill": "aligned-record WMMA for M64/M512",
+    "retained_profile": "392 wide-Q6 calls 59.87622899999999 -> 46.71383699999999 ms (-21.98%)",
+    "latest_combined_profile_ms": 46.6363,
+    "memory": "same bytes as legacy Q6T16; no sidecar allocation"
+  },
+  "existing_candidate_ladder": [
+    "dense BF16 source-Q6",
+    "legacy Q6T16 c1, rows2-6, and dense WMMA M64/M512",
+    "local128 col16, row-selective col8, rejected col4, and BF16/F32 output policies",
+    "byte-neutral interleaved and planar qmicro plus aligned-record WMMA; scalar-record WMMA rejected",
+    "small-row planar-Q6 D4 integer-WMMA, rejected at 0.273-0.477x with 0/31 wins",
+    "FFN-down plus residual fusion, with rows2-3 retained and row4 rejected",
+    "rounded add plus next-RMSNorm",
+    "planar-Q6/Q8_1 scalar sudot4 at c1 and rows2-4",
+    "equal-size rotating X8 c1 sidecar rescue, rejected because both complete-path designs regressed true AR by more than 6%"
+  ],
+  "binding_prior_evidence": [
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-q6t16-col8-rowtiles-retained.json",
+      "sha256": "95bfc2e959e215a835fcb19e76f319afad0f5a4ad1fb08418efbe0814096e4c1",
+      "result": "Exact row-selective col8 owner; col4 lost all nine actual rows2-4 cells and was removed."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-q6t16-qmicro-planar-retained.json",
+      "sha256": "acfd4558ed1bf15f821c40e334be4e257f2608db55aa6038ae08570f711e3c16",
+      "result": "Retained byte-neutral planar owner; 392-call W7900 family 59.876 -> 46.714 ms (-21.98%), with exact decode and prefill consumers."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json",
+      "sha256": "87c2e6c637b30b11daec9236e88dbcba2f1d721937482762f6c61348659819ac",
+      "result": "Retained selective launch fusion for rows2-3; planar row4 arithmetic regressed 18.46% and was excluded."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json",
+      "sha256": "558c9992b652379d531a70f87a8589e4ba10d58be22f6613322423dd71914dc1",
+      "result": "Retained exact rounded add plus next-RMSNorm boundary and removed 217 B3 graph launches."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json",
+      "sha256": "d57d1b68b6809fbb9f76809a25fedb6ea22be018d879bd131632f7cad321adf9",
+      "result": "Planar Q8_1 and 3.140-GiB X8-c1 rescue improved B3 but regressed true AR by 6.23% and 6.87%; runtime and sidecar were removed."
+    },
+    {
+      "artifact": "benchmarks/results/2026-08-06-qwen36-27b-residual-tuning-coverage-audit.json",
+      "sha256": "7fec0eed082038faea96455411b2a54bd6ccd680713b8949f43dabb625ab39ff",
+      "result": "Coverage matrix closes the legacy/planar/col4-col8/integer-WMMA/Q8_1 ladders and requires a new representation or hardware primitive before reopening."
+    }
+  ],
+  "decision": {
+    "action": "close_wide_q6_as_exhausted_for_current_source_and_hardware_primitives",
+    "reason": "The refreshed comparator changes neither the Q6 shader dependency graph nor the AMD path selectors. Vulkan still runs the same floating four-column Q6 matvec mechanism, while hipEngine has already measured dense, legacy T16, byte-neutral planar, geometry, fusion, integer-WMMA, Q8_1, and transaction-consistent sidecar alternatives. Repeating them would duplicate retained or rejected evidence.",
+    "reopen_condition": "A genuinely new byte-neutral or sole-resident Q6 representation, RDNA3 primitive, credible cross-family fusion with larger complete-wall impact, or changed comparator Q6 source.",
+    "next_target": "Advance D27-R2 to the refreshed full-attention K/V gap (4.958 ms hipEngine versus 2.040 ms Vulkan)."
+  }
+}

@@ -208476,3 +208476,30 @@ Vulkan local sizes verbatim will close the measured gap.
   source/hardware primitives and advance to Q6 FFN-down. Compact artifact:
   `benchmarks/results/2026-08-06-qwen36-27b-latest-q5-source-audit-exhausted.json`
   (pre-commit SHA-256 `c9c1fe09...68b1b`).
+
+## 2026-08-06 — Close refreshed wide-Q6 source audit as exhausted
+
+- Reconcile both consumers of the next source-Q6 family against the latest
+  matched profile: FFN-down rows=4 is **32.6016 ms hipEngine versus 28.8565 ms
+  Vulkan** across **224/224** calls, and linear-attention QKV is **14.0347 versus
+  12.2678 ms** across **168/168** calls. Combined, the directional deficit is
+  **5.5120 ms** across 392 calls.
+- The refreshed comparator contains no new Q6 mechanism. Between `ee0445c99`
+  and clean `c8e03ce81`, all six dependencies of the floating
+  `mul_mat_vec_q6_k` path have identical blobs. The exact selector text hashes
+  for `ggml_vk_get_dequantize_mul_mat_vec()` and
+  `ggml_vk_should_use_mmvq()` are also identical; AMD still rejects Q6 MMVQ and
+  runs the subgroup-sized four-column floating path. The only Vulkan backend
+  change remains the unrelated GLA op.
+- hipEngine's byte-neutral sole-resident planar-qmicro owner already reduced
+  this 392-call W7900 family **59.876229 -> 46.713837 ms (-21.98%)** while
+  covering c1, rows 2-6, and aligned-record WMMA. Binding prior evidence also
+  covers legacy Q6T16, col16/8/4, interleaved and planar layouts, scalar-record
+  and D4 integer WMMA, residual and rounded-RMSNorm fusion, Q8_1 `sudot4`, and
+  the equal-size X8-c1 sidecar rescue. The Q8_1 and sidecar routes improved B3
+  but regressed true AR by **6.23% / 6.87%** and were removed.
+- This is source/evidence reconciliation only; no kernel, route, allocation,
+  benchmark, or default changed. Close wide Q6 for current source/hardware
+  primitives and advance D27-R2 to full-attention K/V. Compact artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-latest-q6-source-audit-exhausted.json`
+  (pre-commit SHA-256 `c2d203c5...2d3aa`).
