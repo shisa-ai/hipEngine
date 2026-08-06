@@ -129,6 +129,19 @@ class GGUFQ4KT16Quant:
 
 
 @dataclass(frozen=True)
+class GGUFQ4KQMicroT16Quant:
+    """Byte-neutral qmicro T16 plugin key for GGUF block_q4_K weights."""
+
+    name: str = "gguf_q4_k_qmicro_t16_v1"
+    weight_storage: str = "gguf_block_q4_k_qmicro_t16_v1"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block256_subblock32_scale_min_packed24x4"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_t16_qmicro_gemv"
+
+
+@dataclass(frozen=True)
 class GGUFQ4KPack8:
     """Lossless pack8 layout for GGUF Q4_K GEMV.
 
@@ -253,6 +266,7 @@ class GGUFQ4KMMQTile16Preview:
 
 GGUF_Q4_K = register_quant(GGUFQ4KQuant())
 GGUF_Q4_K_T16_V1 = register_quant(GGUFQ4KT16Quant())
+GGUF_Q4_K_QMICRO_T16_V1 = register_quant(GGUFQ4KQMicroT16Quant())
 
 
 def awq_pack8_shift_for_lane(lane: int) -> int:
@@ -1389,11 +1403,13 @@ __all__ = [
     "GGUF_Q8_1_MMQ_DS4_BYTES",
     "GGUFQ4KMMQTile16Preview",
     "GGUFQ4KPack8",
+    "GGUFQ4KQMicroT16Quant",
     "GGUFQ4KTile16",
     "GGUFQ4KTile16Lite",
     "GGUFQ4KTile16QMicro",
     "GGUFQ4KQuant",
     "GGUFQ4KT16Quant",
+    "GGUF_Q4_K_QMICRO_T16_V1",
     "awq_pack8_shift_for_lane",
     "gguf_q4_k_mmq_tile16_preview_matmul",
     "interleave_gguf_q4_k_tile16_dual",
