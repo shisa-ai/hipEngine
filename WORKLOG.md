@@ -208540,3 +208540,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `3fc32da7...974`; natural/comparison are `aa225df1...9d8` /
   `a47604fc...a57`; profile comparison is `81cf3a83...e9`. Advance D27-R2
   within the module to full-attention V before root.
+
+## 2026-08-06 — Sole-resident planar-Q6 owner for full-attention V
+
+- The D27-R2 full-attention V audit (next after K) exposed that the eight
+  narrow Q6 V tensors still carried a duplicate dense-BF16 allocation alongside
+  their qmicro sidecar. A decode-only sidecar gate rejected the first candidate:
+  qmicro is exact to source-Q6/T16 arithmetic but not to the current dense-BF16
+  AR owner, and the first committed B3 state diverged (4,154/163,840 bytes).
+- Correct to a single arithmetic owner: the eight narrow `layers.*.attn_v`
+  (shape 1024x5120, Q6_K) become sole-resident `gguf_q6_k_t16_qmicro_planar_v1`
+  (`LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR`, allocation `("tiles",)`). This removes
+  the duplicate 32.8 MiB, keeps AR/verify/prefill consistent, and retains the
+  measured rows 2-4 c1 gains.
+- Routing pins in `tests/test_qwen35_gguf_mapping.py`:
+  `test_qwen36_dense_decode_repack_replaces_wide_rank2_q6_and_root_head` now
+  expects qmicro narrow V (was dense BF16), and new
+  `test_qwen36_dense_attn_v_materializes_sole_qmicro_owner` verifies the
+  materialized layer 3 V is sole planar-Q6 (INT8 tiles, 4,300,800 bytes).
+- Binding W7900
+  `test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes
+  complete B1-B3 logits/accept/KV/rollback/graph-reuse/ownership/teardown on
+  gfx1100. It now observes: no dense-BF16 V (`dense_virtual256` empty), scalar
+  AR on qmicro decode rows=1, and verifier B1/B3 on qmicro rowtile rows {2,4}
+  (mirroring the compact-K col4 owner; B2/rows3 is the separate N2 bulk graph).
+  `tests/test_qwen35_gguf_mapping.py` and the shared-route/fixture mtp_e2e
+  tests are green; `py_compile` + `git diff --check` pass.

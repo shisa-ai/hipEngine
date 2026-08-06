@@ -660,6 +660,18 @@ def _spec_for_tensor(
             allocation_names=("tiles", "x8") if keep_x8_sidecar else ("tiles",),
         )
     if qtype == GGMLQuantizationType.Q6_K and slot_path.startswith("layers."):
+        if (
+            decode_repack
+            and dense_q6_qmicro_planar
+            and _is_narrow_q6_attn_v_tensor(slot_path, tensor)
+        ):
+            return Qwen35GGUFWeightSpec(
+                slot_path=slot_path,
+                source=tensor,
+                quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+                layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+                allocation_names=("tiles",),
+            )
         if decode_repack and _is_wide_rank2_q6_t16_tensor(slot_path, tensor):
             return Qwen35GGUFWeightSpec(
                 slot_path=slot_path,
@@ -858,6 +870,20 @@ def _is_wide_rank2_q6_t16_tensor(
         len(tensor.shape) == 2
         and int(tensor.shape[0]) >= 5_120
         and slot_path.endswith((".ffn_down", ".attn_qkv"))
+    )
+
+
+def _is_narrow_q6_attn_v_tensor(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+) -> bool:
+    """Select the measured Qwen3.6-27B full-attention V projection."""
+
+    return (
+        len(tensor.shape) == 2
+        and tuple(map(int, tensor.shape)) == (1_024, 5_120)
+        and slot_path.startswith("layers.")
+        and slot_path.endswith(".attn_v")
     )
 
 
