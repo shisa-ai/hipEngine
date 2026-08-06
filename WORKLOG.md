@@ -208228,3 +208228,42 @@ Vulkan local sizes verbatim will close the measured gap.
   `/tmp/hipengine-qwen36-27b/final-a3e4912ee/natural25-nextn-chain-graph-b1-b3.json`
   (`sha256=912052d0...8de11adb7`). A clean B3 kernel/marker/copy reprofile is
   running before the next submission-module decision.
+
+## 2026-08-06 — Qualify B3 device accept/selected-commit graph
+
+- Repair the post-keep B3 profile by normalizing the first proposal, target,
+  and commit captures to steady replays. On the same code prompt, retained
+  NextN chaining moves normalized complete wall **376.569 -> 366.423 ms**;
+  kernel work is flat within clock drift, while non-kernel residual falls
+  **65.134 -> 51.494 ms**. This closes **13.640 ms** of submission overhead but
+  leaves about **27.705 ms** versus the matched Vulkan profile.
+- Audit that residual against the existing native-cycle owner. The reusable
+  GGUF target graph already supports device strict acceptance, selected
+  Conv/GDN and FP32 hidden-seed commit, and cursor update for B1/B2, while B3
+  was rejected only by mirrored Python/C++ shape guards. Extend the unchanged
+  N2 `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS` contract to rows=4 and add a distinct
+  session-owned B3 N2 cache slot; N1 and diagnostic-logit paths remain separate.
+- RED/GREEN exposed one latent B1/B2 contract omission before B3 could be used
+  by the transactional NextN path: N2 committed the graph-owned FP32 normalized
+  seed but left `last_target_hidden` on the final verifier row. Capture the
+  exact FP32 pre-output rows, cast them to BF16 in the graph, and select-copy
+  the accepted row into one stable session-owned BF16 destination. The first
+  cached-only attempt correctly failed before launch on the newly keyed host
+  shim; after prebuilding `native_spec_cycle_graph-5ed46c6ef26a8906`, the
+  focused oracle then isolated this hidden-only mismatch. Acceptance, every
+  Conv/GDN state, and live full-attention K/V were already exact.
+- Final W7900 dense-Q4 transaction command:
+  `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar`.
+  It passes **1/1**, covering B3 reject/partial/full IDs, selected BF16 hidden,
+  all Conv/GDN and live K/V bytes, cursor, rollback, N1 graph reuse, correction,
+  natural provider output, and teardown. Host/C++ launcher tests pass **17/17**;
+  adjacent native-cycle CPU/fake tests pass **12/12**; Ruff, py_compile, and
+  diff checks pass.
+- Same-loaded-model W7900 component screen
+  `/tmp/hipengine-qwen36-27b/b3-n2-device-accept-screen-w7900.json` runs 17
+  counterbalanced N1-host-policy/N2-device-policy pairs after warming both
+  graphs. IDs and complete state SHA-256 are exact. Median target+policy wall is
+  **42.441009 -> 41.489807 ms/cycle (1.022926x, -0.951202 ms)**; every pair
+  improves and the median paired speedup is **1.020530x**. At the observed seven
+  B3 cycles this projects to roughly **6.66 ms/prompt**. This qualifies
+  production wiring; it is not yet a retained natural25 topline.
