@@ -208163,3 +208163,48 @@ Vulkan local sizes verbatim will close the measured gap.
   largest module, then Q5, Q6-down, full-attention K/V, Q6-QKV, and root. Do not
   repeat already-rejected graph upload/four-way splitting without a materially
   different command-buffer or persistent-composite mechanism.
+
+## 2026-08-06 — Qualify exact device-chained NextN proposal graphs
+
+- Audit the first ranked submission boundary at its real ownership point. Each
+  eager B3 proposal performs three complete NextN steps and drains compact
+  top-1 to the host after every depth. Merely replacing the redundant
+  device-wide top-1 drain with a stream sync is neutral on GPU1 (**2.825 vs
+  2.827 ms/step**), while a reusable one-step graph saves only **0.122 ms/step
+  / 4.5%**. The materially different candidate is therefore one fixed-address
+  graph for the complete greedy B1/B2/B3 chain: resident hidden/token/position
+  metadata, device token handoff between depths, and one compact token/value
+  readback after the chain.
+- The first isolated B3 mechanism screen is exact for all three tokens, FP32
+  winner values, final hidden, and full-attention K/V state and moves **8.796 ->
+  8.203 ms/cycle (1.072x, -0.593 ms)** on GPU1. The production executor then
+  reproduces exact state and measures **8.744 -> 8.268 ms/cycle (1.058x)** on
+  GPU1 and **10.188 -> 9.637 ms/cycle (1.057x)** on W7900, with one capture and
+  27 successful replays on each device.
+- A same-loaded-model, 12-pair counterbalanced W7900 `code_merge_intervals`
+  transaction removes unrelated model-load and clock drift. Eager versus graph
+  proposal median is **67.593 -> 58.429 ms (-13.56%, -9.164 ms)**; median
+  paired saving is **9.342 ms**. Complete decode median is **370.917 -> 365.821
+  ms (-1.374%, 1.01393x)**; median paired saving is **5.964 ms** because target
+  timing moves oppositely. All 24 samples have one identical 25-token trajectory,
+  **17/21** accepted/proposed drafts, and cycle ledger `[3,3,2,3,3,0,3]`.
+  Raw A/B packet: `/tmp/qwen36-nextn-production-b3-e2e-w7900.json`.
+- Integrate the graph without a quant/backend branch or experiment flag. The
+  exact top-1 registry route remains the capability gate; graph capture failure,
+  diagnostic full logits, unsupported budgets, and live contexts crossing the
+  1,024-token split-K boundary retain eager execution. Short live contexts stay
+  eligible under larger server cache allocations by pinning only the proven
+  scalar-attention cap at 1,023. Graph/stream objects and two tiny resident
+  buffers are owned by the executor and released on close; suite artifacts now
+  expose capture/replay/fallback telemetry.
+- Validation so far: non-real provider/suite bundle **18 passed**; Ruff,
+  `py_compile`, and `git diff --check` pass; GPU1 real dense large-cache one-step,
+  three-step token/logit/hidden/KV oracle passes. The first W7900 complete
+  transaction run reaches only the final telemetry assertion before failing
+  because the graph initially renamed the established scorer path. Preserve
+  `last_lm_head_path=exact_q6_top1`, use the separate graph contract for
+  submission telemetry, and rerun only that focused node. The focused rerun is
+  fully GREEN (**1 passed in 229.33 s**); its reject/partial/full commit,
+  post-commit rollback, correction, dynamic graph reuse, provider output,
+  scorer-route compatibility, and teardown assertions all pass. Clean
+  natural25 B1-B3 remains the promotion gate.

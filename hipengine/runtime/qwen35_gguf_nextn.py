@@ -10,7 +10,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
@@ -22,6 +22,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     build_gguf_q6_k_t16_gemv,
+)
+from hipengine.kernels.hip_gfx1100.runtime import (
+    advance_decode_position_i64,
+    build_runtime_state,
+    copy_i32_to_i64,
 )
 from hipengine.kernels.registry import KernelKey, MissingKernelError, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import Qwen35GGUFDeviceWeight
@@ -63,6 +68,28 @@ class Qwen35GGUFNextNStateAdvance:
     position: int
 
 
+@dataclass(frozen=True, slots=True)
+class _Qwen35GGUFNextNProposalGraph:
+    """One exact greedy proposal-chain graph bound to a resident request slot."""
+
+    slot: int
+    budget: int
+    stream: int
+    graph: int
+    graph_exec: int
+
+
+# The fixed graph topology is proven for the production B1-B3 ladder through
+# scalar full-attention context 1,023. Larger cache allocations may still use it
+# while the live chain fits; requests crossing into split-K retain the exact
+# eager chain until that separate topology is gated.
+_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3)
+_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
+_NEXTN_TOP1_RESULT_DTYPE = np.dtype([("token", np.int32), ("value", np.float32)])
+_NEXTN_TOP1_RESULT_NBYTES = int(_NEXTN_TOP1_RESULT_DTYPE.itemsize)
+_NEXTN_TOP1_RESULT_CAPACITY = max(_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS)
+
+
 class Qwen35GGUFNextNStepExecutor(Protocol):
     hidden_size: int
 
@@ -75,6 +102,17 @@ class Qwen35GGUFNextNStepExecutor(Protocol):
         *,
         return_logits: bool = False,
     ) -> Qwen35GGUFNextNStepResult: ...
+
+    def run_chain(
+        self,
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+        *,
+        candidate_budget: int,
+        return_logits: bool = False,
+    ) -> tuple[Qwen35GGUFNextNStepResult, ...]: ...
 
     def advance_state_only(
         self,
@@ -161,6 +199,29 @@ class Qwen35GGUFNextNExecutor:
         self._lm_head_top1_libraries: Mapping[str, object] | None = None
         self.last_lm_head_path = "unobserved"
         self._prepare_exact_lm_head_top1()
+        self._proposal_graphs: dict[tuple[int, int], _Qwen35GGUFNextNProposalGraph] = {}
+        self._proposal_graph_unavailable: set[tuple[int, int]] = set()
+        self._proposal_graph_runtime_library: object | None = None
+        self._proposal_graph_captures = 0
+        self._proposal_graph_replays = 0
+        self._proposal_graph_last_status = "unobserved"
+        self._proposal_graph_last_error: str | None = None
+        self._proposal_target_hidden: DeviceBuffer | None = None
+        self._proposal_results: DeviceBuffer | None = None
+        self._proposal_results_host: np.ndarray | None = None
+        if self._lm_head_top1_kernel is not None:
+            self._proposal_target_hidden = malloc(hidden_bytes, runtime=self.runtime)
+            self._proposal_results = malloc(
+                self.max_requests * _NEXTN_TOP1_RESULT_CAPACITY * _NEXTN_TOP1_RESULT_NBYTES,
+                runtime=self.runtime,
+            )
+            self._proposal_results_host = np.empty(
+                (self.max_requests, _NEXTN_TOP1_RESULT_CAPACITY),
+                dtype=_NEXTN_TOP1_RESULT_DTYPE,
+            )
+            self._proposal_graph_last_status = "ready"
+        else:
+            self._proposal_graph_last_status = "ineligible"
         self._buffers = tuple(
             buffer
             for buffer in (
@@ -174,6 +235,8 @@ class Qwen35GGUFNextNExecutor:
                 self._lm_head_top1_block_values,
                 self._lm_head_top1_block_indices,
                 self._lm_head_top1_result,
+                self._proposal_target_hidden,
+                self._proposal_results,
             )
             if buffer is not None
         )
@@ -221,6 +284,41 @@ class Qwen35GGUFNextNExecutor:
         self._lm_head_top1_weight = weight
         self._lm_head_top1_libraries = libraries
 
+    def _enqueue_exact_lm_head_top1(
+        self,
+        hidden_ptr: int,
+        token_out_ptr: int,
+        value_out_ptr: int,
+        *,
+        stream: int = 0,
+    ) -> bool:
+        """Enqueue exact compact scoring into caller-owned device outputs."""
+
+        if (
+            self._lm_head_top1_kernel is None
+            or self._lm_head_top1_weight is None
+            or self._lm_head_top1_block_values is None
+            or self._lm_head_top1_block_indices is None
+            or self._lm_head_top1_libraries is None
+        ):
+            return False
+        self._lm_head_top1_kernel(
+            self._lm_head_top1_weight,
+            int(hidden_ptr),
+            self._logits_buf.ptr,
+            self._lm_head_top1_block_values.ptr,
+            self._lm_head_top1_block_indices.ptr,
+            int(token_out_ptr),
+            int(value_out_ptr),
+            1,
+            self.hidden_size,
+            self.vocab_size,
+            stream=int(stream),
+            libraries=self._lm_head_top1_libraries,
+            runtime=self.runtime,
+        )
+        return True
+
     def _run_exact_lm_head_top1(
         self,
         hidden_ptr: int,
@@ -229,36 +327,18 @@ class Qwen35GGUFNextNExecutor:
     ) -> tuple[int, float] | None:
         """Return the exact token/value pair without materializing vocab logits."""
 
-        if (
-            self._lm_head_top1_kernel is None
-            or self._lm_head_top1_weight is None
-            or self._lm_head_top1_block_values is None
-            or self._lm_head_top1_block_indices is None
-            or self._lm_head_top1_result is None
-            or self._lm_head_top1_libraries is None
-        ):
+        if self._lm_head_top1_result is None:
             return None
         result_ptr = int(self._lm_head_top1_result.ptr)
-        self._lm_head_top1_kernel(
-            self._lm_head_top1_weight,
-            int(hidden_ptr),
-            self._logits_buf.ptr,
-            self._lm_head_top1_block_values.ptr,
-            self._lm_head_top1_block_indices.ptr,
+        if not self._enqueue_exact_lm_head_top1(
+            hidden_ptr,
             result_ptr,
             result_ptr + DType.INT32.itemsize,
-            1,
-            self.hidden_size,
-            self.vocab_size,
-            stream=int(stream),
-            libraries=self._lm_head_top1_libraries,
-            runtime=self.runtime,
-        )
+            stream=stream,
+        ):
+            return None
         self.runtime.device_synchronize()
-        result_host = np.empty(
-            (1,),
-            dtype=np.dtype([("token", np.int32), ("value", np.float32)]),
-        )
+        result_host = np.empty((1,), dtype=_NEXTN_TOP1_RESULT_DTYPE)
         copy_device_to_host(
             host_array_ptr(result_host),
             self._lm_head_top1_result,
@@ -325,6 +405,11 @@ class Qwen35GGUFNextNExecutor:
         token_id: int,
         position: int,
         target_hidden: Tensor,
+        *,
+        stream: int = 0,
+        token_ready: bool = False,
+        position_ready: bool = False,
+        attention_context_cap: int | None = None,
     ) -> tuple[int, int]:
         """Run the state-mutating NextN block before shared norm/head scoring."""
 
@@ -336,7 +421,14 @@ class Qwen35GGUFNextNExecutor:
             raise ValueError("token_id is outside the GGUF vocabulary")
         slot = self._slot(request_id)
         slot_scratch = self.scratch.for_slot(slot, span_role="decode")
-        slot_scratch.set_full_attention_position(int(position), self.runtime)
+        if position_ready:
+            # Graph capture supplies dynamic device metadata. Keep the host mirror
+            # coherent only so the full-attention helper does not enqueue a
+            # synchronous legacy-stream upload while another stream is captured.
+            slot_scratch.position_host[0] = int(position)
+            slot_scratch.context_host[0] = int(position) + 1
+        else:
+            slot_scratch.set_full_attention_position(int(position), self.runtime)
         hidden_nbytes = self.hidden_size * DType.BF16.itemsize
         token_ptr = self._token_buf.ptr + slot * DType.INT64.itemsize
         embedding_ptr = self._embedding_buf.ptr + slot * hidden_nbytes
@@ -345,13 +437,14 @@ class Qwen35GGUFNextNExecutor:
         layer_out_ptr = self._layer_out_buf.ptr + slot * hidden_nbytes
         final_hidden_ptr = self._final_hidden_buf.ptr + slot * hidden_nbytes
 
-        token_host = np.asarray([int(token_id)], dtype=np.int64)
-        copy_host_to_device(
-            DeviceBuffer(token_ptr, token_host.nbytes),
-            host_array_ptr(token_host),
-            token_host.nbytes,
-            runtime=self.runtime,
-        )
+        if not token_ready:
+            token_host = np.asarray([int(token_id)], dtype=np.int64)
+            copy_host_to_device(
+                DeviceBuffer(token_ptr, token_host.nbytes),
+                host_array_ptr(token_host),
+                token_host.nbytes,
+                runtime=self.runtime,
+            )
         launch_gguf_embedding(
             self.weights.fallback("token_embedding"),
             token_ptr,
@@ -359,6 +452,7 @@ class Qwen35GGUFNextNExecutor:
             rows=1,
             hidden_size=self.hidden_size,
             vocab_size=self.vocab_size,
+            stream=int(stream),
             runtime=self.runtime,
         )
         gguf_rmsnorm_bf16_f32_weight(
@@ -368,6 +462,7 @@ class Qwen35GGUFNextNExecutor:
             rows=1,
             hidden_size=self.hidden_size,
             eps=self.weights.config.rms_norm_eps,
+            stream=int(stream),
             runtime=self.runtime,
         )
         gguf_rmsnorm_bf16_f32_weight(
@@ -377,6 +472,7 @@ class Qwen35GGUFNextNExecutor:
             rows=1,
             hidden_size=self.hidden_size,
             eps=self.weights.config.rms_norm_eps,
+            stream=int(stream),
             runtime=self.runtime,
         )
         launch_gguf_linear(
@@ -386,6 +482,7 @@ class Qwen35GGUFNextNExecutor:
             rows=1,
             in_features=2 * self.hidden_size,
             out_features=self.hidden_size,
+            stream=int(stream),
             runtime=self.runtime,
         )
         self.runner._run_full_attention_layer(
@@ -394,6 +491,8 @@ class Qwen35GGUFNextNExecutor:
             layer_out_ptr,
             slot_scratch,
             position=int(position),
+            stream=int(stream),
+            attention_max_context_len=attention_context_cap,
         )
         return layer_out_ptr, final_hidden_ptr
 
@@ -443,6 +542,340 @@ class Qwen35GGUFNextNExecutor:
             logits=logits,
         )
 
+    def _capture_exact_chain_graph(
+        self,
+        request_id: int,
+        slot: int,
+        budget: int,
+    ) -> _Qwen35GGUFNextNProposalGraph:
+        """Capture one short-context greedy proposal chain on a private stream."""
+
+        if self.weights is None or self._proposal_target_hidden is None or self._proposal_results is None:
+            raise RuntimeError("GGUF NextN proposal graph storage is unavailable")
+        if self._proposal_graph_runtime_library is None:
+            self._proposal_graph_runtime_library = build_runtime_state(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+        runtime_library = self._proposal_graph_runtime_library
+        runtime = self.runtime
+        stream = runtime.stream_create()
+        graph = 0
+        graph_exec = 0
+        capturing = False
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        prior_position = int(slot_scratch.position_host[0])
+        prior_context = int(slot_scratch.context_host[0])
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        target_hidden_ptr = self._proposal_target_hidden.ptr + slot * hidden_nbytes
+        token_ptr = self._token_buf.ptr + slot * DType.INT64.itemsize
+        result_base = (
+            self._proposal_results.ptr
+            + slot * _NEXTN_TOP1_RESULT_CAPACITY * _NEXTN_TOP1_RESULT_NBYTES
+        )
+        try:
+            runtime.device_synchronize()
+            runtime.stream_begin_capture(stream)
+            capturing = True
+            hidden_ptr = target_hidden_ptr
+            for depth in range(int(budget)):
+                layer_out_ptr, final_hidden_ptr = self._run_block(
+                    request_id,
+                    0,
+                    depth,
+                    Tensor.from_handle(
+                        hidden_ptr,
+                        (1, self.hidden_size),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
+                    stream=stream,
+                    token_ready=True,
+                    position_ready=True,
+                    attention_context_cap=min(
+                        int(self.scratch.max_positions),
+                        _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT,
+                    ),
+                )
+                gguf_rmsnorm_bf16_f32_weight(
+                    layer_out_ptr,
+                    self.weights.fallback("output_norm").allocation().tensor.ptr,
+                    final_hidden_ptr,
+                    rows=1,
+                    hidden_size=self.hidden_size,
+                    eps=self.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                result_ptr = result_base + depth * _NEXTN_TOP1_RESULT_NBYTES
+                if not self._enqueue_exact_lm_head_top1(
+                    final_hidden_ptr,
+                    result_ptr,
+                    result_ptr + DType.INT32.itemsize,
+                    stream=stream,
+                ):
+                    raise RuntimeError("GGUF NextN exact top-1 graph route became unavailable")
+                hidden_ptr = final_hidden_ptr
+                if depth + 1 < int(budget):
+                    copy_i32_to_i64(
+                        result_ptr,
+                        token_ptr,
+                        1,
+                        stream=stream,
+                        library=runtime_library,
+                        runtime=runtime,
+                    )
+                    advance_decode_position_i64(
+                        slot_scratch.position_buf.ptr,
+                        slot_scratch.context_buf.ptr,
+                        stream=stream,
+                        library=runtime_library,
+                        runtime=runtime,
+                    )
+            graph = runtime.stream_end_capture(stream)
+            capturing = False
+            if not graph:
+                raise RuntimeError("HIP returned a null GGUF NextN proposal graph")
+            graph_exec = runtime.graph_instantiate(graph)
+            if not graph_exec:
+                raise RuntimeError("HIP returned a null GGUF NextN proposal graph executable")
+            return _Qwen35GGUFNextNProposalGraph(
+                slot=int(slot),
+                budget=int(budget),
+                stream=int(stream),
+                graph=int(graph),
+                graph_exec=int(graph_exec),
+            )
+        except Exception:
+            if capturing:
+                try:
+                    abandoned = runtime.stream_end_capture(stream)
+                    if abandoned:
+                        runtime.graph_destroy(abandoned)
+                except Exception:
+                    pass
+            if graph_exec:
+                runtime.graph_exec_destroy(graph_exec)
+            if graph:
+                runtime.graph_destroy(graph)
+            runtime.stream_destroy(stream)
+            raise
+        finally:
+            slot_scratch.position_host[0] = prior_position
+            slot_scratch.context_host[0] = prior_context
+
+    def _proposal_graph(
+        self,
+        request_id: int,
+        slot: int,
+        budget: int,
+    ) -> _Qwen35GGUFNextNProposalGraph | None:
+        key = (int(slot), int(budget))
+        graph = self._proposal_graphs.get(key)
+        if graph is not None:
+            return graph
+        if key in self._proposal_graph_unavailable:
+            self._proposal_graph_last_status = "capture_fallback"
+            return None
+        try:
+            graph = self._capture_exact_chain_graph(request_id, slot, budget)
+        except Exception as exc:
+            self._proposal_graph_unavailable.add(key)
+            self._proposal_graph_last_status = "capture_fallback"
+            self._proposal_graph_last_error = f"{type(exc).__name__}: {exc}"
+            return None
+        self._proposal_graphs[key] = graph
+        self._proposal_graph_captures += 1
+        self._proposal_graph_last_status = "captured"
+        self._proposal_graph_last_error = None
+        return graph
+
+    def _run_exact_graph_chain(
+        self,
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+        *,
+        candidate_budget: int,
+    ) -> tuple[Qwen35GGUFNextNStepResult, ...] | None:
+        """Replay one exact device-chained proposal graph, or request eager fallback."""
+
+        budget = int(candidate_budget)
+        if (
+            budget not in _NEXTN_EXACT_CHAIN_GRAPH_BUDGETS
+            or self._proposal_target_hidden is None
+            or self._proposal_results is None
+            or self._proposal_results_host is None
+        ):
+            self._proposal_graph_last_status = "eager_ineligible"
+            return None
+        graph_context_cap = min(
+            int(self.scratch.max_positions),
+            _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT,
+        )
+        if int(position) + budget > graph_context_cap:
+            self._proposal_graph_last_status = "eager_long_context"
+            return None
+        slot = self._slot(request_id)
+        graph = self._proposal_graph(request_id, slot, budget)
+        if graph is None:
+            return None
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        target_hidden_ptr = self._proposal_target_hidden.ptr + slot * hidden_nbytes
+        token_ptr = self._token_buf.ptr + slot * DType.INT64.itemsize
+        result_ptr = (
+            self._proposal_results.ptr
+            + slot * _NEXTN_TOP1_RESULT_CAPACITY * _NEXTN_TOP1_RESULT_NBYTES
+        )
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        self._token_host[slot] = int(token_id)
+        slot_scratch.position_host[0] = int(position)
+        slot_scratch.context_host[0] = int(position) + 1
+        token_host = self._token_host[slot : slot + 1]
+        result_host = self._proposal_results_host[slot, :budget]
+        stream = graph.stream
+        runtime = self.runtime
+        if int(target_hidden.ptr) != int(target_hidden_ptr):
+            runtime.memcpy_async(
+                target_hidden_ptr,
+                target_hidden.ptr,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        runtime.memcpy_async(
+            token_ptr,
+            host_array_ptr(token_host),
+            token_host.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            slot_scratch.position_buf.ptr,
+            host_array_ptr(slot_scratch.position_host),
+            slot_scratch.position_host.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            slot_scratch.context_buf.ptr,
+            host_array_ptr(slot_scratch.context_host),
+            slot_scratch.context_host.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            stream,
+        )
+        runtime.graph_launch(graph.graph_exec, stream)
+        runtime.memcpy_async(
+            host_array_ptr(result_host),
+            result_ptr,
+            result_host.nbytes,
+            HipMemcpyKind.DEVICE_TO_HOST,
+            stream,
+        )
+        runtime.stream_synchronize(stream)
+        tokens = tuple(int(value) for value in result_host["token"])
+        logits = tuple(float(value) for value in result_host["value"])
+        if any(value < 0 or value >= self.vocab_size for value in tokens):
+            raise RuntimeError("GGUF NextN proposal graph produced an invalid token id")
+        if not np.all(np.isfinite(result_host["value"])):
+            raise FloatingPointError("GGUF NextN proposal graph produced NaN or Inf")
+        final_hidden_ptr = self._final_hidden_buf.ptr + slot * hidden_nbytes
+        hidden = Tensor.from_handle(
+            final_hidden_ptr,
+            (1, self.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
+        rows = []
+        current_token = int(token_id)
+        for depth, (next_token, logit) in enumerate(zip(tokens, logits, strict=True)):
+            rows.append(
+                Qwen35GGUFNextNStepResult(
+                    request_id=int(request_id),
+                    input_token=current_token,
+                    position=int(position) + depth,
+                    token_id=next_token,
+                    logit=logit,
+                    hidden=hidden,
+                    logits=None,
+                )
+            )
+            current_token = next_token
+        slot_scratch.position_host[0] = int(position) + budget - 1
+        slot_scratch.context_host[0] = int(position) + budget
+        self.last_lm_head_path = "exact_q6_top1"
+        self._proposal_graph_replays += 1
+        self._proposal_graph_last_status = "replay"
+        self._proposal_graph_last_error = None
+        return tuple(rows)
+
+    def run_chain(
+        self,
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+        *,
+        candidate_budget: int,
+        return_logits: bool = False,
+    ) -> tuple[Qwen35GGUFNextNStepResult, ...]:
+        """Run one candidate chain through the exact graph route or eager fallback."""
+
+        budget = int(candidate_budget)
+        if budget not in MTP_CHAIN_CANDIDATE_BUDGETS:
+            allowed = ", ".join(str(value) for value in MTP_CHAIN_CANDIDATE_BUDGETS)
+            raise ValueError(f"candidate_budget must be one of {allowed}")
+        if self.closed or self.weights is None:
+            raise RuntimeError("GGUF NextN executor is closed")
+        if target_hidden.dtype != DType.BF16 or target_hidden.shape != (1, self.hidden_size):
+            raise ValueError(f"target_hidden must be BF16 with shape (1, {self.hidden_size})")
+        if token_id < 0 or token_id >= self.vocab_size:
+            raise ValueError("token_id is outside the GGUF vocabulary")
+        if position < 0 or int(position) + budget > int(self.scratch.max_positions):
+            raise ValueError("GGUF NextN proposal positions exceed cache capacity")
+        if not return_logits:
+            graph_rows = self._run_exact_graph_chain(
+                request_id,
+                token_id,
+                position,
+                target_hidden,
+                candidate_budget=budget,
+            )
+            if graph_rows is not None:
+                return graph_rows
+        rows = []
+        current_token = int(token_id)
+        current_hidden = target_hidden
+        for depth in range(budget):
+            result = self.run_step(
+                int(request_id),
+                current_token,
+                int(position) + depth,
+                current_hidden,
+                return_logits=return_logits,
+            )
+            rows.append(result)
+            current_token = int(result.token_id)
+            current_hidden = result.hidden
+        return tuple(rows)
+
+    def proposal_graph_contract(self) -> dict[str, object]:
+        """Return compact exact-chain graph ownership and replay telemetry."""
+
+        return {
+            "eligible": self._proposal_target_hidden is not None,
+            "budgets": list(_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS),
+            "max_context": _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT,
+            "graphs": len(self._proposal_graphs),
+            "captures": int(self._proposal_graph_captures),
+            "replays": int(self._proposal_graph_replays),
+            "unavailable": [list(key) for key in sorted(self._proposal_graph_unavailable)],
+            "last_status": self._proposal_graph_last_status,
+            "last_error": self._proposal_graph_last_error,
+        }
+
     def advance_state_only(
         self,
         request_id: int,
@@ -475,6 +908,11 @@ class Qwen35GGUFNextNExecutor:
         if self.closed:
             return
         self.closed = True
+        for proposal_graph in reversed(tuple(self._proposal_graphs.values())):
+            self.runtime.graph_exec_destroy(proposal_graph.graph_exec)
+            self.runtime.graph_destroy(proposal_graph.graph)
+            self.runtime.stream_destroy(proposal_graph.stream)
+        self._proposal_graphs.clear()
         for buffer in reversed(self._buffers):
             free(buffer, runtime=self.runtime)
         for buffer in reversed(self.scratch.buffers):
@@ -551,18 +989,33 @@ class Qwen35GGUFNextNDraftProvider:
             )
             current_token = int(context.root_tokens[index])
             position = int(context.root_positions[index])
-            results: list[Qwen35GGUFNextNStepResult] = []
-            for depth in range(budget):
-                result = self.executor.run_step(
-                    int(request_id),
-                    current_token,
-                    position + depth,
-                    hidden,
-                    return_logits=return_logits,
+            run_chain = getattr(self.executor, "run_chain", None)
+            if callable(run_chain):
+                results = list(
+                    run_chain(
+                        int(request_id),
+                        current_token,
+                        position,
+                        hidden,
+                        candidate_budget=budget,
+                        return_logits=return_logits,
+                    )
                 )
-                results.append(result)
-                current_token = int(result.token_id)
-                hidden = result.hidden
+                if len(results) != budget:
+                    raise RuntimeError("GGUF NextN executor chain returned the wrong row count")
+            else:
+                results = []
+                for depth in range(budget):
+                    result = self.executor.run_step(
+                        int(request_id),
+                        current_token,
+                        position + depth,
+                        hidden,
+                        return_logits=return_logits,
+                    )
+                    results.append(result)
+                    current_token = int(result.token_id)
+                    hidden = result.hidden
             self.last_results[int(request_id)] = tuple(results)
             requests.append(
                 MtpDraftRequest(

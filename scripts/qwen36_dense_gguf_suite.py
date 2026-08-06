@@ -526,6 +526,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     mtp_rows: dict[str, list[dict[str, object]]] = {
         str(budget): [] for budget in args.candidate_budgets
     }
+    proposal_graph_contract: dict[str, object] = {}
     load_started = time.perf_counter()
     with Qwen35GGUFResidentSession(
         model,
@@ -638,6 +639,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                             flush=True,
                         )
         finally:
+            proposal_graph_contract_fn = getattr(provider.executor, "proposal_graph_contract", None)
+            if callable(proposal_graph_contract_fn):
+                proposal_graph_contract = dict(proposal_graph_contract_fn())
             for decoder in decoders.values():
                 decoder.close()
             verifier.close()
@@ -743,6 +747,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "roctx_marker_prefix": ROCTX_MARKER_PREFIX,
         },
         "load_seconds": load_seconds,
+        "runtime": {
+            "proposal_graph": proposal_graph_contract,
+        },
         "correctness": {
             "all_exact_greedy": all_exact,
             "all_gpu_accept_match_cpu": all(
