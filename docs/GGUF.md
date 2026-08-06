@@ -2505,6 +2505,26 @@ projected gate before model routing; do not reopen reducer, split-count,
 page-layout, compact-KV, or raw-Q8 retries. Evidence:
 [`SH7-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json).
 
+SH8-A1 closes that producer subdivision without changing production. The
+8,448-token/33-split primitive is byte-exact versus NumPy and retained SH7.
+At actual 129/257-split shapes, two four-query blocks lower producer registers
+**72 -> 56 VGPR** but double grid X and K/V traffic. Across 21 counterbalanced
+pairs per context, complete producer+parallel-reducer wall regresses
+**0.425068 -> 0.474481 ms/layer (0.8959x)** at 32K and **0.759873 ->
+0.858382 (0.8852x)** at 64K, with **0/42 candidate wins** and projected
+**-0.494/-0.985 ms/token** effects over ten layers. Cached producer medians
+also regress **405.676 -> 455.813 us** and **725.396 -> 820.053 us** at zero
+scratch. The candidate misses both leaf gates, so remove every transient body,
+wrapper, key, export, smoke, and test surface before model routing.
+
+Proceed to SH9-D1's independent gfx1151 transfer of the exact compact-WMMA
+static count bound. gfx1100 admits 4,096 selected rows while gfx1151 remains at
+zero; private-c1 uses eight rows, so the candidate can remove 40 scalar
+`wmma_total` D2H synchronizations per token without changing selected kernels.
+Require bound/fallback RED/GREEN, exact state, cached HIP/ROCTX proof, and
+same-source wall non-regression before promotion. Evidence:
+[`SH8-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

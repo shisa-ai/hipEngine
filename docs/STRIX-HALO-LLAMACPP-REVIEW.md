@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH7-A1 retained and SH8-A1 activated:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH8-A1 rejected and SH9-D1 activated:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -60,17 +60,16 @@ fork KV lanes at 4K/32K/64K and loses at 512. Therefore hipEngine does **not** b
 matched exact-model diagnostic; Campaign 2 is closed because all declared
 owners are decided, not because cross-engine parity was reached.
 
-**Beat-fork continuation update (2026-08-06): active.** SH7-A1 independently
-admits the already-registered prepare-plus-coalesced split reducer on gfx1151
-from 32K. A fresh package-default one-queue same-source pair moves 32K/64K
-decode **46.066 -> 46.785 tok/s (+1.560%)** and **39.441 -> 40.386 tok/s
-(+2.394%, -0.593 ms/token)** at byte-identical tracked peak and unchanged
-whole-GTT. The primitive is exact versus NumPy; all **1,296/1,296**
-category+heldout semantic logits are byte-exact; named prepare/output traces are
-scratch-free. Serial reduction remains the default below 32K and under explicit
-opt-out. C1, C2, fork-F16 decode, and fork-F16 whole-GTT nevertheless remain
-**0/4**, so the objective continues to SH8-A1's structurally new grouped-GQA
-producer occupancy screen rather than stopping at this retained unit.
+**Beat-fork continuation update (2026-08-06): active.** SH7-A1 remains retained
+from 32K. SH8-A1 then tests the next structurally new grouped-GQA producer
+ownership: splitting each eight-query/KV group into two exact four-query blocks
+lowers **72 -> 56 VGPR**, but duplicates K/V traffic and loses every one of 42
+actual-shape timing pairs. Complete producer+parallel-reducer wall regresses
+**0.4251 -> 0.4745 ms/layer (0.896x)** at 32K and **0.7599 -> 0.8584
+(0.885x)** at 64K, projecting **-0.494/-0.985 ms/token**. The candidate is
+removed before model routing. C1, C2, fork decode, and fork memory parity remain
+open, so the objective continues to SH9-D1's independent gfx1151 transfer of
+the existing compact-WMMA no-read scheduler bound.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -600,7 +599,8 @@ evidence.
 | **SH6-P1** | Phase-exclusive raw-to-T16 prefill bridge plus complete quality gate. | **Complete: exact bridge, rejected; all model routing removed.** The converter is host-packer-byte-exact, scratch-free, and lifecycle-correct with one 25.5-MiB owner; complete 512 prefill state is exact. Charged prefill regresses **1369.120 -> 1318.196 tok/s (-3.720%)**, failing the first 1% guard, so 4K-64K/quality continuation stops and production remains Q8T16. |
 | **SH6-C1** | Post-SH6 cumulative four-depth re-attribution and fork policy gate. | **Complete: policy fails; objective continues.** Canonical decode is **53.153/55.832/46.196/39.579 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. All four prefill/exact-oracle/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. |
 | **SH7-A1** | Independently transfer the registered prepare-plus-coalesced parallel split-K reducer to gfx1151 long-context decode. | **Complete: retained/default from 32K.** One-queue wall improves **+1.560%/+2.394% (-0.333/-0.593 ms/token)** at 32K/64K; the reducer falls **424.162 -> 109.346** and **744.973 -> 207.485 us/token**. Primitive and 1,296-logit semantic gates are exact, memory/lifecycle are unchanged, traces are named and scratch-free, and serial fallback remains below 32K/under opt-out. |
-| **SH8-A1** | Split the 72-VGPR grouped-GQA producer's eight query heads into exact four-head ownership groups to test register occupancy against duplicated K/V traffic. | **Active.** The post-SH7 producer owns **4.037/7.212 ms/token** at 32K/64K. First require exact per-head reduction order and `KVLiveSpans` coverage, then an actual-shape cached leaf A/B. Continue to model wall only at >=1.10x producer speedup or >=0.5-ms/token projected saving; otherwise remove the transient sibling and close this occupancy tradeoff. |
+| **SH8-A1** | Split the 72-VGPR grouped-GQA producer's eight query heads into exact four-head ownership groups to test register occupancy against duplicated K/V traffic. | **Complete: exact, rejected at leaf gate.** qgroup4 lowers **72 -> 56 VGPR** and remains byte-exact, but complete producer+parallel-reducer wall is only **0.896x/0.885x** at 32K/64K with **0/42 wins**, projecting **-0.494/-0.985 ms/token**. All transient surfaces are removed. |
+| **SH9-D1** | Independently transfer gfx1100 LCP-2B's exact compact-WMMA static upper bound to gfx1151 and remove the selected-Q4 scalar `wmma_total` D2H boundary. | **Active.** gfx1151 remains explicitly scoped to zero while gfx1100 admits 4,096 selected rows. Prove the exact tile bound and fallback first, then require a same-source private-c1 wall/trace gate with 40 scalar reads removed and no prefill/state regression. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -918,6 +918,29 @@ remaining grouped-GQA producer owns **4.037/7.212 ms/token** and runs one
 four-query ownership sibling that trades duplicated K/V reads for lower register
 pressure. Require exact per-head reduction order and a cached actual-shape leaf
 win of >=1.10x or >=0.5-ms/token projection before any full-model route.
+
+SH8-A1 proves correctness but rejects that tradeoff. The 8,448-token/33-split
+primitive is byte-exact versus NumPy and retained SH7 output. At actual 129/257
+split workspaces, qgroup4 lowers **72 -> 56 VGPR**, remains local256/scratch0,
+and doubles grid X **512 -> 1,024**. It nevertheless loses all 21 pairs at each
+context: complete producer+parallel-reducer wall moves **0.425068 -> 0.474481
+ms/layer (0.8959x, +11.625%)** at 32K and **0.759873 -> 0.858382 (0.8852x,
++12.964%)** at 64K. Projected ten-layer effects are **-0.494/-0.985
+ms/token**, opposite both admission alternatives. Cached producer medians also
+regress **405.676 -> 455.813 us** and **725.396 -> 820.053 us**. Stop before
+model semantic/wall work and remove the HIP body, C/Python wrappers, key,
+export, smoke extension, and RED/GREEN contract. Evidence:
+[`SH8-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json).
+
+Select **SH9-D1**, an explicit open backend transfer rather than another producer
+subdivision. gfx1100 LCP-2B uses an exact routing-independent upper bound for
+compact selected-Q4 WMMA tiles and removes the per-layer scalar `wmma_total`
+D2H read through 4,096 selected rows; gfx1151 is deliberately held at zero
+pending its independent gate. This route applies to private-c1 decode
+(`selected_rows=8`) and can remove 40 host synchronization boundaries/token
+without changing the selected kernels. First prove bound/fallback contracts,
+then require exact state plus a same-source wall/HIP/ROCTX gate; reject and
+restore scalar reads on any regression.
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).
