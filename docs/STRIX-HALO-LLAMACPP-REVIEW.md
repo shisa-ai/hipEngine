@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH11-A1 rejected and SH12-C0 selected:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH12-C0 retained and SH13-M1 selected:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -94,6 +94,19 @@ grouped split producer+reducer costs **0.844 ms/transition**, while direct
 context+gate costs **11.889 ms (14.080x slower)**. The June speed direction does
 not survive, so add no exact-emulation package; keep threshold 1,024 and continue
 to SH12-C0.
+
+SH12-C0 finds one exact removable boundary. Canonical private-c1 eager decode
+has a required host-embedding H2D, a redundant device-wide drain before sample
+readback, a required synchronous 8-byte token D2H, and a profiler-only post-step
+drain; it has no per-layer D2H/scalar reads. Default-stream sampling now relies
+on the blocking D2H while non-default streams retain explicit stream sync. A
+nine-pair same-resident screen improves **53.524 -> 54.608 tok/s (+2.027%,
+-0.371 ms/token)** with **9/9 wins**; independent processes are positive but
+overlap at **53.898 -> 54.132 (+0.433%, -0.080 ms/token)**. Complete state is
+byte-exact, memory/lifecycle are unchanged, and cached tracing removes the ten
+production drains (**20 -> 10** device synchronizations) with unchanged copies
+and kernel launches. Clean committed production is **54.065 tok/s**, still
+short of C1 and fork F16, so continue to SH13-M1.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -628,7 +641,7 @@ evidence.
 | **SH9-C1** | Scope-correct cumulative completion audit after SH9-D1. | **Complete: policy fails; objective continues.** SH9 receives no decode/memory credit. Carried decode is **53.153/55.832/46.785/40.386 tok/s**, whole-GTT is **21.000/21.499/22.152/22.890 GiB**, and all four C1/C2/fork-F16 decode/fork-F16 memory classes remain **0/4**. |
 | **SH10-A1** | Exact short-context private-c1 attention screen on the actual single-row context kernel. | **Complete: retained/default through active context 1,023.** Trace-first attribution measures the old owner at **1.500 ms/token**. Reusing the existing fixed256 batch leaf at rows1 is byte-exact, lowers that role to **0.928 ms/token**, and improves independent 512/128 decode **51.541 -> 53.591 tok/s (+3.978%, -0.742 ms/token)** with prefill **-0.612%**, unchanged memory/lifecycle, identical resources, and unchanged 1,024+ fallback. Clean production is **53.445 tok/s**; C1/fork parity remain open. |
 | **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | **Complete: non-exact and slower; rejected with no implementation.** Forced direct changes all four teacher-forced decode-logit fingerprints and final state, while repeated wall regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**. Current split producer+reducer is **0.844 ms/transition** versus direct context+gate **11.889 ms (14.080x slower)**. Memory/lifecycle are unchanged and free-running IDs happen to match; they do not repair exactness. The June speed lever does not survive, so no SH11-A2 package is admitted. |
-| **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | Attribute every per-token sync/copy/scalar read and separate mandatory next-token/host-embedding ownership from removable boundaries. Implement nothing without measured repeated impact; SH9 is prefill-only and does not reopen graph replay. |
+| **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | **Complete: retained default-stream redundant-drain deletion.** The census finds no per-layer D2H and removes only the device-wide drain immediately before the required blocking token D2H; non-default streams keep explicit sync. Same-resident 512/128 improves **+2.027% / -0.371 ms/token (9/9 wins)**; independent wall is positive but overlapping at **+0.433% / -0.080 ms/token**. Complete state is byte-exact, memory/lifecycle are unchanged, and cached tracing removes **10** production sync calls with unchanged copies/launches. Clean production is **54.065 tok/s**; parity remains open. |
 | **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | Re-scope SH2-M2 as a precondition audit only. Continue beyond 4K or add loader churn only if the eligible phase-exclusive subset exceeds the actual fork gap and peak timing permits safe deferral/unload. |
 | **SH14-C1** | Cumulative four-depth campaign completion gate. | After SH10-SH13, refresh or carry qualified canonical/fork rows, exactness, lifecycle, role, and memory evidence. Complete the objective only if the declared policy passes; otherwise name only evidence-backed residual owners. |
 
@@ -1029,10 +1042,25 @@ not survive and no exact-emulation package is justified. Keep the 1,024 split
 threshold and close SH11. Evidence:
 [`SH11-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json).
 
-Run **SH12-C0** next as a complete decode synchronization/D2H census independent
-of SH9, then **SH13-M1** as a 4K-first phase-resolved code-residency
-precondition audit. **SH14-C1** remains the required cumulative four-depth
-completion gate.
+SH12-C0 completes the decode synchronization/D2H census independently of SH9.
+Each canonical private-c1 eager transition has one required 4-KiB host-embedding
+H2D, one removable pre-readback device drain, one required synchronous 8-byte
+token D2H, and one profiler-harness-only post-step drain; no per-layer D2H or
+scalar read exists. The retained default-stream path relies on the blocking D2H
+as its completion boundary while preserving explicit non-default-stream sync.
+Nine counterbalanced same-resident 512/128 pairs improve **53.524 -> 54.608
+tok/s (+2.027%, -0.371 ms/token)** with **9/9 wins**. Independent processes are
+positive but overlap at **53.898 -> 54.132 (+0.433%, -0.080 ms/token)**, so that
+row is reported as non-regression rather than inheriting the paired headline.
+Complete state is byte-exact, tracked/sampled HIP-used memory and lifecycle are
+unchanged, and the final cached trace removes the ten production drains
+(`hipDeviceSynchronize` **20 -> 10**) while `hipMemcpy` stays **775** and kernel
+launches stay **6,840**. Clean committed production is **54.065 tok/s**, still
+**1.304 ms/token** short of C1 and **2.971 ms/token** behind fork F16. Evidence:
+[`SH12-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json).
+
+Run **SH13-M1** next as a 4K-first phase-resolved code-residency precondition
+audit. **SH14-C1** remains the required cumulative four-depth completion gate.
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by

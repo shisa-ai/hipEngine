@@ -2569,6 +2569,24 @@ no exact-emulation package, and continue to the decode sync/D2H census,
 4K-first phase-residency census, and mandatory cumulative gate. Evidence:
 [`SH11-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json).
 
+SH12-C0 completes that private-c1 eager census and retains one exact deletion.
+Each canonical transition has one required host-embedding H2D, one redundant
+pre-readback device drain, one required synchronous 8-byte token D2H, and one
+profiler-only post-step drain; no per-layer D2H/scalar reads exist. Default-
+stream sampling now uses the D2H as its completion boundary, while non-default
+streams keep explicit synchronization. Nine counterbalanced same-resident
+512/128 pairs improve **53.524 -> 54.608 tok/s (+2.027%, -0.371 ms/token)**
+with **9/9 wins**. Independent processes are positive but overlap at **53.898
+-> 54.132 (+0.433%, -0.080 ms/token)**, so that row proves non-regression rather
+than inheriting the paired headline. Complete state is byte-exact,
+tracked/sampled HIP-used memory and lifecycle are unchanged, and cached tracing
+removes exactly ten production drains (`hipDeviceSynchronize` **20 -> 10**)
+with unchanged **775** copies and **6,840** kernel launches. Clean committed
+production is **54.065 tok/s**, still **1.304 ms/token** short of C1 and **2.971
+ms/token** behind fork F16. Execute SH13-M1 next; graph replay remains closed.
+Evidence:
+[`SH12-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

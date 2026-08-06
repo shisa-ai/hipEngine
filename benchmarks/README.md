@@ -4338,7 +4338,19 @@ tok/s (-37.788%, +11.131 ms/token)** with every candidate sample below every
 control; tracked/sampled memory and lifecycle are unchanged. Cached named traces
 put current split producer+reducer at **0.844 ms/transition** and direct
 context+gate at **11.889 ms (14.080x slower)**. The old speed direction does not
-survive, so no exact-emulation package is added and SH12-C0 is next.
+survive, so no exact-emulation package is added.
+
+The [SH12-C0 eager synchronization census](results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json)
+retains one exact default-stream boundary deletion. The synchronous 8-byte token
+D2H already completes sampling, so the immediately preceding device-wide drain
+is removed while non-default streams retain explicit sync. Nine counterbalanced
+same-resident 512/128 pairs improve **53.524 -> 54.608 tok/s (+2.027%, -0.371
+ms/token)** with **9/9 wins**; independent processes are positive but overlap at
+**53.898 -> 54.132 (+0.433%, -0.080 ms/token)**. Complete state is byte-exact,
+tracked/sampled HIP-used memory and lifecycle are unchanged, and a cached trace
+removes exactly ten production synchronizations (**20 -> 10**) with unchanged
+**775** copies and **6,840** kernel launches. Clean committed production is
+**54.065 tok/s**; parity remains open and SH13-M1 is next.
 
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
@@ -4386,6 +4398,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH12-C0 default-stream sample synchronization | 2026-08-06 | implementation `8e461708e`; complete marker-qualified boundary census; one-session nine-pair plus independent-process 512/128 wall; complete state; cached HIP/kernel trace; clean committed publication | **Retained/default-stream:** remove the redundant device drain immediately before blocking token D2H while keeping non-default stream sync. Same-resident decode **53.524 -> 54.608 tok/s (+2.027%, -0.371 ms/token; 9/9 wins)**; independent decode is positive but overlapping at **53.898 -> 54.132 (+0.433%, -0.080 ms/token)**. State/memory/lifecycle are exact; trace removes **10** production sync calls with unchanged copies/launches. Clean production is **54.065 tok/s**; parity remains open. [`artifact`](results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json). | Yes — exact synchronization reduction with repeated paired impact and independent non-regression | Execute SH13-M1 4K-first phase-resolved code/library residency precondition audit; do not reopen graph replay. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH11-A1 forced direct-4K attention | 2026-08-06 | current `ddd99bfcd`; independent exact-state split/direct children; one-queue one-discard/three-run 4K/128 wall; immutable current split trace plus new cached direct trace | **Closed/rejected; production unchanged:** all four decode-logit fingerprints and final state diverge, while decode regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**. Named route cost is **0.844 -> 11.889 ms/transition (14.080x slower)**; memory/lifecycle are unchanged and matching top-1 IDs do not repair exactness. [`artifact`](results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json). | No — candidate fails exactness and wall; historical speed lever does not survive | Keep split threshold 1,024; add no SH11-A2 package and execute SH12-C0 decode sync/D2H census. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH10-A1 exact short-c1 fixed256 attention | 2026-08-06 | implementation `df4dd5a5d`; package-default one queue; exact 513/576/640/1,023 leaf; complete 512 state; independent one-discard/three-run 512/128 wall; cached full-process trace | **Retained/default through active context 1,023:** decode **51.541 -> 53.591 tok/s (+3.978%, -0.742 ms/token)**, prefill **-0.612%**, old -> new attention role **1.499680 -> 0.928096 ms/token**, exact complete state, unchanged **20.566421/21.000130-GiB** tracked/GTT, clean lifecycle, and unchanged 1,024+ fallback. Clean production is **53.445 tok/s**; C1/fork parity remain open. [`artifact`](results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json). | Yes — exact own-engine short-context decode performance claim | Execute SH11-A1 current direct-4K diagnostic; do not extrapolate the result beyond 1,023 or claim fork parity. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH9-C1 scope-correct cumulative audit | 2026-08-06 | hash-bound SH6-C1/SH7-A1/SH9-D1 carry-forward at `5ba0b5248`; no duplicate GPU execution | **Gate complete; objective continues:** SH9 receives no decode/memory credit. Current decode is **53.153/55.832/46.785/40.386 tok/s**, whole-GTT is **21.000/21.499/22.152/22.890 GiB**, and C1/C2/fork-F16 decode/fork-F16 memory remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json). | No — no-claim cumulative policy audit | SH10-A1 is retained; execute SH11-A1, then SH12-SH14. |

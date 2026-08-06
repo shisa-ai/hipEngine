@@ -205736,7 +205736,7 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   independent-process topline.
 - Independent one-discard/three-run control/candidate processes are positive but
   overlap: decode **53.898 -> 54.132 tok/s (+0.433%, -0.080 ms/token)** and
-  prefill **1358.809 -> 1367.195 (+0.617%)**. Tracked and sampled whole-GTT
+  prefill **1358.809 -> 1367.195 (+0.617%)**. Tracked and phase-sampled HIP-used
   peaks are identical at **20.566421/20.982719 GiB**, final IDs remain 9707,
   and both closes return to zero. Summary SHA-256 is `2b407eaa...9f1`; do not
   advertise the paired +2.027% as an independent-process gain.
@@ -205754,3 +205754,21 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   compileall and `git diff --check` pass. Retain this exact redundant-boundary
   deletion as a default-stream launch/synchronization reduction with unchanged
   memory; SH13-M1 remains next because the campaign objective is open.
+
+## 2026-08-06 — Publish retained SH12-C0 and activate SH13-M1
+
+- Commit the source/test/validation unit as `8e461708e`. A clean package-default
+  one-warmup/three-measurement 512/128 process at that commit records prefill
+  **1367.112 tok/s**, decode **54.065 tok/s**, **20.566421-GiB tracked** and
+  **20.982719-GiB phase-sampled HIP-used** peaks, repeated token 9707, and zero
+  tracked bytes after close. Raw SHA-256 is `5956ee14...de29`.
+- Clean production remains **1.303798 ms/token** short of C1 and **2.971013
+  ms/token** behind pinned fork F16. The accepted claim is the exact redundant-
+  synchronization reduction plus separately qualified paired and independent
+  wall rows, not an inflated +2.027% independent-process headline.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json`
+  (SHA-256 `a2c8a0b3...a417`) and update the campaign review, GGUF guide,
+  benchmark scoreboard, and changelog. SH12-C0 is complete; activate SH13-M1's
+  4K-first phase-resolved code/library residency precondition audit because
+  decode and fork whole-GTT parity remain open.
