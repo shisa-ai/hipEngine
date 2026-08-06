@@ -205086,3 +205086,68 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   preserve device ownership for wider/shared sessions and transactional
   fallback for every pointer-fed path. SH3-M1 is complete, but the beat-fork
   objective is not; proceed immediately to SH3-C1 cumulative re-attribution.
+
+## 2026-08-06 — SH3-C1 cumulative gate complete; activate SH4-D1
+
+- Freeze committed source `16b961a6bf54ae8e5f7f08f741cb1144edbe72cc` and
+  rerun all four depths because the private-c1 host policy changes every process.
+  Independent attribution children use `scripts/gguf_decode_rocprof.py
+  --child-mode baseline --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompt-token-id 9707 --prompt-length <512|4096|32768|65536> --steps 128
+  --warmup-steps 1 --benchmark-warmups 1 --repetitions 3
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached`,
+  each under an external 10-ms whole-GTT sampler. Cached-only role children use
+  the same script under `rocprofv3 --kernel-trace --marker-trace --hip-trace`
+  with eight measured steps. Aggregate matrix SHA-256 is
+  `40e5cbd8...19e4e`.
+- Fresh attribution decode at 512/4K/32K/64K is
+  **53.084/55.430/46.120/39.577 tok/s**. Tracked peak is
+  **20.566421/20.951031/21.597255/22.335796 GiB** and whole-GTT is
+  **21.000130/21.499428/22.151844/22.890125 GiB**. Every repeated ID is 9707,
+  every child closes tracked ownership to zero, every cached trace has 628
+  dispatches/token, and compact Q5 remains named 37 times/token.
+- Run the canonical publication rows with `scripts/qwen35_readme_sweep.py
+  --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+  --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <depth>/128
+  --token-id 9707 --warmup-runs 1 --measured-runs 3
+  --warmup-decode-tokens 1 --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode
+  --no-graph-replay-decode --prefill-queue-drain none
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+  --require-cached-build`. Prefill/decode is
+  **1368.742699/53.176970**, **1436.083305/55.664167**,
+  **1148.129990/46.241048**, and **939.441014/39.602195 tok/s**. Every
+  prefill row is within 1% of SH2-G and all final IDs are stable. Raw SHA-256
+  values are `ed824d16...100`, `184bf684...f99`, `55403480...9ea2`, and
+  `cfd75294...98f7b`.
+- Run `/home/lhl/miniforge3/envs/therock/bin/python3
+  scripts/gguf_packed_ar_category_oracle.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldouts
+  benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --decode-steps 24
+  --repeats 3 --group-size 4 --compiler-version-file
+  /tmp/hipengine-hipcc-version.txt --require-cached-build`. Result: **18/18
+  prompts**, 1,350 token comparisons, 54,000 hidden comparisons, zero hidden or
+  initial/final state mismatches, deterministic repeats; artifact SHA-256
+  `c6380660...fc4a`.
+- Apply the unchanged strict policy against the same-day pinned fork
+  `b7b85da9`. Canonical hipEngine decode misses F16 at all four depths and
+  C1/C2 each remain **0/4**. Host ownership narrows hipEngine-minus-fork F16
+  whole-GTT to **0.169460/0.338692/0.155636/0.053974 GiB**, but parity remains
+  **0/4**. Prefill/correctness/lifecycle/trace pass; therefore SH3-C1 is complete
+  while the beat-fork objective remains open.
+- Fresh 512 role attribution measures selected gate/up+down at
+  **3.754181 ms/token** and the independent shared gate/up+down branch at
+  **1.065863 ms/token**. Select **SH4-D1**, a structurally new private-gfx1151-c1
+  eager screen that forks after router completion, leaves selected work on the
+  caller stream, runs the complete shared branch on a nonblocking auxiliary
+  stream, and joins before the existing exact combine. Shared/c>N, graph,
+  packed AR, MTP, diagnostics, unsupported backends, and any scratch conflict
+  remain serial. Require exact state/fallbacks, a cached trace proving real
+  cross-queue overlap, and >=1% whole-wall or >=0.5-ms/token saving without
+  >1% prefill loss.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json`
+  (SHA-256 `96aa2686...97b1e`). SH3-C1 is a diagnostic cumulative gate, not a
+  performance claim and not campaign completion; proceed immediately to SH4-D1.
