@@ -736,6 +736,22 @@ separate transpose or temporary frame buffer. Four-row output matches the
 transposed NumPy projection within max absolute error `3.052e-5`; cache-only
 tracing names the head-major pair at 17.073 us, local256/VGPR16/LDS512/scratch0.
 
+The peer `cuda_sm120a/linear/moonshine_projection.{cu,py}` C1c port preserves
+the same nine raw-pointer FP16 keys under `quant="fp16"` without aliasing HIP
+wrappers or adding backend branches: single, row-precompute single,
+bias-aware single, triple QKV, row pair, head-major cross K/V, tied LM head
+(plain + wave8), and the C1d fc1 gated-SiLU / fc2 bias+residual boundaries.
+It builds only with `-arch=sm_120a` and uses full-mask `__shfl_down_sync`
+warp reductions. On an RTX PRO 6000 Blackwell (GPU0) all projection families
+pass the independent NumPy oracle within 2.0e-3 (all finite); the 36,864-row
+tied LM head matches and wave8 equals the plain tied path, and the head-major
+cross-K/V matches the transposed oracle layout. An Nsight Systems cache-only
+trace observes all seven C1c kernels and no compiler child; single-run
+launch-level medians are 1.7/2.6/2.4 us single/triple/bias, 31.4 us pair,
+33.0 us cross-K/V head-major, and 31.0/7.0 us LM tied/wave8. These are
+bring-up diagnostics, not a performance promotion; the tied-vs-wave8 LM gap is
+a C3 leaf hint pending enclosing-layer/generation evidence.
+
 The production-shape fixture covers hidden 416, batch-one single/triple, and a
 40-row paired cross-K/V baseline against the independent NumPy oracle. Maximum
 absolute error is `3.052e-5`, all outputs are finite, and the cache-only
@@ -788,6 +804,45 @@ reports embedding/residual/RoPE/cache/composite at
 The 36,864-way argmax is tie-stable and traces at 31.219 us,
 local256/VGPR16/LDS3072/scratch0; it uses no caller scratch allocation.
 
+The peer `cuda_sm120a/fused/moonshine_glue.{cu,py}` C1 port preserves these
+six raw-pointer FP16 keys without aliasing HIP wrappers or adding backend
+branches to model code. It builds only with the architecture-qualified
+`-arch=sm_120a` target and uses CUDA warp32-compatible block reductions. On an
+RTX PRO 6000 Blackwell (GPU0), embedding, rounded residual, lowest-ID argmax,
+partial RoPE, fixed cache append, and the bounded RoPE+cache composite pass the
+independent NumPy oracle at positions 0/1/63/193; the composite is byte-equal
+to the separate CUDA chain. An Nsight Systems cache-only trace observes all six
+expected kernels. Single-run diagnostic medians are 0.576 us residual, 1.024 us
+embedding, 8.256 us argmax, and 1.168/0.784/1.200 us for RoPE/cache/composite
+(the last three are four-instance medians). These are bring-up diagnostics, not
+a complete decoder or performance promotion.
+
+The peer `cuda_sm120a/norm/moonshine_layernorm.{cu,py}` C1b port preserves the
+HIP LayerNorm family: `moonshine_layernorm/fp16/fp32_stats` and the fused
+`moonshine_residual+moonshine_layernorm/rounded_fp32_stats` composite, both
+raw-pointer, no backend branches. The CUDA kernels use the same ordered FP32
+warp-butterfly plus cross-warp shared reduction (full-mask `__shfl_down_sync`)
+and the residual+LayerNorm launch writes the rounded FP16 boundary before
+computing FP32 statistics over that same buffer, exactly like the HIP
+reference. On an RTX PRO 6000 Blackwell (GPU0) the hidden-416 kernels pass the
+independent NumPy FP32-stats oracle across decoder and encoder row counts
+1/7/40/207/1248 (allclose 3.0e-3), the fused residual boundary is byte-exact to
+the primitive chain, and all outputs are finite. A cache-only Nsight Systems
+trace observes both expected kernel identities with no compiler child;
+per-row-bucket durations for rows 1/7/40/207/1,248 are
+1.952/1.952/2.016/2.336/4.768 us (LayerNorm) and
+2.080/2.144/2.240/2.592/5.440 us (residual+LayerNorm). A batch-timed
+CUDA-event schedule screen (2000-launch batches on GPU0) shows 256 threads is
+the measured best below 768 rows and 128 threads is best from 768 upward for
+both kernels (256 is roughly 1.4-1.5x slower at 1,248 rows), so the wrappers
+auto-select 128 threads for rows >= 768 while keeping 256 for decoder/short
+buckets; an explicit ``threads=`` always overrides. A thread-sweep correctness
+gate covers threads 32/64/128/256 across hidden 52/416 and rows 1/7, plus
+poisoned-output/epsilon and constant/extreme-row coverage. Against the
+model-derived CUDA synthetic and ``audio-konichiwa`` fixtures, final decoder
+LayerNorm output is byte-exact at positions 0/1/8/32/64/128/193 (opt-in GPU
+gate). These are bring-up diagnostics, not a performance promotion.
+
 `fused/moonshine_mlp.{hip,py}` registers
 `moonshine_gated_silu/fp16/value_gate_split`: it consumes the bias-aware FP16
 `fc1` boundary as `[value,gate]`, evaluates SiLU in FP32, multiplies in FP32,
@@ -805,6 +860,24 @@ the rounded residual. Complete boundaries improve 15.265 -> 9.636 us and 9.278
 -> 6.899 us; the selected whole MLP+next-norm chain improves 30.604 -> 22.116 us
 (1.38x). Resources are local32/VGPR16/LDS0/scratch0 and
 local64/VGPR16/LDS512/scratch0. Primitive fallbacks remain registered.
+
+The peer `cuda_sm120a/fused/moonshine_mlp.{cu,py}` C1d port preserves the
+standalone `moonshine_gated_silu/fp16/value_gate_split` primitive: it consumes
+the bias-aware FP16 `fc1` boundary as `[value,gate]`, evaluates SiLU in FP32,
+multiplies in FP32, and writes the FP16 activation, one thread per activated
+element. It builds only with `-arch=sm_120a` and uses the CUDA warp32-safe
+launch geometry. On an RTX PRO 6000 Blackwell (GPU0) the kernel matches the
+independent NumPy oracle across decoder and encoder row counts
+1/7/40/207/1248 (allclose 1.0e-3, all finite), and the complete unfused
+production-shape chain (bias-aware fc1, gated SiLU, bias-aware fc2, residual)
+matches the NumPy decoder-MLP-plus-residual oracle (allclose 5.0e-3). A
+cache-only Nsight Systems trace observes the single gated-SiLU kernel identity
+five times (one per row bucket) with no compiler child; single-run launch-level
+medians are about 0.9 us. The C1d fused MLP boundaries registered in the C1c
+projection module are also gated: the fused fc1 (bias-aware projection + paired
+gated SiLU) and fused fc2 (bias-aware projection + rounded residual) chain
+matches the NumPy decoder-MLP-plus-residual oracle byte-exact on GPU0. These
+are bring-up diagnostics, not a performance promotion.
 
 `attention/moonshine_attention.{hip,py}` registers
 `moonshine_self_attention/fp16/fixed_cache_logical_dim` and

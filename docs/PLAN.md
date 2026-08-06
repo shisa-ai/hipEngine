@@ -812,7 +812,7 @@ hipEngine has **four orthogonal plugin axes**. Each axis is a registry of implem
 
 | Axis | Purpose | Examples |
 |------|---------|----------|
-| **Backend** | Hardware target (kernel set + primitives) | `hip_gfx1100`, `hip_gfx1151`, `cuda_sm86`, `cuda_sm89`, `cpu_reference` |
+| **Backend** | Hardware target (kernel set + primitives) | `hip_gfx1100`, `hip_gfx1151`, `cuda_sm120a`, `cuda_sm86`, `cuda_sm89`, `cpu_reference` |
 | **Model** | Architecture-level layer sequence + weight name map + chat template | `qwen3_dense`, `qwen3_5_hybrid` (full+linear+GDN+MoE), `gemma4`, `llama3`, `sansho` |
 | **Quant** | Weight layout + packing + activation quant | `fp16`, `bf16`, `w8a8_dyn`, `w8a16`, `w4_paro`, `w4_gguf`, `int4_awq_orig` |
 | **Layer** | Per-layer-type compute structure (primitive + fused variants) | `full_attention`, `linear_attention`, `gdn`, `sliding_attention`, `moe_top2`, `dense_mlp` |
@@ -860,7 +860,7 @@ register(
 )
 ```
 
-Adding a CUDA backend = new `hipengine/kernels/cuda_sm86/...` tree with the same `layer` / `quant` / `variant` key space. Adding Strix Halo = `hipengine/kernels/hip_gfx1151/...`. The engine, dispatch, model, and quant layers don't change.
+Adding a CUDA backend = a peer `hipengine/kernels/cuda_<arch>/...` tree with the same `layer` / `quant` / `variant` key space. The architecture-qualified `cuda_sm120a` scaffold and first Moonshine FP16 glue family use this boundary; adding Strix Halo similarly uses `hipengine/kernels/hip_gfx1151/...`. The engine, dispatch, model, and quant layers don't change.
 
 ### Model Plugin
 
@@ -884,7 +884,7 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
 | **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target |
-| **Moonshine ASR 0.92B** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | Phase-3 FP16 decoder promoted with four-bucket HIP graph replay; encoder integration next |
+| **Moonshine ASR 0.92B** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder + encoder integration promoted; `cuda_sm120a` C0 scaffold and C1 embedding/residual/RoPE/cache/argmax primitives pass GPU0 CPU-oracle gates; CUDA resident decoder pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
