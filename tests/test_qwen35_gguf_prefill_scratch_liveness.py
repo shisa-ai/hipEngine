@@ -144,7 +144,7 @@ def test_gfx1100_explicit_exact_direct_liveness_omits_materialized_qkv(
     assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
 
 
-def test_gfx1151_right_sized_short_scratch_keeps_dedicated_owners(monkeypatch) -> None:
+def test_gfx1151_right_sized_short_scratch_uses_owner_slots(monkeypatch) -> None:
     _install_fake_device(monkeypatch)
     _clear_diagnostic_environment(monkeypatch)
 
@@ -156,9 +156,33 @@ def test_gfx1151_right_sized_short_scratch_keeps_dedicated_owners(monkeypatch) -
         runtime=SimpleNamespace(),
     )
 
+    assert scratch.allocation_mode == "liveness_aliased"
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 69_790_760
+    assert len(set(scratch.allocation_groups.values())) == 21
+    assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.conv_out.ptr == scratch.moe_down_out.ptr
+    assert scratch.linear_qkv_f32.ptr != scratch.conv_out.ptr
+    assert scratch.allocation_offsets
+
+
+def test_gfx1151_short_diagnostics_keep_dedicated_scratch_fallback(monkeypatch) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE", "1")
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner("hip_gfx1151"),
+        rows=768,
+        capacity=768,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
     assert scratch.allocation_mode == "dedicated"
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 355_182_664
     assert scratch.moe_down_out_f32.ptr != 0
     assert not scratch.allocation_offsets
+    assert not scratch.allocation_groups
 
 
 def test_gfx1151_exact_prefill_scratch_uses_bounded_liveness_owners(monkeypatch) -> None:
