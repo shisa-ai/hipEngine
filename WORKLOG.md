@@ -208208,3 +208208,23 @@ Vulkan local sizes verbatim will close the measured gap.
   post-commit rollback, correction, dynamic graph reuse, provider output,
   scorer-route compatibility, and teardown assertions all pass. Clean
   natural25 B1-B3 remains the promotion gate.
+- Clean committed `a3e4912ee` closes that gate on the W7900. Against the
+  canonical `01291b066` packet, B1/B2/B3 move **43.792/55.254/60.262 ->
+  44.035/56.014/61.020 tok/s (+0.555%/+1.376%/+1.259%)**. Proposal wall falls
+  **4.323%/8.949%/9.897%**, while target verify moves
+  **-0.460%/-0.366%/+0.215%**. All 30 prompt-budget rows improve (ranges
+  **+0.043%..+1.079%**, **+0.888%..+1.683%**, and
+  **+0.799%..+1.757%**), as do full/train/heldout and all four category scopes.
+  All 750 candidate IDs and GPU/CPU acceptance summaries remain exact; accepted/
+  proposed totals stay **115/127, 151/182, 169/219**. The runtime reports three
+  captures, three resident graphs, **299 replays**, and no fallback/error.
+- True AR moves **24.114 -> 24.085 tok/s (-0.120%)**, disclosed as timing noise
+  because the proposal graph is unreachable in AR. It adds only **10,264
+  tracked bytes** (one BF16 hidden row plus three token/value results) and all
+  allocations free; the lower observed process peak includes already-retained
+  producer-snapshot savings and is not attributed to this graph. Canonical B3
+  is now **6.662 tok/s / 9.84% below** matched latest Vulkan B3 and **8.777 tok/s
+  / 12.58% below** selected Vulkan B4, requiring another **14.38%**. Raw suite:
+  `/tmp/hipengine-qwen36-27b/final-a3e4912ee/natural25-nextn-chain-graph-b1-b3.json`
+  (`sha256=912052d0...8de11adb7`). A clean B3 kernel/marker/copy reprofile is
+  running before the next submission-module decision.
