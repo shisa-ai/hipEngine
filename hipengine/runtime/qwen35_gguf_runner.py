@@ -285,6 +285,7 @@ from hipengine.runtime.gguf_linear import (
     gguf_wmma_prefill_enabled,
     launch_gguf_linear,
     launch_gguf_linear_residual,
+    launch_gguf_q4_t16_sidecar_decode,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_pair_silu,
@@ -4852,32 +4853,44 @@ class Qwen35GGUFFullStackRunner:
         norm_row_nbytes = self.hidden_size * DType.BF16.itemsize
         kv_bf16_row_nbytes = self.kv_width * DType.BF16.itemsize
         k_weight = layer.weight("attn_k")
-        k_batch_fn = self._full_attn_k_grid_y_batch_fn()
-        if k_batch_fn is not None:
-            k_batch_fn(
-                scratch.norm.ptr,
-                k_weight.allocation("qweight").tensor.ptr,
-                k_weight.allocation("scales").tensor.ptr,
-                k_weight.allocation("mins").tensor.ptr,
-                scratch.full_k.ptr,
-                rows,
-                self.hidden_size,
-                self.kv_width,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            for row in range(rows):
-                launch_gguf_linear(
-                    k_weight,
-                    scratch.norm.ptr + row * norm_row_nbytes,
-                    scratch.full_k.ptr + row * kv_bf16_row_nbytes,
-                    rows=1,
-                    in_features=self.hidden_size,
-                    out_features=self.kv_width,
+        k_sidecar_launched = launch_gguf_q4_t16_sidecar_decode(
+            k_weight,
+            scratch.norm.ptr,
+            scratch.full_k.ptr,
+            rows,
+            self.hidden_size,
+            self.kv_width,
+            backend=self.backend,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not k_sidecar_launched:
+            k_batch_fn = self._full_attn_k_grid_y_batch_fn()
+            if k_batch_fn is not None:
+                k_batch_fn(
+                    scratch.norm.ptr,
+                    k_weight.allocation("qweight").tensor.ptr,
+                    k_weight.allocation("scales").tensor.ptr,
+                    k_weight.allocation("mins").tensor.ptr,
+                    scratch.full_k.ptr,
+                    rows,
+                    self.hidden_size,
+                    self.kv_width,
                     stream=stream,
                     runtime=runtime,
                 )
+            else:
+                for row in range(rows):
+                    launch_gguf_linear(
+                        k_weight,
+                        scratch.norm.ptr + row * norm_row_nbytes,
+                        scratch.full_k.ptr + row * kv_bf16_row_nbytes,
+                        rows=1,
+                        in_features=self.hidden_size,
+                        out_features=self.kv_width,
+                        stream=stream,
+                        runtime=runtime,
+                    )
         launch_gguf_linear(
             layer.weight("attn_v"),
             scratch.norm.ptr,

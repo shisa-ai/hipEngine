@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "status": "retained_exact_full_attention_k_compact_sidecar_default_topline_unchanged",
+  "performance_claim": true,
+  "performance_claim_scope": "Exact W7900 full-attention K physical-family replacement plus a 17-pair same-loaded-model B3 complete-decode screen. The separate ten-prompt packet is disclosed as noise-negative and does not replace the canonical topline.",
+  "correctness_claim": true,
+  "correctness_scope": "Exact CPU/fake preference and fallback routing, exact W7900 B1-B3 transaction/state/provider output, unchanged natural25 IDs and acceptance, expected kernel execution, and clean teardown.",
+  "kind": "qwen36_27b_full_attention_k_compact_q4t16_sidecar_w7900",
+  "timestamp": "2026-08-06T20:30:07+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "gpu_index": 0,
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "software": {
+    "implementation_base_commit": "bb56a3f6b745bfa7ea5c3eb9c63c858afa6e07c2",
+    "direct_handoff_baseline_commit": "92e823a2dc8fe17aee3cc48ae529dd42161a06e1",
+    "profile_baseline_commit": "a75ec4121ed5ba8f0cb791fb98b927dc95522862",
+    "measured_implementation_diff_sha256": "8e8ec6da0fe1bd5d6d29ac93c6339721e46f226702a92b4b609f540d1b610efe",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "mechanism": "The staged native full-attention helper first asks the existing compact-Q4T16 sidecar dispatcher to own the K5120/N1024 rows 2-4 projection. If the weight lacks the sidecar or registered col4 key, the existing exact pack8 grid-Y batch remains the first fallback, followed by scalar linear dispatch.",
+    "why_previously_uncovered": "All sixteen dense full-attention K tensors already carry the retained compact sidecar, but the staged full-attention helper predated that promotion and hard-bypassed it into the older pack8 grid-Y owner.",
+    "compact_registry_key": ["hip_gfx1100", "linear", "gguf_q4_k_t16_v1", "dense_rowtile_col4_bf16_bf16_out"],
+    "pack8_fallback_registry_key": ["hip_gfx1100", "linear", "gguf_q4_k_m", "pack8_full_k_grid_y_native_exact_bf16_bf16_out"],
+    "shape": {"in_features": 5120, "out_features": 1024, "native_rows": [2, 3, 4]},
+    "new_kernel": false,
+    "new_weight_bytes": 0,
+    "new_workspace_bytes": 0,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "correctness": {
+    "cpu_fake_native_cycle": "15 passed; compact sidecar is preferred when available, and missing sidecar/key preserves the pack8 grid-Y fallback.",
+    "static": "py_compile passed for the runner and both changed test files; git diff --check passed.",
+    "w7900_transaction": "tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar passed the complete B1-B3 logits, reject/partial/full/rollback state, dynamic positions, graph reuse, provider output, K/V and hidden ownership, lifecycle, and teardown oracle.",
+    "physical_owner": "The binding transaction observes no pack8 full-K grid-Y calls after promotion; the compact rowtile owners remain observed at native rows 2-4.",
+    "natural25": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "ids_equal_to_direct_handoff_control": true,
+      "acceptance_equal_to_direct_handoff_control": true,
+      "accepted_proposed": {
+        "B1": [115, 127],
+        "B2": [151, 182],
+        "B3": [169, 219]
+      },
+      "active_allocations_after_close": 0
+    },
+    "paired_screen": "All 17 control/candidate pairs have identical output IDs and cycle acceptance ledgers."
+  },
+  "physical_profile": {
+    "protocol": "Separate hermetic cached W7900 rocprofv3 kernel/marker/copy traces of the same code_merge_intervals natural25 B3 workload. Family values are call-normalized attribution; distinct-run complete walls are not compared because clocks and proposal overlap differ.",
+    "baseline_pack8_full_k": {
+      "kernel": "gguf_q4_k_pack8_prefill_out_kernel<unsigned short,unsigned short>",
+      "grid": [4096, 4, 1],
+      "dispatches": 112,
+      "duration_ms": 2.409537
+    },
+    "candidate_compact_col4_increment": {
+      "kernel": "q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short,4>",
+      "grid": [8192, 1, 1],
+      "candidate_total_dispatches": 168,
+      "baseline_other_dispatches": 56,
+      "replacement_dispatches": 112,
+      "candidate_total_duration_ms": 2.341498,
+      "baseline_other_duration_ms": 0.840444,
+      "replacement_duration_ms": 1.501054
+    },
+    "replacement": {
+      "dispatches": "112 pack8 -> 112 compact-col4",
+      "duration_ms": {"pack8": 2.409537, "compact_col4": 1.501054},
+      "saved_ms": 0.908483,
+      "speedup": 1.605230058345669,
+      "delta_percent": -37.70363351963467
+    },
+    "prior_actual_weight_leaf": {
+      "tensor": "blk.3.attn_k.weight",
+      "rows": 4,
+      "pack8_event_us": 20.152180194854736,
+      "compact_col4_event_us": 12.200900316238403,
+      "speedup": 1.651695,
+      "bf16_mismatches": 0,
+      "elements": 4096
+    },
+    "matched_module_update": {
+      "prior_hipengine_full_attention_kv_ms": 4.958,
+      "new_inferred_hipengine_full_attention_kv_ms": 4.049517,
+      "llamacpp_vulkan_full_attention_kv_ms": 2.03952,
+      "remaining_gap_ms": 2.009997,
+      "interpretation": "K improves exactly but the combined K/V module remains slower than Vulkan, so D27-R2 advances within the module to V."
+    }
+  },
+  "paired_complete_decode": {
+    "protocol": "Same loaded model/session and buffers; separately cached warm control and candidate B3 target graphs; 17 counterbalanced code_merge_intervals natural25 pairs; 24 timed transitions; exact IDs and acceptance.",
+    "control_median_decode_ms": 361.6009736433625,
+    "candidate_median_decode_ms": 361.2319892272353,
+    "median_difference_ms": -0.3689844161272049,
+    "median_paired_difference_ms": -0.9076208807528019,
+    "speedup_from_medians": 1.0010214610752401,
+    "candidate_faster_pairs": 13,
+    "pairs": 17
+  },
+  "ten_prompt_disclosure": {
+    "protocol": "W7900 natural25 ten-prompt code/general_en/general_ja/mixed_ja_en suite, B1-B3, one warmup and one measured run, compared with the immediately prior clean direct-handoff packet.",
+    "control_tok_s": {"true_ar": 23.52428632619274, "B1": 44.49583550251068, "B2": 56.34972651071357, "B3": 61.39440170570785},
+    "candidate_tok_s": {"true_ar": 24.248743108148506, "B1": 44.3189268502726, "B2": 56.260756010287686, "B3": 61.121899216769584},
+    "candidate_delta_percent": {"true_ar": 3.0796121587294722, "B1": -0.39758474077444816, "B2": -0.15788985312816806, "B3": -0.443855598177334},
+    "interpretation": "The unchanged c1 AR route is strongly positive while B1-B3 straddle modestly negative timing. Because the deterministic target K family and same-loaded-model complete-decode screen are positive, retain the exact ownership win but do not replace the cleaner canonical direct-handoff topline."
+  },
+  "decision": {
+    "action": "retain_exact_compact_k_owner",
+    "reason": "The route reuses already-resident sidecars, is BF16-bit and transaction exact, removes no fallback, cuts the intended K family by 0.908483 ms / 37.70%, and improves same-loaded-model complete decode in 13/17 pairs. The separate category packet is timing-negative within 0.44%, so canonical throughput remains unchanged.",
+    "canonical_scoreboard_changed": false,
+    "canonical_hipengine_B3_tok_s": 61.39440170570785,
+    "canonical_gap_percent_vs_matched_vulkan_B3": -9.290411004834409,
+    "canonical_gap_percent_vs_selected_vulkan_B4": -12.039677894216716,
+    "required_speedup_percent_vs_selected_vulkan_B4": 13.687623698941763,
+    "next_target": "Audit and close full-attention V against the remaining combined K/V gap before advancing to the target root projection."
+  },
+  "commands": {
+    "cpu_fake": "python3 -m pytest -q tests/test_gguf_native_spec_cycle.py",
+    "w7900_transaction": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -m pytest -q tests/test_qwen35_gguf_mtp_e2e.py -k dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar",
+    "natural25": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-k-sidecar-uncommitted/natural25-k-sidecar-b1-b3.json",
+    "paired_screen": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 -u /tmp/hipengine-qwen36-27b/full-k-sidecar-paired-screen.py"
+  },
+  "source_artifacts": {
+    "paired_harness": {"path": "/tmp/hipengine-qwen36-27b/full-k-sidecar-paired-screen.py", "sha256": "69a7abd9d4aebd90b05e1fd7f9d166afb3911b7f559a4c04181fc3a9c5b42f22"},
+    "paired_result": {"path": "/tmp/hipengine-qwen36-27b/full-k-sidecar-paired-screen-w7900.json", "sha256": "3fc32da70d8966b0eaf2a6bd37d7f5cc4b31c44b6674333e61f21393ae3974df"},
+    "natural25": {"path": "/tmp/hipengine-qwen36-27b/final-k-sidecar-uncommitted/natural25-k-sidecar-b1-b3.json", "sha256": "aa225df19c0733d8ffeb9a4ecde88d69e8ade0cb90928707422369cd4ed8b9d8"},
+    "natural_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-k-sidecar-uncommitted/natural25-k-sidecar-vs-92e823a2d.json", "sha256": "a47604fcdff1de9e25cb0e4a0914c3b508bc362f0cea149f5ff4d25fbedd4a57"},
+    "profile_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-k-sidecar-uncommitted/k-sidecar-vs-a75-profile.json", "sha256": "81cf3a836bceceb76c1e8e4cbfbff9de7c92f053c4a03b21e6b213337fb7d12a"},
+    "candidate_suite": {"path": "/tmp/hipengine-qwen36-27b/final-k-sidecar-uncommitted/profile-native-k-sidecar-b3-marked/suite.json", "sha256": "0630f8c453d5c1dca570755eec3bfdd3671e197a2e1b63ef3680c3edc2e7e6ce"},
+    "candidate_kernel_trace": {"path": "/tmp/hipengine-qwen36-27b/final-k-sidecar-uncommitted/profile-native-k-sidecar-b3-marked/mtp-b3_kernel_trace.csv", "sha256": "4b1c188e1198dab828cfc7df764385888c20060da55f48504411db445fc413e9"},
+    "candidate_marker_trace": {"path": "/tmp/hipengine-qwen36-27b/final-k-sidecar-uncommitted/profile-native-k-sidecar-b3-marked/mtp-b3_marker_api_trace.csv", "sha256": "918a6be9ad8c5b41c87a07a3ce792ccb249b94d00f1e9edc42879947692bb081"},
+    "baseline_suite": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/suite.json", "sha256": "2bd6869fce007e409491512a48c4fc1ecb2111e783de0c0a21c712da29fbbe61"},
+    "baseline_kernel_trace": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/mtp-b3_kernel_trace.csv", "sha256": "eb4dd5ce809e373aaca0cf3a09b81c66cf57f0540468c3290975a64c779cfedc"},
+    "baseline_marker_trace": {"path": "/tmp/hipengine-qwen36-27b/final-a75ec4121/profile-direct-handoff-b3-marked/mtp-b3_marker_api_trace.csv", "sha256": "5a57ecdcc49e150c41acd06efef260601f23309ea30873baa690da50c0e58bf2"}
+  }
+}
