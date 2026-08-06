@@ -208403,3 +208403,22 @@ Vulkan local sizes verbatim will close the measured gap.
   kernels retire inside target verify. The six benchmark-contract tests and
   Ruff pass. Commit this instrumentation before the post-keep profile; do not
   repeat the equivalent six-minute natural suite.
+- Profile committed `a75ec4121` after candidate-local warmup with the same SDK
+  ROCTX overlay. The measured B3 window has **7/7 direct handoffs**, no graph
+  capture, exact **17/21** acceptance, **366.034 ms** wall, **6,480 / 321.779
+  ms** kernels, zero traced copies, and **44.255 ms** non-kernel residual.
+  Versus the prior N2 profile, kernel sum drifts **+6.760 ms** and wall
+  **+2.030 ms**, so those are not claimed as wins; the intended submission
+  residual improves **48.985 -> 44.255 ms (-4.730 ms / -9.656%)**. The complete
+  retained stack cuts residual **65.134 -> 44.255 ms (-32.056%)** versus the
+  pre-submission control and leaves **20.467 ms** versus Vulkan's inferred
+  **23.789 ms**. Submission remains the largest deficit.
+- Publish new canonical B1/B2/B3 **44.496/56.350/61.394 tok/s** and the updated
+  Vulkan gaps (**9.290%** to matched B3, **12.040%** to selected B4; **13.688%**
+  required) in the campaign, benchmark rollup/changelog, and compact
+  `benchmarks/results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json`.
+  Profile summary/kernel/marker/copy SHA-256 values are
+  `9e3d1daf...eaf` / `eb4dd5ce...fedc` / `5a57ecdc...bf2` /
+  `edbb6508...e04`; compact artifact SHA-256 before publication staging is
+  `dfbcb023...bed3`. Continue D27-R2 at one-submit parent/child graph assembly
+  before advancing to Q5 only if that mechanism fails to qualify.
