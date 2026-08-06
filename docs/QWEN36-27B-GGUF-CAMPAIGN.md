@@ -1839,6 +1839,22 @@ Q6 FFN-down, full-attention K/V, Q6 QKV, and root. Artifacts:
 and
 `benchmarks/results/2026-08-06-qwen36-27b-parent-child-submission-rejected.json`.
 
+The refreshed Q5 `ssm_out` row is source-audited and closed without repeating
+rejected kernels. Latest matched attribution is **22.577 ms hipEngine versus
+15.144 ms Vulkan** across the same 336 rows=4 calls. However, the three Q5
+shader/dataflow blobs (`mul_mat_vec_q5_k.comp`, `mul_mat_vecq.comp`, and
+`mul_mat_vecq_funcs.glsl`) are byte-identical between `ee0445c99` and
+`c8e03ce81`; the comparator update only adds the separate GLA op. The current
+sole-resident Q5T16 owner remains the retained **37.004 -> 22.911 ms** result,
+and no Q5-specific implementation or selector hunk changed after its promotion.
+The prior ladder already covers dense BF16, raw Q5 wave/SWAR/pack8, direct and
+rowtiled T16 local/column geometries, raw/T16 Q8_1 `sudot4`, WMMA, rotating
+48-plane residency, and producer handoffs. Binding integer-dot candidates topped
+out at **0.798x** raw and **0.887x** T16 versus dense. Reopen only for a new
+representation, RDNA3 primitive, credible cross-family fusion, or changed Q5
+source. D27-R2 advances to Q6 FFN-down. Artifact:
+`benchmarks/results/2026-08-06-qwen36-27b-latest-q5-source-audit-exhausted.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1849,7 +1865,7 @@ and
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; proposal/target graphs and direct retirement retained, submission residual **41.346 -> 20.467 ms**; one-submit parent/child is exact but 0/13 and rejected; advance to Q5/Q6/KV/root |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 source is byte-identical and its measured ladder remains exhausted; advance to Q6 FFN-down/KV/QKV/root |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 

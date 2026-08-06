@@ -208449,3 +208449,30 @@ Vulkan local sizes verbatim will close the measured gap.
   submission optimum. Advance D27-R2 to refreshed Q5T16 `ssm_out`, reusing the
   prior exhaustive representation evidence and reopening only for a materially
   new source-faithful primitive.
+
+## 2026-08-06 — Close refreshed Q5 source audit as exhausted
+
+- Reconcile the next D27-R2 row against exact latest source rather than rerun
+  yesterday's rejected kernels. The matched rows=4 ledger remains
+  **22.5767 ms hipEngine versus 15.1440 ms Vulkan** across **336/336** calls, a
+  **7.4327-ms** directional deficit.
+- The comparator does not contain a new Q5 mechanism. From `ee0445c99` to clean
+  `c8e03ce81`, Vulkan changes only `ggml-vulkan.cpp`, generator registration,
+  and the new `gla.comp`; there are no Q5 shader or dispatch hunks. Exact blobs
+  for `mul_mat_vec_q5_k.comp`, `mul_mat_vecq.comp`, and
+  `mul_mat_vecq_funcs.glsl` are identical at both revisions:
+  `54d7e1bc...023b`, `18d441ea...8bb`, and `a5403ac8...efa3`.
+- The retained Q5T16 owner already moves 336 W7900 calls **37.004292 ->
+  22.910906 ms (-38.09%)** and covers direct, exact local128/col4 rows 2-4,
+  larger-row fallback, dense WMMA prefill, all-48-plane rotating residency, and
+  exact GDN BF16 handoff. Existing negative evidence covers raw-Q5 and T16
+  local32/64/128, col4/8/16, Q8_1 `sudot4`, SWAR/pack8, and row reuse. The best
+  binding raw/T16 integer totals remain only **0.798x / 0.887x** dense; even the
+  prequantized T16 dot is **0.934x**. The latest 15.144-ms value versus prior
+  15.119 ms is timing drift over unchanged shader bytes, not a new candidate.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` completed; its
+  four external-reference DRIFT rows are pre-existing nano-vllm-amd catalog
+  entries unrelated to this clean llama.cpp source audit. Close Q5 for current
+  source/hardware primitives and advance to Q6 FFN-down. Compact artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-latest-q5-source-audit-exhausted.json`
+  (pre-commit SHA-256 `c9c1fe09...68b1b`).
