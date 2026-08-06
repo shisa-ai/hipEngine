@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -142,10 +142,31 @@ whole-GTT row. The remaining memory gap therefore lies inside the measured
 residual, not a demonstrated reclaimable code object. Current traces still name
 GDN input projections, selected experts, lm-head, and context-dependent full
 attention as the decode owners; every admitted exact alternative in this review
-is retained or closed by a measured stop rule. No new package is admitted
-without new structural evidence or a separately approved system/runtime-memory
-experiment. Evidence:
+is retained or closed by a measured stop rule. Evidence:
 [`SH14-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
+
+**SH15-M1 structural continuation update (2026-08-06): implementation screen
+admitted, no production change yet.** Fresh per-allocation `hipMemGetInfo`
+instrumentation identifies a mechanism hidden inside SH14's residual: ordinary
+`hipMalloc` commits in 2-MiB chunks. Every right-sized process owns the same
+**921 allocations**, including **732 weights / 20.413 GiB requested** whose
+mallocs commit **269.129 MiB** beyond requested bytes. Replacing all persistent
+session allocations with one 4-KiB-suballocated owner projects exact physical-
+commit savings of **236/294/300/300 MiB** at 512/4K/32K/64K. That clears the
+pinned fork whole-GTT gap at 512/32K/64K but leaves 4K **52.820 MiB** high.
+
+This is new structural evidence, not a memory result. Default/fine-grained/
+uncached allocations retain the same 2-MiB granularity, while the default
+`hipMallocAsync` pool is rejected because a 64-MiB screen commits **270 MiB**
+and retains **142 MiB** even after free+trim. SH15-M2 may therefore screen one
+bounded private-c1 persistent arena with ordinary `hipMalloc`; allocation denial,
+shared/c>N, and unsupported routes keep ordinary owners. Only if measured 4K
+arena GTT still misses parity may the existing byte-exact compact-Q4 format be
+reconsidered for the model-defined ten full-attention layers: that bounded class
+saves exactly **80 MiB** and projects **0.058 ms/token** additional decode cost,
+but receives no production credit before current full-state and <=1% wall gates.
+Evidence:
+[`SH15-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json).
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -682,7 +703,8 @@ evidence.
 | **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | **Complete: non-exact and slower; rejected with no implementation.** Forced direct changes all four teacher-forced decode-logit fingerprints and final state, while repeated wall regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**. Current split producer+reducer is **0.844 ms/transition** versus direct context+gate **11.889 ms (14.080x slower)**. Memory/lifecycle are unchanged and free-running IDs happen to match; they do not repair exactness. The June speed lever does not survive, so no SH11-A2 package is admitted. |
 | **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | **Complete: retained default-stream redundant-drain deletion.** The census finds no per-layer D2H and removes only the device-wide drain immediately before the required blocking token D2H; non-default streams keep explicit sync. Same-resident 512/128 improves **+2.027% / -0.371 ms/token (9/9 wins)**; independent wall is positive but overlapping at **+0.433% / -0.080 ms/token**. Complete state is byte-exact, memory/lifecycle are unchanged, and cached tracing removes **10** production sync calls with unchanged copies/launches. Clean production is **54.065 tok/s**; parity remains open. |
 | **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | **Complete: precondition fails; no implementation or longer-depth run.** Current 4K whole-GTT **21.499428 GiB** is **346.820 MiB** above fork F16. All **22** HSA code objects total only **3.497 MiB**; first use is **0.051/2.730/0.716/0 MiB** at load/prefill/warmup/measured-decode. Prefill is already within **0.719 MiB** of peak; all post-load GTT growth is only **103.477 MiB**. Even every process shared-object virtual span plus all HSA code is **334.063 MiB**, still below the gap before eligibility. Runtime/page-table/active mappings dominate; no `dlclose`, lazy loader, 32K, or 64K continuation. |
-| **SH14-C1** | Cumulative four-depth campaign completion gate. | **Complete: policy fails; objective not met and no new package admitted.** Fresh decode is **54.330/54.798/46.405/40.180 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. Exact oracle/lifecycle/role gates pass; the frozen prefill guard is **3/4**, while C1/C2/fork-F16 decode/fork-F16 memory remain **0/4**. Tracked peak is already below fork whole-GTT at every depth, so the residual memory gap is untracked runtime/page-table/allocator/active-mapping residency; all HSA code is only 3.497 MiB. Preserve retained defaults and require new structural evidence before another campaign. |
+| **SH14-C1** | Cumulative four-depth campaign completion gate. | **Complete: policy fails; objective not met.** Fresh decode is **54.330/54.798/46.405/40.180 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. Exact oracle/lifecycle/role gates pass; the frozen prefill guard is **3/4**, while C1/C2/fork-F16 decode/fork-F16 memory remain **0/4**. Tracked peak is already below fork whole-GTT at every depth, so the residual memory gap is untracked runtime/page-table/allocator/active-mapping residency; all HSA code is only 3.497 MiB. Preserve retained defaults and require new structural evidence before another package. |
+| **SH15-M1** | Per-allocation HIP commit-granularity census at all four depths. | **Complete: new structural precondition passes; admit SH15-M2, no production change.** All four processes have 921 persistent allocations; ordinary `hipMalloc` commits 2-MiB backing chunks. One globally packed session owner projects **236/294/300/300-MiB** savings, enough for 512/32K/64K fork-memory parity but still **52.820 MiB** short at 4K. The async pool and alternate allocation flags do not help. Measure the ordinary arena before conditionally screening the exact 80-MiB full-attention-layer compact-Q4 subset. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -1134,6 +1156,30 @@ leaf from a closed family: the only measured residual owners are the named
 row-1 projection/MoE/lm-head/attention roles and untracked runtime/page-table/
 allocator/active-mapping residency. Evidence:
 [`SH14-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
+
+SH15-M1 then resolves the allocator part of that residual without confusing a
+projection for a result. Synchronized calibration shows default,
+fine-grained, and uncached HIP allocation modes all commit at a minimum 2-MiB
+physical granularity; small requests share backing slabs, so summing one rounded
+chunk per allocation is invalid. Temporary instrumentation instead brackets each
+real `hipMalloc` with `hipMemGetInfo` and records its requested bytes and origin.
+At every depth, **732 weight allocations request 21,918,738,944 bytes** and
+commit **22,187,868,160 bytes**, an exact **269,129,216-byte** excess. The full
+921-allocation session commits enough above one 2-MiB-rounded owner to project
+**236/294/300/300 MiB** reclaimable at 512/4K/32K/64K; non-malloc load residency
+is independently constant at **148,975,616 bytes** and receives no arena credit.
+All four instrumented one-token children produce token 9707 and close tracked
+ownership to zero.
+
+Arena-only arithmetic crosses the pinned fork whole-GTT row at 512/32K/64K but
+leaves 4K **52.820 MiB** high. The exact SH2-M4 Q4 representation remains a
+conditional stack, not an automatic retry: restricting two 4-MiB savings to each
+of the ten model-defined full-attention layers would save **80 MiB** and projects
+only **0.058 ms/token** extra decode work. SH15-M2 must measure the ordinary
+arena first; only a remaining 4K miss can admit that bounded class, and then only
+under fresh exact-state, <=1% prefill/decode, trace, GTT, fallback, and lifecycle
+gates. Evidence:
+[`SH15-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json).
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by

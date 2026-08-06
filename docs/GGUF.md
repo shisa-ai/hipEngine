@@ -2629,6 +2629,27 @@ weight-schedule ladders without new structural measurements; a system/runtime-
 memory experiment needs separate approval. Evidence:
 [`SH14-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
+SH15-M1 supplies that new structural measurement without changing production.
+All four private-c1 depths hold **921 persistent HIP allocations**, including
+**732 weight owners / 21,918,738,944 requested bytes**. Bracketing every real
+`hipMalloc` with `hipMemGetInfo` proves the weight family alone commits
+**269,129,216 bytes** beyond its requests. Default, fine-grained, and uncached
+allocation flags retain 2-MiB physical commit granularity; the default async
+pool is worse and retains **148,971,520 bytes** after free+trim in a 64-MiB
+screen.
+
+One ordinary 4-KiB-suballocated session owner, rounded once to 2 MiB, therefore
+projects **236/294/300/300-MiB** savings at 512/4K/32K/64K. This is sufficient
+for projected fork-memory parity at 512/32K/64K but leaves 4K **52.820 MiB**
+high. Admit SH15-M2's private-c1 arena screen with ordinary-owner fallback; do
+not report the projection as measured GTT. If the actual 4K result still misses,
+the only conditional byte stack is the already primitive-exact compact-Q4
+format restricted to the model-defined ten full-attention layers (**80 MiB**,
+projected **0.058 ms/token** added decode work). That subset receives no route
+without fresh exact-state, <=1% wall, memory, trace, denial/fallback, and
+lifecycle gates. Evidence:
+[`SH15-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

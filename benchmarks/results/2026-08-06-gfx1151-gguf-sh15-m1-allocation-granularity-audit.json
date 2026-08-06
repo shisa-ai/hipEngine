@@ -1,0 +1,319 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh15_m1_allocation_granularity_audit",
+  "date": "2026-08-06",
+  "status": "structural_precondition_passed_arena_screen_admitted",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "110b8e419",
+    "tracked_source_clean": true,
+    "instrumentation": "temporary sitecustomize records exact requested size/origin and hipMemGetInfo immediately before/after each hipMalloc; no repository source or allocation behavior changed"
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-device amdgpu GTT"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "calibration": "Fresh-process hipMalloc/hipExtMallocWithFlags and hipMallocAsync calibration against synchronized hipMemGetInfo plus card1 mem_info_gtt_used.",
+    "model_census": "Independent right-sized private-c1 process at 512/4K/32K/64K; package-default host embedding, cached builds, one measured pp/tg1 solely to force production initialization; exact live pointer/request/origin records at load and close.",
+    "rounding_model": "The measured ordinary allocator commits in 2-MiB increments. Candidate projection replaces all 921 persistent session allocations with one 4-KiB-suballocated owner rounded once to 2 MiB. This is an admission projection, not measured candidate GTT.",
+    "acceptance": "Admit implementation only because mechanically reclaimable committed bytes exceed at least one current fork gap. Retention still requires actual same-scope GTT, exact state/lifecycle/fallback, and <=1% prefill/decode loss."
+  },
+  "calibration": {
+    "ordinary_hip_malloc": {
+      "raw_path": "/tmp/hipengine-sh15-allocation-granularity-calibration.json",
+      "raw_sha256": "62f163862b5a3eb62b57ab1b7e9dd57905ec38dfa2a82a0b3b6fa3acdff4b4dc",
+      "minimum_commit_bytes": 2097152,
+      "small_allocations_share_backing": true,
+      "large_allocations_round_to_2m": true
+    },
+    "ext_malloc_flags": {
+      "raw_path": "/tmp/hipengine-sh15-extmalloc-calibration.json",
+      "raw_sha256": "c27868dd1d9d6180e92d9ca9a3ea3f520c207b177eb755210c423f81b5eed1ca",
+      "flags_tested": {
+        "0": "default",
+        "1": "finegrained",
+        "3": "uncached"
+      },
+      "result": "all tested flags retain the same 2-MiB commit granularity"
+    },
+    "async_pool_rejected": {
+      "raw_path": "/tmp/hipengine-sh15-malloc-async-screen.json",
+      "raw_sha256": "8d1ebde665cbc509735bc9f3923be0ab5e6a9632bf65f485aa10fabe4c0fc0c1",
+      "requested_bytes": 67108928,
+      "committed_delta_bytes": 283189248,
+      "retained_after_free_trim_bytes": 148971520,
+      "reason": "default hipMallocAsync pool adds rather than removes residency on this stack"
+    }
+  },
+  "invariants": {
+    "allocation_count_all_depths": 921,
+    "weight_allocation_count_all_depths": 732,
+    "weight_requested_bytes_all_depths": 21918738944,
+    "weight_hip_malloc_commit_bytes_all_depths": 22187868160,
+    "weight_commit_minus_requested_bytes": 269129216,
+    "non_hip_malloc_after_load_bytes_all_depths": 148975616,
+    "all_depths_same_requested_weight_inventory": true
+  },
+  "rows": {
+    "512/1": {
+      "raw_path": "/tmp/hipengine-sh15-m1-20260806/increment-512.json",
+      "raw_sha256": "1e9d792df600a0a2ced827e4fab51e88bbb6b158afbe06b0daa20c41d38dafe3",
+      "requested_bytes": 22083026688,
+      "requested_gib": 20.566421270370483,
+      "active_allocations": 921,
+      "origins": {
+        "loading/materialize.py:load_host_array_to_device_as_dtype": {
+          "count": 732,
+          "requested_bytes": 21918738944,
+          "hip_malloc_committed_delta_bytes": 22187868160,
+          "committed_minus_requested_bytes": 269129216
+        },
+        "runtime/qwen35_gguf_runner.py:<genexpr>": {
+          "count": 21,
+          "requested_bytes": 68927488,
+          "hip_malloc_committed_delta_bytes": 69206016,
+          "committed_minus_requested_bytes": 278528
+        },
+        "runtime/qwen35_gguf_runner.py:__post_init__": {
+          "count": 13,
+          "requested_bytes": 7304928,
+          "hip_malloc_committed_delta_bytes": 10485760,
+          "committed_minus_requested_bytes": 3180832
+        },
+        "runtime/qwen35_gguf_runner.py:_try_allocate_gguf_aotriton_head_major_kv_scratch": {
+          "count": 2,
+          "requested_bytes": 1572864,
+          "hip_malloc_committed_delta_bytes": 0,
+          "committed_minus_requested_bytes": -1572864
+        },
+        "runtime/qwen35_gguf_runner.py:buf": {
+          "count": 153,
+          "requested_bytes": 86482464,
+          "hip_malloc_committed_delta_bytes": 65011712,
+          "committed_minus_requested_bytes": -21470752
+        }
+      },
+      "hip_used_before_load_bytes": 4231168,
+      "hip_used_after_load_bytes": 22485778432,
+      "hip_used_after_load_delta_bytes": 22481547264,
+      "captured_hip_malloc_commit_bytes": 22332571648,
+      "non_hip_malloc_used_delta_bytes": 148975616,
+      "one_2m_aligned_arena_commit_bytes": 22085107712,
+      "arena_only_projected_saving_bytes": 247463936,
+      "arena_only_projected_saving_mib": 236.0,
+      "pinned_fork_gap_bytes": 181956608,
+      "pinned_fork_gap_mib": 173.52734375,
+      "arena_only_projected_margin_mib": -62.47265625,
+      "arena_plus_full_attention_q4_projected_margin_mib": -142.47265625,
+      "instrumented_final_token_ids": [
+        9707
+      ],
+      "tracked_after_close_bytes": 0
+    },
+    "4K/1": {
+      "raw_path": "/tmp/hipengine-sh15-m1-20260806/increment-4k.json",
+      "raw_sha256": "f78b46d41c12d869e98fb5864907b76f921eeee3fe13dd646c2785524be1bb6c",
+      "requested_bytes": 22495998520,
+      "requested_gib": 20.951031260192394,
+      "active_allocations": 921,
+      "origins": {
+        "loading/materialize.py:load_host_array_to_device_as_dtype": {
+          "count": 732,
+          "requested_bytes": 21918738944,
+          "hip_malloc_committed_delta_bytes": 22187868160,
+          "committed_minus_requested_bytes": 269129216
+        },
+        "runtime/qwen35_gguf_runner.py:<genexpr>": {
+          "count": 21,
+          "requested_bytes": 367568896,
+          "hip_malloc_committed_delta_bytes": 367001600,
+          "committed_minus_requested_bytes": -567296
+        },
+        "runtime/qwen35_gguf_runner.py:__post_init__": {
+          "count": 13,
+          "requested_bytes": 34594528,
+          "hip_malloc_committed_delta_bytes": 35651584,
+          "committed_minus_requested_bytes": 1057056
+        },
+        "runtime/qwen35_gguf_runner.py:_try_allocate_gguf_aotriton_head_major_kv_scratch": {
+          "count": 2,
+          "requested_bytes": 8912896,
+          "hip_malloc_committed_delta_bytes": 12582912,
+          "committed_minus_requested_bytes": 3670016
+        },
+        "runtime/qwen35_gguf_runner.py:buf": {
+          "count": 153,
+          "requested_bytes": 166183256,
+          "hip_malloc_committed_delta_bytes": 201326592,
+          "committed_minus_requested_bytes": 35143336
+        }
+      },
+      "hip_used_before_load_bytes": 4231168,
+      "hip_used_after_load_bytes": 22957637632,
+      "hip_used_after_load_delta_bytes": 22953406464,
+      "captured_hip_malloc_commit_bytes": 22804430848,
+      "non_hip_malloc_used_delta_bytes": 148975616,
+      "one_2m_aligned_arena_commit_bytes": 22496149504,
+      "arena_only_projected_saving_bytes": 308281344,
+      "arena_only_projected_saving_mib": 294.0,
+      "pinned_fork_gap_bytes": 363667456,
+      "pinned_fork_gap_mib": 346.8203125,
+      "arena_only_projected_margin_mib": 52.8203125,
+      "arena_plus_full_attention_q4_projected_margin_mib": -27.1796875,
+      "instrumented_final_token_ids": [
+        9707
+      ],
+      "tracked_after_close_bytes": 0
+    },
+    "32K/1": {
+      "raw_path": "/tmp/hipengine-sh15-m1-20260806/increment-32k.json",
+      "raw_sha256": "d94506530b4eed731666a3650d7a44eeba80aa6c46e8179b87471b2034a3341e",
+      "requested_bytes": 23189875704,
+      "requested_gib": 21.597254745662212,
+      "active_allocations": 921,
+      "origins": {
+        "loading/materialize.py:load_host_array_to_device_as_dtype": {
+          "count": 732,
+          "requested_bytes": 21918738944,
+          "hip_malloc_committed_delta_bytes": 22187868160,
+          "committed_minus_requested_bytes": 269129216
+        },
+        "runtime/qwen35_gguf_runner.py:<genexpr>": {
+          "count": 21,
+          "requested_bytes": 367568896,
+          "hip_malloc_committed_delta_bytes": 367001600,
+          "committed_minus_requested_bytes": -567296
+        },
+        "runtime/qwen35_gguf_runner.py:__post_init__": {
+          "count": 13,
+          "requested_bytes": 34594528,
+          "hip_malloc_committed_delta_bytes": 35651584,
+          "committed_minus_requested_bytes": 1057056
+        },
+        "runtime/qwen35_gguf_runner.py:_try_allocate_gguf_aotriton_head_major_kv_scratch": {
+          "count": 2,
+          "requested_bytes": 67633152,
+          "hip_malloc_committed_delta_bytes": 71303168,
+          "committed_minus_requested_bytes": 3670016
+        },
+        "runtime/qwen35_gguf_runner.py:buf": {
+          "count": 153,
+          "requested_bytes": 801340184,
+          "hip_malloc_committed_delta_bytes": 843055104,
+          "committed_minus_requested_bytes": 41714920
+        }
+      },
+      "hip_used_before_load_bytes": 4231168,
+      "hip_used_after_load_bytes": 23658086400,
+      "hip_used_after_load_delta_bytes": 23653855232,
+      "captured_hip_malloc_commit_bytes": 23504879616,
+      "non_hip_malloc_used_delta_bytes": 148975616,
+      "one_2m_aligned_arena_commit_bytes": 23190306816,
+      "arena_only_projected_saving_bytes": 314572800,
+      "arena_only_projected_saving_mib": 300.0,
+      "pinned_fork_gap_bytes": 167112704,
+      "pinned_fork_gap_mib": 159.37109375,
+      "arena_only_projected_margin_mib": -140.62890625,
+      "arena_plus_full_attention_q4_projected_margin_mib": -220.62890625,
+      "instrumented_final_token_ids": [
+        9707
+      ],
+      "tracked_after_close_bytes": 0
+    },
+    "64K/1": {
+      "raw_path": "/tmp/hipengine-sh15-m1-20260806/increment-64k.json",
+      "raw_sha256": "3d05a731c2d18819a0d76b586e72306449e7d68934956a527ba29f2f777d779a",
+      "requested_bytes": 23982878200,
+      "requested_gib": 22.335795871913433,
+      "active_allocations": 921,
+      "origins": {
+        "loading/materialize.py:load_host_array_to_device_as_dtype": {
+          "count": 732,
+          "requested_bytes": 21918738944,
+          "hip_malloc_committed_delta_bytes": 22187868160,
+          "committed_minus_requested_bytes": 269129216
+        },
+        "runtime/qwen35_gguf_runner.py:<genexpr>": {
+          "count": 21,
+          "requested_bytes": 367568896,
+          "hip_malloc_committed_delta_bytes": 367001600,
+          "committed_minus_requested_bytes": -567296
+        },
+        "runtime/qwen35_gguf_runner.py:__post_init__": {
+          "count": 13,
+          "requested_bytes": 34594528,
+          "hip_malloc_committed_delta_bytes": 35651584,
+          "committed_minus_requested_bytes": 1057056
+        },
+        "runtime/qwen35_gguf_runner.py:_try_allocate_gguf_aotriton_head_major_kv_scratch": {
+          "count": 2,
+          "requested_bytes": 134742016,
+          "hip_malloc_committed_delta_bytes": 138412032,
+          "committed_minus_requested_bytes": 3670016
+        },
+        "runtime/qwen35_gguf_runner.py:buf": {
+          "count": 153,
+          "requested_bytes": 1527233816,
+          "hip_malloc_committed_delta_bytes": 1568669696,
+          "committed_minus_requested_bytes": 41435880
+        }
+      },
+      "hip_used_before_load_bytes": 4231168,
+      "hip_used_after_load_bytes": 24450809856,
+      "hip_used_after_load_delta_bytes": 24446578688,
+      "captured_hip_malloc_commit_bytes": 24297603072,
+      "non_hip_malloc_used_delta_bytes": 148975616,
+      "one_2m_aligned_arena_commit_bytes": 23983030272,
+      "arena_only_projected_saving_bytes": 314572800,
+      "arena_only_projected_saving_mib": 300.0,
+      "pinned_fork_gap_bytes": 57954304,
+      "pinned_fork_gap_mib": 55.26953125,
+      "arena_only_projected_margin_mib": -244.73046875,
+      "arena_plus_full_attention_q4_projected_margin_mib": -324.73046875,
+      "instrumented_final_token_ids": [
+        9707
+      ],
+      "tracked_after_close_bytes": 0
+    }
+  },
+  "conditional_exact_byte_stack": {
+    "status": "not_implemented_not_admitted_until_arena_actual_4k_result",
+    "source_artifact": "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json",
+    "full_attention_layers": 10,
+    "q4_selected_tensors_per_layer": 2,
+    "saving_bytes_per_tensor": 4194304,
+    "total_saving_bytes": 83886080,
+    "total_saving_mib": 80.0,
+    "q4_leaf_delta_us_per_layer": 5.8028727769851685,
+    "projected_delta_ms_per_token_for_10_layers": 0.058028727769851685,
+    "exactness_carried": "The compact Q4 pack/dequant/direct/WMMA primitive was byte-exact in SH2-M4; any bounded model route must rerun complete current-production state and wall gates.",
+    "anti_gaming": "The possible subset is the model-defined full-attention layer class, not prompt, token, candidate ID, or publication-length selection."
+  },
+  "decision": {
+    "audit_passed": true,
+    "production_changed": false,
+    "admit_next": "SH15-M2 bounded private-c1 persistent session arena screen",
+    "arena_only_projects_memory_parity_depths": [
+      "512/128",
+      "32K/128",
+      "64K/128"
+    ],
+    "arena_only_projects_memory_failure_depths": [
+      "4K/128"
+    ],
+    "next_rule": "Implement and measure the arena first. Do not add compact Q4 unless actual 4K arena GTT remains above fork and the model-structural ten-layer subset independently passes <=1% wall plus exact state. Stop/revert on allocation denial, pointer alignment, lifecycle, or performance regression.",
+    "objective_complete": false
+  }
+}
