@@ -1,17 +1,18 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: tabled at the measured exact/default local optimum (2026-08-06); AR
-and prefill beat the matched Vulkan floor, while natural B3 remains 11.49%
-short after the credible optimization ladder was exhausted.
+Status: reopened on 2026-08-06 after the comparator moved to latest
+tracked-clean llama.cpp `c8e03ce81` (build 10290). The refreshed steady-state
+natural floor selects B4 at 69.798 tok/s; canonical hipEngine B3 is 13.66%
+short. A source-faithful, one-module-at-a-time parity pass is active.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
 `gfx1100`.
 
 Comparator: latest tracked-clean llama.cpp Vulkan source at
-`/home/lhl/llama.cpp/llama.cpp-vulkan`, initially refreshed from
-`67d5978bb` to `ee0445c99` on 2026-08-04 and built in Release mode with
-`GGML_VULKAN=ON` and `GGML_HIP=OFF`.
+`/home/lhl/llama.cpp/llama.cpp-vulkan`, refreshed from `ee0445c99` to
+`c8e03ce81` on 2026-08-06 and built in Release mode with `GGML_VULKAN=ON` and
+`GGML_HIP=OFF`.
 
 The goal is an honest, same-file comparison: make hipEngine AR and native GGUF
 MTP functional for this dense Qwen3.6 file, then meet or beat current
@@ -1688,9 +1689,60 @@ disclosed and are not falsely relabeled green. No optimization, benchmark, or
 campaign task remains after this publication. Compact checklist:
 `benchmarks/results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`.
 
+### Latest Vulkan refresh and campaign reopen (2026-08-06)
+
+The human refreshed `/home/lhl/llama.cpp/llama.cpp-vulkan` to tracked-clean
+`c8e03ce81` (build 10290). A new Release Vulkan build on the same W7900, Mesa
+26.1.4, model bytes/hash, full offload, FA, and F16 K/V gives:
+
+| Boundary | Prior `ee0445c99` | Latest `c8e03ce81` | Change |
+| --- | ---: | ---: | ---: |
+| llama-bench pp512 | 792.308 | 792.621 tok/s | +0.040% |
+| llama-bench pp4096 | 754.093 | 753.758 tok/s | -0.045% |
+| llama-bench tg128 | 12.61795 | 12.61632 tok/s | -0.013% |
+| stateful 512/128 prefill / AR | 79.805 / 12.57431 | 79.351 / 12.53468 tok/s | -0.570% / -0.315% |
+| stateful 4096/128 prefill / AR | 81.792 / 12.48779 | 80.622 / 12.45871 tok/s | -1.430% / -0.233% |
+| natural matched B3 | 68.082 | 67.682 tok/s | -0.588% |
+| natural selected budget | 68.082 B3 | **69.798 B4** | **+2.520%** |
+
+The selected-budget shift is a steady-state protocol correction, not evidence
+that the 40-commit source delta accelerated Qwen3.6 arithmetic. The prior B4
+sweep had one unique-row first prompt at 48.60 tok/s while its other nine rows
+and 171/242 ledger match the refresh. Candidate-local warmup moves that prompt
+to the mid-70s; the explicit-device B1-B4 sweep and rich direct packet both
+select B4. Latest B4 accepts **171/241 drafts**, reaches **69.798 transition
+tok/s**, and is **3.126% above** same-harness B3. Canonical hipEngine B3
+**60.262 tok/s** is **10.96% below matched Vulkan B3** and **13.66% below
+selected Vulkan B4**, so end-to-end closure requires **+15.82%**.
+
+The old query profile is superseded for current module decisions. Reprofile
+latest Vulkan B3/B4 and current hipEngine B3, reconcile an exhaustive
+critical-path ledger to wall, then close deficits strictly one module at a
+time. A module advances only when the matched hipEngine aggregate/per-call row
+is at least Vulkan performance with its correctness/transaction gate intact.
+The final gate remains complete natural25 against selected Vulkan B4; beating
+shape-matched B3 modules alone does not satisfy closure. Compact baseline:
+`benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`.
+
 ---
 
 ## 7. Prioritized execution plan
+
+### Reopened latest-Vulkan pass
+
+| Priority | ID | Work | Exit gate / impact rule | Status |
+| ---: | --- | --- | --- | --- |
+| 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
+| 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | in progress |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass. | pending profile ledger |
+| 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
+| 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
+
+### Historical first pass
+
+The table below records the now-superseded `ee0445c99` B3 campaign. Its
+measurements and rejection decisions remain evidence, but its B3 selection and
+"exhausted" status do not govern the reopened latest-source pass.
 
 | Priority | ID | Work | Exit gate / impact rule | Status |
 | ---: | --- | --- | --- | --- |
