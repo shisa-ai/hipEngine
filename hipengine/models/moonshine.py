@@ -335,7 +335,9 @@ def expected_moonshine_weight_shapes(spec: MoonshineModelSpec) -> dict[str, tupl
     return dict(sorted(shapes.items()))
 
 
-def validate_moonshine_weight_index(spec: MoonshineModelSpec, index: "WeightIndex") -> None:
+def validate_moonshine_weight_index(
+    spec: MoonshineModelSpec, index: "WeightIndex", *, packed: bool = False
+) -> None:
     expected = expected_moonshine_weight_shapes(spec)
     missing = sorted(set(expected) - set(index.tensors))
     extra = sorted(set(index.tensors) - set(expected))
@@ -343,8 +345,11 @@ def validate_moonshine_weight_index(spec: MoonshineModelSpec, index: "WeightInde
         raise ValueError(f"Moonshine weight names differ: missing={missing[:5]}, extra={extra[:5]}")
     for name, shape in expected.items():
         info = index.tensors[name]
-        if info.dtype != "F32":
-            raise ValueError(f"Moonshine weight {name} dtype={info.dtype}, expected F32")
+        expected_dtype = "F16" if packed else "F32"
+        if info.dtype != expected_dtype:
+            raise ValueError(
+                f"Moonshine weight {name} dtype={info.dtype}, expected {expected_dtype}"
+            )
         if info.shape != shape:
             raise ValueError(f"Moonshine weight {name} shape={info.shape}, expected {shape}")
     if spec.lm_head_alias_name in index.tensors:

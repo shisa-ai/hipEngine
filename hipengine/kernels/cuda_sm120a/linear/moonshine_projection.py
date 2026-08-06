@@ -24,6 +24,16 @@ _ALLOWED_THREADS = {32, 64, 128, 256}
 # M=1 are flat across threads so they keep 256. The fused fc2
 # (bias_residual 1664->416) is best at 256 threads for the decode M=1 bucket
 # and at 64 for batch M=40.
+#
+# C4-R3 note: a leaf screen also selected t64 for the single/triple/bias row
+# projections at rows>1 (1.79-2.00x faster than 256), but the complete-encoder
+# token gate rejects it.  Forcing t64 on the encoder's single/triple/bias flips
+# 45/33 tokens (audio-sumimasen / synthetic-1s-seed1234) and t128 flips 27
+# (audio-konichiwa); only the t256 reduction order reproduces the exact fixture
+# token stream on every file (0 mismatches, one documented borderline).  The
+# encoder composition therefore keeps 256 for these families.  The t64
+# pair/head-major schedule is retained: the decoder cross-K/V precompute (the
+# only rows>1 pair user) is token-exact at t64.
 _PAIR_THREADS = 64
 _RESIDUAL_DECODE_THREADS = 256
 _RESIDUAL_BATCH_THREADS = 64

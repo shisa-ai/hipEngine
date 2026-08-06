@@ -240,7 +240,7 @@ __global__ __launch_bounds__(256) void moonshine_encoder_rope_fp16_kernel(
   const int64_t elements = heads * sequence * head_dim;
   const int64_t index =
       static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index >= elements || sequence >= max_positions) return;
+  if (index >= elements || sequence > max_positions) return;
   const int64_t dimension = index % head_dim;
   const int64_t position = (index / head_dim) % sequence;
   const int64_t head = index / (head_dim * sequence);
@@ -409,7 +409,7 @@ extern "C" int hipengine_cuda_sm120a_moonshine_encoder_rope_fp16(
     int64_t head_dim, int64_t rotary_dim, int64_t max_positions, int64_t threads,
     cudaStream_t stream) {
   if (heads <= 0 || sequence <= 0 || head_dim <= 0 || rotary_dim <= 0 ||
-      rotary_dim > head_dim || sequence >= max_positions || threads != 256) {
+      rotary_dim > head_dim || sequence > max_positions || threads != 256) {
     return 1;
   }
   const int64_t elements = heads * sequence * head_dim;

@@ -163,9 +163,12 @@ def test_moonshine_cuda_projection_schedule_auto_selects_measured_threads() -> N
     bias_residual is best at 256 threads for decode M=1 and 64 at M=40 (C1D-R2).
     """
     from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+        moonshine_f16_projection,
+        moonshine_f16_projection_bias,
         moonshine_f16_projection_bias_residual,
         moonshine_f16_projection_pair,
         moonshine_f16_projection_pair_head_major,
+        moonshine_f16_projection_triple,
     )
 
     class FakeKernel:
@@ -180,6 +183,9 @@ def test_moonshine_cuda_projection_schedule_auto_selects_measured_threads() -> N
         hipengine_cuda_sm120a_moonshine_f16_projection_pair = FakeKernel()
         hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major = FakeKernel()
         hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual = FakeKernel()
+        hipengine_cuda_sm120a_moonshine_f16_projection = FakeKernel()
+        hipengine_cuda_sm120a_moonshine_f16_projection_bias = FakeKernel()
+        hipengine_cuda_sm120a_moonshine_f16_projection_triple = FakeKernel()
 
     library = FakeLibrary()
     common = {"stream": 7, "library": library, "runtime": object()}
@@ -209,6 +215,40 @@ def test_moonshine_cuda_projection_schedule_auto_selects_measured_threads() -> N
     assert (
         library.hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual.calls
         == [(1, 2, 3, 4, 5, 1, 1664, 416, 256, 7), (1, 2, 3, 4, 5, 40, 1664, 416, 64, 7), (1, 2, 3, 4, 5, 1, 1664, 416, 32, 7)]
+    )
+
+    # Single/triple/bias keep 256 at every row count: the C4-R3 t64 leaf win
+    # was rejected because the complete-encoder token gate flips 45/33/27
+    # tokens (t64/t128) and only the t256 reduction order reproduces the exact
+    # fixture stream.  Asserted so the rejection is regression-locked.
+    moonshine_f16_projection(1, 2, 3, 1, 416, 416, **common)
+    moonshine_f16_projection(1, 2, 3, 40, 416, 416, **common)
+    moonshine_f16_projection(1, 2, 3, 1_248, 416, 416, **common)
+    moonshine_f16_projection(1, 2, 3, 1, 416, 416, threads=32, **common)
+    assert library.hipengine_cuda_sm120a_moonshine_f16_projection.calls == [
+        (1, 2, 3, 1, 416, 416, 256, 7),
+        (1, 2, 3, 40, 416, 416, 256, 7),
+        (1, 2, 3, 1_248, 416, 416, 256, 7),
+        (1, 2, 3, 1, 416, 416, 32, 7),
+    ]
+    moonshine_f16_projection_bias(1, 2, 3, 4, 1, 416, 416, **common)
+    moonshine_f16_projection_bias(1, 2, 3, 4, 207, 416, 416, **common)
+    assert library.hipengine_cuda_sm120a_moonshine_f16_projection_bias.calls == [
+        (1, 2, 3, 4, 1, 416, 416, 256, 7),
+        (1, 2, 3, 4, 207, 416, 416, 256, 7),
+    ]
+    moonshine_f16_projection_triple(
+        1, 2, 3, 4, 5, 6, 7, 1, 416, 416, 416, 416, **common
+    )
+    moonshine_f16_projection_triple(
+        1, 2, 3, 4, 5, 6, 7, 1_248, 416, 416, 416, 416, **common
+    )
+    assert (
+        library.hipengine_cuda_sm120a_moonshine_f16_projection_triple.calls
+        == [
+            (1, 2, 3, 4, 5, 6, 7, 1, 416, 416, 416, 416, 256, 7),
+            (1, 2, 3, 4, 5, 6, 7, 1_248, 416, 416, 416, 416, 256, 7),
+        ]
     )
 
 
@@ -251,6 +291,8 @@ def test_moonshine_cuda_projection_single_pair_triple_match_cpu_oracle() -> None
     expected_one = moonshine_triple_projection(x_one, *weights)
     expected_bias = moonshine_projection(x_one, weights[0], bias)
     expected_rows = tuple(moonshine_projection(x_rows, weight) for weight in weights[:2])
+    expected_rows_bias = moonshine_projection(x_rows, weights[0], bias)
+    expected_triple_rows = moonshine_triple_projection(x_rows, *weights)
 
     runtime = get_cuda_runtime()
     runtime.set_device(0)
@@ -267,6 +309,10 @@ def test_moonshine_cuda_projection_single_pair_triple_match_cpu_oracle() -> None
         triple = tuple(_alloc((1, hidden), runtime, allocations) for _ in range(3))
         pair = tuple(_alloc((40, hidden), runtime, allocations) for _ in range(2))
         head_major = tuple(_alloc((8, 40, 52), runtime, allocations) for _ in range(2))
+        # Rows>1 single/triple/bias exercise the auto-selected t64 schedule (C4-R3).
+        single_rows = _alloc((40, hidden), runtime, allocations)
+        biased_rows = _alloc((40, hidden), runtime, allocations)
+        triple_rows = tuple(_alloc((40, hidden), runtime, allocations) for _ in range(3))
 
         moonshine_f16_projection(
             dx_one.ptr, device_weights[0].ptr, single.ptr, 1, hidden, hidden,
@@ -319,6 +365,26 @@ def test_moonshine_cuda_projection_single_pair_triple_match_cpu_oracle() -> None
             library=library,
             runtime=runtime,
         )
+        moonshine_f16_projection(
+            dx_rows.ptr, device_weights[0].ptr, single_rows.ptr, 40, hidden, hidden,
+            library=library, runtime=runtime,
+        )
+        moonshine_f16_projection_bias(
+            dx_rows.ptr, device_weights[0].ptr, device_bias.ptr, biased_rows.ptr,
+            40, hidden, hidden, library=library, runtime=runtime,
+        )
+        moonshine_f16_projection_triple(
+            dx_rows.ptr,
+            *(weight.ptr for weight in device_weights),
+            *(output.ptr for output in triple_rows),
+            40,
+            hidden,
+            hidden,
+            hidden,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         actual_single = _download(single, (1, hidden), runtime)
         actual_lm_head = _download(lm_head, (1, hidden), runtime)
@@ -327,6 +393,11 @@ def test_moonshine_cuda_projection_single_pair_triple_match_cpu_oracle() -> None
         actual_pair = tuple(_download(output, (40, hidden), runtime) for output in pair)
         actual_head_major = tuple(
             _download(output, (8, 40, 52), runtime) for output in head_major
+        )
+        actual_single_rows = _download(single_rows, (40, hidden), runtime)
+        actual_biased_rows = _download(biased_rows, (40, hidden), runtime)
+        actual_triple_rows = tuple(
+            _download(output, (40, hidden), runtime) for output in triple_rows
         )
     finally:
         for allocation in reversed(allocations):
@@ -342,9 +413,13 @@ def test_moonshine_cuda_projection_single_pair_triple_match_cpu_oracle() -> None
     for actual, expected in zip(actual_head_major, expected_rows, strict=True):
         expected_layout = expected.reshape(40, 8, 52).transpose(1, 0, 2)
         np.testing.assert_allclose(actual, expected_layout, rtol=2e-3, atol=2e-3)
+    np.testing.assert_allclose(actual_single_rows, expected_rows[0], rtol=2e-3, atol=2e-3)
+    np.testing.assert_allclose(actual_biased_rows, expected_rows_bias, rtol=2e-3, atol=2e-3)
+    for actual, expected in zip(actual_triple_rows, expected_triple_rows, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=2e-3, atol=2e-3)
     assert all(
         np.isfinite(value).all()
-        for value in (*actual_triple, *actual_pair, *actual_head_major)
+        for value in (*actual_triple, *actual_pair, *actual_head_major, *actual_triple_rows)
     )
 
 

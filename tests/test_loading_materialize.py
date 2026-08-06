@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 
 import numpy as np
@@ -150,3 +151,44 @@ def test_load_tensors_to_device_returns_tensor_map(tmp_path) -> None:
     assert bytes(runtime.buffers[weights.allocation("b").buffer.ptr]) == b.tobytes()
     weights.free(runtime=runtime)
     assert runtime.freed == [weights.allocation("b").buffer.ptr, weights.allocation("a").buffer.ptr]
+
+
+def test_verify_packed_manifest_matches_on_disk_hash(tmp_path) -> None:
+    """C5-R1: packed load verifies the recorded SHA-256 against the file."""
+    from hipengine.loading.moonshine import _verify_packed_manifest
+
+    tensors = {"a": np.asarray([1, 2], dtype=np.float16)}
+    _write_model(tmp_path, tensors)
+    index = load_weight_index(tmp_path)
+    digest = hashlib.sha256((tmp_path / "model.safetensors").read_bytes()).hexdigest()
+    (tmp_path / "pack_manifest.json").write_text(
+        json.dumps({"packed": {"model.safetensors_sha256": digest}})
+    )
+    _verify_packed_manifest(tmp_path, index)  # must not raise
+
+    # A tampered recorded hash must be rejected.
+    (tmp_path / "pack_manifest.json").write_text(
+        json.dumps({"packed": {"model.safetensors_sha256": "0" * 64}})
+    )
+    with pytest.raises(ValueError, match="hash mismatch"):
+        _verify_packed_manifest(tmp_path, index)
+
+    # A missing manifest is rejected for packed loads.
+    (tmp_path / "pack_manifest.json").unlink()
+    with pytest.raises(FileNotFoundError, match="pack_manifest.json"):
+        _verify_packed_manifest(tmp_path, index)
+
+
+def test_validate_packed_fp16_accepts_finite_fp16(tmp_path) -> None:
+    """C5-R1: packed weights are already FP16 and only validated, not converted."""
+    from hipengine.loading.moonshine import _validate_packed_fp16
+
+    good = np.asarray([1.0, -2.0, 0.5], dtype=np.float16)
+    out = _validate_packed_fp16("w", good)
+    assert out.dtype == np.float16
+    assert np.array_equal(out, good)
+
+    with pytest.raises(ValueError, match="dtype must be float16"):
+        _validate_packed_fp16("w", np.asarray([1.0, 2.0], dtype=np.float32))
+    with pytest.raises(ValueError, match="finite"):
+        _validate_packed_fp16("w", np.asarray([np.inf, 1.0], dtype=np.float16))

@@ -501,6 +501,45 @@ def test_cuda_resident_runtime_rejects_nonmatching_cross_cache_shapes() -> None:
         resident.close()
 
 
+def test_cuda_resident_runtime_load_cross_cache_optional_mask_means_all_valid() -> None:
+    import ctypes
+
+    import hipengine.runtime.moonshine_cuda as runtime_module
+
+    runtime = FakeCudaRuntime()
+    resident = MoonshineCudaResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=4,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    mask_buffer = resident.workspace.allocation("encoder_attention_mask").buffer
+    uploaded: list[np.ndarray] = []
+    real_copy = runtime_module.copy_host_to_device
+
+    def spy_copy(buffer, host_ptr, nbytes=None, *, runtime=None):
+        count = buffer.nbytes if nbytes is None else nbytes
+        if buffer.ptr == mask_buffer.ptr:
+            array_type = ctypes.c_int32 * (count // ctypes.sizeof(ctypes.c_int32))
+            uploaded.append(
+                np.ctypeslib.as_array(array_type.from_address(int(host_ptr))).copy()
+            )
+        real_copy(buffer, host_ptr, nbytes, runtime=runtime)
+
+    runtime_module.copy_host_to_device = spy_copy  # type: ignore[assignment]
+    try:
+        good = np.zeros((1, 8, 4, 52), dtype=np.float16)
+        # Omitted mask must install an all-valid (all-ones) encoder mask, never
+        # the zero-initialized all-masked buffer.
+        resident.load_cross_cache([good] * 8, [good] * 8, mask=None)
+        assert len(uploaded) == 1, uploaded
+        assert uploaded[0].tolist() == [1, 1, 1, 1]
+        assert resident.cross_cache_valid is True
+        assert resident.encoder_state_valid is True
+    finally:
+        runtime_module.copy_host_to_device = real_copy
+        resident.close()
+
+
 def test_cuda_resident_runtime_set_encoder_state_from_device_validation() -> None:
     runtime = FakeCudaRuntime()
     resident = MoonshineCudaResidentRuntime(
@@ -960,6 +999,27 @@ def test_cuda_resident_runtime_graph_close_after_partial_capture_failure() -> No
     assert runtime.graph_exec_destroyed == []
 
 
+def test_cuda_resident_runtime_graph_close_destroys_graph_on_enqueue_failure() -> None:
+    runtime = FakeCudaRuntime()
+    resident, _ = _graph_ready_resident(runtime)
+
+    def boom_enqueue(*, route_position: int, stream: int, **kwargs):
+        raise RuntimeError("enqueue failed")
+
+    resident._enqueue_token_step = boom_enqueue  # type: ignore[method-assign]
+    try:
+        with pytest.raises(RuntimeError, match="enqueue failed"):
+            resident.capture_token_graphs()
+        assert not resident._token_graphs
+    finally:
+        resident.close()
+    # An enqueue-time failure after stream_begin_capture must destroy the graph
+    # handle returned by the unwinding stream_end_capture (no leaked 0x6000).
+    assert runtime.capture_events == [("begin", 0x5000, 2), ("end", 0x5000)]
+    assert runtime.graph_destroyed == [0x6000]
+    assert runtime.graph_exec_destroyed == []
+
+
 
 # ---------------------------------------------------------------- GPU gate
 
@@ -1297,8 +1357,10 @@ def test_cuda_encoder_runtime_encode_validation() -> None:
     runtime = FakeCudaRuntime()
     encoder, _ = _encoder_ready(runtime)
     try:
-        with pytest.raises(ValueError, match=r"\(1, 16000\)"):
+        with pytest.raises(ValueError, match="too short for the encoder bucket"):
             encoder.encode(np.zeros((1, 100), dtype=np.float32))
+        with pytest.raises(ValueError, match=r"must be in 1\.\.16000"):
+            encoder.encode(np.zeros((1, 20000), dtype=np.float32))
         with pytest.raises(ValueError, match="float32 or float16"):
             encoder.encode(np.zeros((1, 16000), dtype=np.float64))
         values = np.ones((1, 16000), dtype=np.float32)
@@ -1318,6 +1380,64 @@ def test_cuda_encoder_runtime_encode_validation() -> None:
         encoder.close()
 
 
+def test_cuda_encoder_runtime_bucket_padding_contract() -> None:
+    """C4-R2: a bucket-capacity arena reuses fixed sizes and masks the tail.
+
+    The 40-frame arena (16,000-sample capacity) accepts a 24-frame file (9,727
+    samples).  The audio is copied at its exact (unpadded) length — Moonshine
+    GroupNorm(1, C) normalizes across positions, so zero-padded audio would
+    corrupt the encoder statistics — while the downsampled encoder mask is
+    zero-padded to the bucket so the decoder sees only the real 24 frames as
+    valid.  ``_enqueue_encode`` processes the exact sample/frame counts.
+    """
+
+    import hipengine.runtime.moonshine_encoder_cuda as encoder_module
+
+    runtime = FakeCudaRuntime()
+    encoder, trace = _encoder_ready(runtime, audio_samples=16000)
+    try:
+        real_samples = 9727  # 24 frames
+        audio = np.ones((1, real_samples), dtype=np.float32)
+        encoder.upload_input(audio)
+        assert encoder.real_frames == 24
+        # The audio H2D is the exact (unpadded) length: 9727 * 2 bytes.
+        h2d = [
+            (dst, nbytes)
+            for dst, src, nbytes, kind in runtime.copies
+            if kind == int(MemcpyKind.HOST_TO_DEVICE)
+        ]
+        audio_buf = encoder.workspace.allocation("audio").buffer
+        mask_buf = encoder.workspace.allocation("encoder_attention_mask").buffer
+        assert (audio_buf.ptr, real_samples * DType.FP16.itemsize) in h2d
+        # The encoder mask is bucket-sized: real 24 frames valid, tail masked.
+        assert (mask_buf.ptr, 40 * DType.INT32.itemsize) in h2d
+        # The encoder mask is bucket-sized: real 24 frames valid, tail masked.
+        assert (mask_buf.ptr, 40 * DType.INT32.itemsize) in h2d
+        encoder.run_encode()
+        conv1 = trace[0][1]
+        assert conv1[3] == real_samples  # conv1 reads the exact sample count
+        attention = trace[10][1]
+        assert (attention[5], attention[6], attention[7]) == (8, 52, 24)
+        # Bucket selection picks the smallest bucket that fits.
+        from hipengine.runtime.moonshine_encoder_cuda import (
+            moonshine_encoder_bucket_for_frames,
+        )
+
+        assert moonshine_encoder_bucket_for_frames(24) == 40
+        assert moonshine_encoder_bucket_for_frames(40) == 40
+        assert moonshine_encoder_bucket_for_frames(42) == 207
+        assert moonshine_encoder_bucket_for_frames(105) == 207
+        assert moonshine_encoder_bucket_for_frames(207) == 207
+        assert moonshine_encoder_bucket_for_frames(1248) == 1248
+        with pytest.raises(ValueError, match="exceeds"):
+            moonshine_encoder_bucket_for_frames(1249)
+        with pytest.raises(ValueError, match="positive"):
+            moonshine_encoder_bucket_for_frames(0)
+    finally:
+        encoder.close()
+
+
+
 def test_cuda_encoder_runtime_upload_run_encode_split() -> None:
     """C4/C5: ``upload_input`` + ``run_encode`` is equivalent to ``encode`` but
     lets a timing harness exclude the (KB-scale) initial H2D."""
@@ -1333,7 +1453,7 @@ def test_cuda_encoder_runtime_upload_run_encode_split() -> None:
         # The split dispatches the same full 101-launch DAG as ``encode``.
         assert len(trace) == 101
         # Upload validation errors are preserved on the split path.
-        with pytest.raises(ValueError, match=r"\(1, 16000\)"):
+        with pytest.raises(ValueError, match="too short for the encoder bucket"):
             encoder.upload_input(np.zeros((1, 100), dtype=np.float32))
     finally:
         encoder.close()
@@ -1474,6 +1594,7 @@ def test_cuda_encoder_runtime_handoff_contract() -> None:
     try:
         with pytest.raises(TypeError, match="MoonshineCudaResidentRuntime"):
             encoder.handoff_to(object())  # type: ignore[arg-type]
+        encoder.encode(np.ones((1, 16000), dtype=np.float32))
         encoder.handoff_to(decoder)
         assert decoder.encoder_state_valid is True
         assert decoder.cross_cache_valid is True
@@ -1710,6 +1831,210 @@ def test_cuda_encoder_runtime_e2e_encode_handoff_decode_on_six_fixtures() -> Non
                             f"fixture-oracle top-2 logit gap is {margin:.4f} "
                             f"(not a coin flip)"
                         )
+            finally:
+                enc.close()
+                dec.close()
+    finally:
+        loaded.weights.free(runtime=cuda_runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _six_fixtures_available(),
+    reason="CUDA sm_120a gate or six audio fixtures are not available",
+)
+def test_cuda_encoder_runtime_bucket_arenas_e2e_on_six_fixtures() -> None:
+    """C4-R1/C4-R2: fixed-bucket arenas reproduce the exact-shape token route.
+
+    Each file is encoded through a reusable bucket-capacity arena (40/207/1,248
+    frames) selected by ``moonshine_encoder_bucket_for_frames`` and handed off
+    to a bucket-sized resident decoder.  Because the arena processes the exact
+    (unpadded) audio length, the encoder hidden, downsampled mask, precomputed
+    cross K/V, and token stream must match the exact-shape fixture gates exactly
+    (the decoder masks the unused bucket tail via ``source_frames=real_frames``).
+    """
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.device import Device
+    from hipengine.loading.moonshine import load_moonshine_model
+    from hipengine.runtime.moonshine_encoder_cuda import (
+        MoonshineCudaEncoderRuntime,
+        moonshine_encoder_bucket_audio_samples,
+        moonshine_encoder_bucket_for_frames,
+    )
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=cuda_runtime
+    )
+    try:
+        for fixture_name in _SIX_FIXTURES:
+            with open(
+                os.path.join(_SIX_FIXTURE_DIR, f"{fixture_name}.json")
+            ) as handle:
+                manifest = json.load(handle)
+            with np.load(
+                os.path.join(_SIX_FIXTURE_DIR, f"{fixture_name}.npz")
+            ) as fixture:
+                audio = fixture["input.values"]
+                amask = fixture["input.attention_mask"]
+                ref_mask = fixture["encoder.attention_mask"]
+                reference = [int(token) for token in manifest["decoder"]["token_ids"]]
+                frames = int(manifest["input"]["encoder_frames"])
+                ref_hidden = fixture["encoder.output"]
+                ref_keys = [fixture[f"cross.layer_{layer}.key"] for layer in range(8)]
+                ref_values = [
+                    fixture[f"cross.layer_{layer}.value"] for layer in range(8)
+                ]
+
+            bucket = moonshine_encoder_bucket_for_frames(frames)
+            enc = MoonshineCudaEncoderRuntime(
+                audio_samples=moonshine_encoder_bucket_audio_samples(bucket),
+                loaded_model=loaded,
+                owns_weights=False,
+            )
+            enc.prepare_encoder_kernels()
+            dec = MoonshineCudaResidentRuntime(
+                encoder_frames=bucket, loaded_model=loaded, owns_weights=False
+            )
+            dec.prepare_decoder_kernels()
+            try:
+                enc.encode(audio, amask)
+                got_hidden = _device_tensor_to_host(cuda_runtime, enc.encoder_output())
+                hidden_abs = np.abs(
+                    got_hidden[0, :frames].astype(np.float32)
+                    - ref_hidden[0].astype(np.float32)
+                ).max()
+                assert float(hidden_abs) <= _FINAL_HIDDEN_MAX_ABS, (
+                    f"{fixture_name} bucket {bucket} hidden max_abs={float(hidden_abs)}"
+                )
+                got_mask = _device_tensor_to_host(
+                    cuda_runtime, enc.attention_mask(), dtype=np.int32
+                )
+                assert np.array_equal(got_mask[0, :frames], ref_mask[0]), (
+                    f"{fixture_name} bucket {bucket} mask differs"
+                )
+                assert bool((got_mask[0, frames:] == 0).all()), (
+                    f"{fixture_name} bucket {bucket} mask tail is not masked"
+                )
+
+                enc.handoff_to(dec)
+                for layer in range(8):
+                    cache = dec.cross_cache(layer)
+                    for side, ref_array in (
+                        (cache.key, ref_keys[layer]),
+                        (cache.value, ref_values[layer]),
+                    ):
+                        host = _device_tensor_to_host(cuda_runtime, side)
+                        diff = np.abs(
+                            host[..., :frames, :].astype(np.float32)
+                            - ref_array[0].astype(np.float32)
+                        ).max()
+                        assert float(diff) <= _CROSS_CACHE_MAX_ABS, (
+                            f"{fixture_name} bucket {bucket} layer {layer} "
+                            f"cross cache max_abs={float(diff)}"
+                        )
+
+                mismatches: list[tuple[int, int, int]] = []
+                token_id = reference[0]
+                for position in range(194):
+                    dec.set_decode_state(token_id=token_id, position=position)
+                    dec.token_step()
+                    token_id = int(dec.read_token())
+                    expected = (
+                        reference[position + 1]
+                        if position + 1 < len(reference)
+                        else reference[position]
+                    )
+                    if token_id != expected:
+                        mismatches.append((position, token_id, expected))
+                allowed = _SIX_BORDERLINE.get(fixture_name, set())
+                unexpected = [
+                    (position, got, expected)
+                    for (position, got, expected) in mismatches
+                    if position not in allowed
+                ]
+                assert unexpected == [], (
+                    f"{fixture_name} bucket {bucket}: {len(unexpected)} unexpected "
+                    f"token mismatches: {unexpected[:10]}"
+                )
+            finally:
+                enc.close()
+                dec.close()
+    finally:
+        loaded.weights.free(runtime=cuda_runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled(),
+    reason="CUDA sm_120a gate is not enabled",
+)
+def test_cuda_encoder_runtime_bucket_207_1248_execution() -> None:
+    """C4-R1: the 207- and 1,248-frame buckets execute end to end.
+
+    Previously the encoder RoPE tables were sized to the decoder self-cache
+    limit (194) and the ``sequence >= max_positions`` guard rejected any
+    sequence at/above that, so the certified 207/1,248-frame buckets could not
+    run at all.  Now the tables are sized to the admitted bucket and the guard
+    accepts ``sequence == max_positions``; this test encodes full-length
+    synthetic audio in both large buckets, checks finite hidden + all-valid
+    mask, then decodes deterministically to the decoder's 194-position limit.
+    """
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.device import Device
+    from hipengine.loading.moonshine import load_moonshine_model
+    from hipengine.runtime.moonshine_encoder_cuda import (
+        MoonshineCudaEncoderRuntime,
+        moonshine_encoder_bucket_audio_samples,
+    )
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=cuda_runtime
+    )
+    try:
+        for bucket in (207, 1248):
+            samples = moonshine_encoder_bucket_audio_samples(bucket)
+            rng = np.random.default_rng(bucket)
+            audio = rng.normal(0.0, 0.02, size=(1, samples)).astype(np.float32)
+            enc = MoonshineCudaEncoderRuntime(
+                audio_samples=samples, loaded_model=loaded, owns_weights=False
+            )
+            enc.prepare_encoder_kernels()
+            dec = MoonshineCudaResidentRuntime(
+                encoder_frames=bucket, loaded_model=loaded, owns_weights=False
+            )
+            dec.prepare_decoder_kernels()
+            try:
+                enc.encode(audio)
+                hidden = _device_tensor_to_host(cuda_runtime, enc.encoder_output())
+                assert hidden.shape == (1, bucket, 416)
+                assert bool(np.isfinite(hidden).all())
+                mask = _device_tensor_to_host(
+                    cuda_runtime, enc.attention_mask(), dtype=np.int32
+                )
+                assert np.array_equal(mask[0], np.ones(bucket, dtype=np.int32))
+                enc.handoff_to(dec)
+                token_id = 1
+                stream_a: list[int] = []
+                for position in range(194):
+                    dec.set_decode_state(token_id=token_id, position=position)
+                    dec.token_step()
+                    token_id = int(dec.read_token())
+                    stream_a.append(token_id)
+                # Deterministic: a second decode is byte-identical.
+                dec.reset_generation(clear_cross_cache=False)
+                token_id = 1
+                stream_b: list[int] = []
+                for position in range(194):
+                    dec.set_decode_state(token_id=token_id, position=position)
+                    dec.token_step()
+                    token_id = int(dec.read_token())
+                    stream_b.append(token_id)
+                assert stream_a == stream_b
+                assert all(0 <= token_id for token_id in stream_a)
             finally:
                 enc.close()
                 dec.close()
