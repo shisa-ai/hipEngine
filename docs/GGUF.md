@@ -2463,10 +2463,34 @@ continuations therefore stop because the conjunction cannot pass.
 Production remains Q8T16. Per the frozen stop rule, remove the SH5 environment,
 materializer, dispatcher, model route, SH6 runtime bridge, and scratch owner.
 Retain only the two standalone tested leaves and their source evidence; neither
-is a production option. Continue to clean-production SH6-C1 re-attribution.
+is a production option. This activated clean-production SH6-C1 re-attribution;
+its result follows.
 Evidence:
 [`SH5-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json),
 [`SH6-P1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json).
+
+SH6-C1 verifies that cleanup restored the intended production source. The
+process inherited a two-queue cap from SH4, but every profiled decode kernel
+used queue 1 / stream 0 only; treat the row as a qualified cumulative diagnostic,
+not a retained performance claim. Canonical 512/4K/32K/64K prefill/decode is
+**1373.558/53.153**,
+**1446.862/55.832**, **1149.718/46.196**, and **938.363/39.579 tok/s**;
+right-sized whole-GTT is **21.000/21.499/22.152/22.890 GiB**. All four
+prefill rows stay inside the frozen 1% guard, every attribution child closes to
+zero tracked bytes, cached traces preserve 628 dispatches/token, and the fresh
+18-prompt exact oracle passes 1,350 token, 54,000 hidden, and all
+initial/final state comparisons. C1/C2 and pinned-fork F16 decode/GTT remain
+**0/4**, so this is a cumulative diagnostic rather than parity.
+
+Proceed to SH7-A1's independent gfx1151 gate for the already-registered
+prepare-plus-coalesced parallel split-K reducer. The current serial reducer owns
+**0.428/0.751 ms/token** at 32K/64K inside a **4.520/8.069-ms/token**
+full-attention core. Keep serial below 32K and as fallback; require CPU and
+18-prompt semantic correctness, a named scratch-free trace, unchanged
+memory/lifecycle, and at least 1% or 0.5-ms/token 64K whole-wall saving in a
+fresh package-default one-queue serial/candidate pair before promotion. The
+qualified two-queue SH6-C1 row selects scope but is not that denominator. Evidence:
+[`SH6-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 

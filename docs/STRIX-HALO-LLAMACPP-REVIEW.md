@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH6-P1 rejected and SH6-C1 activated:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH6-C1 completed and SH7-A1 activated:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -62,16 +62,15 @@ owners are decided, not because cross-engine parity was reached.
 
 **Beat-fork continuation update (2026-08-06): active.** SH6-P1 proves the
 phase-exclusive bridge is mechanically exact but rejects it at the first binding
-performance row. One GPU transform writes host-packer-identical T16 bytes into
-one **26,738,688-byte** owner, complete 512 prefill state is byte exact, and
-teardown is clean. Charging 30 transforms moves prefill **1369.120 -> 1318.196
-tok/s (-3.720%)**, beyond the frozen 1% per-depth guard. The later-depth and
-complete-quality conjunction cannot recover, so those expensive continuations
-stop. Every SH5 model-route/env and SH6 runtime/scratch surface is removed;
-production remains Q8T16 and only the standalone tested leaves remain as source
-evidence. SH6-C1 now re-attributes clean production. The higher-level objective
-remains open because fork-F16 decode and whole-GTT parity were still **0/4** at
-the prior cumulative gate.
+performance row. Every SH5 model-route/env and SH6 runtime/scratch surface is
+removed, and SH6-C1 then re-attributes tracked-clean production source at
+canonical decode **53.153/55.832/46.196/39.579 tok/s** and whole-GTT
+**21.000/21.499/22.152/22.890 GiB**. All four prefill guards, the exact
+18-prompt oracle, lifecycle, and cached role traces pass, but C1, C2,
+fork-F16 decode, and fork-F16 whole-GTT remain **0/4**. The objective therefore
+continues to SH7-A1: independently gate the already-registered gfx1100
+prepare-plus-coalesced parallel split reducer on gfx1151 at 32K/64K, while
+keeping the serial reducer below 32K and as the required fallback.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -599,7 +598,8 @@ evidence.
 | **SH4-D1** | Exact gfx1151 private-c1 routed/shared MoE branch overlap. | **Complete: exact, rejected; no production change.** A real second hardware queue overlaps **0.456 ms/token / 33.4%** of the **1.363-ms/token** auxiliary branch, but five same-resident pairs regress **18.811 -> 19.207 ms/token (-2.058%)**. All transient surfaces are removed. |
 | **SH5-D1** | Byte-neutral row-1 dense-Q8 replacement-layout/vector algorithm. | **Complete: decode-positive, blocked from production.** The fork-attributed raw local64 leaf reaches **1.1557x** and the byte-neutral model route improves 512 decode **+2.934% / -0.539 ms/token**, but raw prefill loses **13.457%** and changed reduction is not byte-exact. The exact-tree repair is **0.779x**; production stays Q8T16. |
 | **SH6-P1** | Phase-exclusive raw-to-T16 prefill bridge plus complete quality gate. | **Complete: exact bridge, rejected; all model routing removed.** The converter is host-packer-byte-exact, scratch-free, and lifecycle-correct with one 25.5-MiB owner; complete 512 prefill state is exact. Charged prefill regresses **1369.120 -> 1318.196 tok/s (-3.720%)**, failing the first 1% guard, so 4K-64K/quality continuation stops and production remains Q8T16. |
-| **SH6-C1** | Post-SH6 cumulative four-depth re-attribution and fork policy gate. | **Active / mandatory.** Fresh clean-production wall/GTT/trace/quality rows decide C1/C2 and pinned-fork parity, then select the next structurally new owner if parity remains open. |
+| **SH6-C1** | Post-SH6 cumulative four-depth re-attribution and fork policy gate. | **Complete: policy fails; objective continues.** Canonical decode is **53.153/55.832/46.196/39.579 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. All four prefill/exact-oracle/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. |
+| **SH7-A1** | Independently transfer the registered prepare-plus-coalesced parallel split-K reducer to gfx1151 long-context decode. | **Active.** The serial reducer owns **0.428/0.751 ms/token** inside **4.520/8.069-ms/token** full-attention core at 32K/64K. Require CPU/semantic correctness, >=1% or >=0.5-ms 64K wall saving, named scratch-free traces, unchanged memory/lifecycle, and serial fallback below 32K. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -873,10 +873,36 @@ prefill depth within 1%, so 512 failure makes the 4K-64K and complete category
 continuations non-admissible. Remove the SH5 materializer, dispatcher, env, and
 model route plus SH6 runtime bridge and scratch owner. Retain only the standalone
 rowvec8 and transform leaves as diagnostic/source evidence; production remains
-Q8T16. Proceed to clean-production SH6-C1 rather than campaign closure.
+Q8T16. This activated clean-production SH6-C1 rather than campaign closure.
 Evidence:
 [`SH5-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json),
 [`SH6-P1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json).
+
+SH6-C1 then measures restored production source at clean commit `b074e8054`.
+The process inherited a two-queue cap from SH4, but every profiled decode
+kernel used only queue 1 / stream 0; this remains a qualified diagnostic rather
+than a retained performance claim. Canonical 512/4K/32K/64K prefill/decode is
+**1373.558/53.153**,
+**1446.862/55.832**, **1149.718/46.196**, and **938.363/39.579 tok/s**;
+independent attribution whole-GTT is **21.000/21.499/22.152/22.890 GiB**.
+Every prefill row remains within 1% of SH3-C1, all attribution children close
+to zero tracked bytes, cached traces retain 628 dispatches/token, and the fresh
+18-prompt oracle passes 1,350 token plus 54,000 hidden comparisons and all
+initial/final Conv/GDN/KV state checks exactly. C1, C2, fork-F16 decode, and
+fork-F16 whole-GTT nevertheless remain **0/4**.
+
+The next owner is **SH7-A1**, not another raw-Q8, page-head, compact-KV,
+split-count, or online-softmax retry. The existing gfx1151 path still spends
+**0.4276/0.7511 ms/token** serially reducing grouped-GQA split outputs at
+32K/64K. The independently registered gfx1100 prepare-plus-coalesced output
+reducer has never received its gfx1151 gate. First require the existing CPU
+primitive and full category+heldout semantic contract, then run a fresh
+package-default one-queue serial/candidate pair at 32K/64K; the two-queue SH6-C1
+row selects scope but is not the performance denominator. Continue only if 64K
+whole wall improves by at least 1% or 0.5 ms/token with named scratch-free
+prepare/output kernels, unchanged memory/lifecycle, and serial fallback below
+32K. Evidence:
+[`SH6-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).
