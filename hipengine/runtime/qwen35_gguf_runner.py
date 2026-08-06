@@ -1917,6 +1917,7 @@ class Qwen35GGUFFullStackRunner:
     resident_weights: Qwen35GGUFResidentWeights | None = field(default=None, repr=False)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
+    use_selective_weight_arena: bool = False
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
@@ -1951,6 +1952,8 @@ class Qwen35GGUFFullStackRunner:
             }
             if placement == "host":
                 materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
+            if self.use_selective_weight_arena:
+                materialize_kwargs["use_selective_weight_arena"] = True
             self.weights = materialize_qwen35_gguf_weights(
                 self.model_path,
                 **materialize_kwargs,
@@ -2012,13 +2015,17 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime or self.runtime,
                 backend=self.backend,
             )
-            root_weights = dict(self.weights.root_weights)
+            resident = self.weights
+            root_weights = dict(resident.root_weights)
             root_weights["token_embedding"] = materialized
             self.weights = Qwen35GGUFResidentWeights(
-                config=self.weights.config,
+                config=resident.config,
                 root_weights=MappingProxyType(root_weights),
-                layers=self.weights.layers,
-                backend=self.weights.backend,
+                layers=resident.layers,
+                backend=resident.backend,
+                allocation_arena=resident.allocation_arena,
+                allocation_mode=resident.allocation_mode,
+                allocation_arena_reason=resident.allocation_arena_reason,
             )
             self.token_embedding_placement = "device"
             return materialized
@@ -7938,6 +7945,7 @@ _GGUF_INT8_KV_BLOCK16_ENV = "HIPENGINE_GGUF_INT8_KV_BLOCK16"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
+_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV = "HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA"
 _GGUF_IQ_GROUPED_PREFILL_ENV = "HIPENGINE_GGUF_IQ_GROUPED_PREFILL"
 _GGUF_MOE_TAIL_NEXT_RMS_ENV = "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
@@ -8273,6 +8281,37 @@ def _resolve_gguf_token_embedding_placement(
     ):
         return "host", "gfx1151_private_c1_auto"
     return "device", "backend_device_fallback"
+
+
+def _resolve_gguf_private_c1_small_weight_arena(
+    *,
+    backend: str,
+    max_batch_size: int,
+    has_shared_runner: bool,
+    requested: bool | None = None,
+) -> tuple[bool, str]:
+    """Admit only the default-off allocator-owned private-c1 screen."""
+
+    enabled = (
+        _env_flag(_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV, False)
+        if requested is None
+        else bool(requested)
+    )
+    if not enabled:
+        return False, "disabled"
+    if int(max_batch_size) != 1:
+        return False, "multi_row_fallback"
+    if has_shared_runner:
+        return False, "shared_runner_fallback"
+    if not bool(
+        backend_package_capability(
+            backend,
+            "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
+            False,
+        )
+    ):
+        return False, "backend_capability_fallback"
+    return True, "private_c1_candidate"
 
 
 def _gguf_host_token_embedding_requested() -> bool:
@@ -10162,6 +10201,7 @@ class Qwen35GGUFResidentSession:
     kv_scale_granularity: str = "per_token_head"
     defer_kv_allocation: bool = False
     token_embedding_placement: str = "auto"
+    use_small_weight_arena: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _target_scratch_owner: object | None = field(default=None, init=False)
@@ -10254,6 +10294,8 @@ class Qwen35GGUFResidentSession:
     _host_token_embedding_cache: dict[int, np.ndarray] = field(default_factory=dict, init=False)
     host_token_embedding_enabled: bool = field(default=False, init=False)
     host_token_embedding_reason: str | None = field(default=None, init=False)
+    small_weight_arena_enabled: bool = field(default=False, init=False)
+    small_weight_arena_reason: str = field(default="disabled", init=False)
     _owns_runner: bool = field(default=True, init=False)
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
@@ -10307,6 +10349,14 @@ class Qwen35GGUFResidentSession:
             has_shared_runner=self.shared_runner is not None,
             requested=self.token_embedding_placement,
         )
+        self.small_weight_arena_enabled, self.small_weight_arena_reason = (
+            _resolve_gguf_private_c1_small_weight_arena(
+                backend=resolved_backend,
+                max_batch_size=self.max_batch_size,
+                has_shared_runner=self.shared_runner is not None,
+                requested=self.use_small_weight_arena,
+            )
+        )
         if self.shared_runner is None:
             self.runner = Qwen35GGUFFullStackRunner(
                 self.model_path,
@@ -10315,6 +10365,7 @@ class Qwen35GGUFResidentSession:
                 require_cached_build=self.require_cached_build,
                 backend=resolved_backend,
                 token_embedding_placement=embedding_placement,
+                use_selective_weight_arena=self.small_weight_arena_enabled,
             )
             self._owns_runner = True
         else:
@@ -10327,6 +10378,22 @@ class Qwen35GGUFResidentSession:
         self.backend = self.runner.backend
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
+        if self.small_weight_arena_enabled:
+            resident = self.runner.weights
+            arena = resident.allocation_arena
+            if arena is None:
+                self.small_weight_arena_enabled = False
+                self.small_weight_arena_reason = (
+                    f"weight_fallback:{resident.allocation_mode}:"
+                    f"{resident.allocation_arena_reason}"
+                )
+            else:
+                self.small_weight_arena_reason = (
+                    "packed_small_weights:"
+                    f"{arena.allocation_count}:"
+                    f"{arena.requested_bytes}:"
+                    f"{arena.capacity_bytes}"
+                )
         if getattr(self.runner, "token_embedding_placement", "device") == "host":
             self._adopt_host_token_embedding(
                 reason=(
@@ -10584,6 +10651,46 @@ class Qwen35GGUFResidentSession:
         """Next token position that will be consumed by :meth:`step`."""
 
         return int(self._position)
+
+    def allocation_arena_audit(self) -> dict[str, object]:
+        weights = None if self.runner is None else self.runner.weights
+        arena = None if weights is None else weights.allocation_arena
+        selected_count = 0
+        selected_requested_bytes = 0
+        dedicated_count = 0
+        dedicated_requested_bytes = 0
+        dedicated_2m_aligned_count = 0
+        seen_ptrs: set[int] = set()
+        if weights is not None:
+            for weight in weights.weights:
+                for allocation in weight.allocations.values():
+                    ptr = int(allocation.buffer.ptr)
+                    if ptr in seen_ptrs:
+                        continue
+                    seen_ptrs.add(ptr)
+                    nbytes = int(allocation.buffer.nbytes)
+                    if arena is not None and arena.owns(allocation.buffer):
+                        selected_count += 1
+                        selected_requested_bytes += nbytes
+                    elif allocation.owns_buffer:
+                        dedicated_count += 1
+                        dedicated_requested_bytes += nbytes
+                        dedicated_2m_aligned_count += int(ptr % (2 * 1024 * 1024) == 0)
+        return {
+            "enabled": bool(self.small_weight_arena_enabled),
+            "reason": str(self.small_weight_arena_reason),
+            "mode": None if weights is None else str(weights.allocation_mode),
+            "fallback_reason": (
+                None if weights is None else weights.allocation_arena_reason
+            ),
+            "owner_bytes": 0 if arena is None else int(arena.capacity_bytes),
+            "selected_allocation_count": selected_count,
+            "selected_requested_bytes": selected_requested_bytes,
+            "dedicated_allocation_count": dedicated_count,
+            "dedicated_requested_bytes": dedicated_requested_bytes,
+            "dedicated_2m_aligned_count": dedicated_2m_aligned_count,
+            "physical_owner_count": dedicated_count + (1 if arena is not None else 0),
+        }
 
     @property
     def device_kv_allocation(self) -> DeviceKVPoolAllocation | None:

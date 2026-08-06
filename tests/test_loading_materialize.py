@@ -10,6 +10,7 @@ from safetensors.numpy import save_file
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
+from hipengine.core.memory import DeviceMemoryArena
 from hipengine.loading import (
     dtype_from_safetensors,
     float_array_to_bf16_bits,
@@ -127,6 +128,28 @@ def test_load_host_array_to_device_as_dtype_supports_bf16_bits() -> None:
     assert allocation.tensor.dtype is DType.BF16
     assert allocation.tensor.shape == (3,)
     assert bytes(runtime.buffers[allocation.buffer.ptr]) == bits.tobytes()
+
+
+def test_load_host_array_to_device_as_dtype_can_borrow_arena_owner() -> None:
+    array = np.arange(8, dtype=np.float32)
+    runtime = FakeRuntime()
+    arena = DeviceMemoryArena.create(4096, runtime=runtime)  # type: ignore[arg-type]
+
+    allocation = load_host_array_to_device_as_dtype(
+        "arena_prepared",
+        array,
+        DType.FP32,
+        runtime=runtime,
+        allocator=arena,
+    )
+
+    assert allocation.owns_buffer is False
+    assert allocation.buffer.ptr == arena.owner.ptr
+    assert bytes(runtime.buffers[arena.owner.ptr][: array.nbytes]) == array.tobytes()
+    allocation.free(runtime=runtime)
+    assert runtime.freed == []
+    arena.close()
+    assert runtime.freed == [arena.owner.ptr]
 
 
 def test_load_host_array_to_device_as_dtype_rejects_size_mismatch() -> None:
