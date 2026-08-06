@@ -205772,3 +205772,54 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   benchmark scoreboard, and changelog. SH12-C0 is complete; activate SH13-M1's
   4K-first phase-resolved code/library residency precondition audit because
   decode and fork whole-GTT parity remain open.
+
+## 2026-08-06 — Close SH13-M1 4K code/library residency precondition
+
+- Start from tracked-clean `b9d38e088` with ROCm/gfx1151 alive. SH7-SH12 do not
+  change 4K memory ownership, so current **21.499428-GiB** whole-GTT remains
+  **346.820 MiB / 0.338692 GiB** above pinned fork F16 **21.160736 GiB**.
+  SH2-M2's old aggregate **0.531-GiB** 4K residual is larger than this reduced
+  gap, so SH13 requires real phase attribution rather than reusing the old bound.
+- Use a read-only `/tmp` collector around one right-sized cached-only 4K/128
+  private-c1 eager process. Poll whole-card GTT every 1 ms and call ROCr's
+  `hsa_ven_amd_loader_query_segment_descriptors` at load, reset, prefill,
+  warmup, decode, close boundaries. That API reports the complete self-
+  consistent HSA loaded-segment set with exact bytes and source mappings. Also
+  inventory all process shared-object virtual spans; do not equate host virtual
+  mappings with GTT.
+- The first completed process established the exact total-code bound, but the
+  wrapper patched only the parent snapshot alias and omitted inner prefill/
+  decode labels. Preserve its phase/run hashes `49ad7cf1...6031` and
+  `3f093096...dfd2`, patch both aliases, and rerun only the same sub-five-minute
+  4K diagnostic. The corrected phase/run/summary hashes are
+  `ae28759d...63ac`, `7008c3b9...ac6a`, and `45e0ebaa...530d`. Both processes
+  reproduce **21.499428 GiB** and **3.496853 MiB** total HSA code.
+- Corrected phase peaks are **21.398376 GiB after load**, **21.498726 after
+  prefill**, and **21.499428 after one warmup decode**; measured tg128 stays
+  exactly flat. Prefill is therefore within **0.71875 MiB** of request high-
+  water. Even unlimited post-prefill reclamation cannot save more than that
+  difference because the prefill peak has already occurred.
+- HSA first-use is only **0.050781 MiB load**, **2.729586 MiB prefill**,
+  **0.716486 MiB warmup decode**, and **0 measured decode**. All **22** code
+  objects total **3.496853 MiB**, missing the gap by **343.323460 MiB**.
+  Decode-only Q8T16 GEMV code is already naturally deferred until warmup.
+- Load adds only two still-active JIT mappings (`lm_head`, `runtime_state`) plus
+  **0.050781 MiB** HSA code. From after load through request peak, *all* extra
+  whole-GTT—not just mapped/code bytes—is **103.476562 MiB**, still **243.343750
+  MiB** below the fork gap. This separately contains dynamically allocated
+  AOTriton/cache/library state that host virtual-span accounting cannot measure.
+- The complete process has **83 shared objects / 330.566406 MiB** of host virtual
+  mappings, including active Python, ROCm, AOTriton, and all JIT libraries.
+  Adding every mapped byte to every HSA segment deliberately double-counts code
+  and is not a GTT estimate; even that impossible **334.063259-MiB** upper bound
+  remains **12.757053 MiB** below the fork gap before phase eligibility.
+- The measured **0.531002-GiB untracked peak residual** therefore contains only
+  **0.003415 GiB HSA code** and **0.527587 GiB** of runtime, allocator/page-
+  table, and active-model mapping state. Post-close GTT delta is separately
+  **0.245705 GiB**. Do not mislabel either residual as unloadable code.
+- Close SH13-M1 with no `dlclose`, lazy-loader, production source, 32K, or 64K
+  work. The diagnostic process is healthy at **1408.589 prefill / 55.479 decode
+  tok/s**, token 9707, finite logits, and zero tracked bytes after close; timing
+  is not promoted. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json`
+  (SHA-256 `481f53ba...1090`) and activate mandatory SH14-C1.

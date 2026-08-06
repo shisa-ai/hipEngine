@@ -2587,6 +2587,26 @@ ms/token** behind fork F16. Execute SH13-M1 next; graph replay remains closed.
 Evidence:
 [`SH12-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json).
 
+SH13-M1 closes the 4K-first phase-residency precondition without implementation.
+A clean one-queue, 1-ms whole-GTT run reproduces **21.499428 GiB** versus pinned
+fork F16 **21.160736 GiB**, a **346.820-MiB** gap. Exact ROCr loader snapshots
+find only **22 HSA code objects / 3.497 MiB total**, first-used as **0.051 MiB**
+at load, **2.730 MiB** at prefill, **0.716 MiB** at warmup decode, and zero in
+measured decode. Whole-GTT reaches **21.398376 GiB** after load, **21.498726**
+after prefill, and **21.499428** after warmup, then stays flat. Post-prefill
+unload can therefore reduce request high-water by at most **0.719 MiB**.
+
+All **83** process shared-object virtual spans total **330.566 MiB**. Counting
+them plus every HSA segment deliberately double-counts code, includes active
+Python/ROCm/AOTriton libraries, and is not a GTT estimate; even that impossible
+**334.063-MiB** code-and-file-map bound misses the fork gap by **12.757 MiB**.
+Dynamic code/cache allocations are separately contained by the complete
+**103.477-MiB** post-load GTT rise, still **243.344 MiB** short. Runtime,
+page-table, allocator, and active-model mappings dominate the **0.531-GiB**
+untracked residual. Add no `dlclose` or lazy loader, do not run 32K/64K, and
+advance to SH14-C1. Evidence:
+[`SH13-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

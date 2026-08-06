@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH12-C0 retained and SH13-M1 selected:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH13-M1 closed and SH14-C1 selected:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -107,6 +107,19 @@ byte-exact, memory/lifecycle are unchanged, and cached tracing removes the ten
 production drains (**20 -> 10** device synchronizations) with unchanged copies
 and kernel launches. Clean committed production is **54.065 tok/s**, still
 short of C1 and fork F16, so continue to SH13-M1.
+
+SH13-M1 then closes at its 4K precondition without loader churn. A 1-ms
+phase-resolved run exactly reproduces **21.499428-GiB** whole-GTT versus pinned
+fork F16 **21.160736 GiB**, a **346.820-MiB** gap. ROCr's exact loader API finds
+only **22 HSA code objects / 3.497 MiB total**: **0.051 MiB** by load,
+**2.730 MiB** first-used by prefill, **0.716 MiB** by warmup decode, and zero by
+measured decode. Prefill already reaches **21.498726 GiB**, within **0.719 MiB**
+of the request peak, so post-prefill unload cannot materially lower high-water.
+Even the impossible sum of every process shared-object virtual span plus every
+HSA segment is **334.063 MiB**, still **12.757 MiB** below the fork gap before
+phase eligibility; all post-load GTT growth, including dynamic code/cache state,
+is only **103.477 MiB**. Runtime/page-table/active-mapping state dominates; add no
+`dlclose` or lazy loader and proceed to SH14-C1.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -642,7 +655,7 @@ evidence.
 | **SH10-A1** | Exact short-context private-c1 attention screen on the actual single-row context kernel. | **Complete: retained/default through active context 1,023.** Trace-first attribution measures the old owner at **1.500 ms/token**. Reusing the existing fixed256 batch leaf at rows1 is byte-exact, lowers that role to **0.928 ms/token**, and improves independent 512/128 decode **51.541 -> 53.591 tok/s (+3.978%, -0.742 ms/token)** with prefill **-0.612%**, unchanged memory/lifecycle, identical resources, and unchanged 1,024+ fallback. Clean production is **53.445 tok/s**; C1/fork parity remain open. |
 | **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | **Complete: non-exact and slower; rejected with no implementation.** Forced direct changes all four teacher-forced decode-logit fingerprints and final state, while repeated wall regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**. Current split producer+reducer is **0.844 ms/transition** versus direct context+gate **11.889 ms (14.080x slower)**. Memory/lifecycle are unchanged and free-running IDs happen to match; they do not repair exactness. The June speed lever does not survive, so no SH11-A2 package is admitted. |
 | **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | **Complete: retained default-stream redundant-drain deletion.** The census finds no per-layer D2H and removes only the device-wide drain immediately before the required blocking token D2H; non-default streams keep explicit sync. Same-resident 512/128 improves **+2.027% / -0.371 ms/token (9/9 wins)**; independent wall is positive but overlapping at **+0.433% / -0.080 ms/token**. Complete state is byte-exact, memory/lifecycle are unchanged, and cached tracing removes **10** production sync calls with unchanged copies/launches. Clean production is **54.065 tok/s**; parity remains open. |
-| **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | Re-scope SH2-M2 as a precondition audit only. Continue beyond 4K or add loader churn only if the eligible phase-exclusive subset exceeds the actual fork gap and peak timing permits safe deferral/unload. |
+| **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | **Complete: precondition fails; no implementation or longer-depth run.** Current 4K whole-GTT **21.499428 GiB** is **346.820 MiB** above fork F16. All **22** HSA code objects total only **3.497 MiB**; first use is **0.051/2.730/0.716/0 MiB** at load/prefill/warmup/measured-decode. Prefill is already within **0.719 MiB** of peak; all post-load GTT growth is only **103.477 MiB**. Even every process shared-object virtual span plus all HSA code is **334.063 MiB**, still below the gap before eligibility. Runtime/page-table/active mappings dominate; no `dlclose`, lazy loader, 32K, or 64K continuation. |
 | **SH14-C1** | Cumulative four-depth campaign completion gate. | After SH10-SH13, refresh or carry qualified canonical/fork rows, exactness, lifecycle, role, and memory evidence. Complete the objective only if the declared policy passes; otherwise name only evidence-backed residual owners. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
@@ -1059,8 +1072,32 @@ launches stay **6,840**. Clean committed production is **54.065 tok/s**, still
 **1.304 ms/token** short of C1 and **2.971 ms/token** behind fork F16. Evidence:
 [`SH12-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json).
 
-Run **SH13-M1** next as a 4K-first phase-resolved code-residency precondition
-audit. **SH14-C1** remains the required cumulative four-depth completion gate.
+SH13-M1 closes at the 4K-first precondition. A clean cached-only one-queue run
+with 1-ms whole-GTT polling reproduces **21.499428 GiB** against pinned fork F16
+**21.160736 GiB**, leaving **346.820 MiB**. Exact
+`hsa_ven_amd_loader_query_segment_descriptors` snapshots count **22** loaded HSA
+code objects totaling **3.497 MiB**, **343.323 MiB** short of the gap. First use
+is **0.051 MiB** during load, **2.730 MiB** during prefill, **0.716 MiB** during
+warmup decode, and zero during measured decode. Whole-GTT itself reaches
+**21.398376 GiB** after load, **21.498726** after prefill, and **21.499428**
+after warmup, then stays flat through tg128. Thus post-prefill unload can lower
+the request peak by at most **0.719 MiB**, because the prefill peak has already
+occurred.
+
+The complete process has **330.566 MiB** of shared-object virtual mappings.
+Adding those mappings to all HSA loaded segments deliberately double-counts code,
+includes active Python/ROCm/AOTriton libraries, and is not a GTT claim; even that
+impossible code-and-file-map bound is only **334.063 MiB**, still **12.757 MiB**
+below the fork gap. Dynamic library/cache state is not inferred from those host
+mappings; it is independently contained by the complete **103.477-MiB** GTT
+rise from after-load through request peak, still **243.344 MiB** short. The
+measured **0.531-GiB** untracked peak residual is therefore runtime/page-table/
+allocator/active-model state, not an evidence-backed phase-exclusive code owner.
+Stop before `dlclose`, lazy loading, 32K, and 64K.
+Evidence:
+[`SH13-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json).
+
+Run mandatory **SH14-C1** next as the cumulative four-depth completion gate.
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by
