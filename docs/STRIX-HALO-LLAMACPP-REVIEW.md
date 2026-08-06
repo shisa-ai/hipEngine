@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH13-M1 closed and SH14-C1 selected:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -60,8 +60,8 @@ fork KV lanes at 4K/32K/64K and loses at 512. Therefore hipEngine does **not** b
 matched exact-model diagnostic; Campaign 2 is closed because all declared
 owners are decided, not because cross-engine parity was reached.
 
-**Beat-fork continuation update (2026-08-06): active.** SH7-A1 remains retained
-from 32K and SH8-A1's four-query producer is rejected. SH9-D1 independently
+**Beat-fork continuation update (2026-08-06): completed without parity.**
+SH7-A1 remains retained from 32K and SH8-A1's four-query producer is rejected. SH9-D1 independently
 transfers the exact compact-WMMA no-read bound to gfx1151. Its scope is corrected:
 this is multi-row prefill, not c1 decode. At pp512 it removes **40 synchronous
 hipMemcpy plus 40 copy-kernel dispatches per request**, preserves all 80 selected
@@ -119,7 +119,33 @@ Even the impossible sum of every process shared-object virtual span plus every
 HSA segment is **334.063 MiB**, still **12.757 MiB** below the fork gap before
 phase eligibility; all post-load GTT growth, including dynamic code/cache state,
 is only **103.477 MiB**. Runtime/page-table/active-mapping state dominates; add no
-`dlclose` or lazy loader and proceed to SH14-C1.
+`dlclose` or lazy loader.
+
+SH14-C1 completes the continuation without claiming the objective. Fresh
+package-default one-queue 512/4K/32K/64K prefill is
+**1369.489/1430.215/1144.713/936.218 tok/s** and decode is
+**54.330/54.798/46.405/40.180 tok/s**. Tracked peak remains
+**20.566/20.951/21.597/22.336 GiB** and 10-ms whole-GTT remains exactly
+**21.000/21.499/22.152/22.890 GiB**; every process returns tracked ownership
+and whole-GTT to baseline. The fresh exact 18-prompt category+heldout oracle
+passes **1,350 token and 54,000 hidden comparisons** with deterministic state.
+The frozen SH6 prefill guard passes **3/4** because 4K is **-1.151%**, while
+512/32K/64K remain inside 1%.
+
+C1, C2, fork-F16 decode, and fork-F16 whole-GTT all remain **0/4**. Decode
+still needs **1.214/1.241/1.286/1.314 ms/token** for C1 and
+**2.881/2.272/2.696/3.062 ms/token** for fork F16. Whole-GTT remains
+**173.527/346.820/159.371/55.270 MiB** above fork F16 even though hipEngine's
+tracked peak alone is already **0.264/0.210/0.399/0.500 GiB below** each fork
+whole-GTT row. The remaining memory gap therefore lies inside the measured
+**0.434-0.555-GiB** untracked runtime/page-table/allocator/active-mapping
+residual, not a demonstrated reclaimable code object. Current traces still name
+GDN input projections, selected experts, lm-head, and context-dependent full
+attention as the decode owners; every admitted exact alternative in this review
+is retained or closed by a measured stop rule. No new package is admitted
+without new structural evidence or a separately approved system/runtime-memory
+experiment. Evidence:
+[`SH14-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -656,7 +682,7 @@ evidence.
 | **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | **Complete: non-exact and slower; rejected with no implementation.** Forced direct changes all four teacher-forced decode-logit fingerprints and final state, while repeated wall regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**. Current split producer+reducer is **0.844 ms/transition** versus direct context+gate **11.889 ms (14.080x slower)**. Memory/lifecycle are unchanged and free-running IDs happen to match; they do not repair exactness. The June speed lever does not survive, so no SH11-A2 package is admitted. |
 | **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | **Complete: retained default-stream redundant-drain deletion.** The census finds no per-layer D2H and removes only the device-wide drain immediately before the required blocking token D2H; non-default streams keep explicit sync. Same-resident 512/128 improves **+2.027% / -0.371 ms/token (9/9 wins)**; independent wall is positive but overlapping at **+0.433% / -0.080 ms/token**. Complete state is byte-exact, memory/lifecycle are unchanged, and cached tracing removes **10** production sync calls with unchanged copies/launches. Clean production is **54.065 tok/s**; parity remains open. |
 | **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | **Complete: precondition fails; no implementation or longer-depth run.** Current 4K whole-GTT **21.499428 GiB** is **346.820 MiB** above fork F16. All **22** HSA code objects total only **3.497 MiB**; first use is **0.051/2.730/0.716/0 MiB** at load/prefill/warmup/measured-decode. Prefill is already within **0.719 MiB** of peak; all post-load GTT growth is only **103.477 MiB**. Even every process shared-object virtual span plus all HSA code is **334.063 MiB**, still below the gap before eligibility. Runtime/page-table/active mappings dominate; no `dlclose`, lazy loader, 32K, or 64K continuation. |
-| **SH14-C1** | Cumulative four-depth campaign completion gate. | After SH10-SH13, refresh or carry qualified canonical/fork rows, exactness, lifecycle, role, and memory evidence. Complete the objective only if the declared policy passes; otherwise name only evidence-backed residual owners. |
+| **SH14-C1** | Cumulative four-depth campaign completion gate. | **Complete: policy fails; objective not met and no new package admitted.** Fresh decode is **54.330/54.798/46.405/40.180 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. Exact oracle/lifecycle/role gates pass; the frozen prefill guard is **3/4**, while C1/C2/fork-F16 decode/fork-F16 memory remain **0/4**. Tracked peak is already below fork whole-GTT at every depth, so the residual memory gap is untracked runtime/page-table/allocator/active-mapping residency; all HSA code is only 3.497 MiB. Preserve retained defaults and require new structural evidence before another campaign. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -1097,7 +1123,17 @@ Stop before `dlclose`, lazy loading, 32K, and 64K.
 Evidence:
 [`SH13-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json).
 
-Run mandatory **SH14-C1** next as the cumulative four-depth completion gate.
+SH14-C1 completes the mandatory gate. Fresh canonical prefill/decode is
+**1369.489/54.330**, **1430.215/54.798**, **1144.713/46.405**, and
+**936.218/40.180 tok/s** at 512/4K/32K/64K. Tracked/whole-GTT peaks are
+**20.566/21.000**, **20.951/21.499**, **21.597/22.152**, and
+**22.336/22.890 GiB**. The exact 18-prompt oracle and lifecycle pass, but the
+frozen prefill guard is **3/4** and every C1/C2/fork-F16 decode/fork-F16 memory
+class is **0/4**. The beat-fork objective is not complete. Do not invent a new
+leaf from a closed family: the only measured residual owners are the named
+row-1 projection/MoE/lm-head/attention roles and untracked runtime/page-table/
+allocator/active-mapping residency. Evidence:
+[`SH14-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by
@@ -1127,6 +1163,7 @@ heldouts with no token-, prompt-, or candidate-ID-conditioned branch.
 | SH7-A1 one-queue candidate (32K+ scoped) | — | — | **46.785** | **40.386** |
 | SH9-C1 carried production (SH9 is prefill-only) | **53.153** | **55.832** | **46.785** | **40.386** |
 | SH10-A1 clean production / qualified carry | **53.445** | **55.832** | **46.785** | **40.386** |
+| SH14-C1 fresh current production | **54.330** | **54.798** | **46.405** | **40.180** |
 | C1: close at least half the F16 **time** gap | **58.165** | **58.795** | **49.350** | **42.419** |
 | C2: match the local fork F16 lane | **64.658** | **62.648** | **53.220** | **45.913** |
 

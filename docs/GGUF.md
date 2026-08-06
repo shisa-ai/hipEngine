@@ -2603,9 +2603,31 @@ Python/ROCm/AOTriton libraries, and is not a GTT estimate; even that impossible
 Dynamic code/cache allocations are separately contained by the complete
 **103.477-MiB** post-load GTT rise, still **243.344 MiB** short. Runtime,
 page-table, allocator, and active-model mappings dominate the **0.531-GiB**
-untracked residual. Add no `dlclose` or lazy loader, do not run 32K/64K, and
-advance to SH14-C1. Evidence:
+untracked residual. Add no `dlclose` or lazy loader and do not run a loader-
+focused 32K/64K continuation. Evidence:
 [`SH13-M1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json).
+
+SH14-C1 completes the mandatory cumulative gate without parity. Fresh
+package-default one-queue 512/4K/32K/64K prefill is
+**1369.489/1430.215/1144.713/936.218 tok/s** and decode is
+**54.330/54.798/46.405/40.180 tok/s**. Tracked peak remains
+**20.566/20.951/21.597/22.336 GiB** and 10-ms whole-GTT remains exactly
+**21.000/21.499/22.152/22.890 GiB**. All four final-ID/lifecycle rows and the
+fresh exact 18-prompt, **1,350-token / 54,000-hidden-comparison** oracle pass.
+The frozen SH6 prefill guard is only **3/4** because 4K is **-1.151%**; all C1,
+C2, fork-F16 decode, and fork-F16 whole-GTT classes remain **0/4**.
+
+The remaining decode gaps to C1 are
+**1.214/1.241/1.286/1.314 ms/token**. Whole-GTT is still
+**173.527/346.820/159.371/55.270 MiB** above fork F16 even though tracked
+hipEngine ownership alone is already below the fork whole-GTT row at every
+depth. Thus the memory remainder lies in the measured **0.434-0.555-GiB**
+untracked runtime/page-table/allocator/active-mapping residual, while SH13
+proves all HSA code is only **3.497 MiB**. Preserve retained defaults. Do not
+reopen closed graph, direct-attention, producer, compact-KV, row-layout, or
+weight-schedule ladders without new structural measurements; a system/runtime-
+memory experiment needs separate approval. Evidence:
+[`SH14-C1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 

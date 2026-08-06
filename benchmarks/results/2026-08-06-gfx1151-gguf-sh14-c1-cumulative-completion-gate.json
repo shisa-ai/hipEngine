@@ -1,0 +1,653 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh14_c1_cumulative_completion_gate",
+  "date": "2026-08-06",
+  "created_at": "2026-08-06T12:12:13.055138+00:00",
+  "status": "mandatory_gate_complete_objective_not_met",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "measurement_commit": "1f7e2f164e46dd3a34900f6b7736e6f919064fe0",
+    "tracked_source_clean": true,
+    "runtime_commit": "8e461708e06e9368225e38ea53cedfbf9edc8e08",
+    "runtime_equivalence": "Later SH12 publication and SH13 diagnostic commits change only benchmark/docs/worklog files; current production runtime remains implementation 8e461708e.",
+    "fresh_matrix_sha256": "c734a6b1ac50906cd0bf520fa78346c2751d52cab7a5bd66d6e7a4010043b13c",
+    "fresh_oracle_sha256": "7168efc1b495ce65c5838f4dd0c6e7fae43e41de65292ab64f9b36e37e080d57",
+    "fork_f16_sha256": "c592f314a4754356ca3c4d6d83097c6dc33508f315c9b2b985cc2eb70218fe07",
+    "fork_source_commit": "b7b85da9c4a9fdeb3cab51030a40d1552270f272"
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-device amdgpu GTT",
+    "gtt_poll_ms": 10
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "canonical": "Independent right-sized process per depth; package-default one queue; one full warmup plus three measured pp/tg128 eager runs; 10-ms whole-device card1 GTT polling; tracked and phase-sampled HIP-used memory; exact final-id and close gates.",
+    "correctness": "Fresh exact 18-prompt category+heldout packed-vs-independent-c1 oracle; c4+c4+c2 and c4+c4 groups; 24 transitions; three repeats; token/hidden/Conv/GDN/KV state bit equality.",
+    "fork": "Carry immutable pinned b7b85da9 F16 five-repetition split-phase rows from the exact same model file and hardware; no duplicate comparator run.",
+    "roles": "No fresh four-depth profiler run is manufactured. SH12 changes no kernel/copy count and only removes a host synchronization; SH10 supplies the changed 512 attention symbol, SH11 supplies the unchanged 4K split route, SH7/SH8 supply current long-context producer/reducer ownership, and all other named device roles carry from immutable SH6 traces because SH7-SH13 do not change those bodies or routes.",
+    "acceptance": "All four frozen SH6 prefill rows within 1%; all four C1/C2 reporting classes recomputed; exact/default BF16 must match pinned-fork F16 decode and whole-GTT at every depth; fresh exact oracle/lifecycle and qualified role evidence must pass."
+  },
+  "rows": {
+    "512/128": {
+      "prompt_tokens": 512,
+      "decode_tokens": 128,
+      "hipengine_current": {
+        "prefill_tok_s_median": 1369.4888189812755,
+        "prefill_tok_s_samples": {
+          "count": 3,
+          "median": 1369.4888189812755,
+          "min": 1369.4506315590418,
+          "max": 1370.2330961942705,
+          "mean": 1369.7241822448625,
+          "stdev": 0.4411458100568226
+        },
+        "decode_tok_s_median": 54.32979236551348,
+        "decode_tok_s_samples": {
+          "count": 3,
+          "median": 54.32979236551348,
+          "min": 54.09227598044521,
+          "max": 54.53472205762987,
+          "mean": 54.318930134529516,
+          "stdev": 0.22142295240215215
+        },
+        "decode_ms_per_token": 18.40610752333305,
+        "tracked_peak_gib": 20.566421270370483,
+        "phase_sampled_hip_used_peak_gib": 20.98271942138672,
+        "whole_gtt_peak_gib": 21.00012969970703,
+        "whole_gtt_peak_delta_gib": 20.98273468017578,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_final_minus_baseline_gib": 4.1961669921875e-05,
+        "tracked_to_whole_gtt_residual_gib": 0.43370842933654785,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "tracked_after_close_bytes": 0,
+        "host_token_embedding_enabled": true,
+        "raw_sha256": "8aa397a157074d4fd627ff7b71a9e2fc463f803a898ac50c85759cdda4d3f158"
+      },
+      "frozen_sh6_prefill_guard": {
+        "baseline_tok_s": 1373.5582658422513,
+        "change_percent": -0.29627042129738435,
+        "passed": true
+      },
+      "pinned_fork_f16": {
+        "build_commit": "b7b85da9",
+        "prefill_tok_s_mean": 1394.038255,
+        "decode_tok_s_mean": 64.411182,
+        "decode_ms_per_token": 15.525254605636643,
+        "whole_gtt_peak_gib": 20.830669403076172
+      },
+      "gaps": {
+        "prefill_vs_fork_f16_percent": -1.7610302967420721,
+        "c1_target_tok_s": 58.165,
+        "c1_time_gap_ms_per_token": 1.2136378250608928,
+        "c2_target_tok_s": 64.658,
+        "c2_time_gap_ms_per_token": 2.940117235974949,
+        "fork_f16_decode_time_gap_ms_per_token": 2.880852917696405,
+        "fork_f16_whole_gtt_gap_gib": 0.16946029663085938,
+        "fork_f16_whole_gtt_gap_mib": 173.52734375
+      },
+      "passes": {
+        "prefill_guard": true,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false,
+        "lifecycle": true,
+        "whole_gtt_lifecycle": true,
+        "finite_and_stable": true
+      }
+    },
+    "4K/128": {
+      "prompt_tokens": 4096,
+      "decode_tokens": 128,
+      "hipengine_current": {
+        "prefill_tok_s_median": 1430.2146585565984,
+        "prefill_tok_s_samples": {
+          "count": 3,
+          "median": 1430.2146585565984,
+          "min": 1430.0359935420674,
+          "max": 1431.2071298845515,
+          "mean": 1430.485927327739,
+          "stdev": 0.6309359260803546
+        },
+        "decode_tok_s_median": 54.7975676544448,
+        "decode_tok_s_samples": {
+          "count": 3,
+          "median": 54.7975676544448,
+          "min": 54.733798135982326,
+          "max": 55.31075954175066,
+          "mean": 54.94737511072593,
+          "stdev": 0.31631127296479833
+        },
+        "decode_ms_per_token": 18.248985179525334,
+        "tracked_peak_gib": 20.951031260192394,
+        "phase_sampled_hip_used_peak_gib": 21.482017517089844,
+        "whole_gtt_peak_gib": 21.499427795410156,
+        "whole_gtt_peak_delta_gib": 21.481990814208984,
+        "whole_gtt_baseline_gib": 0.017436981201171875,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_final_minus_baseline_gib": 0.0,
+        "tracked_to_whole_gtt_residual_gib": 0.548396535217762,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "tracked_after_close_bytes": 0,
+        "host_token_embedding_enabled": true,
+        "raw_sha256": "645311b0844180a8e434c6e6815444f48ed5055b7f6b7219d262ebc46a3c011c"
+      },
+      "frozen_sh6_prefill_guard": {
+        "baseline_tok_s": 1446.8621198378146,
+        "change_percent": -1.1505907199424348,
+        "passed": false
+      },
+      "pinned_fork_f16": {
+        "build_commit": "b7b85da9",
+        "prefill_tok_s_mean": 1405.790533,
+        "decode_tok_s_mean": 62.59014,
+        "decode_ms_per_token": 15.976957392969563,
+        "whole_gtt_peak_gib": 21.160736083984375
+      },
+      "gaps": {
+        "prefill_vs_fork_f16_percent": 1.7373943687382987,
+        "c1_target_tok_s": 58.795,
+        "c1_time_gap_ms_per_token": 1.2407361787599633,
+        "c2_target_tok_s": 62.648,
+        "c2_time_gap_ms_per_token": 2.286783672693513,
+        "fork_f16_decode_time_gap_ms_per_token": 2.272027786555771,
+        "fork_f16_whole_gtt_gap_gib": 0.33869171142578125,
+        "fork_f16_whole_gtt_gap_mib": 346.8203125
+      },
+      "passes": {
+        "prefill_guard": false,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false,
+        "lifecycle": true,
+        "whole_gtt_lifecycle": true,
+        "finite_and_stable": true
+      }
+    },
+    "32K/128": {
+      "prompt_tokens": 32768,
+      "decode_tokens": 128,
+      "hipengine_current": {
+        "prefill_tok_s_median": 1144.7134946149454,
+        "prefill_tok_s_samples": {
+          "count": 3,
+          "median": 1144.7134946149454,
+          "min": 1143.9099264701053,
+          "max": 1146.1048509198113,
+          "mean": 1144.9094240016207,
+          "stdev": 1.1105019488508014
+        },
+        "decode_tok_s_median": 46.40514174911568,
+        "decode_tok_s_samples": {
+          "count": 3,
+          "median": 46.40514174911568,
+          "min": 46.26986577312807,
+          "max": 46.47545837767399,
+          "mean": 46.38348863330591,
+          "stdev": 0.10449269270718012
+        },
+        "decode_ms_per_token": 21.5493361793051,
+        "tracked_peak_gib": 21.597254745662212,
+        "phase_sampled_hip_used_peak_gib": 22.13443374633789,
+        "whole_gtt_peak_gib": 22.151844024658203,
+        "whole_gtt_peak_delta_gib": 22.13440704345703,
+        "whole_gtt_baseline_gib": 0.017436981201171875,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_final_minus_baseline_gib": 0.0,
+        "tracked_to_whole_gtt_residual_gib": 0.5545892789959908,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "tracked_after_close_bytes": 0,
+        "host_token_embedding_enabled": true,
+        "raw_sha256": "e5095704f32afe8f847d9cb10a92f0726e609920903456be5c2306a52d1bc464"
+      },
+      "frozen_sh6_prefill_guard": {
+        "baseline_tok_s": 1149.7184744440187,
+        "change_percent": -0.43532220628998974,
+        "passed": true
+      },
+      "pinned_fork_f16": {
+        "build_commit": "b7b85da9",
+        "prefill_tok_s_mean": 1102.763859,
+        "decode_tok_s_mean": 53.042021,
+        "decode_ms_per_token": 18.85297696330236,
+        "whole_gtt_peak_gib": 21.99620819091797
+      },
+      "gaps": {
+        "prefill_vs_fork_f16_percent": 3.804045197217998,
+        "c1_target_tok_s": 49.35,
+        "c1_time_gap_ms_per_token": 1.2859116605614354,
+        "c2_target_tok_s": 53.22,
+        "c2_time_gap_ms_per_token": 2.7594075810337735,
+        "fork_f16_decode_time_gap_ms_per_token": 2.6963592160027403,
+        "fork_f16_whole_gtt_gap_gib": 0.15563583374023438,
+        "fork_f16_whole_gtt_gap_mib": 159.37109375
+      },
+      "passes": {
+        "prefill_guard": true,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false,
+        "lifecycle": true,
+        "whole_gtt_lifecycle": true,
+        "finite_and_stable": true
+      }
+    },
+    "64K/128": {
+      "prompt_tokens": 65536,
+      "decode_tokens": 128,
+      "hipengine_current": {
+        "prefill_tok_s_median": 936.2176348690924,
+        "prefill_tok_s_samples": {
+          "count": 3,
+          "median": 936.2176348690924,
+          "min": 936.1868533760612,
+          "max": 936.2938144697251,
+          "mean": 936.2327675716263,
+          "stdev": 0.055062854120803854
+        },
+        "decode_tok_s_median": 40.18019332614956,
+        "decode_tok_s_samples": {
+          "count": 3,
+          "median": 40.18019332614956,
+          "min": 40.15573601399143,
+          "max": 40.18126793299208,
+          "mean": 40.172399091044355,
+          "stdev": 0.014440647410014105
+        },
+        "decode_ms_per_token": 24.88788423397636,
+        "tracked_peak_gib": 22.335795871913433,
+        "phase_sampled_hip_used_peak_gib": 22.87271499633789,
+        "whole_gtt_peak_gib": 22.890125274658203,
+        "whole_gtt_peak_delta_gib": 22.87268829345703,
+        "whole_gtt_baseline_gib": 0.017436981201171875,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_final_minus_baseline_gib": 0.0,
+        "tracked_to_whole_gtt_residual_gib": 0.55432940274477,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "tracked_after_close_bytes": 0,
+        "host_token_embedding_enabled": true,
+        "raw_sha256": "502977f961b0d7a24a40a04c3d02da389ea71472d01835f9371cc6c21af31684"
+      },
+      "frozen_sh6_prefill_guard": {
+        "baseline_tok_s": 938.3634852917187,
+        "change_percent": -0.22868008573022625,
+        "passed": true
+      },
+      "pinned_fork_f16": {
+        "build_commit": "b7b85da9",
+        "prefill_tok_s_mean": 890.991896,
+        "decode_tok_s_mean": 45.817862,
+        "decode_ms_per_token": 21.825549171194414,
+        "whole_gtt_peak_gib": 22.836151123046875
+      },
+      "gaps": {
+        "prefill_vs_fork_f16_percent": 5.0758866687932835,
+        "c1_target_tok_s": 42.419,
+        "c1_time_gap_ms_per_token": 1.3135425474679572,
+        "c2_target_tok_s": 45.913,
+        "c2_time_gap_ms_per_token": 3.1075605783668365,
+        "fork_f16_decode_time_gap_ms_per_token": 3.0623350627819477,
+        "fork_f16_whole_gtt_gap_gib": 0.053974151611328125,
+        "fork_f16_whole_gtt_gap_mib": 55.26953125
+      },
+      "passes": {
+        "prefill_guard": true,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false,
+        "lifecycle": true,
+        "whole_gtt_lifecycle": true,
+        "finite_and_stable": true
+      }
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "status": "passed",
+    "rollup": {
+      "prompt_count": 18,
+      "primary_prompt_count": 10,
+      "heldout_prompt_count": 8,
+      "group_executions": 15,
+      "group_widths_per_repeat": [
+        4,
+        4,
+        2,
+        4,
+        4
+      ],
+      "prompt_repeat_executions": 54,
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "all_groups_passed": true,
+      "all_prompts_passed": true,
+      "repeat_deterministic": true,
+      "nondeterministic_prompts": []
+    },
+    "primary_prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "heldout_prompt_suite_sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+    "current_route_composition": {
+      "fresh_four_depth_final_ids_stable": true,
+      "short_context_complete_state_exact": true,
+      "long_context_semantic_exact": true,
+      "default_stream_boundary_complete_state_exact": true,
+      "qualification": "The fresh oracle is the campaign-wide current-production exact gate. SH10, SH7, and SH12 package-local state/semantic gates cover each changed route; SH11 and SH13 change no production math."
+    },
+    "raw_path": "/tmp/hipengine-sh14-c1-20260806/current-natural-heldout.json",
+    "raw_sha256": "7168efc1b495ce65c5838f4dd0c6e7fae43e41de65292ab64f9b36e37e080d57"
+  },
+  "role_ownership": {
+    "qualification": "No fresh four-depth profiler run is manufactured. SH12 changes no kernel/copy count and only removes a host synchronization; SH10 supplies the changed 512 attention symbol, SH11 supplies the unchanged 4K split route, SH7/SH8 supply current long-context producer/reducer ownership, and all other named device roles carry from immutable SH6 traces because SH7-SH13 do not change those bodies or routes.",
+    "common_unchanged_named_roles_ms_per_token": {
+      "512/128": {
+        "gdn_input_projections": 4.1355975,
+        "selected_expert_gate_up": 2.3260843749999998,
+        "lm_head": 1.83413725,
+        "gdn_output_projection": 1.4533981249999999,
+        "selected_expert_down": 1.44364075,
+        "full_attention_qkv": 1.087320625,
+        "moe_router_combine": 0.986472,
+        "shared_expert_gate_up": 0.700058375,
+        "gdn_attention_core": 0.645917625,
+        "full_attention_output": 0.504432125,
+        "shared_expert_down": 0.36968049999999997,
+        "unattributed": 0.254237625,
+        "gdn_decay_projections": 0.16960862499999999
+      },
+      "4K/128": {
+        "gdn_input_projections": 4.140605375,
+        "selected_expert_gate_up": 2.3146992500000003,
+        "lm_head": 1.83344575,
+        "gdn_output_projection": 1.444416375,
+        "selected_expert_down": 1.438385625,
+        "full_attention_qkv": 1.0868496250000002,
+        "moe_router_combine": 0.98220975,
+        "shared_expert_gate_up": 0.702091625,
+        "gdn_attention_core": 0.6462821249999999,
+        "full_attention_output": 0.49255937499999997,
+        "shared_expert_down": 0.371964,
+        "unattributed": 0.260078625,
+        "gdn_decay_projections": 0.168745125
+      },
+      "32K/128": {
+        "gdn_input_projections": 4.180987624999999,
+        "selected_expert_gate_up": 2.33102025,
+        "lm_head": 1.838395125,
+        "selected_expert_down": 1.4517705,
+        "gdn_output_projection": 1.4514639999999999,
+        "full_attention_qkv": 1.094062875,
+        "moe_router_combine": 0.9899836249999999,
+        "shared_expert_gate_up": 0.70651575,
+        "gdn_attention_core": 0.653664,
+        "full_attention_output": 0.487659125,
+        "shared_expert_down": 0.374744375,
+        "unattributed": 0.26215675,
+        "gdn_decay_projections": 0.169104375
+      },
+      "64K/128": {
+        "gdn_input_projections": 4.191976875,
+        "selected_expert_gate_up": 2.324822,
+        "lm_head": 1.839682125,
+        "gdn_output_projection": 1.4559881250000002,
+        "selected_expert_down": 1.455851375,
+        "full_attention_qkv": 1.088868375,
+        "moe_router_combine": 0.995084,
+        "shared_expert_gate_up": 0.707577625,
+        "gdn_attention_core": 0.6539661250000001,
+        "full_attention_output": 0.491106625,
+        "shared_expert_down": 0.37227350000000003,
+        "unattributed": 0.265359375,
+        "gdn_decay_projections": 0.17020587499999998
+      }
+    },
+    "changed_or_context_specific": {
+      "512/128": {
+        "short_full_attention_context_kernel_ms_per_token": 0.928096,
+        "prior_context_kernel_ms_per_token": 1.4996795,
+        "device_saving_ms_per_token": 0.5715835,
+        "source": "SH10-A1 cached full-process trace"
+      },
+      "4K/128": {
+        "split_producer_plus_reducer_ms_per_transition": 0.8443675555555556,
+        "direct_rejected_ms_per_transition": 11.888774,
+        "source": "SH11-A1 immutable current split plus forced-direct traces"
+      },
+      "32K/128": {
+        "qgroup8_producer_median_ms_per_token": 4.05676,
+        "prepare_plus_parallel_output_gate_ms_per_token": 0.109345625,
+        "complete_producer_plus_parallel_reducer_ms_per_token_leaf": 4.250682830810547,
+        "source": "SH7-A1 current cached trace and SH8-A1 current-control leaf"
+      },
+      "64K/128": {
+        "qgroup8_producer_median_ms_per_token": 7.253959999999999,
+        "prepare_plus_parallel_output_gate_ms_per_token": 0.20748512500000002,
+        "complete_producer_plus_parallel_reducer_ms_per_token_leaf": 7.598731994628906,
+        "source": "SH7-A1 current cached trace and SH8-A1 current-control leaf"
+      },
+      "all_depths_host_boundary": {
+        "production_sample_drains_removed_per_8_profiled_steps": 10,
+        "kernel_launch_delta": 0,
+        "source": "SH12-C0 cached HIP/kernel trace"
+      }
+    }
+  },
+  "package_closure": {
+    "SH10-A1": "retained exact short-context fixed256 batch attention through active context 1023",
+    "SH11-A1": "rejected: current direct 4K is state-divergent and 37.788% slower",
+    "SH12-C0": "retained exact default-stream redundant sample-drain deletion",
+    "SH13-M1": "closed at precondition: all HSA code is only 3.497 MiB versus a 346.820-MiB 4K gap",
+    "SH14-C1": "complete: cumulative policy evaluated; objective not met"
+  },
+  "policy": {
+    "counts_of_four": {
+      "prefill_guard": 3,
+      "c1": 0,
+      "c2": 0,
+      "fork_f16_decode": 0,
+      "fork_f16_whole_gtt": 0,
+      "lifecycle": 4,
+      "whole_gtt_lifecycle": 4,
+      "finite_and_stable": 4
+    },
+    "oracle_passed": true,
+    "lifecycle_passed": true,
+    "role_evidence_passed": true,
+    "beat_fork_passed": false,
+    "objective_complete": false
+  },
+  "evidence_backed_residuals": {
+    "decode": {
+      "statement": "Every depth still misses C1/C2/fork F16. The measured residual is not assigned to an unmeasured mechanism: current traces identify row-1 GDN input projections, selected experts, lm-head, and context-dependent full attention as the dominant device owners; all previously admitted exact schedule/composite/attention alternatives are retained or closed by measured gates.",
+      "current_largest_unchanged_roles": {
+        "512/128": [
+          [
+            "gdn_input_projections",
+            4.1355975
+          ],
+          [
+            "selected_expert_gate_up",
+            2.3260843749999998
+          ],
+          [
+            "lm_head",
+            1.83413725
+          ],
+          [
+            "gdn_output_projection",
+            1.4533981249999999
+          ]
+        ],
+        "4K/128": [
+          [
+            "gdn_input_projections",
+            4.140605375
+          ],
+          [
+            "selected_expert_gate_up",
+            2.3146992500000003
+          ],
+          [
+            "lm_head",
+            1.83344575
+          ],
+          [
+            "gdn_output_projection",
+            1.444416375
+          ]
+        ],
+        "32K/128": [
+          [
+            "gdn_input_projections",
+            4.180987624999999
+          ],
+          [
+            "selected_expert_gate_up",
+            2.33102025
+          ],
+          [
+            "lm_head",
+            1.838395125
+          ],
+          [
+            "selected_expert_down",
+            1.4517705
+          ]
+        ],
+        "64K/128": [
+          [
+            "gdn_input_projections",
+            4.191976875
+          ],
+          [
+            "selected_expert_gate_up",
+            2.324822
+          ],
+          [
+            "lm_head",
+            1.839682125
+          ],
+          [
+            "gdn_output_projection",
+            1.4559881250000002
+          ]
+        ]
+      },
+      "context_attention": {
+        "512/128": {
+          "short_full_attention_context_kernel_ms_per_token": 0.928096,
+          "prior_context_kernel_ms_per_token": 1.4996795,
+          "device_saving_ms_per_token": 0.5715835,
+          "source": "SH10-A1 cached full-process trace"
+        },
+        "4K/128": {
+          "split_producer_plus_reducer_ms_per_transition": 0.8443675555555556,
+          "direct_rejected_ms_per_transition": 11.888774,
+          "source": "SH11-A1 immutable current split plus forced-direct traces"
+        },
+        "32K/128": {
+          "qgroup8_producer_median_ms_per_token": 4.05676,
+          "prepare_plus_parallel_output_gate_ms_per_token": 0.109345625,
+          "complete_producer_plus_parallel_reducer_ms_per_token_leaf": 4.250682830810547,
+          "source": "SH7-A1 current cached trace and SH8-A1 current-control leaf"
+        },
+        "64K/128": {
+          "qgroup8_producer_median_ms_per_token": 7.253959999999999,
+          "prepare_plus_parallel_output_gate_ms_per_token": 0.20748512500000002,
+          "complete_producer_plus_parallel_reducer_ms_per_token_leaf": 7.598731994628906,
+          "source": "SH7-A1 current cached trace and SH8-A1 current-control leaf"
+        },
+        "all_depths_host_boundary": {
+          "production_sample_drains_removed_per_8_profiled_steps": 10,
+          "kernel_launch_delta": 0,
+          "source": "SH12-C0 cached HIP/kernel trace"
+        }
+      },
+      "no_new_package_admitted": true,
+      "reason": "SH10 exhausted the new short-attention transfer; SH11 direct 4K is invalid/slower; SH7 retained the long reducer while SH8 rejected the producer occupancy trade; GDN/selected/shared/lm-head and mixed-composite ladders already have bounded exact rejections. No unscreened candidate with threshold evidence remains in this review."
+    },
+    "memory": {
+      "statement": "Tracked hipEngine ownership is below the fork whole-GTT peak at every depth, yet whole-GTT remains above it. The remaining parity gaps therefore lie in untracked runtime/page-table/allocator/active-mapping residency, not a demonstrated reclaimable code object.",
+      "per_depth": {
+        "512/128": {
+          "tracked_to_whole_gtt_residual_gib": 0.43370842933654785,
+          "fork_f16_whole_gtt_gap_gib": 0.16946029663085938,
+          "hipengine_tracked_minus_fork_whole_gtt_gib": -0.2642481327056885
+        },
+        "4K/128": {
+          "tracked_to_whole_gtt_residual_gib": 0.548396535217762,
+          "fork_f16_whole_gtt_gap_gib": 0.33869171142578125,
+          "hipengine_tracked_minus_fork_whole_gtt_gib": -0.20970482379198074
+        },
+        "32K/128": {
+          "tracked_to_whole_gtt_residual_gib": 0.5545892789959908,
+          "fork_f16_whole_gtt_gap_gib": 0.15563583374023438,
+          "hipengine_tracked_minus_fork_whole_gtt_gib": -0.3989534452557564
+        },
+        "64K/128": {
+          "tracked_to_whole_gtt_residual_gib": 0.55432940274477,
+          "fork_f16_whole_gtt_gap_gib": 0.053974151611328125,
+          "hipengine_tracked_minus_fork_whole_gtt_gib": -0.5003552511334419
+        }
+      },
+      "sh13_4k_bound": {
+        "total_hsa_code_mib": 3.4968528747558594,
+        "gap_mib": 346.8203125,
+        "post_load_to_peak_gtt_growth_mib": 103.4765625,
+        "maximum_post_prefill_peak_reduction_mib": 0.71875
+      },
+      "no_reclaimable_owner_admitted": true
+    }
+  },
+  "decision": "SH14-C1 is complete, but the declared beat-fork objective is not achieved. Do not mark the thread goal complete and do not manufacture another retry from closed families. Preserve retained defaults and the exact fresh matrix; any further campaign requires new measured structural evidence for the named residual roles or a separately approved system/runtime-memory experiment.",
+  "raw": {
+    "matrix": "/tmp/hipengine-sh14-c1-20260806/current-canonical-matrix.json",
+    "oracle": "/tmp/hipengine-sh14-c1-20260806/current-natural-heldout.json",
+    "fork_f16": "/tmp/hipengine-sh2-g-20260806/fork/f16-r5.json",
+    "source_artifact_sha256": {
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json": "96aa26863a49618435ff647d39ce6d93bb3e846dcffa65726d70be19ab097b1e",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json": "8e0a0aa6427a1bdbebf3c21c46391730fead947562c9c0cef38a45a010ad7797",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json": "5ccd245328c6b3aebc4349c741f5921ca13f7b69c0b242692ed55024e40ae9fc",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json": "605b2d2b914cb28f4e73d23440e7801403d194c3951dcb9675e23fa85d5b3ee9",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json": "0cf6724ef5b5166b52c7483100e5209d1418c1230c6ed87e70238b5bffe8f710",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json": "4ce96103d2ece834788ae6e9d59283a7f5f6d0d8f96c1f2252e0b3f6e0aea4b8",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json": "a2c8a0b3e460c87517c8527ad036d7f850a78479f12755bc0f2c20766ce2a417",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json": "481f53ba67f66773c6e421c095b5757b0a1276f522d1ac897a44ff36ebe31090",
+      "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json": "9b33a8c96313e5fd77e79e4cd1180dbd0375e055cc945943e6fa580b4f5536e1"
+    }
+  }
+}
