@@ -4199,6 +4199,20 @@ fallback kernels (**0.929x**). It misses both frozen admission gates, so every
 transient surface is removed and SH3-M1 starts immediately; this rejection is
 not campaign completion.
 
+The retained [SH3-M1 runner-safe host embedding](results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json)
+removes the load-order high water and enables automatic host ownership only for
+private gfx1151 c1 sessions. Same-source 512/128 device -> host-auto
+prefill/decode is **1368.003/53.263 -> 1374.684/53.245 tok/s
+(+0.488%/-0.035%)**; 4K/128 is **1435.036/55.985 -> 1431.754/55.759
+(-0.229%/-0.403%)**. Tracked peak falls exactly **540,344,320 bytes /
+0.503235 GiB** at both depths, and external 10-ms whole-GTT falls
+**21.504063 -> 21.000130 GiB** and **22.003361 -> 21.499428 GiB**
+(**0.503933 GiB** each). Complete prefill/four-transition state, IDs, and
+teardown are byte exact; the focused policy/fallback bundle passes **62/62**.
+Shared/c>N sessions remain device resident, while graph, packed, native-row,
+MTP, and pointer-fed consumers transactionally restore the exact table once.
+SH3-C1 follows; this retained memory result is not campaign completion.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4245,6 +4259,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH3-M1 runner-safe host embedding | 2026-08-06 | parent `8c39cda03`; loader-time private-c1 host ownership; device/auto-host 512/4K one-warmup/three-run eager A/B; BF16 KV; 10-ms whole-GTT; complete four-transition state; 62 focused tests | **Retained/default for private c1:** exact **0.503235-GiB tracked** and **0.503933-GiB whole-GTT** savings at both depths; prefill/decode deltas are **+0.488%/-0.035%** and **-0.229%/-0.403%**; state/lifecycle exact. Shared/c>N and pointer-fed graph/packed/MTP routes retain or restore device ownership. [`artifact`](results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json). | Yes — exact loader/policy/wall/GTT/state/lifecycle/fallback gates pass | Run SH3-C1 cumulative re-attribution immediately; rerun if token layout, loader ownership, capability, or pointer-fed fallback changes. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH3-D1 complete Q8T16 shared-expert composite | 2026-08-06 | production `2493b194b`; transient cooperative K-block scale-LDS leaf; actual layer-0 `2048 -> 512 -> 2048` weights; 24-copy 80.2-MB pool; five counterbalanced 2,000-iteration repeats; cached named trace | **Closed/rejected; production unchanged:** exact BF16 boundaries pass, but the best 128-block composite is **34.719 -> 38.611 us (0.899x)** wall and **23.482 -> 25.287 us (0.929x)** kernel-only. Trace is **72 VGPR, 512 B LDS, 0 scratch**; all transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json). | No — exact candidate fails >=1.15x and >=0.5-ms/token admission | Do not route/revive this composite; execute SH3-M1 runner-safe host embedding, then SH3-C1. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-G fork parity recertification | 2026-08-06 | hipEngine runtime `e39aba0e1` (publication-only parent `53537b05a`); fresh four-depth prefill/decode, 10-ms whole-GTT and cached role trace; exact 18-prompt oracle; pinned fork `b7b85da9` F16/Q8_0 five-repeat rows | **Milestone complete; objective continues:** hipEngine decode **53.319/55.895/46.353/39.644 tok/s** versus fork F16 **64.411/62.590/53.042/45.818**; all four prefill guards and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json). | No — qualified cross-engine diagnostic and continuation decision | Execute SH3-D1 complete shared-expert chain, SH3-M1 runner-safe host embedding, then SH3-C1; do not mark the objective complete. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C2 cumulative re-attribution | 2026-08-06 | clean `e39aba0e1`; fresh four-depth one-warmup/three-run tg128 wall; 10-ms whole-GTT; cached role trace | **Diagnostic continue:** decode **53.374/55.851/46.315/39.673 tok/s**, whole-GTT **21.504/22.003/22.656/23.394 GiB**, exact IDs/lifecycle, and compact-Q5 saving reproduced; C1/C2/fork-F16 decode/fork-F16 whole-GTT all remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json). | No — milestone-selection evidence, not parity | Run mandatory fresh SH2-G pinned-fork recertification; on miss, continue to frozen SH3 shared-expert and host-embedding owners. |

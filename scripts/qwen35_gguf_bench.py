@@ -1047,7 +1047,9 @@ def _decode_graph_disabled_reason(session: Any, requested: bool) -> str | None:
         return None
     if not callable(getattr(session, "capture_decode_graph", None)):
         return "capture_decode_graph_unavailable"
-    if getattr(session, "host_token_embedding_enabled", False):
+    if getattr(session, "host_token_embedding_enabled", False) and not callable(
+        getattr(session, "_device_token_embedding_weight", None)
+    ):
         return "host_token_embedding"
     return None
 

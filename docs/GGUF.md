@@ -2385,6 +2385,29 @@ removed, and the registered unfused production route remains unchanged. The
 campaign advances to SH3-M1, not closure. Evidence:
 [`2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json).
 
+SH3-M1 retains loader-time host ownership for private gfx1151 c1 sessions. The
+materializer preserves `root.token_embedding` as a validated allocation-free
+Q8_0 spec, and the runner maps exact GGUF bytes without first allocating and
+freeing the **540,344,320-byte / 0.503235-GiB** device table. Indexed/cached host
+Q8_0 dequantization produces the same BF16 hidden rows. The gfx1151 backend
+capability admits only private `max_batch_size=1`; shared and c>N sessions stay
+device resident. Graph, packed AR, native-row, MTP, non-default-stream, and
+device-token-pointer consumers transactionally materialize the original device
+record once. Failed allocation leaves host ownership and its row cache intact.
+
+Same-source 512/128 and 4K/128 device -> automatic-host prefill/decode changes
+**1368.003/53.263 -> 1374.684/53.245 tok/s (+0.488%/-0.035%)** and
+**1435.036/55.985 -> 1431.754/55.759 (-0.229%/-0.403%)**. Tracked peak falls
+exactly **0.503235 GiB** at both depths; external 10-ms whole-GTT falls
+**21.504063 -> 21.000130 GiB** and **22.003361 -> 21.499428 GiB**
+(**0.503933 GiB** each). Complete prefill and four-transition logits,
+hidden/layer, Conv/GDN, live-BF16-KV, trajectory/final-state, ID, and teardown
+checks are byte exact; the focused lifecycle/fallback bundle passes **62/62**.
+The private-c1 policy is now the gfx1151 default, while the resident device path
+remains the fallback. Proceed to SH3-C1 rather than treating this memory result
+as campaign closure. Evidence:
+[`2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH2-G recertified, SH3-D1 closed, and SH3-M1 activated:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH3-M1 retained and SH3-C1 activated:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -66,9 +66,13 @@ hipEngine still reaches **0/4 F16 decode and 0/4 F16 whole-GTT parity** despite
 passing all four prefill guards and the full correctness/lifecycle/trace gate.
 SH3-D1 then closes the complete shared-expert composite as exact but slower
 (**0.899x** actual-weight wall; **0.929x** named kernel-only), with no production
-change. The higher-level objective therefore remains open and advances to
-SH3-M1 runner-safe host embedding and SH3-C1 cumulative re-attribution rather
-than stopping at either recertification or the rejected decode leaf.
+change. SH3-M1 now retains loader-time host ownership for private gfx1151 c1
+sessions: it removes exactly **540,344,320 bytes / 0.503235 GiB** tracked and
+**0.503933 GiB** whole-GTT at both 512 and 4K while wall changes remain within
+**0.488%** and complete state stays byte exact. Wider/shared and every
+pointer-fed graph/packed/MTP path retain or transactionally restore the device
+table. The higher-level objective remains open and advances to SH3-C1 cumulative
+re-attribution rather than stopping at this retained memory unit.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -591,8 +595,8 @@ evidence.
 | **SH2-C2** | Post-M4 cumulative re-attribution. | **Checkpoint complete: continue to SH2-G.** Fresh 512/4K/32K/64K decode is **53.374/55.851/46.315/39.673 tok/s** and whole-GTT is **21.504/22.003/22.656/23.394 GiB**. Compact Q5 saves 0.144 GiB at every depth, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. Freeze the complete shared-expert composite and runner-safe host embedding as post-milestone owners. |
 | **SH2-G** | Fresh four-depth hipEngine plus pinned-fork recertification. | **Complete: milestone passes, objective continues to SH3.** All four prefill guards and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. Fresh F16 decode is **64.411/62.590/53.042/45.818 tok/s** versus hipEngine **53.319/55.895/46.353/39.644**, and F16 whole-GTT remains **0.673/0.843/0.660/0.558 GiB** lower. |
 | **SH3-D1** | Complete Q8T16 shared-expert gate/up -> exact BF16 SiLU -> down -> residual producer/consumer chain. | **Complete: exact, below admission; no production change.** RED/GREEN and CPU-oracle gates pass with byte-identical gate/up, intermediate, shared-down, and final BF16 outputs. The best actual-weight 128-block candidate is **0.899x** wall and **0.929x** kernel-only; 40/64/80-block siblings regress further. The named trace is **72 VGPR, 512 B LDS, 0 scratch**. All transient surfaces are removed. |
-| **SH3-M1** | Runner-safe exact 540,344,320-byte host embedding policy. | **Next / mandatory.** Eliminate load-order high water while preserving c>N, packed AR, MTP, graph, allocation-denial, and device-pointer fallback contracts; require exact state, <=1% prefill/decode regression, same-scope GTT, and clean teardown. |
-| **SH3-C1** | Post-SH3 cumulative four-depth re-attribution and beat-fork policy gate. | **Queued after SH3-M1.** Freshly rerun current production and the required comparator dimensions; complete the objective only if the declared policy passes, otherwise select another structurally new measured owner. |
+| **SH3-M1** | Runner-safe exact 540,344,320-byte host embedding policy. | **Complete: retained/default for private gfx1151 c1.** Loader-time deferral removes the allocate-then-free high water and saves exactly **0.503235 GiB tracked** plus **0.503933 GiB whole-GTT** at 512/4K. Prefill/decode changes are **+0.488%/-0.035%** and **-0.229%/-0.403%**; complete state is byte exact. Shared/c>N stay resident; graph, packed, MTP, native-row, and device-pointer paths restore the table transactionally once, with allocation-denial rollback. |
+| **SH3-C1** | Post-SH3 cumulative four-depth re-attribution and beat-fork policy gate. | **Next / mandatory.** Freshly rerun current production and the required comparator dimensions; complete the objective only if the declared policy passes, otherwise select another structurally new measured owner. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -745,6 +749,30 @@ wrapper, registry, test, and harness surfaces are removed. Production and the
 registered unfused chain remain unchanged; continue immediately to SH3-M1.
 Evidence:
 [`2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json).
+
+SH3-M1 promotes the exact host embedding only through a backend capability and
+only for a private `max_batch_size=1` session. The loader keeps
+`root.token_embedding` as a validated allocation-free Q8_0 spec and maps the
+GGUF bytes directly, so the admitted path never creates the 540,344,320-byte
+device table. Indexed/cached Q8_0 row dequantization preserves the existing BF16
+hidden boundary. Shared and c>N sessions remain device resident; graph capture,
+packed AR, native rows, MTP, non-default streams, and device token pointers call
+a lock-protected one-shot materializer. The runner publishes the new weight map
+only after upload succeeds, so allocation denial leaves the host route usable.
+
+On the same frozen source, 512/128 device -> host-auto prefill/decode moves
+**1368.003/53.263 -> 1374.684/53.245 tok/s (+0.488%/-0.035%)** and 4K/128 moves
+**1435.036/55.985 -> 1431.754/55.759 (-0.229%/-0.403%)**. Tracked peak drops
+**21.069656 -> 20.566421 GiB** and **21.454266 -> 20.951031 GiB**, exactly
+**540,344,320 bytes / 0.503235 GiB** at each depth. Independent 10-ms
+whole-GTT drops **21.504063 -> 21.000130 GiB** and
+**22.003361 -> 21.499428 GiB**, both **0.503933 GiB**. All repeated IDs,
+prefill FP32 logits, 40 layer outputs, 30 Conv/GDN state pairs, 10 live BF16-KV
+pairs, four-transition trajectories/final state, and teardown checks are exact.
+The focused policy/materializer/graph/packed/MTP/backend bundle passes **62/62**.
+Retain/default the private-c1 policy and advance immediately to SH3-C1; this
+memory win is not campaign completion. Evidence:
+[`2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).

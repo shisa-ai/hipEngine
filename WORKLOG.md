@@ -205012,3 +205012,77 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   Production remains unchanged. SH3-D1 is complete, but the beat-fork objective
   is not; proceed immediately to SH3-M1's runner-safe exact 540,344,320-byte
   host-embedding policy, then SH3-C1.
+
+## 2026-08-06 — SH3-M1 runner-safe host embedding retained; advance to SH3-C1
+
+- Start from parent `8c39cda03`. Freeze the contract before implementation:
+  loader-time deferral must create no token-table device allocation; automatic
+  admission is gfx1151/private/c1 only; shared and c>N sessions remain device
+  resident; graph, packed AR, native rows, MTP, non-default streams, and device
+  token pointers restore an exact resident table; failed restoration leaves the
+  host route usable. RED is the expected collection failure for the absent
+  placement resolver and deferral API.
+- Add `GGUF_HOST_TOKEN_EMBEDDING_C1` as a backend capability, an allocation-free
+  `deferred_device_slots` materializer seam, and private-c1 placement resolution
+  before full-model load. The runner retains the validated raw-Q8_0 spec plus a
+  GGUF memmap; indexed/cached host Q8_0 dequantization writes exact BF16 hidden
+  rows. Pointer-fed consumers use a lock-protected one-shot materializer and
+  replace runner ownership only after the complete 540,344,320-byte upload
+  succeeds. The old device allocation and embedding kernel remain the fallback.
+- Focused policy/materializer/graph/packed/native-MTP/backend validation:
+  `python3 -m pytest -q tests/test_qwen35_gguf_host_token_embedding.py
+  tests/test_qwen35_gguf_materialize_helpers.py
+  tests/test_qwen35_gguf_decode_graph.py tests/test_gguf_packed_decode_graph.py
+  tests/test_gguf_native_spec_cycle.py tests/test_gfx1151_backend.py
+  tests/test_qwen35_gguf_bench_metadata.py` -> **62 passed**. A real loader
+  smoke proves `root.token_embedding` has zero device allocations and the host
+  view is exactly 540,344,320 bytes; close returns tracked ownership to zero.
+  Explicit graph capture begins host-owned, restores exactly one device table,
+  replays successfully, and also closes to zero. Actual-table host gather is
+  byte exact and costs about **0.14/0.92 ms** for repeated 512/4K IDs and
+  **2.5/22.2 ms** for 512/4K unique IDs.
+- Run the frozen final device-versus-auto-host matrix as independent cached
+  processes with `GPU_MAX_HW_QUEUES=1`, BF16 KV, eager decode, one warmup plus
+  three measured 128-token runs, and external 10-ms whole-GTT sampling. The
+  canonical command is `scripts/qwen35_readme_sweep.py --engine gguf --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend
+  hip_gfx1151 --workloads <512|4096>/128 --token-id 9707 --warmup-decode-tokens
+  1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk` plus the five explicit 4,096-row chunk
+  controls, `--no-graph-replay-decode --use-wmma-prefill --use-gemv-decode
+  --kv-storage bf16 --prefill-queue-drain none`, precomputed hipcc version, and
+  `--require-cached-build`. Device legs set
+  `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0`; candidate legs leave the selector
+  unset and record reason `gfx1151_private_c1_auto`.
+- Same-source 512 device -> host-auto prefill/decode is
+  **1368.003260/53.263386 -> 1374.683897/53.244944 tok/s
+  (+0.488349%/-0.034625%)**. Tracked peak is
+  **21.069656 -> 20.566421 GiB**, exactly **540,344,320 bytes / 0.503235 GiB**,
+  and whole-GTT is **21.504063 -> 21.000130 GiB (-0.503933 GiB)**. All three
+  final IDs are 9707 and both close deltas are zero.
+- Same-source 4K device -> host-auto prefill/decode is
+  **1435.035984/55.984971 -> 1431.753964/55.759385 tok/s
+  (-0.228706%/-0.402940%)**. Tracked peak is
+  **21.454266 -> 20.951031 GiB**, the same exact allocation saving, and
+  whole-GTT is **22.003361 -> 21.499428 GiB (-0.503933 GiB)**. IDs and teardown
+  are exact. Both workload pairs satisfy the frozen <=1% wall gate.
+- Run independent state children at 512/4K, q4096, and four fixed-input eager
+  transitions with `scripts/gguf_sh_m1_screen.py state-child`. Device versus
+  auto-host FP32 prefill logits, all 40 layer outputs, 30 Conv/GDN state pairs,
+  10 live BF16-KV pairs, trajectories, and final state are byte-identical and
+  finite. Raw benchmark SHA-256 values are `636db0b2...ed9`,
+  `260e4262...ab4`, `1e6925d2...e10`, and `6c3317f7...59c`; state children are
+  `1c065bbf...398` and `7bd4acc0...e5a` under
+  `/tmp/hipengine-sh3-m1-20260806-final/`.
+- Collector provenance: an earlier in-progress matrix was stopped after the
+  indexed unique-token gather changed source, so none of those mixed-source
+  rows is retained. The frozen rerun preserved each child and its GTT sample;
+  its first collector pass stopped only because the canonical sweep labels
+  `4096/128` as `4K/128`. Checkpoint continuation ran only the missing 4K-host
+  and state children. No benchmark/runtime failure is retained.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json`
+  (SHA-256 `b538a1c5...2268`). Retain/default the private gfx1151 c1 policy;
+  preserve device ownership for wider/shared sessions and transactional
+  fallback for every pointer-fed path. SH3-M1 is complete, but the beat-fork
+  objective is not; proceed immediately to SH3-C1 cumulative re-attribution.
