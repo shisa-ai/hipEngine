@@ -2553,10 +2553,21 @@ HIP code or resource growth. Independent 512/128 processes move decode
 **-0.612%**, tracked/whole-GTT remain **20.566421/21.000130 GiB**, lifecycle is
 clean, and context 1,024+ retains its prior direct/split fallback. Clean
 committed production measures **53.445 tok/s**, still **1.518 ms/token** short
-of C1 and **3.186 ms/token** behind pinned fork F16, so the campaign continues
-to SH11-A1's current direct-4K diagnostic, then the decode sync/D2H census,
-4K-first phase-residency census, and mandatory cumulative gate. Evidence:
+of C1 and **3.186 ms/token** behind pinned fork F16. Evidence:
 [`SH10-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json).
+
+SH11-A1 closes the parked direct-4K diagnostic with no source change. Raising
+`HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=8192` preserves complete
+prefill state and top-1 IDs, but changes all four teacher-forced decode-logit
+fingerprints plus final hidden/layer/Conv/GDN/KV state. It also regresses
+repeated 4K/128 decode **54.572 -> 33.950 tok/s (-37.788%, +11.131
+ms/token)**, with unchanged tracked/sampled memory and clean close. Named traces
+show current split producer+reducer at **0.844 ms/transition** versus direct
+context+gate at **11.889 ms (14.080x slower)**. Thus June's apparent speed
+lever does not survive the current exact model/stack; keep threshold 1,024, add
+no exact-emulation package, and continue to the decode sync/D2H census,
+4K-first phase-residency census, and mandatory cumulative gate. Evidence:
+[`SH11-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 

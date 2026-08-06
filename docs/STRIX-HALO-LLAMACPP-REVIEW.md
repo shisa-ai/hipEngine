@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH10-A1 retained and SH11-A1 selected:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH11-A1 rejected and SH12-C0 selected:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -81,8 +81,19 @@ tracked/whole-GTT peaks, and clean lifecycle. The full-process kernel role falls
 **1.500 -> 0.928 ms/token (-0.572 ms/token)** at unchanged 40-VGPR,
 scratch-free resources. Clean committed production measures **53.445 tok/s**,
 still **1.518 ms/token** short of C1 and **3.186 ms/token** behind the pinned
-fork F16 row. Retain the transfer, give it no parity claim, and continue to
-SH11-A1.
+fork F16 row. Retain the transfer and give it no parity claim.
+
+SH11-A1 closes the parked June direct-4K thread without an implementation. On
+the current exact model and retained stack, forced direct decode is not merely
+non-exact: it regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131
+ms/token)** with every candidate sample below every control. Prefill, tracked
+peak, sampled HIP-used peak, and lifecycle are unchanged. Complete prefill state
+is exact, but all four teacher-forced decode-logit fingerprints and final state
+diverge despite unchanged top-1 IDs. Named traces explain the reversal: current
+grouped split producer+reducer costs **0.844 ms/transition**, while direct
+context+gate costs **11.889 ms (14.080x slower)**. The June speed direction does
+not survive, so add no exact-emulation package; keep threshold 1,024 and continue
+to SH12-C0.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -616,7 +627,7 @@ evidence.
 | **SH9-D1** | Independently transfer gfx1100 LCP-2B's exact compact-WMMA static upper bound to gfx1151 and remove the selected-Q4 scalar `wmma_total` D2H boundary. | **Complete: retained/default through 4,096 selected prefill rows.** Corrected scope is pp512 multi-row prefill, not decode. Full state is byte-exact; wall is neutral **1366.040 -> 1366.013 tok/s (-0.002%)**; cached trace removes **40 hipMemcpy + 40 dispatches** and **1.736 ms** marker span with unchanged selected kernels/memory/lifecycle. |
 | **SH9-C1** | Scope-correct cumulative completion audit after SH9-D1. | **Complete: policy fails; objective continues.** SH9 receives no decode/memory credit. Carried decode is **53.153/55.832/46.785/40.386 tok/s**, whole-GTT is **21.000/21.499/22.152/22.890 GiB**, and all four C1/C2/fork-F16 decode/fork-F16 memory classes remain **0/4**. |
 | **SH10-A1** | Exact short-context private-c1 attention screen on the actual single-row context kernel. | **Complete: retained/default through active context 1,023.** Trace-first attribution measures the old owner at **1.500 ms/token**. Reusing the existing fixed256 batch leaf at rows1 is byte-exact, lowers that role to **0.928 ms/token**, and improves independent 512/128 decode **51.541 -> 53.591 tok/s (+3.978%, -0.742 ms/token)** with prefill **-0.612%**, unchanged memory/lifecycle, identical resources, and unchanged 1,024+ fallback. Clean production is **53.445 tok/s**; C1/fork parity remain open. |
-| **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | Re-measure `HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=8192` in independent cached processes. Any state/logit/ID drift blocks promotion; only a surviving material lever admits a separately designed exact-emulation package. |
+| **SH11-A1** | Current gfx1151/Q4_K_M direct-4K attention diagnostic. | **Complete: non-exact and slower; rejected with no implementation.** Forced direct changes all four teacher-forced decode-logit fingerprints and final state, while repeated wall regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**. Current split producer+reducer is **0.844 ms/transition** versus direct context+gate **11.889 ms (14.080x slower)**. Memory/lifecycle are unchanged and free-running IDs happen to match; they do not repair exactness. The June speed lever does not survive, so no SH11-A2 package is admitted. |
 | **SH12-C0** | Complete private-c1 eager decode synchronization/D2H census. | Attribute every per-token sync/copy/scalar read and separate mandatory next-token/host-embedding ownership from removable boundaries. Implement nothing without measured repeated impact; SH9 is prefill-only and does not reopen graph replay. |
 | **SH13-M1** | Phase-resolved 4K-first code/library whole-GTT census. | Re-scope SH2-M2 as a precondition audit only. Continue beyond 4K or add loader churn only if the eligible phase-exclusive subset exceeds the actual fork gap and peak timing permits safe deferral/unload. |
 | **SH14-C1** | Cumulative four-depth campaign completion gate. | After SH10-SH13, refresh or carry qualified canonical/fork rows, exactness, lifecycle, role, and memory evidence. Complete the objective only if the declared policy passes; otherwise name only evidence-backed residual owners. |
@@ -996,13 +1007,32 @@ Evidence:
 [`SH10-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json).
 
 Clean committed production is **53.445 tok/s**, leaving **1.518 ms/token** to
-the 512 C1 target and **3.186 ms/token** to the pinned fork F16 row. Therefore
-run **SH11-A1** as a default-off current-model remeasurement of June's
-faster-but-divergent direct 4K route, **SH12-C0** as a complete decode
-synchronization/D2H census independent of SH9, and **SH13-M1** as a 4K-first
-phase-resolved code-residency precondition audit. **SH14-C1** is the required
-cumulative four-depth completion gate; the campaign does not stop after this
-retained leaf.
+the 512 C1 target and **3.186 ms/token** to the pinned fork F16 row.
+
+SH11-A1 then remeasures June's default-off direct 4K route on the exact current
+model. The correctness-only independent children match complete prefill state,
+but all four decode-logit fingerprints diverge and final state differs from the
+first full-attention output at layer 3 onward. Both routes still predict 9707 at
+all four fixed-input transitions; that top-1 coincidence is not used as a new
+oracle. Independent one-discard/three-run wall regresses split -> direct
+**54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**, with prefill
+**+0.538%**, identical **20.951031-GiB tracked / 21.482018-GiB sampled
+HIP-used** peaks, and zero bytes after close.
+
+The immutable current 4K split trace remains valid because later packages
+change only >=32K reduction, prefill, or <1,024 direct dispatch. It records 90
+producer plus 90 reducer calls at **0.844368 ms/transition**. The new cached
+direct trace records 90 context plus 90 gate calls at **11.888774
+ms/transition**, **14.080x** slower; the **+11.044-ms** device delta explains
+the **+11.131-ms** wall regression. The historical speed lever therefore does
+not survive and no exact-emulation package is justified. Keep the 1,024 split
+threshold and close SH11. Evidence:
+[`SH11-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json).
+
+Run **SH12-C0** next as a complete decode synchronization/D2H census independent
+of SH9, then **SH13-M1** as a 4K-first phase-resolved code-residency
+precondition audit. **SH14-C1** remains the required cumulative four-depth
+completion gate.
 
 Do not add the withdrawn raw lm-head screen, post-SH9 graph replay, or an
 SH3-M1+SH-K1 stack. SH-K1 already raises candidate whole-GTT peak by

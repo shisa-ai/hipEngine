@@ -1269,7 +1269,13 @@ No-hold notes:
   the `4K/128` gate onto the direct context + gate-mul path and looked faster
   (`115.805 -> 125.592 tok/s`), but changed the final token (`570 -> 263`).
   Keep the split threshold default at `1024`; direct 4K decode is
-  correctness-invalid until fixed.
+  correctness-invalid until fixed. **Current SH11-A1 recheck (2026-08-06):**
+  the exact Q4_K_M/retained-stack route still changes every checked decode-logit
+  fingerprint and now also regresses `54.572 -> 33.950 tok/s` (`-37.788%`). A
+  cached trace puts direct context+gate at `11.889 ms/transition` versus current
+  split producer+reducer at `0.844 ms` (`14.080x` slower), so the historical
+  speed lever no longer exists and no exact-emulation package is admitted; see
+  [`SH11-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json).
 - **G-D4 split decode threshold=512 rejected (2026-06-15).** Lowering the
   full-attention split/gate fused decode threshold from `1024` to `512` routed
   the short gate through the warp-split path and preserved memory, but changed

@@ -205670,3 +205670,45 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   benchmark scoreboard, and changelog. SH10-A1 is complete; activate SH11-A1's
   bounded current-model direct-4K diagnostic because the higher-level objective
   remains open.
+
+## 2026-08-06 — Close SH11-A1 current direct-4K diagnostic
+
+- Confirm tracked source clean at `ddd99bfcd`, ROCm/gfx1151 alive, and the env
+  selector resolves threshold 1,024 to split at 4K while explicit 8,192 resolves
+  direct there and split at 8,192. The required lineage check remains blocked by
+  the absent read-only Atlas checkout; no external code is copied.
+- Run independent cached 4K state children for production split and forced
+  direct. Complete prefill logits/state are byte-identical. Every one of four
+  teacher-forced decode-logit fingerprints differs, however, and final state
+  diverges from full-attention layer 3 onward: **37/40 layer outputs, 27/30
+  Conv/GDN states, and 9/10 live-KV layers** mismatch. Both routes happen to
+  predict 9707 at all four transitions; do not re-anchor correctness to those
+  unchanged top-1 IDs. State hashes are split `2d65b718...e8df`, direct
+  `8852c117...dcac`, comparison `6665e2f4...b886`.
+- Independent one-queue one-discard/three-run 4K/128 wall moves split -> direct
+  decode **54.571522 -> 33.949773 tok/s (-37.788480%, +11.130702
+  ms/token)**; every direct sample loses to every split sample. Prefill changes
+  **1429.615950 -> 1437.311624 tok/s (+0.538304%)**. Tracked peak is identical
+  at **20.951031 GiB**, phase-sampled HIP-used peak is identical at
+  **21.482018 GiB**, IDs are all 9707, and both processes close to zero. A
+  summary-only parser used obsolete `summaries` keys after both children
+  completed; repair the summary from `summary_by_workload` without rerunning.
+  Summary SHA-256 is `9e242dc8...218f`.
+- Reuse SH6-C1's immutable current 4K split trace rather than duplicating it:
+  subsequent packages change only >=32K reduction, pp512 prefill, or <1,024
+  direct dispatch. Across one warmup plus eight measured transitions, 90 grouped
+  split producers plus 90 fused reducers total **0.844368 ms/transition**;
+  kernel CSV SHA-256 is `956a35c9...af66`.
+- Run one new fully cached forced-direct trace. Ninety direct context calls plus
+  ninety gate calls total **11.888774 ms/transition**, **14.080x** the split
+  route; context median is **1191.115 us/call** at 40 VGPR/128 SGPR/scratch0.
+  The **+11.044406-ms** device delta explains the **+11.130702-ms** wall loss.
+  Kernel/HIP/profile hashes are `7db2dd62...763e`, `1b3597db...64d`, and
+  `8e08caf2...9742`; `require_cached` passes with no compiler child.
+- Close SH11-A1 rejected with no source change. The June Q4_K_S speed direction
+  does not survive the current exact Q4_K_M model/stack: direct is both
+  arithmetic-invalid and **37.8% slower**, so no SH11-A2 exact-emulation package
+  is admitted. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json`
+  (SHA-256 `4ce96103...a4b8`) and activate SH12-C0's complete private-c1 eager
+  synchronization/D2H census.
