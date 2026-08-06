@@ -2423,6 +2423,21 @@ private-c1 routed/shared MoE branch-overlap screen; the current 512 trace bounds
 its perfect-hide opportunity at **1.066 ms/token**. Evidence:
 [`2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json).
 
+SH4-D1 then screens the exact private-c1 routed/shared MoE fork/join and rejects
+it without changing production. Four real-HIP transitions and the complete
+128-step hidden/Conv/GDN/live-KV snapshot are byte exact. Cached tracing proves
+that the shared branch reaches queue 2 / stream 1 while selected experts remain
+on queue 1 / stream 0: **0.455550 ms/token**, or **33.420%** of the
+**1.363092-ms/token** auxiliary branch, genuinely overlaps selected gate/up.
+The controlled five-pair 512/128 wall still regresses
+**18.811444 -> 19.206655 ms/token**, or **53.159 -> 52.065 tok/s
+(-2.058%)**, missing both frozen admission gates. All bridge, resource,
+capability, routing, scratch, and test surfaces are removed; the production chain
+remains serial. Continue to SH5-D1's structurally new byte-neutral row-1
+dense-Q8 vector/layout audit rather than another stream or closed schedule retry.
+Evidence:
+[`2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json).
+
 ### P10 Wave 1 outcome (measured 2026-05-20)
 
 Wave 1 landed all four kernels (P10.B1 — P10.B4) and the pair/triple/concat

@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH3-C1 closed and SH4-D1 activated:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH4-D1 closed and SH5-D1 activated:** 2026-08-06
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -60,19 +60,19 @@ fork KV lanes at 4K/32K/64K and loses at 512. Therefore hipEngine does **not** b
 matched exact-model diagnostic; Campaign 2 is closed because all declared
 owners are decided, not because cross-engine parity was reached.
 
-**Beat-fork continuation update (2026-08-06): active.** SH3-C1 now completes the
-post-host-policy four-depth gate. Canonical hipEngine prefill/decode is
-**1368.743/53.177**, **1436.083/55.664**, **1148.130/46.241**, and
-**939.441/39.602 tok/s** at 512/4K/32K/64K; tracked peak is
-**20.566/20.951/21.597/22.336 GiB** and whole-GTT is
-**21.000/21.499/22.152/22.890 GiB**. All four prefill guards, exact repeated IDs,
-628-dispatch cached traces, zero tracked teardown, and the fresh 18-prompt oracle
-(**1,350 token and 54,000 hidden comparisons, zero mismatch**) pass. The host
-policy closes most of the memory deficit, but fork-F16 whole-GTT remains lower by
-**0.169/0.339/0.156/0.054 GiB**, while C1, C2, and fork-F16 decode remain
-**0/4**. The higher-level objective therefore stays open. SH4-D1 now screens the
-structurally new private-c1 overlap of independent routed and shared MoE branches;
-the fresh 512 trace measures a **1.066-ms/token** perfect-hide ceiling.
+**Beat-fork continuation update (2026-08-06): active.** SH4-D1 closes the
+private-c1 routed/shared MoE overlap screen without changing production. A
+same-resident five-pair 512/128 A/B is byte-exact across the trajectory, final
+hidden row, all Conv/GDN state, and live BF16 KV, but moves serial -> overlap
+**18.811 -> 19.207 ms/token (-2.058%)**. Cached tracing proves real queue-1/
+queue-2 concurrency, yet only **0.456 ms/token / 33.4%** of the **1.363-ms/token**
+auxiliary branch overlaps selected gate/up. It misses both frozen wall gates, so
+all transient bridge, capability, scratch, routing, and test surfaces are
+removed. The higher-level objective remains open because SH3-C1 still has
+**0/4** C1, C2, fork-F16 decode, and fork-F16 whole-GTT wins. SH5-D1 now audits
+a genuinely different byte-neutral row-1 dense-Q8 vector/layout algorithm; the
+current role trace assigns roughly **8.2 ms/token** to dense Q8T16 families, far
+more scope than another stream or launch-only retry.
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -597,7 +597,8 @@ evidence.
 | **SH3-D1** | Complete Q8T16 shared-expert gate/up -> exact BF16 SiLU -> down -> residual producer/consumer chain. | **Complete: exact, below admission; no production change.** RED/GREEN and CPU-oracle gates pass with byte-identical gate/up, intermediate, shared-down, and final BF16 outputs. The best actual-weight 128-block candidate is **0.899x** wall and **0.929x** kernel-only; 40/64/80-block siblings regress further. The named trace is **72 VGPR, 512 B LDS, 0 scratch**. All transient surfaces are removed. |
 | **SH3-M1** | Runner-safe exact 540,344,320-byte host embedding policy. | **Complete: retained/default for private gfx1151 c1.** Loader-time deferral removes the allocate-then-free high water and saves exactly **0.503235 GiB tracked** plus **0.503933 GiB whole-GTT** at 512/4K. Prefill/decode changes are **+0.488%/-0.035%** and **-0.229%/-0.403%**; complete state is byte exact. Shared/c>N stay resident; graph, packed, MTP, native-row, and device-pointer paths restore the table transactionally once, with allocation-denial rollback. |
 | **SH3-C1** | Post-SH3 cumulative four-depth re-attribution and beat-fork policy gate. | **Complete: policy fails; objective continues.** Fresh canonical decode is **53.177/55.664/46.241/39.602 tok/s** and whole-GTT is **21.000/21.499/22.152/22.890 GiB**. All four prefill, exact-oracle, lifecycle, and trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. |
-| **SH4-D1** | Exact gfx1151 private-c1 routed/shared MoE branch overlap. | **Active / mandatory.** Fork after router completion, keep selected work on the caller stream, run the complete shared branch on a nonblocking auxiliary stream, and join before the existing exact combine. Continue only with real cross-queue overlap and >=1% wall or >=0.5-ms/token saving; every unsupported/shared/c>N/graph/packed/MTP route stays serial. |
+| **SH4-D1** | Exact gfx1151 private-c1 routed/shared MoE branch overlap. | **Complete: exact, rejected; no production change.** A real second hardware queue overlaps **0.456 ms/token / 33.4%** of the **1.363-ms/token** auxiliary branch, but five same-resident pairs regress **18.811 -> 19.207 ms/token (-2.058%)**. All transient surfaces are removed. |
+| **SH5-D1** | Byte-neutral row-1 dense-Q8 replacement-layout/vector algorithm. | **Active / mandatory.** First audit current and pinned-fork arithmetic/layout, then build only an actual-weight `2048 -> 8192` plus `2048 -> 4096` leaf. Require CPU-oracle correctness, cached no-spill execution, no duplicate resident weights, and >=1.15x or >=0.5-ms/token projected saving before model routing; current Q8T16 prefill and exact fallback remain available. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
@@ -797,6 +798,39 @@ current exact **1.066-ms/token shared branch** with the independent
 then join before the existing combine. Require exact state/fallbacks, a cached
 cross-queue trace, and at least 1% wall or 0.5 ms/token saving. Evidence:
 [`2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json).
+
+SH4-D1 implements the frozen fork/join only as a default-off, private-gfx1151-c1
+ordinary eager screen. Router completion records an event on the caller stream;
+the complete shared gate/up, exact-BF16 SiLU, and shared-down chain uses a
+nonblocking auxiliary stream plus a dedicated 2-KiB concat row; the caller keeps
+selected experts and waits before the unchanged combine. Shared/c>N, graph,
+prefill, packed AR, MTP, diagnostics, nondefault streams, unsupported backends,
+and resource denial remain serial. Fake-HIP policy/lifecycle/order contracts pass
+**28/28**, and four real-HIP teacher-forced transitions plus the first 128-step
+same-resident pair match final hidden, every Conv/GDN state, every live BF16-KV
+row, and token trajectory byte-for-byte.
+
+The cached eight-token trace records **4,064** caller dispatches on queue 1 /
+stream 0 and **960** shared dispatches on queue 2 / stream 1, preserving the
+production **628 dispatches/token**. Timestamp intersection proves **189**
+auxiliary kernels and **0.455550 ms/token** overlap selected gate/up, or
+**33.420%** of the auxiliary branch's **1.363092 ms/token**. Nevertheless five
+counterbalanced same-resident 512/128 pairs move median serial/candidate wall
+**18.811444 -> 19.206655 ms/token**, or **53.159 -> 52.065 tok/s
+(-2.058%)**. Thus real overlap is not a performance win: queue/event costs and
+bandwidth contention exceed the hidden work. Reject and remove every transient
+surface.
+
+Do not retry this stream topology or reinterpret the trace as a retained
+sub-window win. Activate SH5-D1 instead: the current trace still assigns about
+**8.2 ms/token** to dense Q8T16 projections. Unlike the closed thread/cache/
+adjacent-T16 schedules and slow existing q8_1-dp4a diagnostic, SH5-D1 must first
+establish a genuinely different byte-neutral row-1 vector/layout algorithm on
+the actual `attn_qkv[2048->8192] + attn_gate[2048->4096]` owner. It receives no
+model route without CPU-oracle correctness, cached no-spill evidence, no
+resident-weight duplication, and >=1.15x or >=0.5-ms/token projected saving.
+Evidence:
+[`2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json).
 
 The launch audit is frozen in
 [`2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`](../benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json).
