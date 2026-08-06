@@ -92,6 +92,8 @@ class Qwen35GGUFPreparedVerify:
     native_graph_readback_ms: float = 0.0
     native_graph_fallback_reason: str | None = None
     native_device_accept_commit: bool = False
+    native_proposal_target_chained: bool = False
+    device_proposal_top1_values: tuple[float, ...] = ()
     device_state_commit_buffers: TargetStateCommitBuffers | None = None
 
 
@@ -570,6 +572,31 @@ class Qwen35GGUFTransactionalVerifier:
         self._buckets[key] = bucket
         return bucket
 
+    def device_proposal_ready(self, candidate_budget: int) -> bool:
+        """Report cached-only eligibility without capturing or launching work."""
+
+        budget = int(candidate_budget)
+        if self.closed or self.target_verify_mode != "native" or budget not in _GGUF_MTP_CANDIDATE_BUDGETS:
+            return False
+        graph = getattr(
+            self.target,
+            f"_native_spec_b{budget}_target_graph_n2",
+            None,
+        )
+        return bool(
+            graph is not None
+            and not graph.closed
+            and graph.compatible_with(
+                self.target,
+                bulk_attention_mode="native",
+                use_wmma_prefill=False,
+                capture_linear_state_rows=True,
+                capture_pre_output_norm_hidden=True,
+                defer_linear_state_commit=True,
+                device_accept_commit=True,
+            )
+        )
+
     def prepare(
         self,
         batch: TargetVerifyBatch,
@@ -579,6 +606,7 @@ class Qwen35GGUFTransactionalVerifier:
         remaining_decode: Sequence[int],
         return_logits: bool = False,
         stream: int = 0,
+        device_proposal: Any | None = None,
     ) -> Qwen35GGUFPreparedVerify:
         if self.closed:
             raise RuntimeError("GGUF transactional verifier is closed")
@@ -592,6 +620,17 @@ class Qwen35GGUFTransactionalVerifier:
             raise ValueError("verify graph bucket does not cover target batch")
         if int(self.target.position) != int(batch.positions[batch.root_rows[0]]):
             raise ValueError("target verify root position does not match resident cursor")
+        if device_proposal is not None and (
+            self.target_verify_mode != "native" or stream or return_logits
+        ):
+            raise ValueError(
+                "device proposal handoff requires native no-logit verification on the session stream"
+            )
+        if device_proposal is not None and (
+            int(getattr(device_proposal, "budget", -1)) + 1 != batch.rows
+            or int(getattr(device_proposal, "request_id", -1)) != batch.request_ids[0]
+        ):
+            raise ValueError("device proposal identity does not match the target batch")
 
         initial_position = int(self.target.position)
         self.journal.capture_initial(stream=stream)
@@ -603,6 +642,8 @@ class Qwen35GGUFTransactionalVerifier:
         native_graph_readback_ms = 0.0
         native_graph_fallback_reason = None
         native_device_accept_commit = False
+        native_proposal_target_chained = False
+        device_proposal_top1_values: tuple[float, ...] = ()
         device_state_commit_buffers: TargetStateCommitBuffers | None = None
         buffers: TargetVerifyBuffers | None = None
         gpu_summary: TargetAcceptSummary | None = None
@@ -623,17 +664,29 @@ class Qwen35GGUFTransactionalVerifier:
                     )
 
                     try:
-                        device_block = self.target.verify_target_block_native_cycle(
-                            batch.tokens,
-                            fallback=False,
-                            cycle_id=int(graph_bucket.replay_count),
-                            transaction_id=int(transaction_id),
-                            request_id=int(batch.request_ids[0]),
-                            device_accept_commit=True,
-                            remaining_decode=int(budgets[0]),
-                            **native_kwargs,
-                        )
+                        if device_proposal is None:
+                            device_block = self.target.verify_target_block_native_cycle(
+                                batch.tokens,
+                                fallback=False,
+                                cycle_id=int(graph_bucket.replay_count),
+                                transaction_id=int(transaction_id),
+                                request_id=int(batch.request_ids[0]),
+                                device_accept_commit=True,
+                                remaining_decode=int(budgets[0]),
+                                **native_kwargs,
+                            )
+                        else:
+                            device_block = self.target.verify_target_from_device_proposal(
+                                device_proposal,
+                                cycle_id=int(graph_bucket.replay_count),
+                                transaction_id=int(transaction_id),
+                                request_id=int(batch.request_ids[0]),
+                                remaining_decode=int(budgets[0]),
+                                **native_kwargs,
+                            )
                     except NativeSpecTargetGraphUnsupportedError:
+                        if device_proposal is not None:
+                            raise
                         device_block = None
                 if device_block is not None:
                     native_graph_submitted = bool(
@@ -657,6 +710,25 @@ class Qwen35GGUFTransactionalVerifier:
                         raise RuntimeError(
                             "native GGUF N2 graph changed the declared root position"
                         )
+                    if device_proposal is not None:
+                        from hipengine.runtime.gguf_native_spec_cycle import (
+                            build_native_b2_target_batch,
+                        )
+
+                        batch = build_native_b2_target_batch(
+                            device_block.input_token_ids,
+                            start_position=initial_position,
+                            request_id=int(batch.request_ids[0]),
+                        )
+                        self._validate_chain(batch)
+                        device_proposal_top1_values = tuple(
+                            float(value) for value in device_block.proposal_top1_values
+                        )
+                        if len(device_proposal_top1_values) != batch.candidate_count:
+                            raise RuntimeError(
+                                "native GGUF N2 graph omitted proposal top-1 values"
+                            )
+                        native_proposal_target_chained = True
                     top1.extend(int(token) for token in device_block.target_top1)
                     if len(top1) != batch.rows:
                         raise RuntimeError("native GGUF N2 graph omitted target top-1 rows")
@@ -818,7 +890,11 @@ class Qwen35GGUFTransactionalVerifier:
             cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
             gpu_match = _summary_matches(gpu_summary, cpu_summary)
             if not gpu_match:
-                raise RuntimeError("GGUF GPU accept summary does not match the CPU oracle")
+                raise RuntimeError(
+                    "GGUF GPU accept summary does not match the CPU oracle: "
+                    f"gpu={gpu_summary!r} cpu={cpu_summary!r} "
+                    f"tokens={batch.tokens!r} top1={tuple(top1)!r}"
+                )
             graph_bucket.replay_count += 1
             prepared = Qwen35GGUFPreparedVerify(
                 batch=batch,
@@ -841,6 +917,8 @@ class Qwen35GGUFTransactionalVerifier:
                 native_graph_readback_ms=native_graph_readback_ms,
                 native_graph_fallback_reason=native_graph_fallback_reason,
                 native_device_accept_commit=native_device_accept_commit,
+                native_proposal_target_chained=native_proposal_target_chained,
+                device_proposal_top1_values=device_proposal_top1_values,
                 device_state_commit_buffers=device_state_commit_buffers,
             )
             self._prepared = prepared
@@ -1110,17 +1188,44 @@ class Qwen35GGUFMTPDecodeSession:
             if remaining <= 0:
                 break
             budget = _largest_budget_at_most(min(self.candidate_budget, remaining))
-            proposal_started = time.perf_counter()
-            draft = self.draft_provider.propose(
-                MtpProposalContext(
-                    request_ids=(rid,),
-                    root_tokens=(root,),
-                    root_positions=(int(self.target.position),),
-                    target_hidden=self.target.last_target_hidden,
-                ),
-                candidate_budget=budget,
-                return_logits=return_cycle_logits,
+            proposal_context = MtpProposalContext(
+                request_ids=(rid,),
+                root_tokens=(root,),
+                root_positions=(int(self.target.position),),
+                target_hidden=self.target.last_target_hidden,
             )
+            proposal_started = time.perf_counter()
+            device_proposal = None
+            device_ready = getattr(self.verifier, "device_proposal_ready", None)
+            launch_device = getattr(self.draft_provider, "launch_device_proposal", None)
+            if (
+                not return_cycle_logits
+                and remaining >= budget + 1
+                and callable(device_ready)
+                and device_ready(budget)
+                and callable(launch_device)
+            ):
+                device_proposal = launch_device(
+                    proposal_context,
+                    candidate_budget=budget,
+                )
+            if device_proposal is None:
+                draft = self.draft_provider.propose(
+                    proposal_context,
+                    candidate_budget=budget,
+                    return_logits=return_cycle_logits,
+                )
+            else:
+                placeholder = getattr(
+                    self.draft_provider,
+                    "placeholder_device_proposal",
+                    None,
+                )
+                if not callable(placeholder):
+                    raise RuntimeError(
+                        "GGUF device proposal provider omitted its scheduler placeholder"
+                    )
+                draft = placeholder(device_proposal)
             proposal_seconds += time.perf_counter() - proposal_started
             work = scheduler.next_speculative_verify_work(
                 draft,
@@ -1159,8 +1264,47 @@ class Qwen35GGUFMTPDecodeSession:
                     graph_bucket=bucket,
                     remaining_decode=(remaining,),
                     return_logits=return_cycle_logits,
+                    device_proposal=device_proposal,
                 )
                 verify_seconds += time.perf_counter() - verify_started
+                if device_proposal is not None:
+                    if not prepared.native_proposal_target_chained:
+                        raise RuntimeError(
+                            "GGUF device proposal retired without target-chain ownership"
+                        )
+                    finish_device = getattr(
+                        self.draft_provider,
+                        "finish_device_proposal",
+                        None,
+                    )
+                    if not callable(finish_device):
+                        raise RuntimeError(
+                            "GGUF device proposal provider omitted result materialization"
+                        )
+                    proposal_finish_started = time.perf_counter()
+                    draft = finish_device(
+                        device_proposal,
+                        token_ids=tuple(
+                            int(token) for token in prepared.batch.tokens[1:]
+                        ),
+                        top1_values=prepared.device_proposal_top1_values,
+                    )
+                    proposal_seconds += time.perf_counter() - proposal_finish_started
+                    actual_work = scheduler.next_speculative_verify_work(
+                        draft,
+                        root_tokens=(root,),
+                        root_positions=(int(prepared.initial_position),),
+                    )
+                    if actual_work.target_batch != prepared.batch:
+                        raise RuntimeError(
+                            "GGUF device proposal scheduler rows drifted after target retirement"
+                        )
+                    work = actual_work
+                    plan = replace(
+                        plan,
+                        target_batch=actual_work.target_batch,
+                        work_item=actual_work.work_item,
+                    )
                 target_rows += prepared.batch.rows
                 prepared_top1 = prepared.target_top1
                 prepared_logits = prepared.target_logits
@@ -1230,6 +1374,10 @@ class Qwen35GGUFMTPDecodeSession:
                 "target_native_graph_readback_ms": prepared_native_graph_readback_ms,
                 "target_native_graph_fallback_reason": prepared_native_graph_fallback_reason,
                 "target_native_device_accept_commit": prepared_native_device_accept_commit,
+                "proposal_target_device_chained": bool(
+                    device_proposal is not None
+                    and prepared_native_device_accept_commit
+                ),
                 "draft_tail_advanced": draft_tail_advanced,
             }
             # ``prepared`` is cleared only after the transaction is fully

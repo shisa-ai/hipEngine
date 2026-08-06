@@ -19635,6 +19635,42 @@ class Qwen35GGUFResidentSession:
             remaining_decode=(None if remaining_decode is None else int(remaining_decode)),
         )
 
+    def verify_target_from_device_proposal(
+        self,
+        device_proposal,
+        *,
+        cycle_id: int = 0,
+        transaction_id: int = 0,
+        request_id: int = 0,
+        remaining_decode: int,
+        bulk_attention_mode: str = "native",
+        use_wmma_prefill: bool = False,
+        capture_linear_state_rows: bool = True,
+        capture_pre_output_norm_hidden: bool = True,
+        capture_lm_head_logits: bool = False,
+        defer_linear_state_commit: bool = True,
+    ):
+        """Retire cached proposal/N2 graphs behind the target synchronization."""
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            verify_qwen35_gguf_native_target_from_device_proposal,
+        )
+
+        return verify_qwen35_gguf_native_target_from_device_proposal(
+            self,
+            device_proposal,
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            remaining_decode=int(remaining_decode),
+            bulk_attention_mode=bulk_attention_mode,
+            use_wmma_prefill=bool(use_wmma_prefill),
+            capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+            capture_lm_head_logits=bool(capture_lm_head_logits),
+            defer_linear_state_commit=bool(defer_linear_state_commit),
+        )
+
     def run_native_spec_mtp_cycle(
         self,
         resident_draft,

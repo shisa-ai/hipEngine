@@ -18,6 +18,7 @@ from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_
 from hipengine.core.tensor import Tensor
 from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNDeviceProposal,
     Qwen35GGUFNextNDraftProvider,
     Qwen35GGUFNextNExecutor,
     Qwen35GGUFNextNStateAdvance,
@@ -184,6 +185,87 @@ def test_nextn_provider_prefers_an_executor_chain_without_changing_draft_abi() -
     assert draft.parent_positions == (12, 13, 14)
     assert draft.draft_depths == (1, 2, 3)
     assert tuple(row.input_token for row in provider.last_results[41]) == (9, 10, 11)
+
+
+def test_nextn_provider_materializes_a_cached_device_proposal_after_target_retirement() -> None:
+    executor = _FakeExecutor()
+    hidden = Tensor.from_handle(77, (1, 8), DType.BF16, Device("hip", 0))
+    proposal = Qwen35GGUFNextNDeviceProposal(
+        request_id=41,
+        root_token=9,
+        root_position=12,
+        budget=3,
+        result_ptr=0x5000,
+        result_nbytes=24,
+        completion_event=0x6000,
+        stream=0x7000,
+        final_hidden=Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
+    )
+    launch_calls: list[tuple[int, int, int, int, int]] = []
+
+    def launch_device(
+        request_id: int,
+        token_id: int,
+        position: int,
+        target_hidden: Tensor,
+        *,
+        candidate_budget: int,
+    ) -> Qwen35GGUFNextNDeviceProposal:
+        launch_calls.append(
+            (request_id, token_id, position, target_hidden.ptr, candidate_budget)
+        )
+        return proposal
+
+    def materialize_device(
+        pending: Qwen35GGUFNextNDeviceProposal,
+        *,
+        token_ids: tuple[int, ...],
+        top1_values: tuple[float, ...],
+    ) -> tuple[Qwen35GGUFNextNStepResult, ...]:
+        assert pending is proposal
+        rows = []
+        current = pending.root_token
+        for depth, (token, value) in enumerate(
+            zip(token_ids, top1_values, strict=True)
+        ):
+            rows.append(
+                Qwen35GGUFNextNStepResult(
+                    request_id=pending.request_id,
+                    input_token=current,
+                    position=pending.root_position + depth,
+                    token_id=token,
+                    logit=value,
+                    hidden=pending.final_hidden,
+                )
+            )
+            current = token
+        return tuple(rows)
+
+    executor.launch_cached_graph_chain_device = launch_device  # type: ignore[attr-defined]
+    executor.materialize_device_proposal = materialize_device  # type: ignore[attr-defined]
+    provider = Qwen35GGUFNextNDraftProvider(executor)
+    context = MtpProposalContext(
+        request_ids=(41,),
+        root_tokens=(9,),
+        root_positions=(12,),
+        target_hidden=hidden,
+    )
+
+    pending = provider.launch_device_proposal(context, candidate_budget=3)
+
+    assert pending is proposal
+    assert launch_calls == [(41, 9, 12, 77, 3)]
+    placeholder = provider.placeholder_device_proposal(pending)
+    assert placeholder.candidate_tokens == (0, 0, 0)
+    draft = provider.finish_device_proposal(
+        pending,
+        token_ids=(10, 11, 12),
+        top1_values=(1.0, 2.0, 3.0),
+    )
+    assert draft.candidate_tokens == (10, 11, 12)
+    assert draft.parent_positions == (12, 13, 14)
+    assert tuple(row.input_token for row in provider.last_results[41]) == (9, 10, 11)
+    assert tuple(row.logit for row in provider.last_results[41]) == (1.0, 2.0, 3.0)
 
 
 def test_nextn_executor_chain_falls_back_to_eager_steps(

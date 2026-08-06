@@ -1289,6 +1289,10 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         record["target_native_device_accept_commit"]
         for record in actual.cycle_records
     )
+    assert any(
+        record["proposal_target_device_chained"]
+        for record in actual.cycle_records
+    )
     # Full-room cycles use N2; the final output-cap cycle stays on the
     # independently cached N1 graph rather than overcommitting one correction.
     assert sum(

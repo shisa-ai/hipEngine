@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -14,11 +15,13 @@ from hipengine.core.memory import (
     host_array_ptr,
 )
 
+from hipengine.runtime import gguf_native_spec_cycle as native_cycle_mod
 from hipengine.runtime.gguf_native_spec_cycle import (
     NativeSpecTargetGraphUnsupportedError,
     build_native_b2_target_batch,
     run_qwen35_gguf_native_mtp_cycle,
     verify_qwen35_gguf_native_b2_target,
+    verify_qwen35_gguf_native_target_from_device_proposal,
 )
 from hipengine.speculative.mtp_resident_draft import (
     NativeSpecProposalGraphUnsupportedError,
@@ -237,6 +240,119 @@ def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed(
     assert calls[2] == ("record_verify_seeds", (0xB000, 0xB010))
     assert calls[3] == ("accept_seed", 1)
     assert calls[4] == ("commit_mtp_kv", 0xB000, (201,), (18,), 8)
+
+
+def test_device_proposal_handoff_stages_both_token_metadata_columns() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Runtime:
+        def stream_wait_event(self, stream, event):
+            calls.append(("wait", int(stream), int(event)))
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            calls.append(
+                (
+                    "copy",
+                    int(dst),
+                    int(src),
+                    int(nbytes),
+                    int(kind),
+                    int(stream),
+                )
+            )
+
+    native_cycle_mod._enqueue_device_proposal_handoff(
+        runtime=Runtime(),
+        stream=0x1000,
+        dynamic_metadata_ptr=0x2000,
+        result_payload_ptr=0x3000,
+        proposal_result_ptr=0x4000,
+        proposal_result_nbytes=24,
+        proposal_event=0x5000,
+        proposal_budget=3,
+        target_rows=4,
+    )
+
+    assert calls[0] == ("wait", 0x1000, 0x5000)
+    assert calls[1:7] == [
+        ("copy", 0x2000 + 40, 0x4000, 4, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0x1000),
+        ("copy", 0x2000 + 48, 0x4000, 4, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0x1000),
+        ("copy", 0x2000 + 80, 0x4008, 4, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0x1000),
+        ("copy", 0x2000 + 88, 0x4008, 4, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0x1000),
+        ("copy", 0x2000 + 120, 0x4010, 4, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0x1000),
+        ("copy", 0x2000 + 128, 0x4010, 4, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0x1000),
+    ]
+    payload_start = native_cycle_mod.ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + 8
+    assert calls[7] == (
+        "copy",
+        0x3000 + payload_start * 4,
+        0x4000,
+        24,
+        int(HipMemcpyKind.DEVICE_TO_DEVICE),
+        0x1000,
+    )
+
+
+def test_device_proposal_handoff_requires_and_launches_only_a_cached_n2_graph() -> None:
+    proposal = SimpleNamespace(budget=3, request_id=7)
+    launches: list[dict[str, object]] = []
+
+    class Graph:
+        closed = False
+
+        def compatible_with(self, _session, **kwargs) -> bool:
+            assert kwargs["device_accept_commit"] is True
+            assert kwargs["bulk_attention_mode"] == "native"
+            return True
+
+        def launch(self, input_token_ids=None, **kwargs):
+            assert input_token_ids is None
+            launches.append(dict(kwargs))
+            return "retired"
+
+    session = SimpleNamespace(
+        _native_spec_b3_target_graph_n2=Graph(),
+        last_native_spec_target_submitted=True,
+        last_native_spec_target_fallback_reason="stale",
+        last_native_spec_target_capture_ms=1.0,
+        last_native_spec_target_submit_ms=2.0,
+        last_native_spec_target_readback_ms=3.0,
+    )
+
+    result = verify_qwen35_gguf_native_target_from_device_proposal(
+        session,
+        proposal,
+        cycle_id=5,
+        transaction_id=6,
+        request_id=7,
+        remaining_decode=9,
+    )
+
+    assert result == "retired"
+    assert launches == [
+        {
+            "cycle_id": 5,
+            "transaction_id": 6,
+            "request_id": 7,
+            "remaining_decode": 9,
+            "device_proposal": proposal,
+        }
+    ]
+    assert session.last_native_spec_target_capture_ms == 0.0
+    missing = SimpleNamespace(
+        last_native_spec_target_submitted=False,
+        last_native_spec_target_fallback_reason=None,
+        last_native_spec_target_capture_ms=0.0,
+        last_native_spec_target_submit_ms=0.0,
+        last_native_spec_target_readback_ms=0.0,
+    )
+    with pytest.raises(NativeSpecTargetGraphUnsupportedError, match="cached N2"):
+        verify_qwen35_gguf_native_target_from_device_proposal(
+            missing,
+            proposal,
+            request_id=7,
+            remaining_decode=9,
+        )
 
 
 def test_native_b2_target_reuses_one_dynamic_graph_across_cycles(monkeypatch) -> None:
