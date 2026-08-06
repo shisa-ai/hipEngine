@@ -1871,6 +1871,29 @@ sole-resident representation, RDNA3 primitive, credible cross-family fusion,
 or changed Q6 source. D27-R2 advances to full-attention K/V. Artifact:
 `benchmarks/results/2026-08-06-qwen36-27b-latest-q6-source-audit-exhausted.json`.
 
+The full-attention K audit finds one real uncovered route rather than another
+representation ladder. All 16 K tensors already carry the retained exact
+compact-Q4T16 sidecar, and the actual `blk.3.attn_k` W7900 leaf measures
+**20.152 -> 12.201 us (1.652x)**, but the staged full-attention helper predates
+that promotion and hard-bypasses it into the old pack8 grid-Y batch. The helper
+now prefers the registered compact-col4 owner and retains pack8 grid-Y, then
+scalar linear, as exact missing-sidecar/key fallbacks. The CPU/fake native-cycle
+file passes **15/15**; the binding W7900 B1-B3 transaction is exact across
+logits, reject/partial/full/rollback state, dynamic reuse, K/V, hidden/provider
+output, ownership, and teardown, and observes no old pack8 K owner.
+
+A marked B3 trace replaces exactly **112 pack8 / 2.409537 ms** with **112
+compact-col4 / 1.501054 ms (-37.70%, 1.605x)**. The separate ten-prompt packet
+is exact but timing-negative by **0.158%-0.444%** at B1-B3, so it does not
+replace canonical **61.394 tok/s**. The binding same-loaded-model,
+separately-cached, counterbalanced B3 screen instead improves median decode
+**361.601 -> 361.232 ms (1.001021x)** with a **-0.908-ms paired median** and
+**13/17** wins. Retain the exact target-window win without changing the
+headline. The inferred matched full-attention K/V bucket falls **4.958 ->
+4.050 ms**, still **2.010 ms** behind Vulkan's **2.040 ms**, so D27-R2 advances
+within the module to V before root. Artifact:
+`benchmarks/results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1881,7 +1904,7 @@ or changed Q6 source. D27-R2 advances to full-attention K/V. Artifact:
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; advance to full-attention K/V, then root |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; exact compact K cuts **2.410 -> 1.501 ms**, leaving combined K/V **2.010 ms** behind Vulkan; advance to V, then root |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 

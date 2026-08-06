@@ -735,6 +735,12 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
     monkeypatch.setattr(qgr, "launch_gguf_linear", linear)
     monkeypatch.setattr(
         qgr,
+        "launch_gguf_q4_t16_sidecar_decode",
+        lambda *_args, **_kwargs: False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qgr,
         "qwen35_split_qgate_bf16",
         lambda q, query, gate, rows, *args, **kwargs: calls.append(
             ("split", q, query, gate, rows)
@@ -934,6 +940,67 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
     )
     assert cache_calls[5] == ("gate", 0x5000, 0x6000, 0xA000, 32)
 
+    def sidecar_k(
+        weight,
+        x,
+        out,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    ):
+        calls.append(
+            (
+                "k_sidecar",
+                weight.name,
+                x,
+                out,
+                rows,
+                in_features,
+                out_features,
+                kwargs["backend"],
+                kwargs["stream"],
+            )
+        )
+        return True
+
+    monkeypatch.setattr(
+        qgr,
+        "launch_gguf_q4_t16_sidecar_decode",
+        sidecar_k,
+        raising=False,
+    )
+    calls.clear()
+    runner._run_full_attention_attn_chain_rows_exact(
+        7,
+        0xF000,
+        0x11000,
+        scratch,
+        rows=4,
+        decode_row_scratches=tuple(row_scratches),
+        start_position=11,
+        hidden_f32_ptr=0x12000,
+        attention_context_limit=128,
+    )
+    assert [call for call in calls if call[0] == "linear"] == [
+        ("linear", "attn_q", 0x1000, 0x2000, 4),
+        ("linear", "attn_v", 0x1000, 0x4000, 4),
+        ("linear", "attn_output", 0xA000, 0x11000, 4),
+    ]
+    assert [call for call in calls if call[0] == "k_sidecar"] == [
+        (
+            "k_sidecar",
+            "attn_k",
+            0x1000,
+            0x3000,
+            4,
+            16,
+            4,
+            "hip_gfx1100",
+            0,
+        )
+    ]
+
     def batch_k(
         x,
         qweight,
@@ -960,6 +1027,12 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
             )
         )
 
+    monkeypatch.setattr(
+        qgr,
+        "launch_gguf_q4_t16_sidecar_decode",
+        lambda *_args, **_kwargs: False,
+        raising=False,
+    )
     monkeypatch.setattr(
         runner,
         "_full_attn_k_grid_y_batch_fn",

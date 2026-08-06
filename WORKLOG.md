@@ -208503,3 +208503,40 @@ Vulkan local sizes verbatim will close the measured gap.
   primitives and advance D27-R2 to full-attention K/V. Compact artifact:
   `benchmarks/results/2026-08-06-qwen36-27b-latest-q6-source-audit-exhausted.json`
   (pre-commit SHA-256 `c2d203c5...2d3aa`).
+
+## 2026-08-06 — Retain compact-sidecar ownership for full-attention K
+
+- Audit the next D27-R2 full-attention K/V row against current physical
+  ownership before reopening kernel work. All 16 Q4 K tensors already have the
+  retained compact-Q4T16 sidecar, and the prior actual-weight W7900 leaf is
+  BF16-bit exact at **20.152 -> 12.201 us (1.652x)**, but the older staged
+  full-attention helper hard-bypassed the sidecar into the pack8 grid-Y batch.
+- Route staged K5,120/N1,024 native rows 2-4 through
+  `launch_gguf_q4_t16_sidecar_decode()` first. Missing sidecar/key preserves the
+  old exact pack8 grid-Y batch, then scalar linear fallback. This adds no
+  kernel, sidecar bytes, workspace, flag, or benchmark-specific branch.
+  `tests/test_gguf_native_spec_cycle.py` passes **15/15** and pins preference
+  plus both fallbacks; `py_compile` and `git diff --check` pass.
+- The binding W7900
+  `test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar` passes the
+  complete B1-B3 logits, reject/partial/full/rollback state, dynamic graph
+  reuse, K/V, hidden/provider output, physical ownership, lifecycle, and
+  teardown oracle. It now observes no old full-K pack8 grid-Y call.
+- A cached marked W7900 B3 trace replaces exactly **112 pack8 / 2.409537 ms**
+  with **112 compact-col4 / 1.501054 ms (-37.70%, 1.605x)**. The distinct-run
+  complete profile is not used as a wall comparison because clocks/proposal
+  overlap differ. This moves the inferred matched combined K/V bucket **4.958
+  -> 4.050 ms**, still **2.010 ms** behind Vulkan's **2.040 ms**.
+- The independent exact ten-prompt natural25 packet is timing-negative at
+  **44.496/56.350/61.394 -> 44.319/56.261/61.122 tok/s
+  (-0.398%/-0.158%/-0.444%)** despite unchanged IDs and acceptance. A
+  same-loaded-model, separately-cached, counterbalanced B3 screen resolves the
+  physical effect: median decode **361.601 -> 361.232 ms (1.001021x)**,
+  paired median **-0.908 ms**, **13/17** wins, exact IDs/acceptance.
+- Retain the exact target-window default without replacing canonical **61.394
+  tok/s**. Compact artifact:
+  `benchmarks/results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json`.
+  Raw paired harness/result SHA-256 values are `69a7abd9...f22` /
+  `3fc32da7...974`; natural/comparison are `aa225df1...9d8` /
+  `a47604fc...a57`; profile comparison is `81cf3a83...e9`. Advance D27-R2
+  within the module to full-attention V before root.

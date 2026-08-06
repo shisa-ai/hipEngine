@@ -689,7 +689,7 @@ def shared_full_attn_batch_calls() -> Iterator[list[tuple[int, ...]]]:
 
 @pytest.fixture
 def full_attn_k_grid_y_calls() -> Iterator[list[tuple[int, int, int]]]:
-    """Count exact full-attention K grid-y batches on real transactions."""
+    """Count exact pack8 K fallbacks on real transactions."""
 
     key = KernelKey(
         "hip_gfx1100",
@@ -1387,12 +1387,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         in shared_full_attn_batch_calls
     } == {(256, 24, 4, 256, 1)}
     assert all(rows == live_rows for rows, *_, live_rows in shared_full_attn_batch_calls)
-    assert full_attn_k_grid_y_calls
-    assert {rows for rows, _, _ in full_attn_k_grid_y_calls} == {2, 4}
-    assert {
-        (in_features, out_features)
-        for _, in_features, out_features in full_attn_k_grid_y_calls
-    } == {(5120, 1024)}
+    # The retained compact col4 sidecar now owns K; the old pack8 grid-Y
+    # batch remains registered only as the exact missing-sidecar fallback.
+    assert not full_attn_k_grid_y_calls
     assert q4_dual_rowtile_silu_calls["t16"]
     assert {
         rows for rows, _, _ in q4_dual_rowtile_silu_calls["t16"]

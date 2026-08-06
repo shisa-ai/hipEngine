@@ -5668,6 +5668,33 @@ Artifacts:
 [`2026-08-06-qwen36-27b-native-submission-graphs-retained.json`](results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json) and
 [`2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json`](results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json).
 
+#### Qwen3.6-27B exact full-attention K compact-sidecar owner, W7900/gfx1100
+
+The staged native full-attention helper now asks the existing compact-Q4T16
+sidecar dispatcher to own K5,120/N1,024 rows 2-4 before falling back to the
+retained exact pack8 grid-Y batch and then scalar linear dispatch. This adds no
+kernel, weight, workspace, flag, or prompt-conditioned path: all 16 K tensors
+already carry the retained sidecar, but this older staged helper had bypassed
+it. CPU/fake routing passes 15/15, and the full W7900 B1-B3 transaction remains
+exact across logits, acceptance, rollback, dynamic graph reuse, K/V,
+hidden/provider state, ownership, and teardown.
+
+The marked B3 family changes exactly **112 pack8 / 2.409537 ms -> 112
+compact-col4 / 1.501054 ms (-37.70%, 1.605x)**. The prior actual-weight W7900
+leaf is BF16-bit exact and measures **20.152 -> 12.201 us (1.652x)**. A
+same-loaded-model 17-pair B3 screen with separate warm target graphs improves
+median decode **361.601 -> 361.232 ms (1.001021x)**, with a **-0.908-ms paired
+median** and **13/17** wins; IDs and acceptance are identical.
+
+The independent ten-prompt packet is exact but timing-negative at
+**44.496/56.350/61.394 -> 44.319/56.261/61.122 tok/s
+(-0.398%/-0.158%/-0.444%)**, so it does not replace the cleaner canonical
+**61.394 tok/s** row. Retain the deterministic target-window gain while keeping
+the headline unchanged. The inferred matched full-attention K/V bucket falls
+**4.958 -> 4.050 ms** but remains **2.010 ms** behind Vulkan, so V remains the
+next module target. Artifact:
+[`2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json`](results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight
@@ -5850,6 +5877,7 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact one-launch rollback snapshot](results/2026-08-05-qwen36-27b-journal-snapshot-copy-retained.json),
 [Qwen3.6-27B exact native submission graphs](results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json),
 [Qwen3.6-27B exact direct proposal-to-target handoff](results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json),
+[Qwen3.6-27B exact full-attention K compact-sidecar owner](results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json),
 [Qwen3.6-27B exact producer-folded rollback snapshot](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
 [Qwen3.6-27B selective FFN-down residual fusion](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
 [Qwen3.6-27B rounded residual plus next-RMSNorm](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json),
