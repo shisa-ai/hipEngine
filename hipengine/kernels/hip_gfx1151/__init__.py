@@ -725,9 +725,10 @@ GGUF_F32_ORDERED_PREFILL_POLICIES = {}
 # actual-layer and complete-runtime transfer gate exists.
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {}
 LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
-# LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
-# compact-WMMA row read until its independent post-merge transfer gate.
-GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
+# SH9-D1 independently admits LCP-2B's exact routing-independent compact-WMMA
+# row bound on gfx1151 through 4,096 selected rows. Larger shapes and explicit
+# opt-out retain the scalar total-row read.
+GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 4096
 # SH7-A1 retains LCP-D2's registered prepare-plus-coalesced split reducer on
 # gfx1151 from 32K onward after exact primitive/semantic admission and measured
 # 32K/64K wall wins. Shorter contexts and explicit opt-out keep the serial path.

@@ -2517,13 +2517,25 @@ also regress **405.676 -> 455.813 us** and **725.396 -> 820.053 us** at zero
 scratch. The candidate misses both leaf gates, so remove every transient body,
 wrapper, key, export, smoke, and test surface before model routing.
 
-Proceed to SH9-D1's independent gfx1151 transfer of the exact compact-WMMA
-static count bound. gfx1100 admits 4,096 selected rows while gfx1151 remains at
-zero; private-c1 uses eight rows, so the candidate can remove 40 scalar
-`wmma_total` D2H synchronizations per token without changing selected kernels.
-Require bound/fallback RED/GREEN, exact state, cached HIP/ROCTX proof, and
-same-source wall non-regression before promotion. Evidence:
-[`SH8-A1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json).
+SH9-D1 independently admits the exact compact-WMMA static count bound on
+**gfx1151 through 4,096 selected rows**. Correct the earlier scope statement:
+this helper is multi-row prefill only; rows==1 decode dispatches the c1 path
+before it. Binding pp512 has 512 rows x top-k 8 = 4,096 selected rows and removes
+40 scalar reads **per request**, not per decode token. Scalar/no-read prefill
+logits, every layer/Conv/GDN/live-KV checkpoint, four teacher-forced steps, and
+final state are byte-exact.
+
+The one-queue unprofiled wall is neutral at **1366.040 -> 1366.013 tok/s
+(-0.002%)**, with identical **20.566421-GiB** tracked peak, **21.000130-GiB**
+whole-GTT peak, exact IDs, and zero ownership after close. A fully cached
+same-process ROCTX trace removes **40 hipMemcpy calls and 40 copy-kernel
+dispatches** (**1,409 -> 1,369 total**) while preserving all 80 selected-WMMA
+launches on queue 1/stream 0; marker span improves **381.308 -> 379.572 ms
+(-1.736 ms)** and selected time is flat within +0.073%. Retain the gfx1151
+package cap and scalar fallback above scope/under opt-out. Activate SH9-C1 to
+publish the prefill-only credit and select a genuinely open decode owner;
+SH9-D1 does not move decode parity. Evidence:
+[`SH9-D1`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json).
 
 ### P10 Wave 1 outcome (measured 2026-05-20)
 

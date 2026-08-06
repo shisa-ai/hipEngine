@@ -205482,3 +205482,67 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   without changing selected kernels. Require bound/fallback RED/GREEN, exact
   state, cached HIP/ROCTX proof, and same-source wall non-regression; do not
   reopen the closed attention producer subdivision.
+
+## 2026-08-06 — Retain SH9-D1 compact-WMMA no-read prefill transfer
+
+- Correct the SH8 handoff before implementation: `_run_post_attention_moe_rows`
+  is called only for `rows > 1`; rows==1 decode dispatches
+  `_run_post_attention_moe_c1` first. The binding private single-request pp512
+  prefill has **512 x top-k 8 = 4,096 selected rows** and 40 MoE layers. SH9 can
+  remove 40 scalar reads per request, not 40 reads/token, and receives no decode
+  parity credit.
+- Audit gfx1100 LCP-2B: the shared runtime already proves the exact
+  routing-independent bound `A + floor((S-A)/16)` tiles, initializes unused
+  tile ids to `-1`, retains scalar fallback above scope/capacity, and has no
+  backend branch. gfx1151 differs only by package capability `0` versus
+  gfx1100 `4096`. The 4,096-row / 256-expert bound is **496 tiles / 7,936 padded
+  rows** inside the 8,192-row scratch capacity. Lineage checking remains blocked
+  by the absent read-only Atlas checkout and is not a green verdict.
+- Add RED contracts requiring gfx1151 package/default scope `4096`, in-scope
+  no-read routing, and an explicit below-bound scalar fallback. RED has exactly
+  three held-zero failures while fallback passes. Flip only
+  `hipengine/kernels/hip_gfx1151/__init__.py` to `4096`; focused GREEN passes.
+- The historical LCP-2B four-file bundle establishes **62 passed / 9 skipped**
+  plus two pre-existing hidden-seed fixture failures from the retained host
+  embedding policy. Repair only those synthetic resident-token fixtures; the
+  two failed nodes and full changed file pass **2/2** and **21/21**. Commit this
+  separate test-only unit as `5c3d9912d`; combined evidence is effectively
+  **64 passed / 9 skipped** without repeating the broad bundle.
+- Run independent pp512 scalar/no-read state children with identical 1,024-row
+  query/chunk policy. Their complete `contexts` objects are byte-identical:
+  prefill logits, all layer outputs, Conv/GDN/live BF16-KV checkpoints, four
+  fixed-input decode logits, and final state; outputs are finite and prefill
+  logits have BLAKE2b-128 `cbf90a5996858a0ef355bcf737e6ef34`. The first parent
+  harness placed `env -u` incorrectly after assignments, so only its completed
+  scalar child is reused; the candidate completes on retry. A summary-only
+  lookup of nonexistent `sha256` then fails after the exact assertion; compose
+  from the actual `blake2b_128` field without rerunning either child.
+- Run one-queue independent one-discard/three-run pp512/128 wall/GTT legs with
+  retained host embedding. Scalar -> no-read prefill is **1366.040159 ->
+  1366.013087 tok/s (-0.001982%, neutral)**. Decode diagnostic moves
+  **52.996977 -> 53.145684 (+0.2806%)** but is uncredited because SH9 is not on
+  decode. Tracked peak is identical at **20.566421270 GiB**, whole-GTT peak is
+  identical at **21.000129700 GiB**, IDs are all 9707, and all eight
+  warmup/measured closes return tracked bytes to zero.
+- Reject two initial profiler outputs: lazy registry wrappers probed/spawned
+  compiler children because the process-wide compiler-version file was absent;
+  session-local compiler text was insufficient. Set
+  `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt`, prebuild
+  outside rocprof, then run the complete scalar/no-read script a second time and
+  prove **zero build-cache files changed** before the final trace.
+- The qualified cached one-process HIP/kernel/ROCTX trace contains no compiler
+  child. Scalar -> no-read removes **44 -> 4 `hipMemcpy`**, **43 -> 3
+  `__amd_rocclr_copyBuffer`**, and **1,409 -> 1,369 dispatches**. All **80**
+  selected-WMMA launches and 40 tile maps remain, queue/stream stay **1/0**, and
+  selected resources remain **48/72 VGPR, 128 SGPR, LDS0, scratch0**. Selected
+  time is flat **148.960350 -> 149.069559 ms (+0.073%)**, while marker span
+  improves **381.307544 -> 379.571817 ms (-1.735727 ms)**. Trace hashes are
+  marker `07851562...59b5`, HIP `f2be9ce4...c836`, kernel
+  `1780054d...61c6`.
+- Retain gfx1151 package cap 4,096 under the project's exact launch/D2H
+  reduction policy; `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0`
+  remains rollback and larger/capacity-denied shapes remain scalar. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json`
+  (SHA-256 `8cfc967b...e630`) and activate **SH9-C1** to carry decode/memory rows
+  unchanged, correct the campaign scope everywhere, and select the next genuine
+  decode owner rather than treating this prefill result as fork progress.
