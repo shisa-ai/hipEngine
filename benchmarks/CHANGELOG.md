@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-06
 
+- [SH2-C1 cumulative re-attribution; continue to SH2-M4] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / 512/128 plus carried same-production 4K+: fresh clean short decode/GTT is **53.332 tok/s / 21.648426 GiB**, while C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**; census selects a structurally new exact **490,733,568-byte (0.457031-GiB)** compact Q4/Q5 T16 metadata owner for gated implementation, not a parity claim; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`.
+
 - [SH2-D1 mixed-T16 composite closed; no production change] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / c1 top8 actual-weight 37-Q5/3-Q6 mix: exact down+tail improves **1580.242 -> 1500.048 us/token (1.053x, -0.080 ms)** but misses both frozen admission gates, while complete cooperative and lifecycle-correct standard-queue composites regress to **0.520x/0.739x**; standard named traces are scratch-free, the cooperative trace crashes in ROCr, and all transient surfaces are removed before SH2-C1; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`.
 
 - [retained/default SH2-M3 768-row scratch owner slots] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV / 512/128: extend the exact 21 independent owner slots to the short class, reducing physical scratch **355,182,664 -> 69,790,760 bytes**, tracked peak **21.479979 -> 21.214187 GiB (-0.265792)**, and whole-GTT **21.916004 -> 21.648426 (-0.267578)** while prefill/decode improve **1361.744/53.322 -> 1370.204/53.408 tok/s (+0.621%/+0.160%)** with byte-exact state and committed clean lifecycle; `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json`.

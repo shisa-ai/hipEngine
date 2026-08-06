@@ -4146,6 +4146,17 @@ kernels, wrappers, registry keys, tests, and harness code are removed. SH2-C1
 must now re-attribute a structurally different owner; this rejection does not
 end the beat-fork campaign.
 
+The [SH2-C1 cumulative checkpoint](results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json)
+refreshes clean current production at 512/128: **53.332 tok/s, 21.214187 GiB
+tracked, 21.648426 GiB whole-GTT**, exact and lifecycle-clean. SH2-M3 is
+short-class-only and later packages change no production, so SH-G's 4K+ rows
+remain current. The matrix still has **0/4 C1, 0/4 C2, 0/4 fork-F16 decode,
+and 0/4 fork-F16 whole-GTT** wins. A full tensor census selects SH2-M4:
+Q4/Q5 selected-expert T16 scale/min expansion is exactly
+**490,733,568 bytes / 0.457031 GiB**. This is a projected owner, not a result;
+current T16 remains default until bit-lossless, performance, trace, state,
+lifecycle, and measured whole-GTT gates pass.
+
 The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
 [first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
 [same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
@@ -4192,6 +4203,7 @@ and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C1 cumulative re-attribution | 2026-08-06 | clean `b8989cbb4`; fresh 512/128 non-profiled+role trace+10-ms GTT; mechanically unchanged SH-G 4K+ rows; complete expert-T16 metadata census | **Diagnostic continue:** fresh 512 is **53.332 tok/s, 21.214/21.648 GiB tracked/GTT**; C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the exact **0.457031-GiB** compact Q4/Q5 T16 metadata owner; no layout exists yet. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json). | No — re-attribution and next-owner selection only | Execute SH2-M4 under exact/perf/trace/four-depth GTT gates, then rerun SH2-C2; do not proceed to SH2-G yet. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-D1 mixed-T16 selected-MoE composite | 2026-08-06 | source `995c4743e` plus transient exact cached gfx1151 kernels; all-256-expert actual weights; 37-Q5/3-Q6 aggregate; counterbalanced HIP events; cached named traces | **Closed/rejected; production unchanged:** down+tail is only **1.053x / 0.080 ms/token** aggregate; full cooperative/standard-queue composites are **0.520x/0.739x**. Lifecycle-correct standard kernels are exact and scratch-free, but miss both admission gates. All transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json). | No — exact candidates fail >=1.15x and >=0.5-ms/token admission | Do not route or revive these ownership schedules; proceed immediately to SH2-C1 cumulative re-attribution. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M3 768-row scratch owner slots | 2026-08-06 | implementation `edb151447`; BF16 KV; same-source D->L->L->D one-warmup/three-run 512/128 A/B; 10-ms whole-GTT; complete byte-state children; committed checkpoint | **Retained/default on gfx1151:** 21 owner slots save **0.265792 GiB tracked** and **0.267578 GiB whole-GTT** while prefill/decode improve **0.621%/0.160%**. State/lifecycle are exact; diagnostics and capability denial retain dedicated fallback. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json). | Yes — exact memory/wall gates and committed checkpoint pass | Keep the 768-row capability default and proceed immediately to SH2-D1; no arena/comparison seam remains. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M2 code/library residency gate | 2026-08-06 | source `33875d75b`; fresh SH2-M1 device/host 512/4K cached processes; 10-ms whole-GTT minus sampler baseline and live owned/tracked bytes; exact lifecycle reused | **Closed precondition / no implementation:** complete untracked residency is at most **0.4186/0.5315 GiB** device and **0.4784/0.5308 GiB** host at 512/4K. The 512 complete-set bounds are below the required 0.49 GiB, so no phase-exclusive code/library subset can qualify. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json). | No performance claim; safe aggregate upper-bound decision | Do not add lazy-load or `dlclose` churn; proceed directly to SH2-M3 short owner slots. |
