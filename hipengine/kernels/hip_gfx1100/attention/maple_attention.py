@@ -76,6 +76,28 @@ def maple_kv_span_update(
     )
 
 
+def maple_kv_span_update_batched(
+    spans: KVLiveSpans,
+    *,
+    start: int,
+    rows: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Publish positions [start, start+rows) into the ring (P4 prefill)."""
+
+    _, live, token_positions, evict_mask, row_positions, capacity = _span_pointers(spans)
+    _launch(
+        "hipengine_maple_kv_span_update_batched",
+        (_PTR, _PTR, _PTR, _PTR, _I64, _I64, _I64, _PTR),
+        (live, token_positions, evict_mask, row_positions, start, rows, capacity),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_qknorm_rope_kv_write_bf16(
     qkv_ptr: int,
     q_norm_weight_ptr: int,
@@ -303,6 +325,7 @@ def register_maple_attention_kernels(
 ) -> None:
     kernels = {
         ("maple_kv_span_update", "sliding_ring"): maple_kv_span_update,
+        ("maple_kv_span_update", "sliding_ring_batched"): maple_kv_span_update_batched,
         (
             "maple_qknorm_rope_kv_write",
             "partial_rotate_half_bf16",
@@ -362,6 +385,7 @@ __all__ = [
     "maple_attention_prefill_bf16",
     "maple_attention_prefill_ring_bf16",
     "maple_kv_span_update",
+    "maple_kv_span_update_batched",
     "maple_qknorm_rope_kv_write_batched_bf16",
     "maple_qknorm_rope_kv_write_bf16",
     "plan_maple_attention_build",

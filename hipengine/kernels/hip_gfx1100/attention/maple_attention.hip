@@ -49,6 +49,34 @@ __global__ void maple_kv_span_update_kernel(
   row_positions[0] = position;
 }
 
+// Batched span publish (P4 prefill): marks positions [start, start+rows) valid
+// in the ring.  One block per position row; block 0 also updates live_counts
+// and row_positions.
+__global__ void maple_kv_span_update_batched_kernel(
+    int64_t* __restrict__ live_counts,
+    int64_t* __restrict__ token_positions,
+    uint8_t* __restrict__ evict_mask,
+    int64_t* __restrict__ row_positions,
+    int64_t start,
+    int64_t rows,
+    int64_t capacity) {
+  const int64_t local = blockIdx.x;
+  if (local >= rows) {
+    return;
+  }
+  const int64_t position = start + local;
+  const int64_t slot = positive_mod(position, capacity);
+  if (threadIdx.x == 0) {
+    token_positions[slot] = position;
+    evict_mask[slot] = 0;
+  }
+  if (local == 0 && threadIdx.x == 0) {
+    const int64_t last = start + rows - 1;
+    live_counts[0] = last + 1 < capacity ? last + 1 : capacity;
+    row_positions[0] = last;
+  }
+}
+
 __global__ void maple_qknorm_rope_kv_write_kernel(
     uint16_t* __restrict__ qkv,
     const uint16_t* __restrict__ q_norm_weight,
@@ -481,6 +509,34 @@ extern "C" int hipengine_maple_kv_span_update(
       evict_mask,
       row_positions,
       position,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_kv_span_update_batched(
+    int64_t* live_counts,
+    int64_t* token_positions,
+    uint8_t* evict_mask,
+    int64_t* row_positions,
+    int64_t start,
+    int64_t rows,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (start < 0 || rows <= 0 || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      maple_kv_span_update_batched_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(1),
+      0,
+      stream,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      start,
+      rows,
       capacity);
   return static_cast<int>(hipGetLastError());
 }
