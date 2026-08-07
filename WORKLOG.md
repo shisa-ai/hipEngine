@@ -208941,3 +208941,43 @@ Vulkan local sizes verbatim will close the measured gap.
 - Pin packet provenance to read-only
   `warpfront/redline@33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e` and public
   `ROCm/rocm-systems@c0430a50286200ab0562f4733445cdee6e48d416`.
+
+## 2026-08-07 — Add the standalone PM4 lifecycle reproducer (P4)
+
+- Add `scripts/pm4_lifecycle_repro.py` over the exact captured smoke HSACO with
+  selectable `hipgraph|aql|pm4`, queue/resource/buffer `reuse|recreate`,
+  submit/create-drop-only, HIP versus fine-grained public-HSA allocations,
+  optional PM4 timestamp resources, and queue-first bounded-generation
+  quarantine. Every cycle records graph/HSACO identity, buffer addresses,
+  queue/id/base/doorbell/read/write indices, completion/resource generations,
+  IB/timestamp addresses, submission counts, output hashes, exact failure, and
+  first-failed cycle in one JSON artifact.
+- Extend the native ABI with host-readable GPU-accessible HSA buffers, explicit
+  timestamp-wrapped executable creation, checked queue-first retirement, and an
+  unretired-submission ledger. Queue retirement destroys the queue while
+  retaining completion signal, executable, kernargs, IB, timestamps, and HSA
+  buffers for the requested quarantine depth. Normal close remains checked and
+  context close rejects either live executables or buffers.
+- Preserve fail-stop behavior in the harness. A native post-submit failure is
+  not retried and its GPU-visible resources are marked
+  `quarantined_until_process_exit`; the returned artifact retains the failing
+  cycle and best-effort native provenance instead of collapsing to a generic
+  exception. The script refuses submit/recreate runs of 32+ cycles unless
+  `--ack-reset-risk` is present; `--stress` selects 128 recreate cycles and is
+  therefore blocked by default.
+- Safe W7900 controls pass: mixed-HIP PM4 persistent reuse is exact for 4/4
+  cycles; HSA-allocation PM4 persistent reuse is exact for 2/2 with stable
+  addresses; explicit timestamp PM4 is exact for 2/2 with one retained 16-byte
+  timestamp allocation; and HSA queue/resource recreate with no submit plus
+  queue-first quarantine depth 1 passes 2/2 with distinct queue IDs and four
+  retained child resources per generation after queue destruction. The
+  guarded pytest combines HSA interop+timestamps and no-submit quarantine (`2
+  passed`). Existing same-HSACO HIP/AQL/PM4 smoke remains green (`1 passed`).
+- **Intentionally not run:** any submit+queue-recreate stress arm. It may
+  reproduce ROCm/ROCm#6529 and reset the GPU, so it still requires a separate
+  warning/approval and kernel-journal/coredump collection plan.
+- CPU validation:
+  `python3 -m pytest tests/test_pm4_lifecycle_repro.py
+  tests/test_pm4_packets.py tests/test_pm4_native_build.py -q` -> 9 passed;
+  native compilation, Ruff, `compileall`, and `git diff --check` pass. No
+  performance claim is made.

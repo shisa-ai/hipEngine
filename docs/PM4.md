@@ -1,11 +1,11 @@
 # In-Tree Retained-PM4 Submission
 
 > **Status (2026-08-07):** implementation in progress. P0 documentation, P1
-> exact graph inspection, P2 direct public-HSA AQL, and P3 retained gfx1100 PM4
-> are complete through the safe same-HSACO smoke; the lifecycle reproducer is
-> next. Native HIP graphs remain the package default. Explicit PM4 selection
-> must fail closed, and reset-prone recreate stress requires a separate warning
-> and approval before it is run.
+> exact graph inspection, P2 direct public-HSA AQL, P3 retained gfx1100 PM4,
+> and P4 lifecycle-reproducer implementation are complete through safe controls;
+> production graph integration is next. Native HIP graphs remain the package
+> default. Explicit PM4 selection must fail closed, and reset-prone submit/
+> recreate stress remains unrun pending a separate warning and approval.
 
 This document defines hipEngine's plan for a small, torch-free, in-tree
 retained-PM4 transport. The transport is intended to preserve the useful launch
@@ -48,8 +48,8 @@ graph framework, compiler, profiler, or HIP interposer.
 | P1 exact graph inspection | Complete | Bounded ELF64/bundle/MessagePack parsing, exact kernarg packing, deterministic DAG validation, and live gfx1100 `smoke_add` reconciliation |
 | P2 direct public-HSA AQL | Complete | Exact PCI-BDF agent match, public executable load, persistent queue, checked packet publication/wait/teardown, and bit-exact smoke |
 | P3 retained gfx1100 PM4 | Complete | Strict descriptor admission, conservative PM4 tape, vendor-AQL IB, two bit-exact safe replays, and no fallback |
-| P4 lifecycle reproducer | Next | Reset-prone arms will not be run without separate approval |
-| P5 production graph integration | Pending | Blocked on P2/P3 correctness |
+| P4 lifecycle reproducer | Complete (safe controls) | Reuse, recreate/no-submit, HSA/HIP allocation, timestamps, queue-first quarantine, and complete per-cycle JSON; reset-prone submit/recreate stress implemented but intentionally unrun |
+| P5 production graph integration | Next | P2/P3 correctness prerequisites pass |
 | P6 performance/promotion | Pending | No in-tree PM4 performance claim yet |
 
 ## Goals and non-goals
@@ -467,9 +467,11 @@ The minimum command vocabulary is:
 - `PACKET3_DISPATCH_DIRECT`
 - `PACKET3_EVENT_WRITE` with `CS_PARTIAL_FLUSH`
 
-Optional timestamp commands (`COPY_DATA`/`RELEASE_MEM`) are reserved for a
-separate diagnostic gate and are disabled initially because timestamp-resource
-lifecycle is one suspect in #6529.
+Timestamp commands (`COPY_DATA`/`RELEASE_MEM`) remain disabled by default.
+The lifecycle reproducer can explicitly wrap a retained tape with a dedicated
+16-byte timestamp allocation so timestamp-resource creation/retirement can be
+compared against the unprofiled arm; timestamp lifecycle is one suspect in
+#6529.
 
 ### Dispatch state
 
@@ -645,9 +647,13 @@ buffers across three transports:
 - direct architected AQL kernel dispatch;
 - vendor-AQL retained PM4 IB.
 
-The default command runs safe correctness/reuse controls. Reset-prone recreate
-stress is a separate explicit mode with a warning; it is not run merely because
-the script exists.
+The default command runs four safe correctness/reuse cycles. The implementation
+also supports queue/resource/buffer reuse or recreation, submit versus
+create/drop-only, HIP versus fine-grained HSA allocations, optional PM4 GPU
+timestamps, and queue-first bounded-generation quarantine. Submit/recreate runs
+at 32 or more cycles are rejected unless `--ack-reset-risk` is present.
+`--stress` selects 128 submit/recreate cycles and therefore also requires that
+acknowledgement. The stress arm is implemented but has not been run.
 
 ### Controls
 
@@ -703,36 +709,32 @@ The exact names may change, but the ownership contract should remain this
 small:
 
 ```c
-typedef struct hipengine_pm4_context hipengine_pm4_context;
-typedef struct hipengine_pm4_executable hipengine_pm4_executable;
+typedef struct he_pm4_context he_pm4_context;
+typedef struct he_pm4_executable he_pm4_executable;
+typedef struct he_pm4_buffer he_pm4_buffer;
+typedef struct he_pm4_node he_pm4_node; /* fixed-layout, ABI-size checked */
 
-typedef struct {
-    const void *hsaco;
-    size_t hsaco_size;
-    const char *symbol;
-    const void *kernarg;
-    uint32_t kernarg_size;
-    uint32_t grid[3];        /* work-items */
-    uint16_t block[3];
-    uint32_t dynamic_lds;
-} hipengine_pm4_node;
-
-int hipengine_pm4_context_create(const char *pci_bdf,
-                                 const char *gfx_target,
-                                 hipengine_pm4_context **out,
-                                 char *error, size_t error_size);
-int hipengine_pm4_instantiate(hipengine_pm4_context *context,
-                              const hipengine_pm4_node *nodes,
-                              size_t node_count,
-                              hipengine_pm4_executable **out,
+int he_pm4_context_create(const char *pci_bdf, const char *gfx_target,
+                          he_pm4_context **out, char *error, size_t error_size);
+int he_pm4_executable_create_ex(he_pm4_context *context,
+                                const he_pm4_node *nodes, size_t node_count,
+                                uint32_t flags, he_pm4_executable **out,
+                                char *error, size_t error_size);
+int he_pm4_launch_aql(he_pm4_executable *executable, uint64_t timeout_ns,
+                      char *error, size_t error_size);
+int he_pm4_launch_pm4(he_pm4_executable *executable, uint64_t timeout_ns,
+                      char *error, size_t error_size);
+int he_pm4_context_retire_queue(he_pm4_context *context,
+                                char *error, size_t error_size);
+int he_pm4_buffer_create(he_pm4_context *context, size_t bytes,
+                         he_pm4_buffer **out, uint64_t *address,
+                         char *error, size_t error_size);
+int he_pm4_executable_destroy(he_pm4_executable *executable,
                               char *error, size_t error_size);
-int hipengine_pm4_launch_and_wait(hipengine_pm4_executable *executable,
-                                  uint64_t timeout_ns,
-                                  char *error, size_t error_size);
-int hipengine_pm4_executable_destroy(hipengine_pm4_executable *executable,
-                                     char *error, size_t error_size);
-int hipengine_pm4_context_destroy(hipengine_pm4_context *context,
-                                  char *error, size_t error_size);
+int he_pm4_buffer_destroy(he_pm4_buffer *buffer,
+                          char *error, size_t error_size);
+int he_pm4_context_destroy(he_pm4_context *context,
+                           char *error, size_t error_size);
 ```
 
 Diagnostic query functions expose copied JSON/records rather than native

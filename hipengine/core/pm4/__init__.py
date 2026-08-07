@@ -26,7 +26,12 @@ from hipengine.core.pm4.metadata import (
     parse_amdgpu_kernels,
     resolve_kernel_metadata,
 )
-from hipengine.core.pm4.native import NativePm4Context, NativePm4Error, NativePm4Executable
+from hipengine.core.pm4.native import (
+    NativePm4Buffer,
+    NativePm4Context,
+    NativePm4Error,
+    NativePm4Executable,
+)
 from hipengine.core.pm4.native_build import build_pm4_native, plan_pm4_native_build
 from hipengine.core.pm4.packets import DispatchGeometry, Gfx1100KernelImage
 
@@ -40,6 +45,7 @@ __all__ = [
     "KernargField",
     "KernelNodeManifest",
     "LaunchContext",
+    "NativePm4Buffer",
     "NativePm4Context",
     "NativePm4Error",
     "NativePm4Executable",
