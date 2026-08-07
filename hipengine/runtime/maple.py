@@ -86,10 +86,10 @@ def _maple_fuse_moe() -> bool:
     # Default off: the fused maple_moe_dual_swiglu_bf16 is bit-exact and cuts
     # decode launches 295->271, but the fused kernel is ~9% slower per MoE
     # layer than the unfused dual+swiglu pair (interleaved micro-benchmark).
-    # That kernel-efficiency regression matters in the hipGraph path (M1/M6)
-    # where launch overhead is already amortized, so the unfused chain stays the
+    # That kernel-efficiency regression matters in the optional M1 c1 hipGraph
+    # path where launch overhead is amortized, so the unfused chain stays the
     # default and the fusion is opt-in via HIPENGINE_MAPLE_FUSE_MOE=1 pending an
-    # efficiency fix. See docs/REFACTOR.md.
+    # efficiency fix. The M6 helper does not use this graph. See docs/REFACTOR.md.
     return os.environ.get("HIPENGINE_MAPLE_FUSE_MOE", "0") != "0"
 
 
@@ -101,13 +101,12 @@ def _maple_fuse_qkattn() -> bool:
 
 
 def _maple_graph_enabled() -> bool:
-    # Default off: on c1 the decode step is kernel-bound, so the whole-step
-    # graph only recovers the small (~4%) host gap (measured bit-exact but
-    # ~1.0x within noise). Keep the eager path as the default and expose the
-    # graph as an opt-in (HIPENGINE_MAPLE_GRAPH=1); the captured graph is the
-    # infrastructure M6 batch decode reuses, where the per-token launch win
-    # compounds. The KVLiveSpans device-pointer ABI makes the step stateless
-    # across tokens, so a single graph stays valid across positions.
+    # Default off: a controlled c1 review measured whole-step graph replay at
+    # only 1.0047x (+0.47%, 0.033 ms), bit-exact and within noise. Keep eager as
+    # the default and expose the graph as an opt-in (HIPENGINE_MAPLE_GRAPH=1).
+    # The M6 helper has a separate
+    # eager-batched chain. The KVLiveSpans device-pointer ABI makes this c1 step
+    # stateless across tokens, so a single graph stays valid across positions.
     return os.environ.get("HIPENGINE_MAPLE_GRAPH", "0") != "0"
 
 
@@ -915,10 +914,11 @@ class MapleRunner:
         """Batched bulk prefill over all layers (P4), chunked into bounded rows.
 
         Uses the batched prefill kernel chain (embed, QKV GEMM, qknorm ring
-        write, ring attention, o_proj GEMM, router, grouped MoE, weighted
-        residual, lm_head GEMM, row argmax). Returns the final prompt row's
-        next-token prediction and top logit while preserving the token-serial
-        continuation contract.
+        write, ring attention, o_proj GEMM, router, row/route-gather MoE,
+        weighted residual, lm_head GEMM, row argmax). Returns the final prompt
+        row's next-token prediction and top logit while preserving the
+        token-serial continuation contract. The gather MoE and all-row tail are
+        correct bring-up paths, not the optimized grouped/final-row schedule.
         """
 
         self._require_open()

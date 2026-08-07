@@ -25,9 +25,9 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Public tracked residency (max context 512) | 5.133 GiB | M5 recertification |
 | Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
 
-**Current conclusion (corrected M5/M6 reprofile).** The public <=512 prefill
-and fixed c8 helper are overwhelmingly kernel-bound; c1 retains a larger but
-secondary host gap. Cached-only `rocprofv3` at clean `4ca05d8db` measures:
+**Current conclusion (post-review).** The public <=512 prefill and fixed c8
+helper are overwhelmingly kernel-bound. Cached-only `rocprofv3` at clean
+`4ca05d8db` measures:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -35,17 +35,48 @@ secondary host gap. Cached-only `rocprofv3` at clean `4ca05d8db` measures:
 | autoregressive c1 decode | 6.118 ms/token | 5.035 ms | 1.082 ms (17.69%) | 295 | 163.459 tok/s |
 | fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
 
-The exact affine4 lm-head is now the common top owner: **49.90%** of prefill320
-kernel time, **28.75%** of c1, and **46.52%** of c8. Gate/up + down adds
-**28.10%/22.55%/29.67%** respectively. The current batched lm-head grid is
-`(vocab, rows)`, so it rereads the complete **166.922-MiB** packed-weight +
-scale/bias payload independently for every row, sustaining only about
-**115-121 GB/s** effective traffic. The next high-leverage exact owner is
-therefore a **rows>1 affine4 lm-head tile that reuses each weight row across
-multiple prompt/request rows**. Preserve the proven c1 kernel: the earlier c1
-tile was a 0.96x dead end, while row reuse is available only for prefill/c8.
-No prompt-conditioned routing or approximate FlashHead is part of this target.
-Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json`.
+The exact affine4 head owns **49.90%** of prefill320 kernel time, **28.75%** of
+c1, and **46.52%** of c8. Gate/up + down adds
+**28.10%/22.55%/29.67%** respectively. The same profile has different actions
+for each path:
+
+- **Prefill:** only the final prompt row is sampled, but the runtime executes
+  final norm + full head + argmax for every row after every chunk. Delete that
+  work rather than tile it. Substituting the measured c1 tail projects
+  **495.501 ms / 645.811 tok/s** at 320 and removes about 148.8 MiB of
+  all-row logit/argmax scratch. This projection is not yet a retained
+  benchmark.
+- **c8:** all request rows require logits. A rows>1 affine4 tile that streams
+  each 166.922-MiB payload once across request rows remains the correct owner.
+- **c1:** preserve the proven head kernel until a new layout wins. A controlled
+  3+3-process review measures graph at only **1.0047x** (+0.47%, 0.033 ms), so
+  graph stays opt-in. The 5.035-ms kernel-only roof is 198.591 tok/s; exact
+  200+ requires router/head kernel work.
+
+The second prefill correction is that `maple_selected_ternary_*_batched` is a
+row/route gather grid, **not grouped MoE**: expert weights are reread for every
+assignment. True device count/prefix/scatter plus expert-major ternary kernels
+is the next owner after final-row tail selection. The measured 274.073-ms
+expert family must reach about 98.572 ms (2.780x) for the profile-based 1000
+tok/s target with other buckets fixed.
+
+Current exact priority:
+
+1. P0 final-row-only prefill tail.
+2. P1 true expert-major compact ternary MoE.
+3. P2 exact qrow/GQA-reuse attention; P3 dense ternary tile sweep.
+4. D0 one-dispatch c1 router then affine4-head bandwidth work.
+5. D1 c2/c4/c8 affine4 row reuse.
+
+DeepGrove's published M4 table supports this split: **169 tok/s exact**, **218
+tok/s with approximate FlashHead**, and **1075 tok/s prefill**. Its generation
+path avoids discarded prefill heads and sorts >=64 routed assignments by
+expert. The table omits workload/repeat/software details, so it is directional,
+not a cross-device benchmark.
+
+Evidence:
+`benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json` and
+`benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json`.
 
 ## 2. Phase 0 — Profile before optimizing (gate: no math changes) — DONE
 
@@ -78,7 +109,8 @@ router from 7,807 → 1,104 µs (7.1×). **Remaining top targets: affine4 lm_hea
 (13.2%).** lm_head and selected-expert are weight-bandwidth bound: their tiled /
 grouped variants measured bit-exact but NOT faster (M3b, M3c), so the lever is
 weight reuse across a batch (M4/M5 prefill, M6 batch decode) rather than
-per-c1 GEMV shaping. hipGraph (M1, opt-in) recovers only the ~9% host gap.
+per-c1 GEMV shaping. The historical ~9% host gap was only a graph ceiling; the
+current M1 review measures 0.47% actual wall recovery.
 
 ### Original M0 profile (pre-M3a, superseded)
 
@@ -102,8 +134,9 @@ Per-step kernel breakdown (24 layers/token, one token = 9707):
 256-thread block (grid 256/wg 256) that serially computes logits and the
 softmax/top-8 over all 256 experts, ~362 µs per call × 24 layers. Parallelizing
 it (grid over experts / vectorized 2048-wide dot) is the single largest win
-(see D3/M3). lm_head and selected-expert GEMVs follow. hipGraph (D1) only
-recovers the ~4.3% host gap and is deprioritized below kernel work.
+(see D3/M3). lm_head and selected-expert GEMVs follow. hipGraph (D1) could at
+most recover this historical ~4.3% host gap and is deprioritized below kernel
+work.
 
 ### M0 methodology (reuse)
 
@@ -122,62 +155,45 @@ Deliverable: a `docs/KERNELS.md` Maple trace block and a
 Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 `hipcc` (per `docs/KERNELS.md` JIT gotcha).
 
-## 2b. Reprioritized milestone order (from M0 evidence)
+## 2b. Historical milestone disposition
 
-Follow `docs/TUNING-gfx1151.md` Lesson 0: capture a `rocprofv3 --kernel-trace`
-of one warm decode token and of a short serial prefill before changing anything.
-Produce a kernel-time vs host-gap breakdown:
+| Milestone | Result | Current interpretation |
+| --- | --- | --- |
+| **M3a parallel router** | Done; router 7,807 -> 1,104 us/step and decode 12,758 -> 6,038 us in the post-M3a trace | Retained. The two-dispatch router is still the first exact c1 kernel target. |
+| **M3b c1 affine4 tile** | Rejected at 0.96x | Do not revive the same tile; use a materially different layout/bandwidth schedule. |
+| **M3c c1 eight-route grouping** | Rejected at 0.69x | This tested activation reuse within one token, not expert-major reuse across prompt rows. |
+| **M4/M5 batched prefill** | Correct bring-up at 317-340 tok/s | Retained through 512; P0 final-row tail and P1 grouped MoE remain open. |
+| **M1 c1 hipGraph** | Exact but only 1.0047x in the current review | Keep opt-in; do not use the historical host-gap estimate as a speed claim. |
+| **M6 batch decode** | c2/c4/c8 helper at 218.818/261.099/299.181 aggregate tok/s | Retained helper; public scheduler/server integration remains open. |
+| **M2 fusion** | Exact composites regressed kernel efficiency | Keep opt-in/fallbacks; no default promotion. |
 
-- Per-kernel `DurationNs` by family (ternary GEMV, selected-expert, router,
-  attention, qknorm, affine4 embed, affine4 lm_head, argmax, norms).
-- **Host gap** = step wall − Σ kernel time. This is the launch/dispatch budget
-  that hipGraph capture attacks (see D1).
-- Which single kernel dominates (expected: affine4 lm_head at 151,936 output
-  rows, and the serial 256-expert router).
-
-Deliverable: a `docs/KERNELS.md` Maple trace block and a
-`benchmarks/results/2026-08-05-gfx1151-maple-decode-profile.json` artifact.
-Prebuild the `.so` and use `require_cached` so the profiled process never spawns
-`hipcc` (per `docs/KERNELS.md` JIT gotcha).
-
-## 2b. Reprioritized milestone order (from M0 evidence)
-
-| Order | Milestone | Expected win | Rationale (M0) |
-| --- | --- | --- | --- |
-| 1 | **M3a router topk** parallel | 7.8 ms → ~1.4 ms (done) | 61% of step; single-block serial expert loop |
-
-**M3a status: DONE.** `maple_router_topk_parallel_bf16` (grid-over-experts
-coalesced dot + parallel softmax/top-k) cuts the router from 277 → 48 µs/call
-(5.75×) and the decode step from 12,758 → 6,132 µs (**2.08× decode**), with the
-packed correctness gate passing (max_kl 0.0139, top-1 18/18) and router IDs
-exact. Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`.
-Next: lm_head affine4 (M3b), then selected-expert (M3c).
-| 2 | M3b lm_head affine4 | dead end | 9.7%→22.5% now; tiled bit-exact but 0.96× (weight-bandwidth bound) |
-| 3 | M3c selected-expert grouping | dead end | gate/up+down 29%; grouped bit-exact but 0.69× (x is L2-cached) |
-| 4 | M4/M5 batched prefill | serial → ≥1k tok/s | prefill is the other big axis |
-| 5 | M1 hipGraph decode | ~0.55 ms | host gap is only 4.3% |
-| 6 | M6 batch decode / server | width reuse | after c1 is fast |
-| 7 | M2 fusion | moderate | secondary to router/lm_head |
+M3a evidence:
+`benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`.
 
 ## 3. Decode plan (kernel-bound → optimize the hot kernels)
 
 ### D1 — hipGraph-capture the whole token step (implemented, opt-in)
 
 M0 shows the host gap is only ~4.3% (549 µs/step), so capture is a secondary win
-versus kernel-level work. It remains valuable once kernels are fast and for
-batch/prefill. Pattern and caveats below.
+versus kernel-level work. The current review confirms that this c1 graph does
+not materially improve wall time and is not reused by batch or prefill. Pattern
+and caveats below.
 
 **M1 status: DONE (opt-in).** `MapleGraphCache` captures the whole stateless
 decode step (24-layer loop + final norm + affine4 lm_head + argmax) as one graph
 and self-validates bit-exact on first capture (argmax parity vs a fresh eager
 reference, with the output cleared so a no-op graph is rejected). The capture is
 bit-exact across 120 tokens over a growing KVLiveSpans cache
-(`tests/test_maple_graph_capture.py`). Kept opt-in (`HIPENGINE_MAPLE_GRAPH=1`,)
-because on c1 decode is kernel-bound: repeated interleaved benches ranged
-0.99–1.10× (noise-dominated; only the ~4% host gap is recoverable), so the eager
-path stays the default. The captured graph is the infrastructure M6 batch
-decode reuses, where the per-token launch win compounds. Evidence:
-`benchmarks/results/2026-08-07-gfx1151-maple-hipgraph-c1.json`.
+(`tests/test_maple_graph_capture.py`). A post-correction counterbalanced review
+(three independent eager and three graph processes, 4 warmup + 128 measured)
+measures eager **7.0661 ms** versus graph **7.0329 ms** median-of-medians:
+**1.0047x**, only 0.033 ms. IDs and top-logit hashes match, every graph reports
+capture=1/replay=131/reject=0, and close returns tracked buffers to zero.
+
+Keep `HIPENGINE_MAPLE_GRAPH=1` opt-in. The M6 helper has its own eager batched
+kernel chain and does **not** reuse this c1 graph. Evidence:
+`benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json` (current) and
+`benchmarks/results/2026-08-07-gfx1151-maple-hipgraph-c1.json` (historical).
 
 The repo already proved this pattern in `hipengine/runtime/moe_graph.py`: a
 **stateless** per-layer unit is safe to capture and replay across arbitrarily
@@ -213,9 +229,10 @@ step).
 
 - **Layer boundary norm + embed/output**: fuse `paro_rmsnorm` → next layer or
   `paro_add_rmsnorm` → selected-expert start into single kernels.
-- **Router → topk → softmax → renormalize**: currently one 256-thread block
-  does the full serial softmax/argmax over all 256 experts; make it parallel
-  and fuse the gate/up dispatch.
+- **Router logits → softmax/top-k/renormalize**: M3a made both stages
+  parallel, but still launches two kernels per layer. Evaluate DeepGrove's
+  last-threadgroup/atomic-counter pattern as a one-dispatch HIP composite
+  before attempting router-to-expert fusion.
 - **QK-norm+RoPE+KV-write → attention**: already one fused qknorm write; fold
   the online-softmax attention into the same kernel or a tight two-kernel
   chain to keep Q/K/V in flight.
@@ -231,7 +248,8 @@ opt-in (`=1`) with the unfused chain as the fast path:
 - `maple_moe_dual_swiglu_bf16` (`HIPENGINE_MAPLE_FUSE_MOE`): fuses the MoE dual gate/up
   gemv + clamped SiLU. Bit-exact (identical packed-oracle max/mean KL + top-1), cuts decode
   launches 295→271, but the fused kernel is ~9% slower per MoE layer (interleaved micro
-  229.7 vs 210.7 us), so it would regress the hipGraph path (M1/M6) where launches are free.
+  229.7 vs 210.7 us), so it would regress the optional M1 c1 hipGraph path where launches
+  are amortized. The M6 helper does not use that graph.
 - `maple_attention_fused_qknorm_decode_bf16` (`HIPENGINE_MAPLE_FUSE_QKATTN`): fuses the
   per-layer qknorm_rope_kv_write + attention_decode into one kernel (self-contained per
   q-head block with redundant in-group K/V write). Bit-exact (attention output + K/V cache
@@ -239,47 +257,52 @@ opt-in (`=1`) with the unfused chain as the fast path:
   the in-group K/V write redundancy and folded 88 us qknorm work offset any launch saving.
 - Rejected/reverted: fused down gemv + weighted residual (~3.5% slower, serial-expert grid).
 Blockers for all three are recorded in `docs/REFACTOR.md`. Conclusion: on this small-batch
-hardware, kernel fusion regresses efficiency (norm/qknorm kernels are small, attention is
-history-bound, and launch overhead is already served by hipGraph M1), so no fusion is
+hardware, kernel fusion regresses efficiency (norm/qknorm kernels are small and attention
+is history-bound), while the current c1 graph recovers only 0.033 ms. No fusion is
 promoted; all unfused fallbacks (the invariant) are preserved.
 
-### D3 — MoE routing and grouped selected-expert (highest leverage — M0)
+### D3 — MoE routing and grouped selected-expert
 
-- **Router is the #1 bottleneck (7.8 ms/step, 61%).** It is a single 256-thread
-  block (grid 256 / wg 256) serially computing logits + softmax + top-8 over all
-  256 experts (~362 µs/call × 24 layers). Parallelize the logits as a
-  [256, 2048] GEMV (grid over experts, vectorized 2048-wide dot), then a
-  parallel stable top-8 (block-reduce), matching the existing one-ULP FP32 gate.
-  Target < 1 ms/step.
-- Selected-expert kernels already operate without expert unpacking; verify grid
-  = top-8 blocks is not leaving the 40-CU machine under-occupied, and consider
-  grouping the 8 selected experts into one launch that reuses the shared
-  activation buffer.
-- Prefer true **grouped MoE** (scatter routed rows by expert, run grouped bulk
-  kernels) for batch decode (D5) and prefill (P3) over repeated c1 selected
-  GEMV, per `docs/PLAN.md` grouped-MoE direction.
+The historical M0 router was the 7.8-ms / 61% bottleneck; M3a already replaced
+it with parallel logits plus parallel stable top-k. In the corrected c1 profile,
+router logits + top-k still consume **1.108 ms / 22.0% of kernel time**. The
+next c1 candidate is DeepGrove's one-dispatch last-threadgroup composite, not a
+return to the serial dot-product kernel.
 
-### D4 — lm_head fast path
+The rejected M3c experiment grouped the eight routes of one c1 token and lost
+because the shared activation was already L2-cached. It says nothing about
+prefill row reuse. True **grouped MoE** scatters hundreds or thousands of routed
+rows by expert and runs grouped bulk kernels; that is current P1 and is required
+by `docs/PREFILL.md`.
+
+### D4 — lm_head fast paths
 
 `maple_affine4_gemv_f32` spans 151,936 output rows (affine4, 2048 in) plus a
-two-stage FP32 argmax — expected to be a large fraction of per-token wall.
-Options, in order:
-1. Profile it first (Phase 0) — if it dominates, target it.
-2. Add the **FlashHead** approximate head (`lm_head_flash.*` present in the
-   checkpoint) as an opt-in fast path, gated behind an exactness decision
-   (approximate, so not the default).
-3. Optimize the affine4 lm_head GEMV shape (threads/rows per block, LDS reuse
-   of the 2048-wide hidden input) and the argmax reduction.
+two-stage FP32 argmax and now measures 1.448 ms / 28.75% of c1 kernels.
+
+Exact work, in order:
+
+1. Keep the rejected c1 tiled shape closed; test a materially different
+   affine4 layout/launch or weight-bandwidth schedule.
+2. For c2/c4/c8 only, tile request rows so each packed weight row is streamed
+   once across requests.
+3. Head+argmax fusion is secondary: argmax is only 0.008 ms/token.
+
+Separately, add **FlashHead** only as an opt-in approximate path. The official
+configuration probes 512 of 4,748 clusters (16,384 candidate tokens plus forced
+controls) and is the mechanism behind DeepGrove's 218 tok/s M4 headline. It
+needs full category/heldout exact-head agreement and quality reporting; it is
+not part of the exact 200+ target.
 
 ### D5 — Batch decode (c>1) and continuous batching
 
-After c1 graph capture is solid, add multi-request decode so weight traffic is
-reused across requests:
-- Multi-column / MMQ-style ternary decode kernels for c=2/4/8 (row-GEMV today;
-  reuse weights streamed once per group, per `docs/PLAN.md`).
+Multi-request decode is independent of the c1 graph and should reuse weight
+traffic across requests:
+- Multi-column / MMQ-style ternary decode kernels for c=2/4/8 (the current
+  row-GEMV head still rereads weights per request).
 - Batched GQA attention decode and KV append with a batch grid dimension.
-- Then a continuous-batching owner loop (admission, chunked prefill, decode
-  steps, sampler routing, reclaim) reusing the GGUF/PARO server patterns.
+- A continuous-batching owner loop for admission, prompt prefill, decode,
+  sampling, and reclaim, reusing the GGUF/PARO server patterns.
 
 **M6 fixed-capacity runtime helper: DONE; public server integration: OPEN.**
 Batch decode is implemented with separate request-local SWA/global rings,
@@ -297,88 +320,88 @@ measured trajectory matches c1, the 18-prompt natural-derived seed gate passes
 as W7900/gfx1151 and gated c=1 rather than the measured widths. Evidence:
 `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
 
-## 4. Prefill plan (serial → batched, compute-bound)
+## 4. Prefill plan (current 317-340 tok/s -> exact 1,000+)
 
-The serial `prefill()` must become a true `[T, hidden]` bulk path. Follow
-`docs/PREFILL.md` and `docs/GGUF-PREFILL-OPTIMIZATION.md` shape conventions:
-`T` = prompt rows, layer I/O = `[T, hidden]`, KV spans use
-append-position = `start + r` / context = `start + r + 1`.
+The public path is already a correct `[T, hidden]` bring-up through 512 tokens,
+with 256-row chunks and `KVLiveSpans` append-position `start + r`. The remaining
+work is ordered by the corrected profile rather than by the historical landing
+sequence.
 
-### P1 — Batched ternary GEMM (the core win)
+### P0 — Final-row-only sampling tail — OPEN, IMMEDIATE
 
-Today the ternary kernels are c1 GEMV (`grid = out_features`, one row per
-block). Add tiled/GEMM variants that **reuse weights across the T prompt rows**
-and exploit the 2-bit packing:
-- Embedding + all projections (`qkv`, `o_proj`, expert `gate/up/down`) become
-  `[T, out]` = `x[T,in] · W[in,out]`.
-- Use RDNA3.5 **INT4-WMMA** (`118.8 TOP/s`) to do the 2-bit ternary matmul as
-  packed codes, or BF16-WMMA on dequantized tiles. Validate against the
-  bit-exact CPU/NumPy oracle and the packed-formula gate.
-- Chunk `T` into 256-row chunks per `docs/TUNING-gfx1151.md` Lesson 0 (the
-  original gfx1151 win was shape/chunking; 4K → 1K+ prefill tok/s for PARO).
+After every chunk, preserve the full hidden/KV update but run final RMSNorm,
+exact LM head, and argmax only for the final row of the final chunk. Reuse the
+proven c1 logits/argmax buffers; keep the all-row affine4 path for c>1 batch
+decode and as a debug oracle. This deletes 487.969 ms of measured all-row
+head/argmax work, adds back about 1.455 ms for one row, and projects 320-token
+prefill from 325.861 to 645.811 tok/s. It also removes about 148.8 MiB of
+public-runner all-row logit/argmax scratch.
 
-**Landed prefill primitives (2026-08-07, all bit-exact vs CPU oracle, tested):**
+Gate: all 18 natural+heldout prompts at 128/320/512 must preserve byte-exact
+hidden/KV state, top logit, seed token, and continuation; serial fallback above
+512 and close ownership must remain unchanged.
 
-| Primitive | Key / commit | Purpose |
+### P1 — True expert-major compact ternary MoE — OPEN, NEXT
+
+- Router over all rows -> registered device count/prefix/stable-scatter by
+  expert -> grouped gate/up/down -> inverse lane mapping before exact weighted
+  combine.
+- Reuse the generic GGUF/PARO group-scatter producer ABI, but register Maple
+  ternary consumers under their own `(backend, layer, quant, variant)` keys;
+  do not add runtime quant/backend branches.
+- Preserve every per-row BF16 projection, clamp/SwiGLU, and weighted-sum
+  boundary. Keep the current row/route gather chain as the oracle/fallback.
+- Gate: at least 2.780x on the measured 274.073-ms prefill320 expert family,
+  plus the P0 18-prompt/continuation/state/lifecycle gate.
+
+### P2 — GQA/query-row prefill attention — BRING-UP LANDED; TUNING OPEN
+
+The batched Q/K/V projection, head RMSNorm+RoPE, KV append, and causal ring
+attention are correct through 512. The 62.995-ms attention family currently
+uses one block per `(query head,row)`, rereads each KV stream for all four query
+heads in a GQA group, and barriers once per key. Transfer the exact qrow/GQA
+reuse pattern or evaluate AOTriton only after P0/P1 reprofile. Extending native
+prefill beyond 512 separately requires append/attend orchestration that cannot
+overwrite a still-visible SWA prefix.
+
+### P3 — Dense ternary row-tile sweep — BRING-UP LANDED; TUNING OPEN
+
+Dense QKV/O kernels already reuse one packed weight row across a fixed
+eight-row tile and consume 122.555 ms at prefill320. Sweep exact 8/16/32 tiles
+while preserving each output's reduction order. Consider INT4/BF16 WMMA only
+after that sweep; a different contraction order cannot replace the byte-exact
+state contract merely to hit a throughput target.
+
+**Landed prefill primitives (2026-08-07, bit-exact vs CPU oracle):**
+
+| Primitive | Commit | Purpose |
 | --- | --- | --- |
-| `maple_ternary_gemm_bf16` | P1 GEMM `7c1624080` | `[rows,out]=[rows,in]x ternary W`, weight row in LDS reused over 8-token tile |
-| `maple_ternary_qkv_gemm_bf16` | P1 QKV GEMM `a4b9808d8` | full `[T, q+2kv]` qkv buffer from q/k/v projections |
-| `maple_attention_prefill_kernel` | P2 dense attn `450bacdb8` | causal online-softmax over dense prefix cache |
-| `maple_qknorm_rope_kv_write_batched_kernel` | P2 qknorm ring write `d7185caaa` | T-row qknorm+RoPE+KV write into shared ring |
-| `maple_attention_prefill_ring_kernel` | P2 ring attn `ffe822eae` | causal attn through KVLiveSpans ring (shared cache) |
-| `maple_router_topk_parallel_batched_kernel` | P3 router `3820527ed` | batched logits + softmax/top-k over T rows |
+| `maple_ternary_gemm_bf16` | `7c1624080` | `[rows,out]=[rows,in]x ternary W`; eight-row weight reuse |
+| `maple_ternary_qkv_gemm_bf16` | `a4b9808d8` | full `[T, q+2kv]` projection |
+| `maple_qknorm_rope_kv_write_batched_kernel` | `d7185caaa` | row-batched QK norm, RoPE, and ring write |
+| `maple_attention_prefill_ring_kernel` | `ffe822eae` | causal attention through `KVLiveSpans` |
+| `maple_router_topk_parallel_batched_kernel` | `3820527ed` | row-batched logits and stable softmax/top-k |
+| `maple_selected_ternary_*_batched_kernel` | `2bdd79497`, `bb3ac7569` | correct row/route-gather MoE oracle/fallback, not grouped MoE |
+| `maple_affine4_gemv_batched_kernel` | `8e7b400db` | all-row debug/batch head, not the public-prefill target |
 
-These complete the **attention half** of a prefill layer chain (QKV GEMM →
-qknorm ring write → ring prefill attn → o_proj GEMM) and the **router**. Still
-open: batched affine4 embed, batched rmsnorm/add_rmsnorm, **grouped MoE over
-rows (P3)**, batched final norm + lm_head GEMM, and the `prefill_native`
-wiring + measured prefill tok/s artifact.
+RMSNorm/add-RMSNorm already accept rows, and
+`maple_affine4_embed_batched_kernel` (`66c5a7a11`) provides batched embedding.
 
-**Prefill primitive set now COMPLETE (2026-08-07).** The full chain is wired
-from these kernels; rmsnorm/add_rmsnorm already take a `rows` arg, and
-row-wise argmax is `argmax_f32_rows_i32`:
+### P4 — Chunked admission and long prompts — PARTIAL
 
-- embed: `maple_affine4_embed_batched_kernel` (`66c5a7a11`)
-- QKV: `maple_ternary_qkv_gemm_kernel` (`a4b9808d8`) / o_proj:
-  `maple_ternary_gemm_kernel` (`7c1624080`)
-- qknorm+RoPE+KV ring write: `maple_qknorm_rope_kv_write_batched_kernel`
-  (`d7185caaa`)
-- attention: `maple_attention_prefill_ring_kernel` (`ffe822eae`)
-- router: `maple_router_topk_parallel_batched_kernel` (`3820527ed`)
-- MoE: `maple_selected_ternary_dual_gemv_batched_kernel` (`2bdd79497`),
-  `maple_selected_ternary_gemv_batched_kernel` + `maple_weighted_residual_batched_kernel`
-  (`bb3ac7569`)
-- lm_head: `maple_affine4_gemv_batched_kernel` (`8e7b400db`)
-
-Open: `prefill_native` runner wiring (T-sized buffers, chunked admission) and
-the measured prefill tok/s artifact.
-
-### P2 — Batched attention prefill (append-then-attend)
-
-- Batched Q/K/V projection, batched head RMSNorm+RoPE, batched KV append.
-- SWA layers: the 512-token window means prompt rows beyond 512 only attend to
-  the recent window — exploit block/band sparsity rather than computing a full
-  causal `T×T` mask.
-- Global layers: causal attention over `[T, T]` (or prefix + chunk).
-
-### P3 — Grouped MoE over prompt rows
-
-- Router over all rows → scatter routed rows by expert → grouped bulk
-  gate/up/down over the selected rows per expert. Avoids a per-row top-8 loop.
-- Reuse the grouped-MoE machinery and `KVLiveSpans` ABI conventions.
-
-### P4 — Chunked prefill + admission
-
-- Wire the bulk prefill into the generator as `prefill_native(...)` (per
-  `docs/PREFILL.md`), then into the continuous-batching loop (D5). Serial
-  remains an oracle/fallback for correctness comparisons.
+`prefill_native(...)` is public and correct through 512 tokens. Open work is
+safe SWA orchestration beyond 512 and public packed prompt admission for the M6
+scheduler helper. Serial remains the correctness fallback above 512.
 
 ### Prefill target
 
-Compute floor for active MoE ≈ 1.6B active params/token. At 59.4 TFLOP/s, a 4K
-prompt (≈13 TFLOP) is ~0.22 s theoretical; with 256-row chunking and MoE
-gather overhead, a realistic near-term target is **≥ 1,000–2,000 prefill
-tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
+Final-row tail selection projects 645.811 tok/s at 320. Crossing 1,000 then
+requires the 274.073-ms expert family to reach <=98.572 ms (2.780x), with the
+other measured buckets fixed. DeepGrove's 1075 tok/s M4 row avoids discarded
+heads and sorts routed rows by expert, independently showing that 1,000+ is
+credible. The near-term exact target is **>=1,000 tok/s at qualified
+128/320/512 shapes**; 2,000 is a later dense/attention target, not the P0/P1
+acceptance bar.
 
 ## 5. Milestones and evidence policy
 
@@ -387,10 +410,10 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M0 | Decode profile (host-gap + per-kernel) | profile artifact, no math change | `...-maple-decode-profile.json` (done) |
 | M3a | Parallelize router topk | exact one-ULP; decode wall ↓ 61% | `WORKLOG.md` + artifact |
 | M3b | lm_head affine4 | exact; dead-end (tiled 0.96×, weight-bandwidth bound) | `WORKLOG.md` |
-| M3c | selected-expert grouping | exact; dead-end (grouped 0.69×, x is L2-cached) | `WORKLOG.md` |
-| M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | GEMM + QKV GEMM primitives in (done) |
-| M5 | P2/P3/P4 full bulk prefill | exact through native 512-token limit; serial fallback above it | public path recertified at 128/320/512 = 339.890/326.573/317.488 tok/s; 18 prompts / 90 positions exact |
-| M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
+| M3c | c1 eight-route grouping | exact; dead-end (0.69x, shared activation already L2-cached); does not close row-bulk grouped MoE | `WORKLOG.md` |
+| M4 | batched ternary prefill primitives | exact vs packed oracle; prefill tok/s up | GEMM + QKV GEMM primitives in (done) |
+| M5 | correct batched prefill bring-up | exact through native 512-token limit; serial fallback above it; row/route-gather MoE remains to replace | public path recertified at 128/320/512 = 339.890/326.573/317.488 tok/s; 18 prompts / 90 positions exact |
+| M1 | D1 graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
 | M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
 
@@ -404,7 +427,8 @@ Rules (per `AGENTS.md`):
 - Profile with prebuilt `.so` + `require_cached`; never let the profiled
   process spawn `hipcc`.
 - Log measurements and decisions in `WORKLOG.md` as they happen; update
-  `benchmarks/README.md` / `CHANGELOG.md` only for retained rows.
+  `benchmarks/README.md` / `CHANGELOG.md` for every retained result, including
+  accepted diagnostics.
 
 ## 6. Non-goals / deferred
 

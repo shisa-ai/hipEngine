@@ -48,7 +48,7 @@ used** by the exact production path.
 | Layer pattern | 18 sliding-attention + 6 full-attention layers, repeated 3:1 |
 | Sliding window | 512 tokens |
 | Position encoding | partial RoPE on sliding layers only; rotary dimension 64, theta 10,000; global layers are NoPE |
-| Advertised model context | 128K positions; hipEngine public default is 4K and current native-prefill qualification ends at 512 |
+| Context | Marketing claim: 131,072 tokens; pinned deployment config: `max_position_embeddings=128000`; hipEngine public default: 4K; native-prefill qualification: <=512 |
 | MoE | 256 experts, stable top-8, FP32 router logits, all-expert softmax, selected-weight renormalization |
 | Expert MLP | 2048 → 512 gate/up, trained clamp-7 SwiGLU, 512 → 2048 down; no shared expert |
 | Norms | RMSNorm, epsilon 1e-6, FP32 internal arithmetic and BF16 boundary |
@@ -113,6 +113,44 @@ masks, and offset-correct reclaim.
 This helper is useful for kernel and throughput work, but it is **not connected
 to hipEngine's public generation scheduler or a production server endpoint**.
 It also does not perform batched prompt prefill.
+
+## Interpreting DeepGrove's Apple numbers
+
+DeepGrove's current MLX repository distinguishes its exact and approximate
+heads; the model-card headline does not. At
+[`mlx-lm-deepgrove@eba96c1`](https://github.com/deepgrove-ai/mlx-lm-deepgrove/tree/eba96c16158f032821b0bf374ea1421cfddef0a9)
+the published table is:
+
+| Apple path | Decode | Prefill | Peak |
+| --- | ---: | ---: | ---: |
+| M4 exact/default | **169 tok/s** | **1075 tok/s** | 6.51 GB |
+| M4 `--flash-head` | **218 tok/s** | **1075 tok/s** | 6.69 GB |
+| M5 Pro exact/default | **359 tok/s** | **3773 tok/s** | 6.73 GB |
+| M5 Pro `--flash-head` | **395 tok/s** | **3857 tok/s** | 6.92 GB |
+
+The **218 tok/s** headline is therefore not dense-head exact decode. FlashHead
+scores 4,748 quantized vocabulary centroids, selects 512 clusters of 32 tokens,
+and computes exact affine4 logits for those 16,384 candidates (about 10.8% of
+the vocabulary) plus three forced control tokens. Greedy output matches the
+exact head only when the true argmax is in a probed cluster.
+
+Two upstream implementation details explain the prefill gap more directly:
+
+1. MLX generation evaluates only cache state for discarded non-final prompt
+   chunks, so lazy graph elimination does not execute their LM heads; the final
+   prompt token alone enters the sampled exact head.
+2. Upstream `MapleSwitchGLU` sorts 64 or more routed assignments by expert
+   before its switch projections, enabling expert-weight reuse across prompt
+   rows.
+
+The upstream table does not publish prompt/generation lengths, repetitions,
+software versions, or a correctness protocol, and Apple M4 and Radeon 8060S
+are different systems. It is directional evidence, not an apples-to-apples
+benchmark. The useful comparison is nevertheless clear: hipEngine's
+**163.459 tok/s exact c1** is only 3.3% below the published M4 exact rate, not
+25% below the approximate 218 headline, while hipEngine's 320-token prefill is
+about 3.3x below the published M4 prefill rate. Decode is competitive; prefill
+is materially underoptimized.
 
 ## Current Radeon 8060S / gfx1151 performance
 
@@ -200,9 +238,10 @@ Primary evidence:
 - [M5 recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json)
 - [M6 recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json)
 
-## Current profile and next optimization
+## Optimization review and next work
 
-The corrected cached-only phase profile shows that the paths are kernel-bound:
+The corrected cached-only phase profile shows that the measured paths are
+predominantly kernel-bound:
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
@@ -210,18 +249,63 @@ The corrected cached-only phase profile shows that the paths are kernel-bound:
 | c1 decode | 6.118 ms/token | 5.035 ms | 17.69% | **28.75%** |
 | c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
 
-The current batched affine4 LM-head kernel launches grid `(vocab, rows)` and
-rereads the complete **166.922-MiB** packed weight + scale/bias payload for each
-row, reaching only about 115-121 GB/s effective traffic. The next exact
-performance owner is therefore a rows>1 affine4 consumer that reuses each
-weight row across multiple prompt/request rows. The c1 kernel stays unchanged:
-the prior c1 tile was measured at 0.96x and rejected. FlashHead and
-prompt-conditioned shortcuts are outside this exact target.
+### Review correction: prefill does not need a rows>1 LM head
+
+`prefill_native()` currently runs final RMSNorm, the exact 151,936-row LM head,
+and row-wise argmax for **every row after every chunk**, then copies only the
+last row's result. None of the other prompt logits are consumed. This is the
+largest current defect in the performance schedule: tiling the unnecessary
+heads would optimize work that should be deleted.
+
+The accepted profile measures 486.694 ms of LM head and 1.276 ms of argmax for
+320 rows. Replacing those with the already-proven c1 tail gives an
+Amdahl projection of **495.501 ms / 645.811 tok/s** before any kernel tuning,
+versus 982.015 ms / 325.861 tok/s in the profiled request. This is a prediction
+from measured buckets, not yet a retained benchmark. It should also remove
+about **148.8 MiB** of 256-row all-row logit/argmax scratch from the public
+runner (148.375 MiB is the FP32 logits buffer itself).
+
+### Review correction: current prefill MoE is not grouped
+
+The batched selected-expert kernels use grid `(output, route, row)`. Every
+routed row independently rereads its expert weight; no count, prefix, scatter,
+or expert-major execution occurs. Calling this path "grouped MoE" was
+incorrect. It is a correct row/route gather bring-up path, while the retained
+hipEngine prefill contract and DeepGrove's MLX path both group routed rows by
+expert.
+
+At 320 rows, gate/up plus down consume **274.073 ms**. After final-row tail
+selection, a 1000 tok/s target requires this family to fall to about
+**98.572 ms** (2.780x), assuming other measured buckets stay fixed. That is an
+aggressive but credible target because 2,560 routed assignments currently
+average ten rows per expert, and hipEngine already has device-side
+count/prefix/scatter machinery in its GGUF/PARO paths.
+
+### Prioritized exact roadmap
+
+| Priority | Work | Measured rationale and gate |
+| ---: | --- | --- |
+| **P0** | Sample only the final prompt row | Delete non-final final-norm/head/argmax work; require byte-exact final hidden/KV state, top logit, seed token, and continuation across all 18 natural+heldout prompts. This is the immediate next optimization. |
+| **P1** | True expert-major compact MoE | Reuse the existing device count/prefix/scatter ABI, add ternary grouped gate/up/down consumers, and restore original row/route order before weighted combine. Target at least 2.8x on the 274.073-ms family without changing any BF16 boundary. |
+| **P2** | GQA/query-row prefill attention | The current 62.995-ms prefill320 kernel assigns one block per `(query head,row)`, rereads each KV stream for all four GQA heads, and barriers once per key. Transfer the exact qrow/GQA-reuse pattern or evaluate AOTriton after P0/P1 reprofile. |
+| **P3** | Retune dense ternary row tiles | QKV+O consume 122.555 ms. Their exact kernel reuses a weight row across a fixed tile of eight prompt rows; sweep 8/16/32 and only then consider a new WMMA layout. |
+| **D0** | Exact c1 kernel work, not graph promotion | A controlled 3+3-process review measured current graph replay at only **1.0047x** (0.033 ms saved), exact and leak-free. The corrected kernel-only roof is 198.591 tok/s, so exact 200+ needs at least one kernel win: first test DeepGrove's one-dispatch router pattern and then affine4-head bandwidth/layout changes. |
+| **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
+
+The 200+ decode target is therefore realistic in two distinct forms:
+
+- **Approximate:** a properly quality-gated FlashHead path should directly
+  attack the 1.448-ms c1 exact-head bucket and is the mechanism behind
+  DeepGrove's 218 tok/s M4 headline. It must remain opt-in and pass the full
+  category/heldout agreement suite.
+- **Exact:** 200 tok/s requires 1.118 ms off the current 6.118-ms trace wall;
+  exact 218 requires 1.531 ms. Current graph replay does not supply that saving,
+  so router/head kernel work is mandatory.
 
 Evidence:
-[`2026-08-07-gfx1151-maple-corrected-phase-profile.json`](../benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json).
-The detailed optimization history and punchlist remain in
-[`MAPLE-PERF.md`](MAPLE-PERF.md); kernel names and trace resources are in
+[`corrected phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json),
+[`c1 graph review`](../benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json),
+and [`MAPLE-PERF.md`](MAPLE-PERF.md). Kernel names and trace resources are in
 [`KERNELS.md`](KERNELS.md).
 
 ## Reproduction

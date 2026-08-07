@@ -191,8 +191,9 @@ __global__ void maple_selected_ternary_dual_gemv_kernel(
   }
 }
 
-// Batched selected-expert dual GEMV (P3 prefill, gather-based grouped MoE):
-// computes gate/up for all (row, slot) entries over T rows.  Grid is
+// Batched selected-expert dual GEMV (P3 bring-up, row/route gather):
+// computes gate/up for all (row, slot) entries over T rows. This is not
+// expert-major grouped MoE: duplicate expert weights are reread per entry. Grid is
 // (out_features, top_k, T); block (outrow, slot, row) reads
 // expert = selected_ids[row, slot] and projects x[row] with that expert's
 // gate/up weight rows, writing to a_out/b_out as [T, top_k, out_features].
@@ -268,8 +269,9 @@ __global__ void maple_selected_ternary_dual_gemv_batched_kernel(
   }
 }
 
-// Batched selected-expert down GEMV (P3 prefill): same gather pattern as the
-// dual kernel, but single projection.  x is the swiglu output [T, top_k, in];
+// Batched selected-expert down GEMV (P3 bring-up): same row/route gather
+// pattern as the dual kernel, but single projection. x is the SwiGLU output
+// [T, top_k, in];
 // block (outrow, slot, row) projects x[row, slot] with expert down weight.
 __global__ void maple_selected_ternary_gemv_batched_kernel(
     const uint16_t* __restrict__ x,
