@@ -271,6 +271,94 @@ def maple_selected_ternary_dual_gemv_batched_bf16(
     )
 
 
+def maple_selected_ternary_dual_grouped_bf16(
+    x_ptr: int,
+    a_weight_ptr: int,
+    a_alpha_ptr: int,
+    b_weight_ptr: int,
+    b_alpha_ptr: int,
+    expert_start_ptr: int,
+    sorted_lanes_ptr: int,
+    a_out_ptr: int,
+    b_out_ptr: int,
+    rows: int,
+    num_experts: int,
+    top_k: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Expert-major batched gate/up with direct original-lane output."""
+
+    _launch(
+        "hipengine_maple_selected_ternary_dual_grouped_bf16",
+        (_PTR,) * 9 + (_I64,) * 5 + (_PTR,),
+        (
+            x_ptr,
+            a_weight_ptr,
+            a_alpha_ptr,
+            b_weight_ptr,
+            b_alpha_ptr,
+            expert_start_ptr,
+            sorted_lanes_ptr,
+            a_out_ptr,
+            b_out_ptr,
+            rows,
+            num_experts,
+            top_k,
+            in_features,
+            out_features,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def maple_selected_ternary_grouped_bf16(
+    x_ptr: int,
+    weight_ptr: int,
+    row_alpha_ptr: int,
+    expert_start_ptr: int,
+    sorted_lanes_ptr: int,
+    out_ptr: int,
+    rows: int,
+    num_experts: int,
+    top_k: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Expert-major batched down projection with direct lane restoration."""
+
+    _launch(
+        "hipengine_maple_selected_ternary_grouped_bf16",
+        (_PTR,) * 6 + (_I64,) * 5 + (_PTR,),
+        (
+            x_ptr,
+            weight_ptr,
+            row_alpha_ptr,
+            expert_start_ptr,
+            sorted_lanes_ptr,
+            out_ptr,
+            rows,
+            num_experts,
+            top_k,
+            in_features,
+            out_features,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_selected_ternary_gemv_bf16(
     x_ptr: int,
     weight_ptr: int,
@@ -513,8 +601,13 @@ def register_maple_ternary_kernels(
             "maple_selected_ternary_dual",
             "row_alpha_batched",
         ): maple_selected_ternary_dual_gemv_batched_bf16,
+        (
+            "maple_selected_ternary_dual",
+            "row_alpha_grouped",
+        ): maple_selected_ternary_dual_grouped_bf16,
         ("maple_selected_ternary", "row_alpha"): maple_selected_ternary_gemv_bf16,
         ("maple_selected_ternary", "row_alpha_batched"): maple_selected_ternary_gemv_batched_bf16,
+        ("maple_selected_ternary", "row_alpha_grouped"): maple_selected_ternary_grouped_bf16,
         ("maple_affine4_embed", "group64"): maple_affine4_embed_bf16,
         ("maple_affine4_embed", "group64_batched"): maple_affine4_embed_batched_bf16,
         ("maple_affine4_gemv", "group64"): maple_affine4_gemv_f32,
@@ -556,7 +649,9 @@ __all__ = [
     "maple_affine4_gemv_f32",
     "maple_selected_ternary_dual_gemv_batched_bf16",
     "maple_selected_ternary_dual_gemv_bf16",
+    "maple_selected_ternary_dual_grouped_bf16",
     "maple_selected_ternary_gemv_batched_bf16",
+    "maple_selected_ternary_grouped_bf16",
     "maple_selected_ternary_gemv_bf16",
     "maple_ternary_gemm_bf16",
     "maple_ternary_gemv_bf16",

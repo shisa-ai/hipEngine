@@ -207104,3 +207104,44 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   diagnostic as
   `benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json`; no
   production throughput row changes. P1 now has a frozen implementation gate.
+- RED adds two GPU contracts: int32 routes must produce the same stable
+  expert starts/active list/sorted lanes/experts/weights as the CPU stable sort,
+  and expert-major gate/up/down must preserve every row/route BF16 output bit.
+  The focused run fails **2/2** on the intentionally absent wrappers. GREEN
+  templates the existing generic parallel count/prefix/scatter bodies over the
+  selected-ID type, registers the int32 ABI, and adds Maple grouped consumers
+  that stage one expert/output weight row and write directly to the original
+  flattened lane. The focused tests and full Maple packed-kernel file pass
+  **2/2** and **13/13**.
+- Wire P1 only into public native prefill. `_PrefillBuffers` owns fixed-capacity
+  starts/active/sorted metadata; `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE=0`
+  preserves the old gather chain. c1 and M6 remain unchanged. The combined
+  Maple kernel/runtime bundle passes **30/30**, including short and multichunk
+  real-checkpoint continuation, c2/c4/c8, SWA wrap, sparse reclaim, and close.
+  Generic group-scatter planning passes **8/8**. The H7U bundle has **8**
+  semantic tests pass and one expected frozen-source hash failure; update only
+  the two legitimately extended group-scatter hashes plus a pre-existing stale
+  gfx1151 package hash, then the failing contract passes focused.
+- Dirty-tree full M5 state gate passes all **18/18** natural+heldout state
+  hashes, **90/90** tokens/top-1, KL **0**, and exact lifecycle close. Its
+  one-repeat 128 diagnostic is **728.726 tok/s** and remains mechanically
+  `rejected` because the tree/protocol are unqualified. Artifact
+  `/tmp/maple-p1-dirty-state-gate.json` SHA-256 is
+  `569a3a79...d2182d`.
+- Profile before further tuning. The one-lane grouped schedule changes gate/up
+  **152.842 -> 155.228 ms** (slower), down **123.309 -> 98.950 ms**, and adds
+  only **0.444 ms** metadata, for expert-family **276.150 -> 254.179 ms
+  (1.086x)**. Traced prefill320 changes **498.442 -> 476.730 ms / 642.000 ->
+  671.239 tok/s (1.046x)**. Exact simultaneous 2-/4-lane workgroups regress to
+  **629.888/553.040 tok/s** in the same synthetic screen; separate dual passes
+  regress to **614.154**, and a down-only lane2 schedule reaches **661.010**.
+  Keep lane1. The final trace names dual `<128,1>` at VGPR72/LDS1024 and down
+  `<32,1>` at VGPR48/LDS512, both scratch0. Dirty diagnostic artifact
+  `/tmp/hipengine-maple-p1-final-dirty-profile.json` SHA-256 is
+  `ed7ae285...9b972`; it makes no retained claim.
+- P1 therefore yields an exact non-regressive partial win but misses the frozen
+  **<=97.708-ms / 2.826x** gate. The measured blocker is scalar ternary
+  unpack/dot/reduction—especially dual gate/up—not route compaction or remaining
+  weight rereads. Commit the validated implementation before clean qualified
+  recertification; a materially different matrix/SIMD contraction belongs in
+  later P1 follow-up rather than another grouped-lane geometry sweep.

@@ -46,10 +46,19 @@ _POST_MERGE_PACKAGE_SHA256 = (
     "79119c740d9c2c421bfb3c93e8aa3b9f682f0ee59c00dede08f061c8e4d6e90f"
 )
 _POST_MERGE_SOURCE_SHA256 = {
+    # Maple P1 templates the existing stable parallel count/scatter bodies so
+    # int32 route IDs share the exact H7U implementation; the original int64
+    # symbols, launch geometry, and Laguna source owner remain unchanged.
+    "hipengine/kernels/hip_gfx1100/moe/group_scatter.hip": (
+        "19a4f3f9b55ef7258b63b30fc243613a6951e67b3f1e9df4f66cb37ca5ad3b07"
+    ),
+    "hipengine/kernels/hip_gfx1100/moe/group_scatter.py": (
+        "4ede6f2c6932eb992b148f8b3040d2aa49a27f0b7e11d69c708b166ef5c8916b"
+    ),
     # The later bounded head-major AOTriton capability is orthogonal to H7U's
     # unchanged gfx1151 parallel-compaction owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "ff8bb57241b7e3a4aba4ef9e18b4d5c5d2344bee2c06717f6dde5163458bf257"
+        "45b2ab5bc33eb9e24d1ecb53ba05b76aed5c90632ef98a865c4181b41b204b5d"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

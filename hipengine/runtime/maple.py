@@ -43,6 +43,10 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32_rows_i32,
     build_lm_head,
 )
+from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+    build_qwen35_moe_group_scatter,
+    qwen35_moe_group_compact_active_i32_parallel,
+)
 from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
     build_maple_moe,
     maple_clamped_swiglu_bf16,
@@ -65,8 +69,10 @@ from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_batched_bf16,
     maple_selected_ternary_dual_gemv_bf16,
+    maple_selected_ternary_dual_grouped_bf16,
     maple_selected_ternary_gemv_batched_bf16,
     maple_selected_ternary_gemv_bf16,
+    maple_selected_ternary_grouped_bf16,
     maple_ternary_gemm_bf16,
     maple_ternary_gemv_bf16,
     maple_ternary_qkv_gemm_bf16,
@@ -100,6 +106,12 @@ def _maple_fuse_qkattn() -> bool:
     return os.environ.get("HIPENGINE_MAPLE_FUSE_QKATTN", "0") != "0"
 
 
+def _maple_prefill_grouped_moe() -> bool:
+    # P1 exact expert-major prefill is the default. Preserve the original
+    # row/route-gather chain as HIPENGINE_MAPLE_PREFILL_GROUPED_MOE=0 rollback.
+    return os.environ.get("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", "1") != "0"
+
+
 def _maple_graph_enabled() -> bool:
     # Default off: a controlled c1 review measured whole-step graph replay at
     # only 1.0047x (+0.47%, 0.033 ms), bit-exact and within noise. Keep eager as
@@ -117,6 +129,7 @@ class MapleRunnerLibraries:
     moe: object
     norm: object
     lm_head: object
+    group_scatter: object | None = None
 
 
 # Batched prefill chunk size (rows) per docs/TUNING-gfx1151.md Lesson 0.
@@ -140,6 +153,12 @@ class _PrefillBuffers:
     expert_up: DeviceBuffer
     expert_intermediate: DeviceBuffer
     expert_down: DeviceBuffer
+    expert_start: DeviceBuffer
+    active_experts: DeviceBuffer
+    active_count: DeviceBuffer
+    sorted_lanes: DeviceBuffer
+    sorted_experts: DeviceBuffer
+    sorted_weights: DeviceBuffer
     token_ids: DeviceBuffer
 
     def __init__(
@@ -166,6 +185,13 @@ class _PrefillBuffers:
         self.expert_up = owner.allocate(T * top_k * intermediate * 2)
         self.expert_intermediate = owner.allocate(T * top_k * intermediate * 2)
         self.expert_down = owner.allocate(T * top_k * h * 2)
+        total_lanes = T * top_k
+        self.expert_start = owner.allocate((spec.num_experts + 1) * 8)
+        self.active_experts = owner.allocate(spec.num_experts * 8)
+        self.active_count = owner.allocate(8)
+        self.sorted_lanes = owner.allocate(total_lanes * 8)
+        self.sorted_experts = owner.allocate(total_lanes * 8)
+        self.sorted_weights = owner.allocate(total_lanes * 4)
         self.token_ids = owner.allocate(T * 8)
 
 
@@ -570,6 +596,11 @@ class MapleRunner:
                 moe=build_maple_moe(load=True),
                 norm=build_qwen35_rmsnorm(load=True),
                 lm_head=build_lm_head(load=True),
+                group_scatter=(
+                    build_qwen35_moe_group_scatter(load=True)
+                    if _maple_prefill_grouped_moe()
+                    else None
+                ),
             )
         weights: MapleDeviceWeights | None = None
         owner = _BufferOwner(runtime)
@@ -937,11 +968,12 @@ class MapleRunner:
         """Batched bulk prefill over all layers (P4), chunked into bounded rows.
 
         Uses the batched prefill kernel chain (embed, QKV GEMM, qknorm ring
-        write, ring attention, o_proj GEMM, router, row/route-gather MoE, and
-        weighted residual), then samples only the final prompt row with the
-        proven c1 norm/head/argmax tail. Returns that row's next-token prediction
-        and top logit while preserving the token-serial continuation contract.
-        The gather MoE remains a correct bring-up path pending expert grouping.
+        write, ring attention, o_proj GEMM, router, stable expert compaction,
+        expert-major MoE, and weighted residual), then samples only the final
+        prompt row with the proven c1 norm/head/argmax tail. Returns that row's
+        next-token prediction and top logit while preserving the token-serial
+        continuation contract. The row/route-gather MoE remains an explicit
+        rollback path.
         """
 
         self._require_open()
@@ -981,6 +1013,7 @@ class MapleRunner:
         kv_size = spec.kv_size
         top_k = spec.num_experts_per_tok
         intermediate = spec.moe_intermediate_size
+        grouped_moe = _maple_prefill_grouped_moe()
         n = len(tokens)
         started = time.perf_counter()
         start_position = self.position
@@ -1115,23 +1148,61 @@ class MapleRunner:
                     library=libs.moe,
                     runtime=self.runtime,
                 )
-                maple_selected_ternary_dual_gemv_batched_bf16(
-                    pf.normalized.ptr,
-                    layer_weights.expert_gate_proj.weight.ptr,
-                    layer_weights.expert_gate_proj.row_alpha.ptr,
-                    layer_weights.expert_up_proj.weight.ptr,
-                    layer_weights.expert_up_proj.row_alpha.ptr,
-                    pf.selected_ids.ptr,
-                    pf.expert_gate.ptr,
-                    pf.expert_up.ptr,
-                    rows,
-                    spec.num_experts,
-                    top_k,
-                    h,
-                    intermediate,
-                    library=libs.ternary,
-                    runtime=self.runtime,
-                )
+                if grouped_moe:
+                    if libs.group_scatter is None:
+                        raise RuntimeError(
+                            "Maple grouped-MoE metadata library is unavailable"
+                        )
+                    qwen35_moe_group_compact_active_i32_parallel(
+                        pf.selected_ids.ptr,
+                        pf.routing_weights.ptr,
+                        pf.expert_start.ptr,
+                        pf.active_experts.ptr,
+                        pf.active_count.ptr,
+                        pf.sorted_lanes.ptr,
+                        pf.sorted_experts.ptr,
+                        pf.sorted_weights.ptr,
+                        rows * top_k,
+                        spec.num_experts,
+                        library=libs.group_scatter,
+                        runtime=self.runtime,
+                    )
+                    maple_selected_ternary_dual_grouped_bf16(
+                        pf.normalized.ptr,
+                        layer_weights.expert_gate_proj.weight.ptr,
+                        layer_weights.expert_gate_proj.row_alpha.ptr,
+                        layer_weights.expert_up_proj.weight.ptr,
+                        layer_weights.expert_up_proj.row_alpha.ptr,
+                        pf.expert_start.ptr,
+                        pf.sorted_lanes.ptr,
+                        pf.expert_gate.ptr,
+                        pf.expert_up.ptr,
+                        rows,
+                        spec.num_experts,
+                        top_k,
+                        h,
+                        intermediate,
+                        library=libs.ternary,
+                        runtime=self.runtime,
+                    )
+                else:
+                    maple_selected_ternary_dual_gemv_batched_bf16(
+                        pf.normalized.ptr,
+                        layer_weights.expert_gate_proj.weight.ptr,
+                        layer_weights.expert_gate_proj.row_alpha.ptr,
+                        layer_weights.expert_up_proj.weight.ptr,
+                        layer_weights.expert_up_proj.row_alpha.ptr,
+                        pf.selected_ids.ptr,
+                        pf.expert_gate.ptr,
+                        pf.expert_up.ptr,
+                        rows,
+                        spec.num_experts,
+                        top_k,
+                        h,
+                        intermediate,
+                        library=libs.ternary,
+                        runtime=self.runtime,
+                    )
                 maple_clamped_swiglu_bf16(
                     pf.expert_gate.ptr,
                     pf.expert_up.ptr,
@@ -1141,20 +1212,37 @@ class MapleRunner:
                     library=libs.moe,
                     runtime=self.runtime,
                 )
-                maple_selected_ternary_gemv_batched_bf16(
-                    pf.expert_intermediate.ptr,
-                    layer_weights.expert_down_proj.weight.ptr,
-                    layer_weights.expert_down_proj.row_alpha.ptr,
-                    pf.selected_ids.ptr,
-                    pf.expert_down.ptr,
-                    rows,
-                    spec.num_experts,
-                    top_k,
-                    intermediate,
-                    h,
-                    library=libs.ternary,
-                    runtime=self.runtime,
-                )
+                if grouped_moe:
+                    maple_selected_ternary_grouped_bf16(
+                        pf.expert_intermediate.ptr,
+                        layer_weights.expert_down_proj.weight.ptr,
+                        layer_weights.expert_down_proj.row_alpha.ptr,
+                        pf.expert_start.ptr,
+                        pf.sorted_lanes.ptr,
+                        pf.expert_down.ptr,
+                        rows,
+                        spec.num_experts,
+                        top_k,
+                        intermediate,
+                        h,
+                        library=libs.ternary,
+                        runtime=self.runtime,
+                    )
+                else:
+                    maple_selected_ternary_gemv_batched_bf16(
+                        pf.expert_intermediate.ptr,
+                        layer_weights.expert_down_proj.weight.ptr,
+                        layer_weights.expert_down_proj.row_alpha.ptr,
+                        pf.selected_ids.ptr,
+                        pf.expert_down.ptr,
+                        rows,
+                        spec.num_experts,
+                        top_k,
+                        intermediate,
+                        h,
+                        library=libs.ternary,
+                        runtime=self.runtime,
+                    )
                 maple_weighted_residual_batched_bf16(
                     pf.residual.ptr,
                     pf.expert_down.ptr,

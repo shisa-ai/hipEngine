@@ -130,6 +130,12 @@ def test_maple_prefill_buffers_exclude_all_row_sampling_scratch() -> None:
     assert not hasattr(buffers, "argmax_block_indices")
     assert not hasattr(buffers, "argmax_index")
     assert not hasattr(buffers, "argmax_value")
+    assert buffers.expert_start.nbytes == 4 * 8
+    assert buffers.active_experts.nbytes == 3 * 8
+    assert buffers.active_count.nbytes == 8
+    assert buffers.sorted_lanes.nbytes == 3 * 2 * 8
+    assert buffers.sorted_experts.nbytes == 3 * 2 * 8
+    assert buffers.sorted_weights.nbytes == 3 * 2 * 4
 
     batch_buffers = _BatchBuffers(
         owner=FakeOwner(),
@@ -147,6 +153,15 @@ def test_maple_prefill_buffers_exclude_all_row_sampling_scratch() -> None:
     assert batch_buffers.logits.nbytes == 3 * 10 * 4
     assert batch_buffers.argmax_index.nbytes == 3 * 4
     assert batch_buffers.argmax_value.nbytes == 3 * 4
+
+
+def test_maple_prefill_grouped_moe_is_default_with_explicit_gather_rollback(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", raising=False)
+    assert maple_runtime._maple_prefill_grouped_moe() is True
+    monkeypatch.setenv("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", "0")
+    assert maple_runtime._maple_prefill_grouped_moe() is False
 
 
 def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:

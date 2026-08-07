@@ -3179,6 +3179,19 @@ should be boring.
   registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
   production remains exact and H2 must not stack H1 arithmetic.
 
+## Maple P1 expert-major prefill rollback — temporary opt-out
+
+- `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` defaults to `1`; `=0` restores the
+  exact row/route-gather gate/up/down chain. The grouped path reuses registered
+  stable count/prefix/scatter metadata and writes outputs in original lane
+  order, so no arithmetic boundary changes.
+- Keep the opt-out through clean 128/320/512 recertification and one downstream
+  optimization milestone because P1 misses its 2.826x expert-family target even
+  though the current exact candidate is non-regressive. Remove the flag and
+  runtime gather branch once the grouped path plus its eventual matrix/SIMD
+  ternary consumer has passed that recertification; retain the gather kernels
+  only as low-level correctness oracles if tests still need them.
+
 ## Maple M2 dual+swiglu fusion — opt-in, efficiency blocker
 
 - `HIPENGINE_MAPLE_FUSE_MOE` default `0` (unfused is the fast path). `=1` uses

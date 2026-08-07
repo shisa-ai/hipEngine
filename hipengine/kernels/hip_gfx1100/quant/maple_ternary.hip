@@ -330,6 +330,187 @@ __global__ void maple_selected_ternary_gemv_batched_kernel(
   }
 }
 
+// Expert-major prefill gate/up. Generic stable compaction supplies
+// expert_start[expert:expert+2] and sorted_lanes in ascending original-lane
+// order. One block owns (expert, output row), stages that packed weight row
+// once, and computes every routed lane for the expert while writing results
+// directly back to original [row, route, output] order.
+template <int DOT_THREADS, int LANES_PER_BLOCK>
+__global__ void maple_selected_ternary_dual_grouped_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ a_weight,
+    const uint16_t* __restrict__ a_alpha,
+    const uint32_t* __restrict__ b_weight,
+    const uint16_t* __restrict__ b_alpha,
+    const int64_t* __restrict__ expert_start,
+    const int64_t* __restrict__ sorted_lanes,
+    uint16_t* __restrict__ a_out,
+    uint16_t* __restrict__ b_out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t outrow = blockIdx.x;
+  const int64_t expert = blockIdx.y;
+  if (expert >= num_experts || outrow >= out_features) {
+    return;
+  }
+  const int64_t begin = expert_start[expert];
+  const int64_t end = expert_start[expert + 1];
+  if (begin >= end) {
+    return;
+  }
+
+  const int64_t words = in_features / 16;
+  const int64_t matrix_row = expert * out_features + outrow;
+  const int thread = static_cast<int>(threadIdx.x);
+  const int lane_slot = thread / DOT_THREADS;
+  const int dot_tid = thread - lane_slot * DOT_THREADS;
+  __shared__ uint32_t a_wrow[128];
+  __shared__ uint32_t b_wrow[128];
+  const uint32_t* a_base = a_weight + matrix_row * words;
+  const uint32_t* b_base = b_weight + matrix_row * words;
+  for (int64_t word = thread; word < words; word += blockDim.x) {
+    a_wrow[word] = a_base[word];
+    b_wrow[word] = b_base[word];
+  }
+  __syncthreads();
+
+  extern __shared__ float scratch[];
+  float* a_scratch = scratch;
+  float* b_scratch = scratch + blockDim.x;
+  const int scratch_index = lane_slot * DOT_THREADS + dot_tid;
+  const float a_scale = bf16_to_float(a_alpha[matrix_row]);
+  const float b_scale = bf16_to_float(b_alpha[matrix_row]);
+  const int64_t total_lanes = rows * top_k;
+  for (int64_t sorted_base = begin; sorted_base < end;
+       sorted_base += LANES_PER_BLOCK) {
+    const int64_t sorted = sorted_base + lane_slot;
+    const bool valid_sorted = sorted < end;
+    const int64_t lane_id = valid_sorted ? sorted_lanes[sorted] : -1;
+    const bool valid_lane = lane_id >= 0 && lane_id < total_lanes;
+    const uint16_t* xrow =
+        x + (valid_lane ? (lane_id / top_k) * in_features : 0);
+    float a_partial = 0.0f;
+    float b_partial = 0.0f;
+    if (valid_lane) {
+      for (int64_t word = dot_tid; word < words; word += DOT_THREADS) {
+        const uint32_t a_word = a_wrow[word];
+        const uint32_t b_word = b_wrow[word];
+        const int64_t base = word * 16;
+#pragma unroll
+        for (int packed_lane = 0; packed_lane < 16; ++packed_lane) {
+          const float xv = bf16_to_float(xrow[base + packed_lane]);
+          const int a_code =
+              static_cast<int>((a_word >> (2 * packed_lane)) & 0x3U) - 1;
+          const int b_code =
+              static_cast<int>((b_word >> (2 * packed_lane)) & 0x3U) - 1;
+          a_partial += xv * static_cast<float>(a_code);
+          b_partial += xv * static_cast<float>(b_code);
+        }
+      }
+    }
+    a_scratch[scratch_index] = a_partial;
+    b_scratch[scratch_index] = b_partial;
+    __syncthreads();
+    for (int stride = DOT_THREADS / 2; stride > 0; stride >>= 1) {
+      if (dot_tid < stride) {
+        a_scratch[scratch_index] += a_scratch[scratch_index + stride];
+        b_scratch[scratch_index] += b_scratch[scratch_index + stride];
+      }
+      __syncthreads();
+    }
+    const int group_base = lane_slot * DOT_THREADS;
+    const float a_total = a_scratch[group_base];
+    const float b_total = b_scratch[group_base];
+    if (dot_tid == 0 && valid_lane) {
+      const int64_t output = lane_id * out_features + outrow;
+      a_out[output] = float_to_bf16(a_total * a_scale);
+      b_out[output] = float_to_bf16(b_total * b_scale);
+    }
+  }
+}
+
+// Expert-major prefill down projection. Intermediate rows already use original
+// flattened [row, route] order, so the same stable lane map restores output
+// order without a separate inverse-scatter kernel.
+template <int DOT_THREADS, int LANES_PER_BLOCK>
+__global__ void maple_selected_ternary_grouped_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ weight,
+    const uint16_t* __restrict__ row_alpha,
+    const int64_t* __restrict__ expert_start,
+    const int64_t* __restrict__ sorted_lanes,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t outrow = blockIdx.x;
+  const int64_t expert = blockIdx.y;
+  if (expert >= num_experts || outrow >= out_features) {
+    return;
+  }
+  const int64_t begin = expert_start[expert];
+  const int64_t end = expert_start[expert + 1];
+  if (begin >= end) {
+    return;
+  }
+
+  const int64_t words = in_features / 16;
+  const int64_t matrix_row = expert * out_features + outrow;
+  const int thread = static_cast<int>(threadIdx.x);
+  const int lane_slot = thread / DOT_THREADS;
+  const int dot_tid = thread - lane_slot * DOT_THREADS;
+  __shared__ uint32_t wrow[128];
+  const uint32_t* wbase = weight + matrix_row * words;
+  for (int64_t word = thread; word < words; word += blockDim.x) {
+    wrow[word] = wbase[word];
+  }
+  __syncthreads();
+
+  extern __shared__ float scratch[];
+  const int scratch_index = lane_slot * DOT_THREADS + dot_tid;
+  const float scale = bf16_to_float(row_alpha[matrix_row]);
+  const int64_t total_lanes = rows * top_k;
+  for (int64_t sorted_base = begin; sorted_base < end;
+       sorted_base += LANES_PER_BLOCK) {
+    const int64_t sorted = sorted_base + lane_slot;
+    const bool valid_sorted = sorted < end;
+    const int64_t lane_id = valid_sorted ? sorted_lanes[sorted] : -1;
+    const bool valid_lane = lane_id >= 0 && lane_id < total_lanes;
+    const uint16_t* xrow = x + (valid_lane ? lane_id * in_features : 0);
+    float partial = 0.0f;
+    if (valid_lane) {
+      for (int64_t word = dot_tid; word < words; word += DOT_THREADS) {
+        const uint32_t packed = wrow[word];
+        const int64_t base = word * 16;
+#pragma unroll
+        for (int packed_lane = 0; packed_lane < 16; ++packed_lane) {
+          const int code =
+              static_cast<int>((packed >> (2 * packed_lane)) & 0x3U) - 1;
+          partial += bf16_to_float(xrow[base + packed_lane]) *
+              static_cast<float>(code);
+        }
+      }
+    }
+    scratch[scratch_index] = partial;
+    __syncthreads();
+    for (int stride = DOT_THREADS / 2; stride > 0; stride >>= 1) {
+      if (dot_tid < stride) {
+        scratch[scratch_index] += scratch[scratch_index + stride];
+      }
+      __syncthreads();
+    }
+    const float total = scratch[lane_slot * DOT_THREADS];
+    if (dot_tid == 0 && valid_lane) {
+      out[lane_id * out_features + outrow] = float_to_bf16(total * scale);
+    }
+  }
+}
+
 __global__ void maple_selected_ternary_gemv_kernel(
     const uint16_t* __restrict__ x,
     const uint32_t* __restrict__ weight,
@@ -593,6 +774,82 @@ inline int launch_threads_for_words(int64_t words) {
     return 64;
   }
   return 32;
+}
+
+template <int DOT_THREADS, int LANES_PER_BLOCK>
+inline void launch_maple_selected_ternary_dual_grouped(
+    const uint16_t* x,
+    const uint32_t* a_weight,
+    const uint16_t* a_alpha,
+    const uint32_t* b_weight,
+    const uint16_t* b_alpha,
+    const int64_t* expert_start,
+    const int64_t* sorted_lanes,
+    uint16_t* a_out,
+    uint16_t* b_out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int block_threads = DOT_THREADS * LANES_PER_BLOCK;
+  hipLaunchKernelGGL(
+      (maple_selected_ternary_dual_grouped_kernel<DOT_THREADS, LANES_PER_BLOCK>),
+      dim3(static_cast<unsigned int>(out_features),
+           static_cast<unsigned int>(num_experts)),
+      dim3(block_threads),
+      2 * block_threads * sizeof(float),
+      stream,
+      x,
+      a_weight,
+      a_alpha,
+      b_weight,
+      b_alpha,
+      expert_start,
+      sorted_lanes,
+      a_out,
+      b_out,
+      rows,
+      num_experts,
+      top_k,
+      in_features,
+      out_features);
+}
+
+template <int DOT_THREADS, int LANES_PER_BLOCK>
+inline void launch_maple_selected_ternary_grouped(
+    const uint16_t* x,
+    const uint32_t* weight,
+    const uint16_t* row_alpha,
+    const int64_t* expert_start,
+    const int64_t* sorted_lanes,
+    uint16_t* out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int block_threads = DOT_THREADS * LANES_PER_BLOCK;
+  hipLaunchKernelGGL(
+      (maple_selected_ternary_grouped_kernel<DOT_THREADS, LANES_PER_BLOCK>),
+      dim3(static_cast<unsigned int>(out_features),
+           static_cast<unsigned int>(num_experts)),
+      dim3(block_threads),
+      block_threads * sizeof(float),
+      stream,
+      x,
+      weight,
+      row_alpha,
+      expert_start,
+      sorted_lanes,
+      out,
+      rows,
+      num_experts,
+      top_k,
+      in_features,
+      out_features);
 }
 
 }  // namespace
@@ -1023,6 +1280,82 @@ extern "C" int hipengine_maple_selected_ternary_gemv_batched_bf16(
       top_k,
       in_features,
       out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_selected_ternary_dual_grouped_bf16(
+    const uint16_t* x,
+    const uint32_t* a_weight,
+    const uint16_t* a_alpha,
+    const uint32_t* b_weight,
+    const uint16_t* b_alpha,
+    const int64_t* expert_start,
+    const int64_t* sorted_lanes,
+    uint16_t* a_out,
+    uint16_t* b_out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (rows <= 0 || num_experts <= 0 || top_k <= 0 || in_features <= 0 ||
+      out_features <= 0 || in_features % 16 != 0 ||
+      in_features / 16 > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int dot_threads = launch_threads_for_words(in_features / 16);
+  if (dot_threads == 128) {
+    launch_maple_selected_ternary_dual_grouped<128, 1>(
+        x, a_weight, a_alpha, b_weight, b_alpha, expert_start, sorted_lanes,
+        a_out, b_out, rows, num_experts, top_k, in_features, out_features,
+        stream);
+  } else if (dot_threads == 64) {
+    launch_maple_selected_ternary_dual_grouped<64, 1>(
+        x, a_weight, a_alpha, b_weight, b_alpha, expert_start, sorted_lanes,
+        a_out, b_out, rows, num_experts, top_k, in_features, out_features,
+        stream);
+  } else {
+    launch_maple_selected_ternary_dual_grouped<32, 1>(
+        x, a_weight, a_alpha, b_weight, b_alpha, expert_start, sorted_lanes,
+        a_out, b_out, rows, num_experts, top_k, in_features, out_features,
+        stream);
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_selected_ternary_grouped_bf16(
+    const uint16_t* x,
+    const uint32_t* weight,
+    const uint16_t* row_alpha,
+    const int64_t* expert_start,
+    const int64_t* sorted_lanes,
+    uint16_t* out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (rows <= 0 || num_experts <= 0 || top_k <= 0 || in_features <= 0 ||
+      out_features <= 0 || in_features % 16 != 0 ||
+      in_features / 16 > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int dot_threads = launch_threads_for_words(in_features / 16);
+  if (dot_threads == 128) {
+    launch_maple_selected_ternary_grouped<128, 1>(
+        x, weight, row_alpha, expert_start, sorted_lanes, out, rows,
+        num_experts, top_k, in_features, out_features, stream);
+  } else if (dot_threads == 64) {
+    launch_maple_selected_ternary_grouped<64, 1>(
+        x, weight, row_alpha, expert_start, sorted_lanes, out, rows,
+        num_experts, top_k, in_features, out_features, stream);
+  } else {
+    launch_maple_selected_ternary_grouped<32, 1>(
+        x, weight, row_alpha, expert_start, sorted_lanes, out, rows,
+        num_experts, top_k, in_features, out_features, stream);
+  }
   return static_cast<int>(hipGetLastError());
 }
 

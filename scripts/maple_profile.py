@@ -45,6 +45,9 @@ FAMILY_RULES = [
     ("maple_ternary_qkv", "qkv_proj"),
     ("maple_selected_ternary_dual", "expert_gate_up"),
     ("maple_selected_ternary", "expert_down"),
+    ("qwen35_moe_group_count_active_parallel", "moe_compaction"),
+    ("qwen35_moe_group_prefix_active_parallel", "moe_compaction"),
+    ("qwen35_moe_group_scatter_active_parallel", "moe_compaction"),
     ("maple_ternary_gemv", "o_proj"),
     ("maple_affine4_gemv", "lm_head"),
     ("maple_affine4_embed", "embed"),
@@ -87,6 +90,9 @@ def prebuild(*, backend: str) -> None:
     from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend_kernel_package
     from hipengine.kernels.hip_gfx1100.attention.maple_attention import build_maple_attention
     from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+        build_qwen35_moe_group_scatter,
+    )
     from hipengine.kernels.hip_gfx1100.moe.maple_moe import build_maple_moe
     from hipengine.kernels.hip_gfx1100.norm.rmsnorm import build_qwen35_rmsnorm
     from hipengine.kernels.hip_gfx1100.quant.maple_ternary import build_maple_ternary
@@ -102,6 +108,7 @@ def prebuild(*, backend: str) -> None:
             build_maple_ternary,
             build_maple_attention,
             build_maple_moe,
+            build_qwen35_moe_group_scatter,
             build_qwen35_rmsnorm,
             build_lm_head,
         ):
