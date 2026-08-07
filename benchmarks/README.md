@@ -5695,6 +5695,35 @@ the headline unchanged. The inferred matched full-attention K/V bucket falls
 next module target. Artifact:
 [`2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json`](results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json).
 
+#### Qwen3.6-27B exact full-attention V planar-Q6 sole owner, W7900/gfx1100
+
+Review recovered the complete promotion evidence that was measured before
+`a500269cd` but omitted from its publication. The eight Q6_K
+`layers.*.attn_v` tensors replace **80.0 MiB** of dense BF16 with **32.8125
+MiB** of sole-resident planar-qmicro tiles, a net **47.1875-MiB** reduction.
+This corrects the original imprecise “removes duplicate 32.8 MiB” wording; the
+rejected dual-resident sidecar was transient and never committed.
+
+The marked W7900 B3 trace replaces exactly **56 dense V / 1.760127 ms** with
+**56 qmicro V / 1.472815 ms (-16.323%, 1.195x)** at unchanged complete output
+IDs and GPU/CPU acceptance agreement. GPU1 actual-weight rows 2/3/4 improve
+**1.237x/1.251x/1.341x**, remain BF16-bit exact to independent qmicro c1
+launches, and stay far inside the project quality gate versus dense BF16 (max
+KL **1.28e-7**, top-1 **100%**). The complete binding W7900 B1-B3 transaction
+also passes logits, reject/partial/full/rollback state, dynamic graph reuse,
+K/V, provider output, physical ownership, lifecycle, and teardown.
+
+The full ten-prompt packet versus the immediately preceding K-sidecar route is
+exact and moves true AR/B1/B2/B3 **24.249/44.319/56.261/61.122 ->
+24.247/44.635/56.290/61.235 tok/s (-0.006%/+0.714%/+0.052%/+0.185%)**.
+B1 aggregate acceptance improves **115/127 -> 115/126**; B2/B3 aggregates stay
+**151/182** and **169/219** despite two prompt-local sequence changes. Because
+candidate B3 remains **0.260%** below the cleaner canonical **61.394 tok/s**,
+the topline does not change. The inferred combined K/V bucket falls **4.050 ->
+3.762 ms** but remains **1.723 ms / 1.845x** above Vulkan's **2.040 ms**; the
+remaining exact K/V source/dispatch audit is still open before root. Artifact:
+[`2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`](results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json).
+
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
 Clean hipEngine `68e8c10c5` reuses each resident Q4_K output-pack8 weight

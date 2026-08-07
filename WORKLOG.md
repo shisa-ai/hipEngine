@@ -208566,3 +208566,44 @@ Vulkan local sizes verbatim will close the measured gap.
   (mirroring the compact-K col4 owner; B2/rows3 is the separate N2 bulk graph).
   `tests/test_qwen35_gguf_mapping.py` and the shared-route/fixture mtp_e2e
   tests are green; `py_compile` + `git diff --check` pass.
+
+## 2026-08-06 — Review and recover full-attention V publication
+
+- Audit `a500269cd` against its parent, runtime dispatch, focused tests, raw
+  `/tmp` evidence, and rollup policy. The ownership implementation is sound:
+  gfx1100 capability gating selects only Q6_K `layers.*.attn_v` N1,024/K5,120,
+  every committed owner has only `("tiles",)`, and the registered c1/native-
+  row/prefill routes consume the same source-Q6 representation. No backend or
+  quant branch was added to engine/model dispatch.
+- Correct the prior memory description without rewriting the append-only entry.
+  Committed production changed eight **10,485,760-byte** dense-BF16 residents
+  (**80.0 MiB**) to eight **4,300,800-byte** qmicro residents (**32.8125 MiB**),
+  saving exactly **49,479,680 bytes / 47.1875 MiB**. “Removes duplicate 32.8
+  MiB” was imprecise; the rejected dual-resident sidecar was transient and was
+  never committed. The natural-suite tracked-peak delta independently equals
+  **-49,479,680 bytes**.
+- Recover the complete promotion evidence that existed under
+  `/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/` but was omitted from
+  `a500269cd`'s docs. The marked W7900 B3 trace replaces exactly **56 dense V /
+  1.760127 ms** with **56 qmicro V / 1.472815 ms (-16.323%, 1.195x)**. The
+  complete ten-prompt packet versus the immediately preceding K-sidecar route
+  is exact and moves true AR/B1/B2/B3 **24.249/44.319/56.261/61.122 ->
+  24.247/44.635/56.290/61.235 tok/s
+  (-0.006%/+0.714%/+0.052%/+0.185%)**. IDs remain equal and every GPU accept
+  matches CPU; B1 aggregate improves **115/127 -> 115/126**, while B2/B3 remain
+  **151/182** and **169/219** despite disclosed prompt-local sequence changes.
+  Candidate B3 remains **0.260%** below canonical **61.394**, so the topline is
+  unchanged.
+- Update the inferred combined K/V bucket **4.049517 -> 3.762205 ms**; it is
+  still **1.722685 ms / 1.84465x** above Vulkan **2.039520 ms**. This unit is
+  retained and published, but the module is not falsely called fully optimized:
+  D27-R2 remains in exact residual K/V source/dispatch reconciliation before
+  root.
+- Review validation avoids an unnecessary expensive rerun: prior W7900 binding
+  (**232.84 s**) and materialization tests were already green. Fresh focused
+  validation passes **89** native-cycle/dispatch tests, the dense Qwen3.6
+  planner mapping node, `py_compile`, compact-artifact JSON parsing, raw
+  natural/profile consistency checks, and `git diff --check`. Publish
+  `benchmarks/results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`
+  plus campaign/README/changelog updates. Raw natural/comparison/profile hashes
+  are `28a2c52a...1c77` / `c442d3d3...416` / `a6e57bc8...bff`.

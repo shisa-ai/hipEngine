@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "status": "retained_exact_full_attention_v_planar_qmicro_sole_owner_topline_unchanged",
+  "performance_claim": true,
+  "performance_claim_scope": "Exact W7900 full-attention Q6 V physical-family replacement, the complete ten-prompt natural25 AR/B1/B2/B3 suite, and memory ownership. The canonical topline remains unchanged because the candidate B3 packet does not exceed the cleaner direct-handoff publication.",
+  "correctness_claim": true,
+  "correctness_scope": "Actual-weight component KL/top-1, source-Q6 row consistency, exact W7900 B1-B3 transaction/state/provider output, exact natural25 greedy IDs, GPU/CPU acceptance agreement, and clean teardown.",
+  "kind": "qwen36_27b_full_attention_v_planar_qmicro_sole_owner_w7900",
+  "timestamp": "2026-08-06T22:21:19+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "quant": "MOSTLY_Q4_K_M"
+  },
+  "hardware": {
+    "primary_gpu_index": 0,
+    "primary_gpu": "AMD Radeon Pro W7900",
+    "component_screen_gpu_index": 1,
+    "component_screen_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "software": {
+    "implementation_base_commit": "e155842e2a315801d172e2cb8a7ae639b56d918a",
+    "retained_commit": "a500269cdd90134cfb2f8f1c98b350114a79d9be",
+    "measured_final_diff_sha256": "3ccfd1304e72b7bcd4216dda6e0cf9983dec02d0aa162808154e36cba9c09869",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "backend": "hip_gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "change": {
+    "mechanism": "Replace the eight dense-BF16 Q6_K layers.*.attn_v residents of shape N1024/K5120 with sole-resident gguf_q6_k_t16_qmicro_planar_v1 tiles. Scalar AR, native verifier rows, and populated prefill consume the same source-Q6 arithmetic owner.",
+    "registry_keys": {
+      "decode": ["hip_gfx1100", "linear", "gguf_q6_k_t16_qmicro_planar_v1", "t16_gemv_decode_bf16_bf16_out"],
+      "native_rows": ["hip_gfx1100", "linear", "gguf_q6_k_t16_qmicro_planar_v1", "t16_gemv_rowtile_bf16_bf16_out"],
+      "prefill": ["hip_gfx1100", "linear", "gguf_q6_k_t16_qmicro_planar_v1", "t16_wmma_prefill_bf16_bf16_out"]
+    },
+    "shape": {"in_features": 5120, "out_features": 1024, "tensor_count": 8},
+    "new_kernel": false,
+    "new_workspace_bytes": 0,
+    "new_environment_flag": false,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "memory": {
+    "prior_dense_bytes_per_tensor": 10485760,
+    "new_qmicro_bytes_per_tensor": 4300800,
+    "tensor_count": 8,
+    "prior_dense_total_bytes": 83886080,
+    "new_qmicro_total_bytes": 34406400,
+    "net_saved_bytes": 49479680,
+    "net_saved_mib": 47.1875,
+    "natural25_peak_allocated_bytes": {
+      "prior_k_sidecar_control": 32724839112,
+      "candidate": 32675359432,
+      "delta": -49479680
+    },
+    "correction": "The original commit/worklog phrase 'removes duplicate 32.8 MiB' was imprecise. Relative to committed production, this replaces 80.0 MiB of dense BF16 with 32.8125 MiB of qmicro tiles and saves 47.1875 MiB. The rejected transient dual-resident experiment was never committed."
+  },
+  "component_screen": {
+    "protocol": "Actual blk.3.attn_v weight on GPU1, five warmups implicit in setup, 100 warmup pairs, 15 counterbalanced samples, 50 launches/sample.",
+    "rows": {
+      "2": {"dense_event_us": 17.35129952430725, "qmicro_event_us": 14.02649998664856, "speedup": 1.2370370043006793, "bf16_mismatches_vs_dense": 850, "max_kl": 1.273272679889613e-7, "top1_agreement": 1.0},
+      "3": {"dense_event_us": 18.823299407958984, "qmicro_event_us": 15.044900178909302, "speedup": 1.2511415286321694, "bf16_mismatches_vs_dense": 1281, "max_kl": 1.2347645752324127e-7, "top1_agreement": 1.0},
+      "4": {"dense_event_us": 20.6305193901062, "qmicro_event_us": 15.389699935913086, "speedup": 1.34054071723408, "bf16_mismatches_vs_dense": 1729, "max_kl": 1.2763224456670562e-7, "top1_agreement": 1.0}
+    },
+    "source_arithmetic_consistency": "Every qmicro rowtile output is BF16-bit exact to independent qmicro c1 launches. The dense-BF16 resident uses different arithmetic, so transaction consistency requires one owner rather than a decode-only sidecar."
+  },
+  "physical_profile": {
+    "protocol": "Separate compiler-free cached W7900 rocprofv3 kernel/marker/copy traces of code_merge_intervals natural25 B3. Only call-normalized V-family replacement is used as a performance claim; distinct-run complete clocks differ.",
+    "prior_dense_v": {"kernel": "dense_gemv_rowtile_out_kernel<unsigned short, 4>", "grid": [262144, 1, 1], "dispatches": 56, "duration_ms": 1.760127},
+    "candidate_qmicro_v": {"kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4>", "grid": [16384, 1, 1], "dispatches": 56, "duration_ms": 1.472815},
+    "replacement": {"saved_ms": 0.287312, "speedup": 1.1950767747476772, "delta_percent": -16.323367575180658},
+    "matched_module_update": {
+      "prior_hipengine_full_attention_kv_ms": 4.049517,
+      "new_inferred_hipengine_full_attention_kv_ms": 3.762205,
+      "llamacpp_vulkan_full_attention_kv_ms": 2.03952,
+      "remaining_gap_ms": 1.722685,
+      "current_over_vulkan": 1.8446521730603278,
+      "interpretation": "V improves exactly, but the combined K/V module remains 1.723 ms slower than Vulkan. Re-derive the remaining Q4/Q6 K/V families and source dispatch before advancing D27-R2 to root."
+    }
+  },
+  "natural25": {
+    "protocol": "W7900 ten-prompt code/general_en/general_ja/mixed_ja_en suite, B1-B3, one warmup and one measured run, compared with the immediately preceding retained K-sidecar route.",
+    "correctness": {"all_exact_greedy": true, "all_gpu_accept_match_cpu": true, "all_output_ids_equal_to_control": true, "active_allocations_after_close": 0},
+    "control_tok_s": {"true_ar": 24.248743108148506, "B1": 44.3189268502726, "B2": 56.260756010287686, "B3": 61.121899216769584},
+    "candidate_tok_s": {"true_ar": 24.247333213528954, "B1": 44.63529445859325, "B2": 56.290265745307835, "B3": 61.23481837586475},
+    "candidate_delta_percent": {"true_ar": -0.005814299789741462, "B1": 0.7138431158079994, "B2": 0.05245172143573118, "B3": 0.18474419241243378},
+    "acceptance": {
+      "control": {"B1": [115, 127], "B2": [151, 182], "B3": [169, 219]},
+      "candidate": {"B1": [115, 126], "B2": [151, 182], "B3": [169, 219]},
+      "disclosure": "B1 and B3 contain prompt-local acceptance-sequence changes from the arithmetic-owner switch. B1 aggregate improves from 115/127 to 115/126; B2 and B3 aggregates are unchanged; generated IDs remain identical and every GPU decision matches the CPU oracle."
+    },
+    "candidate_B3_delta_percent_vs_canonical_direct_handoff": -0.2599314032052269,
+    "canonical_scoreboard_changed": false,
+    "canonical_hipengine_B3_tok_s": 61.39440170570785
+  },
+  "validation": {
+    "w7900_transaction": "tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar passed in 232.84s with complete B1-B3 logits, reject/partial/full/rollback state, dynamic graph reuse, K/V, physical ownership, provider output, lifecycle, and teardown.",
+    "materialization": "tests/test_qwen35_gguf_mapping.py::test_qwen36_dense_attn_v_materializes_sole_qmicro_owner passed on W7900.",
+    "review_revalidation": "89 focused native-cycle/dispatch tests plus the dense planner mapping test passed; py_compile and git diff --check passed."
+  },
+  "decision": {
+    "action": "retain_exact_planar_qmicro_v_sole_owner",
+    "reason": "The one-owner route restores AR/verifier/prefill transaction consistency, saves 47.1875 MiB, cuts the intended V family by 0.287312 ms / 16.323%, keeps true AR flat, improves full-suite B1-B3 aggregates, preserves output IDs, and passes the complete transaction gate.",
+    "canonical_scoreboard_changed": false,
+    "next_target": "Reconcile the remaining 1.722685-ms full-attention K/V gap against exact latest llama.cpp Vulkan shader and dispatch behavior before advancing to root."
+  },
+  "commands": {
+    "component": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/screen_qwen36_attn_v_planar_vs_dense_c1.py --rows 2,3,4 --samples 15 --warmup-pairs 100 --burst 50 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-attn-v-planar-qmicro-vs-dense-final-gpu1.json",
+    "natural25": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/natural25-v-qmicro-b1-b3.json",
+    "profile_child": "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build"
+  },
+  "source_artifacts": {
+    "component_gpu1": {"path": "/tmp/qwen36-attn-v-planar-qmicro-vs-dense-final-gpu1.json", "sha256": "7ecf330d70a4c4e0606f0ba8b51744ea537e5118c68c71ae4b72a4ca6637f030"},
+    "natural25": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/natural25-v-qmicro-b1-b3.json", "sha256": "28a2c52a9e743b8092014ddf44826193501dc214237ec85b441f529071e81c77"},
+    "natural_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/natural25-v-qmicro-vs-k-sidecar.json", "sha256": "c442d3d38a6c5844c4958fbcc25abff8364a898336fc03dae7bc6c91b1ae8416"},
+    "profile_comparison": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/v-qmicro-vs-k-sidecar-profile.json", "sha256": "a6e57bc8c146cc302b69e0c57f3f0e91ef2276ca50b081de7854f13e93f18bff"},
+    "profile_suite": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/profile-native-v-qmicro-b3-marked/suite.json", "sha256": "7519225aa89086c2456d289fa6203059a0cb0b7ff37bc1897d1aa38234cfdf32"},
+    "profile_kernel_trace": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/profile-native-v-qmicro-b3-marked/mtp-b3_kernel_trace.csv", "sha256": "98bc0c5bc40889f3a8b5f05cbc2773bc87e6144b32bfab4404f3351a94c8bf85"},
+    "profile_marker_trace": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/profile-native-v-qmicro-b3-marked/mtp-b3_marker_api_trace.csv", "sha256": "7b0e2fb5ff5b2baf7b1d0ab3fb29ebd2aae54e764588c42db99c07ae6dee8959"},
+    "profile_copy_trace": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/profile-native-v-qmicro-b3-marked/mtp-b3_memory_copy_trace.csv", "sha256": "14aa567038f27c1371f612b821419c138d064997cf283b1da4a97d3e0435a240"}
+  }
+}
