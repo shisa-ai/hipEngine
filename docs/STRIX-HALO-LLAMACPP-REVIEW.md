@@ -1,11 +1,12 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06; **SH16-M2 selective arena retained/default, fork memory 3/4:** 2026-08-06; **SH17-C0 residual admission closed without a new owner:** 2026-08-06; **SH18-C0 external synthesis reconciled, proposed compound incompatible:** 2026-08-07
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06; **SH16-M2 selective arena retained/default, fork memory 3/4:** 2026-08-06; **SH17-C0 residual admission closed without a new owner:** 2026-08-06; **SH18-C0 external synthesis reconciled, proposed compound incompatible:** 2026-08-07; **SH19-C0 post-pinned upstream refresh closed without a decode/memory candidate:** 2026-08-07
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
-`b7b85da9c4a9fdeb3cab51030a40d1552270f272`, and the current hipEngine
-Qwen3.6/Laguna GGUF gfx1151 paths.
+`6e7b355cb50cca840b127c97d17f512da238a5c7` plus read-only HIP
+`strix-halo-fullstack` tip `b6c5f8f642f7b7feefe72139aeaf4cea97d15924`, and the current
+hipEngine Qwen3.6/Laguna GGUF gfx1151 paths.
 
 **Decision type:** source/evidence review followed by a completed prioritized
 local campaign and user-requested exact-model fork diagnostics. Nathan's
@@ -255,6 +256,33 @@ inherit the old 0.055439-ms result. Close without transient implementation or a
 full-model A/B; preserve SH16 and the SH17 no-retry frontier. Evidence:
 [`SH18-C0`](../benchmarks/results/2026-08-07-gfx1151-gguf-sh18-c0-review-synthesis-compound-audit.json).
 
+**SH19-C0 post-pinned upstream refresh (2026-08-07): new source, no exact-AR
+package admitted.** The authoritative `strix-halo-vulkan` branch advanced from
+pinned `b7b85da9` to `6e7b355`: one integration merge, 46 generic upstream
+commits, and three fork-local commits. The local delta is a four-part
+Qwen3.6 **prefill** patch (`30d8bb02`), a fourth-dimension correctness guard,
+and MMQ boundary tests. Its tiled transposed CONCAT, `MUL_MAT_ID` scale
+epilogue, SiLU/multiply fusion, and workgroup change have no c1 decode or
+persistent-allocation effect. The publisher explicitly scopes the latest dev
+payload to compile/container smoke without gfx1151 correctness or benchmarking.
+
+The separate `strix-halo-fullstack` branch adds gfx1151 HIP source, but source
+gates decide it before a GPU run. GDN specializations require at least 2,048
+tokens (`n_tokens >= 2048`); expert MMQ and BF16 stream-K attention are
+multi-row prefill. Sparse DK512 attention and indexer work are DeepSeek V4-only.
+The only c1-shaped leaf is raw-GGML MMVQ with two wave32 waves and cached Q8_1
+activations. It is not
+production-compatible with exact BF16-input T16/qmicro bytes, and hipEngine's
+existing Q8_1/dp4a, raw-row, 64-thread, exact-tree, and prefill-bridge screens
+already reject that family. A later fullstack repair also proves the apparent
+512-thread MMQ gain came from out-of-bounds wave mapping; corrected 512 threads
+are no faster than 256.
+
+No source delta demonstrates **>=0.5 ms/token** exact c1 saving or removes any
+of the remaining **134.820 MiB** at 4K. Therefore do not rerun the pinned fork or
+SH10-SH18 gates, and keep SH16 production. Evidence:
+[`SH19-C0`](../benchmarks/results/2026-08-07-gfx1151-gguf-sh19-c0-post-b7b85da-upstream-refresh.json).
+
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
 - INT8 decode uses a grouped-GQA producer whose grid is `(kv_head, split)` and
@@ -287,12 +315,15 @@ a missing-`lr_compute_wa` configuration mismatch.
 
 ## Source and evidence quality
 
-The user-facing toolbox snapshot is
+The originally reviewed user-facing toolbox snapshot is
 [`b166a56e`](https://github.com/Nathanw1014/strix-halo-llamacpp/tree/b166a56e58ab0f27fd03f60fff060eebdf5f64b5).
 Its own summary separates the dominant algorithmic changes from marginal or
 negative knobs ([README lines 35-55](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L35-L55))
 and maintains clean per-concern upstream branches
 ([README lines 133-167](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/README.md#L133-L167)).
+SH19 refreshes authoritative refs through evidence-pack `b6ab6842`, Vulkan
+source `6e7b355`, and HIP fullstack `b6c5f8f`; commit-level scope and release
+qualifications supersede search-result summaries.
 
 Release status matters:
 
@@ -307,11 +338,18 @@ Release status matters:
 - [`v0.4`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.4)
   adds fused DeepSeek V4 hyper-connections and reports the community gfx1151
   measurements.
+- [`v0.5`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.5)
+  merges 46 upstream commits to repair DeepSeek V4 DSpark loading. Its publisher
+  reports Vulkan backend tests and gpt-oss-20B parity, not a Qwen3.6 decode or
+  memory gain; the existing fix stack is unchanged.
 - [`dev-20260803-b7b85da`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/dev-20260803-b7b85da)
-  is explicitly compile/container-smoke tested only by its publisher; it is not
-  an upstream benchmark or correctness-validation release. We subsequently ran
-  that exact payload locally, creating an independent diagnostic rather than
-  changing its upstream release status.
+  is explicitly compile/container-smoke tested only by its publisher. We
+  subsequently ran that exact payload locally, creating an independent
+  diagnostic rather than changing its upstream release status.
+- [`dev-20260806-6e7b355`](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/dev-20260806-6e7b355)
+  is likewise compile/container-smoke only: its publisher states that CI has no
+  gfx1151 and ran no benchmark or correctness validation. It therefore cannot
+  silently replace the pinned local fork baseline.
 
 The evidence pack also names claims for which raw logs are not vendored. This
 review therefore treats commit-level mechanisms as source facts and toolbox
@@ -797,6 +835,7 @@ evidence.
 | **SH16-M2** | Implement and gate one selective private-c1 owner for allocations <=16 MiB. | **Complete: retained/default.** The exact 571/161 owner saves **190/212/210/210 MiB whole-GTT**, every four-depth wall/frozen-prefill guard passes, and the full 18-prompt state oracle is exact. Fork-F16 memory parity becomes **3/4**; 4K remains **134.820 MiB** high and decode remains **0/4**. Keep no SH15 state arena or compact-Q4 stack. |
 | **SH17-C0** | Read-only post-SH16 residual admission audit. | **Complete: no new owner admitted.** All SH16-moved families map to named roles with closed alternatives; no fresh trace is justified. Every single 4K allocator/code extension leaves at least **54.820 MiB**, and no new decode candidate has >=0.5-ms evidence. Conditional Task #66 closes without implementation. |
 | **SH18-C0** | Reconcile the external review's 0.5305-ms compound proposal against current layouts. | **Complete: incompatible; no A/B admitted.** SH2-M4 replaced the old tail's 37 Q5 legacy-T16 inputs with compact qmicro tiles. The directly compatible GDN + Q4 + three-Q6 tail subset projects only **0.475049 ms/token**; a new qmicro-tail result cannot inherit the missing **0.055439 ms/token**. Close without transient code or repeated leaf benches. |
+| **SH19-C0** | Refresh authoritative Nathan-fork source and releases beyond pinned `b7b85da9`. | **Complete: new source, no exact decode/memory candidate.** Latest Vulkan additions are prefill-only plus correctness/tests. HIP fullstack GDN/MMQ/FA changes are multi-row prefill, future-model work, raw-Q8_1/T16-incompatible, already closed locally, or invalidated by a correctness repair. No >=0.5-ms c1 or >=134.820-MiB 4K owner; no GPU rerun. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager

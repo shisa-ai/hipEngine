@@ -206167,3 +206167,39 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-07-gfx1151-gguf-sh18-c0-review-synthesis-compound-audit.json`
   (SHA-256 `21a0301d...be279`). Production is unchanged; resume Task #67's
   read-only Nathan-fork source refresh.
+
+## 2026-08-07 — Close SH19-C0 post-pinned Nathan-fork source refresh
+
+- Refresh authoritative refs beyond pinned Vulkan payload `b7b85da9`. Current
+  `strix-halo-vulkan` is `6e7b355`: **50 commits** total, comprising one
+  upstream integration merge, **46 generic upstream non-merges**, and three
+  fork-local commits. Evidence-pack tip is `b6ab6842`; latest dev release
+  `dev-20260806-6e7b355` is explicitly compile/container-smoke only because its
+  publisher has no gfx1151 CI benchmark or correctness run.
+- The fork-local performance delta is `30d8bb02`, four Qwen3.6 pp2048 Vulkan
+  **prefill** changes: tiled transposed CONCAT, `MUL_MAT_ID` scale epilogue,
+  SiLU/multiply fusion, and workgroup tuning. `624217d` only closes an `ne[3]`
+  correctness hole and `6e7b355` adds MMQ boundary tests. The evidence pack says
+  decode is unchanged within +/-0.6%; none changes persistent Qwen allocations.
+- Also inspect new HIP `strix-halo-fullstack` tip `b6c5f8f`. Its GDN special
+  routes require `n_tokens >= 2048`; expert MMQ and BF16 stream-K attention are
+  multi-row prefill; sparse DK512/indexer work is DeepSeek V4-only. The c1-like
+  two-wave MMVQ/Q8_1-cache path consumes raw GGML rows and lossy Q8_1
+  activations, not exact BF16-input T16/qmicro production. Existing local
+  Q8_1/dp4a, raw-row, 64-thread, exact-tree, and prefill-bridge screens already
+  close that family. Do not repeat them.
+- Reject the apparent fullstack 512-thread MMQ signal outright: `b6c5f8f`
+  proves extra waves indexed rows and `sum[]` out of bounds. Once repaired, 512
+  threads measure **1654 tok/s** versus **1664** for 256 on the publisher's
+  Qwen3.6 pp2048 route. This is correctness evidence, not transferable speed.
+- Review all 46 generic commits. Dynamic scheduler arrays remove a host crash,
+  indexer-cache scoping is DeepSeek V4-only, MTP fit changes estimation only,
+  large-Q6 routing is OpenCL-only, and the remaining backend/model/UI/vendor
+  changes expose no exact Qwen3.6 c1 or GTT owner.
+- No source delta demonstrates **>=0.5 ms/token** exact c1 saving or removes the
+  remaining **134.820 MiB** at 4K. Skip GPU reruns and implementation under the
+  frozen admission policy. Publish
+  `benchmarks/results/2026-08-07-gfx1151-gguf-sh19-c0-post-b7b85da-upstream-refresh.json`
+  (SHA-256 `9ce59b19...1ad1`). Production remains SH16; future reopening
+  requires new exact c1 evidence, a demonstrated sufficient allocation owner,
+  or approved system-memory scope.
