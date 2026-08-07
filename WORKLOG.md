@@ -203659,3 +203659,28 @@ CPU tests pass **7/7**, focused Ruff/diff checks pass. Clean GPU pool campaign
 The first clean campaign attempt correctly exposed the decoder's live-position
 guard on replacement; rebinding now resets generation before the new encoder
 D2D/cross-KV handoff and again after installation.
+
+## 2026-08-08 — Moonshine CUDA continuous batching core
+
+Implemented the re-derived uniform-t256 design from the reviewed continuous
+batching plan after a six-real-fixture step-0 screen confirmed that forcing t256
+at positions 0-6 remains exact to EOS on all fixtures. This avoids the wide
+`row_base` kernel rewrite while keeping the numerical change explicit.
+
+`MoonshineCudaBatchRuntime` now supports row-local cross-KV admission, D2D row
+compaction (self/cross caches, encoder mask, token, and position), mixed
+per-request token/position upload, active-prefix execution, and active-prefix
+token readback without changing the existing lockstep API. New torch-free
+`MoonshineCudaContinuousBatchRuntime` adds stable request IDs, FIFO bounded
+admission/backpressure, independent positions, per-row EOS/cancellation,
+trailing-row reclaim/compaction, and a bounded LRU of CUDA graphs keyed by
+`(active_batch, uniform_t256_rederived)`.
+
+RED first failed collection because the new module did not exist. GREEN covers
+FIFO order, mixed positions, pending/active cancellation, duplicate IDs,
+backpressure, compaction, LRU capture/replay/eviction, and real staggered six-
+fixture arrivals. Exclusive GPU0 combined static-batch/batch-encoder/continuous
+bundle: **23 passed, 2 skipped**; the continuous file itself passes **3/3** with
+all six generated token streams exact to EOS. Focused Ruff, compilation, and
+diff checks pass. Performance/P50/P95 and B=2/4/8 lockstep comparisons follow
+as a separate evidence commit.
