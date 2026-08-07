@@ -127,11 +127,18 @@ def moonshine_encoder_bucket_audio_samples(bucket_frames: int) -> int:
 
 @dataclass(frozen=True)
 class MoonshineCudaEncoderLibraries:
-    """Prebuilt code objects used by the CUDA Moonshine encoder chain."""
+    """Prebuilt code objects used by the CUDA Moonshine encoder chain.
+
+    ``attention_cutlass`` is the opt-in torch-free AOT CUTLASS/CuTe encoder
+    self-attention ``.so`` (review §8.3 item 3).  It is ``None`` unless the
+    ``attention_route="cutlass"`` runtime knob is selected, so the default
+    deployment path never loads CUTLASS-derived code.
+    """
 
     encoder: object
     layernorm: object
     projection: object
+    attention_cutlass: object = None
 
 
 class MoonshineCudaEncoderRuntime:
@@ -168,7 +175,12 @@ class MoonshineCudaEncoderRuntime:
         device: Device | None = None,
         runtime: CudaRuntime | None = None,
         owns_weights: bool = True,
+        attention_route: str = "custom",
     ) -> None:
+        if attention_route not in ("custom", "cutlass"):
+            raise ValueError(
+                f"attention_route must be 'custom' or 'cutlass', got {attention_route!r}"
+            )
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
         self.runtime = runtime or get_cuda_runtime()
@@ -177,6 +189,7 @@ class MoonshineCudaEncoderRuntime:
         self.weights = loaded_model.weights if loaded_model is not None else None
         self.spec = loaded_model.spec if loaded_model is not None else None
         self.owns_weights = bool(owns_weights)
+        self.attention_route = attention_route
         self.audio_samples = int(audio_samples)
         self.encoder_frames = moonshine_encoder_frames_from_audio(self.audio_samples)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
@@ -298,6 +311,24 @@ class MoonshineCudaEncoderRuntime:
                 layernorm=build_moonshine_layernorm(**arguments),
                 projection=build_moonshine_projection(**arguments),
             )
+        else:
+            arguments = {
+                "compiler_version": compiler_version,
+                "load": True,
+                "require_cached": require_cached,
+            }
+        if self.attention_route == "cutlass":
+            from hipengine.kernels.cuda_sm120a.attention.moonshine_attention_cutlass import (
+                build_moonshine_attention_cutlass,
+            )
+
+            if libraries.attention_cutlass is None:
+                libraries = MoonshineCudaEncoderLibraries(
+                    encoder=libraries.encoder,
+                    layernorm=libraries.layernorm,
+                    projection=libraries.projection,
+                    attention_cutlass=build_moonshine_attention_cutlass(**arguments),
+                )
         self.encoder_libraries = libraries
         return libraries
 
@@ -486,6 +517,20 @@ class MoonshineCudaEncoderRuntime:
             moonshine_residual_layernorm_fp16,
         )
 
+        attention_fn = moonshine_encoder_attention_fp16
+        attention_library = libraries.encoder
+        if self.attention_route == "cutlass":
+            from hipengine.kernels.cuda_sm120a.attention.moonshine_attention_cutlass import (
+                moonshine_encoder_attention_cutlass_fp16 as attention_fn,
+            )
+
+            if libraries.attention_cutlass is None:
+                raise RuntimeError(
+                    "attention_route='cutlass' requires the AOT CUTLASS attention "
+                    "library; call prepare_encoder_kernels() with the route armed"
+                )
+            attention_library = libraries.attention_cutlass
+
         spec = self.spec
         # The bucket arena holds up to ``self.encoder_frames`` rows, but this
         # encode processes exactly the uploaded (unpadded) audio length.
@@ -608,7 +653,7 @@ class MoonshineCudaEncoderRuntime:
                 library=libraries.encoder,
                 **common,
             )
-            moonshine_encoder_attention_fp16(
+            attention_fn(
                 self.tensor("query").ptr,
                 self.tensor("key").ptr,
                 self.tensor("value").ptr,
@@ -618,7 +663,7 @@ class MoonshineCudaEncoderRuntime:
                 head_dim,
                 frames,
                 scale=scale,
-                library=libraries.encoder,
+                library=attention_library,
                 **common,
             )
             moonshine_f16_projection(

@@ -197,6 +197,7 @@ class Route:
         device_owned: bool = False,
         encoder_graph: bool = False,
         bucket_frames: str | None = None,
+        attention_route: str = "custom",
     ) -> None:
         self.mode = mode
         self.fixture = fixture
@@ -229,6 +230,12 @@ class Route:
         self.async_chain = bool(async_chain)
         self.device_owned = bool(device_owned)
         self.encoder_graph = bool(encoder_graph)
+        # Opt-in torch-free AOT CUTLASS/CuTe encoder self-attention route
+        # (review §8.3 item 3/4); the default keeps the custom kernel so the
+        # deployment path never changes.
+        if attention_route not in ("custom", "cutlass"):
+            raise ValueError(f"attention_route must be 'custom' or 'cutlass'")
+        self.attention_route = attention_route
         self.enc = None
         self.dec = None
         self.torch_encoder = None
@@ -281,6 +288,7 @@ class Route:
                 ),
                 loaded_model=loaded,
                 owns_weights=False,
+                attention_route=self.attention_route,
             )
             t0 = time.perf_counter()
             self.enc.prepare_encoder_kernels()
@@ -648,6 +656,13 @@ def main() -> int:
         " bucket that fits each fixture, or a fixed certified bucket for all six);"
         " omitted = legacy exact-shape per-file runtimes",
     )
+    parser.add_argument(
+        "--attention-route",
+        choices=("custom", "cutlass"),
+        default="custom",
+        help="encoder self-attention route: 'custom' (default, unchanged deployment)"
+        " or 'cutlass' (opt-in torch-free AOT CUTLASS/CuTe .so, review §8.3 item 3)",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -703,6 +718,7 @@ def main() -> int:
             "async_chain": bool(args.async_chain),
             "device_owned": bool(args.device_owned),
             "encoder_graph": bool(args.encoder_graph),
+            "attention_route": args.attention_route,
             "bucket_capacity": args.bucket,
             "preprocessing_timed": False,
             "initial_h2d_timed": False,
@@ -746,6 +762,7 @@ def main() -> int:
                 device_owned=args.device_owned,
                 encoder_graph=args.encoder_graph,
                 bucket_frames=args.bucket,
+                attention_route=args.attention_route,
             )
             try:
                 prepare = route.prepare()
