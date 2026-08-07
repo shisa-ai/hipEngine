@@ -365,6 +365,109 @@ def test_maple_public_resident_path_matches_serial_across_swa_wrap(
     assert memory_stats()["active_allocations"] == 0
 
 
+def test_maple_public_resident_path_reuses_staggered_slot(
+    hip_test_target_arch,
+) -> None:
+    """A short completion frees slot 0 while slot 1 remains live."""
+    del hip_test_target_arch
+    from hipengine.core.memory import memory_stats
+    from hipengine.generation.engine_loop import (
+        EngineLoopConfig,
+        SubmitPollTextGenerator,
+    )
+    from hipengine.loading.maple import load_maple_checkpoint
+    from hipengine.runtime.maple import MapleRunner
+
+    try:
+        checkpoint = load_maple_checkpoint("deepgrove/maple-preview-2bit-mlx")
+    except Exception as exc:  # noqa: BLE001 - checkpoint missing
+        pytest.skip(f"maple checkpoint unavailable: {exc}")
+    prompts = (
+        tuple(9_000 + index for index in range(12)),
+        tuple(9_100 + index * 3 for index in range(17)),
+        tuple(9_200 + index * 5 for index in range(11)),
+    )
+    steps = (2, 8, 3)
+    expected: list[tuple[int, ...]] = []
+    serial = MapleRunner.load(
+        checkpoint, backend="hip_gfx1151", max_context=32
+    )
+    try:
+        for prompt, count in zip(prompts, steps, strict=True):
+            serial.reset()
+            result = serial.prefill_native(prompt)
+            generated: list[int] = []
+            for index in range(count):
+                generated.append(result.token_id)
+                if index + 1 < count:
+                    result = serial.step(result.token_id)
+            expected.append(tuple(generated))
+    finally:
+        serial.close()
+
+    generator = MapleGenerator(
+        model_path=checkpoint.index.model_path,
+        weight_index=checkpoint.index,
+        model_plugin=SimpleNamespace(),
+        context_length=32,
+    )
+    adapter = SubmitPollTextGenerator(
+        generator,
+        capacity=2,
+        config=EngineLoopConfig(
+            max_active_requests=2,
+            max_prefill_chunk_tokens=256,
+            prefill_decode_policy="protect_decode",
+        ),
+    )
+
+    def request(prompt, count):
+        return GenerationRequest(
+            prompts=(prompt,),
+            max_tokens=count,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=True,
+        )
+
+    def poll_until_complete(submission) -> None:
+        for _ in range(64):
+            if adapter.generation_complete(submission):
+                return
+            adapter.poll(max_ticks=1)
+        raise AssertionError("staggered Maple submission did not complete")
+
+    try:
+        first = adapter.submit_detailed(request(prompts[0], steps[0]))
+        second = adapter.submit_detailed(request(prompts[1], steps[1]))
+        poll_until_complete(first)
+        assert not adapter.generation_complete(second)
+        first_output = adapter.take_result(first)[0]
+
+        third = adapter.submit_detailed(request(prompts[2], steps[2]))
+        for _ in range(8):
+            adapter.poll(max_ticks=1)
+            slots = adapter.live_loop_snapshot()["runner"]["slot_to_request"]
+            if slots == [third.request_ids[0], second.request_ids[0]]:
+                break
+        assert slots == [third.request_ids[0], second.request_ids[0]]
+
+        poll_until_complete(second)
+        poll_until_complete(third)
+        second_output = adapter.take_result(second)[0]
+        third_output = adapter.take_result(third)[0]
+        assert [
+            first_output.generated_token_ids,
+            second_output.generated_token_ids,
+            third_output.generated_token_ids,
+        ] == expected
+    finally:
+        adapter.close()
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
 def test_maple_generator_fails_closed_for_sampling_and_context_overflow() -> None:
     generator = fake_generator()
     with pytest.raises(NotImplementedError, match="temperature must be 0"):
