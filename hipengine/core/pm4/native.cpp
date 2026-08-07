@@ -33,13 +33,16 @@
 
 namespace {
 
-constexpr uint32_t kAbiVersion = 1;
+constexpr uint32_t kAbiVersion = 2;
+constexpr uint32_t kExecutableFlagTimestamps = 1u << 0;
 constexpr size_t kPacketBytes = 64;
 constexpr uint64_t kNanosPerSecond = 1000000000ull;
 constexpr uint32_t kPacket3SetShReg = 0x76;
 constexpr uint32_t kPacket3DispatchDirect = 0x15;
 constexpr uint32_t kPacket3EventWrite = 0x46;
 constexpr uint32_t kPacket3AcquireMem = 0x58;
+constexpr uint32_t kPacket3CopyData = 0x40;
+constexpr uint32_t kPacket3ReleaseMem = 0x49;
 constexpr uint32_t kPacket3IndirectBuffer = 0x3f;
 constexpr uint32_t kComputeNumThreadX = 0x207;
 constexpr uint32_t kComputePgmLo = 0x20c;
@@ -343,6 +346,7 @@ struct Context {
   uint64_t generation = 1;
   uint64_t submissions = 0;
   uint32_t children = 0;
+  uint32_t unretired_submissions = 0;
   bool usable = true;
   bool queue_active = false;
 
@@ -756,6 +760,7 @@ struct Executable {
   std::vector<hsa_kernel_dispatch_packet_t> aql_packets;
   std::vector<uint32_t> pm4_words;
   Allocation indirect;
+  Allocation timestamps;
   std::array<uint8_t, kPacketBytes> pm4_packet{};
   uint64_t generation = 0;
   uint64_t aql_submissions = 0;
@@ -764,6 +769,23 @@ struct Executable {
   bool in_flight = false;
   bool retired = true;
 };
+
+void append_copy_timestamp(std::vector<uint32_t>* words, uint64_t address) {
+  constexpr uint32_t control = 9u | (5u << 8) | (1u << 16) | (1u << 20);
+  const uint32_t values[] = {packet3(kPacket3CopyData, 5, false), control, 0, 0,
+                             static_cast<uint32_t>(address),
+                             static_cast<uint32_t>(address >> 32)};
+  words->insert(words->end(), std::begin(values), std::end(values));
+}
+
+void append_release_timestamp(std::vector<uint32_t>* words, uint64_t address) {
+  constexpr uint32_t event = 40u | (5u << 8);
+  constexpr uint32_t control = (3u << 24) | (3u << 29);
+  const uint32_t values[] = {packet3(kPacket3ReleaseMem, 7, false), event, control,
+                             static_cast<uint32_t>(address),
+                             static_cast<uint32_t>(address >> 32), 0, 0, 0};
+  words->insert(words->end(), std::begin(values), std::end(values));
+}
 
 uint64_t timeout_ticks(Context* context, uint64_t timeout_ns) {
   if (timeout_ns == 0) throw Error("submission timeout must be positive");
@@ -820,6 +842,9 @@ void wait_completion(Executable* executable, uint64_t timeout_ns) {
   }
   executable->in_flight = false;
   executable->retired = true;
+  if (context->unretired_submissions == 0)
+    throw Error("PM4 context retirement ledger underflow");
+  --context->unretired_submissions;
   ++context->submissions;
 }
 
@@ -834,6 +859,7 @@ void begin_submission(Executable* executable) {
   hsa_signal_store_screlease(context->completion, 1);
   executable->in_flight = true;
   executable->retired = false;
+  ++context->unretired_submissions;
 }
 
 void quarantine_failed_submission(Executable* executable) noexcept {
@@ -909,6 +935,7 @@ std::string context_json(Context* context) {
       << ",\"completion_handle\":" << context->completion.handle
       << ",\"generation\":" << context->generation << ",\"submissions\":"
       << context->submissions << ",\"children\":" << context->children
+      << ",\"unretired_submissions\":" << context->unretired_submissions
       << ",\"callback_status\":"
       << (context->fault == nullptr ? 0 : context->fault->status.load(std::memory_order_acquire))
       << ",\"usable\":" << (context->usable ? "true" : "false") << "}";
@@ -923,7 +950,10 @@ std::string executable_json(Executable* executable) {
       << ",\"modules\":" << executable->modules.size() << ",\"pm4_dwords\":"
       << executable->pm4_words.size() << ",\"ib_address\":"
       << reinterpret_cast<uintptr_t>(executable->indirect.pointer) << ",\"ib_bytes\":"
-      << executable->indirect.length << ",\"aql_submissions\":"
+      << executable->indirect.length << ",\"timestamp_address\":"
+      << reinterpret_cast<uintptr_t>(executable->timestamps.pointer)
+      << ",\"timestamp_bytes\":" << executable->timestamps.length
+      << ",\"aql_submissions\":"
       << executable->aql_submissions << ",\"pm4_submissions\":"
       << executable->pm4_submissions << ",\"in_flight\":"
       << (executable->in_flight ? "true" : "false") << ",\"retired\":"
@@ -950,6 +980,12 @@ struct he_pm4_context {
 
 struct he_pm4_executable {
   Executable value;
+};
+
+struct he_pm4_buffer {
+  Context* context = nullptr;
+  Allocation allocation;
+  uint64_t generation = 0;
 };
 
 struct he_pm4_node {
@@ -1035,6 +1071,24 @@ int he_pm4_context_create(const char* pci_bdf, const char* gfx_target,
   });
 }
 
+int he_pm4_context_retire_queue(he_pm4_context* opaque, char* error, size_t error_size) {
+  return guarded(error, error_size, [&] {
+    if (opaque == nullptr) throw Error("PM4 context is null");
+    Context* context = &opaque->value;
+    std::lock_guard<std::mutex> lock(context->mutex);
+    if (context->unretired_submissions != 0)
+      throw Error("cannot retire HSA queue with unretired submissions");
+    if (context->queue == nullptr) return;
+    if (context->queue_active) {
+      check(hsa_queue_inactivate(context->queue), "hsa_queue_inactivate(retire)");
+      context->queue_active = false;
+    }
+    check(hsa_queue_destroy(context->queue), "hsa_queue_destroy(retire)");
+    context->queue = nullptr;
+    context->usable = false;
+  });
+}
+
 int he_pm4_context_destroy(he_pm4_context* opaque, char* error, size_t error_size) {
   return guarded(error, error_size, [&] {
     if (opaque == nullptr) return;
@@ -1042,19 +1096,94 @@ int he_pm4_context_destroy(he_pm4_context* opaque, char* error, size_t error_siz
     {
       std::lock_guard<std::mutex> lock(context->mutex);
       if (context->children != 0)
-        throw Error("cannot destroy PM4 context with live executables");
+        throw Error("cannot destroy PM4 context with live executables or buffers");
       close_context_resources(context);
     }
     delete opaque;
   });
 }
 
-int he_pm4_executable_create(he_pm4_context* context_opaque, const he_pm4_node* input,
-                             size_t count, he_pm4_executable** output, char* error,
-                             size_t error_size) {
+int he_pm4_buffer_create(he_pm4_context* context_opaque, size_t size,
+                         he_pm4_buffer** output, uint64_t* address,
+                         char* error, size_t error_size) {
+  return guarded(error, error_size, [&] {
+    if (context_opaque == nullptr || output == nullptr || address == nullptr)
+      throw Error("null HSA buffer creation input");
+    *output = nullptr;
+    *address = 0;
+    if (size == 0 || size > (1ull << 34)) throw Error("HSA buffer size is invalid");
+    Context* context = &context_opaque->value;
+    std::lock_guard<std::mutex> lock(context->mutex);
+    if (!context->usable || !context->queue_active) throw Error("PM4 context is inactive");
+    std::unique_ptr<he_pm4_buffer> owner(new he_pm4_buffer());
+    owner->context = context;
+    owner->generation = ++context->generation;
+    owner->allocation = allocate(context->pool, context->pool_granule,
+                                 context->pool_alignment, context->gpu, size, 16,
+                                 HSA_AMD_MEMORY_POOL_STANDARD_FLAG);
+    *address = reinterpret_cast<uintptr_t>(owner->allocation.pointer);
+    ++context->children;
+    *output = owner.release();
+  });
+}
+
+int he_pm4_buffer_write(he_pm4_buffer* opaque, size_t offset, const void* source,
+                        size_t size, char* error, size_t error_size) {
+  return guarded(error, error_size, [&] {
+    if (opaque == nullptr || (size != 0 && source == nullptr))
+      throw Error("null HSA buffer write input");
+    Context* context = opaque->context;
+    std::lock_guard<std::mutex> lock(context->mutex);
+    if (!context->usable || !context->queue_active)
+      throw Error("cannot write HSA buffer after queue retirement");
+    if (context->unretired_submissions != 0)
+      throw Error("cannot write HSA buffer with unretired submissions");
+    if (offset > opaque->allocation.length || size > opaque->allocation.length - offset)
+      throw Error("HSA buffer write range exceeds allocation");
+    if (size != 0)
+      std::memcpy(static_cast<uint8_t*>(opaque->allocation.pointer) + offset, source, size);
+  });
+}
+
+int he_pm4_buffer_read(he_pm4_buffer* opaque, size_t offset, void* destination,
+                       size_t size, char* error, size_t error_size) {
+  return guarded(error, error_size, [&] {
+    if (opaque == nullptr || (size != 0 && destination == nullptr))
+      throw Error("null HSA buffer read input");
+    Context* context = opaque->context;
+    std::lock_guard<std::mutex> lock(context->mutex);
+    if (context->unretired_submissions != 0)
+      throw Error("cannot read HSA buffer with unretired submissions");
+    if (offset > opaque->allocation.length || size > opaque->allocation.length - offset)
+      throw Error("HSA buffer read range exceeds allocation");
+    if (size != 0)
+      std::memcpy(destination, static_cast<uint8_t*>(opaque->allocation.pointer) + offset, size);
+  });
+}
+
+int he_pm4_buffer_destroy(he_pm4_buffer* opaque, char* error, size_t error_size) {
+  return guarded(error, error_size, [&] {
+    if (opaque == nullptr) return;
+    Context* context = opaque->context;
+    std::lock_guard<std::mutex> lock(context->mutex);
+    if (context->unretired_submissions != 0)
+      throw Error("cannot free HSA buffer with unretired submissions");
+    if (context->children == 0) throw Error("PM4 buffer/context child ledger underflow");
+    opaque->allocation.release_checked();
+    --context->children;
+    delete opaque;
+  });
+}
+
+int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_node* input,
+                                size_t count, uint32_t flags,
+                                he_pm4_executable** output, char* error,
+                                size_t error_size) {
   return guarded(error, error_size, [&] {
     if (context_opaque == nullptr || output == nullptr) throw Error("null executable input");
     *output = nullptr;
+    if (flags & ~kExecutableFlagTimestamps)
+      throw Error("unsupported PM4 executable creation flags");
     if (input == nullptr || count == 0) throw Error("cannot instantiate an empty graph");
     Context* context = &context_opaque->value;
     std::lock_guard<std::mutex> lock(context->mutex);
@@ -1153,6 +1282,18 @@ int he_pm4_executable_create(he_pm4_context* context_opaque, const he_pm4_node* 
       append_dispatch(&executable->pm4_words, executable->dispatches[index]);
     }
     append_wait_compute_idle(&executable->pm4_words);
+    if ((flags & kExecutableFlagTimestamps) != 0) {
+      executable->timestamps = allocate(
+          context->pool, context->pool_granule, context->pool_alignment, context->gpu,
+          16, 16, HSA_AMD_MEMORY_POOL_EXECUTABLE_FLAG);
+      const uint64_t address = reinterpret_cast<uintptr_t>(executable->timestamps.pointer);
+      std::vector<uint32_t> timed;
+      timed.reserve(executable->pm4_words.size() + 14);
+      append_copy_timestamp(&timed, address);
+      timed.insert(timed.end(), executable->pm4_words.begin(), executable->pm4_words.end());
+      append_release_timestamp(&timed, address + 8);
+      executable->pm4_words.swap(timed);
+    }
     if (executable->pm4_words.size() > 0x000fffff)
       throw Error("retained PM4 tape exceeds vendor packet size");
     executable->indirect = allocate(
@@ -1169,6 +1310,13 @@ int he_pm4_executable_create(he_pm4_context* context_opaque, const he_pm4_node* 
   });
 }
 
+int he_pm4_executable_create(he_pm4_context* context_opaque, const he_pm4_node* input,
+                             size_t count, he_pm4_executable** output, char* error,
+                             size_t error_size) {
+  return he_pm4_executable_create_ex(context_opaque, input, count, 0, output, error,
+                                     error_size);
+}
+
 int he_pm4_executable_destroy(he_pm4_executable* opaque, char* error, size_t error_size) {
   return guarded(error, error_size, [&] {
     if (opaque == nullptr) return;
@@ -1179,6 +1327,7 @@ int he_pm4_executable_destroy(he_pm4_executable* opaque, char* error, size_t err
       throw Error("cannot free PM4 packet pointees without proven retirement");
     if (context->children == 0) throw Error("PM4 executable/context child ledger underflow");
     executable->indirect.release_checked();
+    executable->timestamps.release_checked();
     for (auto& dispatch : executable->dispatches) dispatch.kernarg.release_checked();
     for (auto& module : executable->modules) module.release_checked();
     --context->children;

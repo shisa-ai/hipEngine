@@ -12,7 +12,8 @@ from hipengine.core.pm4.native_build import build_pm4_native
 
 NativeTransport = Literal["aql", "pm4"]
 _ERROR_BYTES = 4096
-_ABI_VERSION = 1
+_ABI_VERSION = 2
+_EXECUTABLE_FLAG_TIMESTAMPS = 1 << 0
 
 
 class NativePm4Error(RuntimeError):
@@ -52,17 +53,49 @@ def _configure(library: Any) -> None:
         ctypes.c_size_t,
     ]
     library.he_pm4_context_create.restype = ctypes.c_int
+    library.he_pm4_context_retire_queue.argtypes = [vp, charp, ctypes.c_size_t]
+    library.he_pm4_context_retire_queue.restype = ctypes.c_int
     library.he_pm4_context_destroy.argtypes = [vp, charp, ctypes.c_size_t]
     library.he_pm4_context_destroy.restype = ctypes.c_int
-    library.he_pm4_executable_create.argtypes = [
+    library.he_pm4_buffer_create.argtypes = [
+        vp,
+        ctypes.c_size_t,
+        ctypes.POINTER(vp),
+        ctypes.POINTER(ctypes.c_uint64),
+        charp,
+        ctypes.c_size_t,
+    ]
+    library.he_pm4_buffer_create.restype = ctypes.c_int
+    library.he_pm4_buffer_write.argtypes = [
+        vp,
+        ctypes.c_size_t,
+        vp,
+        ctypes.c_size_t,
+        charp,
+        ctypes.c_size_t,
+    ]
+    library.he_pm4_buffer_write.restype = ctypes.c_int
+    library.he_pm4_buffer_read.argtypes = [
+        vp,
+        ctypes.c_size_t,
+        vp,
+        ctypes.c_size_t,
+        charp,
+        ctypes.c_size_t,
+    ]
+    library.he_pm4_buffer_read.restype = ctypes.c_int
+    library.he_pm4_buffer_destroy.argtypes = [vp, charp, ctypes.c_size_t]
+    library.he_pm4_buffer_destroy.restype = ctypes.c_int
+    library.he_pm4_executable_create_ex.argtypes = [
         vp,
         ctypes.POINTER(_NativeNode),
         ctypes.c_size_t,
+        ctypes.c_uint32,
         ctypes.POINTER(vp),
         charp,
         ctypes.c_size_t,
     ]
-    library.he_pm4_executable_create.restype = ctypes.c_int
+    library.he_pm4_executable_create_ex.restype = ctypes.c_int
     library.he_pm4_executable_destroy.argtypes = [vp, charp, ctypes.c_size_t]
     library.he_pm4_executable_destroy.restype = ctypes.c_int
     for name in ("he_pm4_launch_aql", "he_pm4_launch_pm4"):
@@ -175,7 +208,9 @@ class NativePm4Context:
             raise NativePm4Error("native PM4 context creation returned null")
         return cls(library, int(output.value), gfx_arch, pci_bdf)
 
-    def instantiate(self, manifest: HipGraphManifest) -> "NativePm4Executable":
+    def instantiate(
+        self, manifest: HipGraphManifest, *, timestamps: bool = False
+    ) -> "NativePm4Executable":
         if not self.handle:
             raise NativePm4Error("native PM4 context is closed")
         if manifest.gfx_arch != self.gfx_arch:
@@ -217,11 +252,13 @@ class NativePm4Context:
                 node.wavefront_size,
             )
         output = ctypes.c_void_p()
+        flags = _EXECUTABLE_FLAG_TIMESTAMPS if timestamps else 0
         _call(
-            self.library.he_pm4_executable_create,
+            self.library.he_pm4_executable_create_ex,
             ctypes.c_void_p(self.handle),
             native_nodes,
             ctypes.c_size_t(len(native_nodes)),
+            ctypes.c_uint32(flags),
             ctypes.byref(output),
         )
         if not output.value:
@@ -232,10 +269,35 @@ class NativePm4Context:
             fingerprint=manifest.fingerprint,
         )
 
+    def allocate_buffer(self, nbytes: int) -> "NativePm4Buffer":
+        if not self.handle:
+            raise NativePm4Error("native PM4 context is closed")
+        if nbytes <= 0:
+            raise ValueError("nbytes must be positive")
+        output = ctypes.c_void_p()
+        address = ctypes.c_uint64()
+        _call(
+            self.library.he_pm4_buffer_create,
+            ctypes.c_void_p(self.handle),
+            ctypes.c_size_t(nbytes),
+            ctypes.byref(output),
+            ctypes.byref(address),
+        )
+        if not output.value or not address.value:
+            raise NativePm4Error("native HSA buffer creation returned null")
+        return NativePm4Buffer(self, int(output.value), int(address.value), nbytes)
+
     def provenance(self) -> dict[str, Any]:
         if not self.handle:
             raise NativePm4Error("native PM4 context is closed")
         return _json_query(self.library.he_pm4_context_json, self.handle)
+
+    def retire_queue(self) -> None:
+        """Destroy the queue first while retaining signals and packet pointees."""
+
+        if not self.handle:
+            raise NativePm4Error("native PM4 context is closed")
+        _call(self.library.he_pm4_context_retire_queue, ctypes.c_void_p(self.handle))
 
     def close(self) -> None:
         if not self.handle:
@@ -244,6 +306,62 @@ class NativePm4Context:
         self.handle = 0
 
     def __enter__(self) -> "NativePm4Context":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
+@dataclass
+class NativePm4Buffer:
+    """CPU-writable fine-grained HSA allocation accessible by the matched GPU."""
+
+    context: NativePm4Context
+    handle: int
+    address: int
+    nbytes: int
+
+    def write(self, data: bytes, *, offset: int = 0) -> None:
+        if not self.handle:
+            raise NativePm4Error("native HSA buffer is closed")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        payload = bytes(data)
+        source = ctypes.create_string_buffer(payload, len(payload)) if payload else None
+        _call(
+            self.context.library.he_pm4_buffer_write,
+            ctypes.c_void_p(self.handle),
+            ctypes.c_size_t(offset),
+            None if source is None else ctypes.cast(source, ctypes.c_void_p),
+            ctypes.c_size_t(len(payload)),
+        )
+
+    def read(self, nbytes: int | None = None, *, offset: int = 0) -> bytes:
+        if not self.handle:
+            raise NativePm4Error("native HSA buffer is closed")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        size = self.nbytes - offset if nbytes is None else nbytes
+        if size < 0:
+            raise ValueError("nbytes is invalid")
+        output = ctypes.create_string_buffer(size)
+        _call(
+            self.context.library.he_pm4_buffer_read,
+            ctypes.c_void_p(self.handle),
+            ctypes.c_size_t(offset),
+            ctypes.cast(output, ctypes.c_void_p),
+            ctypes.c_size_t(size),
+        )
+        return bytes(output.raw)
+
+    def close(self) -> None:
+        if not self.handle:
+            return
+        _call(self.context.library.he_pm4_buffer_destroy, ctypes.c_void_p(self.handle))
+        self.handle = 0
+        self.address = 0
+
+    def __enter__(self) -> "NativePm4Buffer":
         return self
 
     def __exit__(self, exc_type, exc, traceback) -> None:
