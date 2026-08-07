@@ -837,6 +837,56 @@ __global__ void maple_affine4_gemv_batched_kernel(
   }
 }
 
+// Exact D1 c2/c4/c8 head: one block owns one output row across all request
+// rows, so every packed word/scale/bias is loaded once. Each request keeps the
+// production batched kernel's per-thread word order and 128-thread LDS tree.
+template <int ROWS>
+__global__ __launch_bounds__(128) void
+maple_affine4_gemv_batched_rowreuse_exact_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ weight,
+    const uint16_t* __restrict__ scales,
+    const uint16_t* __restrict__ biases,
+    float* __restrict__ out,
+    int64_t out_features) {
+  const int64_t row_idx = blockIdx.x;
+  if (row_idx >= out_features) {
+    return;
+  }
+  constexpr int64_t in_features = 2048;
+  constexpr int64_t words = in_features / 8;
+  constexpr int64_t groups = in_features / 64;
+  const uint32_t* wrow = weight + row_idx * words;
+  const uint16_t* row_scales = scales + row_idx * groups;
+  const uint16_t* row_biases = biases + row_idx * groups;
+  float partial[ROWS] = {};
+  for (int64_t word_idx = threadIdx.x; word_idx < words; word_idx += blockDim.x) {
+    const uint32_t word = wrow[word_idx];
+    const int64_t base = word_idx * 8;
+    const int64_t group = word_idx / 8;
+    const float scale = bf16_to_float(row_scales[group]);
+    const float bias = bf16_to_float(row_biases[group]);
+#pragma unroll
+    for (int lane = 0; lane < 8; ++lane) {
+      const int64_t idx = base + lane;
+      const int code = static_cast<int>((word >> (4 * lane)) & 0xFU);
+      const float w = static_cast<float>(code) * scale + bias;
+#pragma unroll
+      for (int t = 0; t < ROWS; ++t) {
+        partial[t] += bf16_to_float(x[static_cast<int64_t>(t) * in_features + idx]) * w;
+      }
+    }
+  }
+  extern __shared__ float scratch[];
+#pragma unroll
+  for (int t = 0; t < ROWS; ++t) {
+    const float total = reduce_sum(partial[t], scratch);
+    if (threadIdx.x == 0) {
+      out[static_cast<int64_t>(t) * out_features + row_idx] = total;
+    }
+  }
+}
+
 inline int launch_threads_for_words(int64_t words) {
   if (words >= 128) {
     return 128;
@@ -1611,6 +1661,49 @@ extern "C" int hipengine_maple_affine4_gemv_wave32_exact_f32(
       biases,
       out,
       out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_affine4_gemv_batched_rowreuse_exact_f32(
+    const uint16_t* x,
+    const uint32_t* weight,
+    const uint16_t* scales,
+    const uint16_t* biases,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (in_features != 2048 || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+#define LAUNCH_ROWREUSE(ROWS)                                                   \
+  hipLaunchKernelGGL(                                                          \
+      (maple_affine4_gemv_batched_rowreuse_exact_kernel<ROWS>),                \
+      dim3(static_cast<unsigned int>(out_features)),                            \
+      dim3(128),                                                                \
+      128 * sizeof(float),                                                      \
+      stream,                                                                   \
+      x,                                                                        \
+      weight,                                                                   \
+      scales,                                                                   \
+      biases,                                                                   \
+      out,                                                                      \
+      out_features)
+  switch (rows) {
+    case 2:
+      LAUNCH_ROWREUSE(2);
+      break;
+    case 4:
+      LAUNCH_ROWREUSE(4);
+      break;
+    case 8:
+      LAUNCH_ROWREUSE(8);
+      break;
+    default:
+      return static_cast<int>(hipErrorInvalidValue);
+  }
+#undef LAUNCH_ROWREUSE
   return static_cast<int>(hipGetLastError());
 }
 

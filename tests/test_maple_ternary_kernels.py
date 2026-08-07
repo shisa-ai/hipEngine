@@ -279,6 +279,64 @@ def test_maple_affine4_embed_batched_matches_oracle(maple_ternary_lib) -> None:
     assert np.array_equal(out, expected)
 
 
+@pytest.mark.parametrize("rows", [2, 4, 8])
+def test_maple_affine4_gemv_batched_rowreuse_matches_production_bits(
+    maple_ternary_lib,
+    rows,
+) -> None:
+    """D1 row reuse must preserve the K=2048 group64 reduction bit-for-bit."""
+
+    from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
+        maple_affine4_gemv_batched_f32,
+        maple_affine4_gemv_batched_rowreuse_exact_f32,
+    )
+
+    rng = np.random.default_rng(109 + rows)
+    hidden, out = 2_048, 37
+    x = f32_to_bf16_bits(rng.normal(size=(rows, hidden)).astype(np.float32))
+    codes = rng.integers(0, 16, size=(out, hidden), dtype=np.uint8)
+    packed = pack4(codes)
+    scales = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.2, size=(out, hidden // 64)).astype(np.float32)
+    )
+    biases = f32_to_bf16_bits(
+        rng.uniform(-0.5, 0.5, size=(out, hidden // 64)).astype(np.float32)
+    )
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        packed_d = dev.put(packed)
+        scales_d, biases_d = dev.put(scales), dev.put(biases)
+        baseline, baseline_d = dev.empty((rows, out), np.dtype(np.float32))
+        candidate, candidate_d = dev.empty((rows, out), np.dtype(np.float32))
+        maple_affine4_gemv_batched_f32(
+            x_d.ptr,
+            packed_d.ptr,
+            scales_d.ptr,
+            biases_d.ptr,
+            baseline_d.ptr,
+            rows,
+            hidden,
+            out,
+            library=maple_ternary_lib,
+        )
+        maple_affine4_gemv_batched_rowreuse_exact_f32(
+            x_d.ptr,
+            packed_d.ptr,
+            scales_d.ptr,
+            biases_d.ptr,
+            candidate_d.ptr,
+            rows,
+            hidden,
+            out,
+            library=maple_ternary_lib,
+        )
+        dev.get(baseline, baseline_d)
+        dev.get(candidate, candidate_d)
+
+    assert np.array_equal(candidate.view(np.uint32), baseline.view(np.uint32))
+
+
 def test_maple_affine4_gemv_batched_matches_oracle(maple_ternary_lib) -> None:
     """Batched affine4 lm_head GEMM over T rows matches per-row oracle (P4)."""
 
