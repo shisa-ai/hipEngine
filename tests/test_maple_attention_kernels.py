@@ -116,6 +116,16 @@ def test_maple_attention_build_plan_and_gfx1151_registry_alias() -> None:
         quant="maple_ternary2",
         variant="gqa_spans_bf16",
     ) is maple_attention_decode_bf16
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_attention_prefill_ring_gqa4_bf16,
+    )
+
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="maple_attention_prefill",
+        quant="maple_ternary2",
+        variant="gqa4_wave32_causal_ring_bf16",
+    ) is maple_attention_prefill_ring_gqa4_bf16
 
 
 @pytest.fixture(scope="module")
@@ -447,6 +457,189 @@ def test_maple_prefill_attention_ring_matches_causal_oracle(maple_attention_lib)
     assert np.array_equal(out.reshape(-1), expected)
 
 
+def test_maple_prefill_attention_gqa4_wave32_matches_local128_bits(
+    maple_attention_lib,
+) -> None:
+    """P2 GQA4 must preserve the local128 tree on production head geometry."""
+
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_attention_prefill_ring_gqa4_bf16,
+        maple_attention_prefill_ring_bf16,
+    )
+
+    rng = np.random.default_rng(20260808)
+    rows, q_heads, kv_heads, head_dim = 4, 4, 1, 128
+    q_size = q_heads * head_dim
+    kv_size = kv_heads * head_dim
+    start, capacity = 256, 512
+    total = start + rows
+    scale = head_dim**-0.5
+    q = bf16_round(rng.normal(size=(rows, q_heads, head_dim)).astype(np.float32))
+    keys = bf16_round(
+        rng.normal(size=(total, kv_heads, head_dim)).astype(np.float32)
+    )
+    values = bf16_round(
+        rng.normal(size=(total, kv_heads, head_dim)).astype(np.float32)
+    )
+    expected = np.stack(
+        [
+            attention_decode(
+                q[row],
+                keys[: start + row + 1],
+                values[: start + row + 1],
+                scale=scale,
+            )
+            for row in range(rows)
+        ]
+    ).reshape(rows, q_size)
+
+    base = rng.permutation(capacity).astype(np.int32)
+    token_positions = np.arange(capacity, dtype=np.int64)
+    key_cache = np.zeros((capacity, kv_heads, head_dim), dtype=np.uint16)
+    value_cache = np.zeros_like(key_cache)
+    key_bits = f32_to_bf16_bits(keys)
+    value_bits = f32_to_bf16_bits(values)
+    for absolute_position in range(total):
+        physical_slot = int(base[absolute_position % capacity])
+        key_cache[physical_slot] = key_bits[absolute_position]
+        value_cache[physical_slot] = value_bits[absolute_position]
+    qkv = np.zeros((rows, q_size + 2 * kv_size), dtype=np.uint16)
+    qkv[:, :q_size] = f32_to_bf16_bits(q.reshape(rows, q_size))
+
+    with DeviceArrays() as dev:
+        spans = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=np.asarray([total], dtype=np.int64),
+            token_positions=token_positions,
+            evict_mask=np.zeros(capacity, dtype=np.bool_),
+            row_positions=np.asarray([start + rows - 1], dtype=np.int64),
+        )
+        qkv_d = dev.put(qkv)
+        key_d = dev.put(key_cache)
+        value_d = dev.put(value_cache)
+        reference, reference_d = dev.empty((rows, q_size), np.uint16)
+        candidate, candidate_d = dev.empty((rows, q_size), np.uint16)
+        maple_attention_prefill_ring_bf16(
+            qkv_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            reference_d.ptr,
+            spans,
+            rows=rows,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=scale,
+            start=start,
+            library=maple_attention_lib,
+        )
+        maple_attention_prefill_ring_gqa4_bf16(
+            qkv_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            candidate_d.ptr,
+            spans,
+            rows=rows,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=scale,
+            start=start,
+            library=maple_attention_lib,
+        )
+        dev.get(reference, reference_d)
+        dev.get(candidate, candidate_d)
+
+    mismatch = np.flatnonzero(candidate.reshape(-1) != reference.reshape(-1))
+    assert not mismatch.size, (
+        f"{mismatch.size} BF16 mismatches; first={mismatch[:8].tolist()} "
+        f"candidate={candidate.reshape(-1)[mismatch[:8]].tolist()} "
+        f"reference={reference.reshape(-1)[mismatch[:8]].tolist()}"
+    )
+    np.testing.assert_allclose(
+        bf16_to_f32(candidate), expected, rtol=2e-2, atol=2e-2
+    )
+
+
+def test_maple_prefill_attention_gqa4_consumes_complete_spans(
+    maple_attention_lib,
+) -> None:
+    """P2 GQA4 honors live count, position, eviction, and physical mapping."""
+
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_attention_prefill_ring_gqa4_bf16,
+    )
+
+    rng = np.random.default_rng(20260809)
+    rows, q_heads, kv_heads, head_dim = 1, 4, 1, 128
+    q_size = q_heads * head_dim
+    kv_size = kv_heads * head_dim
+    query_position, capacity = 7, 8
+    qkv = f32_to_bf16_bits(
+        rng.normal(size=(rows, q_size + 2 * kv_size)).astype(np.float32)
+    )
+    base = np.asarray([3, 1, 6, 0, 5, 2, 7, 4], dtype=np.int32)
+    token_positions = np.full(capacity, -1, dtype=np.int64)
+    evict_mask = np.ones(capacity, dtype=np.bool_)
+    key_cache = np.zeros((capacity, kv_heads, head_dim), dtype=np.uint16)
+    value_cache = np.zeros_like(key_cache)
+    for absolute_position in range(4, 8):
+        logical_slot = absolute_position % capacity
+        physical_slot = int(base[logical_slot])
+        token_positions[logical_slot] = absolute_position
+        evict_mask[logical_slot] = absolute_position == 5
+        key_cache[physical_slot] = f32_to_bf16_bits(
+            rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
+        )
+        value_cache[physical_slot] = f32_to_bf16_bits(
+            rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
+        )
+
+    with DeviceArrays() as dev:
+        spans = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=np.asarray([4], dtype=np.int64),
+            token_positions=token_positions,
+            evict_mask=evict_mask,
+            row_positions=np.asarray([query_position], dtype=np.int64),
+        )
+        qkv_d = dev.put(qkv)
+        key_d = dev.put(key_cache)
+        value_d = dev.put(value_cache)
+        reference, reference_d = dev.empty((q_size,), np.uint16)
+        candidate, candidate_d = dev.empty((rows, q_size), np.uint16)
+        maple_attention_decode_bf16(
+            qkv_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            reference_d.ptr,
+            spans,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim**-0.5,
+            library=maple_attention_lib,
+        )
+        maple_attention_prefill_ring_gqa4_bf16(
+            qkv_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            candidate_d.ptr,
+            spans,
+            rows=rows,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim**-0.5,
+            start=query_position,
+            library=maple_attention_lib,
+        )
+        dev.get(reference, reference_d)
+        dev.get(candidate, candidate_d)
+
+    assert np.array_equal(candidate.reshape(-1), reference)
 
 
 def test_maple_gqa_attention_reads_wrapped_kv_live_spans(maple_attention_lib) -> None:

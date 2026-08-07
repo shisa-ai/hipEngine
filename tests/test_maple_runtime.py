@@ -164,6 +164,13 @@ def test_maple_prefill_grouped_moe_is_default_with_explicit_gather_rollback(
     assert maple_runtime._maple_prefill_grouped_moe() is False
 
 
+def test_maple_prefill_gqa4_is_default_with_local128_rollback(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_MAPLE_PREFILL_GQA4", raising=False)
+    assert maple_runtime._maple_prefill_gqa4() is True
+    monkeypatch.setenv("HIPENGINE_MAPLE_PREFILL_GQA4", "0")
+    assert maple_runtime._maple_prefill_gqa4() is False
+
+
 def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
     from hipengine.core.memory import DeviceBuffer
 
@@ -176,6 +183,9 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
         hidden_size=4,
         q_size=4,
         kv_size=2,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        head_dim=2,
         num_experts_per_tok=2,
         moe_intermediate_size=2,
         num_experts=3,

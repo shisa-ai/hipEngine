@@ -81,8 +81,17 @@ ns**, VGPR16, LDS0, scratch0. The clean post-P1 prefill320 trace measures 48
 chunk/layer calls at **63.993 ms/request (13.55% of kernel time)**, local128,
 VGPR16, LDS0, scratch0. This local128 body owns one `(query head,row)` per block,
 rereads each KV stream for all four GQA query heads, and barriers throughout the
-per-key reduction; exact wave32 qrow/GQA reuse is the active P2 target. Batched
-decode uses disjoint per-request rings
+per-key reduction. P2 adds a separately registered exact GQA4 body: one wave32
+owns `(KV head,row)`, loads each K/V row once, and emulates all 128 virtual
+threads through the original 64/32/16/8/4/2/1 LDS stages plus the original
+weighted-value/FMA boundary. It consumes every `KVLiveSpans` pointer and keeps
+local128 as rollback. The production-shape primitive is BF16-bit exact at the
+256-row chunk boundary; the reduced M5 gate passes 18/18 state hashes, 90/90
+positions, KL 0, and exact lifecycle. Dirty cached tracing names
+`maple_attention_prefill_ring_gqa4_wave32_kernel` at local32/VGPR64,
+dynamic-LDS512 (static trace field LDS0), scratch0 and measures **63.993 ->
+22.064 ms (2.900x)** at unchanged launch count. Clean qualified publication is
+pending. Batched decode uses disjoint per-request rings
 and separate SWA/global capacity owners; wrapped positions remain inside their
 request arena after position 512. The wrapped c=3 primitive is BF16-bit exact;
 cached tracing reports batched QK/RoPE/KV write at **3,967 ns** (VGPR24) and

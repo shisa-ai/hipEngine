@@ -413,6 +413,9 @@ def main() -> int:
                 "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
                 "HIPENGINE_COMPILER_VERSION_FILE": str(args.version_file),
                 "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+                "HIPENGINE_MAPLE_PREFILL_GQA4": os.environ.get(
+                    "HIPENGINE_MAPLE_PREFILL_GQA4"
+                ),
             },
             "raw_root": str(args.raw_root),
             "profiles": list(PHASES),

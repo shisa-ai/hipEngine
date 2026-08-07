@@ -367,7 +367,7 @@ family improves only **1.086x** versus the required 2.826x; exact wider-lane
 schedules regress. P1 therefore closes with a measured scalar-compute blocker,
 and future work must use a different matrix/SIMD ternary contraction.
 
-### P2 — GQA/query-row prefill attention — ACTIVE
+### P2 — GQA/query-row prefill attention — IMPLEMENTED; CLEAN QUALIFICATION PENDING
 
 The batched Q/K/V projection, head RMSNorm+RoPE, KV append, and causal ring
 attention are correct through 512. The clean post-P1 profile measures attention
@@ -376,15 +376,22 @@ The current local128 body assigns one block per `(query head,row)`, scans each
 KV stream four times for the four query heads in its GQA group, and executes a
 full workgroup reduction with barriers for every key.
 
-The exact first implementation maps the same 128 products onto one wave32:
-each lane forms `(x[lane]+x[lane+64])+(x[lane+32]+x[lane+96])`, then applies
-the existing 16/8/4/2/1 tree. This preserves every FP32 association and the
-online-softmax/PV order while enabling adjacent-query or GQA-group K/V reuse.
-It must consume complete `KVLiveSpans`, retain the local128 kernel as rollback,
-and pass the 18-prompt state/lifecycle gate. The stretch target is **<=31.996
-ms (2.0x)**; any exact same-suite non-regressive gain is retained. Extending
-native prefill beyond 512 separately requires append/attend orchestration that
-cannot overwrite a still-visible SWA prefix.
+The implemented GQA4 body maps all 128 virtual threads onto one wave32 and
+materializes the original 64/32/16/8/4/2/1 LDS stages exactly. It also spells
+out the local128 weighted-value rounding/FMA sequence, preserving every FP32
+association and online-softmax/PV operation while loading each K/V row once for
+four query heads. It consumes complete `KVLiveSpans`; local128 is the explicit
+rollback.
+
+The dirty implementation trace reaches **22.064 ms (2.900x)**, beating the
+**<=31.996-ms (2.0x)** stretch target, at local32/VGPR64/dynamic-LDS512/scratch0
+and unchanged launch count. A seven-pair same-resident screen improves
+**678.880 -> 740.715 tok/s (1.091x)** with all candidate samples faster. The
+reduced M5 gate passes **18/18** byte-state hashes, **90/90** positions, KL 0,
+and exact lifecycle. These are implementation diagnostics, not retained rows;
+clean qualified 128/320/512 publication remains required. Extending native
+prefill beyond 512 separately requires append/attend orchestration that cannot
+overwrite a still-visible SWA prefix.
 
 ### P3 — Dense ternary row-tile sweep — BRING-UP LANDED; TUNING OPEN
 

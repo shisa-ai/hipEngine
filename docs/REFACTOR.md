@@ -14,6 +14,20 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Maple P2 exact wave32 GQA4 prefill attention
+
+- Added 2026-08-08 and promoted to the prefill default after the complete dirty
+  screen passed **18/18** byte-state hashes, **90/90** positions, KL 0, exact
+  lifecycle, and a named cached trace measured attention **63.993 -> 22.064 ms
+  (2.900x)**. The registered candidate consumes complete `KVLiveSpans`, shares
+  one K/V load across four query heads, and preserves every local128 LDS
+  reduction stage plus online-softmax operation exactly.
+- Keep `HIPENGINE_MAPLE_PREFILL_GQA4=0` temporarily as the local128
+  rollback/bisection seam through clean qualified 128/320/512 publication and
+  the final Maple cumulative roadmap audit, then remove the environment seam.
+  Preserve the registered local128 kernel as the required unfused numerical
+  fallback.
+
 ## SH16 gfx1151 private-c1 selective small-weight arena
 
 - Added 2026-08-06 and promoted to the gfx1151 private-c1 default after exact

@@ -484,6 +484,55 @@ def maple_attention_prefill_ring_bf16(
     )
 
 
+def maple_attention_prefill_ring_gqa4_bf16(
+    qkv_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    rows: int,
+    q_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    scale: float,
+    start: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact wave32 GQA4 causal prefill over the complete span ABI (P2)."""
+
+    base, live, token_positions, evict_mask, row_positions, capacity = _span_pointers(
+        spans
+    )
+    _launch(
+        "hipengine_maple_attention_prefill_ring_gqa4_bf16",
+        (_PTR,) * 9 + (_I64, _I64, _I64, _I64, _F32, _I64, _I64, _PTR),
+        (
+            qkv_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            out_ptr,
+            base,
+            live,
+            token_positions,
+            evict_mask,
+            row_positions,
+            rows,
+            q_heads,
+            kv_heads,
+            head_dim,
+            scale,
+            start,
+            capacity,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_maple_attention_kernels(
     *,
     backend: str = "hip_gfx1100",
@@ -510,7 +559,14 @@ def register_maple_attention_kernels(
             "gqa_spans_batched_bf16",
         ): maple_attention_decode_batched_bf16,
         ("maple_attention_prefill", "gqa_causal_bf16"): maple_attention_prefill_bf16,
-        ("maple_attention_prefill", "gqa_causal_ring_bf16"): maple_attention_prefill_ring_bf16,
+        (
+            "maple_attention_prefill",
+            "gqa_causal_ring_bf16",
+        ): maple_attention_prefill_ring_bf16,
+        (
+            "maple_attention_prefill",
+            "gqa4_wave32_causal_ring_bf16",
+        ): maple_attention_prefill_ring_gqa4_bf16,
     }
     for (layer, variant), kernel in kernels.items():
         register(
@@ -558,6 +614,7 @@ __all__ = [
     "maple_attention_decode_bf16",
     "maple_attention_prefill_bf16",
     "maple_attention_prefill_ring_bf16",
+    "maple_attention_prefill_ring_gqa4_bf16",
     "maple_kv_span_update",
     "maple_kv_span_update_batched",
     "maple_qknorm_rope_kv_write_batched_bf16",
