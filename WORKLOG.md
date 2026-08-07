@@ -207798,3 +207798,10 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   file: its recorder still labels >512 as a serial fallback even though P4
   removed that route. Correct only the protocol metadata, commit it, and repeat
   once from clean source so the retained artifact cannot contradict runtime.
+- Add `scripts/maple_public_batch_bench.py` before publication rather than cite
+  an ephemeral `/tmp` harness. It times c1/c2/c4/c8 through the identical
+  public `SubmitPollTextGenerator` protocol, keeps an independent serial runner
+  only as the trajectory oracle, includes prompt admission/reclaim in wall time,
+  and records a physical-c8 singleton row for the c1 fast path. A deliberately
+  unqualified dirty-tree c1/c8 smoke is exact, closes all owners, and exits
+  rejected as designed; Python compilation, `--help`, and diff checks pass.
