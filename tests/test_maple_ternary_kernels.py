@@ -218,6 +218,48 @@ def test_maple_generic_and_fused_qkv_ternary_gemv_match_oracle(maple_ternary_lib
     assert np.array_equal(qkv, expected_qkv)
 
 
+def test_maple_ternary_gemm_batched_matches_cpu_oracle(maple_ternary_lib) -> None:
+    """Batched [rows, out] ternary GEMM is bit-exact vs the CPU oracle (P1)."""
+
+    from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
+        maple_ternary_gemm_bf16,
+    )
+
+    rng = np.random.default_rng(44)
+    rows, hidden, out_features = 13, 64, 11  # rows spans > one 8-token tile
+    x_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    values = rng.integers(-1, 2, size=(out_features, hidden), dtype=np.int8)
+    packed = pack2(values)
+    alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(out_features,)).astype(np.float32)
+    )
+    expected = f32_to_bf16_bits(
+        np.stack(
+            [ternary_gemv(bf16_round(row), packed, alpha) for row in x_f32]
+        )
+    )
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        packed_d = dev.put(packed)
+        alpha_d = dev.put(alpha)
+        out, out_d = dev.empty((rows, out_features), np.dtype(np.uint16))
+        maple_ternary_gemm_bf16(
+            x_d.ptr,
+            packed_d.ptr,
+            alpha_d.ptr,
+            out_d.ptr,
+            rows,
+            hidden,
+            out_features,
+            library=maple_ternary_lib,
+        )
+        dev.get(out, out_d)
+
+    assert np.array_equal(out, expected)
+
+
 def test_maple_selected_dual_and_down_ternary_gemv_match_oracle(maple_ternary_lib) -> None:
     rng = np.random.default_rng(33)
     experts, top_k, hidden, intermediate, out_rows = 4, 2, 32, 16, 7
