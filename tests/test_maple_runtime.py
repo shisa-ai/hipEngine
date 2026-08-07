@@ -87,7 +87,8 @@ def test_maple_prefill_native_matches_serial_step_gate(hip_test_target_arch) -> 
     assert native.token_id == serial_token
 
 
-def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch) -> None:
+@pytest.mark.parametrize("c", [2, 4])
+def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch, c) -> None:
     """MapleBatchRunner.batch_step (c>1) must equal c independent serial decodes.
 
     GPU + real checkpoint guarded: skipped when no supported HIP target or when
@@ -106,10 +107,8 @@ def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch) -> None:
     model = "deepgrove/maple-preview-2bit-mlx"
     backend = "hip_gfx1151"
     prompts = [
-        (9707, 13, 358, 1093),
-        (220, 3100, 1066, 13),
+        tuple(9000 + r + i for i in range(4)) for r in range(c)
     ]
-    c = len(prompts)
     steps = len(prompts[0])
     try:
         checkpoint = load_maple_checkpoint(model)

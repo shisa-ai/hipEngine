@@ -691,17 +691,19 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
     rope_dim = 8
     eps = 1e-6
     rope_theta = 10000.0
-    capacity = 64  # large enough that requests occupy disjoint position ranges
+    per_cap = 32
+    capacity = rows * per_cap
     q_size, kv_size = q_heads * head_dim, kv_heads * head_dim
     qkv_stride = q_size + 2 * kv_size
 
-    # Identity position-offset arena: physical slot == absolute position.
+    # Identity arena: physical slot == arena slot. Each request owns a disjoint
+    # arena range [row_base_offsets[r], +per_cap) and uses LOCAL RoPE positions.
     base = np.arange(capacity, dtype=np.int32)
     token_positions = np.full(capacity, -1, dtype=np.int64)
     evict_mask = np.zeros(capacity, dtype=np.bool_)
-
-    row_positions = np.asarray([11, 22, 33], dtype=np.int64)
-    live_counts = np.asarray([4, 3, 5], dtype=np.int64)
+    row_base_offsets = np.asarray([0, 32, 64], dtype=np.int64)
+    row_positions = np.asarray([3, 4, 5], dtype=np.int64)  # local positions
+    live_counts = (row_positions + 1).astype(np.int64)
     q_norm_weight = f32_to_bf16_bits(
         rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32)
     )
@@ -715,6 +717,7 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
     expected_kv = []
     for row in range(rows):
         pos = int(row_positions[row])
+        apos = int(row_base_offsets[row])
         q_raw = rng.normal(size=(q_heads, head_dim)).astype(np.float32)
         k_raw = rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
         v_raw = rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
@@ -726,10 +729,10 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
         hist_keys = rng.normal(size=(live, kv_heads, head_dim)).astype(np.float32)
         hist_vals = rng.normal(size=(live, kv_heads, head_dim)).astype(np.float32)
         for t in range(live):
-            hpos = pos - live + 1 + t
-            token_positions[hpos] = hpos
-            key_cache_f[hpos] = hist_keys[t]
-            value_cache_f[hpos] = hist_vals[t]
+            slot = apos + t
+            token_positions[slot] = t
+            key_cache_f[slot] = hist_keys[t]
+            value_cache_f[slot] = hist_vals[t]
 
         qn_ref, kn_ref = qk_norm_rope(
             bf16_round(q_raw),
@@ -752,6 +755,7 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
             evict_mask=evict_mask,
             row_positions=row_positions,
         )
+        rbo = dev.put(row_base_offsets)
         qkv_d = dev.put(qkv)
         key_d = dev.put(f32_to_bf16_bits(key_cache_f))
         value_d = dev.put(f32_to_bf16_bits(value_cache_f))
@@ -765,6 +769,7 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
             key_d.ptr,
             value_d.ptr,
             spans,
+            row_base_offsets=rbo.ptr,
             rows=rows,
             q_heads=q_heads,
             kv_heads=kv_heads,
@@ -788,6 +793,7 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
             value_d.ptr,
             out_d.ptr,
             spans,
+            row_base_offsets=rbo.ptr,
             rows=rows,
             q_heads=q_heads,
             kv_heads=kv_heads,
@@ -799,22 +805,21 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
 
     for row in range(rows):
         pos = int(row_positions[row])
-        live = int(live_counts[row])
+        apos = int(row_base_offsets[row])
         qn_ref, kn_ref, v_raw = expected_kv[row]
         assert np.array_equal(
             np.array(qkv_res[row, :q_size], dtype=np.uint16),
             f32_to_bf16_bits(qn_ref.reshape(-1)),
         ), f"row {row} normalized Q mismatch"
         assert np.array_equal(
-            np.array(key_res_bits[pos], dtype=np.uint16).reshape(-1),
+            np.array(key_res_bits[apos + pos], dtype=np.uint16).reshape(-1),
             f32_to_bf16_bits(kn_ref.reshape(-1)),
         ), f"row {row} K-cache write mismatch"
 
-        # Attention oracle over [pos-live+1, pos] with the just-written K/V.
-        # History K/V are stored bf16 on device, so round the oracle inputs.
-        hist_k = bf16_round(key_cache_f[pos - live + 1 : pos + 1])
+        # Attention oracle over local positions [0, pos] with the just-written K/V.
+        hist_k = bf16_round(key_cache_f[apos : apos + pos + 1])
         hist_k[-1] = bf16_round(kn_ref)
-        hist_v = bf16_round(value_cache_f[pos - live + 1 : pos + 1])
+        hist_v = bf16_round(value_cache_f[apos : apos + pos + 1])
         hist_v[-1] = bf16_round(v_raw)
         expected = f32_to_bf16_bits(
             attention_decode(qn_ref, hist_k, hist_v, scale=head_dim**-0.5).reshape(-1)

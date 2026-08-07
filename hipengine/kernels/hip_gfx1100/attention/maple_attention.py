@@ -205,6 +205,7 @@ def maple_qknorm_rope_kv_write_batched_decode_bf16(
     value_cache_ptr: int,
     spans: KVLiveSpans,
     *,
+    row_base_offsets: int,
     rows: int,
     q_heads: int,
     kv_heads: int,
@@ -218,13 +219,15 @@ def maple_qknorm_rope_kv_write_batched_decode_bf16(
 ) -> None:
     """Batched per-request QK-norm+RoPE+KV write (D5 batch decode).
 
-    Each row uses its own row_positions[row] / live_counts[row] from the spans.
+    Each row uses its own row_positions[row] (local RoPE position) and
+    row_base_offsets[row] (arena base) to place K/V into a shared arena while
+    keeping per-request local position encoding.
     """
 
     base, live, token_positions, evict_mask, row_positions, capacity = _span_pointers(spans)
     _launch(
         "hipengine_maple_qknorm_rope_kv_write_batched_decode_bf16",
-        (_PTR,) * 10 + (_I64, _I64, _I64, _I64, _F32, _F32, _I64, _I64, _PTR),
+        (_PTR,) * 11 + (_I64, _I64, _I64, _I64, _F32, _F32, _I64, _I64, _PTR),
         (
             qkv_ptr,
             q_norm_weight_ptr,
@@ -236,6 +239,7 @@ def maple_qknorm_rope_kv_write_batched_decode_bf16(
             token_positions,
             evict_mask,
             row_positions,
+            row_base_offsets,
             q_heads,
             kv_heads,
             head_dim,
@@ -299,6 +303,7 @@ def maple_attention_decode_batched_bf16(
     out_ptr: int,
     spans: KVLiveSpans,
     *,
+    row_base_offsets: int,
     rows: int,
     q_heads: int,
     kv_heads: int,
@@ -310,13 +315,14 @@ def maple_attention_decode_batched_bf16(
 ) -> None:
     """Batched per-request attention decode (D5).
 
-    Each row attends its own live span via per-row row_positions/live_counts.
+    Each row attends its own live span via per-row row_positions/live_counts,
+    with its K/V placed at arena slots row_base_offsets[row] + local position.
     """
 
     base, live, token_positions, evict_mask, row_positions, capacity = _span_pointers(spans)
     _launch(
         "hipengine_maple_attention_decode_batched_bf16",
-        (_PTR,) * 9 + (_I64, _I64, _I64, _I64, _F32, _I64, _PTR),
+        (_PTR,) * 10 + (_I64, _I64, _I64, _I64, _F32, _I64, _PTR),
         (
             qkv_ptr,
             key_cache_ptr,
@@ -327,6 +333,7 @@ def maple_attention_decode_batched_bf16(
             token_positions,
             evict_mask,
             row_positions,
+            row_base_offsets,
             rows,
             q_heads,
             kv_heads,
