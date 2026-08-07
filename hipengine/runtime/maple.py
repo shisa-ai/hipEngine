@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 
@@ -59,6 +60,18 @@ from hipengine.loading.maple import (
     MapleDeviceWeights,
     materialize_maple_weights,
 )
+from hipengine.runtime.maple_graph import MapleGraphCache
+
+
+def _maple_graph_enabled() -> bool:
+    # Default off: on c1 the decode step is kernel-bound, so the whole-step
+    # graph only recovers the small (~4%) host gap (measured bit-exact but
+    # ~1.0x within noise). Keep the eager path as the default and expose the
+    # graph as an opt-in (HIPENGINE_MAPLE_GRAPH=1); the captured graph is the
+    # infrastructure M6 batch decode reuses, where the per-token launch win
+    # compounds. The KVLiveSpans device-pointer ABI makes the step stateless
+    # across tokens, so a single graph stays valid across positions.
+    return os.environ.get("HIPENGINE_MAPLE_GRAPH", "0") != "0"
 
 
 @dataclass(frozen=True)
@@ -257,6 +270,7 @@ class MapleRunner:
         self.runtime = runtime
         self.position = 0
         self.last_hidden_states: tuple[np.ndarray, ...] = ()
+        self._graph: MapleGraphCache | None = None
         self.closed = False
 
     @classmethod
@@ -311,6 +325,13 @@ class MapleRunner:
                 weights.free(runtime=runtime)
             raise
 
+    def _graph_cache(self) -> MapleGraphCache | None:
+        if not _maple_graph_enabled():
+            return None
+        if self._graph is None:
+            self._graph = MapleGraphCache(self.runtime, enabled=True)
+        return self._graph
+
     def reset(self) -> None:
         self._require_open()
         self.runtime.device_synchronize()
@@ -345,182 +366,203 @@ class MapleRunner:
         )
         if capture_hidden:
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
-        for layer_id, (layer_weights, kv_layer) in enumerate(
-            zip(self.weights.layers, b.layers)
-        ):
+
+        def _decode_body(stream: int) -> None:
+            _decode_layers_and_tail(stream)
+
+        def _decode_layers_and_tail(stream: int) -> None:
+            for layer_id, (layer_weights, kv_layer) in enumerate(
+                zip(self.weights.layers, b.layers)
+            ):
+                paro_rmsnorm_out_bf16(
+                    b.hidden.ptr,
+                    layer_weights.input_layernorm.ptr,
+                    b.normalized.ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.rms_norm_eps,
+                    library=libs.norm,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_ternary_qkv_gemv_bf16(
+                    b.normalized.ptr,
+                    layer_weights.q_proj.weight.ptr,
+                    layer_weights.q_proj.row_alpha.ptr,
+                    layer_weights.k_proj.weight.ptr,
+                    layer_weights.k_proj.row_alpha.ptr,
+                    layer_weights.v_proj.weight.ptr,
+                    layer_weights.v_proj.row_alpha.ptr,
+                    b.qkv.ptr,
+                    spec.hidden_size,
+                    spec.q_size,
+                    spec.kv_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
+                maple_qknorm_rope_kv_write_bf16(
+                    b.qkv.ptr,
+                    layer_weights.q_norm.ptr,
+                    layer_weights.k_norm.ptr,
+                    kv_layer.key_cache.ptr,
+                    kv_layer.value_cache.ptr,
+                    kv_layer.spans,
+                    q_heads=spec.num_attention_heads,
+                    kv_heads=spec.num_key_value_heads,
+                    head_dim=spec.head_dim,
+                    rope_dim=rope_dim,
+                    eps=spec.rms_norm_eps,
+                    rope_theta=spec.rope_theta,
+                    library=libs.attention,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_attention_decode_bf16(
+                    b.qkv.ptr,
+                    kv_layer.key_cache.ptr,
+                    kv_layer.value_cache.ptr,
+                    b.attention.ptr,
+                    kv_layer.spans,
+                    q_heads=spec.num_attention_heads,
+                    kv_heads=spec.num_key_value_heads,
+                    head_dim=spec.head_dim,
+                    scale=spec.head_dim**-0.5,
+                    library=libs.attention,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_ternary_gemv_bf16(
+                    b.attention.ptr,
+                    layer_weights.o_proj.weight.ptr,
+                    layer_weights.o_proj.row_alpha.ptr,
+                    b.projection.ptr,
+                    spec.q_size,
+                    spec.hidden_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                paro_add_rmsnorm_out_bf16(
+                    b.hidden.ptr,
+                    b.projection.ptr,
+                    layer_weights.post_attention_layernorm.ptr,
+                    b.normalized.ptr,
+                    b.residual.ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.rms_norm_eps,
+                    library=libs.norm,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_router_topk_parallel_bf16(
+                    b.normalized.ptr,
+                    layer_weights.router.ptr,
+                    b.selected_ids.ptr,
+                    b.routing_weights.ptr,
+                    b.router_logits.ptr,
+                    spec.hidden_size,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    library=libs.moe,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_selected_ternary_dual_gemv_bf16(
+                    b.normalized.ptr,
+                    layer_weights.expert_gate_proj.weight.ptr,
+                    layer_weights.expert_gate_proj.row_alpha.ptr,
+                    layer_weights.expert_up_proj.weight.ptr,
+                    layer_weights.expert_up_proj.row_alpha.ptr,
+                    b.selected_ids.ptr,
+                    b.expert_gate.ptr,
+                    b.expert_up.ptr,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    spec.hidden_size,
+                    spec.moe_intermediate_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_clamped_swiglu_bf16(
+                    b.expert_gate.ptr,
+                    b.expert_up.ptr,
+                    b.expert_intermediate.ptr,
+                    spec.num_experts_per_tok,
+                    spec.moe_intermediate_size,
+                    library=libs.moe,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_selected_ternary_gemv_bf16(
+                    b.expert_intermediate.ptr,
+                    layer_weights.expert_down_proj.weight.ptr,
+                    layer_weights.expert_down_proj.row_alpha.ptr,
+                    b.selected_ids.ptr,
+                    b.expert_down.ptr,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    spec.moe_intermediate_size,
+                    spec.hidden_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_weighted_residual_bf16(
+                    b.residual.ptr,
+                    b.expert_down.ptr,
+                    b.routing_weights.ptr,
+                    b.hidden.ptr,
+                    spec.num_experts_per_tok,
+                    spec.hidden_size,
+                    library=libs.moe,
+                    runtime=self.runtime, stream=stream,
+                )
+                if capture_hidden:
+                    captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
+
             paro_rmsnorm_out_bf16(
                 b.hidden.ptr,
-                layer_weights.input_layernorm.ptr,
+                self.weights.final_norm.ptr,
                 b.normalized.ptr,
                 1,
                 spec.hidden_size,
                 spec.rms_norm_eps,
                 library=libs.norm,
-                runtime=self.runtime,
-            )
-            maple_ternary_qkv_gemv_bf16(
-                b.normalized.ptr,
-                layer_weights.q_proj.weight.ptr,
-                layer_weights.q_proj.row_alpha.ptr,
-                layer_weights.k_proj.weight.ptr,
-                layer_weights.k_proj.row_alpha.ptr,
-                layer_weights.v_proj.weight.ptr,
-                layer_weights.v_proj.row_alpha.ptr,
-                b.qkv.ptr,
-                spec.hidden_size,
-                spec.q_size,
-                spec.kv_size,
-                library=libs.ternary,
-                runtime=self.runtime,
-            )
-            rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
-            maple_qknorm_rope_kv_write_bf16(
-                b.qkv.ptr,
-                layer_weights.q_norm.ptr,
-                layer_weights.k_norm.ptr,
-                kv_layer.key_cache.ptr,
-                kv_layer.value_cache.ptr,
-                kv_layer.spans,
-                q_heads=spec.num_attention_heads,
-                kv_heads=spec.num_key_value_heads,
-                head_dim=spec.head_dim,
-                rope_dim=rope_dim,
-                eps=spec.rms_norm_eps,
-                rope_theta=spec.rope_theta,
-                library=libs.attention,
-                runtime=self.runtime,
-            )
-            maple_attention_decode_bf16(
-                b.qkv.ptr,
-                kv_layer.key_cache.ptr,
-                kv_layer.value_cache.ptr,
-                b.attention.ptr,
-                kv_layer.spans,
-                q_heads=spec.num_attention_heads,
-                kv_heads=spec.num_key_value_heads,
-                head_dim=spec.head_dim,
-                scale=spec.head_dim**-0.5,
-                library=libs.attention,
-                runtime=self.runtime,
-            )
-            maple_ternary_gemv_bf16(
-                b.attention.ptr,
-                layer_weights.o_proj.weight.ptr,
-                layer_weights.o_proj.row_alpha.ptr,
-                b.projection.ptr,
-                spec.q_size,
-                spec.hidden_size,
-                library=libs.ternary,
-                runtime=self.runtime,
-            )
-            paro_add_rmsnorm_out_bf16(
-                b.hidden.ptr,
-                b.projection.ptr,
-                layer_weights.post_attention_layernorm.ptr,
-                b.normalized.ptr,
-                b.residual.ptr,
-                1,
-                spec.hidden_size,
-                spec.rms_norm_eps,
-                library=libs.norm,
-                runtime=self.runtime,
-            )
-            maple_router_topk_parallel_bf16(
-                b.normalized.ptr,
-                layer_weights.router.ptr,
-                b.selected_ids.ptr,
-                b.routing_weights.ptr,
-                b.router_logits.ptr,
-                spec.hidden_size,
-                spec.num_experts,
-                spec.num_experts_per_tok,
-                library=libs.moe,
-                runtime=self.runtime,
-            )
-            maple_selected_ternary_dual_gemv_bf16(
-                b.normalized.ptr,
-                layer_weights.expert_gate_proj.weight.ptr,
-                layer_weights.expert_gate_proj.row_alpha.ptr,
-                layer_weights.expert_up_proj.weight.ptr,
-                layer_weights.expert_up_proj.row_alpha.ptr,
-                b.selected_ids.ptr,
-                b.expert_gate.ptr,
-                b.expert_up.ptr,
-                spec.num_experts,
-                spec.num_experts_per_tok,
-                spec.hidden_size,
-                spec.moe_intermediate_size,
-                library=libs.ternary,
-                runtime=self.runtime,
-            )
-            maple_clamped_swiglu_bf16(
-                b.expert_gate.ptr,
-                b.expert_up.ptr,
-                b.expert_intermediate.ptr,
-                spec.num_experts_per_tok,
-                spec.moe_intermediate_size,
-                library=libs.moe,
-                runtime=self.runtime,
-            )
-            maple_selected_ternary_gemv_bf16(
-                b.expert_intermediate.ptr,
-                layer_weights.expert_down_proj.weight.ptr,
-                layer_weights.expert_down_proj.row_alpha.ptr,
-                b.selected_ids.ptr,
-                b.expert_down.ptr,
-                spec.num_experts,
-                spec.num_experts_per_tok,
-                spec.moe_intermediate_size,
-                spec.hidden_size,
-                library=libs.ternary,
-                runtime=self.runtime,
-            )
-            maple_weighted_residual_bf16(
-                b.residual.ptr,
-                b.expert_down.ptr,
-                b.routing_weights.ptr,
-                b.hidden.ptr,
-                spec.num_experts_per_tok,
-                spec.hidden_size,
-                library=libs.moe,
-                runtime=self.runtime,
+                runtime=self.runtime, stream=stream,
             )
             if capture_hidden:
-                captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
+                captured.append(self._copy_bf16(b.normalized, spec.hidden_size))
+            maple_affine4_gemv_f32(
+                b.normalized.ptr,
+                self.weights.lm_head.weight.ptr,
+                self.weights.lm_head.scales.ptr,
+                self.weights.lm_head.biases.ptr,
+                b.logits.ptr,
+                spec.hidden_size,
+                spec.vocab_size,
+                library=libs.ternary,
+                runtime=self.runtime, stream=stream,
+            )
+            argmax_f32(
+                b.logits.ptr,
+                b.argmax_block_values.ptr,
+                b.argmax_block_indices.ptr,
+                b.argmax_index.ptr,
+                b.argmax_value.ptr,
+                spec.vocab_size,
+                library=libs.lm_head,
+                runtime=self.runtime, stream=stream,
+            )
 
-        paro_rmsnorm_out_bf16(
-            b.hidden.ptr,
-            self.weights.final_norm.ptr,
-            b.normalized.ptr,
-            1,
-            spec.hidden_size,
-            spec.rms_norm_eps,
-            library=libs.norm,
-            runtime=self.runtime,
-        )
         if capture_hidden:
-            captured.append(self._copy_bf16(b.normalized, spec.hidden_size))
-        maple_affine4_gemv_f32(
-            b.normalized.ptr,
-            self.weights.lm_head.weight.ptr,
-            self.weights.lm_head.scales.ptr,
-            self.weights.lm_head.biases.ptr,
-            b.logits.ptr,
-            spec.hidden_size,
-            spec.vocab_size,
-            library=libs.ternary,
-            runtime=self.runtime,
-        )
-        argmax_f32(
-            b.logits.ptr,
-            b.argmax_block_values.ptr,
-            b.argmax_block_indices.ptr,
-            b.argmax_index.ptr,
-            b.argmax_value.ptr,
-            spec.vocab_size,
-            library=libs.lm_head,
-            runtime=self.runtime,
-        )
+            _decode_layers_and_tail(0)
+        else:
+            graph = self._graph_cache()
+            if graph is not None and graph.enabled:
+                graph.run(
+                    (),
+                    eager=_decode_body,
+                    argmax_index_ptr=b.argmax_index.ptr,
+                    argmax_value_ptr=b.argmax_value.ptr,
+                    mutable_inputs=((b.hidden.ptr, spec.hidden_size * 2),),
+                    stream=0,
+                )
+            else:
+                _decode_layers_and_tail(0)
         index_host = np.empty(1, dtype=np.int64)
         value_host = np.empty(1, dtype=np.float32)
         copy_device_to_host(
@@ -590,6 +632,9 @@ class MapleRunner:
         if self.closed:
             return
         self.closed = True
+        if self._graph is not None:
+            self._graph.close()
+            self._graph = None
         self.runtime.device_synchronize()
         self.owner.close()
         self.weights.free(runtime=self.runtime)
