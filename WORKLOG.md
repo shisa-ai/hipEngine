@@ -203164,3 +203164,14 @@ Vulkan local sizes verbatim will close the measured gap.
   6/6 moe + 20/20 maple kernel tests pass.
 - MoE-half prefill chain now has the router; grouped MoE over rows (P3) and the
   prefill_native wiring remain.
+
+## 2026-08-07 — M5/P4: batched affine4 embed primitive
+
+- Add `maple_affine4_embed_batched_kernel` (P4): embeds T token IDs into a
+  [T, hidden] buffer. Grid is T blocks, one block per token row. Same affine4
+  group-64 dequant as the single-token embed.
+- Wrapper `maple_affine4_embed_batched_bf16` + registry key
+  `("maple_affine4_embed", "group64_batched")`.
+- Correctness: new `test_maple_affine4_embed_batched_matches_oracle` is
+  bit-exact vs `dequantize_affine4` for 6 token IDs. 7/7 ternary tests pass;
+  ruff clean.

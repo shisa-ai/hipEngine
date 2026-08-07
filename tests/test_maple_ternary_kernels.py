@@ -162,6 +162,50 @@ def test_maple_affine4_embedding_and_head_match_cpu_oracle(maple_ternary_lib) ->
     assert np.allclose(logits, expected_logits, atol=2e-4, rtol=2e-4)
 
 
+def test_maple_affine4_embed_batched_matches_oracle(maple_ternary_lib) -> None:
+    """Batched affine4 embed of T token IDs matches dequantize_affine4 (P4)."""
+
+    from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
+        maple_affine4_embed_batched_bf16,
+    )
+
+    rng = np.random.default_rng(55)
+    rows, hidden = 6, 64
+    codes = rng.integers(0, 16, size=(rows, hidden), dtype=np.uint8)
+    packed = pack4(codes)
+    scales = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.2, size=(rows, 1)).astype(np.float32)
+    )
+    biases = f32_to_bf16_bits(
+        rng.uniform(-0.5, 0.5, size=(rows, 1)).astype(np.float32)
+    )
+    token_ids = np.asarray([0, 4, 1, 5, 3, 2], dtype=np.int64)
+    expected = f32_to_bf16_bits(
+        np.stack([dequantize_affine4(packed, scales, biases)[t] for t in token_ids])
+    )
+
+    with DeviceArrays() as dev:
+        packed_d = dev.put(packed)
+        scales_d = dev.put(scales)
+        biases_d = dev.put(biases)
+        ids_d = dev.put(token_ids)
+        out, out_d = dev.empty((rows, hidden), np.dtype(np.uint16))
+        maple_affine4_embed_batched_bf16(
+            packed_d.ptr,
+            scales_d.ptr,
+            biases_d.ptr,
+            ids_d.ptr,
+            out_d.ptr,
+            rows,
+            hidden,
+            library=maple_ternary_lib,
+        )
+        dev.get(out, out_d)
+
+    assert np.array_equal(out, expected)
+
+
+
 def test_maple_generic_and_fused_qkv_ternary_gemv_match_oracle(maple_ternary_lib) -> None:
     rng = np.random.default_rng(22)
     hidden, q_rows, kv_rows = 32, 5, 3
