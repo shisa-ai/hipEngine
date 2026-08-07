@@ -2,6 +2,37 @@
 
 Last updated: **2026-08-08**
 
+## Root README performance summary
+
+The root README intentionally exports only this compact retained summary. Full
+protocols, artifacts, history, rejected experiments, and platform-freshness
+records remain in the model-specific sections below.
+
+<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
+| Model / route | Hardware | Qualified workload | Prefill tok/s | Decode tok/s |
+| --- | --- | --- | ---: | ---: |
+| Qwen3.6-35B-A3B PARO W4 | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2917.732** | **115.599** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2716.648** | **92.833** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S / gfx1151 | 512 prompt / 128 decode | **1369.489** | **54.330** |
+| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
+| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
+| Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
+
+Where a row names separate prefill and decode workloads, its cells are the
+latest retained results for those explicitly named protocols, not one combined
+run.
+
+Selected parallel and speculative results:
+
+| Route | Hardware and scope | Aggregate decode | Relative result |
+| --- | --- | ---: | ---: |
+| Qwen3.6 GGUF physical c8 | W7900 direct model step | **246.872 tok/s** | **2.888x** c1 |
+| Qwen3.6 GGUF physical c8 | Radeon 8060S direct model step | **133.251 tok/s** | **2.647x** c1 |
+| Maple public c8 | Radeon 8060S, 64 tokens/request including admission and reclaim | **214.788 tok/s** | **1.744x** public c1 |
+| Qwen3.6 GGUF MTP `llama-compat` | W7900, explicit accuracy-traded route | **122.67 tok/s** | **1.2679x** own true AR |
+| Qwen3.6 GGUF NativeSpecCycle N3 | Radeon 8060S, explicit accuracy-traded route | **80.10 tok/s** | **1.4282x** own true AR |
+<!-- END TOPLINE:README_HIGHLIGHTS -->
+
 **Maple P4 retained on Radeon 8060S/gfx1151:** safe SWA-wrap orchestration
 extends exact native prefill beyond 512, and fixed-slot admission now connects
 request-local prompt K/V directly to public c1/c2/c4/c8 decode. The unchanged

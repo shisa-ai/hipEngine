@@ -2,12 +2,60 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 
-def test_root_readme_benchmark_blocks_match_canonical_scoreboard() -> None:
+_TABLE_SEPARATOR_RE = re.compile(r"^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$")
+_LOCAL_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+
+
+def _assert_markdown_tables_are_rectangular(text: str) -> None:
+    lines = text.splitlines()
+    in_fence = False
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence or not _TABLE_SEPARATOR_RE.fullmatch(line):
+            continue
+        assert index > 0 and lines[index - 1].lstrip().startswith("|")
+        expected_pipes = lines[index - 1].count("|")
+        row = index
+        while row < len(lines) and lines[row].lstrip().startswith("|"):
+            assert lines[row].count("|") == expected_pipes, (
+                f"malformed Markdown table at line {row + 1}: "
+                f"expected {expected_pipes} pipes"
+            )
+            row += 1
+
+
+def _heading_slug(heading: str) -> str:
+    plain = re.sub(r"[`*_\[\]]", "", heading).strip().lower()
+    plain = re.sub(r"[^\w\s-]", "", plain)
+    return re.sub(r"\s+", "-", plain)
+
+
+def _assert_local_markdown_links_exist(text: str, repo_root: Path) -> None:
+    for target in _LOCAL_LINK_RE.findall(text):
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        local_path, _, anchor = target.partition("#")
+        path = repo_root / local_path
+        assert path.exists(), f"broken README link: {target}"
+        if not anchor or not path.is_file():
+            continue
+        heading_slugs = {
+            _heading_slug(match.group(1))
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if (match := re.match(r"^#{1,6}\s+(.+?)\s*$", line))
+        }
+        assert anchor in heading_slugs, f"broken README anchor: {target}"
+
+
+def test_root_readme_is_compact_model_first_and_synced() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [sys.executable, "scripts/sync_benchmark_readme.py", "--check"],
@@ -17,6 +65,30 @@ def test_root_readme_benchmark_blocks_match_canonical_scoreboard() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    assert len(readme.splitlines()) < 400
+    assert readme.index("## Supported models") < readme.index("## Performance highlights")
+    assert readme.index("## Performance highlights") < readme.index("## Status")
+    for model_url in (
+        "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF",
+        "https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+        "https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF",
+        "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
+        "https://huggingface.co/poolside/Laguna-S-2.1-GGUF",
+        "https://huggingface.co/deepgrove/maple-preview-2bit-mlx",
+    ):
+        assert model_url in readme
+    assert readme.count("<!-- BEGIN TOPLINE:") == 1
+    assert "<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->" in readme
+    assert "## Memory Usage" not in readme
+    assert "## Speculative decode (DFlash / MTP)" not in readme
+    assert "H8C-H8Q" not in readme
+    assert "SH14-C1" not in readme
+    assert "**122.67 tok/s**" in readme
+    assert "**214.788 tok/s**" in readme
+    _assert_markdown_tables_are_rectangular(readme)
+    _assert_local_markdown_links_exist(readme, repo_root)
 
 
 def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None:
@@ -31,9 +103,7 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     )
     head_major = json.loads(head_major_path.read_text(encoding="utf-8"))
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
-    root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
     canonical_values = canonical.replace("**", "")
-    root_values = root_readme.replace("**", "")
 
     assert artifact["schema"] == 1
     assert artifact["status"] == (
@@ -85,7 +155,6 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
         "llama.cpp HIP | llama.cpp Vulkan |"
     )
     assert table_header in canonical
-    assert table_header in root_readme
 
     metrics = {
         "prefill_tok_s": "Prefill tok/s",
@@ -94,7 +163,6 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     }
     for metric, heading in metrics.items():
         assert f"#### {heading}" in canonical
-        assert f"#### {heading}" in root_readme
         for workload in workloads:
             paro_value = topline["paro"][workload][metric]["median"]
             if metric == "prefill_tok_s":
@@ -127,13 +195,11 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
                     f"{llama_hip:.3f} | {llama_vulkan:.3f} |"
                 )
             assert row in canonical_values
-            assert row in root_values
 
-    for readme in (canonical, root_readme):
-        assert "**+4.60% prefill / +6.20% decode**" in readme
-        assert "same-commit reboot A/B" in readme
-        assert "128K/128 | 498.101 | — (blocked)" in readme
-        assert artifact_path.name in readme
+    assert "**+4.60% prefill / +6.20% decode**" in canonical
+    assert "same-commit reboot A/B" in canonical
+    assert "128K/128 | 498.101 | — (blocked)" in canonical
+    assert artifact_path.name in canonical
     assert head_major_path.name in canonical
 
     for source in artifact["source_artifacts"].values():
@@ -164,7 +230,6 @@ def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
         )
     )
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
-    root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
     assert exact_artifact["status"] == "accepted"
     assert native["status"] == "retained"
@@ -216,15 +281,14 @@ def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
         "| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | "
         "hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |"
     )
-    for readme in (canonical, root_readme):
-        assert "#### GGUF MTP comparison, Radeon Pro W7900/gfx1100" in readme
-        assert header in readme
-        assert "##### W7900 reusable-native `llama-compat` full-suite gate" in readme
-        assert "**6.26% faster** than llama.cpp" in readme
-        for expected in expected_main_rows:
-            assert expected in readme
-        for expected in expected_split_rows:
-            assert expected in readme
+    assert "#### GGUF MTP comparison, Radeon Pro W7900/gfx1100" in canonical
+    assert header in canonical
+    assert "##### W7900 reusable-native `llama-compat` full-suite gate" in canonical
+    assert "**6.26% faster** than llama.cpp" in canonical
+    for expected in expected_main_rows:
+        assert expected in canonical
+    for expected in expected_split_rows:
+        assert expected in canonical
 
 
 def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
@@ -235,7 +299,6 @@ def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     prior = json.loads(prior_path.read_text(encoding="utf-8"))
     transfer = json.loads(transfer_path.read_text(encoding="utf-8"))
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
-    root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
     assert prior["status"] == "accepted_compat_with_exact_negative_and_external_diagnostic"
     assert prior["correctness"]["teacher_forced_all_steps_passed"] is True
@@ -310,16 +373,15 @@ def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
         "| Metric | hipEngine GGUF exact/default | "
         "hipEngine GGUF `llama-compat` | llama.cpp HIP |"
     )
-    for readme in (canonical, root_readme):
-        assert header in readme
-        assert "##### gfx1151 NativeSpecCycle N3 `llama-compat` full-suite gate" in readme
-        assert "`performance_claim=false`" in readme
-        assert prior_path.name in readme
-        assert transfer_path.name in readme
-        for expected_row in expected_rows:
-            assert expected_row in readme
-        for expected_row in expected_split_rows:
-            assert expected_row in readme
+    assert header in canonical
+    assert "##### gfx1151 NativeSpecCycle N3 `llama-compat` full-suite gate" in canonical
+    assert "`performance_claim=false`" in canonical
+    assert prior_path.name in canonical
+    assert transfer_path.name in canonical
+    for expected_row in expected_rows:
+        assert expected_row in canonical
+    for expected_row in expected_split_rows:
+        assert expected_row in canonical
 
 
 def test_llamacpp_benchmark_patchset_manifest_is_complete() -> None:

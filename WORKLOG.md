@@ -207893,3 +207893,30 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   graph, M2 fusion, ragged prompt compute, HTTP serving, and 128K qualification
   remain explicitly separate tracks with concrete limits/triggers; none is an
   unfinished requirement of this roadmap.
+
+## 2026-08-08 — Refocus root README on supported models and toplines
+
+- Audit the 2,538-line root README against the registered generation paths and
+  model support documents. The root had accumulated about 1,600 unheaded lines
+  of Laguna optimization chronology plus detailed memory, speculative,
+  concurrency, profiler, rejection, and phase-history material. Preserve that
+  evidence in `benchmarks/README.md`, model documents, artifacts, and this
+  worklog rather than duplicating it in the project landing page.
+- Rewrite `README.md` to 272 lines. Lead with a support matrix linking the tested
+  Qwen3.5 dense, Qwen3.5/3.6 MoE PARO/GGUF, Laguna S 2.1, and Maple-Preview
+  checkpoints and their qualified backend/workload boundaries. Retain only a
+  compact six-row single-request table and five selected parallel/speculative
+  toplines, with explicit warnings against cross-model or mixed-protocol
+  comparison. Keep concise status, principles, hardware, architecture,
+  installation, quickstart, API, documentation, lineage, and license sections.
+- Prevent regression by replacing the all-block root export contract with one
+  canonical `README_HIGHLIGHTS` block near the top of `benchmarks/README.md`.
+  `scripts/sync_benchmark_readme.py` now ignores the detailed canonical TOPLINE
+  blocks and rejects any unselected block in the root target. The benchmark
+  ledger remains complete; the root cannot silently regrow it on the next sync.
+- Validation is GREEN: benchmark README sync/provenance tests **6/6**, Python
+  compilation, `git diff --check`, and a CommonMark parse with **5 tables** pass.
+  The durable root audit verifies all Markdown tables are rectangular, all
+  **30** local links and anchors resolve, all six named model links are present,
+  support precedes performance/status, only one exported TOPLINE block exists,
+  and the README remains under 400 lines.
