@@ -146,6 +146,7 @@ class _PrefillBuffers:
     argmax_block_values: DeviceBuffer
     argmax_block_indices: DeviceBuffer
     argmax_index: DeviceBuffer
+    argmax_value: DeviceBuffer
 
     def __init__(
         self,
@@ -177,6 +178,7 @@ class _PrefillBuffers:
         self.argmax_block_values = owner.allocate(T * argmax_blocks * 4)
         self.argmax_block_indices = owner.allocate(T * argmax_blocks * 8)
         self.argmax_index = owner.allocate(T * 4)
+        self.argmax_value = owner.allocate(T * 4)
 
 
 @dataclass(frozen=True)
@@ -762,23 +764,50 @@ class MapleRunner:
         assert result is not None
         return result
 
-    def prefill_native(self, token_ids: tuple[int, ...] | list[int], *, chunk_size: int = PREFILL_CHUNK) -> MapleStepResult:
-        """Batched bulk prefill over all layers (P4), chunked into `chunk_size` rows.
+    def prefill_native(
+        self,
+        token_ids: tuple[int, ...] | list[int],
+        *,
+        chunk_size: int = PREFILL_CHUNK,
+    ) -> MapleStepResult:
+        """Batched bulk prefill over all layers (P4), chunked into bounded rows.
 
         Uses the batched prefill kernel chain (embed, QKV GEMM, qknorm ring
         write, ring attention, o_proj GEMM, router, grouped MoE, weighted
-        residual, lm_head GEMM, row argmax). Returns the final token's argmax
-        (the decoder's next-token prediction), matching the token-serial
-        `prefill` within the correctness gate.
+        residual, lm_head GEMM, row argmax). Returns the final prompt row's
+        next-token prediction and top logit while preserving the token-serial
+        continuation contract.
         """
 
         self._require_open()
+        try:
+            parsed_chunk = int(chunk_size)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Maple chunk_size must be an integer") from exc
+        if (
+            isinstance(chunk_size, bool)
+            or parsed_chunk != chunk_size
+            or not 1 <= parsed_chunk <= PREFILL_CHUNK
+        ):
+            raise ValueError(f"Maple chunk_size must be in [1, {PREFILL_CHUNK}]")
         tokens = tuple(int(token) for token in token_ids)
         if not tokens:
             raise ValueError("Maple prompt token IDs must not be empty")
-        if self.position + len(tokens) > self.max_context:
-            raise ValueError("Maple prompt exceeds runner context capacity")
         spec = self.checkpoint.spec
+        invalid_token = next(
+            (token for token in tokens if token < 0 or token >= spec.vocab_size),
+            None,
+        )
+        if invalid_token is not None:
+            raise ValueError(f"Maple token_id must be in [0, {spec.vocab_size})")
+        end_position = self.position + len(tokens)
+        if end_position > self.max_context:
+            raise ValueError("Maple prompt exceeds runner context capacity")
+        if end_position > spec.sliding_window:
+            raise NotImplementedError(
+                "Maple native prefill currently supports at most one sliding-window "
+                f"capacity ({spec.sliding_window} positions); use serial prefill beyond it"
+            )
         b = self.buffers
         pf = b.pf
         libs = self.libraries
@@ -789,12 +818,13 @@ class MapleRunner:
         intermediate = spec.moe_intermediate_size
         n = len(tokens)
         started = time.perf_counter()
+        start_position = self.position
         last_index = np.empty(1, dtype=np.int64)
         last_value = np.empty(1, dtype=np.float32)
-        for c0 in range(0, n, int(chunk_size)):
-            ids = tokens[c0 : c0 + int(chunk_size)]
+        for c0 in range(0, n, parsed_chunk):
+            ids = tokens[c0 : c0 + parsed_chunk]
             rows = len(ids)
-            pos = self.position + c0
+            pos = start_position + c0
             for span_owner in (b.sliding_span_owner, b.global_span_owner):
                 maple_kv_span_update_batched(
                     span_owner.spans,
@@ -998,7 +1028,7 @@ class MapleRunner:
                 pf.argmax_block_values.ptr,
                 pf.argmax_block_indices.ptr,
                 pf.argmax_index.ptr,
-                None,
+                pf.argmax_value.ptr,
                 rows,
                 spec.vocab_size,
                 library=libs.lm_head,
@@ -1011,10 +1041,16 @@ class MapleRunner:
                 nbytes=last_i32.nbytes,
                 runtime=self.runtime,
             )
+            copy_device_to_host(
+                host_array_ptr(last_value),
+                DeviceBuffer(ptr=pf.argmax_value.ptr + (rows - 1) * 4, nbytes=4),
+                nbytes=last_value.nbytes,
+                runtime=self.runtime,
+            )
             last_index[0] = int(last_i32[0])
-        self.position += n
+        self.position = start_position + n
         return MapleStepResult(
-            position=self.position - n,
+            position=self.position - 1,
             token_id=int(last_index[0]),
             top_logit=float(last_value[0]),
             elapsed_ms=(time.perf_counter() - started) * 1_000.0,

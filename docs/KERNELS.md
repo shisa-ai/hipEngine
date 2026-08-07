@@ -55,7 +55,10 @@ global cache by capacity. Span wrap, nonidentity physical offsets, Q/K values,
 K/V bytes, and attention output are BF16-bit exact to the NumPy oracle. The
 cache-only gfx1151 trace reports QK/RoPE/KV-write at local32/VGPR24/scratch0,
 **5,771 ns**, and attention at local32/VGPR16/scratch0, **3,607 ns** on the tiny
-fixture.
+fixture. The batched ring-prefill attention reads the complete live causal
+prefix across chunk boundaries; its prefix-aware fixture is BF16-bit exact and
+a cached gfx1151 trace names `maple_attention_prefill_ring_kernel` at **6,452
+ns**, VGPR16, LDS0, scratch0.
 
 `hipengine/kernels/hip_gfx1100/moe/maple_moe.{hip,py}` supplies the unfused MoE
 control/tail around selected ternary GEMV: BF16-hidden/BF16-weight router logits
@@ -80,7 +83,10 @@ existing direct-weight PARO RMSNorm and two-stage FP32 argmax into a resident
 global metadata reset without clearing stale cache bytes because absolute
 `token_positions` gate every read. Both span-owner identities are published even
 when their capacities are equal; the earlier top-ID-1112 diagnostic preceded
-that correctness fix and is not retained evidence.
+that correctness fix and is not retained evidence. Public prompts through the
+512-token SWA capacity use bounded native prefill; longer prompts remain on the
+serial correctness fallback until append-all ring prefill can preserve the live
+window while writing later chunks.
 
 The corrected 18-position packed-formula gate passes at max KL **0.013508** and
 18/18 top-1; the pinned Transformers `trust_remote_code` same-weight gate passes

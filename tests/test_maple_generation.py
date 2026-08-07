@@ -28,15 +28,20 @@ class FakeTokenizer:
 class FakeRunner:
     def __init__(self) -> None:
         self.reset_calls = 0
-        self.prefill_rows: list[tuple[int, ...]] = []
+        self.native_prefill_rows: list[tuple[int, ...]] = []
+        self.serial_prefill_rows: list[tuple[int, ...]] = []
         self.step_inputs: list[int] = []
         self.closed = False
 
     def reset(self) -> None:
         self.reset_calls += 1
 
+    def prefill_native(self, token_ids):
+        self.native_prefill_rows.append(tuple(int(token) for token in token_ids))
+        return SimpleNamespace(token_id=10)
+
     def prefill(self, token_ids):
-        self.prefill_rows.append(tuple(int(token) for token in token_ids))
+        self.serial_prefill_rows.append(tuple(int(token) for token in token_ids))
         return SimpleNamespace(token_id=10)
 
     def step(self, token_id: int):
@@ -55,7 +60,9 @@ def fake_generator() -> MapleGenerator:
     generator.backend = "hip_gfx1151"
     generator.context_length = 16
     generator.tokenizer = FakeTokenizer()
-    generator.checkpoint = SimpleNamespace(spec=SimpleNamespace(eos_token_id=2))
+    generator.checkpoint = SimpleNamespace(
+        spec=SimpleNamespace(eos_token_id=2, sliding_window=512)
+    )
     generator.last_generation_outputs = ()
     generator.last_generation_seconds = None
     generator._runner = FakeRunner()
@@ -96,9 +103,30 @@ def test_maple_generator_runs_greedy_prompt_and_stops_on_eos() -> None:
     assert outputs[0].finish_details.reason == "stop"
     assert outputs[0].finish_details.eos_token_id == 2
     assert runner.reset_calls == 1
-    assert runner.prefill_rows == [(4, 5, 6)]
+    assert runner.native_prefill_rows == [(4, 5, 6)]
+    assert runner.serial_prefill_rows == []
     assert runner.step_inputs == [10, 11]
     assert generator.last_generation_seconds is not None
+
+
+def test_maple_generator_uses_serial_fallback_beyond_native_swa_capacity() -> None:
+    generator = fake_generator()
+    generator.context_length = 600
+    long_prompt = tuple(4 for _ in range(513))
+    result = generator.generate_detailed(
+        GenerationRequest(
+            prompts=(long_prompt,),
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=False,
+        )
+    )
+    runner = generator._runner
+    assert result[0].generated_token_ids == (10,)
+    assert isinstance(runner, FakeRunner)
+    assert runner.native_prefill_rows == []
+    assert runner.serial_prefill_rows == [long_prompt]
 
 
 def test_maple_generator_fails_closed_for_sampling_and_context_overflow() -> None:

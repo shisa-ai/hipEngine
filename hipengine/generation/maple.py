@@ -103,7 +103,10 @@ class MapleGenerator:
                     raise ValueError("Maple prompt plus max_tokens exceeds context_length")
                 started = time.perf_counter()
                 runner.reset()
-                next_step = runner.prefill(prompt_ids)
+                if len(prompt_ids) <= self.checkpoint.spec.sliding_window:
+                    next_step = runner.prefill_native(prompt_ids)
+                else:
+                    next_step = runner.prefill(prompt_ids)
                 generated: list[int] = []
                 finish_reason = "length"
                 eos_id: int | None = None

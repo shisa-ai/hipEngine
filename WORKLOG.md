@@ -206769,3 +206769,34 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (SHA-256 `9ce59b19...1ad1`). Production remains SH16; future reopening
   requires new exact c1 evidence, a demonstrated sufficient allocation owner,
   or approved system-memory scope.
+
+## 2026-08-07 — Repair Maple native-prefill publication and chunk continuation
+
+- RED-first review found three publication bugs in the M5 path: the public
+  generator still called serial `prefill()`, `prefill_native()` returned the
+  first prompt position plus an uninitialized `top_logit`, and a 260-token
+  two-chunk prompt produced token **3422** versus serial **291**. The primitive
+  RED fixture confirmed that ring prefill attention ignored all positions from
+  prior chunks.
+- Change `maple_attention_prefill_ring_kernel` to scan the complete live causal
+  prefix ending at `start + row`, not merely the rows in the current chunk.
+  Bound native prefill to one 512-position sliding-window capacity because
+  append-all-then-attend can overwrite still-live SWA prefix slots beyond that
+  frontier; public generation uses native prefill through 512 and the exact
+  serial fallback above it.
+- Validate every prompt token and require `chunk_size` in `[1, 256]` before a
+  GPU launch. Row-wise argmax now publishes values as well as IDs, and the
+  returned `MapleStepResult` reports the final prompt position and initialized
+  top logit.
+- GREEN gates: six public-generation/bounds tests, the corrected prefix-aware
+  attention primitive, the 12-token real-checkpoint seed+continuation gate, and
+  the 260-token multi-chunk plus three-decode-step continuation gate all pass;
+  the focused Maple generation/attention/prefill bundle is **19 passed**.
+- Public `LLM.generate_detailed()` on the canonical 18-token formatted Maple
+  prompt still emits the same coherent 37-token text and real EOS 151645 after
+  native-prefill promotion. Tracked ownership is **5,555,965,800 bytes** while
+  resident and returns to zero on close; timing is diagnostic pending the
+  corrected M5/M6 recertification.
+- Cached `rocprofv3 --kernel-trace` names
+  `maple_attention_prefill_ring_kernel` at **6,452 ns**, VGPR16, LDS0,
+  scratch0 on Radeon 8060S/gfx1151. Raw profiler output remains under `/tmp`.
