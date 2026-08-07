@@ -2,15 +2,15 @@
 
 Last updated: **2026-08-07**
 
-**Maple P0/M5 retained on Radeon 8060S/gfx1151:** final-row-only public native
-prefill at 128/320/512 is **700.643/649.280/614.874 tok/s**, up
-**106.14%/98.82%/93.67%** from the corrected bring-up rows and
-**4.764x/6.133x/7.443x** serial. All 18 code/general-English/general-Japanese/
+**Maple P1/M5 retained on Radeon 8060S/gfx1151:** final-row-only plus exact
+expert-major public native prefill at 128/320/512 is
+**726.421/679.632/650.745 tok/s**, up **3.68%/4.67%/5.83%** over P0 and
+**4.894x/6.381x/7.828x** serial. All 18 code/general-English/general-Japanese/
 mixed natural+heldout prompts have byte-exact final hidden/normalized, live K/V,
 and `KVLiveSpans` state; all 90 seed/continuation positions are logit/token
-exact with KL 0. Max-context-512 tracked residency is **4.988 GiB**, down
-**148.813 MiB**, and close returns zero ownership. Evidence:
-[`P0/M5`](results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json).
+exact with KL 0. Max-context-512 tracked residency is **4.988 GiB**; P1 adds
+exactly **45,072 bytes** of metadata, and close returns zero ownership. Evidence:
+[`P1/M5`](results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json).
 
 The fixed-capacity M6 runtime helper remains c=2/4/8 median aggregate
 **218.818/261.099/299.181 tok/s** at 64 tokens/request with every measured
@@ -21,11 +21,12 @@ not yet public server throughput. The former 223.2/275.6/321.1 rows are invalid
 
 The clean cached-only
 [`post-P0 phase profile`](results/2026-08-07-gfx1151-maple-p0-phase-profile.json)
-measures prefill320 at **498.442 ms / 642.000 tok/s** and the unchanged
-row/route-gather expert family at **276.150 ms (56.03% of kernel time)**. P1
-true expert-major compact MoE must reach **<=97.708 ms (2.826x)** for the
-profile-based 1000-tok/s target. c2/c4/c8 still need affine4 row reuse. A
-counterbalanced exact/leak-free
+is the immutable P1 baseline: **498.442 ms / 642.000 tok/s**, with row/route
+experts at **276.150 ms**. P1's final diagnostic reaches only **254.179 ms
+(1.086x)** rather than the **<=97.708-ms (2.826x)** target; metadata is 0.444 ms
+and wider exact lane schedules regress, so scalar ternary compute is the
+recorded blocker. P2 prefill attention is next; c2/c4/c8 still need affine4 row
+reuse. A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
 measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
 the rejected c1 head tile remains closed.
