@@ -9,8 +9,8 @@ request-local prompt K/V directly to public c1/c2/c4/c8 decode. The unchanged
 **+0.224%/+0.070%/+0.061%** from P2. All **18/18** state hashes and **90/90**
 positions remain byte/exact with KL 0; 520/770-token physical K/V, span, final-
 state, and continuation gates also match serial. Public generation reaches
-**122.564/165.385/201.203/214.378 aggregate tok/s** at c1/c2/c4/c8, or
-**1.349x/1.642x/1.749x** the same public c1 protocol. All 15 repeated 18-prompt
+**123.131/165.697/202.038/214.788 aggregate tok/s** at c1/c2/c4/c8, or
+**1.346x/1.641x/1.744x** the same public c1 protocol. All 15 repeated 18-prompt
 trajectory sets, sparse/staggered reclaim, physical-c8 singleton behavior, and
 lifecycle are exact. Evidence:
 [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json)
@@ -49,7 +49,7 @@ tracing reduces the head **10.490 -> 3.734 ms (2.809x)** and wall **25.925 ->
 | Public native prefill 128/320/512 | **750.854/741.890/754.458 tok/s** | 18/18 states, 90/90 positions, KL 0; <=0.224% from P2 | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
 | c1 natural+heldout continuation | **153.201 tok/s** | 18 prompts, 1,152 paired timing samples; full-head exact; -0.14% vs prior | [`D0 current`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json) |
 | Fixed-helper c2/c4/c8 decode64 | **250.481/346.365/428.063 aggregate tok/s** | exact row reuse; excludes prompt/public scheduling | [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json) |
-| Public c1/c2/c4/c8 generation64 | **122.564/165.385/201.203/214.378 aggregate tok/s** | same public protocol; admission/prefill/reclaim included; exact full head | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
+| Public c1/c2/c4/c8 generation64 | **123.131/165.697/202.038/214.788 aggregate tok/s** | same public protocol; admission/prefill/reclaim included; exact full head | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
 
 The fixed-capacity helper now uses exact affine4 row reuse at c=2/4/8 and
 reaches median aggregate **250.481/346.365/428.063 tok/s** at 64 tokens/request.
