@@ -212,6 +212,72 @@ __global__ void maple_attention_decode_kernel(
   }
 }
 
+// Batched prefill attention (P2): processes T query rows causally against a
+// dense prefix KV cache.  Grid is (q_heads x T) blocks, one block per
+// (head, row); each block runs the same online-softmax scan as the decode
+// kernel over the causal prefix [0, row] (inclusive), producing out[row].
+// The KV cache here is the raw [seq, kv_heads, head_dim] prefill buffer
+// (positions already qknorm+RoPE'd), not the KVLiveSpans ring.
+__global__ void maple_attention_prefill_kernel(
+    const uint16_t* __restrict__ qkv,
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale) {
+  const int64_t q_head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (q_head >= q_heads || row >= rows) {
+    return;
+  }
+  const int64_t tid = threadIdx.x;
+  const int64_t group_size = q_heads / kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t kv_stride = kv_heads * head_dim;
+  const float q = tid < head_dim
+      ? bf16_to_float(qkv[row * q_heads * head_dim + q_head * head_dim + tid])
+      : 0.0f;
+  float accumulator = 0.0f;
+  float running_max = -INFINITY;
+  float running_sum = 0.0f;
+
+  extern __shared__ float dot_scratch[];
+  for (int64_t token = 0; token <= row; ++token) {
+    float dot = 0.0f;
+    if (tid < head_dim) {
+      const int64_t cache_offset = token * kv_stride + kv_head * head_dim + tid;
+      dot = q * bf16_to_float(key_cache[cache_offset]);
+    }
+    dot_scratch[tid] = dot;
+    __syncthreads();
+    for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        dot_scratch[tid] += dot_scratch[tid + stride];
+      }
+      __syncthreads();
+    }
+    const float score = dot_scratch[0] * scale;
+    const float next_max = fmaxf(running_max, score);
+    const float old_scale = isinf(running_max) ? 0.0f : expf(running_max - next_max);
+    const float new_scale = expf(score - next_max);
+    if (tid < head_dim) {
+      const int64_t cache_offset = token * kv_stride + kv_head * head_dim + tid;
+      accumulator = accumulator * old_scale
+          + bf16_to_float(value_cache[cache_offset]) * new_scale;
+    }
+    running_sum = running_sum * old_scale + new_scale;
+    running_max = next_max;
+    __syncthreads();
+  }
+  if (tid < head_dim) {
+    out[row * q_heads * head_dim + q_head * head_dim + tid] = float_to_bf16(
+        running_sum > 0.0f ? accumulator / running_sum : 0.0f);
+  }
+}
+
 inline int launch_threads_for_dim(int64_t head_dim) {
   if (head_dim > 64) {
     return 128;
@@ -344,5 +410,40 @@ extern "C" int hipengine_maple_attention_decode_bf16(
       head_dim,
       scale,
       capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_attention_prefill_bf16(
+    const uint16_t* qkv,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* out,
+    int64_t rows,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
+      || head_dim <= 0 || head_dim > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_dim(head_dim);
+  hipLaunchKernelGGL(
+      maple_attention_prefill_kernel,
+      dim3(static_cast<unsigned int>(q_heads),
+           static_cast<unsigned int>(rows)),
+      dim3(threads),
+      threads * sizeof(float),
+      stream,
+      qkv,
+      key_cache,
+      value_cache,
+      out,
+      rows,
+      q_heads,
+      kv_heads,
+      head_dim,
+      scale);
   return static_cast<int>(hipGetLastError());
 }
