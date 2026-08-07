@@ -260,6 +260,188 @@ __global__ void maple_qknorm_rope_kv_write_batched_kernel(
   }
 }
 
+// Batched per-request QK-norm+RoPE+KV write (D5 batch decode).
+// Grid is (total_heads x rows); block (head, row) processes one request row at
+// its own absolute position row_positions[row], writing that request's current
+// K/V into the shared KV arena (identity-base_offsets position-offset arena so
+// independent requests occupy disjoint position ranges). Bit-equivalent to the
+// c1 qknorm_rope_kv_write kernel per row.
+__global__ void maple_qknorm_rope_kv_write_batched_decode_kernel(
+    uint16_t* __restrict__ qkv,
+    const uint16_t* __restrict__ q_norm_weight,
+    const uint16_t* __restrict__ k_norm_weight,
+    uint16_t* __restrict__ key_cache,
+    uint16_t* __restrict__ value_cache,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t rope_dim,
+    float eps,
+    float rope_theta,
+    int64_t rows,
+    int64_t capacity) {
+  const int64_t head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t total_heads = q_heads + kv_heads;
+  if (head >= total_heads || row >= rows) {
+    return;
+  }
+  const bool is_q = head < q_heads;
+  const int64_t local_head = is_q ? head : head - q_heads;
+  const int64_t q_size = q_heads * head_dim;
+  const int64_t kv_size = kv_heads * head_dim;
+  const int64_t row_base = row * (q_size + 2 * kv_size);
+  const int64_t source_base = is_q ? head * head_dim : q_size + local_head * head_dim;
+  const uint16_t* norm_weight = is_q ? q_norm_weight : k_norm_weight;
+  const int64_t tid = threadIdx.x;
+  const int64_t position = row_positions[row];
+
+  extern __shared__ uint8_t shared_raw[];
+  float* sums = reinterpret_cast<float*>(shared_raw);
+  uint16_t* normalized = reinterpret_cast<uint16_t*>(sums + blockDim.x);
+  float value = 0.0f;
+  if (tid < head_dim) {
+    value = bf16_to_float(qkv[row_base + source_base + tid]);
+  }
+  sums[tid] = value * value;
+  __syncthreads();
+  for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      sums[tid] += sums[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid < head_dim) {
+    const float inv_rms = rsqrtf(sums[0] / static_cast<float>(head_dim) + eps);
+    normalized[tid] = float_to_bf16(
+        value * inv_rms * bf16_to_float(norm_weight[tid]));
+  }
+  __syncthreads();
+
+  if (tid < head_dim) {
+    float out_value = bf16_to_float(normalized[tid]);
+    if (rope_dim > 0 && tid < rope_dim) {
+      const int64_t half = rope_dim / 2;
+      const int64_t pair = tid < half ? tid + half : tid - half;
+      const int64_t frequency = tid < half ? tid : tid - half;
+      const float exponent = -static_cast<float>(frequency) / static_cast<float>(half);
+      const float theta = static_cast<float>(position) * powf(rope_theta, exponent);
+      const float paired = bf16_to_float(normalized[pair]);
+      const float cosine = cosf(theta);
+      const float sine = sinf(theta);
+      out_value = tid < half
+          ? out_value * cosine - paired * sine
+          : out_value * cosine + paired * sine;
+    }
+    const uint16_t out_bits = float_to_bf16(out_value);
+    qkv[row_base + source_base + tid] = out_bits;
+
+    if (!is_q) {
+      const int64_t logical_slot = positive_mod(position, capacity);
+      const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+      const bool valid = live_counts[row] > 0
+          && token_positions[logical_slot] == position
+          && evict_mask[logical_slot] == 0;
+      if (valid && physical_slot >= 0 && physical_slot < capacity) {
+        const int64_t cache_offset = physical_slot * kv_size + local_head * head_dim + tid;
+        key_cache[cache_offset] = out_bits;
+        value_cache[cache_offset] =
+            qkv[row_base + q_size + kv_size + local_head * head_dim + tid];
+      }
+    }
+  }
+}
+
+// Batched per-request attention decode (D5). Grid is (q_heads x rows); block
+// (q_head, row) runs the same online-softmax scan as the c1 decode kernel but
+// over request row's own live span [row_positions[row]-live_counts[row]+1,
+// row_positions[row]], reading per-row live_counts/row_positions from the
+// KVLiveSpans ABI. Bit-equivalent to c independent c1 decode runs.
+__global__ void maple_attention_decode_batched_kernel(
+    const uint16_t* __restrict__ qkv,
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    uint16_t* __restrict__ out,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t capacity) {
+  const int64_t q_head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  if (q_head >= q_heads || row >= rows) {
+    return;
+  }
+  const int64_t tid = threadIdx.x;
+  const int64_t group_size = q_heads / kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t kv_stride = kv_heads * head_dim;
+  const int64_t q_size = q_heads * head_dim;
+  const int64_t qkv_stride = q_size + 2 * kv_stride;
+  const int64_t live = live_counts[row] < capacity ? live_counts[row] : capacity;
+  const int64_t query_position = row_positions[row];
+  const int64_t start_position = query_position - live + 1;
+  const float q = tid < head_dim
+      ? bf16_to_float(qkv[row * qkv_stride + q_head * head_dim + tid])
+      : 0.0f;
+  float accumulator = 0.0f;
+  float running_max = -INFINITY;
+  float running_sum = 0.0f;
+
+  extern __shared__ float dot_scratch[];
+  for (int64_t token = 0; token < live; ++token) {
+    const int64_t absolute_position = start_position + token;
+    const int64_t logical_slot = positive_mod(absolute_position, capacity);
+    const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+    const bool valid = physical_slot >= 0 && physical_slot < capacity
+        && token_positions[logical_slot] == absolute_position
+        && evict_mask[logical_slot] == 0;
+    if (!valid) {
+      continue;
+    }
+    float dot = 0.0f;
+    if (tid < head_dim) {
+      const int64_t cache_offset = physical_slot * kv_stride + kv_head * head_dim + tid;
+      dot = q * bf16_to_float(key_cache[cache_offset]);
+    }
+    dot_scratch[tid] = dot;
+    __syncthreads();
+    for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        dot_scratch[tid] += dot_scratch[tid + stride];
+      }
+      __syncthreads();
+    }
+    const float score = dot_scratch[0] * scale;
+    const float next_max = fmaxf(running_max, score);
+    const float old_scale = isinf(running_max) ? 0.0f : expf(running_max - next_max);
+    const float new_scale = expf(score - next_max);
+    if (tid < head_dim) {
+      const int64_t cache_offset = physical_slot * kv_stride + kv_head * head_dim + tid;
+      accumulator = accumulator * old_scale
+          + bf16_to_float(value_cache[cache_offset]) * new_scale;
+    }
+    running_sum = running_sum * old_scale + new_scale;
+    running_max = next_max;
+    __syncthreads();
+  }
+  if (tid < head_dim) {
+    out[row * q_size + q_head * head_dim + tid] = float_to_bf16(
+        running_sum > 0.0f ? accumulator / running_sum : 0.0f);
+  }
+}
+
 __global__ void maple_attention_decode_kernel(
     const uint16_t* __restrict__ qkv,
     const uint16_t* __restrict__ key_cache,
@@ -838,6 +1020,62 @@ extern "C" int hipengine_maple_qknorm_rope_kv_write_batched_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_maple_qknorm_rope_kv_write_batched_decode_bf16(
+    uint16_t* qkv,
+    const uint16_t* q_norm_weight,
+    const uint16_t* k_norm_weight,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t rope_dim,
+    float eps,
+    float rope_theta,
+    int64_t rows,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
+      || head_dim <= 0 || head_dim > 128 || rope_dim < 0 || rope_dim > head_dim
+      || rope_dim % 2 != 0 || rows <= 0 || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_dim(head_dim);
+  const int64_t blocks = q_heads + kv_heads;
+  const int64_t shared_bytes = threads * sizeof(float) + head_dim * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      maple_qknorm_rope_kv_write_batched_decode_kernel,
+      dim3(static_cast<unsigned int>(blocks),
+           static_cast<unsigned int>(rows)),
+      dim3(threads),
+      static_cast<unsigned int>(shared_bytes),
+      stream,
+      qkv,
+      q_norm_weight,
+      k_norm_weight,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      q_heads,
+      kv_heads,
+      head_dim,
+      rope_dim,
+      eps,
+      rope_theta,
+      rows,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_maple_attention_decode_bf16(
     const uint16_t* qkv,
     const uint16_t* key_cache,
@@ -934,6 +1172,53 @@ extern "C" int hipengine_maple_attention_fused_qknorm_decode_bf16(
       rope_dim,
       eps,
       rope_theta,
+      scale,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_attention_decode_batched_bf16(
+    const uint16_t* qkv,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
+      || head_dim <= 0 || head_dim > 128 || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_dim(head_dim);
+  hipLaunchKernelGGL(
+      maple_attention_decode_batched_kernel,
+      dim3(static_cast<unsigned int>(q_heads),
+           static_cast<unsigned int>(rows)),
+      dim3(threads),
+      threads * sizeof(float),
+      stream,
+      qkv,
+      key_cache,
+      value_cache,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
+      q_heads,
+      kv_heads,
+      head_dim,
       scale,
       capacity);
   return static_cast<int>(hipGetLastError());
