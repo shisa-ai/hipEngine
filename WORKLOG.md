@@ -207641,3 +207641,21 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   parents (`tracked_sources: 0 changed_or_dirty: 0`), consistent with this
   in-tree original schedule; the all-kernel query cannot inspect an unrelated
   manifest entry because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+- Commit the default-off implementation as `7e134ca9e`, then run the unchanged
+  retained M6 protocol from that clean source with only
+  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1` added and cached builds
+  required. All **18/18** natural/category-heldout trajectories match serial,
+  the sparse final c8 group has two active rows and is exact, every one of nine
+  c2/c4/c8 timing samples is trajectory-exact, and all six runner lifecycles
+  close at **0 bytes / 0 allocations**.
+- Candidate c2/c4/c8 medians are **250.037/347.511/427.929 aggregate tok/s**
+  versus the retained same-protocol **218.818/261.099/299.181**, improvements of
+  **14.27%/33.10%/43.03%**. Candidate min/max ranges are
+  **250.010-250.655 / 347.346-347.515 / 427.596-428.836 tok/s**. Temporary full
+  result SHA-256 is
+  `6e8f074e2e80d88058eb5c4be41ee6d7ba27a5bc982e5813fdb4aade35f85721`;
+  this clean admission result is not yet the selector-unset retained artifact.
+- Extend `scripts/maple_phase_profile.py` with repeatable `--phase` selection and
+  explicit row-reuse-selector provenance so D1 can trace only c8 without
+  rerunning unaffected prefill/c1 phases. The script still prebuilds every
+  library outside `rocprofv3` and requires cached builds in the profiled child.
