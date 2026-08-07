@@ -206834,3 +206834,50 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Scope is explicit: `MapleBatchRunner` plus `MapleContinuousBatcher` is a
   corrected fixed-capacity runtime/benchmark helper. It is not yet connected to
   hipEngine's public generation scheduler or production server admission path.
+
+## 2026-08-07 — Recertify Maple M5/M6 on Radeon 8060S
+
+- Commit qualified harnesses first through clean tracked revision
+  `cc0a4e43983993c58e3e07b924fd010af6b5bd59`. Both captures resolve the pinned
+  5,308,186,624-byte deployment checkpoint at revision
+  `361db5da5e74ff6fcdd852d478e1f266ce11013a`, capture actual rocminfo/rocm-smi/
+  hipcc output, and run with `GPU_MAX_HW_QUEUES=1`,
+  `HIPENGINE_HIP_ARCH=gfx1151`, and the precomputed compiler-version file.
+- Exact M5 command: `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3
+  scripts/maple_prefill_bench.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --lengths
+  128,320,512 --repetitions 3 --warmups 1 --continuation-steps 4 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json`.
+- M5 accepted public-path native prefill at **339.890/326.573/317.488 tok/s**
+  aggregate for 128/320/512, with narrow sample ranges
+  **337.300-341.801 / 325.396-328.104 / 315.630-319.462 tok/s**. Matched serial
+  references are **148.180/106.639/83.257 tok/s**, so native is
+  **2.294x/3.062x/3.813x**. All 18 natural+heldout code/general-English/
+  general-Japanese/mixed prompts and 90 seed/continuation positions are exact:
+  max/mean KL **0/0**, top-1 **90/90**, and generated-token **90/90**. Tracked
+  residency is **5,511,879,016 bytes (5.133 GiB)** and close returns zero. The
+  public native route is qualified only through 512; longer prompts retain the
+  serial fallback. Artifact SHA-256: `b08e52a8...03f53`.
+- Exact M6 command: `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3
+  scripts/maple_batch_decode_bench.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --steps 64
+  --repetitions 3 --warmup-steps 8 --natural-gate-steps 8 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
+- Corrected M6 c=2/4/8 medians are **218.818/261.099/299.181 aggregate tok/s**,
+  with ranges **218.502-219.247 / 260.780-261.361 / 299.078-299.416**. Every
+  trajectory in every measured repetition equals c1; all 18 natural-derived
+  category/heldout seeds pass eight steps, including the sparse final c=8 group.
+  Tracked residency is **4.951/4.958/4.973 GiB** and every close returns zero.
+  Versus the invalid 223.240/275.630/321.100 rows this is
+  **-1.98%/-5.27%/-6.83%**, the honest cost of request-local SWA/global rings,
+  exact reset, and qualified repeated gating. Artifact SHA-256:
+  `34f9467f...ab604`.
+- Mark the old M6 artifact invalid rather than silently overwriting history: it
+  combined W7900 with impossible gfx1151, gated only c=1, omitted repeat/
+  provenance/lifecycle/category evidence, and called an unintegrated helper a
+  server. The corrected M6 claim is explicitly fixed-capacity resident decode;
+  public prompt batching and server admission remain open.

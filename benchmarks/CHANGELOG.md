@@ -17,6 +17,11 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-07
+
+- [Maple M5 recertified/public <=512] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / native prefill 128/320/512 on Radeon 8060S/gfx1151: prior unqualified 320-token ~347.5 -> **326.573 tok/s (-6.02%)** after repairing cross-chunk causal attention and publishing the path; qualified rows are **339.890/326.573/317.488 tok/s**, **2.29x/3.06x/3.81x** serial, with 18 natural+heldout prompts / 90 positions at max KL 0, 100% top-1/token parity, 5.133-GiB tracked residency, and zero close ownership; `benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json`.
+- [Maple M6 recertified/runtime-helper scope] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / c=2/4/8 decode64: invalid **223.240/275.630/321.100 -> 218.818/261.099/299.181 tok/s (-1.98%/-5.27%/-6.83%)** after request-local SWA/global ring and sparse/reset correctness repairs; every repeated c-specific trajectory plus all 18 natural-derived seed gates is exact, tracked residency is **4.951/4.958/4.973 GiB**, and close returns zero. The old artifact is invalidated for impossible W7900/gfx1151 labeling, c=1-only gating, and unsupported server scope; `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
+
 ## 2026-08-06
 
 - [SH17-C0 post-SH16 residual audit closed; no new run or implementation] Radeon 8060S / Qwen3.6-35B-A3B UD-Q4_K_M / current private-c1: reconcile retained **55.230/55.829/46.809/40.430 tok/s** decode and **3/4** fork-memory parity against immutable role traces and allocation censuses; every SH16-moved family maps to an already named/closed role, while extending <=32 MiB, reviving the rejected global/state arena, stacking compact Q4, or unloading code leaves **94.820/54.820/54.820/134.102 MiB** of the **134.820-MiB** 4K gap respectively, so no single new >=0.5-ms or sufficient-memory owner admits implementation; `benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json`.
@@ -2573,4 +2578,4 @@ Examples:
 - [lineage target] Qwen3.5-35B-A3B-PARO / w4a16 / 512-128K sweeps: recorded compact-WMMA + graph-replay target rows from `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 - [external baseline] Added llama.cpp ROCm and Qwen3-0.6B host-architecture comparison baselines from `docs/BENCHMARK.md` / `~/amd-gpu-tuning/WORKLOG.md`.
 - [smoke] Recorded `smoke_add` as a build/runtime correctness smoke only, not a throughput row.
-- [maple] deepgrove/maple-preview-2bit-mlx / gfx1151 M6 batch decode: added retained c2/c4/c8 rows at 223.2/275.6/321.1 tok/s aggregate (64 tok/req) via MapleBatchRunner + MapleContinuousBatcher, bit-exact vs serial; artifact `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode.json`.
+- [maple invalid historical] deepgrove/maple-preview-2bit-mlx / gfx1151 M6 helper: 223.2/275.6/321.1 tok/s rows were later invalidated because the artifact mislabeled Radeon 8060S/gfx1151 as W7900/gfx1151, gated only c=1, and overstated server integration; superseded by `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.

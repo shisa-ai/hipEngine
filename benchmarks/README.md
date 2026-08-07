@@ -2,10 +2,19 @@
 
 Last updated: **2026-08-07**
 
-**Maple M6 batch decode (D5) retained:** deepgrove/maple-preview-2bit-mlx on
-gfx1151 (W7900) reaches c=2 223.2 / c=4 275.6 / c=8 321.1 tok/s aggregate via
-`MapleBatchRunner` + `MapleContinuousBatcher`, bit-exact vs serial c1 decode.
-See `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode.json` and
+**Maple M5/M6 recertified on Radeon 8060S/gfx1151:** public native prefill at
+128/320/512 tokens is **339.890/326.573/317.488 tok/s**, versus serial
+**148.180/106.639/83.257 tok/s** (**2.29x/3.06x/3.81x**), with **5.133 GiB**
+tracked resident ownership. All 18 code/general-English/general-Japanese/mixed
+natural+heldout prompts and 90 seed/continuation positions are logit- and
+token-exact; public prompts above the current 512-token native limit use serial
+prefill. The fixed-capacity M6 runtime helper reaches c=2/4/8 median aggregate
+**218.818/261.099/299.181 tok/s** at 64 tokens/request with every measured
+trajectory exact and **4.951/4.958/4.973 GiB** tracked resident ownership. M6
+is not yet public server throughput. The former 223.2/275.6/321.1 rows are
+invalid (wrong hardware label and c=1-only gate). Evidence:
+[`M5`](results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json),
+[`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json), and
 `docs/MAPLE-PERF.md`.
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
