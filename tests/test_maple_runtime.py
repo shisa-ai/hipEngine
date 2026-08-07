@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import ctypes
+import inspect
+import textwrap
 from types import SimpleNamespace
 
 import numpy as np
@@ -185,6 +188,36 @@ def test_maple_affine4_wave32_is_default_with_group64_rollback(monkeypatch) -> N
     assert maple_runtime._maple_affine4_wave32_exact() is True
     monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "0")
     assert maple_runtime._maple_affine4_wave32_exact() is False
+
+
+def test_maple_step_snapshots_decode_selectors_once() -> None:
+    """Per-layer decode must not repeat invariant environment lookups."""
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(MapleRunner.step)))
+    step = tree.body[0]
+    assert isinstance(step, ast.FunctionDef)
+    decode = next(
+        node
+        for node in step.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_decode_layers_and_tail"
+    )
+    for selector in ("_maple_fuse_qkattn", "_maple_fuse_moe"):
+        all_calls = [
+            node
+            for node in ast.walk(step)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == selector
+        ]
+        nested_calls = [
+            node
+            for node in ast.walk(decode)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == selector
+        ]
+        assert len(all_calls) == 1
+        assert nested_calls == []
 
 
 @pytest.mark.parametrize("wave32", [False, True])
