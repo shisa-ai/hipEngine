@@ -1,0 +1,97 @@
+{
+  "date": "2026-08-06",
+  "status": "rejected",
+  "kind": "qwen36_27b_full_attention_v_q6_vulkan_source_geometry",
+  "source": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "shader": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q6_k.comp",
+    "selector": "ggml_vk_should_use_mmvq",
+    "finding": "AMD deliberately rejects Q6_K Q8_1/MMVQ; the floating shader uses one wave for two output columns and all activation rows."
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "HIP_VISIBLE_DEVICES=1",
+    "arch": "gfx1100",
+    "role": "micro-screen only"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "tensor": "blk.3.attn_v.weight",
+    "shape": [
+      1024,
+      5120
+    ],
+    "quant": "Q6_K"
+  },
+  "protocol": {
+    "warmup_pairs": 100,
+    "samples": 15,
+    "burst": 50,
+    "counterbalanced": true,
+    "timing": "HIP events",
+    "control": "sole-resident planar-qmicro exact col8 owner",
+    "candidate": "raw-Q6 source-layout local32/col2 floating owner"
+  },
+  "rows": [
+    {
+      "activation_rows": 1,
+      "control_us": 13.494600057601929,
+      "candidate_us": 8.69454026222229,
+      "candidate_speedup": 1.552077470528932,
+      "bf16_mismatches": 0,
+      "max_kl": 0.0,
+      "top1_agreement": 1.0
+    },
+    {
+      "activation_rows": 2,
+      "control_us": 13.870600461959839,
+      "candidate_us": 11.780179738998413,
+      "candidate_speedup": 1.1774523622963973,
+      "bf16_mismatches": 0,
+      "max_kl": 0.0,
+      "top1_agreement": 1.0
+    },
+    {
+      "activation_rows": 3,
+      "control_us": 15.065840482711792,
+      "candidate_us": 13.029019832611084,
+      "candidate_speedup": 1.1563295379290646,
+      "bf16_mismatches": 2,
+      "max_kl": 8.927050575001554e-16,
+      "top1_agreement": 1.0
+    },
+    {
+      "activation_rows": 4,
+      "control_us": 15.403460264205933,
+      "candidate_us": 28.24686050415039,
+      "candidate_speedup": 0.5453158329557601,
+      "bf16_mismatches": 0,
+      "max_kl": 0.0,
+      "top1_agreement": 1.0
+    }
+  ],
+  "codegen": {
+    "candidate_rows4_vgpr": 144,
+    "candidate_rows4_lds_bytes": 0,
+    "candidate_rows4_scratch_bytes": 0,
+    "finding": "The rows=4 template hits a register/compiler cliff; the binding B3 shape is 83.38% slower than control."
+  },
+  "memory": {
+    "control_bytes_per_tensor": 4300800,
+    "candidate_bytes_per_tensor": 4300800,
+    "dual_resident_extra_bytes_for_8_tensors": 34406400,
+    "dual_resident_extra_mib_for_8_tensors": 32.8125
+  },
+  "decision": {
+    "keep_code": false,
+    "promote_runtime": false,
+    "reason": "B3 uses four activation rows, where the source geometry is 0.545x control. Replacing the sole qmicro owner would regress the binding path; retaining raw bytes as a sidecar would add 32.8125 MiB without helping B3."
+  },
+  "raw_evidence": {
+    "screen_path": "/tmp/qwen36-attn-v-raw-source-local32-col2-vs-planar-col8-gpu1.json",
+    "screen_sha256": "327d102d7d2912f8a9de0cf437f008dc7d8a4539d1b87097bba523c720c7af89",
+    "harness_path": "/tmp/screen_qwen36_attn_v_raw_source_local32_col2.py",
+    "harness_sha256": "38e95a6777f5239878859aa22cacad9a57ca7649b7a6f58ccc83493f2c7b6688"
+  }
+}
