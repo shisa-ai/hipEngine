@@ -17,14 +17,17 @@ should be removed or collapsed.
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
 - Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.
-  `HIPENGINE_SUBMISSION_TRANSPORT`, direct AQL, timestamp/quarantine lifecycle
-  controls, and `scripts/pm4_gguf_decode_gate.py` remain diagnostic/default-off;
-  native HIP graph remains the portable default.
+  `HIPENGINE_SUBMISSION_TRANSPORT`, `HIPENGINE_PM4_STATEFUL_REGISTERS`, direct
+  AQL, timestamp/quarantine lifecycle controls, and
+  `scripts/pm4_gguf_decode_gate.py` remain diagnostic/default-off; native HIP
+  graph remains the portable default.
 - Remove comparison-only aliases and collapse the gate/CLI surface after P6
   establishes one canonical configuration path, full natural category/heldout
   correctness, lifecycle recovery, and a retained non-regressive end-to-end
   PM4 result. Retain direct AQL only while it still differentiates ROCr dispatch
-  from architecture-specific PM4.
+  from architecture-specific PM4. Remove the stateful-register flag after the
+  exact clean comparison chooses one PM4 encoder; keep the winning behavior as
+  the sole path rather than a permanent hot-path branch.
 - Never delete the native HIP graph implementation: it remains the required
   peer-architecture fallback and correctness oracle. Timestamp/quarantine
   controls may be removed only after ROCm/ROCm#6529 is reproduced/closed or they

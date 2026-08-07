@@ -37,7 +37,20 @@ from scripts.gguf_decode_graph_g5 import (  # noqa: E402
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _DEFAULT_TRANSPORTS = ("hipgraph", "aql", "pm4")
+_BENCHMARK_MODES = (*_DEFAULT_TRANSPORTS, "pm4_stateful")
 _DEFAULT_MEMORY_RECOVERY_TOLERANCE = 64 * 1024 * 1024
+
+
+def _transport_spec(mode: str) -> tuple[str, bool | None]:
+    """Map one benchmark label to the production transport and PM4 encoder."""
+
+    if mode == "pm4_stateful":
+        return "pm4", True
+    if mode == "pm4":
+        return "pm4", False
+    if mode in {"hipgraph", "aql"}:
+        return mode, None
+    raise ValueError(f"unknown benchmark transport mode {mode!r}")
 
 
 def _rotation(values: Sequence[str], index: int) -> tuple[str, ...]:
@@ -264,9 +277,13 @@ def _read_compiler_version(path: Path | None) -> str | None:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     transports = tuple(dict.fromkeys(str(mode) for mode in args.transports))
-    if not transports or any(mode not in _DEFAULT_TRANSPORTS for mode in transports):
-        raise ValueError("transports must be selected from hipgraph, aql, and pm4")
-    if args.backend != "hip_gfx1100" and any(mode != "hipgraph" for mode in transports):
+    if not transports or any(mode not in _BENCHMARK_MODES for mode in transports):
+        raise ValueError(
+            "transports must be selected from hipgraph, aql, pm4, and pm4_stateful"
+        )
+    if args.backend != "hip_gfx1100" and any(
+        _transport_spec(mode)[0] != "hipgraph" for mode in transports
+    ):
         raise ValueError("aql/pm4 are admitted only on hip_gfx1100")
     if min(int(args.prompt_length), int(args.steps), int(args.repetitions)) <= 0:
         raise ValueError("prompt-length, steps, and repetitions must be positive")
@@ -282,6 +299,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
     os.environ["HIPENGINE_GGUF_MOE_GRAPH"] = "0"
     os.environ["HIPENGINE_HIP_ARCH"] = target_arch
+    # Each PM4 benchmark label sets this immediately before constructing its
+    # own immutable transport context. Never inherit an ambient candidate flag.
+    os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "0"
     compiler_version = _read_compiler_version(args.compiler_version_file)
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
@@ -289,6 +309,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     from hipengine.benchmark.provenance import collect_artifact_provenance
+    from hipengine.core.pm4.transport import create_graph_submission_context
+    from hipengine.runtime.gguf_decode_graph import capture_qwen35_gguf_decode_graph
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     model = Path(args.model).expanduser().resolve()
@@ -303,6 +325,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     warmup_rows: dict[str, list[dict[str, Any]]] = {mode: [] for mode in transports}
     measured_rows: dict[str, list[dict[str, Any]]] = {mode: [] for mode in transports}
     teardown: dict[str, Any] = {}
+    custom_contexts: dict[str, Any] = {}
 
     with Qwen35GGUFResidentSession(
         model,
@@ -317,14 +340,44 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         free_before_graphs, total_bytes = session.runtime.mem_get_info()
         try:
             for mode in transports:
+                selected_transport, stateful_registers = _transport_spec(mode)
                 capture_start_ns = time.perf_counter_ns()
-                graphs[mode] = session.capture_decode_graph(
-                    position=int(args.prompt_length),
-                    steps_per_replay=1,
-                    max_replay_steps=int(args.steps),
-                    attention_max_context_len=int(args.prompt_length) + int(args.steps),
-                    submission_transport=mode,
-                )
+                if stateful_registers is True:
+                    # A separate context lets conservative and stateful PM4
+                    # coexist in one loaded session for a real counterbalanced
+                    # replay comparison. The production session cache is keyed
+                    # by transport name and intentionally owns only one `pm4`.
+                    os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "1"
+                    context = create_graph_submission_context(
+                        backend=str(session.runner.backend),
+                        gfx_arch=str(session.runner.target_arch),
+                        runtime=session.runtime,
+                        transport="pm4",
+                    )
+                    if context is None:
+                        raise RuntimeError("stateful PM4 benchmark context was not created")
+                    custom_contexts[mode] = context
+                    graph = capture_qwen35_gguf_decode_graph(
+                        session,
+                        position=int(args.prompt_length),
+                        steps_per_replay=1,
+                        max_replay_steps=int(args.steps),
+                        attention_max_context_len=int(args.prompt_length) + int(args.steps),
+                        submission_transport="pm4",
+                        submission_context=context,
+                    )
+                    graphs[mode] = graph
+                    session._pin_device_kv_graph(graph)
+                else:
+                    if stateful_registers is False:
+                        os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "0"
+                    graphs[mode] = session.capture_decode_graph(
+                        position=int(args.prompt_length),
+                        steps_per_replay=1,
+                        max_replay_steps=int(args.steps),
+                        attention_max_context_len=int(args.prompt_length) + int(args.steps),
+                        submission_transport=selected_transport,
+                    )
                 capture_ms[mode] = (time.perf_counter_ns() - capture_start_ns) / 1e6
 
             for run_index in range(int(args.warmups) + int(args.repetitions)):
@@ -369,6 +422,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         graph.close()
                         teardown.setdefault(mode, {})["closed"] = graph.transport_provenance()
             teardown["contexts"] = session.close_decode_graph_submission_contexts()
+            for mode, context in reversed(tuple(custom_contexts.items())):
+                before = context.provenance()
+                context.close()
+                teardown["contexts"][mode] = {
+                    "before": before,
+                    "after": context.provenance(),
+                }
         session.runtime.device_synchronize()
         free_after_graphs, total_after = session.runtime.mem_get_info()
         pci_bdf = session.runtime.device_pci_bus_id()
@@ -397,6 +457,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             == (int(args.warmups) + int(args.repetitions)) * int(args.steps)
             and teardown[mode]["closed"].get("closed") is True
             and teardown["contexts"][mode]["after"].get("closed") is True
+            and (
+                _transport_spec(mode)[1] is None
+                or teardown[mode]["live"].get("stateful_registers")
+                is _transport_spec(mode)[1]
+            )
         )
         for mode in transports
     )
@@ -420,6 +485,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "ROCR_VISIBLE_DEVICES": os.environ.get("ROCR_VISIBLE_DEVICES"),
             "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
             "HIPENGINE_HIP_ARCH": target_arch,
+            "HIPENGINE_PM4_STATEFUL_REGISTERS": os.environ.get(
+                "HIPENGINE_PM4_STATEFUL_REGISTERS"
+            ),
         },
         build_profile="pm4_graph_bench",
         timing_protocol=(
@@ -456,6 +524,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "warmups": int(args.warmups),
             "repetitions": int(args.repetitions),
             "counterbalanced": True,
+            "transport_specs": {
+                mode: {
+                    "transport": _transport_spec(mode)[0],
+                    "pm4_stateful_registers": _transport_spec(mode)[1],
+                }
+                for mode in transports
+            },
         },
         "capture_ms": capture_ms,
         "summaries": summaries,
@@ -489,7 +564,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--transports",
         nargs="+",
-        choices=_DEFAULT_TRANSPORTS,
+        choices=_BENCHMARK_MODES,
         default=list(_DEFAULT_TRANSPORTS),
     )
     parser.add_argument("--prompt-token-id", type=int, default=9707)

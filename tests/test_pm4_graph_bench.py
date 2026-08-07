@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.pm4_graph_bench import _rotation, _summarize_runs, _validate_cross_transport
+from scripts.pm4_graph_bench import (
+    _rotation,
+    _summarize_runs,
+    _transport_spec,
+    _validate_cross_transport,
+    build_parser,
+)
 
 
 def test_pm4_graph_bench_rotates_all_modes_without_duplication() -> None:
@@ -47,6 +53,18 @@ def test_pm4_graph_bench_summary_separates_issue_and_synchronized_wall() -> None
     assert summary["median_synchronized_step_ms"] == pytest.approx(10.0)
     assert summary["capture_inclusive_ms_per_token"] == pytest.approx(12.0)
     assert summary["median_prefill_ms"] == pytest.approx(6.0)
+
+
+def test_pm4_graph_bench_stateful_register_comparison_is_explicit_and_default_off() -> None:
+    default = build_parser().parse_args([])
+    candidate = build_parser().parse_args(["--transports", "pm4", "pm4_stateful"])
+
+    assert default.transports == ["hipgraph", "aql", "pm4"]
+    assert candidate.transports == ["pm4", "pm4_stateful"]
+    assert _transport_spec("pm4") == ("pm4", False)
+    assert _transport_spec("pm4_stateful") == ("pm4", True)
+    with pytest.raises(ValueError, match="unknown benchmark transport"):
+        _transport_spec("pm4_magic")
 
 
 def test_pm4_graph_bench_cross_transport_gate_requires_exact_state_logits_and_tokens() -> None:

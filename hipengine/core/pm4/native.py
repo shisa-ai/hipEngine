@@ -14,6 +14,7 @@ NativeTransport = Literal["aql", "pm4"]
 _ERROR_BYTES = 4096
 _ABI_VERSION = 2
 _EXECUTABLE_FLAG_TIMESTAMPS = 1 << 0
+_EXECUTABLE_FLAG_STATEFUL_REGISTERS = 1 << 1
 
 
 class NativePm4Error(RuntimeError):
@@ -209,7 +210,11 @@ class NativePm4Context:
         return cls(library, int(output.value), gfx_arch, pci_bdf)
 
     def instantiate(
-        self, manifest: HipGraphManifest, *, timestamps: bool = False
+        self,
+        manifest: HipGraphManifest,
+        *,
+        timestamps: bool = False,
+        stateful_registers: bool = False,
     ) -> "NativePm4Executable":
         if not self.handle:
             raise NativePm4Error("native PM4 context is closed")
@@ -252,7 +257,11 @@ class NativePm4Context:
                 node.wavefront_size,
             )
         output = ctypes.c_void_p()
-        flags = _EXECUTABLE_FLAG_TIMESTAMPS if timestamps else 0
+        flags = 0
+        if timestamps:
+            flags |= _EXECUTABLE_FLAG_TIMESTAMPS
+        if stateful_registers:
+            flags |= _EXECUTABLE_FLAG_STATEFUL_REGISTERS
         _call(
             self.library.he_pm4_executable_create_ex,
             ctypes.c_void_p(self.handle),

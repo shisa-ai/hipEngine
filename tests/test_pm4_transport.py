@@ -97,8 +97,12 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
     class FakeContext:
         handle = 31
 
-        def instantiate(self, observed_manifest) -> FakeExecutable:
-            calls.append(("native_instantiate", observed_manifest.fingerprint))
+        def instantiate(
+            self, observed_manifest, *, stateful_registers: bool = False
+        ) -> FakeExecutable:
+            calls.append(
+                ("native_instantiate", observed_manifest.fingerprint, stateful_registers)
+            )
             return FakeExecutable()
 
         def provenance(self) -> dict[str, object]:
@@ -148,7 +152,7 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
     assert calls == [
         ("inspect", 17, "gfx1100", 23),
         ("context_create", "0000:03:00.0", "gfx1100"),
-        ("native_instantiate", "manifest-sha"),
+        ("native_instantiate", "manifest-sha", False),
         ("stream_sync", 29),
         ("native_launch", "pm4", 2.5),
         ("executable_close",),
@@ -167,6 +171,7 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[object, ...]] = []
+    monkeypatch.setenv("HIPENGINE_PM4_STATEFUL_REGISTERS", "1")
     manifest = SimpleNamespace(
         gfx_arch="gfx1100",
         fingerprint="shared",
@@ -191,9 +196,11 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
         handle = 71
         generation = 0
 
-        def instantiate(self, observed_manifest) -> FakeExecutable:
+        def instantiate(
+            self, observed_manifest, *, stateful_registers: bool = False
+        ) -> FakeExecutable:
             self.generation += 1
-            calls.append(("instantiate", self.generation))
+            calls.append(("instantiate", self.generation, stateful_registers))
             return FakeExecutable(80 + self.generation)
 
         def provenance(self) -> dict[str, object]:
@@ -242,14 +249,15 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
 
     assert owner.provenance()["children"] == 0
     assert owner.provenance()["generations"] == 2
+    assert owner.provenance()["stateful_registers"] is True
     assert fake_context.handle == 71
     owner.close()
     assert owner.provenance()["closed"] is True
     assert calls == [
         ("context_create",),
-        ("instantiate", 1),
+        ("instantiate", 1, True),
         ("executable_close", 81),
-        ("instantiate", 2),
+        ("instantiate", 2, True),
         ("executable_close", 82),
         ("context_close",),
     ]
@@ -264,7 +272,7 @@ def test_explicit_pm4_instantiation_failure_closes_context_without_hip_fallback(
     class RejectingContext:
         handle = 31
 
-        def instantiate(self, observed_manifest):
+        def instantiate(self, observed_manifest, *, stateful_registers: bool = False):
             calls.append("native_instantiate")
             raise RuntimeError("unsupported kernel descriptor")
 

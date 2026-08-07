@@ -103,6 +103,9 @@ def test_registry_selected_pm4_submission_reuses_one_queue_without_hip_fallback(
 
         live = submission.provenance()
         assert live["transport"] == "pm4"
+        expected_stateful = os.environ.get("HIPENGINE_PM4_STATEFUL_REGISTERS", "0") == "1"
+        assert live["stateful_registers"] is expected_stateful
+        assert live["executable"]["stateful_registers"] is expected_stateful
         assert live["launches"] == 2
         assert live["native_fallbacks"] == 0
         assert live["context"]["submissions"] == 2
