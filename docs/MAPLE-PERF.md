@@ -101,7 +101,14 @@ Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 
 | Order | Milestone | Expected win | Rationale (M0) |
 | --- | --- | --- | --- |
-| 1 | **M3a router topk** parallel | 7.8 ms → <1 ms | 61% of step; single-block serial expert loop |
+| 1 | **M3a router topk** parallel | 7.8 ms → ~1.4 ms (done) | 61% of step; single-block serial expert loop |
+
+**M3a status: DONE.** `maple_router_topk_parallel_bf16` (grid-over-experts
+coalesced dot + parallel softmax/top-k) cuts the router from 277 → 48 µs/call
+(5.75×) and the decode step from 12,758 → 6,132 µs (**2.08× decode**), with the
+packed correctness gate passing (max_kl 0.0139, top-1 18/18) and router IDs
+exact. Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`.
+Next: lm_head affine4 (M3b), then selected-expert (M3c).
 | 2 | M3b lm_head affine4 | 1.23 ms → ~0.3 ms | 9.7%; grid-19.4M shape |
 | 3 | M3c selected-expert grouping | 1.57 ms → ~0.6 ms | 12%; under-occupied small tiles |
 | 4 | M4/M5 batched prefill | serial → ≥1k tok/s | prefill is the other big axis |

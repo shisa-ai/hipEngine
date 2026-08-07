@@ -202961,3 +202961,25 @@ Vulkan local sizes verbatim will close the measured gap.
 - Reprioritize MAPLE-PERF.md: router topk (M3a) is now the #1 target, not
   hipGraph (D1, only ~0.55 ms host gap). Artifact:
   `benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json`.
+
+## 2026-08-07 — M3a: parallelize Maple router topk (gfx1151)
+
+- Microbench confirm (correct bf16 bits, 256 experts/2048 hidden/top8): the
+  exact single-block router is **277 µs/call** (grid 1/wg 256, 1 CU, serial
+  thread-0 top-k). M0 had attributed this to the router; here it is isolated.
+- Add `maple_router_topk_parallel_bf16`: kernel A grid=num_experts blocks × 256
+  threads computes each expert logit with a coalesced strided dot + block tree
+  reduce into a global `router_logits` scratch; kernel B (single block) does
+  max/exp/sum softmax, a parallel rank-count stable top-k (desc prob, ties by
+  ascending id), and renormalize by the selected sum.
+- Result: router **277 → 48 µs/call (5.75×)**; model decode step **12,758 →
+  6,132 µs (2.08× decode)**. Packed correctness gate passes: max_kl 0.0139
+  (vs 0.0135 baseline), top-1 18/18, passed. Parallel router top-k IDs are exact
+  vs the numpy oracle; near-zero weights may differ a few ULP (tree-reduce
+  order) but are numerically negligible and the model gate holds.
+- The exact single-block router is retained (reference/fallback); its 1-ULP
+  primitive test still passes. New
+  `test_maple_router_topk_parallel_matches_ids_and_renorm` covers the variant.
+- Added `router_logits` scratch to `MapleRuntimeBuffers`; runner uses the
+  parallel wrapper. moe tests 5/5 pass. Evidence:
+  `benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`.

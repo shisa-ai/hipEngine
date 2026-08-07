@@ -68,6 +68,12 @@ reports router local256/VGPR8/LDS3584/scratch0 at **19,156 ns**, clamp-7
 local256/VGPR32/scratch0 at **2,605 ns**, and weighted residual
 local256/VGPR16/scratch0 at **2,885 ns**.
 
+The router also has a parallel variant `maple_router_topk_parallel_bf16`
+(grid-over-experts coalesced dot + parallel softmax/stable-top-k) that is the
+gfx1151 decode default: it cuts the router from 277 → 48 µs/call and the decode
+step from 12,758 → 6,132 µs (2.08×) with the packed gate at max_kl 0.0139,
+top-1 18/18, and exact router IDs (`benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`).
+
 `hipengine/runtime/maple.py` composes those registered/unfused families with the
 existing direct-weight PARO RMSNorm and two-stage FP32 argmax into a resident
 24-layer c=1 runner. Immutable packed weights stay device-resident; SWA and

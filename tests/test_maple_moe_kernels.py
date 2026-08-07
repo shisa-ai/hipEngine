@@ -29,6 +29,7 @@ from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
     build_maple_moe,
     maple_clamped_swiglu_bf16,
     maple_router_topk_bf16,
+    maple_router_topk_parallel_bf16,
     maple_weighted_residual_bf16,
     plan_maple_moe_build,
 )
@@ -119,6 +120,51 @@ def test_maple_router_topk_matches_fp32_softmax_renorm_oracle(maple_moe_lib) -> 
     assert np.array_equal(ids, expected_ids.astype(np.int32))
     np.testing.assert_array_max_ulp(weights, expected_weights, maxulp=1)
     assert float(weights.sum()) == pytest.approx(1.0, abs=2e-7)
+
+
+def test_maple_router_topk_parallel_matches_ids_and_renorm(
+    maple_moe_lib, hip_test_target_arch
+) -> None:
+    """Parallel grid-over-experts router: IDs exact, weights close, sum ~= 1.
+
+    The parallel variant computes each expert logit with a coalesced block tree
+    reduce, so a few near-zero weights may differ by several ULP from the numpy
+    BLAS reference (same as the model-level gate); the top-k IDs and the
+    renormalized sum must still hold.
+    """
+
+    rng = np.random.default_rng(66)
+    experts, hidden, top_k = 8, 32, 3
+    x_f32 = rng.normal(size=hidden).astype(np.float32)
+    weight_f32 = rng.normal(size=(experts, hidden)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    weight = f32_to_bf16_bits(weight_f32)
+    expected_ids, expected_weights = router_topk(
+        bf16_round(x_f32), bf16_round(weight_f32), top_k=top_k
+    )
+
+    with DeviceArrays() as dev:
+        x_d, weight_d = dev.put(x), dev.put(weight)
+        scratch, scratch_d = dev.empty((experts,), np.dtype(np.float32))
+        ids, ids_d = dev.empty((top_k,), np.dtype(np.int32))
+        weights, weights_d = dev.empty((top_k,), np.dtype(np.float32))
+        maple_router_topk_parallel_bf16(
+            x_d.ptr,
+            weight_d.ptr,
+            ids_d.ptr,
+            weights_d.ptr,
+            scratch_d.ptr,
+            hidden,
+            experts,
+            top_k,
+            library=maple_moe_lib,
+        )
+        dev.get(ids, ids_d)
+        dev.get(weights, weights_d)
+
+    assert np.array_equal(ids, expected_ids.astype(np.int32))
+    np.testing.assert_allclose(weights, expected_weights, rtol=1e-2, atol=1e-4)
+    assert float(weights.sum()) == pytest.approx(1.0, abs=2e-6)
 
 
 def test_maple_clamped_swiglu_matches_trained_clamp_oracle(maple_moe_lib) -> None:
