@@ -207825,3 +207825,11 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   0/1, the short slot-0 request completes while slot 1 stays live, and a third
   request is then admitted into slot 0. The real-checkpoint node is GREEN; all
   three trajectories equal serial and close returns **0 bytes / 0 allocations**.
+- Draft the compact P4 artifact and documentation rollup, then audit the new
+  durable benchmark before publication. The measured run has reclaimed every
+  slot and used the intended physical width, but the harness acceptance rule
+  initially required only trajectory/lifecycle success. Harden acceptance to
+  require all-group reclaim, c1/c2/c4/c8 physical-width identity, and sparse
+  final c4/c8 groups. A deliberately unqualified dirty-tree c1/c4/c8 smoke
+  passes all three new scheduler checks and exits rejected as designed; commit
+  the gate before one final clean public rerun.
