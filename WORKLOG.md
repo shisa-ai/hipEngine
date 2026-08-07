@@ -202983,3 +202983,22 @@ Vulkan local sizes verbatim will close the measured gap.
 - Added `router_logits` scratch to `MapleRuntimeBuffers`; runner uses the
   parallel wrapper. moe tests 5/5 pass. Evidence:
   `benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`.
+
+## 2026-08-07 — M3b: tiled affine4 lm_head explored, rejected (dead end)
+
+- Hypothesis: `maple_affine4_gemv_f32` (grid 19.4M/wg128) re-reads the 2048-wide
+  hidden vector per output row; a tiled variant (`maple_affine4_gemv_f32_tiled`,
+  8 rows/block, x loaded once into LDS) should cut lm_head wall.
+- Implemented tiled kernel + host wrapper + registry entry (uncommitted, then
+  reverted).
+- Validation on real lm_head (151,936×2048 affine4, maple-preview-2bit-mlx):
+  tiled is **bit-exact** vs eager (max abs diff 0.0 over all 151,936 logits,
+  argmax identical, all finite).
+- BUT measured **eager 1.25 ms vs tiled 1.30 ms (0.96×, no win)**. Each output
+  row still streams its full weight row (~155 MB/token @ 256 GB/s ≈ bandwidth
+  floor ~0.6 ms, and we are at 1.25 ms); reusing the 4 KB x-vector in LDS is
+  negligible. lm_head is only ~9.7% of the decode step, so this path is a dead
+  end. Reverted. Do not re-port tiled GEMV for lm_head; real wins there would
+  need FlashHead (approximate, non-default) or weight reuse across a batch (M6).
+- Next per plan: selected-expert grouping (M3c, ~12%) or batched prefill
+  (M4/M5). hipGraph (M1) is a minor ~4.3% host-gap win on c1.
