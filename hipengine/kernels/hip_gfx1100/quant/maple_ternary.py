@@ -283,6 +283,31 @@ def maple_affine4_embed_bf16(
     )
 
 
+def maple_affine4_embed_batched_bf16(
+    weight_ptr: int,
+    scales_ptr: int,
+    biases_ptr: int,
+    token_ids_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Batched affine4 embed of T token IDs into [T, hidden] (P4 prefill)."""
+
+    _launch(
+        "hipengine_maple_affine4_embed_batched_bf16",
+        (_PTR, _PTR, _PTR, _PTR, _PTR, _I64, _I64, _PTR),
+        (weight_ptr, scales_ptr, biases_ptr, token_ids_ptr, out_ptr, rows, hidden_size),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_affine4_gemv_f32(
     x_ptr: int,
     weight_ptr: int,
@@ -322,6 +347,7 @@ def register_maple_ternary_kernels(
         ): maple_selected_ternary_dual_gemv_bf16,
         ("maple_selected_ternary", "row_alpha"): maple_selected_ternary_gemv_bf16,
         ("maple_affine4_embed", "group64"): maple_affine4_embed_bf16,
+        ("maple_affine4_embed", "group64_batched"): maple_affine4_embed_batched_bf16,
         ("maple_affine4_gemv", "group64"): maple_affine4_gemv_f32,
     }
     for (layer, variant), kernel in kernels.items():
@@ -354,6 +380,7 @@ register_maple_ternary_kernels()
 
 __all__ = [
     "build_maple_ternary",
+    "maple_affine4_embed_batched_bf16",
     "maple_affine4_embed_bf16",
     "maple_affine4_gemv_f32",
     "maple_selected_ternary_dual_gemv_bf16",

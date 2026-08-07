@@ -250,6 +250,37 @@ __global__ void maple_affine4_embed_kernel(
   }
 }
 
+// Batched affine4 embedding (P4 prefill): embeds T token IDs into a
+// [T, hidden_size] buffer.  Grid is T blocks, one block per token row.
+__global__ void maple_affine4_embed_batched_kernel(
+    const uint32_t* __restrict__ weight,
+    const uint16_t* __restrict__ scales,
+    const uint16_t* __restrict__ biases,
+    const int64_t* __restrict__ token_ids,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t hidden_size) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) {
+    return;
+  }
+  const int64_t token_id = token_ids[row];
+  const int64_t words_per_row = hidden_size / 8;
+  const int64_t groups_per_row = hidden_size / 64;
+  const uint32_t* wrow = weight + token_id * words_per_row;
+  const uint16_t* row_scales = scales + token_id * groups_per_row;
+  const uint16_t* row_biases = biases + token_id * groups_per_row;
+  uint16_t* orow = out + row * hidden_size;
+  for (int64_t idx = threadIdx.x; idx < hidden_size; idx += blockDim.x) {
+    const uint32_t word = wrow[idx / 8];
+    const int code = static_cast<int>((word >> (4 * (idx & 7))) & 0xFU);
+    const int64_t group = idx / 64;
+    const float value = static_cast<float>(code) * bf16_to_float(row_scales[group])
+        + bf16_to_float(row_biases[group]);
+    orow[idx] = float_to_bf16(value);
+  }
+}
+
 __global__ void maple_affine4_gemv_kernel(
     const uint16_t* __restrict__ x,
     const uint32_t* __restrict__ weight,
@@ -704,6 +735,34 @@ extern "C" int hipengine_maple_affine4_embed_bf16(
       biases,
       out,
       token_id,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_affine4_embed_batched_bf16(
+    const uint32_t* weight,
+    const uint16_t* scales,
+    const uint16_t* biases,
+    const int64_t* token_ids,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || hidden_size % 64 != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      maple_affine4_embed_batched_kernel,
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(256),
+      0,
+      stream,
+      weight,
+      scales,
+      biases,
+      token_ids,
+      out,
+      rows,
       hidden_size);
   return static_cast<int>(hipGetLastError());
 }
