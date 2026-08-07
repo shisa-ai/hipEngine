@@ -147,12 +147,11 @@ Two upstream implementation details explain the prefill gap more directly:
 The upstream table does not publish prompt/generation lengths, repetitions,
 software versions, or a correctness protocol, and Apple M4 and Radeon 8060S
 are different systems. It is directional evidence, not an apples-to-apples
-benchmark. hipEngine's prior pre-head short fixed-token exact c1 diagnostic is
-**180.935 tok/s**; the retained wave32 head's clean short refresh is pending,
-while its current category-qualified natural-context row is **153.409 tok/s**.
-Those distinct workloads must not be collapsed into one number or compared
-directly with Apple's unspecified protocol. Both are exact full-head paths,
-unlike the approximate 218 headline. After P0+P1+P2,
+benchmark. hipEngine's current short fixed-token exact c1 diagnostic is
+**199.772 tok/s**, while its category-qualified natural-context row is
+**153.409 tok/s**. Those distinct workloads must not be collapsed into one
+number or compared directly with Apple's unspecified protocol. Both are exact
+full-head paths, unlike the approximate 218 headline. After P0+P1+P2,
 hipEngine's **741.368 tok/s** at 320 tokens is about 1.45x below the published
 M4 prefill rate, down from a 3.3x gap. Decode is competitive; prefill remains
 materially underoptimized.
@@ -189,7 +188,7 @@ Evidence:
 | Path / workload | Current rate | Scope |
 | --- | ---: | --- |
 | c1 natural+heldout contexts | **153.409 tok/s** (6.519-ms mean, 6.493-ms median) | clean paired 18-prompt qualification; model load, native prefill, and warmup excluded |
-| c1 short fixed-token diagnostic | clean refresh pending | prior pre-head default: 180.935 tok/s; dirty wave32 diagnostic: 199.659 tok/s |
+| c1 short fixed-token diagnostic | **199.772 tok/s** (5.006-ms median) | clean cached-only trace, 4 warmup + 32 measured steps; 271 launches/token |
 | c=2, 64 tokens/request | **218.818 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
 | c=4, 64 tokens/request | **261.099 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
 | c=8, 64 tokens/request | **299.181 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
@@ -215,7 +214,7 @@ reported as public server throughput.
 Evidence:
 [D0 c1 router qualification](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
 [D0 affine4 qualification](../benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
-[D0 pre-head profile](../benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json),
+[D0 wave32 profile](../benchmarks/results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json),
 and [M6 helper recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json).
 
 ### Tracked memory
@@ -260,6 +259,7 @@ Primary evidence:
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
 - [D0 one-dispatch c1 router](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json)
 - [D0 exact wave32 affine4 head](../benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json)
+- [D0 current wave32 decode profile](../benchmarks/results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json)
 - [D0 pre-head decode profile](../benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json)
 - [P3 dense token-tile rejection](../benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json)
 - [P2/M5 GQA4 recertification](../benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json)
@@ -278,7 +278,7 @@ selector-unset profile; c8 remains the corrected helper baseline:
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
 | native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **1.78%** | **0.31%** |
-| c1 decode, post-D0 router / pre-head | **5.527 ms/token** | **4.859 ms** | **12.08%** | **26.30%** |
+| c1 decode, post-D0 wave32 head | **5.006 ms/token** | **4.581 ms** | **8.48%** | **21.43%** |
 | c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
 
 ### P0 retained: sample only the final prefill row
@@ -332,22 +332,23 @@ exact and no additional persistent memory. Local128 remains the rollback.
 | **P1 — DONE / SCALAR BLOCKER** | True expert-major compact MoE | Retained at 726.421/679.632/650.745 tok/s and byte-exact; expert family improves 1.086x but misses the 2.826x ceiling, selecting a future exact non-WMMA SIMD ternary consumer rather than more grouping geometry. |
 | **P2 — DONE** | GQA/query-row prefill attention | Retained at 749.175/741.368/754.000 tok/s and byte-exact; attention falls **63.993 -> 21.916 ms (2.920x)** with no memory or launch increase. |
 | **P3 — DONE / REJECTED** | Retune dense ternary row tiles and test native BF16 WMMA | Tile 8/16/32 are bit-exact, but a counterbalanced natural+heldout screen measures **744.116/731.182/571.923 tok/s** and tile 16/32 lose all 16 pairs. Direct WMMA then changes **106/256 FP32** K16 partials and **43/655,360 BF16** production-shape outputs. All candidate surfaces are removed; tile 8 remains production. |
-| **D0 — ROUTER + HEAD DONE / REPROFILE ACTIVE** | Exact c1 kernel work, not graph promotion | The default router passes clean at **+4.14%** and exact wave32 affine4 passes clean at **143.679 -> 153.409 tok/s (+6.77%, 1,146/1,152 wins)**. Clean selector-unset short profiling is the remaining D0 closure step. |
+| **D0 — DONE** | Exact c1 kernel work, not graph promotion | The default router passes clean at **+4.14%** and exact wave32 affine4 passes clean at **143.679 -> 153.409 tok/s (+6.77%, 1,146/1,152 wins)**. The clean selector-unset short profile is **199.772 tok/s / 5.006-ms wall / 4.581-ms kernels / 271 launches**. |
 | **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
 
 The 200+ decode target is therefore realistic in two distinct forms:
 
 - **Approximate:** a properly quality-gated FlashHead path should directly
-  attack the current 1.278-ms c1 exact-head bucket and is the mechanism behind
+  attack the current 0.982-ms c1 exact-head bucket and is the mechanism behind
   DeepGrove's 218 tok/s M4 headline. It must remain opt-in and pass the full
   category/heldout agreement suite.
-- **Exact:** the retained head's dirty short diagnostic reaches **199.659
-  tok/s**, but the clean selector-unset profile remains binding before a 200
-  claim or further residual selection.
+- **Exact:** the retained head's clean short diagnostic reaches **199.772
+  tok/s**. That is below 200 by **0.228 tok/s / 5.7 us per token**, so it is not
+  reported as a 200+ result. The natural-context exact row remains 153.409 tok/s.
 
 Evidence:
 [`D0 c1 router`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
 [`D0 affine4 head`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
+[`D0 wave32 profile`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json),
 [`D0 pre-head profile`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json),
 [`P2 GQA4 prefill`](../benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json),
 [`post-P2 phase profile`](../benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json),

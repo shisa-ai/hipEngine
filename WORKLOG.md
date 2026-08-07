@@ -207516,3 +207516,43 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   kernel/refactor docs plus benchmark rollup/changelog. A clean selector-unset
   fixed-token profile remains the final D0 closure step; do not promote the
   dirty **199.659 tok/s** diagnostic as the clean 200+ row.
+
+## 2026-08-08 — Close Maple D0 with clean selector-unset profile
+
+- Start from clean promotion commit `c70bd2309`; confirm HIP and gfx1151, then
+  prebuild all six Maple libraries outside profiling with the pinned
+  `/tmp/hipengine-maple-hipcc-version.txt`. Run `rocprofv3` only through the
+  cached child with `HIPENGINE_REQUIRE_CACHED_BUILD=1`,
+  `GPU_MAX_HW_QUEUES=1`, `HIPENGINE_HIP_ARCH=gfx1151`, and both Maple selectors
+  explicitly absent:
+  `env -u HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT -u
+  HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH GPU_MAX_HW_QUEUES=1
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1
+  .venv/bin/python scripts/maple_profile.py --model
+  deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --raw-root
+  /tmp/maple-d0-wave32-profile-raw --out
+  /tmp/maple-d0-wave32-profile.json --profile`.
+- The clean fixed-token diagnostic is **5.006-ms wall / 4.581-ms kernels /
+  0.425-ms host gap / 271 launches = 199.772 tok/s**. Against the clean pre-head
+  diagnostic, throughput is **180.935 -> 199.772 tok/s (+10.411%)**; kernel
+  time falls **4.859 -> 4.581 ms**, and the named exact wave32 head falls
+  **1.278 -> 0.982 ms (1.302x)**. It is local32/VGPR16/SGPR128/LDS0/scratch0.
+- Current kernel shares are exact head **0.982 ms / 21.43%**, one-dispatch
+  router **1.094 ms / 23.88%**, and selected experts **1.140 ms / 24.89%**.
+  Kernel-only roof is **218.286 tok/s**. The measured wall is still **5.7 us per
+  token / 0.228 tok/s** short of 200, so publish **199.772**, do not round or
+  rerun to manufacture a 200+ claim, and keep the qualified natural-context row
+  distinct at **153.409 tok/s**.
+- The profiled child returns marker token 9707 at **32/32** measured positions;
+  the binding state/counter/lifecycle gate remains the retained clean
+  qualification artifact. Raw kernel CSV SHA-256 is
+  `436f02af17e0e72d8e53c4c80acd8653bc626eb0568bc1ddb45e28c62fad702a`;
+  generated profile SHA-256 is
+  `65508287a8ab810c447171111e524d4b4da4e347ba9660842142c773ffc87959`.
+- Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json`
+  (SHA-256
+  `3c12dc8906e21b1798c8f2f508439fb865f2992d5d5af0934c43fcf7364eda68`)
+  with clean source, selector, command, trace, derived-share, and qualification
+  provenance. D0 is complete; D1 c2/c4/c8 affine4 row reuse is the next exact
+  owner. Preserve the `=0` group64 rollback until the final roadmap audit.

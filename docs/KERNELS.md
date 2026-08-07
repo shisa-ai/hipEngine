@@ -103,7 +103,9 @@ the exact group64 rollback **143.679 -> 153.409 tok/s (+6.77%)**, saves
 **1,296/1,296** tokens/top logits, **36/36** native-start/final state pairs,
 **2,592/2,592** counter checks, and lifecycle are exact. Cached tracing names
 `maple_affine4_gemv_wave32_exact_kernel` at local32/VGPR16/SGPR128/LDS0/
-scratch0, **0.983 ms/step**. Selector-unset production uses wave32;
+scratch0, **0.982 ms/step**. The clean selector-unset short profile is
+**5.006-ms wall / 4.581-ms kernels / 0.425-ms host gap / 271 launches = 199.772
+tok/s**. Selector-unset production uses wave32;
 `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` retains the original group64 rollback.
 
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the

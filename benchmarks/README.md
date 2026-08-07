@@ -18,12 +18,13 @@ that route fixed, the exact wave32 affine4 head then improves group64
 **143.679 -> 153.409 tok/s (+6.77%)**, saves **0.442 ms** at the paired median,
 and wins **1,146/1,152** pairs on the complete natural+heldout suite. All
 **1,296/1,296** token/top-logit positions, **36/36** native-start/final state
-pairs, **2,592/2,592** counter checks, and tracked teardown are exact. The prior
-pre-head short cached profile is **180.935 tok/s / 271 launches**; a clean
-selector-unset head refresh is pending. Evidence:
+pairs, **2,592/2,592** counter checks, and tracked teardown are exact. The clean
+selector-unset short profile improves the pre-head diagnostic **180.935 ->
+199.772 tok/s (+10.41%)** at **5.006-ms wall / 4.581-ms kernels / 0.425-ms host
+gap / 271 launches**; it remains below exact 200 by 0.228 tok/s. Evidence:
 [`D0 router`](results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
 [`D0 head`](results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
-and [`pre-head profile`](results/2026-08-08-gfx1151-maple-d0-decode-profile.json).
+and [`D0 wave32 profile`](results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json).
 
 | Maple retained workload | Current throughput | Exactness / scope | Artifact |
 | --- | ---: | --- | --- |
@@ -55,8 +56,8 @@ measures **439.479 ms / 728.135 tok/s** and attention **21.916 ms (2.920x,
 at **0/16** paired wins. Direct native BF16 WMMA also fails the exact gate at
 **106/256 FP32 K16 partials** and **43/655,360 BF16 production-shape outputs**;
 production stays tile 8. D0's exact router and wave32 affine4 head are retained;
-the clean selector-unset short profile is the remaining D0 closure step, then
-c2/c4/c8 affine4 row reuse is next. Evidence:
+the clean selector-unset short profile closes D0 at 199.772 tok/s, and c2/c4/c8
+affine4 row reuse is next. Evidence:
 [`P3 rejected`](results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json).
 A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
