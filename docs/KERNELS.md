@@ -58,7 +58,11 @@ cache-only gfx1151 trace reports QK/RoPE/KV-write at local32/VGPR24/scratch0,
 fixture. The batched ring-prefill attention reads the complete live causal
 prefix across chunk boundaries; its prefix-aware fixture is BF16-bit exact and
 a cached gfx1151 trace names `maple_attention_prefill_ring_kernel` at **6,452
-ns**, VGPR16, LDS0, scratch0.
+ns**, VGPR16, LDS0, scratch0. Batched decode uses disjoint per-request rings
+and separate SWA/global capacity owners; wrapped positions remain inside their
+request arena after position 512. The wrapped c=3 primitive is BF16-bit exact;
+cached tracing reports batched QK/RoPE/KV write at **3,967 ns** (VGPR24) and
+batched attention at **20,197 ns** (VGPR16), both LDS0/scratch0.
 
 `hipengine/kernels/hip_gfx1100/moe/maple_moe.{hip,py}` supplies the unfused MoE
 control/tail around selected ternary GEMV: BF16-hidden/BF16-weight router logits
@@ -86,7 +90,10 @@ when their capacities are equal; the earlier top-ID-1112 diagnostic preceded
 that correctness fix and is not retained evidence. Public prompts through the
 512-token SWA capacity use bounded native prefill; longer prompts remain on the
 serial correctness fallback until append-all ring prefill can preserve the live
-window while writing later chunks.
+window while writing later chunks. `MapleBatchRunner` provides c=2/4/8 fixed-
+capacity decode and `MapleContinuousBatcher` adds sparse active masks plus slot
+reclamation; this is a validated runtime helper, not yet an integration with the
+public generation scheduler/server admission path.
 
 The corrected 18-position packed-formula gate passes at max KL **0.013508** and
 18/18 top-1; the pinned Transformers `trust_remote_code` same-weight gate passes

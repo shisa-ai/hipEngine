@@ -206802,3 +206802,35 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Cached `rocprofv3 --kernel-trace` names
   `maple_attention_prefill_ring_kernel` at **6,452 ns**, VGPR16, LDS0,
   scratch0 on Radeon 8060S/gfx1151. Raw profiler output remains under `/tmp`.
+
+## 2026-08-07 — Harden Maple M6 batch rings and scheduler lifecycle
+
+- RED-first batch audit reproduced all four review failures: out-of-range token
+  IDs reached scratch access, request-reset copies targeted each buffer base
+  instead of the reclaimed device slice, `max_new=0` was admitted, and wrapped
+  positions wrote outside their request-local ring. The corrected primitive
+  fixture failed its old K-cache destination before implementation.
+- Add `MapleBatchSpanOwner` with disjoint request-local modulo addressing,
+  offset-correct reset copies, and sparse publication. Batch decode now owns
+  separate SWA (`min(per_capacity, 512)`) and global (`per_capacity`) span/KV
+  arenas per layer; both QK/RoPE/KV write and attention derive the per-request
+  capacity from the full arena and never wrap into an adjacent request.
+- `batch_step()` validates every token, validates active-mask shape, leaves
+  inactive positions unchanged, returns `-1` for masked rows, and advances only
+  active requests. `MapleContinuousBatcher` rejects non-positive lengths and
+  invalid seeds, permits partially occupied rounds, and resets both capacity
+  classes when reclaiming a slot.
+- Real pinned-checkpoint gates pass for c=2/4/**8** versus a reused serial c1
+  runner, including zero tracked allocations after close. A c=2 **514-step**
+  sequence is token-exact across the SWA-512 wrap. The continuous scheduler is
+  exact for uneven 2/5/3-token requests across one deliberately sparse round
+  and slot-0 reuse. Focused supporting gates: wrapped batched primitive pass;
+  Maple attention/graph bundle **11 passed, 3 skipped** (cache-path skips);
+  public/model/loading/correctness static bundle **22 passed**.
+- Cache-only gfx1151 tracing observes
+  `maple_qknorm_rope_kv_write_batched_decode_kernel` at **3,967 ns**, VGPR24,
+  and `maple_attention_decode_batched_kernel` at **20,197 ns**, VGPR16; both
+  report LDS0/scratch0 on the c=3 wrapped fixture. Raw trace stays under `/tmp`.
+- Scope is explicit: `MapleBatchRunner` plus `MapleContinuousBatcher` is a
+  corrected fixed-capacity runtime/benchmark helper. It is not yet connected to
+  hipEngine's public generation scheduler or production server admission path.

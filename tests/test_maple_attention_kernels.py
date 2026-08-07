@@ -702,8 +702,8 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
     token_positions = np.full(capacity, -1, dtype=np.int64)
     evict_mask = np.zeros(capacity, dtype=np.bool_)
     row_base_offsets = np.asarray([0, 32, 64], dtype=np.int64)
-    row_positions = np.asarray([3, 4, 5], dtype=np.int64)  # local positions
-    live_counts = (row_positions + 1).astype(np.int64)
+    row_positions = np.asarray([35, 68, 101], dtype=np.int64)  # wrapped local positions
+    live_counts = np.full(rows, per_cap, dtype=np.int64)
     q_norm_weight = f32_to_bf16_bits(
         rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32)
     )
@@ -726,13 +726,14 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
         qkv[row, q_size + kv_size :] = f32_to_bf16_bits(v_raw.reshape(-1))
 
         live = int(live_counts[row])
+        start_position = pos - live + 1
         hist_keys = rng.normal(size=(live, kv_heads, head_dim)).astype(np.float32)
         hist_vals = rng.normal(size=(live, kv_heads, head_dim)).astype(np.float32)
-        for t in range(live):
-            slot = apos + t
-            token_positions[slot] = t
-            key_cache_f[slot] = hist_keys[t]
-            value_cache_f[slot] = hist_vals[t]
+        for offset, token_position in enumerate(range(start_position, pos + 1)):
+            slot = apos + token_position % per_cap
+            token_positions[slot] = token_position
+            key_cache_f[slot] = hist_keys[offset]
+            value_cache_f[slot] = hist_vals[offset]
 
         qn_ref, kn_ref = qk_norm_rope(
             bf16_round(q_raw),
@@ -811,15 +812,18 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
             np.array(qkv_res[row, :q_size], dtype=np.uint16),
             f32_to_bf16_bits(qn_ref.reshape(-1)),
         ), f"row {row} normalized Q mismatch"
+        current_slot = apos + pos % per_cap
         assert np.array_equal(
-            np.array(key_res_bits[apos + pos], dtype=np.uint16).reshape(-1),
+            np.array(key_res_bits[current_slot], dtype=np.uint16).reshape(-1),
             f32_to_bf16_bits(kn_ref.reshape(-1)),
         ), f"row {row} K-cache write mismatch"
 
-        # Attention oracle over local positions [0, pos] with the just-written K/V.
-        hist_k = bf16_round(key_cache_f[apos : apos + pos + 1])
+        # Attention oracle over the last per_cap local positions, ordered by age.
+        start_position = pos - per_cap + 1
+        slots = [apos + token % per_cap for token in range(start_position, pos + 1)]
+        hist_k = bf16_round(key_cache_f[slots])
         hist_k[-1] = bf16_round(kn_ref)
-        hist_v = bf16_round(value_cache_f[apos : apos + pos + 1])
+        hist_v = bf16_round(value_cache_f[slots])
         hist_v[-1] = bf16_round(v_raw)
         expected = f32_to_bf16_bits(
             attention_decode(qn_ref, hist_k, hist_v, scale=head_dim**-0.5).reshape(-1)

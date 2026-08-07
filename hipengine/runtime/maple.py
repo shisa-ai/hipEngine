@@ -280,6 +280,148 @@ class MapleSpanOwner:
             )
 
 
+class MapleBatchSpanOwner:
+    """Per-request ring spans for one batch attention capacity class."""
+
+    def __init__(
+        self,
+        owner: _BufferOwner,
+        *,
+        batch_size: int,
+        per_request_capacity: int,
+        device: Device,
+    ) -> None:
+        if batch_size <= 0 or per_request_capacity <= 0:
+            raise ValueError("Maple batch span dimensions must be positive")
+        self.owner = owner
+        self.runtime = owner.runtime
+        self.batch_size = int(batch_size)
+        self.per_request_capacity = int(per_request_capacity)
+        self.capacity = self.batch_size * self.per_request_capacity
+        self.device = device
+        self.base_host = np.arange(self.capacity, dtype=np.int32)
+        self.live_host = np.zeros(self.batch_size, dtype=np.int64)
+        self.token_host = np.full(self.capacity, -1, dtype=np.int64)
+        self.evict_host = np.ones(self.capacity, dtype=np.bool_)
+        self.row_host = np.full(self.batch_size, -1, dtype=np.int64)
+        self.row_base_host = (
+            np.arange(self.batch_size, dtype=np.int64) * self.per_request_capacity
+        )
+        self.base_offsets = owner.put(self.base_host)
+        self.live_counts = owner.put(self.live_host)
+        self.token_positions = owner.put(self.token_host)
+        self.evict_mask = owner.put(self.evict_host)
+        self.row_positions = owner.put(self.row_host)
+        self.row_base_offsets = owner.put(self.row_base_host)
+        self.spans = KVLiveSpans(
+            base_offsets=Tensor.from_handle(
+                self.base_offsets.ptr, (self.capacity,), DType.INT32, self.device
+            ),
+            live_counts=Tensor.from_handle(
+                self.live_counts.ptr, (self.batch_size,), DType.INT64, self.device
+            ),
+            max_live_count=self.capacity,
+            token_positions=Tensor.from_handle(
+                self.token_positions.ptr, (self.capacity,), DType.INT64, self.device
+            ),
+            evict_mask=Tensor.from_handle(
+                self.evict_mask.ptr, (self.capacity,), DType.BOOL, self.device
+            ),
+            storage_dtype=DType.BF16,
+            spans_mode="uniform",
+            row_positions=Tensor.from_handle(
+                self.row_positions.ptr, (self.batch_size,), DType.INT64, self.device
+            ),
+        )
+
+    @staticmethod
+    def _view(buffer: DeviceBuffer, offset: int, nbytes: int) -> DeviceBuffer:
+        return DeviceBuffer(ptr=buffer.ptr + offset, nbytes=nbytes)
+
+    def publish(self, positions: np.ndarray, active_mask: tuple[bool, ...]) -> None:
+        if len(positions) != self.batch_size or len(active_mask) != self.batch_size:
+            raise ValueError("Maple batch span publication shape mismatch")
+        for request, active in enumerate(active_mask):
+            if not active:
+                self.live_host[request] = 0
+                self.row_host[request] = -1
+                continue
+            position = int(positions[request])
+            if position < 0:
+                raise ValueError("Maple batch positions must be non-negative")
+            local_slot = position % self.per_request_capacity
+            slot = request * self.per_request_capacity + local_slot
+            self.token_host[slot] = position
+            self.evict_host[slot] = False
+            self.live_host[request] = min(position + 1, self.per_request_capacity)
+            self.row_host[request] = position
+            copy_host_to_device(
+                self._view(self.token_positions, slot * 8, 8),
+                host_array_ptr(self.token_host[slot : slot + 1]),
+                nbytes=8,
+                runtime=self.runtime,
+            )
+            copy_host_to_device(
+                self._view(self.evict_mask, slot, 1),
+                host_array_ptr(self.evict_host[slot : slot + 1]),
+                nbytes=1,
+                runtime=self.runtime,
+            )
+        for buffer, host in (
+            (self.live_counts, self.live_host),
+            (self.row_positions, self.row_host),
+        ):
+            copy_host_to_device(buffer, host_array_ptr(host), runtime=self.runtime)
+
+    def reset(self) -> None:
+        self.live_host.fill(0)
+        self.token_host.fill(-1)
+        self.evict_host.fill(True)
+        self.row_host.fill(-1)
+        for buffer, host in (
+            (self.live_counts, self.live_host),
+            (self.token_positions, self.token_host),
+            (self.evict_mask, self.evict_host),
+            (self.row_positions, self.row_host),
+        ):
+            copy_host_to_device(buffer, host_array_ptr(host), runtime=self.runtime)
+
+    def reset_request(self, request: int) -> None:
+        if not 0 <= request < self.batch_size:
+            raise ValueError(f"request {request} out of range")
+        lo = request * self.per_request_capacity
+        hi = lo + self.per_request_capacity
+        self.token_host[lo:hi] = -1
+        self.evict_host[lo:hi] = True
+        self.live_host[request] = 0
+        self.row_host[request] = -1
+        copies = (
+            (
+                self._view(self.token_positions, lo * 8, (hi - lo) * 8),
+                self.token_host[lo:hi],
+            ),
+            (
+                self._view(self.evict_mask, lo, hi - lo),
+                self.evict_host[lo:hi],
+            ),
+            (
+                self._view(self.live_counts, request * 8, 8),
+                self.live_host[request : request + 1],
+            ),
+            (
+                self._view(self.row_positions, request * 8, 8),
+                self.row_host[request : request + 1],
+            ),
+        )
+        for buffer, host in copies:
+            copy_host_to_device(
+                buffer,
+                host_array_ptr(host),
+                nbytes=host.nbytes,
+                runtime=self.runtime,
+            )
+
+
 class MapleRuntimeBuffers:
     def __init__(
         self,
@@ -1151,51 +1293,33 @@ class MapleBatchRunner:
             owner=owner, spec=spec, top_k=top_k, intermediate=intermediate, T=T
         )
 
-        # Shared identity KV arena (physical slot == absolute position).
-        self._base_host = np.arange(self.capacity, dtype=np.int32)
-        self._live_host = np.zeros(self.batch_size, dtype=np.int64)
-        self._token_host = np.full(self.capacity, -1, dtype=np.int64)
-        self._evict_host = np.ones(self.capacity, dtype=np.bool_)
-        self._row_host = np.full(self.batch_size, -1, dtype=np.int64)
-        self._rbo_host = (np.arange(self.batch_size) * self.per_capacity).astype(
-            np.int64
+        # SWA and global layers retain independent per-request ring capacities.
+        self.sliding_span_owner = MapleBatchSpanOwner(
+            owner,
+            batch_size=self.batch_size,
+            per_request_capacity=min(self.per_capacity, spec.sliding_window),
+            device=self.device,
         )
-        self.base_offsets = owner.put(self._base_host)
-        self.live_counts = owner.put(self._live_host)
-        self.token_positions = owner.put(self._token_host)
-        self.evict_mask = owner.put(self._evict_host)
-        self.row_positions = owner.put(self._row_host)
-        self.row_base_offsets = owner.put(self._rbo_host)
-        self.spans = KVLiveSpans(
-            base_offsets=Tensor.from_handle(
-                self.base_offsets.ptr, (self.capacity,), DType.INT32, self.device
-            ),
-            live_counts=Tensor.from_handle(
-                self.live_counts.ptr, (self.batch_size,), DType.INT64, self.device
-            ),
-            max_live_count=self.capacity,
-            token_positions=Tensor.from_handle(
-                self.token_positions.ptr, (self.capacity,), DType.INT64, self.device
-            ),
-            evict_mask=Tensor.from_handle(
-                self.evict_mask.ptr, (self.capacity,), DType.BOOL, self.device
-            ),
-            storage_dtype=DType.BF16,
-            spans_mode="uniform",
-            row_positions=Tensor.from_handle(
-                self.row_positions.ptr, (self.batch_size,), DType.INT64, self.device
-            ),
+        self.global_span_owner = MapleBatchSpanOwner(
+            owner,
+            batch_size=self.batch_size,
+            per_request_capacity=self.per_capacity,
+            device=self.device,
         )
 
         layers: list[MapleKVLayer] = []
-        for layer, kind in enumerate(spec.layer_types):
-            del kind  # batch runner shares one arena for SWA/global layers
-            cache_bytes = self.capacity * kv_size * 2
+        for kind in spec.layer_types:
+            span_owner = (
+                self.sliding_span_owner
+                if kind == "sliding_attention"
+                else self.global_span_owner
+            )
+            cache_bytes = span_owner.capacity * kv_size * 2
             layers.append(
                 MapleKVLayer(
                     key_cache=owner.allocate(cache_bytes),
                     value_cache=owner.allocate(cache_bytes),
-                    spans=self.spans,
+                    spans=span_owner.spans,
                 )
             )
         self.layers = tuple(layers)
@@ -1242,15 +1366,37 @@ class MapleBatchRunner:
                 weights.free(runtime=runtime)
             raise
 
-    def batch_step(self, token_ids: list[int] | tuple[int, ...]) -> list[int]:
-        """Decode one token for each request; return the per-request argmax token."""
+    def batch_step(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        active_mask: list[bool] | tuple[bool, ...] | None = None,
+    ) -> list[int]:
+        """Decode one token per active request; inactive rows return ``-1``."""
         self._require_open()
         ids = [int(t) for t in token_ids]
         if len(ids) != self.batch_size:
             raise ValueError(
                 f"batch_step expects {self.batch_size} token ids, got {len(ids)}"
             )
+        active = (
+            tuple(True for _ in range(self.batch_size))
+            if active_mask is None
+            else tuple(bool(value) for value in active_mask)
+        )
+        if len(active) != self.batch_size:
+            raise ValueError(
+                f"batch_step expects {self.batch_size} active-mask values, got {len(active)}"
+            )
+        if not any(active):
+            raise ValueError("batch_step requires at least one active request")
         spec = self.checkpoint.spec
+        invalid_token = next(
+            (token for token in ids if token < 0 or token >= spec.vocab_size),
+            None,
+        )
+        if invalid_token is not None:
+            raise ValueError(f"Maple token_id must be in [0, {spec.vocab_size})")
         b = self.pf
         libs = self.libraries
         h = spec.hidden_size
@@ -1260,27 +1406,14 @@ class MapleBatchRunner:
         intermediate = spec.moe_intermediate_size
         rows = self.batch_size
 
-        # Publish each request's new current position into the shared arena.
-        for r in range(rows):
-            if self._requests[r] >= self.per_capacity:
+        # Publish each active request's current position into both capacity classes.
+        for request, is_active in enumerate(active):
+            if is_active and self._requests[request] >= self.per_capacity:
                 raise ValueError(
-                    f"request {r} exceeds per-request capacity {self.per_capacity}"
+                    f"request {request} exceeds per-request capacity {self.per_capacity}"
                 )
-            local = int(self._requests[r])
-            slot = r * self.per_capacity + local
-            self._token_host[slot] = local
-            self._evict_host[slot] = False
-            self._live_host[r] = local + 1
-            self._row_host[r] = local
-        for buffer, host in (
-            (self.token_positions, self._token_host),
-            (self.evict_mask, self._evict_host),
-            (self.live_counts, self._live_host),
-            (self.row_positions, self._row_host),
-        ):
-            copy_host_to_device(
-                buffer, host_array_ptr(host), runtime=self.runtime
-            )
+        for span_owner in (self.sliding_span_owner, self.global_span_owner):
+            span_owner.publish(self._requests, active)
 
         ids_arr = np.asarray(ids, dtype=np.int64)
         copy_host_to_device(
@@ -1297,9 +1430,14 @@ class MapleBatchRunner:
             library=libs.ternary,
             runtime=self.runtime,
         )
-        for layer_id, (layer_weights, kv_layer) in enumerate(
-            zip(self.weights.layers, self.layers)
+        for layer_id, (layer_weights, kv_layer, kind) in enumerate(
+            zip(self.weights.layers, self.layers, spec.layer_types)
         ):
+            span_owner = (
+                self.sliding_span_owner
+                if kind == "sliding_attention"
+                else self.global_span_owner
+            )
             paro_rmsnorm_out_bf16(
                 b.hidden.ptr,
                 layer_weights.input_layernorm.ptr,
@@ -1334,7 +1472,7 @@ class MapleBatchRunner:
                 kv_layer.key_cache.ptr,
                 kv_layer.value_cache.ptr,
                 kv_layer.spans,
-                row_base_offsets=self.row_base_offsets.ptr,
+                row_base_offsets=span_owner.row_base_offsets.ptr,
                 rows=rows,
                 q_heads=spec.num_attention_heads,
                 kv_heads=spec.num_key_value_heads,
@@ -1351,7 +1489,7 @@ class MapleBatchRunner:
                 kv_layer.value_cache.ptr,
                 b.attention.ptr,
                 kv_layer.spans,
-                row_base_offsets=self.row_base_offsets.ptr,
+                row_base_offsets=span_owner.row_base_offsets.ptr,
                 rows=rows,
                 q_heads=spec.num_attention_heads,
                 kv_heads=spec.num_key_value_heads,
@@ -1487,64 +1625,26 @@ class MapleBatchRunner:
             nbytes=out.nbytes,
             runtime=self.runtime,
         )
-        for r in range(rows):
-            self._requests[r] += 1
-        return [int(t) for t in out]
+        for request, is_active in enumerate(active):
+            if is_active:
+                self._requests[request] += 1
+        return [int(token) if active[row] else -1 for row, token in enumerate(out)]
 
     def reset(self) -> None:
         self._require_open()
         self.runtime.device_synchronize()
         self._requests.fill(0)
-        self._live_host.fill(0)
-        self._token_host.fill(-1)
-        self._evict_host.fill(True)
-        self._row_host.fill(-1)
-        for buffer, host in (
-            (self.live_counts, self._live_host),
-            (self.token_positions, self._token_host),
-            (self.evict_mask, self._evict_host),
-            (self.row_positions, self._row_host),
-        ):
-            copy_host_to_device(
-                buffer, host_array_ptr(host), runtime=self.runtime
-            )
+        self.sliding_span_owner.reset()
+        self.global_span_owner.reset()
 
     def reset_request(self, request: int) -> None:
-        """Reclaim one request slot: clear its arena region and local position."""
+        """Reclaim one request slot and clear both of its KV span regions."""
         self._require_open()
-        if not (0 <= request < self.batch_size):
+        if not 0 <= request < self.batch_size:
             raise ValueError(f"request {request} out of range")
-        lo = request * self.per_capacity
-        hi = lo + self.per_capacity
-        self._token_host[lo:hi] = -1
-        self._evict_host[lo:hi] = True
-        self._live_host[request] = 0
-        self._row_host[request] = -1
         self._requests[request] = 0
-        copy_host_to_device(
-            self.token_positions,
-            host_array_ptr(self._token_host[lo:hi]),
-            nbytes=self._token_host[lo:hi].nbytes,
-            runtime=self.runtime,
-        )
-        copy_host_to_device(
-            self.evict_mask,
-            host_array_ptr(self._evict_host[lo:hi]),
-            nbytes=self._evict_host[lo:hi].nbytes,
-            runtime=self.runtime,
-        )
-        copy_host_to_device(
-            self.live_counts,
-            host_array_ptr(self._live_host[request : request + 1]),
-            nbytes=8,
-            runtime=self.runtime,
-        )
-        copy_host_to_device(
-            self.row_positions,
-            host_array_ptr(self._row_host[request : request + 1]),
-            nbytes=8,
-            runtime=self.runtime,
-        )
+        self.sliding_span_owner.reset_request(request)
+        self.global_span_owner.reset_request(request)
         self.runtime.device_synchronize()
 
     def close(self) -> None:
@@ -1562,6 +1662,7 @@ class MapleBatchRunner:
 
 __all__ = [
     "MapleBatchRunner",
+    "MapleBatchSpanOwner",
     "MapleKVLayer",
     "MapleRunner",
     "MapleRunnerLibraries",
