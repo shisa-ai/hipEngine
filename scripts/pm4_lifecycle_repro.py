@@ -2,7 +2,7 @@
 """Standalone same-HSACO HIP/direct-AQL/retained-PM4 lifecycle reproducer.
 
 Safe defaults reuse one queue and one executable for four tiny submissions.
-Recreate stress large enough to plausibly reset the GPU is rejected unless the
+Every native submit arm that recreates packet resources is rejected unless the
 operator passes ``--ack-reset-risk``. The script never retries a failed cycle.
 """
 
@@ -18,7 +18,7 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -87,12 +87,16 @@ class ReproConfig:
         config = self
         if self.allocation_mode == "hsa" and self.queue_mode == "recreate":
             config = replace(config, buffer_mode="recreate")
-        destructive = bool(config.submit and config.queue_mode == "recreate" and config.cycles >= 32)
+        destructive = bool(
+            config.submit
+            and config.transport in {"aql", "pm4"}
+            and config.resource_mode == "recreate"
+        )
         config = replace(config, destructive=destructive)
         if destructive and not config.reset_risk_acknowledged:
             raise ValueError(
-                "reset-risk recreate stress is blocked; re-run only after arranging journal/coredump "
-                "collection and pass --ack-reset-risk"
+                "reset-risk native submit/resource-recreate is blocked; re-run only after "
+                "arranging journal/coredump collection and pass --ack-reset-risk"
             )
         return config
 
@@ -113,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ack-reset-risk",
         action="store_true",
-        help="acknowledge that recreate stress may VM-fault/reset the selected GPU",
+        help="acknowledge that native submit/resource recreation may VM-fault/reset the GPU",
     )
     parser.add_argument("--stress", action="store_true", help="select 128 recreate/submit cycles")
     parser.add_argument("--n", type=int, default=257)
@@ -155,18 +159,112 @@ def _compiler_version(path: Path | None) -> str | None:
     return None if path is None else path.expanduser().read_text(encoding="utf-8").strip()
 
 
-def _close_generation(generation: dict[str, Any]) -> None:
+def _attempt_teardown(label: str, operation: Callable[[], None]) -> dict[str, Any]:
+    try:
+        operation()
+    except Exception as exc:
+        return {
+            "operation": label,
+            "status": "fail",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+    return {"operation": label, "status": "pass"}
+
+
+def _close_generation(generation: dict[str, Any]) -> list[dict[str, Any]]:
+    """Close one retired generation in pointee-safe order without losing errors."""
+
+    statuses: list[dict[str, Any]] = []
+
+    def attempt(label: str, key: str, operation: Callable[[], None]) -> bool:
+        status = _attempt_teardown(label, operation)
+        statuses.append(status)
+        if status["status"] == "pass":
+            generation[key] = None
+            return True
+        return False
+
     executable = generation.get("executable")
-    if executable is not None:
-        executable.close()
-        generation["executable"] = None
-    for buffer in reversed(generation.get("hsa_buffers", [])):
-        buffer.close()
+    if executable is not None and not attempt("executable.close", "executable", executable.close):
+        statuses.append(
+            {
+                "operation": "generation.remaining_resources",
+                "status": "skipped",
+                "reason": "executable close did not prove packet-pointee release",
+            }
+        )
+        return statuses
+
+    runtime = generation.get("runtime")
+    graph_exec = int(generation.get("graph_exec") or 0)
+    if graph_exec and not attempt(
+        "hip_graph_exec.destroy",
+        "graph_exec",
+        lambda: runtime.graph_exec_destroy(graph_exec),
+    ):
+        statuses.append(
+            {
+                "operation": "generation.remaining_resources",
+                "status": "skipped",
+                "reason": "HIP graph executable destruction failed",
+            }
+        )
+        return statuses
+    graph = int(generation.get("graph") or 0)
+    if graph and not attempt(
+        "hip_graph.destroy",
+        "graph",
+        lambda: runtime.graph_destroy(graph),
+    ):
+        statuses.append(
+            {
+                "operation": "generation.remaining_resources",
+                "status": "skipped",
+                "reason": "HIP graph destruction failed",
+            }
+        )
+        return statuses
+
+    hsa_buffers = list(generation.get("hsa_buffers", []))
+    for reverse_index, buffer in enumerate(reversed(hsa_buffers)):
+        index = len(hsa_buffers) - 1 - reverse_index
+        status = _attempt_teardown(f"hsa_buffer[{index}].close", buffer.close)
+        statuses.append(status)
+        if status["status"] != "pass":
+            statuses.append(
+                {
+                    "operation": "generation.remaining_resources",
+                    "status": "skipped",
+                    "reason": "HSA buffer release failed",
+                }
+            )
+            return statuses
     generation["hsa_buffers"] = []
+
+    hip_buffers = list(generation.get("hip_buffers", []))
+    for reverse_index, buffer in enumerate(reversed(hip_buffers)):
+        index = len(hip_buffers) - 1 - reverse_index
+        status = _attempt_teardown(
+            f"hip_buffer[{index}].free",
+            lambda buffer=buffer: generation["free_hip_buffer"](buffer),
+        )
+        statuses.append(status)
+        if status["status"] != "pass":
+            statuses.append(
+                {
+                    "operation": "generation.remaining_resources",
+                    "status": "skipped",
+                    "reason": "HIP buffer release failed",
+                }
+            )
+            return statuses
+    generation["hip_buffers"] = []
+
     context = generation.get("context")
     if context is not None:
-        context.close()
-        generation["context"] = None
+        attempt("context.close", "context", context.close)
+    return statuses
 
 
 def _capture_graph(runtime, library, pointers: tuple[int, int, int], n: int, stream: int):
@@ -223,6 +321,7 @@ def run_reproducer(
     reusable_manifest = None
     failure: Exception | None = None
     unsafe_native_failure = False
+    result: dict[str, Any] | None = None
     started_ns = time.monotonic_ns()
 
     def make_context():
@@ -397,43 +496,58 @@ def run_reproducer(
                     cycles.append(cycle)
                 if unsafe_native_failure:
                     cycle["cleanup"] = "quarantined_until_process_exit"
-                    owns_graph_exec = owns_graph = owns_hip_buffers = False
-                    owns_context = owns_executable = owns_hsa_buffers = False
-                if owns_graph_exec and graph_exec:
-                    runtime.graph_exec_destroy(graph_exec)
-                if owns_graph and graph:
-                    runtime.graph_destroy(graph)
-                if owns_hip_buffers:
-                    for buffer in reversed(local_hip_buffers):
-                        free(buffer)
-
-                if owns_context and config.quarantine_generations:
-                    queue_before_retire = context.provenance()
-                    context.retire_queue()
+                else:
                     package = {
-                        "context": context,
+                        "context": context if owns_context else None,
                         "executable": executable if owns_executable else None,
                         "hsa_buffers": hsa_buffers if owns_hsa_buffers else [],
+                        "hip_buffers": local_hip_buffers if owns_hip_buffers else [],
+                        "graph_exec": graph_exec if owns_graph_exec else 0,
+                        "graph": graph if owns_graph else 0,
+                        "runtime": runtime,
+                        "free_hip_buffer": lambda buffer: free(buffer, runtime=runtime),
                         "retired_cycle": cycle_index,
                     }
-                    cycle["queue_before_retire"] = queue_before_retire
-                    cycle["context_after_queue_retire"] = context.provenance()
-                    quarantine.append(package)
-                    owns_context = owns_executable = owns_hsa_buffers = False
-                    while len(quarantine) > config.quarantine_generations:
-                        _close_generation(quarantine.popleft())
-                else:
-                    if owns_executable and executable is not None:
-                        executable.close()
-                    if owns_hsa_buffers:
-                        for buffer in reversed(hsa_buffers):
-                            buffer.close()
-                    if owns_context and context is not None:
-                        context.close()
+                    cycle_teardown: list[dict[str, Any]] = []
+                    if owns_context and config.quarantine_generations:
+                        cycle["queue_before_retire"] = context.provenance()
+                        retirement = _attempt_teardown(
+                            "context.retire_queue", context.retire_queue
+                        )
+                        cycle_teardown.append(retirement)
+                        if retirement["status"] == "pass":
+                            cycle["context_after_queue_retire"] = context.provenance()
+                            quarantine.append(package)
+                            while len(quarantine) > config.quarantine_generations:
+                                cycle_teardown.extend(_close_generation(quarantine.popleft()))
+                        else:
+                            unsafe_native_failure = True
+                            cycle["cleanup"] = "quarantined_until_process_exit"
+                    else:
+                        cycle_teardown.extend(_close_generation(package))
+                    if cycle_teardown:
+                        cycle["teardown"] = cycle_teardown
+                    teardown_failures = [
+                        status
+                        for status in cycle_teardown
+                        if status["status"] in {"fail", "skipped"}
+                    ]
+                    if teardown_failures:
+                        cycle["status"] = "fail"
+                        cycle.setdefault("error_type", "LifecycleTeardownError")
+                        cycle.setdefault(
+                            "error",
+                            f"lifecycle teardown failed at {teardown_failures[0]['operation']}",
+                        )
+                        if failure is None:
+                            failure = RuntimeError(cycle["error"])
+                        if config.transport != "hipgraph":
+                            unsafe_native_failure = True
+                            cycle["cleanup"] = "quarantined_until_process_exit"
             if failure is not None:
                 break
 
-        return {
+        result = {
             "schema_version": 1,
             "kind": "hipengine_pm4_lifecycle_reproducer",
             "status": "fail" if failure is not None else "pass",
@@ -457,23 +571,50 @@ def run_reproducer(
                 "quarantine_depth": config.quarantine_generations,
             },
         }
+        return result
     finally:
-        if not unsafe_native_failure:
+        final_cleanup: list[dict[str, Any]] = []
+        if unsafe_native_failure:
+            final_cleanup.append(
+                {
+                    "operation": "process_exit_quarantine",
+                    "status": "skipped",
+                    "reason": "native failure left GPU-visible resources quarantined",
+                }
+            )
+        else:
             while quarantine:
-                _close_generation(quarantine.popleft())
-            if reusable_executable is not None:
-                reusable_executable.close()
-            if reusable_graph_exec:
-                runtime.graph_exec_destroy(reusable_graph_exec)
-            if reusable_graph:
-                runtime.graph_destroy(reusable_graph)
-            for buffer in reversed(reusable_hsa_buffers):
-                buffer.close()
-            if reusable_context is not None:
-                reusable_context.close()
-            for buffer in reversed(hip_buffers):
-                free(buffer)
-            runtime.stream_destroy(stream)
+                final_cleanup.extend(_close_generation(quarantine.popleft()))
+            final_cleanup.extend(
+                _close_generation(
+                    {
+                        "context": reusable_context,
+                        "executable": reusable_executable,
+                        "hsa_buffers": reusable_hsa_buffers,
+                        "hip_buffers": hip_buffers,
+                        "graph_exec": reusable_graph_exec,
+                        "graph": reusable_graph,
+                        "runtime": runtime,
+                        "free_hip_buffer": lambda buffer: free(buffer, runtime=runtime),
+                    }
+                )
+            )
+            final_cleanup.append(
+                _attempt_teardown("stream.destroy", lambda: runtime.stream_destroy(stream))
+            )
+        if result is not None:
+            result["final_cleanup"] = final_cleanup
+            cleanup_failures = [
+                status
+                for status in final_cleanup
+                if status["status"] in {"fail", "skipped"}
+            ]
+            if cleanup_failures:
+                result["status"] = "fail"
+                result["summary"]["final_cleanup_passed"] = False
+                result["summary"]["final_cleanup_first_failure"] = cleanup_failures[0]
+            else:
+                result["summary"]["final_cleanup_passed"] = True
 
 
 def main(argv: list[str] | None = None) -> int:
