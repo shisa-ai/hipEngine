@@ -27,7 +27,7 @@ _MAPLE_DEFAULT_CONTEXT = 4_096
 
 @dataclass
 class MapleGenerator:
-    """One-model token-serial greedy generator with resident packed weights."""
+    """Greedy generator with bounded native prefill and resident packed weights."""
 
     model_path: str | Path
     weight_index: WeightIndex

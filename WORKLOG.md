@@ -206914,3 +206914,25 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   prompt/c8 rows. Keep c1 on the proven singleton: its prior tile was a 0.96x
   dead end. Do not use FlashHead, token-conditioned branches, or fixed-prompt
   scoring. Artifact SHA-256: `6bd92a26...5b362`; raw traces remain in `/tmp`.
+
+## 2026-08-07 — Rewrite the Maple overview around current evidence
+
+- Replace the stale bring-up-only `docs/MAPLE.md` with a current standalone
+  overview: distinguish the BF16 source/oracle from the 5.31-GB official 2-bit
+  deployment checkpoint; summarize the 20B-A1B architecture, exact packed
+  formats, public c1/native-prefill contract, fixed-capacity batch-helper scope,
+  correctness gates, reproduction commands, and known limits.
+- Publish the corrected Radeon 8060S tables directly in the overview: M5
+  prefill **339.890/326.573/317.488 tok/s**, c1 profile diagnostic **163.459
+  tok/s**, M6 helper **218.818/261.099/299.181 aggregate tok/s**, checkpoint
+  **4.944 GiB**, public max-context-512 residency **5.133 GiB**, default-4K
+  diagnostic residency **5.174 GiB**, c2/c4/c8 helper residency
+  **4.951/4.958/4.973 GiB**, and zero tracked ownership after close.
+- Carry the profile conclusion into the overview without turning it into a new
+  performance claim: exact rows>1 affine4 lm-head weight reuse is next; the
+  rejected c1 tile and approximate FlashHead stay out. Update the generator
+  class docstring so source documentation no longer calls all prefill serial.
+- Documentation validation only: re-read `docs/MAPLE.md` end-to-end, verify all
+  linked artifacts/paths and key claims, run the focused generator tests, and
+  run Markdown/diff/WORKLOG checks. No additional GPU benchmark is needed for
+  this docs unit; all displayed values come from committed accepted artifacts.

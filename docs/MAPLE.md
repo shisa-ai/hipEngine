@@ -1,199 +1,272 @@
-# MAPLE — Ternary MoE Inference on hipEngine
+# MAPLE — Ternary MoE inference on hipEngine
 
-Date: 2026-08-05 (branch `maple`)
+Last updated: **2026-08-07** (branch `maple`)
 
-Target model: [`deepgrove/maple-preview`](https://huggingface.co/deepgrove/maple-preview)
-(bf16 source of truth) via the official 2-bit ternary MLX checkpoint
-[`deepgrove/maple-preview-2bit-mlx`](https://huggingface.co/deepgrove/maple-preview-2bit-mlx)
-(**5.31 GB**, the deployment artifact this engine runs).
+## Summary
 
-Reference implementations:
+Maple-Preview is DeepGrove's approximately **20B-total / 1B-active**
+Mixture-of-Experts language model. It uses 24 all-MoE transformer layers,
+selects 8 of 256 small experts per token, alternates three sliding-window
+attention layers with one global layer, and was trained for ternary projection
+weights. From the pinned geometry, the model contains about **20.21B logical
+weight coefficients**; about **1.18B coefficients participate in one token
+forward** when the selected experts and exact full-vocabulary head are counted.
 
-- HF transformers: `modeling_maple.py` / `configuration_maple.py` in the bf16 repo
-  (Triton/FlashAttention CUDA path; used here as the math oracle).
-- MLX: [`deepgrove-ai/mlx-lm-deepgrove`](https://github.com/deepgrove-ai/mlx-lm-deepgrove)
-  (`mlx_lm/models/maple.py` model, `mlx_lm/ternary.py` converter). Apple-only, so it is a
-  *format* reference, not a runnable oracle on gfx1151.
+Two related checkpoints matter:
 
-## Architecture (from config + both references)
+| Checkpoint | Role | Size / format | hipEngine use |
+| --- | --- | --- | --- |
+| [`deepgrove/maple-preview`](https://huggingface.co/deepgrove/maple-preview) | BF16 source model and independent Transformers oracle | ~40.4 GB, custom `MapleForCausalLM` | Correctness oracle only; not the deployed runtime payload |
+| [`deepgrove/maple-preview-2bit-mlx`](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | Official quantized deployment checkpoint | **5,308,186,624 bytes** of exact weights (5.31 GB / 4.944 GiB), 463 required tensors | The checkpoint hipEngine loads directly |
 
-| Field | Value |
+The deployment checkpoint stores the model's trained ternary projections in a
+2-bit packed representation and keeps embeddings plus the exact LM head in
+4-bit affine form. hipEngine consumes those layouts directly—there is no Torch
+hot path, no full model dequantization, and no host-side expert repack. The
+optional approximate FlashHead sidecar is present in the repository but is **not
+used** by the exact production path.
+
+### Current status at a glance
+
+- Public model-ID loading and greedy text generation work on
+  `hip_gfx1151`/Radeon 8060S and the peer `hip_gfx1100` registry key.
+- Public prompts of **up to 512 tokens** use exact batched native prefill;
+  longer prompts use the token-serial correctness fallback.
+- c1 decode is resident and exact. Sampling remains greedy-only
+  (`temperature=0`).
+- c=2/4/8 batch decode and sparse slot reclaim are validated as a
+  **fixed-capacity runtime helper**, not yet as public server throughput.
+- All tracked allocations return to zero on close.
+
+## Model architecture
+
+| Field | Pinned value |
 | --- | --- |
 | Layers | 24, all MoE (`first_k_dense_replace=0`) |
-| Hidden / head_dim | 2048 / 128 |
-| Attention | GQA 16 Q-heads / 4 KV-heads, QK-RMSNorm (per-head, over head_dim) |
-| Layer pattern | 3:1 `sliding_attention` (window 512) : `full_attention` |
-| RoPE | **SWA layers only** (global layers are NoPE), partial factor 0.5 → rotary_dim 64, rotate-half pairing (j, j+32), θ=10000 |
-| MoE | 256 experts, top-8, fp32 router logits → softmax over all → top-8 → renormalize (`norm_topk_prob`) |
-| Expert MLP | `silu(min(gate, 7)) * clip(up, -7, 7)` → down (clamped SwiGLU, trained-in) |
-| MoE intermediate | 512 per expert; no shared experts |
-| Norms | RMSNorm, eps 1e-6, fp32 internal + fp32 weight multiply, single bf16 rounding |
-| Vocab | 151936 (Qwen2 BPE), untied lm_head, EOS 151645 `<|im_end|>` |
-| Activations | bf16 with fp32 accumulation; router always fp32 (`router_dtype: fp32`) |
+| Hidden / head dimension | 2048 / 128 |
+| Attention | GQA: 16 query heads / 4 KV heads; per-head QK-RMSNorm |
+| Layer pattern | 18 sliding-attention + 6 full-attention layers, repeated 3:1 |
+| Sliding window | 512 tokens |
+| Position encoding | partial RoPE on sliding layers only; rotary dimension 64, theta 10,000; global layers are NoPE |
+| Advertised model context | 128K positions; hipEngine public default is 4K and current native-prefill qualification ends at 512 |
+| MoE | 256 experts, stable top-8, FP32 router logits, all-expert softmax, selected-weight renormalization |
+| Expert MLP | 2048 → 512 gate/up, trained clamp-7 SwiGLU, 512 → 2048 down; no shared expert |
+| Norms | RMSNorm, epsilon 1e-6, FP32 internal arithmetic and BF16 boundary |
+| Vocabulary | 151,936 Qwen2 BPE tokens; untied exact LM head |
+| EOS | 151645 (`<|im_end|>`) |
 
-## Checkpoint format (`maple-preview-2bit-mlx`, MLX safetensors)
+## Deployment checkpoint format
 
-Converted by `mlx_lm/ternary.py` from the bf16 repo (quantization-aware trained, so
-thresholding recovers exact ternary values).
+### Ternary projections
 
-- **Ternary projections** (`self_attn.{q,k,v,o}_proj`, `mlp.switch_mlp.{up,gate,down}_proj`):
-  `weight` = `uint32 [.., out, in/16]`, 16 2-bit codes per word, **LSB first**, code = value+1;
-  `row_alpha` = `bf16 [.., out]`, one scale per output row. Dequant: `w = alpha * (code - 1)`,
-  values ∈ {−α, 0, +α}. Experts are pre-stacked `[256, out, in/16]`.
-- **Embeddings + lm_head**: MLX affine 4-bit, group 64 (`weight` uint32 8 codes/word LSB first,
-  `scales`/`biases` bf16 per group): `w = q * s + b`.
-- **Dense bf16**: `mlp.gate.weight` [256, 2048] (router, fp32 compute), all norm weights,
-  `q_norm`/`k_norm` [128].
-- `model-flashhead.safetensors` (approximate head) is **not used** by the exact path.
+Self-attention Q/K/V/O and all expert gate/up/down projections use U32 words
+with 16 LSB-first 2-bit codes per word. Each output row has a BF16 `row_alpha`:
 
-## Scope of the basic implementation (this branch, gfx1151 first)
-
-- Batch-1 text generation, greedy/exact sampling first, `rows=1` decode, token-by-token
-  prefill through the same step (exact, slow but simple; a real prefill path is follow-up).
-- Contiguous per-layer KV cache: SWA layers keep the last 512 tokens (window mask), global
-  layers append up to a configured max context.
-- Exact 4-bit lm_head (no FlashHead).
-- Weights resident on GPU in checkpoint-native packed layouts; the fused Q/K/V and selected
-  expert kernels consume the original split tensors without a host-side repack.
-
-### Landed kernels (shared gfx11 sources, native gfx1151 retarget)
-
-| Family / wrapper | Purpose |
-| --- | --- |
-| `quant/maple_ternary.py::maple_ternary_gemv_bf16` | y[r] = α_r · Σ x_j·(code−1), fp32 accum, bf16 x/out |
-| `quant/maple_ternary.py::maple_ternary_qkv_gemv_bf16` | fused launch over the original split Q/K/V packed tensors |
-| `quant/maple_ternary.py::maple_affine4_gemv_f32` | lm_head: fp32 logits from 4-bit affine rows |
-| `quant/maple_ternary.py::maple_affine4_embed_bf16` | dequantize one embedding row → bf16 hidden |
-| `attention/maple_attention.py::maple_qknorm_rope_kv_write_bf16` | fused per-head RMSNorm(q,k), optional partial RoPE, and KVLiveSpans write |
-| `attention/maple_attention.py::maple_attention_decode_bf16` | GQA decode attention over KVLiveSpans; SWA/global behavior comes from span capacity |
-| `moe/maple_moe.py::maple_router_topk_bf16` | fp32 router GEMV + softmax + stable top-8 + renorm |
-| `quant/maple_ternary.py::maple_selected_ternary_{dual_,}gemv_bf16` | selected-expert gate/up and down projection without expert unpacking |
-| `moe/maple_moe.py::maple_clamped_swiglu_bf16` | silu(min(g,7))·clip(u,±7) |
-| `moe/maple_moe.py::maple_weighted_residual_bf16` | h ← h + Σ_e w_e·y_e (fp32 combine, one rounding) |
-| reused `linear/lm_head.py::argmax_f32` | two-stage greedy argmax over fp32 logits |
-
-Reused existing kernels: `hipengine_paro_rmsnorm_out_bf16` (standard RMSNorm semantics),
-`hipengine_paro_add_rmsnorm_out_bf16` (fused residual+norm between sublayers, one bf16
-rounding of the sum, matching the reference's residual adds).
-
-## Correctness gates
-
-1. `hipengine/kernels/cpu_reference/maple.py` is the torch-free NumPy oracle for packed
-   dequantization and Maple forward math.
-2. Primitive gfx1151 fixtures establish BF16-bit exact standard RMSNorm,
-   QK-norm+partial-RoPE (including KV write), and clamped SwiGLU. Router top-k IDs are
-   exact and its fp32 softmax-renormalized weights are within one ULP of the oracle.
-3. `scripts/maple_correctness.py` runs token-serial, teacher-forced decode in separate
-   hipEngine and oracle processes. It requires KL ≤ 0.05, top-1 agreement ≥ 90%, and
-   independently checks that the device greedy sampler equals exact argmax of copied FP32
-   logits.
-4. The external oracle is the pinned remote model
-   `deepgrove/maple-preview@ac1ddd79d2b5cb4406f5d2bebdf95406ce505a07` under its
-   checkpoint-pinned `transformers==4.57.1` with `trust_remote_code=True`. The remote
-   model code is unmodified. A scalar-tested pure-Torch shim supplies its hard-required
-   FlashAttention API on ROCm.
-5. The implementation gate uses matched weights: the remote model's embeddings and head
-   are replaced with BF16 dequantization of the exact deployment checkpoint's affine4
-   tensors. This avoids conflating runtime correctness with an intentional quantization
-   change. The untouched dense-source comparison remains a separately reported quality
-   diagnostic; thresholds are never weakened or prompt-conditioned.
-
-### Retained gfx1151 result (18-position formatted chat prompt)
-
-| Oracle | Max KL | Mean KL | Top-1 | Result |
-| --- | ---: | ---: | ---: | --- |
-| Independent packed-formula Torch | 0.013508 | 0.001679 | 18/18 | pass |
-| HF `trust_remote_code`, checkpoint-matched affine4 endpoints | **0.004719** | **0.000723** | **18/18** | pass |
-| Untouched dense HF source (quantization-quality diagnostic) | 0.149840 | 0.024479 | 16/18 | fail, retained diagnostic |
-
-The dense-source gap localizes to the deployment checkpoint's affine4 embedding/head:
-using dense endpoints with the same packed projection math reduces the diagnostic to max
-KL 0.033023 and 17/18 top-1. This is not relabeled as a pass. Full evidence, commands,
-and both outcomes are in
-`benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json`.
-
-The 40.4 GB dense checkpoint has nine shards / 18,651 tensors. Verify at least 45 GB free
-on the filesystem selected by `--hf-cache-dir`, not merely on `$HOME`. On UMA gfx1151,
-`--hf-offload-experts` keeps dense control/attention resident and mmap-loads only routed
-experts from the original safetensors; a tiny resident-vs-offloaded model is logit-bit
-exact. Reproduction:
-
-```bash
-python3 -m venv --system-site-packages /tmp/maple-hf-oracle-venv
-/tmp/maple-hf-oracle-venv/bin/python -m pip install 'transformers==4.57.1'
-
-TOKENS='151644,872,198,7985,825,2805,11652,911,54380,12408,13,151645,198,151644,77091,198,151667,198'
-PYTHONPATH=$PWD /tmp/maple-hf-oracle-venv/bin/python scripts/maple_correctness.py \
-  --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
-  --token-ids "$TOKENS" --oracle hf \
-  --hf-model deepgrove/maple-preview \
-  --hf-revision ac1ddd79d2b5cb4406f5d2bebdf95406ce505a07 \
-  --hf-cache-dir /path/with/45GB/free --hf-local-files-only \
-  --hf-offload-experts --hf-offload-dir /path/to/offload \
-  --hf-match-packed-affine4 --json /tmp/maple-hf-correctness.json
+```text
+weight = row_alpha * (code - 1),  code in {0, 1, 2}
 ```
 
-## Bring-up completion audit
+The logical values are therefore `{-alpha, 0, +alpha}`. Expert tensors remain
+stacked as `[256, out, in/16]`, and selected-expert kernels read only the routed
+experts.
 
-The post-correctness-fix public API smoke constructs
-`LLM("deepgrove/maple-preview-2bit-mlx", backend="auto", quant="auto")`, runs
-the formatted prompt twice in one resident process, and checks the complete
-public route rather than calling `MapleRunner` directly. Both runs produce the
-same 37 greedy tokens and coherent completed answer, stop on real EOS 151645,
-and leave zero tracked allocations after `LLM.close()`. The measured 4.365 s
-cold and 0.703 s resident-repeat walls are diagnostics only, not throughput
-claims. Compact evidence is in
-`benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
+### Embedding and LM head
 
-| Bring-up deliverable | Concrete evidence | Status |
-| --- | --- | --- |
-| Official checkpoint identity and exact packed manifest | `hipengine/loading/maple.py`; 463 tensors / 5,308,186,624 bytes; `tests/test_maple_loading.py` | complete |
-| Pinned model geometry and attention/MoE semantics | `hipengine/models/maple.py`; `tests/test_maple_model_contract.py` | complete |
-| Torch-free model-ID → backend/quant/generator route | `hipengine/generation/maple.py`, `hipengine/quant/maple_ternary.py`; public smoke resolves `hip_gfx1151` / `maple_ternary2` | complete |
-| Exact checkpoint-native GPU primitives | Maple quant, attention, and MoE families in `hipengine/kernels/hip_gfx1100/`, native-compiled for gfx1151; CPU-reference fixtures and `rocprofv3` traces in `docs/KERNELS.md` | complete |
-| Resident token-serial prefill and decode | `hipengine/runtime/maple.py`; post-fix public smoke exercises prompt prefill, 37 decode tokens, reset/reuse, EOS, and close | complete |
-| Numerical implementation gate | packed max KL 0.013508 / 18-of-18 top-1; matched HF max KL 0.004719 / 18-of-18 top-1; exact device argmax | complete |
-| Public free-running behavior after the global-span fix | deterministic coherent answer, real EOS, identical resident repeat, allocator returns to zero | complete |
-| Documentation, measurements, and atomic history | `WORKLOG.md`, this file, `docs/KERNELS.md`, compact result artifacts, commits `55bc253ff` through `7b82c60bf` plus the completion-audit commit | complete |
+The embedding and untied LM head use LSB-first affine 4-bit/group-64 storage:
 
-The untouched dense-BF16 quality diagnostic remains explicitly failed at max KL
-0.149840 / 16-of-18 top-1 because the deployment checkpoint intentionally uses
-affine4 embeddings and head. It is not an implementation-correctness failure and
-its thresholds were not weakened; see the correctness artifact for attribution.
+```text
+weight = q4_code * bf16_scale + bf16_bias
+```
 
-## Current performance baseline (gfx1151, basic bring-up)
+The exact LM head covers all 151,936 vocabulary rows. The separate
+`model-flashhead.safetensors` file is optional and intentionally excluded from
+the exact 463-tensor / 5,308,186,624-byte manifest.
 
-All numbers below are from the accepted public smoke
-`benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json` plus the
-kernel shapes in this tree, on Radeon 8060S / gfx1151 (40 CU, 80 SIMD32,
-~256 GB/s, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA).
+## hipEngine execution paths
 
-| Metric | Value |
+### Public c1 generation
+
+`LLM("deepgrove/maple-preview-2bit-mlx", backend="auto", quant="auto")`
+resolves to `MapleGenerator` and a resident `MapleRunner` without importing
+Torch. The generator supports one prompt at a time and greedy decoding. It
+resets reusable state between requests and keeps immutable packed weights on the
+device until `close()`.
+
+- **Prompt length <=512:** `MapleRunner.prefill_native()` processes rows in
+  chunks of at most 256, reads the complete causal prefix across chunks, and
+  returns the final row's token, position, and top logit.
+- **Prompt length >512:** public generation uses `MapleRunner.prefill()`, the
+  exact token-serial fallback. Native append-all ring prefill is deliberately
+  not used beyond one SWA capacity because later rows could overwrite prefix
+  slots still needed by earlier rows in the chunk.
+- **Decode:** resident c1 kernels append to separate SWA/global
+  `KVLiveSpans` owners and run exact full-vocabulary argmax.
+
+### Batch helper
+
+`MapleBatchRunner` runs fixed c=2/4/8 rows through the batched embedding,
+attention, MoE, LM-head, and argmax chain. Each request has disjoint SWA and
+global ring regions; positions wrap inside that request rather than into an
+adjacent slot. `MapleContinuousBatcher` adds validated admission, sparse active
+masks, and offset-correct reclaim.
+
+This helper is useful for kernel and throughput work, but it is **not connected
+to hipEngine's public generation scheduler or a production server endpoint**.
+It also does not perform batched prompt prefill.
+
+## Current Radeon 8060S / gfx1151 performance
+
+All retained rows use the pinned 2-bit checkpoint, `GPU_MAX_HW_QUEUES=1`, a
+clean tracked revision, repeated measurements, actual `rocminfo`/`rocm-smi`
+capture, and exact teardown accounting. Full commands and samples are in the
+linked artifacts.
+
+### Public native prefill
+
+The M5 protocol measures eight fixed-shape inputs per length—one natural and one
+heldout prompt from each of code, general English, general Japanese, and mixed
+Japanese/English—after one warmup, with three repetitions.
+
+| Prompt tokens | Native prefill tok/s | Serial reference tok/s | Speedup |
+| ---: | ---: | ---: | ---: |
+| 128 | **339.890** | 148.180 | **2.294x** |
+| 320 | **326.573** | 106.639 | **3.062x** |
+| 512 | **317.488** | 83.257 | **3.813x** |
+
+Native sample ranges are 337.300-341.801, 325.396-328.104, and
+315.630-319.462 tok/s respectively. The earlier ~347.5 tok/s 320-token number
+is superseded: it predated the cross-chunk causal-prefix correction and did not
+carry the current multi-prompt gate.
+
+Evidence:
+[`2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json`](../benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json).
+
+### Decode
+
+| Path / workload | Current rate | Scope |
+| --- | ---: | --- |
+| c1 autoregressive decode | **163.459 tok/s** (6.118 ms/token) | clean cached-profile diagnostic, 4 warmup + 32 measured steps |
+| c=2, 64 tokens/request | **218.818 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
+| c=4, 64 tokens/request | **261.099 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
+| c=8, 64 tokens/request | **299.181 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
+
+Every measured c=2/4/8 trajectory matches an independent c1 trajectory. The
+18-prompt category/heldout seed gate also passes, including a sparse final c=8
+group. These batch rows exclude model load and prompt prefill and must not be
+reported as public server throughput.
+
+Evidence:
+[`2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json).
+
+### Tracked memory
+
+| Resident configuration | hipEngine-owned device memory |
 | --- | ---: |
-| Cold request wall (incl. model load) | 4.365 s |
-| Resident repeat wall (18-token prefill + 36 decode) | 0.703 s |
-| Effective output rate (incl. prefill) | 52.6 tok/s |
-| Avg model-forward latency | ~13.0 ms |
-| Inferred token-serial prefill | ~234 ms / 18 tokens |
-| Inferred decode rate | ~76.8 tok/s |
+| Exact checkpoint payload alone | **4.944 GiB** |
+| Public c1 runner, max context 512 (M5 protocol) | **5.133 GiB** |
+| Public c1 runner, default context 4096 (diagnostic smoke) | **5.174 GiB** |
+| Batch helper c=2 / c=4 / c=8, capacity 66/request | **4.951 / 4.958 / 4.973 GiB** |
+| After `close()` | **0 bytes / 0 active allocations** |
 
-**Why decode is slow today — launch-bound, not compute/bandwidth bound.** Each
-token forward launches ~271 HIP kernels through Python ctypes (24 layers × 11
-per-layer kernels, plus span update, embedding, final norm, affine4 lm_head,
-and two-stage argmax). At 76.8 tok/s ≈ 13 ms/token, that is ~48 µs of
-host/dispatch cost per launch — the dominant term. The active weight traffic per
-token is only ~9.5 MB (ternary packs 0.25 bytes/element), so the pure bandwidth
-floor is ~37 µs/token and compute is even lower. Decode is therefore limited by
-dispatch/launch overhead, not by the hardware doing the math.
+These are exact process-local hipEngine allocation counters, not sampled
+whole-device GTT. They exclude allocations internal to the HIP runtime and
+other processes. The batch helper uses much smaller row scratch than the
+256-row public prefill runner, which is why its resident number can be lower.
 
-**Why prefill is slow today.** Prefill is token-serial: `runner.prefill()` loops
-`step()` over the prompt, so each prompt token pays the same ~13 ms forward with
-no weight reuse across rows. A 4K prompt costs ~52 s of model-forward time. The
-correct fix is a true batched `[T, hidden]` prefill that reuses weights across
-prompt rows and is compute-bound (see `docs/MAPLE-PERF.md`).
+## Correctness evidence
 
-## Open follow-ups (not required for the basic bring-up)
+The implementation uses several independent gates rather than treating coherent
+text as proof of numerical correctness.
 
-- True chunked prefill (batched GEMM + masked attention).
-- FlashHead approximate head (`lm_head_flash.*`) as an opt-in fast path.
-- Wider batch / server integration, CUDA-peer backend, ternary WMMA prefill kernels.
+| Gate | Result |
+| --- | --- |
+| Packed NumPy/Torch formula vs hipEngine, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
+| Pinned HF `trust_remote_code` oracle with matched affine4 endpoints | max KL **0.004719**, mean KL 0.000723, top-1 **18/18** |
+| M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | max/mean KL **0/0**, top-1 **90/90**, token equality **90/90** |
+| M5 260-token cross-chunk continuation | seed plus three subsequent decode tokens exact |
+| M6 c=2/4/8 and 514-step SWA-wrap tests | all generated trajectories exact |
+| Public canonical prompt | coherent 37-token answer, real EOS 151645, deterministic resident repeat |
+| Lifecycle | tracked ownership returns to zero |
+
+The untouched dense-BF16 endpoint comparison remains an intentionally failed
+quantization-quality diagnostic (max KL 0.149840, top-1 16/18). Matching the
+packed checkpoint's affine4 embedding and head reduces the implementation gate
+to the accepted values above; thresholds were not weakened.
+
+Primary evidence:
+
+- [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
+- [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
+- [M5 recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json)
+- [M6 recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json)
+
+## Current profile and next optimization
+
+The corrected cached-only phase profile shows that the paths are kernel-bound:
+
+| Phase | Wall | Kernel | Host gap | Exact LM-head share |
+| --- | ---: | ---: | ---: | ---: |
+| native prefill320 | 982.015 ms/request | 975.347 ms | 0.68% | **49.90%** |
+| c1 decode | 6.118 ms/token | 5.035 ms | 17.69% | **28.75%** |
+| c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
+
+The current batched affine4 LM-head kernel launches grid `(vocab, rows)` and
+rereads the complete **166.922-MiB** packed weight + scale/bias payload for each
+row, reaching only about 115-121 GB/s effective traffic. The next exact
+performance owner is therefore a rows>1 affine4 consumer that reuses each
+weight row across multiple prompt/request rows. The c1 kernel stays unchanged:
+the prior c1 tile was measured at 0.96x and rejected. FlashHead and
+prompt-conditioned shortcuts are outside this exact target.
+
+Evidence:
+[`2026-08-07-gfx1151-maple-corrected-phase-profile.json`](../benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json).
+The detailed optimization history and punchlist remain in
+[`MAPLE-PERF.md`](MAPLE-PERF.md); kernel names and trace resources are in
+[`KERNELS.md`](KERNELS.md).
+
+## Reproduction
+
+Download the exact deployment revision into the normal Hugging Face cache:
+
+```bash
+hf download deepgrove/maple-preview-2bit-mlx \
+  --revision 361db5da5e74ff6fcdd852d478e1f266ce11013a
+```
+
+Then run the qualified paths from the repository root:
+
+```bash
+# Focused runtime/correctness gates
+python3 -m pytest tests/test_maple_runtime.py tests/test_maple_generation.py -q
+
+# M5 public-native prefill recertification
+GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 scripts/maple_prefill_bench.py \
+  --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
+  --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
+  --lengths 128,320,512 --repetitions 3 --warmups 1 \
+  --continuation-steps 4 --out /tmp/maple-m5.json
+
+# M6 fixed-capacity helper recertification
+GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+python3 scripts/maple_batch_decode_bench.py \
+  --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
+  --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
+  --steps 64 --repetitions 3 --warmup-steps 8 \
+  --natural-gate-steps 8 --out /tmp/maple-m6.json
+```
+
+## Known limits
+
+- Public sampling is greedy-only; temperature/top-p sampling is not implemented.
+- Native prefill is qualified only through 512 tokens; longer prompts are exact
+  but token-serial.
+- M6 does not provide public batched prompt prefill, scheduler integration, HTTP
+  serving, or a public concurrency API.
+- FlashHead is approximate and excluded from the exact default.
+- CUDA-peer support, speculative decoding, tensor parallelism, and 128K runtime
+  qualification are separate future tracks.
