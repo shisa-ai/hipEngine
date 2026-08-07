@@ -780,9 +780,11 @@ __global__ void maple_attention_prefill_kernel(
 // through the KVLiveSpans ring (logical slot -> base_offsets[logical] physical
 // slot), so it can consume the output of
 // maple_qknorm_rope_kv_write_batched_kernel and share one cache with decode.
-// Grid is (q_heads x T); block (qh, row) attends to absolute positions
-// [start, start+row].  qkv is the full [T, q_size + 2*kv_size] buffer and the
-// query is read from its q-region.
+// Grid is (q_heads x T); block (qh, row) attends to the complete live causal
+// prefix ending at start+row, including positions written by earlier chunks.
+// qkv is the full [T, q_size + 2*kv_size] buffer and the query is read from its
+// q-region. Callers must not append a chunk that overwrites still-live prefix
+// slots before this kernel runs.
 __global__ void maple_attention_prefill_ring_kernel(
     const uint16_t* __restrict__ qkv,
     const uint16_t* __restrict__ key_cache,
@@ -815,8 +817,13 @@ __global__ void maple_attention_prefill_ring_kernel(
   float running_sum = 0.0f;
 
   extern __shared__ float dot_scratch[];
-  for (int64_t token = 0; token <= row; ++token) {
-    const int64_t absolute_position = start + token;
+  const int64_t query_position = start + row;
+  const int64_t first_position = query_position + 1 > capacity
+      ? query_position + 1 - capacity
+      : 0;
+  for (int64_t absolute_position = first_position;
+       absolute_position <= query_position;
+       ++absolute_position) {
     const int64_t logical_slot = positive_mod(absolute_position, capacity);
     const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
     float dot = 0.0f;

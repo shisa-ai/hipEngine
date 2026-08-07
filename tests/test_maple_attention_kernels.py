@@ -395,23 +395,23 @@ def test_maple_prefill_attention_ring_matches_causal_oracle(maple_attention_lib)
     kv_size = kv_heads * head_dim
     start, capacity = 3, 8
     q = bf16_round(rng.normal(size=(rows, q_heads, head_dim)).astype(np.float32))
-    keys = bf16_round(rng.normal(size=(rows, kv_heads, head_dim)).astype(np.float32))
-    values = bf16_round(rng.normal(size=(rows, kv_heads, head_dim)).astype(np.float32))
+    total = start + rows
+    keys = bf16_round(rng.normal(size=(total, kv_heads, head_dim)).astype(np.float32))
+    values = bf16_round(rng.normal(size=(total, kv_heads, head_dim)).astype(np.float32))
     scale = head_dim**-0.5
     expected = np.stack(
-        [attention_decode(q[r], keys[: r + 1], values[: r + 1], scale=scale) for r in range(rows)]
+        [
+            attention_decode(
+                q[r], keys[: start + r + 1], values[: start + r + 1], scale=scale
+            )
+            for r in range(rows)
+        ]
     ).reshape(-1)
     expected = f32_to_bf16_bits(expected)
     base = np.asarray(list(range(capacity)), dtype=np.int32)
-    token_positions = np.full(capacity, -1, dtype=np.int64)
-    key_cache = np.zeros((capacity, kv_heads, head_dim), dtype=np.float32)
-    value_cache = np.zeros_like(key_cache)
-    for r in range(rows):
-        logical = (start + r) % capacity
-        physical = int(base[logical])
-        token_positions[logical] = start + r
-        key_cache[physical] = keys[r]
-        value_cache[physical] = values[r]
+    token_positions = np.arange(capacity, dtype=np.int64)
+    key_cache = keys.copy()
+    value_cache = values.copy()
     qkv = np.zeros((rows, q_size + 2 * kv_size), dtype=np.uint16)
     qkv[:, :q_size] = f32_to_bf16_bits(q.reshape(rows, -1))
 
@@ -419,7 +419,7 @@ def test_maple_prefill_attention_ring_matches_causal_oracle(maple_attention_lib)
         spans = make_spans(
             dev,
             base_offsets=base,
-            live_counts=np.asarray([rows], dtype=np.int64),
+            live_counts=np.asarray([total], dtype=np.int64),
             token_positions=token_positions,
             evict_mask=np.zeros(capacity, dtype=np.bool_),
             row_positions=np.asarray([start + rows - 1], dtype=np.int64),
