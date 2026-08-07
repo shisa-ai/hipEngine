@@ -203111,3 +203111,20 @@ Vulkan local sizes verbatim will close the measured gap.
 - This is a P1 primitive for the bulk prefill path (batched QKV projection);
   the full `prefill_native` (batched qknorm+KV append, batched router, grouped
   MoE, chunked wiring) is still to be built, so M4/M5 stay open.
+
+## 2026-08-07 — M5/P2: batched qknorm+RoPE+KV write primitive
+
+- Add `maple_qknorm_rope_kv_write_batched_kernel` (P2): grid (total_heads x T),
+  block (head, row) qknorm-normalizes that head for row, applies partial RoPE at
+  absolute position = start+row, writes normalized q back into the q-region of
+  qkv[row] (layout [T, q_size+2*kv_size]), and writes k/v into the shared
+  KVLiveSpans ring physical slots — same ABI as the decode write, so prefill and
+  decode share one cache.
+- Wrapper `maple_qknorm_rope_kv_write_batched_bf16` + registry key
+  `("maple_qknorm_rope_kv_write", "partial_rotate_half_batched_bf16")`.
+- Correctness: new
+  `test_maple_qknorm_rope_kv_write_batched_matches_oracle` is bit-exact vs the
+  per-row `qk_norm_rope` oracle across 5 rows (positions start..start+4 written
+  into ring physical slots). 7/7 attention kernel tests pass; ruff clean.
+- Note: test caught a real footgun — kernel and oracle must share one bf16
+  weight source, and value writes are fp32 (not uint16) before bf16 conversion.
