@@ -21,8 +21,11 @@ Route selection (review §8.3 item 4/5):
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import math
 import os
+import subprocess
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_cuda, plan_cuda_build
@@ -42,6 +45,22 @@ _AOT_THREADS = 512
 _ENV_ROUTE = "HIPENGINE_CUTLASS_ATTENTION"       # arming flag (default off)
 _ENV_CUTLASS_DIR = "HIPENGINE_CUTLASS_DIR"       # pinned CUTLASS source root (dev)
 _ENV_PREBUILT_SO = "HIPENGINE_CUTLASS_ATTENTION_SO"  # prebuilt .so path (deploy)
+_HEADER_TREES = ("cute", "cutlass")
+
+
+@dataclass(frozen=True)
+class CutlassSourceIdentity:
+    """Content-addressed identity of every header tree consumed by the build."""
+
+    root: str
+    git_commit: str | None
+    git_revision: str
+    consumed_headers_dirty: bool
+    headers_sha256: str
+    header_file_count: int
+
+    def as_dict(self) -> dict[str, object]:
+        return asdict(self)
 
 
 def _env_truthy(value: str | None) -> bool:
@@ -88,46 +107,97 @@ def aot_attention_enabled() -> bool:
     return prebuilt_so() is not None or cutlass_include_dir() is not None
 
 
-def _cutlass_revision(include_dir: Path) -> str:
-    """Best-effort pinned CUTLASS revision (git describe), else a content hash.
+def _headers_digest(include_dir: Path) -> tuple[str, int]:
+    """Hash paths and bytes of both transitive CUTLASS/CuTe include trees."""
 
-    The revision is folded into the build flags so the hashed build cache key
-    is invalidated whenever the pinned source revision changes (review §8.3:
-    'pin source revision/toolchain in build hashes').  A dirty checkout is
-    flagged so an unreproducible build is never silently reused.
+    digest = hashlib.sha256()
+    count = 0
+    for tree_name in _HEADER_TREES:
+        tree = include_dir / tree_name
+        if not tree.is_dir():
+            raise FileNotFoundError(f"CUTLASS include tree is missing: {tree}")
+        for path in sorted(candidate for candidate in tree.rglob("*") if candidate.is_file()):
+            relative = path.relative_to(include_dir).as_posix().encode()
+            digest.update(len(relative).to_bytes(4, "little"))
+            digest.update(relative)
+            data = path.read_bytes()
+            digest.update(len(data).to_bytes(8, "little"))
+            digest.update(data)
+            count += 1
+    return digest.hexdigest(), count
+
+
+def cutlass_source_identity(include_dir: Path | None = None) -> CutlassSourceIdentity:
+    """Return a clean revision + content identity for all consumed headers.
+
+    Dirty files outside ``include/{cute,cutlass}`` do not affect compilation;
+    any change inside either consumed tree is rejected for source builds and is
+    also captured by ``headers_sha256``. Source archives without ``.git`` are
+    accepted through their content identity alone.
     """
 
-    root = include_dir.parent
+    include = include_dir or cutlass_include_dir()
+    if include is None:
+        raise ValueError(f"set {_ENV_CUTLASS_DIR} to identify CUTLASS sources")
+    include = include.resolve()
+    root = include.parent
+    headers_sha256, header_file_count = _headers_digest(include)
+    commit: str | None = None
+    revision = f"content-{headers_sha256[:16]}"
+    dirty = False
     try:
-        import subprocess
-
-        describe = subprocess.check_output(
+        commit = subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        revision = subprocess.check_output(
             ["git", "-C", str(root), "describe", "--tags", "--always"],
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
         dirty = bool(
             subprocess.check_output(
-                ["git", "-C", str(root), "status", "--porcelain"],
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "status",
+                    "--porcelain",
+                    "--",
+                    *[f"include/{name}" for name in _HEADER_TREES],
+                ],
                 text=True,
                 stderr=subprocess.DEVNULL,
             ).strip()
         )
-        return f"{describe}-dirty" if dirty else describe
-    except Exception:
-        return "unknown"
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return CutlassSourceIdentity(
+        root=str(root),
+        git_commit=commit,
+        git_revision=revision,
+        consumed_headers_dirty=dirty,
+        headers_sha256=headers_sha256,
+        header_file_count=header_file_count,
+    )
 
 
 def _cutlass_flags(include_dir: Path) -> tuple[str, ...]:
-    """Build flags for the pinned CUTLASS route (revision pin only).
+    """Fold revision and full consumed-header content into the build key."""
 
-    The include root is supplied via ``include_dirs`` (also hashed); the
-    revision define folds the pinned CUTLASS source revision into the hashed
-    build key without changing code generation.
-    """
-
-    revision = _cutlass_revision(include_dir)
-    return (f'-DMOONSHINE_CUTLASS_PIN="{revision}"',)
+    identity = cutlass_source_identity(include_dir)
+    if identity.consumed_headers_dirty:
+        raise RuntimeError(
+            "refusing to build AOT attention from dirty consumed CUTLASS headers; "
+            "use a clean checkout or a content-addressed source archive"
+        )
+    commit = identity.git_commit or "none"
+    return (
+        f'-DMOONSHINE_CUTLASS_REVISION="{identity.git_revision}"',
+        f'-DMOONSHINE_CUTLASS_COMMIT="{commit}"',
+        f'-DMOONSHINE_CUTLASS_HEADERS_SHA256="{identity.headers_sha256}"',
+    )
 
 
 def plan_moonshine_attention_cutlass_build(
@@ -353,9 +423,11 @@ def register_moonshine_attention_cutlass_kernels(*, replace: bool = True) -> Non
 register_moonshine_attention_cutlass_kernels()
 
 __all__ = [
+    "CutlassSourceIdentity",
     "aot_attention_enabled",
     "build_moonshine_attention_cutlass",
     "cutlass_include_dir",
+    "cutlass_source_identity",
     "moonshine_encoder_attention_cutlass_fp16",
     "moonshine_encoder_attention_fp16",
     "plan_moonshine_attention_cutlass_build",
