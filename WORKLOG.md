@@ -206134,3 +206134,36 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (SHA-256 `65e344f4...bb50`). Preserve SH16; the higher-level objective remains
   active but requires genuinely new source/hardware/runtime evidence or a
   separately approved system-memory scope.
+
+## 2026-08-07 — Close SH18-C0 external review-synthesis compound audit
+
+- Reconcile the user-provided review without repeating any completed SH9-SH17
+  benchmark. Its SH9 prefill-only correction is already carried by SH9-C1;
+  SH10-A1 through SH14-C1 are complete; and its decode/GTT snapshot predates
+  retained SH16. Current production remains **55.230/55.829/46.809/40.430
+  tok/s** and **20.814583/21.292397/21.946766/22.685047-GiB** whole-GTT, with
+  fork-F16 memory parity at three of four depths.
+- Audit the only new proposal: stack exact GDN Q8T16 non-temporal+DPP
+  (**0.1545 ms/token**), selected-Q4 tile8 (**0.295794 ms/token**), and
+  selected-down output-tiled tail (**0.080193 ms/token**). The roles do not
+  overlap and all are c1-decode-only, so the historical projection sums to
+  **0.530488 ms/token**.
+- The stack fails the synthesis's own compatibility precondition after SH2-M4.
+  The old tail's 37-layer Q5 component (**0.055439 ms/token**) is keyed to
+  expanded `gguf_q5_k_t16_v1`, uses `Q5_T16_BLOCK_BYTES` and direct scale/min
+  byte planes, and assumes **2,880-byte** tiles. Production materializes all 37
+  Q5 downs as `gguf_q5_k_qmicro_t16_v1`, **2,816-byte** tiles whose 24-bit
+  metadata records are unpacked into LDS before the existing tile8 arithmetic.
+  Only the three legacy-Q6 layers (**0.024754 ms/token**) transfer directly.
+- The compatible GDN + Q4 + Q6-tail subset is therefore **0.475049 ms/token**,
+  **0.024951 ms/token** below the 0.5-ms admission floor. A qmicro-aware tail
+  would be a new leaf with different metadata transport/resources and cannot
+  inherit the old projection. Under the review's explicit compatibility-first
+  rule, close without transient code, individual microbench reruns, or a
+  full-model A/B.
+- Narrow lineage checks select no tracked external source for either in-tree
+  family; the broad check remains blocked by the absent optional Atlas checkout.
+  Publish
+  `benchmarks/results/2026-08-07-gfx1151-gguf-sh18-c0-review-synthesis-compound-audit.json`
+  (SHA-256 `21a0301d...be279`). Production is unchanged; resume Task #67's
+  read-only Nathan-fork source refresh.

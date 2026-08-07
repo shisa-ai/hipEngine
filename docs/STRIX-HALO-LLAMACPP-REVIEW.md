@@ -1,6 +1,6 @@
 # Nathanw1014 Strix Halo llama.cpp review for hipEngine gfx1151 GGUF
 
-**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06; **SH16-M2 selective arena retained/default, fork memory 3/4:** 2026-08-06; **SH17-C0 residual admission closed without a new owner:** 2026-08-06
+**Reviewed:** 2026-08-04; **Campaign 2 recertified and closed:** 2026-08-06; **SH14-C1 completed, beat-fork objective not met:** 2026-08-06; **SH15-M1 structural memory audit admitted a new screen:** 2026-08-06; **SH15-M2 arena screen rejected and production restored:** 2026-08-06; **SH16-M1 selective-weight audit admitted a narrower screen:** 2026-08-06; **SH16-M2 selective arena retained/default, fork memory 3/4:** 2026-08-06; **SH17-C0 residual admission closed without a new owner:** 2026-08-06; **SH18-C0 external synthesis reconciled, proposed compound incompatible:** 2026-08-07
 
 **Scope:** `Nathanw1014/strix-halo-llamacpp` releases and evidence pack,
 `Nathanw1014/llama.cpp` optimization branches through `strix-halo-vulkan`
@@ -234,6 +234,26 @@ global/state arena or compact-Q4 stack each leaves **54.820 MiB**, and code
 unload leaves **134.102 MiB**. Close conditional implementation without transient
 code and preserve SH16 pending genuinely new evidence. Evidence:
 [`SH17-C0`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json).
+
+**SH18-C0 review-synthesis reconciliation (2026-08-07): no compound A/B
+admitted.** SH10-A1 through SH14-C1 are already complete and were not rerun;
+the synthesis's decode/GTT snapshot is also superseded by SH16. Its genuinely
+new proposal sums three independent exact leaf projections: GDN Q8T16
+non-temporal+DPP (**0.1545 ms/token**), selected-Q4 tile8 (**0.295794
+ms/token**), and selected-down output-tiled tail (**0.080193 ms/token**), or
+**0.530488 ms/token**.
+
+That sum is not compatible with current production bytes. The old tail's
+**0.055439-ms** Q5 component addresses expanded `gguf_q5_k_t16_v1` metadata in
+**2,880-byte** tiles. SH2-M4 subsequently moved all 37 Q5 down tensors to
+`gguf_q5_k_qmicro_t16_v1`: **2,816-byte** tiles with 24-bit metadata records
+that must be unpacked before arithmetic. Only the three legacy-Q6 layers remain
+directly compatible. GDN + Q4 + Q6-tail therefore projects **0.475049
+ms/token**, below the proposal's 0.5-ms admission premise. A qmicro-aware tail
+would be a new kernel with different metadata transport/resources and cannot
+inherit the old 0.055439-ms result. Close without transient implementation or a
+full-model A/B; preserve SH16 and the SH17 no-retry frontier. Evidence:
+[`SH18-C0`](../benchmarks/results/2026-08-07-gfx1151-gguf-sh18-c0-review-synthesis-compound-audit.json).
 
 Most of Nathan's other high-value ideas are already represented in hipEngine:
 
@@ -776,6 +796,7 @@ evidence.
 | **SH16-M1** | Reclassify exact SH15 allocation commits by weight size/family and preserve large-owner alignment. | **Complete: narrower structural precondition passes; admit SH16-M2, no production change.** Packing only **571 allocations <=16 MiB** bounds one owner at **844 MiB** versus **1,060 MiB** captured commit, projecting **216 MiB** saved and 512/32K/64K parity. All **161 >16-MiB owners / 95.965% of bytes** stay dedicated and 2-MiB aligned. Start at 512; stop on >1% wall or any exactness/lifecycle failure; no state arena or compact-Q4 stack. |
 | **SH16-M2** | Implement and gate one selective private-c1 owner for allocations <=16 MiB. | **Complete: retained/default.** The exact 571/161 owner saves **190/212/210/210 MiB whole-GTT**, every four-depth wall/frozen-prefill guard passes, and the full 18-prompt state oracle is exact. Fork-F16 memory parity becomes **3/4**; 4K remains **134.820 MiB** high and decode remains **0/4**. Keep no SH15 state arena or compact-Q4 stack. |
 | **SH17-C0** | Read-only post-SH16 residual admission audit. | **Complete: no new owner admitted.** All SH16-moved families map to named roles with closed alternatives; no fresh trace is justified. Every single 4K allocator/code extension leaves at least **54.820 MiB**, and no new decode candidate has >=0.5-ms evidence. Conditional Task #66 closes without implementation. |
+| **SH18-C0** | Reconcile the external review's 0.5305-ms compound proposal against current layouts. | **Complete: incompatible; no A/B admitted.** SH2-M4 replaced the old tail's 37 Q5 legacy-T16 inputs with compact qmicro tiles. The directly compatible GDN + Q4 + three-Q6 tail subset projects only **0.475049 ms/token**; a new qmicro-tail result cannot inherit the missing **0.055439 ms/token**. Close without transient code or repeated leaf benches. |
 
 SH2-M1 then overturns the old gfx1100 throughput extrapolation without weakening
 its scope warning. On current gfx1151, device graph/device eager/host-copy eager
