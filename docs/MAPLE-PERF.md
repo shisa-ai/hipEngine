@@ -25,12 +25,14 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Public tracked residency (max context 512) | 4.988 GiB (5,355,881,848 bytes) | retained P2/M5 recertification |
 | Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
 
-**Current conclusion (P0+P1+P2 retained).** Final-row-only sampling nearly
-doubles qualified native prefill, expert-major MoE adds 3.68-5.83%, and exact
-GQA4 adds another 3.13-15.87%. The clean retained-P0/P1 traces remain immutable
-phase baselines; the clean retained-P2 trace now selects P3. The c1/c8 rows
-remain the corrected decode baselines because P0-P2 do not alter those paths;
-later diagnostics remeasure them within ordinary run variance:
+**Current conclusion (P0+P1+P2 retained; P3 tile sweep rejected).**
+Final-row-only sampling nearly doubles qualified native prefill, expert-major
+MoE adds 3.68-5.83%, and exact GQA4 adds another 3.13-15.87%. The clean
+retained-P0/P1/P2 traces remain immutable phase baselines. Exact dense tile 16
+and 32 regress tile 8 on every paired sample, so production remains unchanged
+and D0 c1 router work is next. The c1/c8 rows remain the corrected decode
+baselines because P0-P3 do not alter those paths; later diagnostics remeasure
+them within ordinary run variance:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -67,10 +69,11 @@ compaction—is the blocker.
 
 Current exact priority:
 
-1. P3 dense ternary row-tile sweep.
-2. D0 one-dispatch c1 router then affine4-head bandwidth work.
-3. D1 c2/c4/c8 affine4 row reuse.
-4. Future P1b matrix/SIMD ternary consumers; do not repeat grouped-lane sweeps.
+1. D0 one-dispatch c1 router then affine4-head bandwidth work.
+2. D1 c2/c4/c8 affine4 row reuse.
+3. P4 safe long-prompt/public scheduler admission.
+4. Future P1b matrix/SIMD ternary consumers; do not repeat grouped-lane or
+   dense token-tile sweeps.
 
 DeepGrove's published M4 table supports this split: **169 tok/s exact**, **218
 tok/s with approximate FlashHead**, and **1075 tok/s prefill**. Its generation
@@ -79,6 +82,7 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json`,
 `benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json`,
@@ -395,13 +399,26 @@ lifecycle, and unchanged **5,355,881,848-byte** residency. Extending native
 prefill beyond 512 separately requires append/attend orchestration that cannot
 overwrite a still-visible SWA prefix.
 
-### P3 — Dense ternary row-tile sweep — ACTIVE
+### P3 — Dense ternary row-tile sweep — DONE / REJECTED
 
-Dense QKV/O kernels already reuse one packed weight row across a fixed
-eight-row tile and consume **124.770 ms** at post-P2 prefill320. Sweep exact
-8/16/32 tiles while preserving each output's reduction order. Consider
-INT4/BF16 WMMA only after that sweep; a different contraction order cannot replace the byte-exact
-state contract merely to hit a throughput target.
+Dense QKV/O kernels reuse one 512-byte packed weight row across a fixed
+eight-row tile and consume **124.770 ms** at post-P2 prefill320. Explicit tile
+16/32 candidates preserved each output's packed-word/lane accumulation and
+128-thread LDS tree; the production-inner-width primitive was BF16-bit exact
+for all three schedules.
+
+A same-resident, counterbalanced 8-prompt natural+heldout screen measured tile
+8/16/32 at **744.116/731.182/571.923 tok/s**. Tile 16 and 32 regressed
+**1.738%/23.141%**, lost all **16/16** paired samples, and retained identical
+next-token/top-logit pairs. The regression is consistent with their 8/16-KiB
+dynamic-LDS footprints and longer block residency outweighing fewer 512-byte
+weight-row reloads. The expensive full
+state gate was therefore not run, every temporary selector/export was removed,
+and tile 8 remains the sole production path. Do not repeat this schedule.
+
+WMMA is not a byte-exact substitute: a materially different matrix/SIMD
+consumer may proceed only if it preserves the existing BF16 state contract,
+rather than changing contraction order to manufacture throughput.
 
 **Landed prefill primitives (through 2026-08-08, bit-exact vs CPU oracle):**
 
@@ -429,9 +446,10 @@ scheduler helper. Serial remains the correctness fallback above 512.
 
 P0+P1+P2 deliver **741.368 tok/s** at 320. P2 exceeds its attention gate at
 **21.916 ms / 2.920x**, but P1's expert family still reaches only **255.050 ms /
-1.083x** versus its original **<=97.708-ms / 2.826x** ceiling. Crossing 1,000
-now requires P3 plus an eventual matrix/SIMD ternary consumer. DeepGrove's 1075
-tok/s M4 row avoids discarded heads and groups routed rows, independently
+1.083x** versus its original **<=97.708-ms / 2.826x** ceiling. P3 proves that
+larger scalar dense token tiles do not close the gap; crossing 1,000 now
+requires a materially different exact matrix/SIMD ternary consumer. DeepGrove's
+1075 tok/s M4 row avoids discarded heads and groups routed rows, independently
 showing that 1,000+ is credible. The near-term exact target remains
 **>=1,000 tok/s at qualified 128/320/512 shapes**; 2,000 is a later
 dense/attention target.
@@ -446,6 +464,7 @@ dense/attention target.
 | M3c | c1 eight-route grouping | exact; dead-end (0.69x, shared activation already L2-cached); does not close row-bulk grouped MoE | `WORKLOG.md` |
 | M4 | batched ternary prefill primitives | exact vs packed oracle; prefill tok/s up | GEMM + QKV GEMM primitives in (done) |
 | M5/P0+P1+P2 | final-row + expert-major + exact GQA4 native prefill | exact through native 512-token limit; serial fallback above it; scalar ternary ceiling recorded | 749.175/741.368/754.000 tok/s; 18/18 byte-exact states and 90/90 positions |
+| P3 | dense ternary 8/16/32 token-tile sweep | exact; tile 16/32 rejected at 0/16 paired wins | 744.116/731.182/571.923 tok/s dirty same-resident diagnostic; production unchanged |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
 | M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |

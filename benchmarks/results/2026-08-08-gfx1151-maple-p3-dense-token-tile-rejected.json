@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-08",
+  "artifact_type": "maple_p3_dense_token_tile_screen",
+  "status": "rejected_diagnostic",
+  "performance_claim": false,
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "software": {
+    "baseline_commit": "5232042b8",
+    "branch": "maple",
+    "candidate_tree_dirty": true,
+    "candidate_retained": false
+  },
+  "candidate": {
+    "scope": "dense prefill QKV and O ternary kernels only",
+    "token_tiles": [
+      8,
+      16,
+      32
+    ],
+    "unchanged_math": "Each output preserves the tile-8 packed-word/lane accumulation and 128-thread LDS reduction tree.",
+    "production_dynamic_lds_bytes": {
+      "8": 4096,
+      "16": 8192,
+      "32": 16384
+    },
+    "static_weight_row_lds_bytes": 512
+  },
+  "protocol": {
+    "mode": "same-resident counterbalanced dirty-tree diagnostic",
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "prompt_tokens": 320,
+    "prompts": 8,
+    "repetitions": 2,
+    "samples_per_tile": 16,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "natural_and_heldout_per_category": true,
+    "warmups_per_tile": 2,
+    "order": "Rotating (8,16,32), (32,16,8), and (16,8,32) orders by prompt/repetition on one resident MapleRunner.",
+    "correctness_command": "uv run --python 3.12 --extra dev python -m pytest -q tests/test_maple_ternary_kernels.py",
+    "benchmark_script": "Inline same-resident screen recorded in WORKLOG.md; raw diagnostic was /tmp/maple-p3-token-tile-screen.json."
+  },
+  "correctness": {
+    "primitive_tests_passed": 14,
+    "primitive_tests_total": 14,
+    "production_inner_width": 2048,
+    "tile16_tile32_bf16_equal_to_tile8": true,
+    "screen_token_top_logit_exact": {
+      "8": "16/16 baseline",
+      "16": "16/16",
+      "32": "16/16"
+    },
+    "full_state_gate_run": false,
+    "full_state_gate_reason": "Both candidates failed the non-regressive wall screen, so the expensive 18-prompt state gate was not warranted."
+  },
+  "performance": {
+    "8": {
+      "aggregate_tokens_per_second": 744.1156462301631,
+      "median_sample_tokens_per_second": 744.0373216967799,
+      "min_sample_tokens_per_second": 732.327027124607,
+      "max_sample_tokens_per_second": 754.8504204527712,
+      "paired_geomean_vs_tile8": 1.0,
+      "paired_wins_vs_tile8": 0
+    },
+    "16": {
+      "aggregate_tokens_per_second": 731.1819980059386,
+      "median_sample_tokens_per_second": 731.2361465078181,
+      "min_sample_tokens_per_second": 718.483369884423,
+      "max_sample_tokens_per_second": 739.3057464894902,
+      "aggregate_delta_percent_vs_tile8": -1.7381234072618823,
+      "paired_geomean_vs_tile8": 0.9826101424946958,
+      "paired_wins_vs_tile8": 0
+    },
+    "32": {
+      "aggregate_tokens_per_second": 571.92345311809,
+      "median_sample_tokens_per_second": 571.6233128005227,
+      "min_sample_tokens_per_second": 569.2011207652095,
+      "max_sample_tokens_per_second": 575.8785682612212,
+      "aggregate_delta_percent_vs_tile8": -23.140515050910793,
+      "paired_geomean_vs_tile8": 0.7685712784921882,
+      "paired_wins_vs_tile8": 0
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "Tile 16 and tile 32 regress every paired sample. The result is consistent with longer block residency and larger LDS footprints outweighing reduced weight-row reloads.",
+    "production_action": "Restore the sole tile-8 path and remove all candidate selectors, wrappers, exports, and tests before commit.",
+    "next_priority": "D0 exact one-dispatch c1 router"
+  }
+}

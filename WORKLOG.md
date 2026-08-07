@@ -207258,3 +207258,38 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - P2 is retained/default and done. Keep `HIPENGINE_MAPLE_PREFILL_GQA4=0` only
   through final roadmap audit; make P3 dense ternary QKV/O tiling active. The
   clean P3 baseline is **75.213 + 49.557 = 124.770 ms (28.90% of kernel time)**.
+
+## 2026-08-08 — Maple P3 dense ternary token-tile sweep rejected
+
+- Start from clean retained P2 evidence commit `5232042b8`. The existing dense
+  QKV/O bodies own one output row and serialize a fixed eight-token tile while
+  reusing one 512-byte packed weight row. The exact bounded sweep is 8/16/32:
+  each schedule preserves the word-strided lane loop and full 128-thread LDS
+  reduction tree, while production dynamic LDS grows 4/8/16 KiB.
+- RED production-inner-width coverage fails on the intentionally absent
+  `token_tile` wrapper argument. Temporary tile-16/32 template exports, Python
+  selection, and a default-8 prefill environment seam make the fixture GREEN.
+  `uv run --python 3.12 --extra dev python -m pytest -q
+  tests/test_maple_ternary_kernels.py` passes **14/14**; tile 8/16/32 are
+  BF16-bit identical at `in_features=2048`. The selector/default plus affected
+  runtime fixture passes **2/2**, Python compilation and `git diff --check`
+  pass. An earlier command accidentally selected Python 3.10 and failed
+  collection on `typing.Self`; rerunning with the required 3.12 interpreter is
+  the valid RED/GREEN evidence.
+- Run one-resident, counterbalanced prefill320 over eight prompts (natural and
+  heldout for each of code/general-English/general-Japanese/mixed), two
+  repetitions and 16 samples per tile. Tile 8/16/32 aggregate throughput is
+  **744.116/731.182/571.923 tok/s**. Tile 16/32 regress **1.738%/23.141%**,
+  lose all **16/16** paired samples, and preserve every next-token/top-logit
+  pair. The regression is consistent with longer block residency and larger
+  LDS outweighing reduced 512-byte row reloads.
+- Stop before the expensive 18-prompt state gate because both candidates fail
+  the non-regressive wall gate. Remove every temporary selector, wrapper,
+  export, and candidate test; production kernel/runtime files return byte-for-
+  byte to `5232042b8`. P3 closes rejected and selects D0 exact one-dispatch c1
+  router work. A future matrix/SIMD consumer must preserve the existing BF16
+  state contract; a different contraction order is not admissible merely for
+  throughput.
+- Publish rejected diagnostic
+  `benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json`,
+  SHA-256 `f7ca7b1f2cd4b94e9ff05c24dce09192160dc0faf353f1a53d9a3fe34e9285ef`.

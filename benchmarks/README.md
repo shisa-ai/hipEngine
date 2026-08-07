@@ -31,8 +31,11 @@ freezes P2 at **478.176 ms / 669.210 tok/s** with attention at **63.993 ms**.
 The clean retained
 [`post-P2 profile`](results/2026-08-08-gfx1151-maple-p2-phase-profile.json)
 measures **439.479 ms / 728.135 tok/s** and attention **21.916 ms (2.920x,
-5.08% of kernel time)** at unchanged 730 launches. P3 dense ternary QKV/O is
-next; c2/c4/c8 still need affine4 row reuse. A counterbalanced exact/leak-free
+5.08% of kernel time)** at unchanged 730 launches. The exact P3 dense tile
+8/16/32 screen is closed at **744.116/731.182/571.923 tok/s** with tile 16/32
+at **0/16** paired wins; production stays tile 8 and D0 c1 router work is next.
+Evidence: [`P3 rejected`](results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json).
+C2/c4/c8 still need affine4 row reuse. A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
 measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
 the rejected c1 head tile remains closed.
