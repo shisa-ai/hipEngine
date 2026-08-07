@@ -202941,3 +202941,23 @@ Vulkan local sizes verbatim will close the measured gap.
   in `docs/KERNELS.md`, add the prompt-to-artifact completion checklist to
   `docs/MAPLE.md`, and retain
   `benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
+
+## 2026-08-07 — M0: Maple decode rocprof profile (gfx1151)
+
+- Add `scripts/maple_profile.py` (prebuild then cached-only `rocprofv3
+  --kernel-trace` of a warm decode step, host wall from a cached rerun; CSV from
+  `-f csv`, duration = End_Timestamp - Start_Timestamp, sub-kernels
+  `__amd_rocclr_*` excluded).
+- Prebuilt all five Maple libs (ternary/attention/moe/rmsnorm/lm_head) with a
+  pinned `hipengine-maple-hipcc-version.txt`; profiled child is cache-only so it
+  never spawns hipcc. One token=9707, 4 warmup + 32 measured steps.
+- Result per decode step: **12,209 µs kernel / 12,758 µs wall (95.7% kernel,
+  4.3% host gap)** — decode is kernel-time-bound, NOT launch-bound as the plan
+  initially assumed. 271 launches/step but only ~2 µs each of overhead.
+- Hot kernels/step: **router_topk 7,807 µs (61%)** — a single 256-thread block
+  (grid 256/wg 256) serially doing all 256 experts (~362 µs/call × 24); lm_head
+  affine4 gemv **1,234 µs** (grid 19.4M/wg128); expert gate/up 822 + down 749;
+  attention 562; QKV 434; o_proj 296.
+- Reprioritize MAPLE-PERF.md: router topk (M3a) is now the #1 target, not
+  hipGraph (D1, only ~0.55 ms host gap). Artifact:
+  `benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json`.

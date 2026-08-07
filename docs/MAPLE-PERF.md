@@ -24,13 +24,62 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Bandwidth floor for decode | ~37 µs/token | 9.5 MB @ 256 GB/s |
 | Serial prefill of 4K prompt | ~52 s (token-serial) | 18 tokens ≈ 234 ms → 4K ≈ 52 s |
 
-**Conclusion.** Decode is **launch/dispatch-bound**, not compute- or
-bandwidth-bound. Prefill is **serial**, paying one full forward per prompt
-token with no weight reuse. Both have large, measurable headroom. Every
-optimization below must pass the repo's correctness gate (KL ≤ 0.05, top-1
-≥ 90%, device argmax exact) and be measured on gfx1151.
+**Conclusion (corrected by M0 profile).** Decode is **kernel-time-bound**, not
+launch-bound: a `rocprofv3 --kernel-trace` of one warm decode step shows
+**12,209 µs kernel / 12,758 µs wall (95.7% kernel, only 4.3% host gap)**. The
+serial 256-expert router dominates at **7,807 µs (61%)**; the affine4 lm_head
+is **1,234 µs**, selected-expert gate/up + down **~1,571 µs**, attention
+**562 µs**, QKV **434 µs**, o_proj **296 µs**. The host gap (~549 µs) is small, so
+hipGraph capture is a minor win; the real wins are kernel-level, headed by the
+router. Prefill is **serial**, paying one full forward per prompt token with no
+weight reuse. Every optimization must pass the repo's correctness gate (KL ≤
+0.05, top-1 ≥ 90%, device argmax exact) and be measured on gfx1151.
 
-## 2. Phase 0 — Profile before optimizing (gate: no math changes)
+## 2. Phase 0 — Profile before optimizing (gate: no math changes) — DONE
+
+`scripts/maple_profile.py` (prebuild then cached-only `rocprofv3 --kernel-trace`
+of a warm decode step) produced `benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json`.
+Per-step kernel breakdown (24 layers/token, one token = 9707):
+
+| Family | µs/step | Share | Grid/WG (per call) |
+| --- | ---: | ---: | --- |
+| router_topk | 7,807 | 61.0% | **grid 256 / wg 256 (one block, serial)** |
+| lm_head affine4 gemv | 1,234 | 9.7% | grid 19.4M / wg 128 |
+| expert gate/up (dual) | 822 | 6.4% | grid 524K / wg 128 |
+| expert down | 749 | 5.9% | grid 524K / wg 128 |
+| attention decode | 562 | 4.4% | — |
+| QKV ternary | 434 | 3.4% | — |
+| o_proj ternary | 296 | 2.3% | — |
+| qknorm+RoPE+KVwrite | 89 | 0.7% | — |
+| add_rmsnorm / rmsnorm | 121 | 0.9% | — |
+| weighted_residual / swiglu / embed / span / argmax | ~94 | 0.7% | — |
+| **host gap** | 549 | 4.3% | — |
+
+**Highest-leverage target = the router.** Each `router_topk` call is a single
+256-thread block (grid 256/wg 256) that serially computes logits and the
+softmax/top-8 over all 256 experts, ~362 µs per call × 24 layers. Parallelizing
+it (grid over experts / vectorized 2048-wide dot) is the single largest win
+(see D3/M3). lm_head and selected-expert GEMVs follow. hipGraph (D1) only
+recovers the ~4.3% host gap and is deprioritized below kernel work.
+
+### M0 methodology (reuse)
+
+Follow `docs/TUNING-gfx1151.md` Lesson 0: capture a `rocprofv3 --kernel-trace`
+of one warm decode token and of a short serial prefill before changing anything.
+Produce a kernel-time vs host-gap breakdown:
+
+- Per-kernel `DurationNs` by family (ternary GEMV, selected-expert, router,
+  attention, qknorm, affine4 embed, affine4 lm_head, argmax, norms).
+- **Host gap** = step wall − Σ kernel time. This is the launch/dispatch budget
+  that hipGraph capture attacks (see D1).
+- Which single kernel dominates (confirmed: the serial 256-expert router).
+
+Deliverable: a `docs/KERNELS.md` Maple trace block and a
+`benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json` artifact.
+Prebuild the `.so` and use `require_cached` so the profiled process never spawns
+`hipcc` (per `docs/KERNELS.md` JIT gotcha).
+
+## 2b. Reprioritized milestone order (from M0 evidence)
 
 Follow `docs/TUNING-gfx1151.md` Lesson 0: capture a `rocprofv3 --kernel-trace`
 of one warm decode token and of a short serial prefill before changing anything.
@@ -48,9 +97,25 @@ Deliverable: a `docs/KERNELS.md` Maple trace block and a
 Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 `hipcc` (per `docs/KERNELS.md` JIT gotcha).
 
-## 3. Decode plan (launch-bound → graph-captured)
+## 2b. Reprioritized milestone order (from M0 evidence)
 
-### D1 — hipGraph-capture the whole token step (highest leverage)
+| Order | Milestone | Expected win | Rationale (M0) |
+| --- | --- | --- | --- |
+| 1 | **M3a router topk** parallel | 7.8 ms → <1 ms | 61% of step; single-block serial expert loop |
+| 2 | M3b lm_head affine4 | 1.23 ms → ~0.3 ms | 9.7%; grid-19.4M shape |
+| 3 | M3c selected-expert grouping | 1.57 ms → ~0.6 ms | 12%; under-occupied small tiles |
+| 4 | M4/M5 batched prefill | serial → ≥1k tok/s | prefill is the other big axis |
+| 5 | M1 hipGraph decode | ~0.55 ms | host gap is only 4.3% |
+| 6 | M6 batch decode / server | width reuse | after c1 is fast |
+| 7 | M2 fusion | moderate | secondary to router/lm_head |
+
+## 3. Decode plan (kernel-bound → optimize the hot kernels)
+
+### D1 — hipGraph-capture the whole token step (now lower leverage)
+
+M0 shows the host gap is only ~4.3% (549 µs/step), so capture is a secondary win
+versus kernel-level work. It remains valuable once kernels are fast and for
+batch/prefill. Pattern and caveats below.
 
 The repo already proved this pattern in `hipengine/runtime/moe_graph.py`: a
 **stateless** per-layer unit is safe to capture and replay across arbitrarily
@@ -101,11 +166,14 @@ step).
 Each fused composite must keep a numerically-equivalent unfused fallback
 (architecture invariant).
 
-### D3 — MoE routing and grouped selected-expert
+### D3 — MoE routing and grouped selected-expert (highest leverage — M0)
 
-- Router is a single block doing serial work over 256 experts. Parallelize the
-  logits (GEMV over [256, 2048]) and the stable top-8 (block-reduce), matching
-  the existing one-ULP FP32 gate.
+- **Router is the #1 bottleneck (7.8 ms/step, 61%).** It is a single 256-thread
+  block (grid 256 / wg 256) serially computing logits + softmax + top-8 over all
+  256 experts (~362 µs/call × 24 layers). Parallelize the logits as a
+  [256, 2048] GEMV (grid over experts, vectorized 2048-wide dot), then a
+  parallel stable top-8 (block-reduce), matching the existing one-ULP FP32 gate.
+  Target < 1 ms/step.
 - Selected-expert kernels already operate without expert unpacking; verify grid
   = top-8 blocks is not leaving the 40-CU machine under-occupied, and consider
   grouping the 8 selected experts into one launch that reuses the shared
@@ -188,13 +256,15 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 
 | # | Milestone | Gate | Evidence |
 | --- | --- | --- | --- |
-| M0 | Decode profile (host-gap + per-kernel) | profile artifact, no math change | `...-maple-decode-profile.json` |
-| M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact |
-| M2 | D2 fusion (launch count ↓) | exact, non-regressive | `WORKLOG.md` |
-| M3 | D3/D4 MoE + lm_head | exact, decode wall ↓ | `WORKLOG.md` |
+| M0 | Decode profile (host-gap + per-kernel) | profile artifact, no math change | `...-maple-decode-profile.json` (done) |
+| M3a | Parallelize router topk | exact one-ULP; decode wall ↓ 61% | `WORKLOG.md` + artifact |
+| M3b | lm_head affine4 | exact; decode wall ↓ | `WORKLOG.md` |
+| M3c | selected-expert grouping | exact; decode wall ↓ | `WORKLOG.md` |
 | M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | `...-maple-prefill.json` |
 | M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `benchmarks/README.md` |
+| M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact |
 | M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | `benchmarks/README.md` |
+| M2 | D2 fusion | exact, non-regressive | `WORKLOG.md` |
 
 Rules (per `AGENTS.md`):
 
