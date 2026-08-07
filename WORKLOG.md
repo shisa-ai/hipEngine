@@ -207082,3 +207082,16 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   assertions pass, all changed relative Markdown links resolve,
   `tests/test_benchmark_readme_sync.py -q --tb=short` passes **6/6**, and
   diff/WORKLOG checks are clean.
+
+## 2026-08-07 — Maple P1 expert-major compact MoE
+
+- Start from retained P0 `a9be9f310`. Before any new kernel work, re-read the
+  Maple catalog in `docs/KERNELS.md` and run
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`. The audit is
+  blocked before reporting any lineage by the manifest's absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; no external source is
+  copied and P1 will reuse in-tree generic group-scatter infrastructure.
+- Correct the profile harness before the binding post-P0 trace: every
+  `rocprofv3` child now forces and records
+  `HIPENGINE_REQUIRE_CACHED_BUILD=1` in addition to the precomputed compiler
+  version file, so profiling cannot silently invoke `hipcc`.
