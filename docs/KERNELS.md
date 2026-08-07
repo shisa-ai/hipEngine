@@ -86,13 +86,14 @@ owns `(KV head,row)`, loads each K/V row once, and emulates all 128 virtual
 threads through the original 64/32/16/8/4/2/1 LDS stages plus the original
 weighted-value/FMA boundary. It consumes every `KVLiveSpans` pointer and keeps
 local128 as rollback. The production-shape primitive is BF16-bit exact at the
-256-row chunk boundary; the reduced M5 gate passes 18/18 state hashes, 90/90
-positions, KL 0, and exact lifecycle. Dirty cached tracing names
+256-row chunk boundary; the binding M5 gate passes 18/18 state hashes, 90/90
+positions, KL 0, and exact lifecycle. Clean cached tracing names
 `maple_attention_prefill_ring_gqa4_wave32_kernel` at local32/VGPR64,
 dynamic-LDS512 (static trace field LDS0), scratch0 and measures **63.993 ->
-22.064 ms (2.900x)** at unchanged launch count. Clean qualified publication is
-pending. Batched decode uses disjoint per-request rings
-and separate SWA/global capacity owners; wrapped positions remain inside their
+21.916 ms (2.920x)** at unchanged launch count. Qualified 128/320/512 throughput
+is **749.175/741.368/754.000 tok/s**, up **3.13%/9.08%/15.87%** over P1 with
+unchanged 5,355,881,848-byte residency. Batched decode uses disjoint per-request
+rings and separate SWA/global capacity owners; wrapped positions remain inside their
 request arena after position 512. The wrapped c=3 primitive is BF16-bit exact;
 cached tracing reports batched QK/RoPE/KV write at **3,967 ns** (VGPR24) and
 batched attention at **20,197 ns** (VGPR16), both LDS0/scratch0.

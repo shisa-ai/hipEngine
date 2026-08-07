@@ -1,16 +1,16 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-07**
+Last updated: **2026-08-08**
 
-**Maple P1/M5 retained on Radeon 8060S/gfx1151:** final-row-only plus exact
-expert-major public native prefill at 128/320/512 is
-**726.421/679.632/650.745 tok/s**, up **3.68%/4.67%/5.83%** over P0 and
-**4.894x/6.381x/7.828x** serial. All 18 code/general-English/general-Japanese/
+**Maple P2/M5 retained on Radeon 8060S/gfx1151:** final-row-only, expert-major,
+and exact GQA4 public native prefill at 128/320/512 is
+**749.175/741.368/754.000 tok/s**, up **3.13%/9.08%/15.87%** over P1 and
+**4.960x/6.878x/8.992x** serial. All 18 code/general-English/general-Japanese/
 mixed natural+heldout prompts have byte-exact final hidden/normalized, live K/V,
 and `KVLiveSpans` state; all 90 seed/continuation positions are logit/token
-exact with KL 0. Max-context-512 tracked residency is **4.988 GiB**; P1 adds
-exactly **45,072 bytes** of metadata, and close returns zero ownership. Evidence:
-[`P1/M5`](results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json).
+exact with KL 0. Max-context-512 tracked residency remains **4.988 GiB**
+(**5,355,881,848 bytes**), and close returns zero ownership. Evidence:
+[`P2/M5`](results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json).
 
 The fixed-capacity M6 runtime helper remains c=2/4/8 median aggregate
 **218.818/261.099/299.181 tok/s** at 64 tokens/request with every measured
@@ -27,9 +27,12 @@ experts at **276.150 ms**. P1's final diagnostic reaches only **254.179 ms
 and wider exact lane schedules regress, so scalar ternary compute is the
 recorded blocker. The clean
 [`post-P1 phase profile`](results/2026-08-07-gfx1151-maple-p1-phase-profile.json)
-freezes P2 at **478.176 ms / 669.210 tok/s** with attention at **63.993 ms
-(13.55% of kernel time)** and a **<=31.996-ms (2.0x)** stretch target for exact
-wave32 qrow/GQA reuse. c2/c4/c8 still need affine4 row reuse. A counterbalanced exact/leak-free
+freezes P2 at **478.176 ms / 669.210 tok/s** with attention at **63.993 ms**.
+The clean retained
+[`post-P2 profile`](results/2026-08-08-gfx1151-maple-p2-phase-profile.json)
+measures **439.479 ms / 728.135 tok/s** and attention **21.916 ms (2.920x,
+5.08% of kernel time)** at unchanged 730 launches. P3 dense ternary QKV/O is
+next; c2/c4/c8 still need affine4 row reuse. A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
 measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
 the rejected c1 head tile remains closed.

@@ -22,11 +22,11 @@ should be removed or collapsed.
   (2.900x)**. The registered candidate consumes complete `KVLiveSpans`, shares
   one K/V load across four query heads, and preserves every local128 LDS
   reduction stage plus online-softmax operation exactly.
-- Keep `HIPENGINE_MAPLE_PREFILL_GQA4=0` temporarily as the local128
-  rollback/bisection seam through clean qualified 128/320/512 publication and
-  the final Maple cumulative roadmap audit, then remove the environment seam.
-  Preserve the registered local128 kernel as the required unfused numerical
-  fallback.
+- Clean qualified publication passes at **749.175/741.368/754.000 tok/s** with
+  unchanged exact state and ownership. Keep `HIPENGINE_MAPLE_PREFILL_GQA4=0`
+  temporarily as the local128 rollback/bisection seam only through the final
+  Maple cumulative roadmap audit, then remove the environment seam. Preserve
+  the registered local128 kernel as the required unfused numerical fallback.
 
 ## SH16 gfx1151 private-c1 selective small-weight arena
 
