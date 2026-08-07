@@ -190,16 +190,9 @@ def test_maple_affine4_wave32_is_default_with_group64_rollback(monkeypatch) -> N
     assert maple_runtime._maple_affine4_wave32_exact() is False
 
 
-def test_maple_batch_affine4_rowreuse_is_opt_in_and_width_bounded(monkeypatch) -> None:
+def test_maple_batch_affine4_rowreuse_is_default_and_width_bounded(monkeypatch) -> None:
     selector = "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT"
     monkeypatch.delenv(selector, raising=False)
-    for rows in (2, 4, 8):
-        assert (
-            maple_runtime._maple_batch_affine4_head(rows)
-            is maple_runtime.maple_affine4_gemv_batched_f32
-        )
-
-    monkeypatch.setenv(selector, "1")
     for rows in (2, 4, 8):
         assert (
             maple_runtime._maple_batch_affine4_head(rows)
@@ -212,10 +205,11 @@ def test_maple_batch_affine4_rowreuse_is_opt_in_and_width_bounded(monkeypatch) -
         )
 
     monkeypatch.setenv(selector, "0")
-    assert (
-        maple_runtime._maple_batch_affine4_head(8)
-        is maple_runtime.maple_affine4_gemv_batched_f32
-    )
+    for rows in (2, 4, 8):
+        assert (
+            maple_runtime._maple_batch_affine4_head(rows)
+            is maple_runtime.maple_affine4_gemv_batched_f32
+        )
 
 
 def test_maple_step_snapshots_decode_selectors_once() -> None:

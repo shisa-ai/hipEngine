@@ -125,10 +125,11 @@ def _maple_affine4_wave32_exact() -> bool:
 
 
 def _maple_batch_affine4_rowreuse_exact() -> bool:
-    # D1 candidate: default off until the complete c2/c4/c8 state, sparse-slot,
-    # lifecycle, and same-protocol wall gates qualify it.
+    # D1 exact row-reuse head is the c2/c4/c8 default after the complete width,
+    # natural/heldout, sparse/reclaimed-slot, lifecycle, and wall gates.
+    # Preserve =0 as the original all-row exact rollback.
     return os.environ.get(
-        "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT", "0"
+        "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT", "1"
     ) != "0"
 
 
