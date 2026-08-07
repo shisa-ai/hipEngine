@@ -264,6 +264,16 @@ def main() -> int:
             "status": "accepted_diagnostic",
             "backend": args.backend,
             "model": args.model,
+            "protocol": {
+                "environment": {
+                    "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
+                    "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+                    "HIPENGINE_COMPILER_VERSION_FILE": str(VERSION_FILE),
+                    "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH": os.environ.get(
+                        "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH"
+                    ),
+                }
+            },
             "measured_steps": MEASURED_STEPS,
             "steps_in_trace": steps_in_trace,
             "kernel_launches_per_step": launches / steps_in_trace,

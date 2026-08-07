@@ -207332,3 +207332,59 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Extend the rejected P3 artifact with the correctness/trace verdict. New
   SHA-256 is `5ca0bc2b259e2e9de9205da9dfe9de731e9f0298dc31a1d86bdb9b416484d8ec`;
   the prior SHA above remains the immutable scalar-tile version.
+
+## 2026-08-08 — Maple D0 exact one-dispatch c1 router implementation
+
+- Start from clean P3 closure `f86f2c86a`. Narrow lineage selects no tracked
+  external parent and no source is copied. The unchanged corrected c1 baseline
+  is **163.459 tok/s / 6.118 ms**, with router logits + softmax/top-k at
+  **1.108 ms / 22.0% of kernel time** and two router dispatches per layer.
+- Implement the documented last-threadgroup pattern in-tree. One 256-block
+  grid computes the same per-expert 256-thread tree logits into existing
+  scratch. Each block threadfences and increments one owned four-byte counter;
+  the last ticket runs the unchanged FP32 max/exp/sum/stable-rank/top-8 body.
+  `atomicInc(..., num_experts-1)` resets the counter to zero without another
+  launch. The original two-kernel route remains separately registered and
+  available with `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0`.
+- RED fails on the absent composite wrapper. GREEN production geometry
+  (`experts=256`, `hidden=2048`, `top_k=8`) matches every FP32 logit, selected
+  ID, and routing-weight bit from the two-dispatch route across two consecutive
+  candidate calls; the counter returns exactly to zero. The full Maple MoE
+  bundle passes **9/9** after the registry/default tests are included.
+- Real-checkpoint short, three-language natural, and cross-256 continuation
+  tests pass **3/3** with the candidate. A reduced one-shape M5 run then passes
+  **18/18** natural+heldout hidden/KV/span state hashes, **90/90** token/top-1
+  positions, max/mean KL **0/0**, and exact close. It is mechanically rejected
+  only because the 128-only timing protocol is unqualified. Dirty state artifact
+  `/tmp/maple-d0-router-single-dispatch-state-gate.json`, SHA-256
+  `d28be9460b138639ba8861a741e17f7e1d1e55bb403379b039caef6b59554817`.
+- A two-runner, counterbalanced same-resident c1 screen (8 warmup + 64 measured
+  pairs) improves aggregate **165.791 -> 170.279 tok/s (+2.71%)**, median step
+  **6.001 -> 5.828 ms**, and paired median by **0.191 ms**; **58/64** candidate
+  pairs win and all token/top-logit pairs are identical. Dirty screen artifact
+  `/tmp/maple-d0-router-single-dispatch-screen.json`, SHA-256
+  `bca879b2d52c47652f7add5496ab4d1a9d786116fb03af6e0696f3c82cec195d`.
+- Prebuild outside profiling and capture cached-only baseline/candidate
+  `maple_profile.py` traces. Router calls fall **48 -> 24 per token** and total
+  launches **295 -> 271**. Baseline logits+top-k is **1.108298 ms/token**;
+  candidate composite is **1.095186 ms/token**. The named candidate is
+  local256/VGPR16/SGPR128/LDS3584/scratch0. Independent traced kernel totals
+  vary **4.870 -> 4.921 ms** because the head is 0.053 ms slower in the
+  candidate process; do not attribute that variance to the router. Raw trace
+  SHA-256 is baseline
+  `205006560d72fd4a3ad227e49fe79144e56bd6df03fdd26bc265616299d42d38`
+  and candidate
+  `42f19f8e71bd74410fad6566771d612f73f8e47a79b0021f7a836b5ac0ce5808`.
+- Promote the exact composite as default. Manual 16-step graph/eager comparison
+  is token/top-logit exact; the repository graph bundle skips because its stale
+  dedicated cache-path guard does not see the locally resolved checkpoint.
+  Candidate adds exactly one four-byte owned counter and resets it on runner
+  reset; the complete state gate confirms lifecycle returns to zero.
+- Dirty diagnostics are implementation evidence only. Commit the validated
+  default before clean c1 category qualification/publication, then continue D0
+  with a materially different exact affine4-head bandwidth/layout screen.
+- Final implementation validation: Maple MoE + selector/registry bundle passes
+  **9/9**; real-checkpoint targeted bundle passes **3/3**; manual graph/eager
+  passes **16/16** exact steps; Python compilation, narrow lineage, diff, and
+  WORKLOG checks pass. The dedicated graph file reports **3 skips** from its
+  stale cache-location guard, not execution failures.

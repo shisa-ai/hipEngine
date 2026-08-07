@@ -416,6 +416,9 @@ def main() -> int:
                 "HIPENGINE_MAPLE_PREFILL_GQA4": os.environ.get(
                     "HIPENGINE_MAPLE_PREFILL_GQA4"
                 ),
+                "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH": os.environ.get(
+                    "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH"
+                ),
             },
             "raw_root": str(args.raw_root),
             "profiles": list(PHASES),

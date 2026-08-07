@@ -171,6 +171,15 @@ def test_maple_prefill_gqa4_is_default_with_local128_rollback(monkeypatch) -> No
     assert maple_runtime._maple_prefill_gqa4() is False
 
 
+def test_maple_router_single_dispatch_is_default_with_parallel_rollback(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH", raising=False)
+    assert maple_runtime._maple_router_single_dispatch() is True
+    monkeypatch.setenv("HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH", "0")
+    assert maple_runtime._maple_router_single_dispatch() is False
+
+
 def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
     from hipengine.core.memory import DeviceBuffer
 

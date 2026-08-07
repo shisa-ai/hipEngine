@@ -194,6 +194,102 @@ __global__ void maple_router_softmax_topk_kernel(
   }
 }
 
+// D0 one-dispatch c1 router. Every expert block writes one tree-reduced logit,
+// then the last block to increment completion_counter performs the unchanged
+// softmax/stable-top-k body. atomicInc wraps the counter back to zero on the
+// last ticket, so sequential calls on the same stream require no reset launch.
+__global__ void maple_router_topk_single_dispatch_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    int32_t* __restrict__ selected_experts,
+    float* __restrict__ selected_weights,
+    float* __restrict__ logits_out,
+    unsigned int* __restrict__ completion_counter,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k) {
+  const int e = static_cast<int>(blockIdx.x);
+  const int t = static_cast<int>(threadIdx.x);
+  __shared__ float logits[256];
+  __shared__ float probs[256];
+  __shared__ float red[256];
+  __shared__ uint8_t sel_mask[256];
+  __shared__ int last_block;
+
+  float acc = 0.0f;
+  const uint16_t* row = weight + static_cast<int64_t>(e) * hidden_size;
+  for (int64_t i = t; i < hidden_size; i += blockDim.x) {
+    acc += bf16_to_float(x[i]) * bf16_to_float(row[i]);
+  }
+  red[t] = acc;
+  __syncthreads();
+  for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+    if (t < s) red[t] += red[t + s];
+    __syncthreads();
+  }
+  if (t == 0) {
+    logits_out[e] = red[0];
+    __threadfence();
+    const unsigned int ticket = atomicInc(
+        completion_counter, static_cast<unsigned int>(num_experts - 1));
+    last_block = ticket == static_cast<unsigned int>(num_experts - 1);
+  }
+  __syncthreads();
+  if (!last_block) {
+    return;
+  }
+
+  const float logit = (t < num_experts) ? logits_out[t] : -INFINITY;
+  logits[t] = logit;
+  red[t] = logit;
+  sel_mask[t] = 0;
+  __syncthreads();
+  for (int s = 128; s > 0; s >>= 1) {
+    if (t < s) red[t] = fmaxf(red[t], red[t + s]);
+    __syncthreads();
+  }
+  const float max_logit = red[0];
+  const float ex = (t < num_experts) ? expf(logits[t] - max_logit) : 0.0f;
+  probs[t] = ex;
+  red[t] = ex;
+  __syncthreads();
+  for (int s = 128; s > 0; s >>= 1) {
+    if (t < s) red[t] += red[t + s];
+    __syncthreads();
+  }
+  const float inv_sum = 1.0f / red[0];
+  if (t < num_experts) probs[t] *= inv_sum;
+  __syncthreads();
+
+  if (t < num_experts) {
+    const float my = probs[t];
+    int rank = 0;
+    for (int e2 = 0; e2 < num_experts; ++e2) {
+      const float p2 = probs[e2];
+      if (p2 > my || (p2 == my && e2 < t)) ++rank;
+    }
+    if (rank < top_k) {
+      selected_experts[rank] = t;
+      sel_mask[t] = 1;
+    }
+  }
+  __syncthreads();
+
+  float sum = 0.0f;
+  for (int e2 = 0; e2 < num_experts; ++e2) {
+    if (sel_mask[e2]) sum += probs[e2];
+  }
+  if (t < num_experts && sel_mask[t]) {
+    const float my = probs[t];
+    int rank = 0;
+    for (int e2 = 0; e2 < num_experts; ++e2) {
+      const float p2 = probs[e2];
+      if (p2 > my || (p2 == my && e2 < t)) ++rank;
+    }
+    selected_weights[rank] = probs[t] / (sum + 1.0e-20f);
+  }
+}
+
 // Batched router (P3 prefill): same two-kernel design as the c1 parallel router,
 // but with a row dimension over T prompt rows.  logits_out is [T, num_experts];
 // selected_experts / selected_weights are [T, top_k].
@@ -418,6 +514,40 @@ extern "C" int hipengine_maple_router_topk_parallel_bf16(
       logits_scratch,
       selected_experts,
       selected_weights,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_router_topk_single_dispatch_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    int32_t* selected_experts,
+    float* selected_weights,
+    float* logits_scratch,
+    unsigned int* completion_counter,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k,
+    hipStream_t stream) {
+  if (hidden_size <= 0 || num_experts <= 0 || num_experts > 256
+      || top_k <= 0 || top_k > 16 || top_k > num_experts
+      || completion_counter == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      maple_router_topk_single_dispatch_kernel,
+      dim3(static_cast<unsigned int>(num_experts)),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight,
+      selected_experts,
+      selected_weights,
+      logits_scratch,
+      completion_counter,
+      hidden_size,
       num_experts,
       top_k);
   return static_cast<int>(hipGetLastError());

@@ -14,6 +14,19 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Maple D0 one-dispatch c1 router
+
+- Added and promoted 2026-08-08. One grid-over-experts launch uses a four-byte
+  resettable completion counter; the last expert block executes the unchanged
+  FP32 softmax/stable-top-k body. Production-shape outputs are bit-identical,
+  the full dirty gate passes **18/18** states and **90/90** positions with KL 0,
+  and same-resident c1 improves **165.791 -> 170.279 tok/s (+2.71%)** with
+  **58/64** paired wins.
+- Keep `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0` as the exact two-dispatch
+  rollback through clean qualified c1 publication and the final Maple roadmap
+  audit, then remove the environment seam. Preserve the separately registered
+  two-dispatch kernels as the required numerical fallback.
+
 ## Maple P2 exact wave32 GQA4 prefill attention
 
 - Added 2026-08-08 and promoted to the prefill default after the complete dirty

@@ -53,6 +53,7 @@ from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
     maple_clamped_swiglu_bf16,
     maple_router_topk_parallel_batched_bf16,
     maple_router_topk_parallel_bf16,
+    maple_router_topk_single_dispatch_bf16,
     maple_weighted_residual_batched_bf16,
     maple_weighted_residual_bf16,
 )
@@ -105,6 +106,13 @@ def _maple_fuse_qkattn() -> bool:
     # into one kernel (maple_attention_fused_qknorm_decode_bf16). Default off;
     # see docs/REFACTOR.md.
     return os.environ.get("HIPENGINE_MAPLE_FUSE_QKATTN", "0") != "0"
+
+
+def _maple_router_single_dispatch() -> bool:
+    # D0 exact last-block router composite is the c1 default after the complete
+    # byte-state and same-resident wall gates. Preserve =0 as the two-dispatch
+    # rollback.
+    return os.environ.get("HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH", "1") != "0"
 
 
 def _maple_prefill_grouped_moe() -> bool:
@@ -501,6 +509,7 @@ class MapleRuntimeBuffers:
         self.selected_ids = owner.allocate(top_k * 4)
         self.routing_weights = owner.allocate(top_k * 4)
         self.router_logits = owner.allocate(spec.num_experts * 4)
+        self.router_counter = owner.put(np.zeros(1, dtype=np.uint32))
         self.expert_gate = owner.allocate(top_k * intermediate * 2)
         self.expert_up = owner.allocate(top_k * intermediate * 2)
         self.expert_intermediate = owner.allocate(top_k * intermediate * 2)
@@ -546,6 +555,9 @@ class MapleRuntimeBuffers:
         self.layers = tuple(layers)
 
     def reset(self) -> None:
+        self.owner.runtime.memset(
+            self.router_counter.ptr, 0, self.router_counter.nbytes
+        )
         self.sliding_span_owner.reset()
         self.global_span_owner.reset()
 
@@ -676,6 +688,7 @@ class MapleRunner:
         )
         if capture_hidden:
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
+        single_dispatch_router = _maple_router_single_dispatch()
 
         def _decode_body(stream: int) -> None:
             _decode_layers_and_tail(stream)
@@ -781,18 +794,35 @@ class MapleRunner:
                     library=libs.norm,
                     runtime=self.runtime, stream=stream,
                 )
-                maple_router_topk_parallel_bf16(
-                    b.normalized.ptr,
-                    layer_weights.router.ptr,
-                    b.selected_ids.ptr,
-                    b.routing_weights.ptr,
-                    b.router_logits.ptr,
-                    spec.hidden_size,
-                    spec.num_experts,
-                    spec.num_experts_per_tok,
-                    library=libs.moe,
-                    runtime=self.runtime, stream=stream,
-                )
+                if single_dispatch_router:
+                    maple_router_topk_single_dispatch_bf16(
+                        b.normalized.ptr,
+                        layer_weights.router.ptr,
+                        b.selected_ids.ptr,
+                        b.routing_weights.ptr,
+                        b.router_logits.ptr,
+                        b.router_counter.ptr,
+                        spec.hidden_size,
+                        spec.num_experts,
+                        spec.num_experts_per_tok,
+                        library=libs.moe,
+                        runtime=self.runtime,
+                        stream=stream,
+                    )
+                else:
+                    maple_router_topk_parallel_bf16(
+                        b.normalized.ptr,
+                        layer_weights.router.ptr,
+                        b.selected_ids.ptr,
+                        b.routing_weights.ptr,
+                        b.router_logits.ptr,
+                        spec.hidden_size,
+                        spec.num_experts,
+                        spec.num_experts_per_tok,
+                        library=libs.moe,
+                        runtime=self.runtime,
+                        stream=stream,
+                    )
                 if _maple_fuse_moe():
                     maple_moe_dual_swiglu_bf16(
                         b.normalized.ptr,

@@ -77,6 +77,17 @@ scratch0, and extracted ISA confirms `v_wmma_f32_16x16x16_bf16`. All temporary
 selectors, alternate exports, and WMMA probes were removed; do not repeat these
 scalar-tile or direct-WMMA schedules.
 
+The D0 c1 router now also registers a one-dispatch last-block composite. Its
+256 expert blocks preserve the existing logit tree; a four-byte owned atomic
+counter identifies the final block, which executes the unchanged FP32
+softmax/stable-top-8 body and wraps the counter to zero. Production-shape
+logits/IDs/weights are bit-identical across repeated calls, the dirty complete
+state gate passes **18/18** hashes and **90/90** positions at KL 0, and
+same-resident c1 improves **165.791 -> 170.279 tok/s (+2.71%)**. Cached tracing
+names `maple_router_topk_single_dispatch_kernel` at local256/VGPR16/SGPR128/
+LDS3584/scratch0 and cuts **24 launches/token**. The two-dispatch route remains
+registered as the exact rollback; clean qualification is pending.
+
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard
 QK-RMSNorm plus rotate-half partial RoPE, BF16 K/V append, and online-softmax

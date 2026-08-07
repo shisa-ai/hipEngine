@@ -279,9 +279,19 @@ promoted; all unfused fallbacks (the invariant) are preserved.
 
 The historical M0 router was the 7.8-ms / 61% bottleneck; M3a already replaced
 it with parallel logits plus parallel stable top-k. In the corrected c1 profile,
-router logits + top-k still consume **1.108 ms / 22.0% of kernel time**. The
-next c1 candidate is DeepGrove's one-dispatch last-threadgroup composite, not a
-return to the serial dot-product kernel.
+router logits + top-k consume **1.108 ms / 22.0% of kernel time**.
+
+The D0 last-threadgroup composite is now the default implementation candidate:
+it keeps the same logit tree and FP32 softmax/stable top-8, uses one four-byte
+owned counter, and runs finalization in the last expert block. Production-shape
+outputs are bit-identical, the dirty complete gate passes **18/18** state hashes
+and **90/90** positions with KL 0, and a same-resident screen improves
+**165.791 -> 170.279 tok/s (+2.71%, 58/64 wins)**. Cached tracing cuts router
+calls **48 -> 24** and total token launches **295 -> 271**; router kernel time
+changes only **1.108 -> 1.095 ms**, so deleted dispatch boundaries explain the
+larger wall gain. Clean c1 category qualification remains pending before this
+becomes a retained row. The next D0 kernel target is therefore the exact
+167-MiB affine4 head, not a return to the serial router.
 
 The rejected M3c experiment grouped the eight routes of one c1 token and lost
 because the shared activation was already L2-cached. It says nothing about
