@@ -281,6 +281,12 @@ class MoonshineCudaResidentRuntime:
         reserve("token", (1,), DType.INT64)
         reserve("position", (1,), DType.INT64)
         reserve("argmax", (1,), DType.INT64)
+        # RR-8 device-owned EOS/result: the graph-tail publish kernel appends
+        # each token to ``result_tokens`` (indexed by device position) and sets
+        # the sticky ``result_eos`` flag, so the host reads a tiny status per
+        # batch instead of every token (per-token D2H/sync removed).
+        reserve("result_tokens", (spec.self_cache_capacity,), DType.INT64)
+        reserve("result_eos", (1,), DType.INT64)
         from hipengine.kernels.cuda_sm120a.linear.lm_head import (
             lm_head_argmax_scratch_elements,
         )
@@ -614,7 +620,7 @@ class MoonshineCudaResidentRuntime:
 
         if self.closed:
             raise RuntimeError("Moonshine runtime is closed")
-        names = ("self_kv", *self._SCRATCH_NAMES)
+        names = ("self_kv", *self._SCRATCH_NAMES, "result_tokens", "result_eos")
         if clear_cross_cache:
             names = (*names, "cross_kv", "encoder_hidden", "encoder_attention_mask")
         self._zero(names)
@@ -745,6 +751,13 @@ class MoonshineCudaResidentRuntime:
         copy_host_to_device(
             self.workspace.allocation("position").buffer,
             host_array_ptr(position_array),
+            runtime=self.runtime,
+        )
+        # Clear the sticky device EOS flag so a fresh generation starts clean.
+        eos_array = np.asarray([0], dtype=np.int64)
+        copy_host_to_device(
+            self.workspace.allocation("result_eos").buffer,
+            host_array_ptr(eos_array),
             runtime=self.runtime,
         )
         self.runtime.stream_synchronize(self.stream)
@@ -1064,16 +1077,23 @@ class MoonshineCudaResidentRuntime:
                 **common,
             )
         if self._device_owned_decode:
-            # Graph-tail state kernel: advance the device position scalar so the
-            # next replay consumes device-owned state (C5/§7.3).  Bounded by the
-            # self-cache capacity; the host loop stops at EOS or max positions.
+            # Graph-tail state kernel (RR-8 device-owned EOS/result): append the
+            # current token to the device result buffer at the current position,
+            # set the sticky EOS flag when it equals the spec EOS token, and
+            # advance the position scalar.  Bounded by the self-cache capacity;
+            # the host loop stops at EOS or max positions and reads only a tiny
+            # EOS status per batch instead of every token.
             from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
-                moonshine_advance_position_fp16,
+                moonshine_publish_result_fp16,
             )
 
-            moonshine_advance_position_fp16(
+            moonshine_publish_result_fp16(
+                self.tensor("token").ptr,
                 self.tensor("position").ptr,
+                self.tensor("result_tokens").ptr,
+                self.tensor("result_eos").ptr,
                 spec.self_cache_capacity,
+                spec.eos_token_ids[0],
                 stream=stream,
                 library=libraries.glue,
                 runtime=self.runtime,
@@ -1095,6 +1115,75 @@ class MoonshineCudaResidentRuntime:
         if token_id < 0 or token_id >= self.spec.vocab_size:
             raise RuntimeError(f"Moonshine decoder returned invalid token ID {token_id}")
         return token_id
+
+    def graph_token_step_batch(self, count: int) -> None:
+        """Launch ``count`` captured token DAGs back-to-back (device-owned).
+
+        RR-8 batched readback: the host launches several token steps with no
+        intervening device read, then calls :meth:`read_eos_flag` once per batch
+        (a single stream sync + tiny D2H).  Position/result are published to
+        device by the graph tail, and the full token stream is recovered with
+        :meth:`read_result_tokens`.  Requires device-owned decode and captured
+        token graphs; every launched step advances the host mirror
+        (``self_cache_length``) exactly like a single :meth:`graph_token_step`.
+        """
+
+        if not self._device_owned_decode:
+            raise RuntimeError("batched graph decode requires device-owned decode")
+        if not self._token_graphs:
+            raise RuntimeError("token graphs are not captured")
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            raise ValueError("count must be a positive integer")
+        for _ in range(count):
+            self.graph_token_step()
+
+    def read_eos_flag(self) -> bool:
+        """Synchronize once and read the sticky device EOS flag (RR-8).
+
+        Returns True once any launched step has published the spec EOS token to
+        the device result buffer.  This replaces the per-token ``read_token``
+        boundary in the device-owned decode loop: one tiny D2H per batch.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if not self._device_owned_decode:
+            raise RuntimeError("device-owned decode is not enabled")
+        self.runtime.stream_synchronize(self.stream)
+        host = np.empty(1, dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(host),
+            self.workspace.allocation("result_eos").buffer,
+            runtime=self.runtime,
+        )
+        return bool(int(host[0]))
+
+    def read_result_tokens(self) -> list[int]:
+        """Read the full device result token buffer (RR-8), truncated at EOS.
+
+        Returns the tokens published by the graph tail up to and including the
+        first EOS (or all ``self_cache_length`` positions if EOS was not
+        reached).  Each token equals what :meth:`read_token` would have returned
+        at that step, so the stream is identical to the per-step readback path.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if not self._device_owned_decode:
+            raise RuntimeError("device-owned decode is not enabled")
+        self.runtime.stream_synchronize(self.stream)
+        capacity = self.spec.self_cache_capacity
+        host = np.empty(capacity, dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(host),
+            self.workspace.allocation("result_tokens").buffer,
+            runtime=self.runtime,
+        )
+        tokens = [int(t) for t in host]
+        eos = self.spec.eos_token_ids[0]
+        if eos in tokens:
+            return tokens[: tokens.index(eos) + 1]
+        return tokens
 
     def capture_token_graphs(self) -> tuple[MoonshineCudaTokenGraph, ...]:
         """Capture one reusable token DAG for each CUDA self-attention bucket.

@@ -203494,3 +203494,48 @@ fusion admission rule). Artifacts in the docs repo:
 `results/moonshine-cuda-lm-head-wave8-{complete,leaf}-v1.json`; recorded in
 `docs/OPTIMIZATION-CUDA.md` C6.1 and the docs-repo `IMPLEMENTATION.md`. No
 remote push.
+
+## 2026-08-08 — RR-8 closure: device-owned EOS/result publication + hybrid producer handoff
+
+### Problem
+Review `docs/OPTIMIZATION-CUDA-review.md` RR-8 left two implementable P1 items
+open on the c=1 resident decoder: (a) EOS/result stayed a per-token host read
+(token/position were device-owned, EOS was not); (b) the `torch-encoder` hybrid
+still used a global `torch.cuda.synchronize()` producer sync. A third item (one
+reusable c=1 encoder graph per certified bucket) needed a measured stop verdict.
+
+### Fix (RR-8 commit)
+- `hipengine/kernels/cuda_sm120a/fused/moonshine_glue.cu/.py`: new
+  `moonshine_publish_result_fp16` graph-tail kernel (publish+advance) that
+  appends the current token to a device result buffer at the device position,
+  sets a sticky device EOS flag when the token equals the spec EOS token, then
+  advances position (bounded by capacity). Registered in the glue registry.
+- `hipengine/runtime/moonshine_cuda.py`: workspace `result_tokens`/`result_eos`;
+  the device-owned graph tail now runs the publish+advance kernel; new APIs
+  `graph_token_step_batch`, `read_eos_flag`, `read_result_tokens`; seed/reset
+  clear the sticky flag.
+- `scripts/benchmark_moonshine_cuda_complete.py`: `--decode-batch N` (opt-in,
+  default 0 = unchanged per-step path) runs token graphs back-to-back with no
+  per-token D2H; `--mode torch-encoder` replaces `torch.cuda.synchronize()` with
+  a stream-event handoff (`event_record` on torch's current stream +
+  `stream_wait_event` on the decoder stream before the D2D handoff).
+
+### Evidence
+- New GPU tests: publish-result contract (`test_moonshine_cuda_sm120a_glue.py`);
+  batched device-owned decode exact stream (`test_moonshine_cuda_sm120a_runtime.py`).
+  CUDA/moonshine regression subset: 240 collected, exit 0, no failures.
+- Gate `scripts/gate_cuda_device_owned_decode.py` (docs repo, exclusive GPU0,
+  six retained fixtures): batched vs per-step streams identical, both
+  exact-to-EOS and reference-matched. Full-route is decode-compute bound:
+  `--decode-batch 2` neutral (3.91 vs 3.80 ms), batch 8 worse (4.38 ms) from
+  EOS over-run; fixed-length leaf shows ~2.7% per-token host-loop win
+  (264 -> 256 us/token), exact token parity.
+- torch-encoder hybrid with the event handoff: exact-to-EOS on all six fixtures.
+- Reusable per-bucket encoder graph stop verdict: padding corrupts encoder
+  output (GroupNorm position-dependence) — `audio-hai-fp16` 24 real frames
+  padded to bucket-40 changes real-frame hidden by max_abs 0.67/mean 0.036
+  (bucket-207: 0.58/0.062). Exact-length graph + async chain stay.
+
+### Next actions
+- Record closure in `docs/OPTIMIZATION-CUDA-review.md` §8.8 and
+  `docs/OPTIMIZATION-CUDA.md` C6.2 (docs repo); commit both repos.

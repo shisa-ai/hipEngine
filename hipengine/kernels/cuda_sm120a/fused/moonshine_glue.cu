@@ -76,6 +76,30 @@ __global__ void moonshine_advance_position_fp16_kernel(
   }
 }
 
+// RR-8 device-owned EOS/result publication: one graph-tail kernel that appends
+// the current token to a device result buffer at the current position, sets a
+// sticky device EOS flag when the token equals ``eos_token``, then advances the
+// position scalar.  The host can therefore launch many token steps back-to-back
+// (no per-token D2H) and sync/read only a tiny EOS status per batch, with the
+// full token stream recovered from ``result_tokens`` after EOS.
+__global__ void moonshine_publish_result_fp16_kernel(
+    const int64_t* __restrict__ token,
+    int64_t* __restrict__ position,
+    int64_t* __restrict__ result_tokens,
+    int64_t* __restrict__ result_eos,
+    int64_t capacity,
+    int64_t eos_token) {
+  const int64_t p = position[0];
+  if (p >= 0 && p < capacity) {
+    const int64_t t = token[0];
+    result_tokens[p] = t;
+    if (t == eos_token) {
+      result_eos[0] = 1;
+    }
+    position[0] = p + 1;
+  }
+}
+
 __global__ void moonshine_embedding_lookup_fp16_kernel(
     const half_t* __restrict__ embedding,
     const int64_t* __restrict__ token,
@@ -299,6 +323,23 @@ extern "C" int hipengine_cuda_sm120a_moonshine_advance_position_fp16(
   }
   moonshine_advance_position_fp16_kernel<<<dim3(1), dim3(1), 0, stream>>>(
       position, capacity);
+  return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_publish_result_fp16(
+    const int64_t* token,
+    int64_t* position,
+    int64_t* result_tokens,
+    int64_t* result_eos,
+    int64_t capacity,
+    int64_t eos_token,
+    cudaStream_t stream) {
+  if (token == nullptr || position == nullptr || result_tokens == nullptr ||
+      result_eos == nullptr || capacity <= 0 || eos_token < 0) {
+    return cudaErrorInvalidValue;
+  }
+  moonshine_publish_result_fp16_kernel<<<dim3(1), dim3(1), 0, stream>>>(
+      token, position, result_tokens, result_eos, capacity, eos_token);
   return cudaGetLastError();
 }
 

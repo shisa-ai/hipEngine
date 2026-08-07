@@ -72,6 +72,14 @@ _ADVANCE_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+# RR-8 device-owned EOS/result: (token, position, result_tokens, result_eos)
+# pointers, then capacity + eos_token int64 scalars, then the stream.
+_PUBLISH_RESULT_ARGS = (
+    *(ctypes.c_void_p for _ in range(4)),
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 # Static-B batch variants: same single-row layouts, plus an int64 ``batch``
 # between the shape scalars and the stream (row == grid Y).
 _EMBEDDING_BATCH_ARGS = (
@@ -439,6 +447,65 @@ def moonshine_advance_position_fp16(
     )
 
 
+def moonshine_publish_result_fp16(
+    token_ptr: int,
+    position_ptr: int,
+    result_tokens_ptr: int,
+    result_eos_ptr: int,
+    capacity: int,
+    eos_token: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Publish the current token to a device result buffer and set a sticky EOS
+    flag, then advance the position scalar (RR-8 device-owned EOS/result).
+
+    One graph-tail kernel replaces the plain advance for device-owned decode:
+    it appends ``token[0]`` to ``result_tokens[position]``, sets
+    ``result_eos[0] = 1`` when the token equals ``eos_token``, and advances
+    ``position`` by one (bounded by ``capacity``).  The host can then launch
+    many token steps back-to-back with no per-token D2H, reading only the tiny
+    EOS status per batch and recovering the full token stream from the device
+    result buffer once EOS is published.
+    """
+
+    for name, ptr in (
+        ("token_ptr", token_ptr),
+        ("position_ptr", position_ptr),
+        ("result_tokens_ptr", result_tokens_ptr),
+        ("result_eos_ptr", result_eos_ptr),
+    ):
+        if isinstance(ptr, bool) or not isinstance(ptr, int) or ptr <= 0:
+            raise ValueError(f"{name} must be a positive device pointer")
+    if isinstance(capacity, bool) or not isinstance(capacity, int):
+        raise ValueError("capacity must be a positive integer")
+    if capacity <= 0:
+        raise ValueError("capacity must be a positive integer")
+    if isinstance(eos_token, bool) or not isinstance(eos_token, int):
+        raise ValueError("eos_token must be a non-negative integer")
+    if eos_token < 0:
+        raise ValueError("eos_token must be a non-negative integer")
+    library = library or build_moonshine_glue(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_publish_result_fp16",
+        _PUBLISH_RESULT_ARGS,
+        (
+            token_ptr,
+            position_ptr,
+            result_tokens_ptr,
+            result_eos_ptr,
+            capacity,
+            eos_token,
+            stream,
+        ),
+        runtime,
+    )
+
+
 def moonshine_embedding_lookup_batch_fp16(
     embedding_ptr: int,
     token_ptr: int,
@@ -636,6 +703,15 @@ def register_moonshine_glue_kernels(*, replace: bool = True) -> None:
             moonshine_advance_position_fp16,
         ),
         (
+            KernelKey(
+                _BACKEND,
+                "moonshine_publish_result",
+                "fp16",
+                "device_owned_result",
+            ),
+            moonshine_publish_result_fp16,
+        ),
+        (
             KernelKey(_BACKEND, "moonshine_embedding", "fp16", "batch_lookup_i64"),
             moonshine_embedding_lookup_batch_fp16,
         ),
@@ -669,6 +745,7 @@ __all__ = [
     "moonshine_argmax_fp16",
     "moonshine_advance_position_fp16",
     "moonshine_advance_position_batch_fp16",
+    "moonshine_publish_result_fp16",
     "moonshine_embedding_lookup_fp16",
     "moonshine_embedding_lookup_batch_fp16",
     "moonshine_partial_rope_cache_append_fp16",
