@@ -259,6 +259,7 @@ def _profile_phase(
     env = dict(os.environ)
     env["HIPENGINE_COMPILER_VERSION_FILE"] = str(version_file)
     env["HIPENGINE_HIP_ARCH"] = "gfx1151"
+    env["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     command = [
         "rocprofv3",
@@ -402,6 +403,7 @@ def main() -> int:
                 "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
                 "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
                 "HIPENGINE_COMPILER_VERSION_FILE": str(args.version_file),
+                "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
             },
             "raw_root": str(args.raw_root),
             "profiles": list(PHASES),
