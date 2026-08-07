@@ -213,18 +213,22 @@ step).
 Each fused composite must keep a numerically-equivalent unfused fallback
 (architecture invariant).
 
-**M2 status: investigated, not promoted.** Built `maple_moe_dual_swiglu_bf16`
-(one kernel replaces `maple_selected_ternary_dual_gemv_bf16` + `maple_clamped_swiglu_bf16`),
-bit-exact with the unfused chain (identical packed-oracle max/mean KL and top-1 on the model;
-GPU test asserts the fused intermediate matches bit-for-bit) and cuts decode launches 295→271/step.
-But the fused kernel is ~9% slower per MoE layer than the unfused dual+swiglu pair (interleaved
-micro-benchmark 229.7 vs 210.7 us), so it is **opt-in via `HIPENGINE_MAPLE_FUSE_MOE=1` (default
-`0`, unfused is the fast path)**. In eager mode the launch savings offset the kernel regression
-(step wall neutral); in the hipGraph path (M1/M6), where launch overhead is already amortized, the
-kernel-efficiency regression would be a real ~1.4% step loss, so promotion is blocked until the
-fused kernel's efficiency is understood. The fused down+weighted-residual composite was also built,
-verified bit-exact, but regresses ~3.5% (serial-expert grid) and was reverted. See `docs/REFACTOR.md`.
-Remaining D2 items: layer-boundary norm fusions and the qknorm+RoPE+KV-write → attention chain.
+**M2 status: investigated, not promoted.** Built two bit-exact fused composites, both
+opt-in (`=1`) with the unfused chain as the fast path:
+- `maple_moe_dual_swiglu_bf16` (`HIPENGINE_MAPLE_FUSE_MOE`): fuses the MoE dual gate/up
+  gemv + clamped SiLU. Bit-exact (identical packed-oracle max/mean KL + top-1), cuts decode
+  launches 295→271, but the fused kernel is ~9% slower per MoE layer (interleaved micro
+  229.7 vs 210.7 us), so it would regress the hipGraph path (M1/M6) where launches are free.
+- `maple_attention_fused_qknorm_decode_bf16` (`HIPENGINE_MAPLE_FUSE_QKATTN`): fuses the
+  per-layer qknorm_rope_kv_write + attention_decode into one kernel (self-contained per
+  q-head block with redundant in-group K/V write). Bit-exact (attention output + K/V cache
+  match bit-for-bit), but ~1% slower per decode step (interleaved eager 6442 vs 6377 us);
+  the in-group K/V write redundancy and folded 88 us qknorm work offset any launch saving.
+- Rejected/reverted: fused down gemv + weighted residual (~3.5% slower, serial-expert grid).
+Blockers for all three are recorded in `docs/REFACTOR.md`. Conclusion: on this small-batch
+hardware, kernel fusion regresses efficiency (norm/qknorm kernels are small, attention is
+history-bound, and launch overhead is already served by hipGraph M1), so no fusion is
+promoted; all unfused fallbacks (the invariant) are preserved.
 
 ### D3 — MoE routing and grouped selected-expert (highest leverage — M0)
 
@@ -369,7 +373,7 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `prefill_native` wired + validated (ac118f0b7): 12-tok ~64 ms, 320-tok ~347 tok/s, matches serial next-token |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
 | M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | OPEN: batched prefill kernels implement single-sequence causal, not independent per-request KV spans; needs multi-request kernels + continuous-batching loop |
-| M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu opt-in `HIPENGINE_MAPLE_FUSE_MOE=1`; down+weighted reverted (see `WORKLOG.md`) |
+| M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):
 

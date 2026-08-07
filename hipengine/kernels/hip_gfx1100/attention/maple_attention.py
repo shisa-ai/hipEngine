@@ -238,6 +238,63 @@ def maple_attention_decode_bf16(
     )
 
 
+def maple_attention_fused_qknorm_decode_bf16(
+    qkv_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    q_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    rope_dim: int,
+    eps: float,
+    rope_theta: float,
+    scale: float,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fused QK-norm+RoPE+KV-write + online-softmax attention decode (D2).
+
+    One kernel per q-head block. Bit-exact with the unfused qknorm_rope_kv_write
+    + attention_decode chain; intended to cut the decode launch count.
+    """
+
+    base, live, token_positions, evict_mask, row_positions, capacity = _span_pointers(spans)
+    _launch(
+        "hipengine_maple_attention_fused_qknorm_decode_bf16",
+        (_PTR,) * 11 + (_I64, _I64, _I64, _I64, _F32, _F32, _F32, _I64, _PTR),
+        (
+            qkv_ptr,
+            q_norm_weight_ptr,
+            k_norm_weight_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            out_ptr,
+            base,
+            live,
+            token_positions,
+            evict_mask,
+            row_positions,
+            q_heads,
+            kv_heads,
+            head_dim,
+            rope_dim,
+            eps,
+            rope_theta,
+            scale,
+            capacity,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_attention_prefill_bf16(
     qkv_ptr: int,
     key_cache_ptr: int,

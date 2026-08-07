@@ -203273,3 +203273,21 @@ Vulkan local sizes verbatim will close the measured gap.
   (batched GEMM primitives cover the linear/FFN side), (b) a batched GQA
   attention + KV append kernel reading per-row KVLiveSpans, and (c) a
   continuous-batching owner loop. Each is a focused follow-up.
+
+## 2026-08-07 — M2/D2: fused qknorm+attention decode (opt-in, ~1% regression)
+
+- Add `maple_attention_fused_qknorm_decode_bf16` (attention plugin): one kernel
+  per q-head block does (1) QK-norm+RoPE the current Q, (2) QK-norm+RoPE+KV-write
+  the current K/V for the head's kv_head (redundant across the 4-block group so
+  each block is self-contained, no cross-block race), (3) the online-softmax
+  attention scan. Bit-exact with the unfused qknorm_rope_kv_write +
+  attention_decode chain.
+- Correctness: new `test_maple_fused_qknorm_attention_decode_matches_unfused_chain`
+  asserts attention output + K/V cache match bit-for-bit. Real-model opt-in decode
+  is bit-exact (BITEXACT=True) but ~1% slower (interleaved eager 6442 vs 6377 us).
+- Wired behind `HIPENGINE_MAPLE_FUSE_QKATTN=1` (default 0); blocker in
+  `docs/REFACTOR.md`. 38/38 maple tests pass; ruff clean.
+- This completes the D2 fusion investigation across all named composites: MoE
+  dual+swiglu (~9% micro regression), down+weighted (~3.5%, reverted), and
+  qknorm+attention (~1% step regression) all regress on gfx1151 small-batch, so
+  none is promoted; launch reduction is served by hipGraph (M1).
