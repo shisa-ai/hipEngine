@@ -1965,12 +1965,19 @@ The prior B4 budget row was depressed by one cold first prompt at 48.60 tok/s;
 its other nine rows and 171/242 acceptance ledger match the refresh. The
 candidate-local warmup moves that prompt into the mid-70s, so the old B3
 selection is superseded rather than treated as a source-level B4 regression.
-Current hipEngine B3 **60.262 tok/s** is **10.96% below matched Vulkan B3** and
-**13.66% below selected Vulkan B4**, requiring a **15.82%** hipEngine speedup.
+The retained cleaner canonical hipEngine B3 **61.394 tok/s** is **9.290% below
+matched Vulkan B3** and **12.040% below selected Vulkan B4**, requiring a
+**13.688%** speedup. The final post-module production control is **61.147 tok/s**,
+**12.394% below** B4 (**+14.148% required**); exact K/V component wins are kept
+without replacing the cleaner topline. The canonical row comes from direct
+proposal-to-target retirement; proposal-only **61.020 tok/s** and immediate N2
+**60.903 tok/s** remain disclosed controls.
 
-The old `ee0445c99` query attribution is not carried forward as a latest-source
-module ledger. Fresh matched B3/B4 Vulkan and current hipEngine profiles are the
-next campaign unit; profiler numbers remain ranking evidence, never toplines.
+The old `ee0445c99` query attribution is not carried forward. Fresh matched
+B3/B4 Vulkan and hipEngine profiles rank submission first; the retained proposal,
+target-policy, and direct-retirement mechanisms reduce the normalized submission
+residual **41.346 -> 20.467 ms**. Profiler numbers remain attribution, never
+toplines.
 
 This is an external floor, not a hipEngine result. Latest artifact:
 [`2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`](results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json).
@@ -3014,9 +3021,183 @@ runtime, row-5 kernel, test, and harness changes are removed; B1-B3 remains
 production. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**
 is unchanged. Artifact:
 [`2026-08-06-qwen36-27b-dense-b4-budget-rejected.json`](results/2026-08-06-qwen36-27b-dense-b4-budget-rejected.json).
-The final model/platform, correctness, anti-gaming, module-coverage,
-source-cleanup, validation, publication, and active-state checklist is
+The historical first-pass model/platform, correctness, anti-gaming,
+module-coverage, cleanup, and publication checklist is
 [`2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`](results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json).
+It is superseded for the latest `c8e03ce81` comparison by the final 2026-08-07
+audit below.
+
+#### Qwen3.6-27B exact proposal/target graphs and direct retirement, W7900/gfx1100
+
+Clean `a3e4912ee` replaces each eager B1/B2/B3 NextN chain and per-depth top-1
+host drain with one reusable fixed-address graph. Clean `09abd51968` extends the
+N2 `VERIFY|ACCEPT|selected COMMIT|UPDATE_CURSORS` graph through B3 and returns
+acceptance plus every target top-1 row in one bounded payload. Clean
+`92e823a2d` then removes their intermediate host synchronization: the proposal
+records a private event, the N2 stream waits and injects both i64-embedding and
+i32-acceptance token metadata, and the target synchronization retires both
+graphs. Shape-only scheduler rows are rebound only after the unchanged CPU
+acceptance oracle validates the bounded result. Captures, diagnostics, caller
+streams, long contexts, and output-cap tails retain the independently
+synchronized exact route.
+
+| Route | One-launch snapshot | + proposal graph | + target device policy | + direct retirement |
+| --- | ---: | ---: | ---: | ---: |
+| True AR | 24.114 tok/s | 24.085 tok/s | 24.158 tok/s | 23.524 tok/s (timing control) |
+| B1 | 43.792 tok/s | 44.035 tok/s | 44.224 tok/s | **44.496 tok/s (+0.616%)** |
+| B2 | 55.254 tok/s | 56.014 tok/s | 56.037 tok/s | **56.350 tok/s (+0.559%)** |
+| B3 | 60.262 tok/s | 61.020 tok/s | 60.903 tok/s | **61.394 tok/s (+0.808%)** |
+
+The direct-retirement packet is exact with unchanged acceptance
+(**115/127, 151/182, 169/219**). Versus its immediate N2 control, B2/B3 improve
+all **10/10 prompts and 7/7 full/train/heldout/category scopes**; B1 improves
+**9/10 prompts and 7/7 scopes** with one **-0.183%** timing row. Versus the prior
+canonical proposal packet, B1/B2/B3 improve **+1.046%/+0.599%/+0.613%**. The
+new B3 row is therefore canonical. Only **48 tracked bytes** are added and all
+allocations free.
+
+The paired physical gate agrees: same-loaded-model B3 decode improves
+**361.138 -> 359.828 ms (1.003640x, -1.310 ms)**, **15/17** pairs win, and the
+median paired change is **-1.821 ms** with exact IDs and acceptance. The warm
+post-keep profile has seven direct cycles and no measured capture. Distinct-run
+kernel sum rises **315.018 -> 321.779 ms**, so profile wall is **366.034 ms**;
+non-kernel residual nevertheless falls **48.985 -> 44.255 ms (-9.656%)**, the
+intended submission effect. The complete retained stack cuts that residual
+**65.134 -> 44.255 ms (-32.056%)** versus pre-submission control and leaves a
+**20.467-ms** gap versus Vulkan B3's inferred **23.789 ms**. Aggregate target
+arithmetic remains **21.718 ms ahead**, so submission is still first. Canonical
+hipEngine B3 is **9.290% below** matched Vulkan B3 **67.682 tok/s** and
+**12.040% below** selected Vulkan B4 **69.798 tok/s**, requiring **13.688%**.
+Artifacts:
+[`2026-08-06-qwen36-27b-native-submission-graphs-retained.json`](results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json) and
+[`2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json`](results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json).
+
+#### Qwen3.6-27B exact full-attention K compact-sidecar owner, W7900/gfx1100
+
+The staged native full-attention helper now asks the existing compact-Q4T16
+sidecar dispatcher to own K5,120/N1,024 rows 2-4 before falling back to the
+retained exact pack8 grid-Y batch and then scalar linear dispatch. This adds no
+kernel, weight, workspace, flag, or prompt-conditioned path: all 16 K tensors
+already carry the retained sidecar, but this older staged helper had bypassed
+it. CPU/fake routing passes 15/15, and the full W7900 B1-B3 transaction remains
+exact across logits, acceptance, rollback, dynamic graph reuse, K/V,
+hidden/provider state, ownership, and teardown.
+
+The marked B3 family changes exactly **112 pack8 / 2.409537 ms -> 112
+compact-col4 / 1.501054 ms (-37.70%, 1.605x)**. The prior actual-weight W7900
+leaf is BF16-bit exact and measures **20.152 -> 12.201 us (1.652x)**. A
+same-loaded-model 17-pair B3 screen with separate warm target graphs improves
+median decode **361.601 -> 361.232 ms (1.001021x)**, with a **-0.908-ms paired
+median** and **13/17** wins; IDs and acceptance are identical.
+
+The independent ten-prompt packet is exact but timing-negative at
+**44.496/56.350/61.394 -> 44.319/56.261/61.122 tok/s
+(-0.398%/-0.158%/-0.444%)**, so it does not replace the cleaner canonical
+**61.394 tok/s** row. Retain the deterministic target-window gain while keeping
+the headline unchanged. The inferred matched full-attention K/V bucket falls
+**4.958 -> 4.050 ms** but remains **2.010 ms** behind Vulkan, so V remains the
+next module target. Artifact:
+[`2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json`](results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json).
+
+#### Qwen3.6-27B exact full-attention V planar-Q6 sole owner, W7900/gfx1100
+
+Review recovered the complete promotion evidence that was measured before
+`a500269cd` but omitted from its publication. The eight Q6_K
+`layers.*.attn_v` tensors replace **80.0 MiB** of dense BF16 with **32.8125
+MiB** of sole-resident planar-qmicro tiles, a net **47.1875-MiB** reduction.
+This corrects the original imprecise “removes duplicate 32.8 MiB” wording; the
+rejected dual-resident sidecar was transient and never committed.
+
+The marked W7900 B3 trace replaces exactly **56 dense V / 1.760127 ms** with
+**56 qmicro V / 1.472815 ms (-16.323%, 1.195x)** at unchanged complete output
+IDs and GPU/CPU acceptance agreement. GPU1 actual-weight rows 2/3/4 improve
+**1.237x/1.251x/1.341x**, remain BF16-bit exact to independent qmicro c1
+launches, and stay far inside the project quality gate versus dense BF16 (max
+KL **1.28e-7**, top-1 **100%**). The complete binding W7900 B1-B3 transaction
+also passes logits, reject/partial/full/rollback state, dynamic graph reuse,
+K/V, provider output, physical ownership, lifecycle, and teardown.
+
+The full ten-prompt packet versus the immediately preceding K-sidecar route is
+exact and moves true AR/B1/B2/B3 **24.249/44.319/56.261/61.122 ->
+24.247/44.635/56.290/61.235 tok/s (-0.006%/+0.714%/+0.052%/+0.185%)**.
+B1 aggregate acceptance improves **115/127 -> 115/126**; B2/B3 aggregates stay
+**151/182** and **169/219** despite two prompt-local sequence changes. Because
+candidate B3 remains **0.260%** below the cleaner canonical **61.394 tok/s**,
+the topline does not change. The inferred combined K/V bucket falls **4.050 ->
+3.762 ms** but remains **1.723 ms / 1.845x** above Vulkan's **2.040 ms**; the
+subsequent Q6/Q4 source audits close that residual without another retained
+route before advancing to root. Artifact:
+[`2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`](results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json).
+
+#### Qwen3.6-27B Vulkan-source Q6 root geometry, runtime rejected
+
+The sequential root review reproduces latest clean Vulkan `c8e03ce81` rather
+than inferring from prior exact and integer-dot screens. Its AMD Q6 shader uses
+one local32 wave for two adjacent outputs, two half-wave QK-block partitions,
+and four nested scaled segment sums. A temporary byte-neutral planar-qmicro
+leaf passes CPU-reference and actual-root quality (max KL **1.873e-15**, top-1
+**100%**) and improves W7900 verifier rows 2/3/4 by
+**1.197x/1.104x/1.049x**. Scalar c1 instead regresses **2.69%**.
+
+The c1 cost is required, not optional. Routing only verifier rows changes
+logits versus scalar AR by up to **2.86e-6**; routing the same association for
+c1 restores an exact B1-B3 transaction and source-batched/repeated-c1 FP32
+identity. In the call-normalized W7900 profile, 41 MTP scalar roots regress
+**60.695327 -> 62.733971 ms**, outweighing seven row-4 roots improving
+**11.915263 -> 11.365432 ms**. MTP root total regresses **72.610590 ->
+74.099403 ms (+2.050%)**; all AR+MTP root work regresses **108.110536 ->
+110.818849 ms (+2.505%)**.
+
+The complete natural packet is nominally positive at B1/B2/B3
+**44.730/56.194/61.147 -> 44.823/56.452/61.429 tok/s**, with identical IDs and
+acceptance, but conflicts with both the counterbalanced leaves and exact family
+trace and is treated as one-run clock/queue variance. Completion screens reject
+old-association local64 (**0.894-0.950x**), independent wave packing (mixed
+below 1%), source col4 because c1 loses on W7900/XTX (**0.961x/0.933x**), and
+col8. All temporary code and flags are removed; canonical hipEngine B3 remains
+**61.394 tok/s**, **12.040% below** selected Vulkan B4 **69.798 tok/s**.
+Artifact:
+[`2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json`](results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json).
+
+#### Qwen3.6-27B latest-Vulkan final review, W7900/gfx1100
+
+The reopened one-module-at-a-time review is **complete by exhaustion below
+parity**, not a Vulkan win. Clean `d1f26fb5c` final populated controls and the
+already-completed post-module natural25 production control give:
+
+| Boundary | Initial hipEngine | Final hipEngine | Latest Vulkan | Final vs Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 populated prefill | 50.515 | **235.434 tok/s** | 79.351 | **+196.70%** |
+| 4096/128 populated prefill | 50.473 | **216.784 tok/s** | 80.622 | **+168.89%** |
+| 512/128 graph AR | 19.556 | **23.296 tok/s** | 12.535 | **+85.85%** |
+| 4096/128 graph AR | 18.649 | **21.897 tok/s** | 12.459 | **+75.76%** |
+| Natural true AR | 20.361 | **22.926 tok/s** | 12.528 | **+83.00%** |
+| Natural MTP | B3 14.858 | **B1 44.730 / B2 56.194 / B3 61.147 current; 61.394 canonical** | **B4 69.798** | **-12.394% current / -12.040% canonical** |
+
+All populated measured IDs are `9707`, logits are finite, graphs are reused,
+timing variation is at most 1.20%, and 29.786/32.611-GiB tracked allocations
+free completely. The ten-prompt code/general-English/general-Japanese/mixed
+control has exact greedy IDs, GPU/CPU acceptance, stage reconciliation, and
+teardown. It was already measured with the rejected root route forced off;
+production was then byte-restored, so the focused-repair policy avoids another
+equivalent expensive suite.
+
+The review found and resolved three real completeness issues: it recovered the
+omitted full-attention V publication and corrected its memory accounting,
+fixed the Q4 Vulkan reproduction to the source's `K_PER_ITER=16`, and added the
+missing root CPU/fail-closed/rollback/association gates before rejecting that
+net-slower package. Submission residual improved **41.346 -> 20.467 ms**;
+compact K plus sole-resident planar-Q6 V improved K/V **4.958 -> 3.762 ms**.
+Q5, wide Q6, Q6 V, Q4 MMVQ, and root are now either retained-improved or
+source-faithfully exhausted, with every rejected body/key/selector/flag/test
+removed. No unresolved correctness or cleanup finding remains.
+
+This exhaustion statement is scoped to the current exact/default algorithm,
+latest source/compiler/driver, and known gfx1100 mechanisms. Resume only for a
+materially new speculative/proposer schedule, association-preserving or
+producer-fused primitive, changed stack/source, or a newly profiled >=5%-wall
+opportunity. Final authority:
+[`2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
 
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 

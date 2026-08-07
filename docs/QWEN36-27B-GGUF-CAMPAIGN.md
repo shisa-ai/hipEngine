@@ -1,10 +1,13 @@
 # Qwen3.6-27B Q4_K_M GGUF Optimization Campaign
 
-Status: reopened on 2026-08-06 after the comparator moved to latest
-tracked-clean llama.cpp `c8e03ce81` (build 10290). The refreshed steady-state
-natural floor selects B4 at 69.798 tok/s; canonical hipEngine B3 is now
-61.394 tok/s / 12.040% short after retained proposal/target graphs and direct
-device retirement. A source-faithful, one-module-at-a-time parity pass is active.
+Status: **tabled on 2026-08-07 below selected Vulkan parity after the reopened
+source-faithful review exhausted current mechanisms.** Latest tracked-clean
+llama.cpp `c8e03ce81` (build 10290) selects B4 at 69.798 tok/s. The post-module
+hipEngine production control is B3 61.147 tok/s (**12.394% short; +14.148%
+required**); the cleaner retained canonical row remains 61.394 tok/s (**12.040%
+short; +13.688% required**). Populated prefill and true AR beat Vulkan at both
+512/128 and 4096/128. Resume only under the explicit high-leverage conditions
+in the final 2026-08-07 audit.
 
 Canonical target:
 `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` on AMD Radeon Pro W7900 / GPU0 /
@@ -1672,9 +1675,11 @@ Artifacts:
 - `benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json`
 - `benchmarks/results/2026-08-06-qwen36-27b-dense-b4-budget-rejected.json`
 
-### Final parity-or-exhaustion checklist (2026-08-06)
+### Historical first parity-or-exhaustion checklist (2026-08-06)
 
-The final prompt-to-artifact audit now closes the gap that reopened B4. Exact
+This checklist closed the first `ee0445c99` campaign and is superseded for
+current comparison by the later `c8e03ce81` refresh and 2026-08-07 audit below.
+At that publication, the prompt-to-artifact audit accounted for exact
 model/platform identity, true-AR and transactional-MTP correctness, full
 train/heldout/category promotion gates, retained and rejected families,
 per-module Vulkan attribution, B4/B5 economics, source/default cleanup,
@@ -1687,7 +1692,7 @@ template, planar-Q8 runtime selector, or X8 sidecar remains. Campaign-scoped
 post-removal tests and W7900 transactions are green. The repository-wide
 2026-08-03 baseline's 20 pre-existing failures in unchanged parent paths remain
 disclosed and are not falsely relabeled green. No optimization, benchmark, or
-campaign task remains after this publication. Compact checklist:
+campaign task remained at that publication. Compact historical checklist:
 `benchmarks/results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`.
 
 ### Latest Vulkan refresh and campaign reopen (2026-08-06)
@@ -1998,6 +2003,49 @@ source/compiler/model. D27-R2's ranked module pass is complete without a new
 retained route; canonical B3 remains **61.394 tok/s**. Artifact:
 `benchmarks/results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json`.
 
+### Final latest-Vulkan parity-or-exhaustion gate (2026-08-07)
+
+Clean `d1f26fb5c` populated controls close D27-R3 without repeating the already
+completed equivalent natural25 production control. With one discarded warmup
+reset and three measured persistent-session resets, exact/default hipEngine
+measures:
+
+| W7900 boundary | Initial hipEngine | Final hipEngine | Latest Vulkan | Final vs initial | Final vs Vulkan |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 512/128 populated prefill | 50.515 | **235.434 tok/s** | 79.351 | **+366.07%** | **+196.70%** |
+| 4096/128 populated prefill | 50.473 | **216.784 tok/s** | 80.622 | **+329.50%** | **+168.89%** |
+| 512/128 graph AR | 19.556 | **23.296 tok/s** | 12.535 | **+19.12%** | **+85.85%** |
+| 4096/128 graph AR | 18.649 | **21.897 tok/s** | 12.459 | **+17.42%** | **+75.76%** |
+| Natural true AR | 20.361 | **22.926 tok/s** | 12.528 | **+12.60%** | **+83.00%** |
+| Natural exact B3 | 14.858 | **61.147 tok/s** current / **61.394** canonical | **69.798 B4** | **+311.54%** current | **-12.394%** current / **-12.040%** canonical |
+
+All six populated final IDs are `9707`, logits are finite, measured graph
+captures are reused, timing variation is at most 1.20%, tracked peaks are
+29.786/32.611 GiB, and every tracked byte frees. The post-module ten-prompt
+control remains exact at AR/B1/B2/B3 **22.926/44.730/56.194/61.147 tok/s**,
+with all greedy IDs, GPU/CPU acceptance, stage accounting, and teardown green.
+It was measured with the rejected root selector forced off; production source
+was subsequently byte-restored, so policy forbids another equivalent >5-minute
+suite merely to change dirty provenance.
+
+The review is complete but parity is not. Submission reduced its inferred
+matched residual **41.346 -> 20.467 ms**; Q5 and wide Q6 were source-unchanged
+and already exhausted; exact compact K plus sole-resident planar-Q6 V reduced
+full-attention K/V **4.958 -> 3.762 ms**; source-faithful Q6 V, Q4 MMVQ, and Q6
+root packages all lose under binding rows/quantization/c1 economics and were
+removed. The review also recovered the omitted V publication, corrected the Q4
+source reproduction to `K_PER_ITER=16`, and repaired the root CPU-oracle,
+fail-closed, cleanup, and scalar-association gaps before rejecting that route.
+No unresolved correctness or cleanup finding remains.
+
+“Exhausted” is scoped, not absolute: it covers the current exact/default
+algorithm, latest comparator source, compiler/driver, and known gfx1100
+primitives. Reopen for a materially new speculative schedule or proposer-quality
+shift, an association-preserving/producer-fused primitive, changed source or
+stack, or a newly profiled production mechanism with a credible >=5%-wall
+ceiling. Compact authority:
+`benchmarks/results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -2009,8 +2057,8 @@ retained route; canonical B3 remains **61.394 tok/s**. Artifact:
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
 | 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | complete; submission residual **41.346 -> 20.467 ms** and parent/child is rejected; latest Q5/wide-Q6 ladders remain exhausted; exact compact K plus sole-resident planar-Q6 V reduce K/V **4.958 -> 3.762 ms**, then source Q6/Q4 K/V routes lose at binding economics and are removed; final Vulkan-source root rows win in isolation but required matching c1 makes MTP root **72.611 -> 74.099 ms (+2.05%)**, so all temporary code is removed and every ranked module is either retained-improved or source-audited exhausted |
-| 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending final parity/exhaustion gate after module closure |
-| 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
+| 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning, or close by measured exhaustion. | complete by exhaustion; clean populated controls beat Vulkan, post-module B3 is **61.147** and retained canonical is **61.394** versus selected Vulkan B4 **69.798 tok/s**; no current mechanism closes the 12.04-12.39% gap |
+| 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | complete as a below-parity publication; rejected source routes are removed and no Qwen3.6-specific refactor debt remains |
 
 ### Historical first pass
 
@@ -2186,6 +2234,7 @@ Do not fill cells from historical PARO, MoE, HIP, or another GPU.
 | 2026-08-06 | llama.cpp Vulkan `c8e03ce81`, latest selected budget | W7900 | stateful 512/128, 4K/128; natural25 matched B3 / selected B4 | 79.351 / 80.622 | 12.535 / 12.459; natural AR 12.528 | B3 67.682, **B4 69.798** | selected B4 5.5714x | tracked-clean build 10290; candidate-local warmup; B4 accepts 171/241; all categories improve | `benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json` |
 | 2026-08-06 | hipEngine `a3e4912ee` + `09abd51968`, native submission graphs | W7900 | inherited unchanged 512/128, 4K/128; natural25 B1-B3 | 234.580 / 215.127 | 23.284 / 21.903; canonical-packet natural AR 24.085 | B1 44.035, B2 56.014, B3 61.020 | 1.8283x / 2.3257x / 2.5336x | proposal graph: all 30 rows/scopes exact and improved; N2 target policy retained physically with mixed immediate 44.224/56.037/60.903 packet; clean teardown | `benchmarks/results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json` |
 | 2026-08-06 | hipEngine `92e823a2d`, direct proposal-to-target retirement | W7900 | inherited unchanged 512/128, 4K/128; natural25 B1-B3 | 234.580 / 215.127 | 23.284 / 21.903; natural AR 23.524 | **B1 44.496, B2 56.350, B3 61.394** | 1.8915x / 2.3954x / 2.6098x | exact event/device handoff; B2/B3 10/10 prompts and 7/7 scopes improve vs N2; B1 9/10 and 7/7; 48 bytes; clean teardown | `benchmarks/results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json` |
+| 2026-08-07 | hipEngine `d1f26fb5c`, latest-source exhaustion gate | W7900 | 512/128, 4K/128; natural25 B1-B3 | **235.434 / 216.784** | **23.296 / 21.897**; natural AR **22.926** | B1 **44.730**, B2 **56.194**, B3 **61.147 current / 61.394 canonical** | 1.9511x / 2.4511x / 2.6671x current | populated controls clean/deterministic/finite; natural IDs/acceptance/stages exact; every ranked module retained-improved or source-audited exhausted; parity not claimed | `benchmarks/results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json` |
 
 Update this table only with retained or explicitly labeled blocked/diagnostic
 rows. Detailed iteration history belongs in `WORKLOG.md`; benchmark toplines

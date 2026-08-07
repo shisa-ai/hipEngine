@@ -4565,11 +4565,13 @@ The prior B4 budget row was depressed by one cold first prompt at 48.60 tok/s;
 its other nine rows and 171/242 acceptance ledger match the refresh. The
 candidate-local warmup moves that prompt into the mid-70s, so the old B3
 selection is superseded rather than treated as a source-level B4 regression.
-Current canonical hipEngine B3 **61.394 tok/s** is **9.290% below matched Vulkan
-B3** and **12.040% below selected Vulkan B4**, requiring a **13.688%** hipEngine
-speedup. It comes from the exact direct proposal-to-target retirement packet;
-the prior proposal-only **61.020 tok/s** and immediate N2 **60.903 tok/s** rows
-remain its disclosed controls.
+The retained cleaner canonical hipEngine B3 **61.394 tok/s** is **9.290% below
+matched Vulkan B3** and **12.040% below selected Vulkan B4**, requiring a
+**13.688%** speedup. The final post-module production control is **61.147 tok/s**,
+**12.394% below** B4 (**+14.148% required**); exact K/V component wins are kept
+without replacing the cleaner topline. The canonical row comes from direct
+proposal-to-target retirement; proposal-only **61.020 tok/s** and immediate N2
+**60.903 tok/s** remain disclosed controls.
 
 The old `ee0445c99` query attribution is not carried forward. Fresh matched
 B3/B4 Vulkan and hipEngine profiles rank submission first; the retained proposal,
@@ -5619,9 +5621,11 @@ runtime, row-5 kernel, test, and harness changes are removed; B1-B3 remains
 production. Canonical **60.262 tok/s / 2.4991x own AR / 11.49% below Vulkan**
 is unchanged. Artifact:
 [`2026-08-06-qwen36-27b-dense-b4-budget-rejected.json`](results/2026-08-06-qwen36-27b-dense-b4-budget-rejected.json).
-The final model/platform, correctness, anti-gaming, module-coverage,
-source-cleanup, validation, publication, and active-state checklist is
+The historical first-pass model/platform, correctness, anti-gaming,
+module-coverage, cleanup, and publication checklist is
 [`2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json`](results/2026-08-06-qwen36-27b-parity-or-exhaustion-completion-audit.json).
+It is superseded for the latest `c8e03ce81` comparison by the final 2026-08-07
+audit below.
 
 #### Qwen3.6-27B exact proposal/target graphs and direct retirement, W7900/gfx1100
 
@@ -5754,6 +5758,46 @@ col8. All temporary code and flags are removed; canonical hipEngine B3 remains
 **61.394 tok/s**, **12.040% below** selected Vulkan B4 **69.798 tok/s**.
 Artifact:
 [`2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json`](results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json).
+
+#### Qwen3.6-27B latest-Vulkan final review, W7900/gfx1100
+
+The reopened one-module-at-a-time review is **complete by exhaustion below
+parity**, not a Vulkan win. Clean `d1f26fb5c` final populated controls and the
+already-completed post-module natural25 production control give:
+
+| Boundary | Initial hipEngine | Final hipEngine | Latest Vulkan | Final vs Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 populated prefill | 50.515 | **235.434 tok/s** | 79.351 | **+196.70%** |
+| 4096/128 populated prefill | 50.473 | **216.784 tok/s** | 80.622 | **+168.89%** |
+| 512/128 graph AR | 19.556 | **23.296 tok/s** | 12.535 | **+85.85%** |
+| 4096/128 graph AR | 18.649 | **21.897 tok/s** | 12.459 | **+75.76%** |
+| Natural true AR | 20.361 | **22.926 tok/s** | 12.528 | **+83.00%** |
+| Natural MTP | B3 14.858 | **B1 44.730 / B2 56.194 / B3 61.147 current; 61.394 canonical** | **B4 69.798** | **-12.394% current / -12.040% canonical** |
+
+All populated measured IDs are `9707`, logits are finite, graphs are reused,
+timing variation is at most 1.20%, and 29.786/32.611-GiB tracked allocations
+free completely. The ten-prompt code/general-English/general-Japanese/mixed
+control has exact greedy IDs, GPU/CPU acceptance, stage reconciliation, and
+teardown. It was already measured with the rejected root route forced off;
+production was then byte-restored, so the focused-repair policy avoids another
+equivalent expensive suite.
+
+The review found and resolved three real completeness issues: it recovered the
+omitted full-attention V publication and corrected its memory accounting,
+fixed the Q4 Vulkan reproduction to the source's `K_PER_ITER=16`, and added the
+missing root CPU/fail-closed/rollback/association gates before rejecting that
+net-slower package. Submission residual improved **41.346 -> 20.467 ms**;
+compact K plus sole-resident planar-Q6 V improved K/V **4.958 -> 3.762 ms**.
+Q5, wide Q6, Q6 V, Q4 MMVQ, and root are now either retained-improved or
+source-faithfully exhausted, with every rejected body/key/selector/flag/test
+removed. No unresolved correctness or cleanup finding remains.
+
+This exhaustion statement is scoped to the current exact/default algorithm,
+latest source/compiler/driver, and known gfx1100 mechanisms. Resume only for a
+materially new speculative/proposer schedule, association-preserving or
+producer-fused primitive, changed stack/source, or a newly profiled >=5%-wall
+opportunity. Final authority:
+[`2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json).
 
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 

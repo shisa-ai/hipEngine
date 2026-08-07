@@ -1,0 +1,259 @@
+{
+  "schema": 1,
+  "status": "complete_by_exhaustion_below_selected_vulkan_parity",
+  "performance_claim": true,
+  "performance_claim_scope": "Final clean W7900 512/128 and 4096/128 populated prefill plus true-AR controls at d1f26fb5c, the already-completed post-module full natural25 production control, and previously published matched module/source audits.",
+  "correctness_claim": true,
+  "correctness_scope": "Finite deterministic populated controls, exact natural25 greedy output and GPU/CPU acceptance, complete B1-B3 reject/partial/full/rollback/state/KV/provider transactions for retained routes, CPU-reference gates for new kernels, and removal of every rejected source candidate.",
+  "kind": "qwen36_27b_latest_vulkan_parity_exhaustion_audit",
+  "timestamp": "2026-08-07T13:35:05+09:00",
+  "objective": {
+    "requested": "Review the recent Qwen3.6-27B work for correctness, completeness, and optimization; continue until hipEngine beats latest llama.cpp Vulkan or credible options are exhausted.",
+    "parity_achieved": false,
+    "credible_current_options_exhausted": true,
+    "scope_of_exhaustion": "Current Qwen3.6-27B exact/default algorithm, llama.cpp c8e03ce81 source mechanisms, gfx1100 primitives, TheRock HIP/compiler stack, and the profiled submission/Q5/Q6/KV/root families.",
+    "decision": "Table the campaign below selected Vulkan B4; retain exact physical K/V improvements and the cleaner 61.394 tok/s canonical B3 row, while disclosing the post-module production control at 61.147 tok/s.",
+    "reopen_policy": "Reopen only for a materially new speculative schedule or proposer-quality change, a new association-preserving or producer-fused primitive, changed model/compiler/driver/Vulkan source, or a newly profiled production mechanism with a credible >=5% complete-wall ceiling."
+  },
+  "identity": {
+    "hipengine_commit": "d1f26fb5cc0e4477107b452ea01f75f5179d7a98",
+    "hipengine_branch": "main",
+    "hipengine_tree_clean_for_final_populated_controls": true,
+    "model_path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "model_bytes": 17106773120,
+    "model_sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "model_full_sha256_from_external_floor": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "hipengine_tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "quant": "gguf_q4_k_m / MOSTLY_Q4_K_M",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "architecture": "gfx1100",
+    "hip_runtime": "HIP version: 7.15.0-0000000",
+    "hip_compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "kv_dtype": "bf16",
+    "llamacpp_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "llamacpp_build": 10290,
+    "llamacpp_backend": "Release Vulkan, Vulkan0/RADV NAVI31, Mesa 26.1.4, F16 K/V"
+  },
+  "status_table": [
+    {
+      "metric": "populated prefill 512/128",
+      "initial_hipengine_tok_s": 50.515,
+      "current_hipengine_tok_s": 235.43407204220892,
+      "llamacpp_vulkan_tok_s": 79.35054062205245,
+      "initial_to_current_percent": 366.0676473170522,
+      "current_vs_vulkan_percent": 196.70128293590858,
+      "verdict": "hipEngine ahead"
+    },
+    {
+      "metric": "populated prefill 4096/128",
+      "initial_hipengine_tok_s": 50.473,
+      "current_hipengine_tok_s": 216.78354642690746,
+      "llamacpp_vulkan_tok_s": 80.62199395945221,
+      "initial_to_current_percent": 329.50398515425564,
+      "current_vs_vulkan_percent": 168.888842585481,
+      "verdict": "hipEngine ahead"
+    },
+    {
+      "metric": "populated true AR 512/128",
+      "initial_hipengine_tok_s": 19.556,
+      "current_hipengine_tok_s": 23.295828293131667,
+      "llamacpp_vulkan_tok_s": 12.534680104106934,
+      "initial_to_current_percent": 19.12368732425682,
+      "current_vs_vulkan_percent": 85.85099978338408,
+      "verdict": "hipEngine ahead"
+    },
+    {
+      "metric": "populated true AR 4096/128",
+      "initial_hipengine_tok_s": 18.649,
+      "current_hipengine_tok_s": 21.896943739587012,
+      "llamacpp_vulkan_tok_s": 12.458712122326896,
+      "initial_to_current_percent": 17.41618177696933,
+      "current_vs_vulkan_percent": 75.75607755111491,
+      "verdict": "hipEngine ahead"
+    },
+    {
+      "metric": "natural25 true AR",
+      "initial_hipengine_tok_s": 20.361,
+      "current_hipengine_tok_s": 22.926202957640296,
+      "llamacpp_vulkan_tok_s": 12.527916373652625,
+      "initial_to_current_percent": 12.598609879869826,
+      "current_vs_vulkan_percent": 83.00092588306414,
+      "verdict": "hipEngine ahead"
+    },
+    {
+      "metric": "natural25 exact/default MTP B1 / B2 / B3",
+      "initial_hipengine_tok_s": [17.128, 16.005, 14.858],
+      "post_module_production_tok_s": [44.73042275530028, 56.19405113345444, 61.14680879565122],
+      "retained_cleaner_canonical_B3_tok_s": 61.39440170570785,
+      "llamacpp_vulkan_matched_B3_tok_s": 67.68237226714795,
+      "llamacpp_vulkan_selected_B4_tok_s": 69.79783638340183,
+      "initial_to_post_module_percent": [161.15379936536831, 251.10309986538232, 311.5413164332428],
+      "post_module_B3_vs_selected_vulkan_percent": -12.394406526056523,
+      "post_module_required_speedup_percent": 14.147962515364942,
+      "canonical_B3_vs_selected_vulkan_percent": -12.039677894216716,
+      "canonical_required_speedup_percent": 13.687623698941763,
+      "verdict": "below selected Vulkan parity"
+    }
+  ],
+  "final_populated_controls": {
+    "protocol": "Resident bulk prefill, bulk attention, exact populated WMMA prefill, GEMV decode, one-step graph replay, one discarded warmup reset, and three measured persistent-session resets. Graph capture is excluded from measured decode and reused for all measured resets.",
+    "rows": {
+      "512/128": {
+        "prefill_tok_s_samples": [237.9847010502465, 235.43407204220892, 232.70091758262845],
+        "prefill_tok_s_median": 235.43407204220892,
+        "decode_tok_s_samples": [23.372234539566847, 23.295828293131667, 23.249175899163067],
+        "decode_tok_s_median": 23.295828293131667,
+        "tracked_peak_gib": 29.786430720239878,
+        "finite_final_logits_all": true,
+        "final_token_ids": [9707, 9707, 9707],
+        "tracked_bytes_after_close": 0
+      },
+      "4096/128": {
+        "prefill_tok_s_samples": [220.75861850017628, 216.78354642690746, 215.88843766958257],
+        "prefill_tok_s_median": 216.78354642690746,
+        "decode_tok_s_samples": [22.006716159858893, 21.896943739587012, 21.875272459924112],
+        "decode_tok_s_median": 21.896943739587012,
+        "tracked_peak_gib": 32.61073273047805,
+        "finite_final_logits_all": true,
+        "final_token_ids": [9707, 9707, 9707],
+        "tracked_bytes_after_close": 0
+      }
+    },
+    "command_template": "PATH=/home/lhl/mambaforge/envs/therock/bin:$PATH PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --json <output.json>"
+  },
+  "final_natural25_control": {
+    "protocol": "Ten committed prompts spanning code/general_en/general_ja/mixed_ja_en, fixed six/four train/heldout split, 25 visible outputs and 24 timed transitions per prompt, true AR plus exact native B1-B3, one warmup and one measured run.",
+    "true_ar_tok_s": 22.926202957640296,
+    "B1_tok_s": 44.73042275530028,
+    "B2_tok_s": 56.19405113345444,
+    "B3_tok_s": 61.14680879565122,
+    "mtp_vs_true_ar": {
+      "B1": 1.9510610997358198,
+      "B2": 2.451084082143111,
+      "B3": 2.6671145199503554
+    },
+    "accepted_proposed": {
+      "B1": [115, 126],
+      "B2": [151, 182],
+      "B3": [169, 219]
+    },
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "all_stage_ledgers_reconciled": true,
+    "memory_after_close_bytes": 0,
+    "provenance_note": "Measured as the selector-disabled control while the rejected root source candidate existed uncommitted. The selector failed closed, the control uses production owners, and all temporary source was subsequently removed; per focused-repair policy this equivalent full natural suite was not repeated after byte-restoring production."
+  },
+  "module_closure": [
+    {
+      "module": "submission / graph / queue / host",
+      "initial_gap_ms": 41.345873271679895,
+      "current_gap_ms": 20.46658210501323,
+      "retained": "proposal graph, N2 target policy, direct event/device retirement",
+      "rejected": "graph upload, four-way split, and parent/child graph composition",
+      "status": "current materially distinct mechanisms exhausted"
+    },
+    {
+      "module": "Q5 ssm_out",
+      "hipengine_ms": 22.5767,
+      "llamacpp_vulkan_ms": 15.144,
+      "gap_ms": 7.4327,
+      "retained": "sole-resident Q5T16 owner",
+      "coverage": "dense BF16, raw/T16 layouts, row reuse, workgroups, DP4A/Q8_1, WMMA, rotating residency, and producer handoffs",
+      "status": "latest source unchanged; exhausted"
+    },
+    {
+      "module": "wide Q6 FFN-down plus linear-attention QKV",
+      "hipengine_ms": 46.6363,
+      "llamacpp_vulkan_ms": 41.1243,
+      "gap_ms": 5.512,
+      "retained": "sole-resident byte-neutral planar-qmicro",
+      "coverage": "legacy/planar T16, col16/8/4, rows1-6, WMMA, integer-WMMA, Q8_1, X8 c1 sidecar, and residual/RMSNorm fusions",
+      "status": "latest source unchanged; exhausted"
+    },
+    {
+      "module": "full-attention K/V",
+      "initial_hipengine_ms": 4.958,
+      "current_hipengine_ms": 3.762205,
+      "llamacpp_vulkan_ms": 2.03952,
+      "gap_ms": 1.722685,
+      "retained": "existing compact-Q4T16 K sidecar owner plus sole-resident planar-Q6 V",
+      "rejected": "Vulkan-source Q6 local32/col2 and Q4 Q8_1/MMVQ after inclusive shared-quantization economics",
+      "status": "current Vulkan source mechanism ladder exhausted"
+    },
+    {
+      "module": "target root projection",
+      "hipengine_ms": 11.7623,
+      "llamacpp_vulkan_ms": 10.692826666666667,
+      "gap_ms": 1.0694733333333328,
+      "rejected": "Vulkan-source local32/col2 because exact transaction consistency requires a slower matching c1 owner; old-association local64, independent wave packing, col4, and col8 do not rescue the package",
+      "status": "current floating/integer/compressed/geometry ladder exhausted"
+    },
+    {
+      "module": "complete target arithmetic in frozen matched ledger",
+      "hipengine_ms": 255.48481,
+      "llamacpp_vulkan_ms": 277.2031848484848,
+      "gap_ms": -21.718374848484786,
+      "status": "hipEngine directionally ahead before the later K/V reductions; individual slower families remain disclosed above"
+    }
+  ],
+  "review_findings": [
+    {
+      "finding": "The first full-attention V commit omitted its binding publication packet and described the memory change imprecisely.",
+      "severity": "publication completeness",
+      "resolution": "Recovered the exact W7900 transaction/profile/natural evidence and corrected 80.0 MiB dense BF16 -> 32.8125 MiB qmicro, a 47.1875 MiB saving, in 6b778651d."
+    },
+    {
+      "finding": "The first Q4 Vulkan-source diagnostic missed K_PER_ITER=16 and therefore did not reproduce the comparator shader.",
+      "severity": "optimization completeness",
+      "resolution": "Corrected the disposable leaf to local32/col1 K16, reran actual Q/K/V and shared-quantization economics, and rejected the still-slower route in a934a65af."
+    },
+    {
+      "finding": "The root candidate initially left a losing compiled/registered diagnostic, lacked the required CPU oracle, and routed a changed reduction association only for verifier rows.",
+      "severity": "correctness and cleanup",
+      "resolution": "Removed the losing diagnostic, added CPU/fail-closed/rollback/source-c1 identity coverage, exposed the 2.86e-6 transaction mismatch, routed matching c1 for the binding measurement, then rejected and removed the net-slower package in d1f26fb5c."
+    }
+  ],
+  "completion_checklist": [
+    {"criterion": "latest external baseline identity and selected budget", "status": "pass", "evidence": "Tracked-clean llama.cpp c8e03ce81 build 10290; full W7900 low-level/stateful/natural B1-B4 refresh selects B4 at 69.798 tok/s."},
+    {"criterion": "current 512/4096 populated controls", "status": "pass", "evidence": "Clean d1f26fb5c controls have three measured resets, reused graph, finite logits, deterministic token 9707, stable timing, and zero tracked bytes after close."},
+    {"criterion": "full category/heldout natural gate", "status": "pass", "evidence": "Post-module production control covers all ten prompts, four categories, and fixed train/heldout split; all greedy outputs and GPU/CPU acceptance are exact."},
+    {"criterion": "one-module-at-a-time source review", "status": "pass", "evidence": "Submission, Q5, wide Q6, full-attention K/V, Q4 MMVQ, and root are each retained-improved or explicitly source-audited and rejected with measured economics."},
+    {"criterion": "review findings resolved", "status": "pass", "evidence": "V publication recovered, Q4 K16 source mechanism corrected, root CPU/transaction/cleanup gaps repaired, and all temporary candidate code removed."},
+    {"criterion": "parity", "status": "fail", "evidence": "Post-module B3 is 61.147 tok/s and retained cleaner canonical B3 is 61.394 tok/s versus selected Vulkan B4 69.798 tok/s."},
+    {"criterion": "source/default cleanup", "status": "pass", "evidence": "HEAD d1f26fb5c is tracked-clean before final publication; no rejected Q6/Q4/root body, wrapper, key, selector, flag, test, sidecar, or refactor debt remains."},
+    {"criterion": "fully optimized", "status": "pass_with_scope", "evidence": "No credible current-source/current-algorithm mechanism remains unmeasured; this is not a claim that future algorithms, primitives, compilers, or hardware cannot improve it."}
+  ],
+  "validation": {
+    "final_populated_controls": "Completed clean on W7900 at d1f26fb5c.",
+    "natural25": "Equivalent post-module production control already completed; not repeated after source cleanup under the focused-repair and >5-minute rerun policies.",
+    "prior_focused_gates": "Retained K/V and rejected root units include focused CPU/fake tests, CPU-reference quality, complete W7900 B1-B3 transactions, cached named traces, and teardown evidence in their compact artifacts.",
+    "publication_checks": [
+      "python3 -m json.tool benchmarks/results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json",
+      "python3 scripts/sync_benchmark_readme.py --check",
+      "python3 scripts/resolve_worklog_conflict.py WORKLOG.md --check",
+      "git diff --check"
+    ]
+  },
+  "source_artifacts": [
+    {"path": "/tmp/hipengine-qwen36-27b/final-parity-d1f26fb5c/ar-512x128.json", "sha256": "e2bee7c4b53bd89ed7c17e8101d1191eb012d305031b378368bc6641a5803c7e"},
+    {"path": "/tmp/hipengine-qwen36-27b/final-parity-d1f26fb5c/ar-4096x128.json", "sha256": "70173f9823d5ab6a0763be836f8c66516e878269ab0be439747ff5eaf0c6fad7"},
+    {"path": "/tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/natural25-control-b1-b3.json", "sha256": "d145f13331ed9014d029ac2ae56c67dda710932b1812ebf33b7cb3255453e705"},
+    {"path": "benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json", "sha256": "4d549081f3a3a470e50c17987a7e1f6eae1301cbf6c7fd20c86d94aba2e3bf2a"},
+    {"path": "benchmarks/results/2026-08-06-qwen36-27b-latest-vulkan-profile-ledger.json", "sha256": "22cfef5544898a66cbad581b8d96aed893b54660f0b436366f8721b0612ad8e7"},
+    {"path": "benchmarks/results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json", "sha256": "dfbcb02334ded4e88ecabfd465a012536f2b32c114bf6830c16e74dd5771bed3"},
+    {"path": "benchmarks/results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json", "sha256": "cc3b4f6da5bea77d027c3a582207e95eb0dbf10499ef07e2ee2aef50784b005d"},
+    {"path": "benchmarks/results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json", "sha256": "c77b0f937e29bc54b07603b82446fb1d92177349e2bbcfddaa5810abdf28f323"},
+    {"path": "benchmarks/results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json", "sha256": "00ec5b4c8b658cb0208d14ffab23a1c6757d781cd36fd0df946a8d547d0002b3"}
+  ],
+  "final_state": {
+    "campaign": "tabled below selected Vulkan parity by measured exhaustion",
+    "current_production_B3_tok_s": 61.14680879565122,
+    "retained_cleaner_canonical_B3_tok_s": 61.39440170570785,
+    "selected_vulkan_B4_tok_s": 69.79783638340183,
+    "current_gap_percent": -12.394406526056523,
+    "canonical_gap_percent": -12.039677894216716,
+    "work_in_progress": "none",
+    "production_code_changes_in_this_publication": false
+  }
+}

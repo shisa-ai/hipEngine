@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-08-07
 
+- [latest-Vulkan final review; complete by exhaustion below parity] Qwen3.6-27B Q4_K_M / populated 512/4096 plus natural25 / W7900: versus the initial hipEngine baseline, final clean populated prefill improves **50.515/50.473 -> 235.434/216.784 tok/s (+366.07%/+329.50%)** and graph AR improves **19.556/18.649 -> 23.296/21.897 tok/s (+19.12%/+17.42%)**; post-module natural B3 improves **14.858 -> 61.147 tok/s (+311.54%)** but remains **12.394% below** selected Vulkan B4 **69.798 tok/s** (cleaner canonical B3 **61.394**, **-12.040%**), after every ranked submission/Q5/Q6/KV/root mechanism is retained-improved or source-audited exhausted and all review findings are resolved; `benchmarks/results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json`.
+
 - [rejected Vulkan-source Q6 root geometry; canonical topline unchanged] Qwen3.6-27B Q4_K_M / natural25 B3 target / W7900: local32/col2 improves seven row-4 roots **11.915 -> 11.365 ms (-4.61%)**, but exact transaction consistency requires the matching c1 association and 41 MTP scalar roots regress **60.695 -> 62.734 ms**, making total MTP root **72.611 -> 74.099 ms (+2.05%)**; exact old-tree, source-wave-pack, col4/col8, and RX 7900 XTX transfer screens do not rescue the package, all temporary code is removed, and canonical B3 remains **61.394 tok/s**; `benchmarks/results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json`.
 
 ## 2026-08-06
