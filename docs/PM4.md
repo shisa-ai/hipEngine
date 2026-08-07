@@ -1,11 +1,11 @@
 # In-Tree Retained-PM4 Submission
 
-> **Status (2026-08-07):** implementation in progress. P0 documentation and P1
-> exact HIP graph/DSO/HSACO/kernarg inspection are complete; the public-HSA
-> direct-AQL core is next. Native HIP graphs remain the package default. The
-> first admitted target is gfx1100. Explicit PM4 selection must fail closed, and
-> reset-prone recreate stress requires a separate warning and approval before it
-> is run.
+> **Status (2026-08-07):** implementation in progress. P0 documentation, P1
+> exact graph inspection, P2 direct public-HSA AQL, and P3 retained gfx1100 PM4
+> are complete through the safe same-HSACO smoke; the lifecycle reproducer is
+> next. Native HIP graphs remain the package default. Explicit PM4 selection
+> must fail closed, and reset-prone recreate stress requires a separate warning
+> and approval before it is run.
 
 This document defines hipEngine's plan for a small, torch-free, in-tree
 retained-PM4 transport. The transport is intended to preserve the useful launch
@@ -46,9 +46,9 @@ graph framework, compiler, profiler, or HIP interposer.
 | --- | --- | --- |
 | P0 documentation/contract | Complete | This document, PLAN cross-link, and WORKLOG decision |
 | P1 exact graph inspection | Complete | Bounded ELF64/bundle/MessagePack parsing, exact kernarg packing, deterministic DAG validation, and live gfx1100 `smoke_add` reconciliation |
-| P2 direct public-HSA AQL | Next | Native ownership and packet implementation pending |
-| P3 retained gfx1100 PM4 | Pending | Blocked on P2 |
-| P4 lifecycle reproducer | Pending | Reset-prone arms will not be run without separate approval |
+| P2 direct public-HSA AQL | Complete | Exact PCI-BDF agent match, public executable load, persistent queue, checked packet publication/wait/teardown, and bit-exact smoke |
+| P3 retained gfx1100 PM4 | Complete | Strict descriptor admission, conservative PM4 tape, vendor-AQL IB, two bit-exact safe replays, and no fallback |
+| P4 lifecycle reproducer | Next | Reset-prone arms will not be run without separate approval |
 | P5 production graph integration | Pending | Blocked on P2/P3 correctness |
 | P6 performance/promotion | Pending | No in-tree PM4 performance claim yet |
 
@@ -933,9 +933,10 @@ packet/register/lifecycle logic is adapted.
   - `crates/redline-rocr/src/runtime.rs`
   - `crates/redline-hipgraph/src/metadata.rs`
   - `crates/redline-dispatch/src/aql/replay.rs`
-- AMD vendor AQL packet reference:
-  `rocm-systems/projects/aqlprofile/src/core/amd_aql_pm4_ib_packet.h`
-  (pin the exact upstream commit used during implementation).
+- AMD vendor AQL packet and public HSA-header reference:
+  `ROCm/rocm-systems@c0430a50286200ab0562f4733445cdee6e48d416`,
+  especially `projects/aqlprofile/src/core/amd_aql_pm4_ib_packet.h` and the
+  public ROCr HSA headers.
 - Public ROCr/HSA headers from the active ROCm installation.
 - AMDGPU code object ABI and kernel descriptor documentation corresponding to
   the active compiler/code-object version.
