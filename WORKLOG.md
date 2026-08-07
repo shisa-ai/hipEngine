@@ -203565,3 +203565,27 @@ Validation on exclusive GPU0:
   every timed token stream exact to EOS, deterministic, and all six installed
   int32 masks read back exactly; median-of-medians **4.052 ms** (diagnostic,
   not a retained performance rerun).
+
+## 2026-08-08 — PRR-3 C8 report schema/provenance repair
+
+Implemented the source-side C8 evidence repair before the clean GPU rerun:
+
+- report schema v2 hashes the benchmark driver and `c8_report_common.py` in
+  addition to the complete `hipengine/` source set and refuses publication from
+  a dirty tree;
+- one shared `route_timing_result` now records raw seconds,
+  `route_wall_median_s`, true `batch_median_ms`, and mechanically derived
+  P50/P95, eliminating the prior seconds-labeled-as-ms defect in all 20 rows;
+- encoder-chain eager/graph raw millisecond samples now carry explicit P50/P95
+  and sample counts;
+- dependency accounting now reports system-CUDA scope with base, route-only,
+  and total bytes. On this host: custom **782,080 B**; cuBLASLt route-only
+  **571,952,280 B**, total **572,734,360 B**; cuDNN route-only **845,078,848 B**,
+  total **845,860,928 B**. The complete installed inventory remains separately
+  visible and is not misrepresented as a route dependency.
+
+Added seven CPU tests covering units/percentiles, three dependency routes,
+unknown-route rejection, and benchmark/common-source manifest coverage.
+Focused Ruff, compileall, diff checks, and tests **7/7** pass. Clean exclusive
+GPU0 reruns and docs-side retained-artifact assertions follow after this source
+commit.

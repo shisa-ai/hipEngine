@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import statistics
 import time
 
 import numpy as np
@@ -30,7 +29,7 @@ from hipengine.loading.moonshine import load_moonshine_model
 from hipengine.runtime.moonshine_cuda import MoonshineCudaResidentRuntime
 from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
 
-from c8_report_common import build_report, percentile
+from c8_report_common import build_report, route_timing_result
 
 _FIXTURE_DIR = os.environ.get(
     "HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR",
@@ -170,13 +169,6 @@ def _route_batch(
     return times
 
 
-def _pct(sorted_vals: list[float], pct: float) -> float:
-    if not sorted_vals:
-        return 0.0
-    index = min(len(sorted_vals) - 1, int(round(pct / 100.0 * (len(sorted_vals) - 1))))
-    return sorted_vals[index]
-
-
 def main() -> None:
     import argparse
 
@@ -210,7 +202,6 @@ def main() -> None:
                 mask = masks_b[i : i + 1]
                 c1_times.append(_route_c1(runtime, loaded, shared_frames, keys, values, mask, int(seeds[i])))
             c1_seq_total = sum(c1_times)
-            c1_req_s = batch / c1_seq_total
 
             decoder = MoonshineCudaBatchRuntime(
                 max_batch=batch,
@@ -230,26 +221,21 @@ def main() -> None:
                         decoder.set_batch_decode_seed(tokens=seeds.tolist())
                         decoder.capture_batch_token_graphs()
                     times = _route_batch(decoder, seeds, graph=graph, warmup=_WARMUP, routes=_ROUTES)
-                    sorted_times = sorted(times)
-                    median = statistics.median(times)
-                    p50 = percentile(sorted_times, 50) * 1000.0
-                    p95 = percentile(sorted_times, 95) * 1000.0
-                    req_s = batch / median
-                    speedup = req_s / c1_req_s
+                    timing = route_timing_result(
+                        times,
+                        batch=batch,
+                        c1_seq_total_s=c1_seq_total,
+                    )
                     mode = "graph" if graph else "eager"
-                    print(f"{batch:>3} {mode:<10} {median*1000:>9.3f} {req_s:>8.1f} "
-                          f"{p50:>8.3f} {p95:>8.3f} {speedup:>9.2f}x")
-                    # RR-6: retain raw per-route wall samples and actual P50/P95.
-                    results.setdefault(str(batch), {})[mode] = {
-                        "c1_seq_total_s": float(c1_seq_total),
-                        "batch_median_ms": float(median),
-                        "batch_req_per_s": float(req_s),
-                        "vs_c1_seq_req_per_s": float(speedup),
-                        "route_wall_s_raw": [float(value) for value in times],
-                        "p50_ms": float(p50),
-                        "p95_ms": float(p95),
-                        "sample_count": len(times),
-                    }
+                    print(
+                        f"{batch:>3} {mode:<10} {timing['batch_median_ms']:>9.3f} "
+                        f"{timing['batch_req_per_s']:>8.1f} {timing['p50_ms']:>8.3f} "
+                        f"{timing['p95_ms']:>8.3f} "
+                        f"{timing['vs_c1_seq_req_per_s']:>9.2f}x"
+                    )
+                    # Schema v2: raw seconds and all derived millisecond fields
+                    # come from one tested helper, preventing unit drift.
+                    results.setdefault(str(batch), {})[mode] = timing
                 # graph-to-eager correctness: transcripts must match
                 decoder.reset_generation(clear_cross_cache=False)
                 decoder.set_batch_device_owned_decode(False)
@@ -316,6 +302,7 @@ def main() -> None:
             "timed_routes": _ROUTES,
         },
         dependency_route="custom_cuda_runtime_subset",
+        benchmark_source="scripts/benchmark_c8_batch_throughput.py",
     )
     if args.json_out:
         import pathlib
