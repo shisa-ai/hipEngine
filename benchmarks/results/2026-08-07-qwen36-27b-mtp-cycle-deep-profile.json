@@ -1,0 +1,291 @@
+{
+  "schema": 1,
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "qwen36_27b_gguf_mtp_cycle_deep_profile",
+  "timestamp": "2026-08-07T16:44:49+09:00",
+  "question": "Why does hipEngine natural MTP remain below llama.cpp Vulkan after the module-by-module arithmetic improvements?",
+  "scope": "MTP-only causal attribution. Full-suite unprofiled walls remain the topline; fresh one-prompt HIP runtime traces and Vulkan per-graph timestamp queries are diagnostics.",
+  "identity": {
+    "hipengine_commit": "69b3b691b18e3582c019fe8beda0ed69bc343a1d",
+    "hipengine_tree_clean": true,
+    "llamacpp_commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "llamacpp_build": 10290,
+    "model_path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "model_bytes": 17106773120,
+    "model_full_sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "model_sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "hardware": "AMD Radeon Pro W7900, GPU0, gfx1100",
+    "hip_stack": "TheRock HIP 7.15.0, AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "vulkan_stack": "Vulkan0, RADV NAVI31, Mesa 26.1.4",
+    "hipengine_kv_dtype": "bf16",
+    "llamacpp_kv_dtype": "f16"
+  },
+  "workload": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "full_prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "max_visible_outputs": 25,
+    "timed_transitions_per_prompt": 24,
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "seed": 12345,
+    "one_prompt_profile": {
+      "prompt_id": "code_merge_intervals",
+      "category": "code",
+      "content_sha256_all_profiles": "618944d0e2233b9235c46307470b0e0ed0bd96b3e4830bdd5a00376c1a3c0240",
+      "hipengine_exact_greedy": true,
+      "hipengine_gpu_accept_matches_cpu": true
+    }
+  },
+  "full_suite_unprofiled": {
+    "hipengine_B3": {
+      "tok_s": 61.14680879565122,
+      "decode_ms": 3924.979974050075,
+      "cycles": 76,
+      "ms_per_cycle": 51.644473342764144,
+      "accepted_drafts_raw_including_capped_tail": 169,
+      "proposed_drafts": 219
+    },
+    "vulkan_B3": {
+      "tok_s": 67.68237226714795,
+      "decode_ms": 3545.975,
+      "cycles_from_visible_transitions_minus_accepted": 77,
+      "ms_per_cycle": 46.051623376623374,
+      "accepted_drafts": 163,
+      "reported_drafts": 211
+    },
+    "vulkan_B4": {
+      "tok_s": 69.79783638340183,
+      "decode_ms": 3438.502,
+      "cycles_from_visible_transitions_minus_accepted": 69,
+      "ms_per_cycle": 49.83336231884058,
+      "accepted_drafts": 171,
+      "reported_drafts": 241
+    },
+    "matched_B3_gap_decomposition": {
+      "hipengine_minus_vulkan_ms": 379.00497405007485,
+      "topology_gap_ms": -46.29798503204559,
+      "topology_interpretation": "Vulkan B3 executes one more target cycle aggregate, so topology favors hipEngine by 46.30 ms.",
+      "per_cycle_efficiency_gap_ms": 425.3029590821205,
+      "per_cycle_interpretation": "The entire matched-B3 loss and more comes from Vulkan's lower complete cost per speculative cycle: 46.052 versus 51.644 ms/cycle.",
+      "conclusion": "Matched B3 is not losing on aggregate acceptance or target-pass count; it is losing inside each proposal+verification transaction."
+    },
+    "selected_B4_gap_decomposition": {
+      "hipengine_B3_minus_vulkan_B4_ms": 486.4779740500748,
+      "topology_gap_ms": 376.68492312410046,
+      "topology_share": 0.7743103351382709,
+      "per_cycle_efficiency_gap_ms": 109.79305092597431,
+      "per_cycle_share": 0.22568966486172906,
+      "conclusion": "About 77.4% of the selected-B4 gap is fewer accepted-token target cycles; about 22.6% is per-cycle efficiency."
+    }
+  },
+  "selected_B4_per_prompt_decomposition": [
+    {"prompt_id": "code_merge_intervals", "hip_cycles": 7, "vulkan_cycles": 6, "gap_ms": 54.876694940030575, "topology_gap_ms": 50.87524213429008, "per_cycle_gap_ms": 4.001452805740485},
+    {"prompt_id": "code_topological_sort", "hip_cycles": 7, "vulkan_cycles": 6, "gap_ms": 40.43727828714253, "topology_gap_ms": 50.3706111838775, "per_cycle_gap_ms": -9.933332896734967},
+    {"prompt_id": "code_lru_cache", "hip_cycles": 7, "vulkan_cycles": 6, "gap_ms": 55.37034788891674, "topology_gap_ms": 50.73290684127382, "per_cycle_gap_ms": 4.637441047642895},
+    {"prompt_id": "code_markdown_table", "hip_cycles": 7, "vulkan_cycles": 6, "gap_ms": 62.172831696093056, "topology_gap_ms": 51.12583309944187, "per_cycle_gap_ms": 11.046998596651179},
+    {"prompt_id": "general_en_plan", "hip_cycles": 6, "vulkan_cycles": 6, "gap_ms": 12.596687083393363, "topology_gap_ms": 0.0, "per_cycle_gap_ms": 12.596687083393363},
+    {"prompt_id": "general_en_explain", "hip_cycles": 9, "vulkan_cycles": 7, "gap_ms": 120.51767415535448, "topology_gap_ms": 102.23348314563434, "per_cycle_gap_ms": 18.284191009720182},
+    {"prompt_id": "general_ja_plan", "hip_cycles": 8, "vulkan_cycles": 8, "gap_ms": 15.424585289061042, "topology_gap_ms": 0.0, "per_cycle_gap_ms": 15.424585289061042},
+    {"prompt_id": "general_ja_explain", "hip_cycles": 8, "vulkan_cycles": 9, "gap_ms": -41.19283879929782, "topology_gap_ms": -51.313895150087774, "per_cycle_gap_ms": 10.121056350789928},
+    {"prompt_id": "mixed_ja_en_translate", "hip_cycles": 8, "vulkan_cycles": 10, "gap_ms": -83.675051646322, "topology_gap_ms": -101.8084870884195, "per_cycle_gap_ms": 18.133435442097507},
+    {"prompt_id": "mixed_ja_en_review", "hip_cycles": 9, "vulkan_cycles": 5, "gap_ms": 249.94976515570283, "topology_gap_ms": 224.46922895809016, "per_cycle_gap_ms": 25.480536197612693}
+  ],
+  "hipengine_full_suite_B3_stage_decomposition": {
+    "cycles": 76,
+    "complete_ms": 3924.979974050075,
+    "device_chained_proposal_plus_target_graph_submit_ms": 3665.6499267555773,
+    "device_chained_proposal_plus_target_graph_submit_ms_per_cycle": 48.23223587836286,
+    "share_of_complete": 0.9339270361350237,
+    "target_prepare_metadata_and_call_boundary_ms": 83.86624604463577,
+    "target_prepare_metadata_and_call_boundary_ms_per_cycle": 1.103503237429418,
+    "target_result_readback_ms": 18.169359304010868,
+    "target_result_readback_ms_per_cycle": 0.23907051715803773,
+    "proposal_launch_and_full_accept_tail_ms": 122.1924819983542,
+    "proposal_launch_and_full_accept_tail_ms_per_cycle": 1.6077958157678183,
+    "scheduler_accept_replay_residual_ms": 28.873142320662737,
+    "scheduler_accept_replay_residual_ms_per_cycle": 0.37990976737714127,
+    "commit_finish_ms": 6.228817626833916,
+    "commit_finish_ms_per_cycle": 0.08195812666886731,
+    "conclusion": "Commit is negligible. The device-chained proposal+target submit dominates, while metadata/readback/proposal-update/scheduler overhead totals about 3.41 ms/cycle."
+  },
+  "fresh_one_prompt_controls": {
+    "hipengine_B3_unprofiled_post_module_control": {
+      "decode_ms": 356.1266949400306,
+      "cycles": 7,
+      "ms_per_cycle": 50.87524213429008,
+      "graph_submit_ms": 339.68438440933824,
+      "graph_submit_ms_per_cycle": 48.52634062990546,
+      "outside_submit_ms_per_cycle": 2.348901504384621
+    },
+    "vulkan_B3_unprofiled": {
+      "decode_ms": 320.969,
+      "cycles": 7,
+      "ms_per_cycle": 45.852714285714284,
+      "accepted_reported": [17, 19]
+    },
+    "vulkan_B4_unprofiled": {
+      "decode_ms": 300.016,
+      "cycles": 6,
+      "ms_per_cycle": 50.00266666666666,
+      "accepted_reported": [18, 20]
+    },
+    "matched_B3_one_prompt_gap": {
+      "ms_per_cycle": 5.022527848575796,
+      "graph_submit_vs_vulkan_query_ms_per_cycle": 2.913657772762612,
+      "outside_submit_vs_vulkan_unqueried_residual_ms_per_cycle": 2.1088700758131864,
+      "interpretation": "On this exact trajectory, about 58% of the matched gap is inside hipEngine's combined proposal+target submit relative to Vulkan's queried graphs and about 42% is host/control work outside that submit."
+    }
+  },
+  "fresh_hip_runtime_trace": {
+    "profiled_decode_ms": 364.90748217329383,
+    "marker_span_ms": 364.67686,
+    "cycles": 7,
+    "accepted_proposed": [17, 21],
+    "target_verify": {
+      "marker_ms": 349.591661,
+      "share_of_marker_span": 0.9586439250433744,
+      "kernel_dispatches": 6348,
+      "summed_kernel_duration_ms": 316.786,
+      "hipStreamSynchronize_calls": 7,
+      "hipStreamSynchronize_ms": 336.511,
+      "hipGraphLaunch_calls": 7,
+      "hipGraphLaunch_api_ms": 3.782,
+      "hipMemcpy_calls": 21,
+      "hipMemcpy_api_ms": 2.155,
+      "hipMemcpyAsync_calls": 56,
+      "hipMemcpyAsync_api_ms": 0.319,
+      "hipStreamWaitEvent_calls": 7,
+      "hipStreamWaitEvent_api_ms": 0.041,
+      "host_outside_traced_apis_ms": 6.785
+    },
+    "proposal_launch": {
+      "markers": 7,
+      "marker_ms": 1.139,
+      "hipGraphLaunch_calls": 7,
+      "hipGraphLaunch_api_ms": 0.464
+    },
+    "proposal_update": {
+      "markers": 6,
+      "marker_ms": 7.967,
+      "kernel_dispatches": 96,
+      "summed_kernel_duration_ms": 3.801,
+      "traced_api_ms": 2.413,
+      "host_outside_traced_apis_ms": 5.554
+    },
+    "target_commit_finish_ms": 0.068,
+    "inter_marker_scheduler_ms": 5.911,
+    "conclusion": "This is not a commit, sampling, or HTTP problem. The target marker blocks almost entirely in the one stream synchronization that retires the proposal dependency and target graph."
+  },
+  "fresh_vulkan_per_graph_query": {
+    "B3": {
+      "cycles": 7,
+      "draft_graphs_per_cycle": 3,
+      "draft_dispatches_per_cycle": 90,
+      "target_dispatches_per_cycle": 1891,
+      "post_target_update_dispatches_per_cycle": 27,
+      "draft_ms": 50.78232,
+      "target_ms": 261.5889,
+      "post_target_update_ms": 6.91756,
+      "query_total_ms": 319.28878,
+      "unprofiled_decode_ms": 320.969,
+      "query_coverage": 0.9947651642370449,
+      "query_ms_per_cycle": [45.7721, 45.54618, 45.57402, 45.91858, 46.64628, 46.62608, 43.20554]
+    },
+    "B4": {
+      "cycles": 6,
+      "draft_graphs_per_cycle": 4,
+      "draft_dispatches_per_cycle": 120,
+      "target_dispatches_per_cycle": 1939,
+      "post_target_update_dispatches_per_cycle": 27,
+      "draft_ms": 57.99496,
+      "target_ms": 229.9845,
+      "post_target_update_ms": 6.33844,
+      "query_total_ms": 294.3179,
+      "unprofiled_decode_ms": 300.016,
+      "query_coverage": 0.9810073462748653,
+      "query_ms_per_cycle": [50.0633, 49.7674, 49.83578, 50.52948, 48.74792, 45.37402]
+    },
+    "B4_topology_on_profile_prompt": {
+      "saved_target_cycles": 1,
+      "B3_minus_B4_target_ms": 31.604399999999998,
+      "B4_minus_B3_draft_ms": 7.21264,
+      "B3_minus_B4_post_target_update_ms": 0.5791199999999996,
+      "B3_minus_B4_query_total_ms": 24.97088,
+      "unprofiled_B3_minus_B4_ms": 20.953,
+      "conclusion": "B4 wins by paying one additional draft graph in each remaining cycle while removing an entire target plus post-target/update cycle."
+    }
+  },
+  "causal_verdict": {
+    "matched_B3": "The gap is primarily cycle execution. hipEngine runs fewer B3 cycles aggregate but each complete cycle costs about 5.59 ms more. On the exact profiled trajectory, the combined proposal+target submit accounts for about 2.91 ms/cycle of the 5.02-ms gap and host/control work outside submit accounts for about 2.11 ms/cycle.",
+    "selected_B4": "The larger selected-budget gap is primarily algorithmic topology: Vulkan B4 executes 69 target cycles versus hipEngine B3's 76. Per-prompt decomposition assigns 77.4% of the 486.48-ms gap to cycle count and 22.6% to per-cycle cost.",
+    "verification_answer": "Yes: the remaining matched-B3 deficit is centered in the proposal-to-target verification transaction, especially combined graph retirement plus its metadata/control boundary. It is not final commit, CPU sampling, or generic HTTP/server wall.",
+    "largest_prompt_effect": "mixed_ja_en_review alone contributes 249.95 ms: Vulkan B4 needs five cycles while hipEngine B3 needs nine. This is trajectory-wide evidence only; it must not be optimized with prompt-specific logic.",
+    "module_table_caveat": "The prior semantic kernel ledger remains useful for arithmetic ranking, but summed HIP kernel durations and Vulkan adjacent-query intervals are not complete-wall-equivalent. HIP kernels overlap, and rocprof's three 256-dispatch gaps are known instrumentation artifacts. Complete cycle and per-graph query walls are the causal authority."
+  },
+  "remaining_credible_routes": [
+    {
+      "rank": 1,
+      "route": "A materially different five-row/B4 target schedule or primitive",
+      "ceiling": "Vulkan's seven-cycle reduction accounts for 376.68 ms, 77.4% of the selected gap.",
+      "blocker": "The already exact hipEngine B4 implementation costs 61.957 ms/target pass, 23.18% above the frozen <=50.3-ms admission gate; it was removed.",
+      "reopen_condition": "A new row-5 mechanism credibly below 50.3 ms/pass, not another template/geometry sweep."
+    },
+    {
+      "rank": 2,
+      "route": "Persistent or hostless multi-cycle proposal/verify/accept loop",
+      "ceiling": "About 2.11 ms/cycle on the matched profile trajectory lies outside the combined graph submit, with another approximately 0.54 ms/cycle in target hipGraphLaunch API time under the runtime trace.",
+      "blocker": "Graph upload, four-way split, and parent/child graph composition are already measured and rejected; acceptance-dependent termination makes a fixed replay nontrivial.",
+      "reopen_condition": "A genuinely persistent device scheduler/command-buffer mechanism, not rearrangement of the current graph nodes."
+    },
+    {
+      "rank": 3,
+      "route": "New target-verification composite that shortens complete graph retirement",
+      "ceiling": "About 2.91 ms/cycle of the matched one-prompt gap remains inside hipEngine's combined graph submit versus Vulkan's queried draft+target+post-target/update graphs.",
+      "blocker": "Every current source-faithful slower arithmetic family, graph split/upload, and launch-composition route was already retained-improved or rejected.",
+      "reopen_condition": "A new producer-fused/persistent primitive with a >=5%-wall production reproducer."
+    },
+    {
+      "rank": 4,
+      "route": "Broad proposer-quality or adaptive-budget improvement",
+      "ceiling": "B4 saves four cycles on mixed_ja_en_review and two on general_en_explain, but loses cycles on two Japanese/mixed prompts.",
+      "blocker": "Prompt-specific budget logic would be benchmark gaming, and current hipEngine B4 economics fail before a full-suite gate.",
+      "reopen_condition": "A model/schedule-level improvement validated on all categories plus heldouts with no prompt-conditioned rerank."
+    }
+  ],
+  "decision": {
+    "new_current_mechanism_admitted": false,
+    "reason": "The deep profile confirms the previously scoped exhaustion rather than exposing an untested current-source leaf. The largest route is B4 topology, whose exact current implementation already fails economics; the matched residual requires a new persistent cycle or verification primitive.",
+    "topline_changed": false,
+    "canonical_hipengine_B3_tok_s": 61.39440170570785,
+    "post_module_hipengine_B3_tok_s": 61.14680879565122,
+    "selected_vulkan_B4_tok_s": 69.79783638340183
+  },
+  "commands": {
+    "hipengine_runtime_trace": "PATH=/home/lhl/mambaforge/envs/therock/bin:$PATH LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:<TheRock libs> PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --runtime-trace --output-format csv --output-file mtp-b3-deep --output-directory /tmp/hipengine-qwen36-27b/deep-mtp-20260807/hip-b3-runtime -- python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/deep-mtp-20260807/hip-b3-runtime/suite.json",
+    "vulkan_control": "DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1 VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json GGML_VK_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --ctx-size 8192 --draft-max <3|4> --mode mtp --protocol natural --prompts /tmp/hipengine-qwen36-27b/deep-mtp-20260807/code-merge-only.jsonl --max-tokens 25 --server-extra-arg=-dev --server-extra-arg=Vulkan0 --server-extra-arg=--spec-draft-device --server-extra-arg=Vulkan0 --server-extra-arg=--reasoning --server-extra-arg=off --server-extra-arg=--perf --output <output>",
+    "vulkan_per_graph_query": "Same Vulkan control with GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1, summarized by scripts/llamacpp_vulkan_perf_summary.py."
+  },
+  "raw_sources": [
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/hip-b3-runtime/mtp-b3-deep_hip_api_trace.csv", "sha256": "e81e7f6b819a75d58a28556b86558c111d91c1c898d9cb03bfe5143364a22886"},
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/hip-b3-runtime/mtp-b3-deep_kernel_trace.csv", "sha256": "b3a27d26d64b9448ffbec0b08ea37e317b07ae99075c9068ccb86766ae6ff3ba"},
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/hip-b3-runtime/mtp-b3-deep_marker_api_trace.csv", "sha256": "29351e27b97752905f7e212753d17a4ad2270483fc1a2348dbaf4c29f07f5dbc"},
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/hip-b3-runtime/suite.json", "sha256": "484af266c7a5411d86e912fe855902ee2d37f8f240520287622e18e35d2de244"},
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/vulkan-b3-one-prompt.json", "sha256": "68e6f71d5e65494a012bef9582629d2c311a0e2a227cabf60c814a613d60b90c"},
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/vulkan-b4-one-prompt.json", "sha256": "1bf069ffdc7be6104a463af38f09920e9cc4236e7620d712ed3ecc35307ac85b"},
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/vulkan-b3-per-graph-logs/server-mtp.log", "sha256": "6de3d941a8c188045ea54f3056b03d3365cfa9d5bceba6aa95c1115551eb0f5e"},
+    {"path": "/tmp/hipengine-qwen36-27b/deep-mtp-20260807/vulkan-b4-per-graph-logs/server-mtp.log", "sha256": "2d9a95f81eb12698733ff3197e213e07c6b5536ab883a1daf9c8a57b5f60f56c"},
+    {"path": "/tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/natural25-control-b1-b3.json", "sha256": "d145f13331ed9014d029ac2ae56c67dda710932b1812ebf33b7cb3255453e705"},
+    {"path": "benchmarks/results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json", "sha256": "4d549081f3a3a470e50c17987a7e1f6eae1301cbf6c7fd20c86d94aba2e3bf2a"}
+  ],
+  "notes": [
+    "The Vulkan server performs its own startup warm task; the per-graph decode selection starts after the four measured-request prompt sections and contains exactly seven B3 groups of 3 draft + target + post-target/update graphs or six B4 groups of 4 draft + target + post-target/update graphs.",
+    "GGML_VK_PERF_LOGGER frequency 1 perturbs server wall through synchronous printing, so query sums are compared to separate unprofiled controls. Query sums cover 99.48% of B3 and 98.10% of B4 unprofiled generation wall.",
+    "Do not treat rocprof's three approximately 5.7-ms gaps exactly 256 dispatches apart as production work. The existing unprofiled split experiment proved them to be instrumentation artifacts.",
+    "Cross-engine output equality is diagnostic, not a shared correctness claim; the profiled code prompt content hash happens to match across all rows."
+  ]
+}

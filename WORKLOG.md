@@ -208761,3 +208761,68 @@ Vulkan local sizes verbatim will close the measured gap.
   and the root topline export. Reopen only for a materially new speculative or
   proposer schedule, association-preserving/producer-fused primitive, changed
   model/source/compiler/driver, or a newly profiled >=5%-wall mechanism.
+
+## 2026-08-07 — Resolve the remaining MTP wall cycle by cycle
+
+- Reopen only the causal attribution question after the campaign review: why
+  natural MTP remains below latest llama.cpp Vulkan despite the retained
+  module-level improvements. Reuse the exact ten-prompt W7900 controls rather
+  than repeat the >5-minute suite, then capture clean current `69b3b691b` HIP
+  runtime/kernel/marker traces and fresh `c8e03ce81` Vulkan B3/B4 unprofiled and
+  per-graph query controls for `code_merge_intervals`. Model, 25-output/24-
+  transition boundary, greedy sampling, device, and content hash
+  `618944d0...0240` match; hipEngine IDs and GPU/CPU acceptance remain exact.
+- The full-suite matched-B3 result is unambiguous. hipEngine executes **76
+  cycles / 3924.980 ms / 51.644 ms per cycle**; Vulkan executes **77 / 3545.975
+  ms / 46.052 ms per cycle**. Topology therefore favors hipEngine by **46.298
+  ms**, while per-cycle execution loses **425.303 ms**, yielding the observed
+  **379.005-ms** gap. Aggregate acceptance or extra target passes are not the
+  matched-B3 cause.
+- Selected Vulkan B4 executes only **69 cycles / 3438.502 ms / 49.833
+  ms/cycle**. Versus hipEngine B3, per-prompt decomposition assigns **376.685
+  ms / 77.4%** of the **486.478-ms** gap to cycle count and **109.793 ms /
+  22.6%** to per-cycle efficiency. `mixed_ja_en_review` alone is **nine hip B3
+  cycles versus five Vulkan B4 cycles** and contributes **249.950 ms**; two
+  Japanese/mixed prompts instead favor hipEngine, so no prompt-conditioned
+  budget policy is admissible.
+- The unprofiled hipEngine B3 stage ledger across all 76 cycles assigns
+  **3665.650 ms / 48.232 ms per cycle (93.39%)** to the device-chained proposal
+  plus target graph submit. Metadata/call preparation is **1.104 ms/cycle**,
+  proposal launch/full-accept update **1.608**, readback **0.239**, scheduler
+  replay **0.380**, and commit/finish only **0.082**. Commit is not the gap.
+- The clean runtime trace reconciles **364.677 ms** of marker wall. Seven target
+  markers consume **349.592 ms**; their seven `hipStreamSynchronize` calls
+  waiting for proposal+target retirement consume **336.511 ms**, target
+  `hipGraphLaunch` API calls **3.782 ms**, copy-API time **2.474 ms**, and host
+  work outside traced target APIs **6.785 ms**. The matching unprofiled post-module
+  hipEngine control is **356.127 ms / seven cycles**.
+- Fresh unprofiled Vulkan controls are **320.969 ms B3 / seven cycles** and
+  **300.016 ms B4 / six cycles**. Frequency-1 per-graph queries expose each
+  cycle directly: B3's 21 draft, seven target, and seven post-target/update
+  graphs total **50.782 + 261.589 + 6.918 = 319.289 ms (99.48% of wall)**;
+  B4's 24 draft, six target, and six post-target/update graphs total
+  **57.995 + 229.985 + 6.338 = 294.318 ms (98.10%)**. There is no hidden
+  HTTP/server advantage. On the matched prompt, about **2.91 ms/cycle** of hipEngine's **5.02-ms** deficit lies inside
+  combined graph submit versus Vulkan query wall, and **2.11 ms/cycle** lies in
+  metadata/proposal-update/readback/scheduler control outside submit.
+- Treat prior module sums correctly: they remain arithmetic ranking evidence,
+  not interchangeable complete walls. HIP kernels overlap, Vulkan adjacent
+  query intervals include command execution, and rocprof's three 5.7-ms gaps
+  exactly 256 dispatches apart are already proven instrumentation artifacts.
+  The causal answer is proposal-to-target verification transaction cost, plus
+  B4's fewer verifier passes—not commit, CPU sampling, or HTTP.
+- No current mechanism is newly admitted. The largest route is a materially new
+  row-5/B4 verifier below the frozen **50.3-ms/pass** gate; the exact existing
+  route is **61.957 ms/pass** and was removed. The matched residual requires a
+  genuinely persistent/hostless cycle or new verification composite; graph
+  upload/split/parent-child composition and all current source-faithful kernel
+  ladders are already closed. Publish
+  `benchmarks/results/2026-08-07-qwen36-27b-mtp-cycle-deep-profile.json`; the
+  canonical **61.394 tok/s** B3 and selected Vulkan **69.798 tok/s** B4 toplines
+  remain unchanged.
+- Raw SHA-256 prefixes: HIP API/kernel/marker/suite
+  `e81e7f6b...2886` / `b3a27d26...f3ba` / `29351e27...5dbc` /
+  `484af266...e244`; Vulkan B3/B4 unprofiled `68e6f71d...b90c` /
+  `1bf069ff...85b`; Vulkan B3/B4 per-graph logs `6de3d941...0f5e` /
+  `2d9a95f8...f56c`. Raw traces remain under
+  `/tmp/hipengine-qwen36-27b/deep-mtp-20260807/`.

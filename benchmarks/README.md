@@ -4579,6 +4579,27 @@ target-policy, and direct-retirement mechanisms reduce the normalized submission
 residual **41.346 -> 20.467 ms**. Profiler numbers remain attribution, never
 toplines.
 
+A post-closure MTP-only audit resolves the remaining wall. Across the unprofiled
+ten-prompt suite, hipEngine B3 executes **76** cycles at **51.644 ms/cycle**
+versus Vulkan B3's **77** at **46.052 ms/cycle**: the complete **379.005-ms**
+matched gap is per-cycle execution, not aggregate acceptance or pass count.
+Selected Vulkan B4 executes only **69** cycles; cycle-count topology explains
+**376.685 ms / 77.4%** of its **486.478-ms** lead over hipEngine B3 and
+per-cycle efficiency explains **109.793 ms / 22.6%**. hipEngine's full-suite
+stage ledger places **48.232 of 51.644 ms/cycle** inside the device-chained
+proposal+target submit; commit/finish is only **0.082 ms/cycle**.
+
+Fresh `code_merge_intervals` per-graph Vulkan queries account for **319.289 /
+320.969 ms (99.48%)** of unprofiled B3 and **294.318 / 300.016 ms (98.10%)**
+of unprofiled B4. On that matched B3 trajectory, about **2.91 ms/cycle** of
+hipEngine's **5.02-ms** deficit lies inside combined graph retirement and
+**2.11 ms/cycle** in metadata/proposal-update/readback/scheduler control outside
+it. The residual is therefore the proposal-to-target verification transaction,
+not commit, CPU sampling, or HTTP. The largest next lever remains a materially
+new B4 verifier below **50.3 ms/pass**; the already exact 61.957-ms row-5 route
+and current graph upload/split/composition mechanisms remain rejected. Artifact:
+[`2026-08-07-qwen36-27b-mtp-cycle-deep-profile.json`](results/2026-08-07-qwen36-27b-mtp-cycle-deep-profile.json).
+
 This is an external floor, not a hipEngine result. Latest artifact:
 [`2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json`](results/2026-08-06-qwen36-27b-llamacpp-vulkan-c8e03ce81-refresh.json).
 The superseded source/profile floor remains archived in
