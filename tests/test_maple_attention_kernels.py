@@ -190,6 +190,49 @@ def test_maple_span_update_publishes_ring_metadata(maple_attention_lib) -> None:
     assert not np.any(evict_out)
 
 
+def test_maple_kv_span_update_batched_publishes_range(maple_attention_lib) -> None:
+    """Batched span publish marks [start, start+rows) valid (P4)."""
+
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_kv_span_update_batched,
+    )
+
+    capacity, start, rows = 8, 3, 4
+    base = np.asarray(list(range(capacity)), dtype=np.int32)
+    with DeviceArrays() as dev:
+        spans = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=np.asarray([0], dtype=np.int64),
+            token_positions=np.full(capacity, -1, dtype=np.int64),
+            evict_mask=np.ones(capacity, dtype=np.bool_),
+            row_positions=np.asarray([-1], dtype=np.int64),
+        )
+        maple_kv_span_update_batched(
+            spans,
+            start=start,
+            rows=rows,
+            library=maple_attention_lib,
+        )
+        live_out = np.empty(1, dtype=np.int64)
+        positions_out = np.empty(capacity, dtype=np.int64)
+        evict_out = np.empty(capacity, dtype=np.bool_)
+        row_out = np.empty(1, dtype=np.int64)
+        dev.get(live_out, dev.buffers[1])
+        dev.get(positions_out, dev.buffers[2])
+        dev.get(evict_out, dev.buffers[3])
+        dev.get(row_out, dev.buffers[4])
+
+    expected_positions = np.full(capacity, -1, dtype=np.int64)
+    for p in range(start, start + rows):
+        expected_positions[p % capacity] = p
+    assert live_out.tolist() == [start + rows]
+    assert row_out.tolist() == [start + rows - 1]
+    assert positions_out.tolist() == expected_positions.tolist()
+    assert evict_out.tolist() == [not (start <= p < start + rows) for p in range(capacity)]
+
+
+
 def test_maple_qknorm_partial_rope_and_kv_write_match_oracle(maple_attention_lib) -> None:
     rng = np.random.default_rng(44)
     q_heads, kv_heads, head_dim, rope_dim = 4, 2, 4, 2

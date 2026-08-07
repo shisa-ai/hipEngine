@@ -203221,3 +203221,14 @@ Vulkan local sizes verbatim will close the measured gap.
   write, ring attention, o_proj GEMM, router, dual/down/weighted-residual MoE,
   lm_head GEMM, row argmax). Remaining: `prefill_native` wiring + measured
   prefill tok/s artifact.
+
+## 2026-08-07 — M5/P4: batched KV span publish primitive
+
+- Add `maple_kv_span_update_batched_kernel` (P4): one block per position row,
+  publishes positions [start, start+rows) valid in the ring; block 0 updates
+  live_counts and row_positions.
+- Wrapper `maple_kv_span_update_batched` + registry key
+  `("maple_kv_span_update", "sliding_ring_batched")`.
+- Correctness: new `test_maple_kv_span_update_batched_publishes_range` checks
+  live/row/positions/evict for start=3, rows=4. 9/9 attention tests pass;
+  ruff clean.
