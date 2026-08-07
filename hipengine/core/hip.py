@@ -14,6 +14,28 @@ from typing import Final
 HIP_SUCCESS: Final[int] = 0
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
+HIP_GRAPH_NODE_TYPE_KERNEL: Final[int] = 0
+
+
+class HipDim3(ctypes.Structure):
+    """ctypes layout of HIP's three-uint ``dim3`` value."""
+
+    _fields_ = [("x", ctypes.c_uint), ("y", ctypes.c_uint), ("z", ctypes.c_uint)]
+
+
+class HipKernelNodeParams(ctypes.Structure):
+    """ctypes layout of ``hipKernelNodeParams`` from ``hip_runtime_api.h``."""
+
+    # Keep the declaration order from ROCm's hip_runtime_api.h. It differs
+    # from CUDA's historical presentation and is ABI-significant on ROCm.
+    _fields_ = [
+        ("blockDim", HipDim3),
+        ("extra", ctypes.POINTER(ctypes.c_void_p)),
+        ("func", ctypes.c_void_p),
+        ("gridDim", HipDim3),
+        ("kernelParams", ctypes.POINTER(ctypes.c_void_p)),
+        ("sharedMemBytes", ctypes.c_uint),
+    ]
 
 
 class HipMemcpyKind(IntEnum):
@@ -224,6 +246,87 @@ class HipRuntime:
     def graph_destroy(self, graph: int) -> None:
         self.check(self.library.hipGraphDestroy(ctypes.c_void_p(graph)))
 
+    def graph_nodes(self, graph: int) -> tuple[int, ...]:
+        """Return a stable copied snapshot of all native HIP graph node handles."""
+
+        count = ctypes.c_size_t()
+        function = self._inspection_function("hipGraphGetNodes")
+        self.check(function(ctypes.c_void_p(graph), None, ctypes.byref(count)))
+        if count.value == 0:
+            return ()
+        capacity = int(count.value)
+        nodes = (ctypes.c_void_p * capacity)()
+        filled = ctypes.c_size_t(capacity)
+        self.check(function(ctypes.c_void_p(graph), nodes, ctypes.byref(filled)))
+        if int(filled.value) != capacity:
+            raise RuntimeError("HIP graph node count changed during inspection")
+        return tuple(int(node or 0) for node in nodes)
+
+    def graph_edges(self, graph: int) -> tuple[tuple[int, int], ...]:
+        """Return copied ``(from, to)`` dependency edges for a HIP graph."""
+
+        count = ctypes.c_size_t()
+        function = self._inspection_function("hipGraphGetEdges")
+        self.check(function(ctypes.c_void_p(graph), None, None, ctypes.byref(count)))
+        if count.value == 0:
+            return ()
+        capacity = int(count.value)
+        sources = (ctypes.c_void_p * capacity)()
+        destinations = (ctypes.c_void_p * capacity)()
+        filled = ctypes.c_size_t(capacity)
+        self.check(
+            function(
+                ctypes.c_void_p(graph),
+                sources,
+                destinations,
+                ctypes.byref(filled),
+            )
+        )
+        if int(filled.value) != capacity:
+            raise RuntimeError("HIP graph edge count changed during inspection")
+        return tuple(
+            (int(source or 0), int(destination or 0))
+            for source, destination in zip(sources, destinations, strict=True)
+        )
+
+    def graph_node_type(self, node: int) -> int:
+        node_type = ctypes.c_int()
+        function = self._inspection_function("hipGraphNodeGetType")
+        self.check(function(ctypes.c_void_p(node), ctypes.byref(node_type)))
+        return int(node_type.value)
+
+    def graph_kernel_node_params(self, node: int) -> HipKernelNodeParams:
+        params = HipKernelNodeParams()
+        function = self._inspection_function("hipGraphKernelNodeGetParams")
+        self.check(function(ctypes.c_void_p(node), ctypes.byref(params)))
+        return params
+
+    def kernel_name_ref_by_ptr(self, function_ptr: int, stream: int = 0) -> str:
+        function = self._inspection_function("hipKernelNameRefByPtr")
+        raw = function(ctypes.c_void_p(function_ptr), ctypes.c_void_p(stream))
+        if not raw:
+            raise RuntimeError(f"HIP returned no kernel name for function {function_ptr:#x}")
+        return raw.decode("utf-8", errors="strict")
+
+    def current_device(self) -> int:
+        device = ctypes.c_int()
+        function = self._inspection_function("hipGetDevice")
+        self.check(function(ctypes.byref(device)))
+        return int(device.value)
+
+    def device_pci_bus_id(self, device: int | None = None) -> str:
+        selected = self.current_device() if device is None else int(device)
+        output = ctypes.create_string_buffer(32)
+        function = self._inspection_function("hipDeviceGetPCIBusId")
+        self.check(function(output, ctypes.c_int(len(output)), ctypes.c_int(selected)))
+        return output.value.decode("ascii", errors="strict")
+
+    def _inspection_function(self, name: str):
+        function = getattr(self.library, name, None)
+        if function is None:
+            raise RuntimeError(f"HIP runtime does not export required graph inspection API {name}")
+        return function
+
     def event_create(self, *, flags: int = 0) -> int:
         event = ctypes.c_void_p()
         self.check(self.library.hipEventCreateWithFlags(ctypes.byref(event), ctypes.c_uint(flags)))
@@ -335,6 +438,20 @@ class HipRuntime:
         self.library.hipGraphExecDestroy.restype = ctypes.c_int
         self.library.hipGraphDestroy.argtypes = [ctypes.c_void_p]
         self.library.hipGraphDestroy.restype = ctypes.c_int
+        inspection_signatures = {
+            "hipGraphGetNodes": ([ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)], ctypes.c_int),
+            "hipGraphGetEdges": ([ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)], ctypes.c_int),
+            "hipGraphNodeGetType": ([ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)], ctypes.c_int),
+            "hipGraphKernelNodeGetParams": ([ctypes.c_void_p, ctypes.POINTER(HipKernelNodeParams)], ctypes.c_int),
+            "hipKernelNameRefByPtr": ([ctypes.c_void_p, ctypes.c_void_p], ctypes.c_char_p),
+            "hipGetDevice": ([ctypes.POINTER(ctypes.c_int)], ctypes.c_int),
+            "hipDeviceGetPCIBusId": ([ctypes.c_char_p, ctypes.c_int, ctypes.c_int], ctypes.c_int),
+        }
+        for name, (argtypes, restype) in inspection_signatures.items():
+            function = getattr(self.library, name, None)
+            if function is not None:
+                function.argtypes = argtypes
+                function.restype = restype
         self.library.hipEventCreateWithFlags.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_uint]
         self.library.hipEventCreateWithFlags.restype = ctypes.c_int
         self.library.hipEventDestroy.argtypes = [ctypes.c_void_p]
