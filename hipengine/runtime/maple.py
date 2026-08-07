@@ -68,6 +68,7 @@ from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     maple_affine4_embed_bf16,
     maple_affine4_gemv_batched_f32,
     maple_affine4_gemv_f32,
+    maple_affine4_gemv_wave32_exact_f32,
     maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_batched_bf16,
     maple_selected_ternary_dual_gemv_bf16,
@@ -113,6 +114,13 @@ def _maple_router_single_dispatch() -> bool:
     # byte-state and same-resident wall gates. Preserve =0 as the two-dispatch
     # rollback.
     return os.environ.get("HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH", "1") != "0"
+
+
+def _maple_affine4_wave32_exact() -> bool:
+    # D0 exact one-wave head candidate. Default off until the complete
+    # category/state and same-resident wall gates qualify it; group64 remains
+    # the rollback.
+    return os.environ.get("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "0") != "0"
 
 
 def _maple_prefill_grouped_moe() -> bool:
@@ -689,6 +697,7 @@ class MapleRunner:
         if capture_hidden:
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
         single_dispatch_router = _maple_router_single_dispatch()
+        affine4_wave32_exact = _maple_affine4_wave32_exact()
 
         def _decode_body(stream: int) -> None:
             _decode_layers_and_tail(stream)
@@ -926,7 +935,12 @@ class MapleRunner:
             )
             if capture_hidden:
                 captured.append(self._copy_bf16(b.normalized, spec.hidden_size))
-            maple_affine4_gemv_f32(
+            affine4_head = (
+                maple_affine4_gemv_wave32_exact_f32
+                if affine4_wave32_exact
+                else maple_affine4_gemv_f32
+            )
+            affine4_head(
                 b.normalized.ptr,
                 self.weights.lm_head.weight.ptr,
                 self.weights.lm_head.scales.ptr,
@@ -1312,7 +1326,12 @@ class MapleRunner:
             library=libs.norm,
             runtime=self.runtime,
         )
-        maple_affine4_gemv_f32(
+        affine4_head = (
+            maple_affine4_gemv_wave32_exact_f32
+            if _maple_affine4_wave32_exact()
+            else maple_affine4_gemv_f32
+        )
+        affine4_head(
             b.normalized.ptr,
             self.weights.lm_head.weight.ptr,
             self.weights.lm_head.scales.ptr,

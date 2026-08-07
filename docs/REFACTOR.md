@@ -14,6 +14,20 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Maple D0 exact wave32 affine4 c1 head
+
+- Added 2026-08-08 as default-off
+  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=1`. One wave emulates all four
+  production virtual waves and the exact 128-thread reduction tree, eliminating
+  LDS/barriers without changing FP32 logit bits. The first real
+  151,936x2,048 leaf screen is **1.527 -> 1.020 ms (1.496x, 48/48 wins)**; the
+  dirty 18-prompt c1 screen is exact and improves **148.409 -> 158.903 tok/s
+  (+7.07%, 287/288 wins)**.
+- Keep the selector only through clean category qualification and final roadmap
+  audit. Promote the wave32 route and retain the registered group64 kernel as
+  the numerical rollback if the clean gate passes; otherwise remove the
+  candidate kernel, registry key, runtime branch, selector, and RED fixture.
+
 ## Maple D0 one-dispatch c1 router
 
 - Added and promoted 2026-08-08. One grid-over-experts launch uses a four-byte

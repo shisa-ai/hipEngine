@@ -33,6 +33,7 @@ from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     build_maple_ternary,
     maple_affine4_embed_bf16,
     maple_affine4_gemv_f32,
+    maple_affine4_gemv_wave32_exact_f32,
     maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_bf16,
     maple_selected_ternary_dual_grouped_bf16,
@@ -120,6 +121,12 @@ def test_maple_ternary_build_plan_and_gfx1151_registry_alias() -> None:
         quant="maple_ternary2",
         variant="row_alpha_grouped",
     ) is maple_selected_ternary_grouped_bf16
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="maple_affine4_gemv",
+        quant="maple_ternary2",
+        variant="group64_wave32_exact",
+    ) is maple_affine4_gemv_wave32_exact_f32
 
 
 @pytest.fixture(scope="module")
@@ -179,6 +186,54 @@ def test_maple_affine4_embedding_and_head_match_cpu_oracle(maple_ternary_lib) ->
 
     assert np.array_equal(embedding, expected_embedding)
     assert np.allclose(logits, expected_logits, atol=2e-4, rtol=2e-4)
+
+
+def test_maple_affine4_wave32_emulates_production_reduction_exactly(
+    maple_ternary_lib,
+) -> None:
+    """D0 candidate must preserve every 128-thread FP32 logit bit at K=2048."""
+
+    rng = np.random.default_rng(20260808)
+    hidden, out = 2048, 257
+    x = f32_to_bf16_bits(rng.normal(size=hidden).astype(np.float32))
+    packed = pack4(rng.integers(0, 16, size=(out, hidden), dtype=np.uint8))
+    scales = f32_to_bf16_bits(
+        rng.uniform(0.001, 0.2, size=(out, hidden // 64)).astype(np.float32)
+    )
+    biases = f32_to_bf16_bits(
+        rng.uniform(-0.5, 0.5, size=(out, hidden // 64)).astype(np.float32)
+    )
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        packed_d = dev.put(packed)
+        scales_d, biases_d = dev.put(scales), dev.put(biases)
+        baseline, baseline_d = dev.empty((out,), np.dtype(np.float32))
+        candidate, candidate_d = dev.empty((out,), np.dtype(np.float32))
+        maple_affine4_gemv_f32(
+            x_d.ptr,
+            packed_d.ptr,
+            scales_d.ptr,
+            biases_d.ptr,
+            baseline_d.ptr,
+            hidden,
+            out,
+            library=maple_ternary_lib,
+        )
+        maple_affine4_gemv_wave32_exact_f32(
+            x_d.ptr,
+            packed_d.ptr,
+            scales_d.ptr,
+            biases_d.ptr,
+            candidate_d.ptr,
+            hidden,
+            out,
+            library=maple_ternary_lib,
+        )
+        dev.get(baseline, baseline_d)
+        dev.get(candidate, candidate_d)
+
+    assert np.array_equal(candidate.view(np.uint32), baseline.view(np.uint32))
 
 
 def test_maple_affine4_embed_batched_matches_oracle(maple_ternary_lib) -> None:

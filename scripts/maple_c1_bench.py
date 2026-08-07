@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Qualify Maple exact c1 decode with paired category/heldout A/B timing.
 
-The candidate is the selector-unset production default. The control sets
-``HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0`` explicitly. Two resident runners
+The router comparison uses selector-unset production versus the exact
+``HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0`` rollback. The affine4 comparison
+uses the default-off exact wave32 candidate versus the production group64 head.
+Two resident runners
 start from byte-identical native-prefill state, advance in lockstep, and
 alternate execution order. The artifact records exact token/top-logit parity,
 final hidden/logit/live-KV/span hashes, router-counter reset, paired timing, and
@@ -50,8 +52,11 @@ DEFAULT_HELDOUT = REPO_ROOT / "benchmarks/prompts/gdn-prefill-category-heldouts.
 REQUIRED_CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
 PINNED_REVISION = "361db5da5e74ff6fcdd852d478e1f266ce11013a"
 ROUTER_SELECTOR = "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH"
+AFFINE4_SELECTOR = "HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT"
+COMPARISONS = ("router", "affine4_wave32")
 PRODUCTION_SELECTORS = (
     ROUTER_SELECTOR,
+    AFFINE4_SELECTOR,
     "HIPENGINE_MAPLE_GRAPH",
     "HIPENGINE_MAPLE_FUSE_MOE",
     "HIPENGINE_MAPLE_FUSE_QKATTN",
@@ -130,13 +135,24 @@ def _production_environment() -> Iterator[None]:
                 os.environ[name] = value
 
 
-def _set_router_mode(mode: str) -> None:
-    if mode == "candidate":
+def _set_comparison_mode(mode: str, comparison: str) -> None:
+    if mode not in ("candidate", "control"):
+        raise ValueError(f"unsupported comparison mode {mode!r}")
+    if comparison == "router":
+        os.environ.pop(AFFINE4_SELECTOR, None)
+        if mode == "candidate":
+            os.environ.pop(ROUTER_SELECTOR, None)
+        else:
+            os.environ[ROUTER_SELECTOR] = "0"
+        return
+    if comparison == "affine4_wave32":
         os.environ.pop(ROUTER_SELECTOR, None)
-    elif mode == "control":
-        os.environ[ROUTER_SELECTOR] = "0"
-    else:
-        raise ValueError(f"unsupported router mode {mode!r}")
+        if mode == "candidate":
+            os.environ[AFFINE4_SELECTOR] = "1"
+        else:
+            os.environ.pop(AFFINE4_SELECTOR, None)
+        return
+    raise ValueError(f"unsupported comparison {comparison!r}")
 
 
 def _copy_device_bytes(
@@ -326,6 +342,7 @@ def _run_prompt_pair(
     measured_steps: int,
     repetitions: int,
     prompt_index: int,
+    comparison: str,
 ) -> dict[str, Any]:
     repetitions_out: list[dict[str, Any]] = []
     prompt_passed = True
@@ -340,7 +357,7 @@ def _run_prompt_pair(
         )
         runners = {"candidate": candidate, "control": control}
         for mode in prefill_order:
-            _set_router_mode(mode)
+            _set_comparison_mode(mode, comparison)
             prefill_results[mode] = runners[mode].prefill_native(tokens)
         prefill_state = _state_gate(candidate, control, phase="native_prefill")
         prefill_equal = (
@@ -377,7 +394,7 @@ def _run_prompt_pair(
             results: dict[str, Any] = {}
             elapsed_ms: dict[str, float] = {}
             for mode in order:
-                _set_router_mode(mode)
+                _set_comparison_mode(mode, comparison)
                 started = time.perf_counter()
                 results[mode] = runners[mode].step(next_tokens[mode])
                 elapsed_ms[mode] = (time.perf_counter() - started) * 1_000.0
@@ -558,6 +575,7 @@ def main() -> int:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--heldout", type=Path, default=DEFAULT_HELDOUT)
+    parser.add_argument("--comparison", choices=COMPARISONS, default="router")
     parser.add_argument("--steps", type=int, default=32, help="measured decode steps per prompt")
     parser.add_argument("--warmup-steps", type=int, default=4)
     parser.add_argument("--repetitions", type=int, default=2)
@@ -603,6 +621,7 @@ def main() -> int:
                         measured_steps=args.steps,
                         repetitions=args.repetitions,
                         prompt_index=prompt_index,
+                        comparison=args.comparison,
                     )
                 )
         finally:
@@ -650,11 +669,19 @@ def main() -> int:
     )
     rocm_smi = _capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"])
     hipcc = _capture(["hipcc", "--version"])
+    comparison_notes = {
+        "router": (
+            "The candidate uses the selector-unset production router; the control uses the exact two-dispatch rollback."
+        ),
+        "affine4_wave32": (
+            "The candidate uses the exact wave32 affine4 head; the control uses the production 128-thread group64 head."
+        ),
+    }
     artifact = {
         "schema_version": 1,
         "date": date.today().isoformat(),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "artifact_type": "maple_d0_c1_router_qualification",
+        "artifact_type": f"maple_d0_c1_{args.comparison}_qualification",
         "status": status,
         "performance_claim": status == "accepted",
         "model": {
@@ -684,10 +711,20 @@ def main() -> int:
                 "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get(
                     "HIPENGINE_REQUIRE_CACHED_BUILD"
                 ),
-                ROUTER_SELECTOR: "unset candidate; 0 control",
+                ROUTER_SELECTOR: (
+                    "unset candidate; 0 control"
+                    if args.comparison == "router"
+                    else "unset both"
+                ),
+                AFFINE4_SELECTOR: (
+                    "1 candidate; unset control"
+                    if args.comparison == "affine4_wave32"
+                    else "unset both"
+                ),
                 "other_maple_experimental_selectors": "unset",
             },
             "backend": args.backend,
+            "comparison": args.comparison,
             "suite": str(args.suite),
             "heldout": str(args.heldout),
             "steps": args.steps,
@@ -715,7 +752,7 @@ def main() -> int:
         },
         "rows": rows,
         "notes": [
-            "The candidate uses the selector-unset production router; the control uses the exact two-dispatch rollback.",
+            comparison_notes[args.comparison],
             "Every repetition begins from independently computed, byte-identical native-prefill state and advances both runners in lockstep.",
             "Timing is paired and counterbalanced; model load, native prefill, warmup, state copies, and counter checks are outside measured step windows.",
             "Final hashes cover hidden/normalized/full logits, router outputs/counter, live K/V bytes, and KVLiveSpans metadata.",

@@ -91,6 +91,19 @@ scratch0, cuts **24 launches/token**, and measures the refreshed short profile
 at **5.527-ms wall / 4.859-ms kernels / 271 launches / 180.935 tok/s**. The
 two-dispatch route remains registered as the exact rollback.
 
+The default-off D0 affine4 candidate registers
+`maple_affine4_gemv/group64_wave32_exact`. One local32 wave computes four
+virtual production partials per lane and reconstructs the exact stride
+64/32/16/8/4/2/1 tree with shuffles, removing the original four-wave LDS
+exchange and barriers without output-row tiling. At the real 151,936x2,048
+head it is FP32-bit exact across all logits and improves **1.527 -> 1.020 ms
+(1.496x, 48/48 wins)**. The dirty 18-prompt continuation screen improves
+**148.409 -> 158.903 tok/s (+7.07%, 287/288 wins)** with exact state and
+lifecycle. Cached tracing names `maple_affine4_gemv_wave32_exact_kernel` at
+local32/VGPR16/SGPR128/LDS0/scratch0, **0.983 ms/step**. It remains behind
+`HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=1` pending clean qualification; the
+original group64 kernel is the rollback.
+
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard
 QK-RMSNorm plus rotate-half partial RoPE, BF16 K/V append, and online-softmax

@@ -314,6 +314,16 @@ as required by `docs/PREFILL.md`.
 two-stage FP32 argmax and now measures **1.278 ms / 26.30%** of post-D0 c1
 kernels. Argmax remains only 0.008 ms/token.
 
+A materially different default-off candidate now passes the dirty gates.
+`group64_wave32_exact` computes the same four virtual 128-thread partial groups
+inside one wave and reconstructs the exact reduction tree with shuffles; it
+neither tiles output rows nor merely caches the hidden vector. The real head is
+bit-identical and improves **1.527 -> 1.020 ms (1.496x, 48/48 wins)**. The dirty
+18-prompt screen improves **148.409 -> 158.903 tok/s (+7.07%, 287/288 wins)**,
+and cached tracing is local32/VGPR16/LDS0/scratch0 at **0.983 ms/step**. Its
+short fixed-token diagnostic reaches **199.659 tok/s**. Keep it default-off
+until clean binding category qualification.
+
 Exact work, in order:
 
 1. Keep the rejected c1 tiled shape closed; test a materially different

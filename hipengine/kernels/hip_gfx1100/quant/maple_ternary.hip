@@ -684,6 +684,27 @@ __global__ void maple_affine4_embed_batched_kernel(
   }
 }
 
+__device__ inline float maple_affine4_accumulate_word_exact(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ row,
+    const uint16_t* __restrict__ row_scales,
+    const uint16_t* __restrict__ row_biases,
+    int64_t word_idx,
+    float partial) {
+  const uint32_t word = row[word_idx];
+  const int64_t base = word_idx * 8;
+  const int64_t group = word_idx / 8;
+  const float scale = bf16_to_float(row_scales[group]);
+  const float bias = bf16_to_float(row_biases[group]);
+#pragma unroll
+  for (int lane = 0; lane < 8; ++lane) {
+    const int code = static_cast<int>((word >> (4 * lane)) & 0xFU);
+    const float w = static_cast<float>(code) * scale + bias;
+    partial += bf16_to_float(x[base + lane]) * w;
+  }
+  return partial;
+}
+
 __global__ void maple_affine4_gemv_kernel(
     const uint16_t* __restrict__ x,
     const uint32_t* __restrict__ weight,
@@ -718,6 +739,56 @@ __global__ void maple_affine4_gemv_kernel(
   extern __shared__ float scratch[];
   const float total = reduce_sum(partial, scratch);
   if (threadIdx.x == 0) {
+    out[row_idx] = total;
+  }
+}
+
+// Exact D0 c1 sibling for the fixed Maple K=2048 head. One wave emulates the
+// production kernel's four 32-lane waves: each lane computes virtual tids
+// lane/{+32,+64,+96}, including each tid's two word-strided K chunks, then
+// reconstructs the original 128-thread LDS tree (stride 64, 32, 16..1) with
+// wave shuffles. This changes ownership/barriers, not any per-logit FP32
+// association.
+__global__ __launch_bounds__(32) void maple_affine4_gemv_wave32_exact_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ weight,
+    const uint16_t* __restrict__ scales,
+    const uint16_t* __restrict__ biases,
+    float* __restrict__ out,
+    int64_t out_features) {
+  const int64_t row_idx = blockIdx.x;
+  if (row_idx >= out_features) {
+    return;
+  }
+  constexpr int64_t words = 2048 / 8;
+  constexpr int64_t groups = 2048 / 64;
+  const uint32_t* row = weight + row_idx * words;
+  const uint16_t* row_scales = scales + row_idx * groups;
+  const uint16_t* row_biases = biases + row_idx * groups;
+  const int lane = static_cast<int>(threadIdx.x);
+  float virtual_partial[4];
+#pragma unroll
+  for (int virtual_wave = 0; virtual_wave < 4; ++virtual_wave) {
+    const int64_t virtual_tid = lane + virtual_wave * 32;
+    float partial = 0.0f;
+    partial = maple_affine4_accumulate_word_exact(
+        x, row, row_scales, row_biases, virtual_tid, partial);
+    partial = maple_affine4_accumulate_word_exact(
+        x, row, row_scales, row_biases, virtual_tid + 128, partial);
+    virtual_partial[virtual_wave] = partial;
+  }
+
+  const float stride64_lo = virtual_partial[0] + virtual_partial[2];
+  const float stride64_hi = virtual_partial[1] + virtual_partial[3];
+  float total = stride64_lo + stride64_hi;
+#pragma unroll
+  for (int stride = 16; stride > 0; stride >>= 1) {
+    const float peer = __shfl_down(total, stride, 32);
+    if (lane < stride) {
+      total += peer;
+    }
+  }
+  if (lane == 0) {
     out[row_idx] = total;
   }
 }
@@ -1512,6 +1583,33 @@ extern "C" int hipengine_maple_affine4_gemv_f32(
       biases,
       out,
       in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_affine4_gemv_wave32_exact_f32(
+    const uint16_t* x,
+    const uint32_t* weight,
+    const uint16_t* scales,
+    const uint16_t* biases,
+    float* out,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (in_features != 2048 || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      maple_affine4_gemv_wave32_exact_kernel,
+      dim3(static_cast<unsigned int>(out_features)),
+      dim3(32),
+      0,
+      stream,
+      x,
+      weight,
+      scales,
+      biases,
+      out,
       out_features);
   return static_cast<int>(hipGetLastError());
 }

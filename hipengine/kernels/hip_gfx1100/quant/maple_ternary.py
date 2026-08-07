@@ -548,6 +548,31 @@ def maple_affine4_gemv_f32(
     )
 
 
+def maple_affine4_gemv_wave32_exact_f32(
+    x_ptr: int,
+    weight_ptr: int,
+    scales_ptr: int,
+    biases_ptr: int,
+    out_ptr: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Wave32 emulation of Maple's exact 128-thread c1 affine4 reduction."""
+
+    _launch(
+        "hipengine_maple_affine4_gemv_wave32_exact_f32",
+        (_PTR, _PTR, _PTR, _PTR, _PTR, _I64, _I64, _PTR),
+        (x_ptr, weight_ptr, scales_ptr, biases_ptr, out_ptr, in_features, out_features),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_affine4_gemv_batched_f32(
     x_ptr: int,
     weight_ptr: int,
@@ -611,6 +636,10 @@ def register_maple_ternary_kernels(
         ("maple_affine4_embed", "group64"): maple_affine4_embed_bf16,
         ("maple_affine4_embed", "group64_batched"): maple_affine4_embed_batched_bf16,
         ("maple_affine4_gemv", "group64"): maple_affine4_gemv_f32,
+        (
+            "maple_affine4_gemv",
+            "group64_wave32_exact",
+        ): maple_affine4_gemv_wave32_exact_f32,
         ("maple_affine4_gemv", "group64_batched"): maple_affine4_gemv_batched_f32,
     }
     for (layer, variant), kernel in kernels.items():
@@ -647,6 +676,7 @@ __all__ = [
     "maple_affine4_embed_bf16",
     "maple_affine4_gemv_batched_f32",
     "maple_affine4_gemv_f32",
+    "maple_affine4_gemv_wave32_exact_f32",
     "maple_selected_ternary_dual_gemv_batched_bf16",
     "maple_selected_ternary_dual_gemv_bf16",
     "maple_selected_ternary_dual_grouped_bf16",
