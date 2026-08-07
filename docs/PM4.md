@@ -851,6 +851,19 @@ PM4 kernel rows, so device attribution needs direct-AQL tracing or retained GPU
 IB timestamps rather than a false kernel-family sum. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-graph-baseline.json`.
 
+The first exact opt-in candidate, `HIPENGINE_PM4_STATEFUL_REGISTERS=1`, ports the
+already-frozen register-state oracle into the native encoder. It always emits
+the first value for every SH register and only elides later identical values;
+kernarg pointer dwords still change per node. The p512/d3 production gate remains
+bit exact and the tape falls **25,707 -> 18,100 dwords (-29.591%)**. The corrected
+same-loaded-session harness gives conservative and stateful PM4 separate queues
+and counterbalances them against HIP graph. Its dirty-tree one-warmup/five-round
+p512/d128 decision cuts **25,666 -> 18,079 dwords (-29.560%)** and improves
+**10.040450 -> 9.978461 ms/token (-0.617%, 5/5 paired wins)** with exact shared
+tokens, recurrent/KV state, and logits plus zero fallback and clean teardown.
+This remains an opt-in candidate pending tracked-clean confirmation and the
+broader PM4 promotion gates, not package-default evidence.
+
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact
 benchmark command/hardware/source evidence, compact artifact, rollup, and

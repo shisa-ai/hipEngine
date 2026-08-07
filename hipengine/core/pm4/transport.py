@@ -16,6 +16,7 @@ from hipengine.core.pm4.graph import HipGraphManifest, inspect_hip_graph
 from hipengine.core.pm4.native import NativePm4Context, NativePm4Executable
 
 _ENV_SUBMISSION_TRANSPORT = "HIPENGINE_SUBMISSION_TRANSPORT"
+_ENV_PM4_STATEFUL_REGISTERS = "HIPENGINE_PM4_STATEFUL_REGISTERS"
 _DEFAULT_SUBMISSION_TRANSPORT = "hipgraph"
 _NATIVE_TRANSPORTS = frozenset(("aql", "pm4"))
 
@@ -200,6 +201,15 @@ def select_submission_transport(
     return normalized
 
 
+def _env_flag(name: str, *, env: Mapping[str, str] | None = None) -> bool:
+    value = (os.environ if env is None else env).get(name, "0").strip().lower()
+    if value in {"", "0", "false", "no", "off"}:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    raise ValueError(f"{name} must be a boolean value")
+
+
 def create_graph_submission_context(
     *,
     backend: str,
@@ -307,6 +317,7 @@ class NativeGraphSubmission:
     manifest: HipGraphManifest
     context: NativePm4Context
     executable: NativePm4Executable
+    stateful_registers: bool = False
     context_owner: NativeGraphSubmissionContext | None = None
     graph_exec: int = 0
     launches: int = 0
@@ -351,6 +362,7 @@ class NativeGraphSubmission:
             "launch_attempts": int(self.launch_attempts),
             "submission_started": bool(self.submission_started),
             "native_fallbacks": 0,
+            "stateful_registers": bool(self.stateful_registers),
             "closed": bool(self.closed),
             "context": self._component_provenance(self.context),
             "executable": self._component_provenance(self.executable),
@@ -400,6 +412,7 @@ class NativeGraphSubmissionContext:
     runtime: Any
     name: str
     context: NativePm4Context
+    stateful_registers: bool = False
     children: int = 0
     generations: int = 0
     closed: bool = False
@@ -425,7 +438,10 @@ class NativeGraphSubmissionContext:
             gfx_arch=request.gfx_arch,
             stream=request.capture_stream,
         )
-        executable = self.context.instantiate(manifest)
+        executable = self.context.instantiate(
+            manifest,
+            stateful_registers=self.stateful_registers,
+        )
         self.children += 1
         self.generations += 1
         return NativeGraphSubmission(
@@ -434,6 +450,7 @@ class NativeGraphSubmissionContext:
             manifest=manifest,
             context=self.context,
             executable=executable,
+            stateful_registers=self.stateful_registers,
             context_owner=self,
         )
 
@@ -457,6 +474,7 @@ class NativeGraphSubmissionContext:
             "source": "hipengine_in_tree_rocr_pm4",
             "children": int(self.children),
             "generations": int(self.generations),
+            "stateful_registers": bool(self.stateful_registers),
             "closed": False,
             "native": NativeGraphSubmission._component_provenance(self.context),
         }
@@ -502,6 +520,9 @@ def _create_gfx1100_submission_context(
         raise RuntimeError(
             "in-tree native graph submission is admitted only for hip_gfx1100/gfx1100"
         )
+    stateful_registers = bool(
+        selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS)
+    )
     context = NativePm4Context.create(
         pci_bdf=runtime.device_pci_bus_id(),
         gfx_arch=gfx_arch,
@@ -512,6 +533,7 @@ def _create_gfx1100_submission_context(
         runtime=runtime,
         name=selected,
         context=context,
+        stateful_registers=stateful_registers,
     )
 
 
@@ -531,13 +553,19 @@ def _create_gfx1100_native_submission(
         gfx_arch=request.gfx_arch,
         stream=request.capture_stream,
     )
+    stateful_registers = bool(
+        selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS)
+    )
     context: NativePm4Context | None = None
     try:
         context = NativePm4Context.create(
             pci_bdf=request.runtime.device_pci_bus_id(),
             gfx_arch=request.gfx_arch,
         )
-        executable = context.instantiate(manifest)
+        executable = context.instantiate(
+            manifest,
+            stateful_registers=stateful_registers,
+        )
     except Exception as operation_error:
         if context is not None:
             try:
@@ -554,6 +582,7 @@ def _create_gfx1100_native_submission(
         manifest=manifest,
         context=context,
         executable=executable,
+        stateful_registers=stateful_registers,
     )
 
 

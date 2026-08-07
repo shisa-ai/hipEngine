@@ -209096,3 +209096,38 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-graph-baseline.json`
   (`performance_claim=false`). Next: attribute setup and test exact opt-in
   register/dependency reductions; no submit/recreate stress ran.
+
+## 2026-08-08 — Correct and validate the stateful PM4 comparison
+
+- Add an exact default-off native encoder flag that tracks gfx1100 SH-register
+  values within one retained tape, always emits the first observed value, and
+  elides only later byte-identical writes. The transport records the decision at
+  context construction and exposes it in Python/native provenance. The p512/d3
+  production gate remains bit exact versus eager and HIP graph; the 627-node
+  tape falls **25,707 -> 18,100 dwords (-29.591%)**, all three submissions
+  retire, and context/memory teardown passes.
+- Review rejected the initial `10.027337 -> 9.985572 ms/token` cross-session
+  direction as insufficient for a 0.4% claim. Extend
+  `scripts/pm4_graph_bench.py` with a distinct `pm4_stateful` benchmark label:
+  conservative and stateful PM4 now own separate immutable contexts/queues in
+  the same loaded model session, replay in rotating order, and must prove their
+  exact encoder flag in addition to the existing token/state/logit/lifecycle
+  checks.
+- Dirty-tree decision command:
+  `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1
+  HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3
+  scripts/pm4_graph_bench.py --transports hipgraph pm4 pm4_stateful
+  --prompt-length 512 --steps 128 --warmups 1 --repetitions 5
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached
+  --json /tmp/hipengine-pm4-stateful-same-session-p512-d128.json`.
+  All 18 windows finish on token `9707` with exact recurrent/KV hash
+  `062dd376...f35a0` and final-logit hash `67615105...291f9`; both PM4 queues
+  retire 768/768 submissions with zero fallback/callback/unretired state and
+  all contexts close within the existing 4-MiB first-use cache delta.
+- Median synchronized replay is HIP graph **10.715043 ms/token**, conservative
+  PM4 **10.040450**, and stateful PM4 **9.978461**. Register elision therefore
+  cuts the PM4 tape **25,666 -> 18,079 dwords (-29.560%)** and improves the
+  matched PM4 replay **0.617% / 1.00621x**, with **5/5 paired wins** and a
+  **-0.061988-ms/token** paired median. Keep the candidate explicit until a
+  tracked-clean confirmation and the broader PM4 promotion gates; no
+  submit/recreate stress ran.

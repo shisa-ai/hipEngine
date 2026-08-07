@@ -35,6 +35,7 @@ namespace {
 
 constexpr uint32_t kAbiVersion = 2;
 constexpr uint32_t kExecutableFlagTimestamps = 1u << 0;
+constexpr uint32_t kExecutableFlagStatefulRegisters = 1u << 1;
 constexpr size_t kPacketBytes = 64;
 constexpr uint64_t kNanosPerSecond = 1000000000ull;
 constexpr uint32_t kPacket3SetShReg = 0x76;
@@ -647,19 +648,49 @@ void append_dependency_global(std::vector<uint32_t>* words) {
   words->insert(words->end(), std::begin(values), std::end(values));
 }
 
-void set_sh_regs(std::vector<uint32_t>* words, uint32_t first,
-                 std::initializer_list<uint32_t> values) {
-  words->push_back(packet3(kPacket3SetShReg, static_cast<uint32_t>(values.size()) + 1, true));
+using RegisterState = std::unordered_map<uint32_t, uint32_t>;
+
+void emit_sh_regs(std::vector<uint32_t>* words, uint32_t first,
+                  const uint32_t* values, size_t count) {
+  if (count == 0) return;
+  words->push_back(packet3(kPacket3SetShReg, static_cast<uint32_t>(count) + 1, true));
   words->push_back(first);
-  words->insert(words->end(), values.begin(), values.end());
+  words->insert(words->end(), values, values + count);
 }
 
 void set_sh_regs_vector(std::vector<uint32_t>* words, uint32_t first,
-                        const std::vector<uint32_t>& values) {
+                        const std::vector<uint32_t>& values, RegisterState* state) {
   if (values.empty()) return;
-  words->push_back(packet3(kPacket3SetShReg, static_cast<uint32_t>(values.size()) + 1, true));
-  words->push_back(first);
-  words->insert(words->end(), values.begin(), values.end());
+  if (state == nullptr) {
+    emit_sh_regs(words, first, values.data(), values.size());
+    return;
+  }
+  size_t run_start = 0;
+  size_t run_count = 0;
+  const auto flush = [&] {
+    if (run_count != 0)
+      emit_sh_regs(words, first + static_cast<uint32_t>(run_start),
+                   values.data() + run_start, run_count);
+    run_count = 0;
+  };
+  for (size_t offset = 0; offset < values.size(); ++offset) {
+    const uint32_t reg = first + static_cast<uint32_t>(offset);
+    const uint32_t value = values[offset];
+    const auto existing = state->find(reg);
+    if (existing != state->end() && existing->second == value) {
+      flush();
+      continue;
+    }
+    (*state)[reg] = value;
+    if (run_count == 0) run_start = offset;
+    ++run_count;
+  }
+  flush();
+}
+
+void set_sh_regs(std::vector<uint32_t>* words, uint32_t first,
+                 std::initializer_list<uint32_t> values, RegisterState* state) {
+  set_sh_regs_vector(words, first, std::vector<uint32_t>(values), state);
 }
 
 struct Dispatch {
@@ -670,7 +701,8 @@ struct Dispatch {
   uint32_t dynamic_lds = 0;
 };
 
-void append_dispatch(std::vector<uint32_t>* words, const Dispatch& dispatch) {
+void append_dispatch(std::vector<uint32_t>* words, const Dispatch& dispatch,
+                     RegisterState* state) {
   const KernelInfo& image = dispatch.kernel;
   if (image.private_size != 0 || image.dynamic_stack)
     throw Error("gfx1100 retained PM4 does not support scratch or dynamic call stacks");
@@ -707,14 +739,14 @@ void append_dispatch(std::vector<uint32_t>* words, const Dispatch& dispatch) {
 
   set_sh_regs(words, kComputePgmLo,
               {static_cast<uint32_t>(image.code_entry >> 8),
-               static_cast<uint32_t>(image.code_entry >> 40)});
-  set_sh_regs(words, kComputePgmRsrc1, {image.rsrc1, rsrc2});
-  set_sh_regs(words, kComputePgmRsrc3, {image.rsrc3});
-  set_sh_regs(words, kComputeTmpRingSize, {0});
+               static_cast<uint32_t>(image.code_entry >> 40)}, state);
+  set_sh_regs(words, kComputePgmRsrc1, {image.rsrc1, rsrc2}, state);
+  set_sh_regs(words, kComputePgmRsrc3, {image.rsrc3}, state);
+  set_sh_regs(words, kComputeTmpRingSize, {0}, state);
   set_sh_regs(words, kComputeNumThreadX,
-              {dispatch.block[0], dispatch.block[1], dispatch.block[2]});
-  set_sh_regs(words, kComputeResourceLimits, {0});
-  set_sh_regs_vector(words, kComputeUserData0, user_sgprs);
+              {dispatch.block[0], dispatch.block[1], dispatch.block[2]}, state);
+  set_sh_regs(words, kComputeResourceLimits, {0}, state);
+  set_sh_regs_vector(words, kComputeUserData0, user_sgprs, state);
   const uint32_t initiator = (1u << 0) | (1u << 2) | (1u << 3) | (1u << 15);
   words->push_back(packet3(kPacket3DispatchDirect, 4, true));
   words->insert(words->end(), workgroups.begin(), workgroups.end());
@@ -765,6 +797,7 @@ struct Executable {
   uint64_t generation = 0;
   uint64_t aql_submissions = 0;
   uint64_t pm4_submissions = 0;
+  bool stateful_registers = false;
   bool usable = true;
   bool in_flight = false;
   bool retired = true;
@@ -953,6 +986,8 @@ std::string executable_json(Executable* executable) {
       << executable->indirect.length << ",\"timestamp_address\":"
       << reinterpret_cast<uintptr_t>(executable->timestamps.pointer)
       << ",\"timestamp_bytes\":" << executable->timestamps.length
+      << ",\"stateful_registers\":"
+      << (executable->stateful_registers ? "true" : "false")
       << ",\"aql_submissions\":"
       << executable->aql_submissions << ",\"pm4_submissions\":"
       << executable->pm4_submissions << ",\"in_flight\":"
@@ -1182,7 +1217,7 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
   return guarded(error, error_size, [&] {
     if (context_opaque == nullptr || output == nullptr) throw Error("null executable input");
     *output = nullptr;
-    if (flags & ~kExecutableFlagTimestamps)
+    if (flags & ~(kExecutableFlagTimestamps | kExecutableFlagStatefulRegisters))
       throw Error("unsupported PM4 executable creation flags");
     if (input == nullptr || count == 0) throw Error("cannot instantiate an empty graph");
     Context* context = &context_opaque->value;
@@ -1194,6 +1229,7 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
     Executable* executable = &owner->value;
     executable->context = context;
     executable->generation = ++context->generation;
+    executable->stateful_registers = (flags & kExecutableFlagStatefulRegisters) != 0;
     executable->modules.reserve(count);
     executable->dispatches.reserve(count);
 
@@ -1277,9 +1313,11 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
     }
 
     append_acquire_system(&executable->pm4_words);
+    RegisterState register_state;
+    RegisterState* state = executable->stateful_registers ? &register_state : nullptr;
     for (size_t index = 0; index < executable->dispatches.size(); ++index) {
       if (index != 0) append_dependency_global(&executable->pm4_words);
-      append_dispatch(&executable->pm4_words, executable->dispatches[index]);
+      append_dispatch(&executable->pm4_words, executable->dispatches[index], state);
     }
     append_wait_compute_idle(&executable->pm4_words);
     if ((flags & kExecutableFlagTimestamps) != 0) {
