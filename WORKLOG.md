@@ -207876,3 +207876,20 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   exact 520/770 state, sparse/staggered reclaim, singleton preservation, and
   zero lifecycle, while this unit deletes selectors without changing the
   selector-unset production leaves.
+
+## 2026-08-08 — Close complete Maple optimization roadmap audit
+
+- Map every P0-P4 and D0-D1 outcome in `docs/MAPLE.md` to its production or
+  rejection state, durable kernel/runtime/public tests, compact benchmark and
+  profile evidence, implementation/publication commits, and benchmark
+  README/changelog rollups. Validate all 56 local document links and all 23
+  cited commits mechanically.
+- Branch provenance is explicit: `23b42230a` merged the then-current main before
+  correction/reprofiling; `83c1d6e87` closes the final retained-path selector
+  and duplicate-owner triggers. Historical performance artifacts remain bound
+  to their measured source commits and are not rewritten by this docs audit.
+- P0-P4 and D0-D1 are complete. P3 is an evidence-backed rejection with no live
+  candidate surface. Future P1b SIMD ternary work, approximate FlashHead, M1
+  graph, M2 fusion, ragged prompt compute, HTTP serving, and 128K qualification
+  remain explicitly separate tracks with concrete limits/triggers; none is an
+  unfinished requirement of this roadmap.

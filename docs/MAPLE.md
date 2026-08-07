@@ -415,6 +415,33 @@ Evidence:
 and [`MAPLE-PERF.md`](MAPLE-PERF.md). Kernel names and trace resources are in
 [`KERNELS.md`](KERNELS.md).
 
+### Final roadmap audit
+
+The final audit is closed against retained-path cleanup commit `83c1d6e87`.
+Every P0-P4 and D0-D1 outcome has a production or explicit rejection state, a
+durable test/oracle, compact evidence, and a benchmark rollup entry:
+
+| Phase | Code and durable gate | Retained evidence | Implementation / publication commits |
+| --- | --- | --- | --- |
+| P0 | `MapleRunner.prefill_native()` final-row tail; `test_maple_prefill_native_samples_only_the_final_row` and no-all-row-buffer gate | [`P0 final-row`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json) + [`post-P0 profile`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json) | `f5d4854bd` / `a9be9f310` |
+| P1 | registered stable compaction + grouped gate/up/down; grouped-vs-row-route oracle and public state gate | [`P1 expert-major`](../benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json) + [`post-P1 profile`](../benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json) | `12106b8a4` / `ed25308eb` |
+| P2 | `gqa4_wave32_causal_ring_bf16`; bit-exact local128 and complete-`KVLiveSpans` tests | [`P2 GQA4`](../benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json) + [`post-P2 profile`](../benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json) | `9ccc60541` / `5232042b8` |
+| P3 | no candidate production surface; tile 8 remains the registered scalar path and WMMA stops at the byte-exact gate | [`P3 rejection`](../benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json) | `c70ec1809`, `f86f2c86a` |
+| D0 | one-dispatch router + wave32 exact head + once-per-step fusion-selector snapshot; direct router/head equivalence and complete c1 state/counter gates | [`router`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json), [`head`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json), [`host`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json), and [`final profile`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json) | `56e88215f`, `ab80552b5`, `ed89dc50a` / `e972e5399`, `c70bd2309`, `6da6755ac` |
+| D1 | width-bounded c2/c4/c8 row-reuse head; direct all-row bit comparison, sparse mask, reclaim, and SWA-wrap gates | [`D1 row reuse`](../benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json) | `7e134ca9e`, `f897dc350` / `18489106d` |
+| P4 | SWA-safe `prefill_native()` plus sole public `MapleResidentModelRunner`; 520/770 physical-state, public category, sparse/staggered/singleton, and lifecycle gates | [`P4 public admission`](../benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) | `d9bff2e2d`, `bcc0d037c` / `7b3596d93` |
+
+All retained and rejected rows are also present in
+[`benchmarks/README.md`](../benchmarks/README.md) and
+[`benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md). The branch first merged
+the then-current main at `23b42230a`; the final audit removed the four completed
+P2/D0/D1 environment seams and the duplicate private batch scheduler at
+`83c1d6e87`, while preserving separately registered numerical fallbacks. The P1
+gather opt-out remains intentionally tracked until a future exact non-WMMA SIMD
+consumer clears its named gate; M1 graph and M2 fusion remain measured opt-ins
+with concrete blockers in [`REFACTOR.md`](REFACTOR.md), not unfinished
+P0-P4/D0-D1 work.
+
 ## Reproduction
 
 Download the exact deployment revision into the normal Hugging Face cache:
