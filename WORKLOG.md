@@ -203701,3 +203701,9 @@ P95 improves **1.071x/1.095x**; outputs remain exact. These are smoke values,
 not retained performance claims. Focused helper/runtime tests, Ruff,
 compilation, and diff checks pass. Commit the harness, then run the frozen
 48-request / 2-warmup / 10-sample publication on exclusive GPU0.
+
+Pre-publication inspection found the exclusivity helper queried all GPUs, which
+would incorrectly reject an idle GPU0 whenever unrelated GPU1/2 workers run.
+It now resolves the selected index's UUID and filters compute processes to that
+UUID; a focused mocked regression proves GPU1/2 work does not contaminate the
+GPU0 verdict. No benchmark protocol or timing path changed.
