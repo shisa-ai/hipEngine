@@ -140,12 +140,7 @@ class _PrefillBuffers:
     expert_up: DeviceBuffer
     expert_intermediate: DeviceBuffer
     expert_down: DeviceBuffer
-    logits: DeviceBuffer
     token_ids: DeviceBuffer
-    argmax_block_values: DeviceBuffer
-    argmax_block_indices: DeviceBuffer
-    argmax_index: DeviceBuffer
-    argmax_value: DeviceBuffer
 
     def __init__(
         self,
@@ -171,8 +166,36 @@ class _PrefillBuffers:
         self.expert_up = owner.allocate(T * top_k * intermediate * 2)
         self.expert_intermediate = owner.allocate(T * top_k * intermediate * 2)
         self.expert_down = owner.allocate(T * top_k * h * 2)
-        self.logits = owner.allocate(T * spec.vocab_size * 4)
         self.token_ids = owner.allocate(T * 8)
+
+
+@dataclass
+class _BatchBuffers(_PrefillBuffers):
+    """T-row runtime buffers including the all-row sampling tail."""
+
+    logits: DeviceBuffer
+    argmax_block_values: DeviceBuffer
+    argmax_block_indices: DeviceBuffer
+    argmax_index: DeviceBuffer
+    argmax_value: DeviceBuffer
+
+    def __init__(
+        self,
+        *,
+        owner: _BufferOwner,
+        spec: MapleModelSpec,
+        top_k: int,
+        intermediate: int,
+        T: int,
+    ) -> None:
+        super().__init__(
+            owner=owner,
+            spec=spec,
+            top_k=top_k,
+            intermediate=intermediate,
+            T=T,
+        )
+        self.logits = owner.allocate(T * spec.vocab_size * 4)
         argmax_blocks = (spec.vocab_size + 1_023) // 1_024
         self.argmax_block_values = owner.allocate(T * argmax_blocks * 4)
         self.argmax_block_indices = owner.allocate(T * argmax_blocks * 8)
@@ -914,11 +937,11 @@ class MapleRunner:
         """Batched bulk prefill over all layers (P4), chunked into bounded rows.
 
         Uses the batched prefill kernel chain (embed, QKV GEMM, qknorm ring
-        write, ring attention, o_proj GEMM, router, row/route-gather MoE,
-        weighted residual, lm_head GEMM, row argmax). Returns the final prompt
-        row's next-token prediction and top logit while preserving the
-        token-serial continuation contract. The gather MoE and all-row tail are
-        correct bring-up paths, not the optimized grouped/final-row schedule.
+        write, ring attention, o_proj GEMM, router, row/route-gather MoE, and
+        weighted residual), then samples only the final prompt row with the
+        proven c1 norm/head/argmax tail. Returns that row's next-token prediction
+        and top logit while preserving the token-serial continuation contract.
+        The gather MoE remains a correct bring-up path pending expert grouping.
         """
 
         self._require_open()
@@ -1143,53 +1166,48 @@ class MapleRunner:
                     library=libs.moe,
                     runtime=self.runtime,
                 )
-            paro_rmsnorm_out_bf16(
-                pf.hidden.ptr,
-                self.weights.final_norm.ptr,
-                pf.normalized.ptr,
-                rows,
-                h,
-                spec.rms_norm_eps,
-                library=libs.norm,
-                runtime=self.runtime,
-            )
-            maple_affine4_gemv_batched_f32(
-                pf.normalized.ptr,
-                self.weights.lm_head.weight.ptr,
-                self.weights.lm_head.scales.ptr,
-                self.weights.lm_head.biases.ptr,
-                pf.logits.ptr,
-                rows,
-                h,
-                spec.vocab_size,
-                library=libs.ternary,
-                runtime=self.runtime,
-            )
-            argmax_f32_rows_i32(
-                pf.logits.ptr,
-                pf.argmax_block_values.ptr,
-                pf.argmax_block_indices.ptr,
-                pf.argmax_index.ptr,
-                pf.argmax_value.ptr,
-                rows,
-                spec.vocab_size,
-                library=libs.lm_head,
-                runtime=self.runtime,
-            )
-            last_i32 = np.empty(1, dtype=np.int32)
-            copy_device_to_host(
-                host_array_ptr(last_i32),
-                DeviceBuffer(ptr=pf.argmax_index.ptr + (rows - 1) * 4, nbytes=4),
-                nbytes=last_i32.nbytes,
-                runtime=self.runtime,
-            )
-            copy_device_to_host(
-                host_array_ptr(last_value),
-                DeviceBuffer(ptr=pf.argmax_value.ptr + (rows - 1) * 4, nbytes=4),
-                nbytes=last_value.nbytes,
-                runtime=self.runtime,
-            )
-            last_index[0] = int(last_i32[0])
+        final_hidden_ptr = pf.hidden.ptr + (rows - 1) * h * 2
+        paro_rmsnorm_out_bf16(
+            final_hidden_ptr,
+            self.weights.final_norm.ptr,
+            b.normalized.ptr,
+            1,
+            h,
+            spec.rms_norm_eps,
+            library=libs.norm,
+            runtime=self.runtime,
+        )
+        maple_affine4_gemv_f32(
+            b.normalized.ptr,
+            self.weights.lm_head.weight.ptr,
+            self.weights.lm_head.scales.ptr,
+            self.weights.lm_head.biases.ptr,
+            b.logits.ptr,
+            h,
+            spec.vocab_size,
+            library=libs.ternary,
+            runtime=self.runtime,
+        )
+        argmax_f32(
+            b.logits.ptr,
+            b.argmax_block_values.ptr,
+            b.argmax_block_indices.ptr,
+            b.argmax_index.ptr,
+            b.argmax_value.ptr,
+            spec.vocab_size,
+            library=libs.lm_head,
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(last_index),
+            b.argmax_index,
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(last_value),
+            b.argmax_value,
+            runtime=self.runtime,
+        )
         self.position = start_position + n
         return MapleStepResult(
             position=self.position - 1,
@@ -1289,7 +1307,7 @@ class MapleBatchRunner:
         top_k = spec.num_experts_per_tok
         intermediate = spec.moe_intermediate_size
         T = self.batch_size
-        self.pf = _PrefillBuffers(
+        self.pf = _BatchBuffers(
             owner=owner, spec=spec, top_k=top_k, intermediate=intermediate, T=T
         )
 

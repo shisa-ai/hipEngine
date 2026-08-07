@@ -3,14 +3,16 @@
 
 The correctness phase compares serial and native prefill over the complete
 code/general-English/general-Japanese/mixed prompt suite plus heldouts. It checks
-full-logit KL/top-1 at the prefill seed and subsequent decode positions. The
-performance phase measures repeated native and serial rows at fixed 128/320/512
-shapes derived from those natural prompts and records exact tracked lifecycle.
+byte-exact hidden/KV/span state, full-logit KL/top-1 at the prefill seed, and
+subsequent decode positions. The performance phase measures repeated native and
+serial rows at fixed 128/320/512 shapes derived from those natural prompts and
+records exact tracked lifecycle.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -110,22 +112,122 @@ def _kl_divergence(reference: np.ndarray, candidate: np.ndarray) -> float:
     return float(np.sum(probability * (ref_log_p - cand_log_p)))
 
 
-def _copy_native_final_logits(runner: MapleRunner, prompt_length: int) -> np.ndarray:
-    vocab = runner.checkpoint.spec.vocab_size
-    final_row = (int(prompt_length) - 1) % PREFILL_CHUNK
-    nbytes = vocab * np.dtype(np.float32).itemsize
-    source = DeviceBuffer(
-        ptr=runner.buffers.pf.logits.ptr + final_row * nbytes,
-        nbytes=nbytes,
-    )
-    logits = np.empty(vocab, dtype=np.float32)
+def _copy_native_final_logits(runner: MapleRunner) -> np.ndarray:
+    return runner.copy_logits()
+
+
+def _copy_device_bytes(
+    runner: MapleRunner,
+    source: DeviceBuffer,
+    *,
+    offset: int = 0,
+    nbytes: int | None = None,
+) -> np.ndarray:
+    size = source.nbytes - int(offset) if nbytes is None else int(nbytes)
+    if offset < 0 or size < 0 or offset + size > source.nbytes:
+        raise ValueError("Maple state copy exceeds device buffer bounds")
+    host = np.empty(size, dtype=np.uint8)
     copy_device_to_host(
-        host_array_ptr(logits),
-        source,
-        nbytes=nbytes,
+        host_array_ptr(host),
+        DeviceBuffer(ptr=source.ptr + int(offset), nbytes=size),
+        nbytes=size,
         runtime=runner.runtime,
     )
-    return logits
+    return host
+
+
+def _prefill_state_gate(
+    serial: MapleRunner,
+    native: MapleRunner,
+    *,
+    prompt_length: int,
+) -> dict[str, Any]:
+    spec = serial.checkpoint.spec
+    if native.checkpoint.spec != spec:
+        raise ValueError("Maple state comparison requires the same model spec")
+    serial_digest = hashlib.sha256()
+    native_digest = hashlib.sha256()
+    mismatches: list[str] = []
+    components = 0
+
+    def compare(
+        name: str,
+        serial_buffer: DeviceBuffer,
+        native_buffer: DeviceBuffer,
+        *,
+        serial_offset: int = 0,
+        native_offset: int = 0,
+        nbytes: int | None = None,
+    ) -> None:
+        nonlocal components
+        serial_bytes = _copy_device_bytes(
+            serial, serial_buffer, offset=serial_offset, nbytes=nbytes
+        )
+        native_bytes = _copy_device_bytes(
+            native, native_buffer, offset=native_offset, nbytes=nbytes
+        )
+        serial_digest.update(name.encode("utf-8") + b"\0" + serial_bytes.tobytes())
+        native_digest.update(name.encode("utf-8") + b"\0" + native_bytes.tobytes())
+        components += 1
+        if not np.array_equal(serial_bytes, native_bytes):
+            mismatches.append(name)
+
+    hidden_bytes = spec.hidden_size * np.dtype(np.uint16).itemsize
+    final_row = (int(prompt_length) - 1) % PREFILL_CHUNK
+    compare(
+        "final_hidden",
+        serial.buffers.hidden,
+        native.buffers.pf.hidden,
+        native_offset=final_row * hidden_bytes,
+        nbytes=hidden_bytes,
+    )
+    compare(
+        "final_normalized",
+        serial.buffers.normalized,
+        native.buffers.normalized,
+        nbytes=hidden_bytes,
+    )
+
+    live_cache_bytes = int(prompt_length) * spec.kv_size * np.dtype(np.uint16).itemsize
+    for layer_id, (serial_layer, native_layer) in enumerate(
+        zip(serial.buffers.layers, native.buffers.layers, strict=True)
+    ):
+        compare(
+            f"layer_{layer_id}.key_cache",
+            serial_layer.key_cache,
+            native_layer.key_cache,
+            nbytes=live_cache_bytes,
+        )
+        compare(
+            f"layer_{layer_id}.value_cache",
+            serial_layer.value_cache,
+            native_layer.value_cache,
+            nbytes=live_cache_bytes,
+        )
+
+    for owner_name in ("sliding_span_owner", "global_span_owner"):
+        serial_owner = getattr(serial.buffers, owner_name)
+        native_owner = getattr(native.buffers, owner_name)
+        for field in (
+            "base_offsets",
+            "live_counts",
+            "token_positions",
+            "evict_mask",
+            "row_positions",
+        ):
+            compare(
+                f"{owner_name}.{field}",
+                getattr(serial_owner, field),
+                getattr(native_owner, field),
+            )
+
+    return {
+        "passed": not mismatches,
+        "component_count": components,
+        "mismatches": mismatches,
+        "serial_sha256": serial_digest.hexdigest(),
+        "native_sha256": native_digest.hexdigest(),
+    }
 
 
 def _quality_gate(
@@ -149,7 +251,12 @@ def _quality_gate(
             serial_result = serial.prefill(tokens)
             serial_logits = serial.copy_logits()
             native_result = native.prefill_native(tokens)
-            native_logits = _copy_native_final_logits(native, len(tokens))
+            native_logits = _copy_native_final_logits(native)
+            state = _prefill_state_gate(
+                serial,
+                native,
+                prompt_length=len(tokens),
+            )
             position_rows = [
                 {
                     "position": len(tokens) - 1,
@@ -181,6 +288,7 @@ def _quality_gate(
                 {
                     **prompt,
                     "prompt_tokens": len(tokens),
+                    "state": state,
                     "positions": position_rows,
                 }
             )
@@ -198,6 +306,7 @@ def _quality_gate(
     max_kl = max(position["kl"] for position in positions)
     mean_kl = statistics.fmean(position["kl"] for position in positions)
     top1_agreement = top1_matches / len(positions)
+    state_matches = sum(row["state"]["passed"] for row in rows)
     passed = (
         len(rows) == 18
         and all(category_counts[category] > 0 for category in REQUIRED_CATEGORIES)
@@ -205,6 +314,7 @@ def _quality_gate(
         and max_kl <= 0.05
         and top1_agreement >= 0.90
         and token_matches == len(positions)
+        and state_matches == len(rows)
     )
     return {
         "passed": passed,
@@ -217,6 +327,7 @@ def _quality_gate(
         "top1_matches": top1_matches,
         "top1_agreement": top1_agreement,
         "token_matches": token_matches,
+        "state_matches": state_matches,
         "rows": rows,
     }
 
@@ -394,7 +505,20 @@ def main() -> int:
     rocminfo = _capture(["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"])
     rocm_smi = _capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"])
     hipcc = _capture(["hipcc", "--version"])
-    status = "accepted" if quality["passed"] and lifecycle_passed and git["tracked_clean"] else "rejected"
+    protocol_qualified = (
+        lengths == (128, 320, 512)
+        and args.repetitions >= 3
+        and args.warmups >= 1
+        and args.continuation_steps >= 4
+    )
+    status = (
+        "accepted"
+        if quality["passed"]
+        and lifecycle_passed
+        and git["tracked_clean"]
+        and protocol_qualified
+        else "rejected"
+    )
     resolved_path = str(Path(checkpoint.index.model_path).resolve())
     artifact = {
         "schema_version": 1,
@@ -435,6 +559,7 @@ def main() -> int:
             "continuation_steps": args.continuation_steps,
             "native_limit": 512,
             "serial_fallback_above_limit": True,
+            "qualified_protocol": protocol_qualified,
         },
         "correctness": quality,
         "performance": {"native_prefill": rows},
@@ -447,17 +572,18 @@ def main() -> int:
         "notes": [
             "Public generation selects native prefill through 512 prompt tokens and serial prefill above that limit.",
             "Fixed-shape timing rows are derived from two natural/heldout prompts per category; they are not output-quality scores.",
-            "Correctness is evaluated on unmodified natural prompts with full-logit KL and continuation parity.",
+            "Correctness is evaluated on unmodified natural prompts with byte-exact final hidden/normalized state, live K/V and KVLiveSpans metadata, full-logit KL, and continuation parity.",
         ],
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n")
     print(json.dumps({
         "status": status,
-        "quality": {key: quality[key] for key in ("prompt_count", "position_count", "max_kl", "mean_kl", "top1_agreement", "token_matches", "passed")},
+        "quality": {key: quality[key] for key in ("prompt_count", "position_count", "max_kl", "mean_kl", "top1_agreement", "token_matches", "state_matches", "passed")},
         "rows": [{key: row[key] for key in ("prompt_tokens", "aggregate_tokens_per_second", "median_sample_tokens_per_second", "min_sample_tokens_per_second", "max_sample_tokens_per_second")} | {"serial_tokens_per_second": row["serial_reference"]["median_tokens_per_second"], "native_over_serial": row["serial_reference"]["native_over_serial"]} for row in rows],
         "resident_tracked_bytes": resident["current_allocated_bytes"],
         "lifecycle_passed": lifecycle_passed,
+        "protocol_qualified": protocol_qualified,
         "artifact": str(args.out),
     }, indent=2, sort_keys=True))
     return 0 if status == "accepted" else 2

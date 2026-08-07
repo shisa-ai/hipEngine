@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 from types import SimpleNamespace
 
 import numpy as np
@@ -95,6 +96,188 @@ def test_maple_batch_span_reset_copies_to_request_offsets(monkeypatch) -> None:
     assert np.all(span_owner.evict_host[4:8])
     assert span_owner.live_host[1] == 0
     assert span_owner.row_host[1] == -1
+
+
+def test_maple_prefill_buffers_exclude_all_row_sampling_scratch() -> None:
+    from hipengine.core.memory import DeviceBuffer
+    from hipengine.runtime.maple import _BatchBuffers, _PrefillBuffers
+
+    class FakeOwner:
+        def __init__(self) -> None:
+            self.next_ptr = 1_000
+
+        def allocate(self, nbytes: int) -> DeviceBuffer:
+            buffer = DeviceBuffer(ptr=self.next_ptr, nbytes=nbytes)
+            self.next_ptr += nbytes
+            return buffer
+
+    buffers = _PrefillBuffers(
+        owner=FakeOwner(),
+        spec=SimpleNamespace(
+            hidden_size=4,
+            q_size=4,
+            kv_size=2,
+            vocab_size=10,
+            num_experts=3,
+        ),
+        top_k=2,
+        intermediate=2,
+        T=3,
+    )
+
+    assert not hasattr(buffers, "logits")
+    assert not hasattr(buffers, "argmax_block_values")
+    assert not hasattr(buffers, "argmax_block_indices")
+    assert not hasattr(buffers, "argmax_index")
+    assert not hasattr(buffers, "argmax_value")
+
+    batch_buffers = _BatchBuffers(
+        owner=FakeOwner(),
+        spec=SimpleNamespace(
+            hidden_size=4,
+            q_size=4,
+            kv_size=2,
+            vocab_size=10,
+            num_experts=3,
+        ),
+        top_k=2,
+        intermediate=2,
+        T=3,
+    )
+    assert batch_buffers.logits.nbytes == 3 * 10 * 4
+    assert batch_buffers.argmax_index.nbytes == 3 * 4
+    assert batch_buffers.argmax_value.nbytes == 3 * 4
+
+
+def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
+    from hipengine.core.memory import DeviceBuffer
+
+    def buffer(ptr: int, nbytes: int = 4_096) -> DeviceBuffer:
+        return DeviceBuffer(ptr=ptr, nbytes=nbytes)
+
+    spec = SimpleNamespace(
+        vocab_size=10,
+        sliding_window=8,
+        hidden_size=4,
+        q_size=4,
+        kv_size=2,
+        num_experts_per_tok=2,
+        moe_intermediate_size=2,
+        num_experts=3,
+        rms_norm_eps=1e-6,
+    )
+    pf = SimpleNamespace(
+        token_ids=buffer(100),
+        hidden=buffer(1_000),
+        normalized=buffer(1_100),
+        logits=buffer(1_200),
+        argmax_block_values=buffer(1_300),
+        argmax_block_indices=buffer(1_400),
+        argmax_index=buffer(1_500),
+        argmax_value=buffer(1_600),
+    )
+    buffers = SimpleNamespace(
+        pf=pf,
+        normalized=buffer(2_000),
+        logits=buffer(3_000),
+        argmax_block_values=buffer(4_000),
+        argmax_block_indices=buffer(5_000),
+        argmax_index=buffer(6_000),
+        argmax_value=buffer(7_000),
+        sliding_span_owner=SimpleNamespace(spans=object()),
+        global_span_owner=SimpleNamespace(spans=object()),
+        layers=(),
+    )
+    pointer = lambda value: SimpleNamespace(ptr=value)  # noqa: E731
+    runner = object.__new__(MapleRunner)
+    runner.closed = False
+    runner.position = 0
+    runner.max_context = 8
+    runner.runtime = object()
+    runner.checkpoint = SimpleNamespace(spec=spec)
+    runner.buffers = buffers
+    runner.weights = SimpleNamespace(
+        embeddings=SimpleNamespace(
+            weight=pointer(10), scales=pointer(11), biases=pointer(12)
+        ),
+        final_norm=pointer(13),
+        lm_head=SimpleNamespace(
+            weight=pointer(14), scales=pointer(15), biases=pointer(16)
+        ),
+        layers=(),
+    )
+    runner.libraries = SimpleNamespace(
+        ternary=object(),
+        attention=object(),
+        moe=object(),
+        norm=object(),
+        lm_head=object(),
+    )
+
+    embed_rows: list[int] = []
+    tail_norm_calls: list[tuple[int, int, int]] = []
+    head_calls: list[tuple[int, int]] = []
+    argmax_calls: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        maple_runtime, "maple_kv_span_update_batched", lambda *a, **k: None
+    )
+    monkeypatch.setattr(maple_runtime, "copy_host_to_device", lambda *a, **k: None)
+    monkeypatch.setattr(
+        maple_runtime,
+        "maple_affine4_embed_batched_bf16",
+        lambda *args, **kwargs: embed_rows.append(int(args[5])),
+    )
+    monkeypatch.setattr(
+        maple_runtime,
+        "paro_rmsnorm_out_bf16",
+        lambda *args, **kwargs: tail_norm_calls.append(
+            (int(args[0]), int(args[2]), int(args[3]))
+        ),
+    )
+    monkeypatch.setattr(
+        maple_runtime,
+        "maple_affine4_gemv_f32",
+        lambda *args, **kwargs: head_calls.append((int(args[0]), int(args[4]))),
+    )
+    monkeypatch.setattr(
+        maple_runtime,
+        "argmax_f32",
+        lambda *args, **kwargs: argmax_calls.append((int(args[0]), int(args[3]))),
+    )
+    monkeypatch.setattr(
+        maple_runtime,
+        "maple_affine4_gemv_batched_f32",
+        lambda *a, **k: pytest.fail("prefill must not launch the all-row LM head"),
+    )
+    monkeypatch.setattr(
+        maple_runtime,
+        "argmax_f32_rows_i32",
+        lambda *a, **k: pytest.fail("prefill must not launch all-row argmax"),
+    )
+
+    def fake_copy_device_to_host(host_ptr, source, nbytes=None, *, runtime=None):
+        del nbytes, runtime
+        if source.ptr == buffers.argmax_index.ptr:
+            ctypes.c_int64.from_address(host_ptr).value = 7
+        elif source.ptr == buffers.argmax_value.ptr:
+            ctypes.c_float.from_address(host_ptr).value = 3.5
+        else:
+            raise AssertionError(f"unexpected D2H source {source.ptr}")
+
+    monkeypatch.setattr(
+        maple_runtime, "copy_device_to_host", fake_copy_device_to_host
+    )
+
+    result = runner.prefill_native((1, 2, 3, 4, 5), chunk_size=3)
+
+    assert embed_rows == [3, 2]
+    assert tail_norm_calls == [(1_008, buffers.normalized.ptr, 1)]
+    assert head_calls == [(buffers.normalized.ptr, buffers.logits.ptr)]
+    assert argmax_calls == [(buffers.logits.ptr, buffers.argmax_index.ptr)]
+    assert result.position == 4
+    assert result.token_id == 7
+    assert result.top_logit == pytest.approx(3.5)
 
 
 def test_maple_prefill_native_rejects_invalid_chunk_and_token_before_launch() -> None:
