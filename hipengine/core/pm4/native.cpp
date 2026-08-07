@@ -66,6 +66,13 @@ constexpr uint16_t kEnablePrivateSegmentSize = 1u << 6;
 constexpr uint16_t kEnableWave32 = 1u << 10;
 constexpr uint16_t kSupportedProperties =
     kEnablePrivateSegmentBuffer | kEnableKernargPtr | kEnableWave32;
+using SteadyClock = std::chrono::steady_clock;
+
+uint64_t elapsed_ns(SteadyClock::time_point start) {
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(SteadyClock::now() - start).count());
+}
+
 static_assert(sizeof(hsa_kernel_dispatch_packet_t) == kPacketBytes,
               "public HSA kernel packet ABI must remain 64 bytes");
 
@@ -807,6 +814,12 @@ struct Executable {
   uint64_t last_packet_id = 0;
   uint64_t last_packet_count = 0;
   uint64_t last_timeout_ns = 0;
+  uint64_t module_load_ns = 0;
+  uint64_t kernel_resolve_ns = 0;
+  uint64_t kernarg_allocate_ns = 0;
+  uint64_t aql_packet_build_ns = 0;
+  uint64_t pm4_encode_ns = 0;
+  uint64_t ib_allocate_ns = 0;
   hsa_signal_value_t last_completion_value = 1;
   std::string last_transport = "none";
   bool stateful_registers = false;
@@ -1056,6 +1069,12 @@ std::string executable_json(Executable* executable) {
       << ",\"last_packet_id\":" << executable->last_packet_id
       << ",\"last_packet_count\":" << executable->last_packet_count
       << ",\"last_timeout_ns\":" << executable->last_timeout_ns
+      << ",\"module_load_ns\":" << executable->module_load_ns
+      << ",\"kernel_resolve_ns\":" << executable->kernel_resolve_ns
+      << ",\"kernarg_allocate_ns\":" << executable->kernarg_allocate_ns
+      << ",\"aql_packet_build_ns\":" << executable->aql_packet_build_ns
+      << ",\"pm4_encode_ns\":" << executable->pm4_encode_ns
+      << ",\"ib_allocate_ns\":" << executable->ib_allocate_ns
       << ",\"last_completion_value\":" << executable->last_completion_value
       << ",\"last_transport\":";
   append_json_string(&out, executable->last_transport);
@@ -1351,10 +1370,15 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
           break;
         }
       }
-      if (module_index == executable->modules.size())
+      if (module_index == executable->modules.size()) {
+        const auto module_load_start = SteadyClock::now();
         executable->modules.push_back(load_module(context, source.hsaco, source.hsaco_size));
+        executable->module_load_ns += elapsed_ns(module_load_start);
+      }
       Module* module = &executable->modules[module_index];
+      const auto kernel_resolve_start = SteadyClock::now();
       KernelInfo kernel = load_kernel(context, module, source.symbol);
+      executable->kernel_resolve_ns += elapsed_ns(kernel_resolve_start);
       const bool loader_alignment_valid =
           kernel.kernarg_align != 0 &&
           (kernel.kernarg_align & (kernel.kernarg_align - 1)) == 0;
@@ -1384,6 +1408,7 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
       dispatch.kernel = kernel;
       dispatch.symbol = source.symbol;
       dispatch.module_index = module_index;
+      const auto kernarg_allocate_start = SteadyClock::now();
       dispatch.kernarg = allocate(
           context->pool, context->pool_granule, context->pool_alignment,
           context->gpu, source.kernarg_size,
@@ -1391,6 +1416,7 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
           HSA_AMD_MEMORY_POOL_STANDARD_FLAG);
       if (source.kernarg_size != 0)
         std::memcpy(dispatch.kernarg.pointer, source.kernarg, source.kernarg_size);
+      executable->kernarg_allocate_ns += elapsed_ns(kernarg_allocate_start);
       for (size_t axis = 0; axis < 3; ++axis) {
         if (source.grid[axis] == 0 || source.block[axis] == 0 || source.block[axis] > 0xffff)
           throw Error("graph node has invalid launch geometry");
@@ -1401,6 +1427,7 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
       executable->dispatches.push_back(std::move(dispatch));
     }
 
+    const auto aql_packet_build_start = SteadyClock::now();
     executable->aql_packets.resize(count);
     const uint16_t header = kernel_header();
     for (size_t index = 0; index < count; ++index) {
@@ -1421,7 +1448,9 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
       packet.kernarg_address = dispatch.kernarg.pointer;
       executable->aql_packets[index] = packet;
     }
+    executable->aql_packet_build_ns = elapsed_ns(aql_packet_build_start);
 
+    const auto pm4_encode_start = SteadyClock::now();
     append_acquire_system(&executable->pm4_words);
     RegisterState register_state;
     RegisterState* state = executable->stateful_registers ? &register_state : nullptr;
@@ -1442,8 +1471,10 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
       append_release_timestamp(&timed, address + 8);
       executable->pm4_words.swap(timed);
     }
+    executable->pm4_encode_ns = elapsed_ns(pm4_encode_start);
     if (executable->pm4_words.size() > 0x000fffff)
       throw Error("retained PM4 tape exceeds vendor packet size");
+    const auto ib_allocate_start = SteadyClock::now();
     executable->indirect = allocate(
         context->pool, context->pool_granule, context->pool_alignment, context->gpu,
         executable->pm4_words.size() * sizeof(uint32_t), 16,
@@ -1453,6 +1484,7 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
     executable->pm4_packet = vendor_packet(
         executable->indirect.pointer, static_cast<uint32_t>(executable->pm4_words.size()),
         context->completion);
+    executable->ib_allocate_ns = elapsed_ns(ib_allocate_start);
     ++context->children;
     *output = owner.release();
   });

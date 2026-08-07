@@ -72,9 +72,7 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         manifest = inspect_hip_graph(runtime, graph, gfx_arch="gfx1100", stream=stream)
         graph_exec = runtime.graph_instantiate(graph)
 
-        context = NativePm4Context.create(
-            pci_bdf=runtime.device_pci_bus_id(), gfx_arch="gfx1100"
-        )
+        context = NativePm4Context.create(pci_bdf=runtime.device_pci_bus_id(), gfx_arch="gfx1100")
         executable = context.instantiate(manifest)
         with pytest.raises(NativePm4Error, match="live executables"):
             context.close()
@@ -98,7 +96,9 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
                     executable.launch(transport)
 
                 output = np.empty(n, dtype=np.float32)
-                copy_device_to_host(host_array_ptr(output), buffers[2], output.nbytes, runtime=runtime)
+                copy_device_to_host(
+                    host_array_ptr(output), buffers[2], output.nbytes, runtime=runtime
+                )
                 assert np.array_equal(output, expected), f"{transport} iteration {iteration}"
                 outputs[transport].append(output)
 
@@ -116,6 +116,12 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         assert provenance["last_timeout_ns"] == 5_000_000_000
         assert provenance["last_completion_value"] == 0
         assert provenance["last_transport"] == "pm4"
+        assert provenance["module_load_ns"] > 0
+        assert provenance["kernel_resolve_ns"] > 0
+        assert provenance["kernarg_allocate_ns"] > 0
+        assert provenance["aql_packet_build_ns"] > 0
+        assert provenance["pm4_encode_ns"] > 0
+        assert provenance["ib_allocate_ns"] > 0
         assert provenance["retired"] is True
         assert provenance["usable"] is True
         assert len(provenance["module_records"]) == 1

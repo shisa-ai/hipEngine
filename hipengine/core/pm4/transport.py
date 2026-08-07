@@ -8,6 +8,7 @@ public-HSA owner, and never falls back to HIP after selection or submission.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -413,6 +414,12 @@ class NativeGraphSubmissionContext:
     name: str
     context: NativePm4Context
     stateful_registers: bool = False
+    context_create_ns: int = 0
+    last_graph_inspection_ns: int = 0
+    last_graph_inspection_phases_ns: dict[str, int] = field(default_factory=dict)
+    last_native_instantiate_ns: int = 0
+    graph_inspection_ns_total: int = 0
+    native_instantiate_ns_total: int = 0
     children: int = 0
     generations: int = 0
     closed: bool = False
@@ -432,16 +439,25 @@ class NativeGraphSubmissionContext:
             or selected != self.name
         ):
             raise RuntimeError("graph generation does not match its submission context")
+        inspection_start_ns = time.perf_counter_ns()
+        inspection_phases_ns: dict[str, int] = {}
         manifest = inspect_hip_graph(
             request.runtime,
             request.graph,
             gfx_arch=request.gfx_arch,
             stream=request.capture_stream,
+            timings=inspection_phases_ns,
         )
+        self.last_graph_inspection_phases_ns = inspection_phases_ns
+        self.last_graph_inspection_ns = time.perf_counter_ns() - inspection_start_ns
+        self.graph_inspection_ns_total += self.last_graph_inspection_ns
+        instantiate_start_ns = time.perf_counter_ns()
         executable = self.context.instantiate(
             manifest,
             stateful_registers=self.stateful_registers,
         )
+        self.last_native_instantiate_ns = time.perf_counter_ns() - instantiate_start_ns
+        self.native_instantiate_ns_total += self.last_native_instantiate_ns
         self.children += 1
         self.generations += 1
         return NativeGraphSubmission(
@@ -475,6 +491,12 @@ class NativeGraphSubmissionContext:
             "children": int(self.children),
             "generations": int(self.generations),
             "stateful_registers": bool(self.stateful_registers),
+            "context_create_ns": int(self.context_create_ns),
+            "last_graph_inspection_ns": int(self.last_graph_inspection_ns),
+            "last_graph_inspection_phases_ns": dict(self.last_graph_inspection_phases_ns),
+            "last_native_instantiate_ns": int(self.last_native_instantiate_ns),
+            "graph_inspection_ns_total": int(self.graph_inspection_ns_total),
+            "native_instantiate_ns_total": int(self.native_instantiate_ns_total),
             "closed": False,
             "native": NativeGraphSubmission._component_provenance(self.context),
         }
@@ -520,13 +542,13 @@ def _create_gfx1100_submission_context(
         raise RuntimeError(
             "in-tree native graph submission is admitted only for hip_gfx1100/gfx1100"
         )
-    stateful_registers = bool(
-        selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS)
-    )
+    stateful_registers = bool(selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS))
+    context_create_start_ns = time.perf_counter_ns()
     context = NativePm4Context.create(
         pci_bdf=runtime.device_pci_bus_id(),
         gfx_arch=gfx_arch,
     )
+    context_create_ns = time.perf_counter_ns() - context_create_start_ns
     return NativeGraphSubmissionContext(
         backend=backend,
         gfx_arch=gfx_arch,
@@ -534,6 +556,7 @@ def _create_gfx1100_submission_context(
         name=selected,
         context=context,
         stateful_registers=stateful_registers,
+        context_create_ns=context_create_ns,
     )
 
 
@@ -553,9 +576,7 @@ def _create_gfx1100_native_submission(
         gfx_arch=request.gfx_arch,
         stream=request.capture_stream,
     )
-    stateful_registers = bool(
-        selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS)
-    )
+    stateful_registers = bool(selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS))
     context: NativePm4Context | None = None
     try:
         context = NativePm4Context.create(

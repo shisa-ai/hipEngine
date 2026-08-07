@@ -6,6 +6,7 @@ import ctypes
 import ctypes.util
 import hashlib
 import heapq
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
@@ -113,7 +114,9 @@ def resolve_dso_for_function(function: int) -> Path:
     if _LIBDL.dladdr(ctypes.c_void_p(function), ctypes.byref(info)) == 0 or not info.dli_fname:
         raise Pm4InspectionError(f"dladdr could not resolve kernel function {function:#x}")
     try:
-        path = Path(info.dli_fname.decode("utf-8", errors="strict")).expanduser().resolve(strict=True)
+        path = (
+            Path(info.dli_fname.decode("utf-8", errors="strict")).expanduser().resolve(strict=True)
+        )
     except (OSError, UnicodeDecodeError) as exc:
         raise Pm4InspectionError("dladdr returned an invalid shared-object path") from exc
     if not path.is_file():
@@ -248,16 +251,31 @@ def inspect_hip_graph(
     gfx_arch: str,
     stream: int = 0,
     dso_resolver: Callable[[int], Path] = resolve_dso_for_function,
+    timings: dict[str, int] | None = None,
 ) -> HipGraphManifest:
     """Inspect one live native graph and own every byte required for lowering."""
+
+    total_start_ns = time.perf_counter_ns()
+    enumeration_ns = 0
+    node_api_ns = 0
+    function_resolution_ns = 0
+    dso_resolution_ns = 0
+    dso_load_ns = 0
+    metadata_resolution_ns = 0
+    kernarg_pack_ns = 0
+    revalidation_ns = 0
 
     if graph <= 0:
         raise Pm4InspectionError("HIP graph handle is null")
     if not gfx_arch.startswith("gfx"):
         raise Pm4InspectionError(f"invalid gfx architecture {gfx_arch!r}")
     try:
+        phase_start_ns = time.perf_counter_ns()
         handles = tuple(int(node) for node in runtime.graph_nodes(graph))
-        edges = tuple((int(source), int(destination)) for source, destination in runtime.graph_edges(graph))
+        edges = tuple(
+            (int(source), int(destination)) for source, destination in runtime.graph_edges(graph)
+        )
+        enumeration_ns += time.perf_counter_ns() - phase_start_ns
     except Exception as exc:
         if isinstance(exc, Pm4InspectionError):
             raise
@@ -265,35 +283,54 @@ def inspect_hip_graph(
     order = topological_order(handles, edges)
 
     dso_cache: dict[Path, _DsoImage] = {}
+    function_cache: dict[int, tuple[str, Path, _DsoImage, AmdgpuKernelMetadata]] = {}
     metadata_by_handle: dict[int, AmdgpuKernelMetadata] = {}
     manifests: list[KernelNodeManifest] = []
     for handle in order:
+        phase_start_ns = time.perf_counter_ns()
         node_type = int(runtime.graph_node_type(handle))
         if node_type != HIP_GRAPH_NODE_TYPE_KERNEL:
             raise Pm4InspectionError(
                 f"unsupported HIP graph node type {node_type} at handle {handle:#x}"
             )
         params = runtime.graph_kernel_node_params(handle)
+        node_api_ns += time.perf_counter_ns() - phase_start_ns
         function = int(params.func or 0)
         if function <= 0:
             raise Pm4InspectionError(f"HIP kernel node {handle:#x} has a null function")
-        try:
-            name = runtime.kernel_name_ref_by_ptr(function, stream)
-        except Exception as exc:
-            raise Pm4InspectionError(f"cannot resolve HIP kernel node {handle:#x} name") from exc
-        if not name or "\0" in name:
-            raise Pm4InspectionError("HIP returned an invalid kernel name")
-        try:
-            path = Path(dso_resolver(function)).expanduser().resolve(strict=True)
-        except (OSError, TypeError) as exc:
-            raise Pm4InspectionError(f"cannot resolve DSO for kernel {name!r}") from exc
-        dso = dso_cache.get(path)
-        if dso is None:
-            dso = _load_dso(path, gfx_arch)
-            dso_cache[path] = dso
-        metadata = resolve_kernel_metadata(dso.kernels, name)
+        resolved = function_cache.get(function)
+        if resolved is None:
+            try:
+                phase_start_ns = time.perf_counter_ns()
+                name = runtime.kernel_name_ref_by_ptr(function, stream)
+                function_resolution_ns += time.perf_counter_ns() - phase_start_ns
+            except Exception as exc:
+                raise Pm4InspectionError(
+                    f"cannot resolve HIP kernel node {handle:#x} name"
+                ) from exc
+            if not name or "\0" in name:
+                raise Pm4InspectionError("HIP returned an invalid kernel name")
+            try:
+                phase_start_ns = time.perf_counter_ns()
+                path = Path(dso_resolver(function)).expanduser().resolve(strict=True)
+                dso_resolution_ns += time.perf_counter_ns() - phase_start_ns
+            except (OSError, TypeError) as exc:
+                raise Pm4InspectionError(f"cannot resolve DSO for kernel {name!r}") from exc
+            dso = dso_cache.get(path)
+            if dso is None:
+                phase_start_ns = time.perf_counter_ns()
+                dso = _load_dso(path, gfx_arch)
+                dso_load_ns += time.perf_counter_ns() - phase_start_ns
+                dso_cache[path] = dso
+            phase_start_ns = time.perf_counter_ns()
+            metadata = resolve_kernel_metadata(dso.kernels, name)
+            metadata_resolution_ns += time.perf_counter_ns() - phase_start_ns
+            resolved = (name, path, dso, metadata)
+            function_cache[function] = resolved
+        name, path, dso, metadata = resolved
         metadata_by_handle[handle] = metadata
 
+        phase_start_ns = time.perf_counter_ns()
         grid_blocks = _dimensions(params.gridDim, "grid")
         block = _dimensions(params.blockDim, "block")
         dynamic_shared = int(params.sharedMemBytes)
@@ -304,6 +341,7 @@ def inspect_hip_graph(
             params.extra,
             context,
         )
+        kernarg_pack_ns += time.perf_counter_ns() - phase_start_ns
         manifests.append(
             KernelNodeManifest(
                 handle=handle,
@@ -332,6 +370,7 @@ def inspect_hip_graph(
     # Re-enumerate and recopy every launch field after the first complete pass.
     # Topology-only validation would miss concurrent scalar/pointer mutation and
     # could otherwise produce a mixed graph generation.
+    phase_start_ns = time.perf_counter_ns()
     if tuple(runtime.graph_nodes(graph)) != handles or tuple(runtime.graph_edges(graph)) != edges:
         raise Pm4InspectionError("HIP graph changed during inspection")
     for node in manifests:
@@ -340,7 +379,6 @@ def inspect_hip_graph(
                 raise Pm4InspectionError("kernel node type changed")
             params = runtime.graph_kernel_node_params(node.handle)
             function = int(params.func or 0)
-            name = runtime.kernel_name_ref_by_ptr(function, stream)
             grid_blocks = _dimensions(params.gridDim, "grid")
             block = _dimensions(params.blockDim, "block")
             dynamic_shared = int(params.sharedMemBytes)
@@ -354,15 +392,15 @@ def inspect_hip_graph(
             raise Pm4InspectionError("HIP graph changed during inspection") from exc
         if (
             function != node.function
-            or name != node.name
             or grid_blocks != node.grid_blocks
             or block != node.block
             or dynamic_shared != node.dynamic_shared_bytes
             or kernarg != node.kernarg
         ):
             raise Pm4InspectionError("HIP graph changed during inspection")
+    revalidation_ns += time.perf_counter_ns() - phase_start_ns
     nodes = tuple(manifests)
-    return HipGraphManifest(
+    manifest = HipGraphManifest(
         graph_handle=graph,
         gfx_arch=gfx_arch,
         order=order,
@@ -370,3 +408,18 @@ def inspect_hip_graph(
         nodes=nodes,
         fingerprint=_fingerprint(gfx_arch, order, edges, nodes),
     )
+    if timings is not None:
+        timings.update(
+            {
+                "total_ns": time.perf_counter_ns() - total_start_ns,
+                "enumeration_ns": enumeration_ns,
+                "node_api_ns": node_api_ns,
+                "function_resolution_ns": function_resolution_ns,
+                "dso_resolution_ns": dso_resolution_ns,
+                "dso_load_ns": dso_load_ns,
+                "metadata_resolution_ns": metadata_resolution_ns,
+                "kernarg_pack_ns": kernarg_pack_ns,
+                "revalidation_ns": revalidation_ns,
+            }
+        )
+    return manifest

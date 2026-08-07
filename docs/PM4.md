@@ -874,6 +874,18 @@ fallback and clean teardown. This remains an opt-in candidate pending the
 broader PM4 promotion gates, not package-default evidence. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`.
 
+Setup attribution on the post-review 626-node p512/d3 stateful graph identifies
+**126.023 ms** in graph inspection and **42.044 ms** in native instantiation
+inside **205.819 ms** total capture; native subphases are **28.287 ms** for 626
+kernarg allocations, **6.936 ms** for all 17 HSA module load/freezes, and only
+**0.144 ms** for PM4 encoding. Caching immutable kernel name/DSO/metadata
+resolution by repeated HIP function pointer within one inspection is exact and
+cuts inspection **126.023 -> 86.590 ms (-31.290%)** and total capture
+**205.819 -> 164.959 ms (-19.852%)** in a dirty-tree directional run. This
+removes the single-freeze idea from the top of the setup queue; one aligned
+kernarg slab and the remaining inspection phases are next. Clean publication is
+pending.
+
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact
 benchmark command/hardware/source evidence, compact artifact, rollup, and

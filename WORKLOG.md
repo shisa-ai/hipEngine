@@ -209188,3 +209188,28 @@ Vulkan local sizes verbatim will close the measured gap.
   ledger, the native node and both safe lifecycle nodes pass again. Final CPU
   admission/lifecycle/transport bundle is 20 passed; Ruff, `compileall`, and
   `git diff --check` pass. No destructive submit/resource-recreate arm ran.
+
+## 2026-08-08 — Attribute PM4 setup and cache repeated function resolution
+
+- Add setup timing proof at both ownership layers. Python context provenance
+  separates context creation, complete graph inspection, and native
+  instantiation; native provenance separates module load/freeze, symbol
+  resolution, kernarg allocation, AQL packet construction, PM4 encoding, and IB
+  allocation. `scripts/pm4_graph_bench.py` exports the breakdown rather than
+  inferring setup from one aggregate capture wall.
+- Baseline dirty-tree p512/d3 stateful capture is **205.818900 ms**:
+  **3.913103 ms** context create, **126.023200 ms** graph inspection,
+  **42.043644 ms** native instantiation, and **33.838953 ms** HIP-capture/
+  Python residual. Inside native instantiation, 626 separate kernarg allocations
+  cost **28.286761 ms**, all 17 HSA executable load/freezes only **6.935987 ms**,
+  and PM4 encoding **0.144351 ms**. The shared/single-freeze premise is therefore
+  low leverage; allocation and inspection own the gap.
+- Cache immutable kernel name, `dladdr` DSO, selected code object, and metadata by
+  repeated HIP function pointer within one inspection. The 626-node graph has
+  only 27 unique functions and no cross-module duplicate symbols. Keep the
+  second complete params/kernarg pass, but do not repeat name/DSO resolution for
+  an unchanged function pointer. The exact dirty-tree p512/d3 direction cuts
+  inspection **126.023200 -> 86.589930 ms (-31.290%)** and total capture
+  **205.818900 -> 164.958699 ms (-19.852%)**; native timing is stable. Next:
+  clean confirmation with phase detail, then replace the measured 626 HSA
+  kernarg allocations with one aligned slab. No destructive lifecycle arm ran.
