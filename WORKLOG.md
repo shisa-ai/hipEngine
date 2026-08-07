@@ -207843,3 +207843,11 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   refactor ledger, benchmark topline, and changelog. Benchmark rollup tests are
   GREEN **20/20** and compact JSON/source/link/metric/diff checks pass. Commit
   this valid evidence to obtain a clean tree for the stricter final rerun.
+- The final hardened gate accepts from clean `f03070494`: public c1/c2/c4/c8 is
+  **123.131/165.697/202.038/214.788 aggregate tok/s**, making c2/c4/c8
+  **1.346x/1.641x/1.744x** public c1. Physical-c8 singleton is
+  **122.778 tok/s (99.714% of c1)**. All 15 repeated 18-prompt trajectories,
+  physical widths, sparse c4/c8 final groups, every reclaim, and all lifecycle
+  checks pass. Raw result SHA-256 is `928ee7cf...3be9`; hardened harness SHA-256
+  is `7ea64300...bed`; update the compact artifact/docs to this final row before
+  closing P4.

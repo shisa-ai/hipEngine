@@ -24,7 +24,7 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Qualified wave32-head A/B | 143.679 -> 153.409 tok/s (+6.77%) | retained D0 head qualification |
 | Prior pre-head c1 short profile | 180.935 tok/s (5.527 ms/token) | post-router cached trace |
 | Fixed-helper c8 decode64 | 428.063 aggregate tok/s median | retained D1 exact row reuse; excludes prompt/public scheduler |
-| Public c1/c2/c4/c8 generation64 | 122.564 / 165.385 / 201.203 / 214.378 aggregate tok/s | retained P4, prompt admission + reclaim included |
+| Public c1/c2/c4/c8 generation64 | 123.131 / 165.697 / 202.038 / 214.788 aggregate tok/s | retained P4, prompt admission + reclaim included |
 | HIP kernels per c1 decode token | 271 | post-D0 cached trace |
 | Exact affine4 lm-head payload | 166.922 MiB | packed weight + BF16 scale/bias |
 | Public tracked residency (max context 512) | 4.988 GiB (5,355,881,852 bytes) | retained P4 recertification |
@@ -47,7 +47,7 @@ c1/c2/c4/c8 through the public submit/poll scheduler:
 | public native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **7.813 ms (1.78%)** | **730** | **728.135 tok/s** |
 | autoregressive c1 decode, post-D0 selector snapshot (trace process) | **5.018 ms/token** | **4.550 ms** | **0.468 ms (9.32%)** | **271** | **199.293 tok/s** |
 | fixed-helper c8 decode, post-D1 | **19.296 ms/batch** | **17.305 ms** | **1.991 ms (10.32%)** | **293** | **414.602 aggregate tok/s** |
-| public c8 generation64, post-P4 | end-to-end scheduler wall | included in wall | included in wall | c-aware | **214.378 aggregate tok/s (1.749x public c1)** |
+| public c8 generation64, post-P4 | end-to-end scheduler wall | included in wall | included in wall | c-aware | **214.788 aggregate tok/s (1.744x public c1)** |
 
 After P2, the exact affine4 head owns only **0.31%** of prefill320 kernel time,
 while grouped gate/up + down owns **59.08%**. Attention is down to **21.916 ms /
@@ -205,7 +205,7 @@ Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 | **M3c c1 eight-route grouping** | Rejected at 0.69x | This tested activation reuse within one token, not expert-major reuse across prompt rows. |
 | **M4/M5 batched prefill** | P2 retained at 741-754 tok/s | Exact through 512; dense ternary QKV/O is next while scalar expert compute blocks the original P1 ceiling. |
 | **M1 c1 hipGraph** | Exact but only 1.0047x in the current review | Keep opt-in; do not use the historical host-gap estimate as a speed claim. |
-| **M6+D1 batch decode** | c2/c4/c8 exact row-reuse helper at 250.481/346.365/428.063 aggregate tok/s | Retained helper; P4 now exposes it through public fixed-slot submit/poll generation at 165.385/201.203/214.378 tok/s including prompt admission/reclaim. |
+| **M6+D1 batch decode** | c2/c4/c8 exact row-reuse helper at 250.481/346.365/428.063 aggregate tok/s | Retained helper; P4 now exposes it through public fixed-slot submit/poll generation at 165.697/202.038/214.788 tok/s including prompt admission/reclaim. |
 | **M2 fusion** | Exact composites regressed kernel efficiency | Keep opt-in/fallbacks; no default promotion. |
 
 M3a evidence:
@@ -384,10 +384,10 @@ c2/c4/c8 through the public `SubmitPollTextGenerator` scheduler.
 The low-level D1 helper remains **250.481/346.365/428.063 aggregate tok/s** and
 excludes prompt/public scheduling. The stricter public protocol includes prompt
 admission, native prefill, exact decode/sampling, output collection, and reclaim:
-c1/c2/c4/c8 is **122.564/165.385/201.203/214.378 aggregate tok/s**, making
-c2/c4/c8 **1.349x/1.642x/1.749x** public c1. All 15 repeated 18-prompt
+c1/c2/c4/c8 is **123.131/165.697/202.038/214.788 aggregate tok/s**, making
+c2/c4/c8 **1.346x/1.641x/1.744x** public c1. All 15 repeated 18-prompt
 trajectory sets match serial, sparse and staggered reuse are exact, and all
-owners close to zero. One row inside a physical-c8 owner retains **99.683%** of
+owners close to zero. One row inside a physical-c8 owner retains **99.714%** of
 public c1 throughput. HTTP serving and ragged multi-request prompt compute remain
 separate work. Evidence:
 `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
@@ -515,7 +515,7 @@ native prefill directly into the batch K/V arena. The clean 128/320/512 protocol
 is **750.854/741.890/754.458 tok/s**, only
 **+0.224%/+0.070%/+0.061%** from P2 and exact at all 18 state hashes / 90
 positions. The symmetric public c1/c2/c4/c8 gate reaches
-**122.564/165.385/201.203/214.378 aggregate tok/s**, with sparse/staggered
+**123.131/165.697/202.038/214.788 aggregate tok/s**, with sparse/staggered
 reclaim, singleton-c8 preservation, and lifecycle exact. Prompt storage is
 packed; prompt compute remains per request rather than a ragged multi-request
 GEMM.
@@ -549,7 +549,7 @@ dense/attention target.
 | D1 head | exact c2/c4/c8 affine4 row reuse | full-logit bits, all widths, category/sparse/reclaim/lifecycle, and trace; default retained | 218.818/261.099/299.181 -> 250.481/346.365/428.063 aggregate tok/s; c8 head 10.490 -> 3.734 ms |
 | M1 | graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
 | M6+D1 | D5 batch decode helper plus exact row-reuse head | exact c2/c4/c8 helper | 250.481/346.365/428.063 aggregate tok/s; P4 consumes it publicly |
-| P4 | safe SWA-wrap prefill + public fixed-slot admission | 520/770 physical state; same-protocol public c1/c2/c4/c8; sparse/staggered/singleton/lifecycle | prefill 750.854/741.890/754.458 tok/s; public 122.564/165.385/201.203/214.378 tok/s |
+| P4 | safe SWA-wrap prefill + public fixed-slot admission | 520/770 physical state; same-protocol public c1/c2/c4/c8; sparse/staggered/singleton/lifecycle | prefill 750.854/741.890/754.458 tok/s; public 123.131/165.697/202.038/214.788 tok/s |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):

@@ -37,8 +37,8 @@ used** by the exact production path.
 - Public `SubmitPollTextGenerator` admission is live at fixed capacities through
   8. One resident checkpoint owner feeds request-local native prompt prefill,
   exact c1 decode for a lone active row, and D1 batched decode for c=2/4/8.
-- Public c1/c2/c4/c8 throughput is **122.564/165.385/201.203/214.378 aggregate
-  tok/s** at 64 generated tokens/request, or **1.349x/1.642x/1.749x** versus the
+- Public c1/c2/c4/c8 throughput is **123.131/165.697/202.038/214.788 aggregate
+  tok/s** at 64 generated tokens/request, or **1.346x/1.641x/1.744x** versus the
   same public c1 protocol. Sparse and staggered slot reclaim are exact.
 - Sampling remains greedy-only (`temperature=0`), and all tracked allocations
   return to zero on close.
@@ -160,7 +160,7 @@ approximate 218 headline. After P0+P1+P2,
 hipEngine's current **741.890 tok/s** at 320 tokens is about 1.45x below the
 published M4 prefill rate, down from a 3.3x gap. Decode is competitive; prefill
 remains materially underoptimized. The separate public batching protocol now
-reaches **214.378 aggregate tok/s at c8**, but that includes prompt admission and
+reaches **214.788 aggregate tok/s at c8**, but that includes prompt admission and
 uses a different workload from either Apple's table or the fixed-token c1 row.
 
 ## Current Radeon 8060S / gfx1151 performance
@@ -203,7 +203,7 @@ and [`P2 GQA4`](../benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-r
 | c=2, 64 tokens/request | **250.481 aggregate tok/s** | exact row-reuse helper median, 3 repeats |
 | c=4, 64 tokens/request | **346.365 aggregate tok/s** | exact row-reuse helper median, 3 repeats |
 | c=8, 64 tokens/request | **428.063 aggregate tok/s** | exact row-reuse helper median, 3 repeats; excludes prompt/public scheduling |
-| public c1/c2/c4/c8, 64 tokens/request | **122.564/165.385/201.203/214.378 aggregate tok/s** | same public submit/poll protocol; prompt admission and reclaim included |
+| public c1/c2/c4/c8, 64 tokens/request | **123.131/165.697/202.038/214.788 aggregate tok/s** | same public submit/poll protocol; prompt admission and reclaim included |
 
 The D0 one-dispatch router is retained/default. On all natural and heldout
 contexts it improves its exact two-dispatch rollback **139.538 -> 145.321
@@ -237,12 +237,12 @@ kernel, so hidden/KV/span state has no new writer. These helper rows exclude
 model load and prompt prefill and must not be reported as public throughput.
 
 P4 now measures the actual public submit/poll boundary symmetrically. c1/c2/c4/
-c8 reaches **122.564/165.385/201.203/214.378 aggregate tok/s**, so c2/c4/c8 is
-**1.349x/1.642x/1.749x** the same public c1 protocol. Timed wall includes prompt
+c8 reaches **123.131/165.697/202.038/214.788 aggregate tok/s**, so c2/c4/c8 is
+**1.346x/1.641x/1.744x** the same public c1 protocol. Timed wall includes prompt
 admission, native prefill, exact decode/sampling, output collection, and reclaim;
 only model load and one lazy-allocation warmup are excluded. All 15 repeated
 18-prompt trajectory sets equal serial. A lone request in the physical-c8 owner
-runs at **122.175 tok/s (99.683% of public c1)**, and a staggered third request
+runs at **122.778 tok/s (99.714% of public c1)**, and a staggered third request
 reuses slot 0 while slot 1 stays live.
 
 Evidence:
@@ -381,7 +381,7 @@ exact and no additional persistent memory. Local128 remains the rollback.
 | **P3 — DONE / REJECTED** | Retune dense ternary row tiles and test native BF16 WMMA | Tile 8/16/32 are bit-exact, but a counterbalanced natural+heldout screen measures **744.116/731.182/571.923 tok/s** and tile 16/32 lose all 16 pairs. Direct WMMA then changes **106/256 FP32** K16 partials and **43/655,360 BF16** production-shape outputs. All candidate surfaces are removed; tile 8 remains production. |
 | **D0 — DONE** | Exact c1 kernel/host work, not graph promotion | The default router passes clean at **+4.14%**, exact wave32 affine4 passes at **+6.77%**, and per-token selector snapshotting improves fresh-process fixed-token A/B **200.279 -> 202.580 tok/s (+1.15%)** with all four candidate processes >201 tok/s. Current natural-context throughput is 153.201 tok/s with the complete exact gate. |
 | **D1 — DONE** | c2/c4/c8 exact affine4 row reuse | Retained at **250.481/346.365/428.063 aggregate tok/s (+14.47%/+32.66%/+43.08%)** with exact full logits/trajectories, sparse/reclaimed slots, lifecycle, and a named cached trace; c1 remains on its proven wave32 kernel. |
-| **P4 — DONE** | Safe long-prompt and public batch admission | Native prefill is exact at 520/770 tokens; public c1/c2/c4/c8 reaches **122.564/165.385/201.203/214.378 tok/s** with all 15 repeated category/heldout trajectory sets, sparse/staggered reclaim, singleton c8-owner preservation, and lifecycle exact. |
+| **P4 — DONE** | Safe long-prompt and public batch admission | Native prefill is exact at 520/770 tokens; public c1/c2/c4/c8 reaches **123.131/165.697/202.038/214.788 tok/s** with all 15 repeated category/heldout trajectory sets, sparse/staggered reclaim, singleton c8-owner preservation, and lifecycle exact. |
 
 The 200+ decode target is therefore realistic in two distinct forms:
 

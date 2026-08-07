@@ -19,7 +19,7 @@ should be removed or collapsed.
 - Added and retained 2026-08-08. `MapleResidentModelRunner` is now the sole
   public submit/poll owner: it shares one c1 checkpoint, prefills request-local
   fixed K/V slots, uses D0 for one active row, and uses D1 for c2/c4/c8. The
-  complete public gate is **122.564/165.385/201.203/214.378 aggregate tok/s**
+  complete public gate is **123.131/165.697/202.038/214.788 aggregate tok/s**
   with 15/15 repeated 18-prompt trajectory sets, sparse/staggered reclaim,
   physical-c8 singleton preservation, and lifecycle exact. Evidence:
   `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.

@@ -198,7 +198,7 @@ metadata, batches the safe prefix, and serializes post-wrap attention rows. The
 request-local span/cache views for native prompt admission. Public
 `MapleResidentModelRunner` uses fixed sparse slots, D0 c1 for one active row,
 and D1 c2/c4/c8 otherwise; completion/rollback resets only that slot. The clean
-public protocol reaches **122.564/165.385/201.203/214.378 aggregate tok/s** at
+public protocol reaches **123.131/165.697/202.038/214.788 aggregate tok/s** at
 c1/c2/c4/c8, with all 15 repeated natural/heldout trajectory sets,
 physical-c8 singleton preservation, staggered slot reuse, and lifecycle exact.
 `MapleContinuousBatcher` remains the low-level helper/benchmark owner, not a
