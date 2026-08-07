@@ -203128,3 +203128,23 @@ Vulkan local sizes verbatim will close the measured gap.
   into ring physical slots). 7/7 attention kernel tests pass; ruff clean.
 - Note: test caught a real footgun — kernel and oracle must share one bf16
   weight source, and value writes are fp32 (not uint16) before bf16 conversion.
+
+## 2026-08-07 — M5/P2: ring-aware batched prefill attention primitive
+
+- Add `maple_attention_prefill_ring_kernel` (P2, shared-cache variant): same
+  online-softmax causal scan as `maple_attention_prefill_kernel`, but reads the
+  KV cache through the KVLiveSpans ring (logical slot -> base_offsets[logical]
+  physical slot), so it consumes the output of
+  `maple_qknorm_rope_kv_write_batched_kernel` and shares one cache with decode.
+  Grid (q_heads x T); block (qh, row) attends to absolute positions
+  [start, start+row]. q-only [T, q_size] qkv.
+- Wrapper `maple_attention_prefill_ring_bf16` + registry key
+  `("maple_attention_prefill", "gqa_causal_ring_bf16")`.
+- Correctness: new
+  `test_maple_prefill_attention_ring_matches_causal_oracle` is bit-exact vs the
+  `attention_decode` oracle across 5 rows read through the ring. 8/8 attention
+  kernel tests pass; ruff clean.
+- This completes the attention half of a prefill layer chain:
+  QKV GEMM -> batched qknorm ring write -> ring prefill attention -> o_proj
+  GEMM. The MoE half (batched router + grouped MoE) and the prefill_native
+  wiring remain.

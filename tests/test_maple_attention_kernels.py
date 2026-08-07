@@ -337,6 +337,71 @@ def test_maple_qknorm_rope_kv_write_batched_matches_oracle(maple_attention_lib) 
         assert np.array_equal(value_cache[physical], f32_to_bf16_bits(expected_val[r]))
 
 
+def test_maple_prefill_attention_ring_matches_causal_oracle(maple_attention_lib) -> None:
+    """Ring-aware batched prefill attention is bit-exact vs the causal oracle (P2)."""
+
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_attention_prefill_ring_bf16,
+    )
+
+    rng = np.random.default_rng(99)
+    rows, q_heads, kv_heads, head_dim = 5, 4, 2, 4
+    q_size = q_heads * head_dim
+    start, capacity = 3, 8
+    q = bf16_round(rng.normal(size=(rows, q_heads, head_dim)).astype(np.float32))
+    keys = bf16_round(rng.normal(size=(rows, kv_heads, head_dim)).astype(np.float32))
+    values = bf16_round(rng.normal(size=(rows, kv_heads, head_dim)).astype(np.float32))
+    scale = head_dim**-0.5
+    expected = np.stack(
+        [attention_decode(q[r], keys[: r + 1], values[: r + 1], scale=scale) for r in range(rows)]
+    ).reshape(-1)
+    expected = f32_to_bf16_bits(expected)
+    base = np.asarray(list(range(capacity)), dtype=np.int32)
+    token_positions = np.full(capacity, -1, dtype=np.int64)
+    key_cache = np.zeros((capacity, kv_heads, head_dim), dtype=np.float32)
+    value_cache = np.zeros_like(key_cache)
+    for r in range(rows):
+        logical = (start + r) % capacity
+        physical = int(base[logical])
+        token_positions[logical] = start + r
+        key_cache[physical] = keys[r]
+        value_cache[physical] = values[r]
+    qkv = np.zeros((rows, q_size), dtype=np.uint16)
+    qkv[:, :q_size] = f32_to_bf16_bits(q.reshape(rows, -1))
+
+    with DeviceArrays() as dev:
+        spans = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=np.asarray([rows], dtype=np.int64),
+            token_positions=token_positions,
+            evict_mask=np.zeros(capacity, dtype=np.bool_),
+            row_positions=np.asarray([start + rows - 1], dtype=np.int64),
+        )
+        qkv_d = dev.put(qkv)
+        key_d = dev.put(f32_to_bf16_bits(key_cache))
+        value_d = dev.put(f32_to_bf16_bits(value_cache))
+        out, out_d = dev.empty((rows, q_size), np.uint16)
+        maple_attention_prefill_ring_bf16(
+            qkv_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            out_d.ptr,
+            spans,
+            rows=rows,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=scale,
+            start=start,
+            library=maple_attention_lib,
+        )
+        dev.get(out, out_d)
+
+    assert np.array_equal(out.reshape(-1), expected)
+
+
+
 
 def test_maple_gqa_attention_reads_wrapped_kv_live_spans(maple_attention_lib) -> None:
     rng = np.random.default_rng(55)
