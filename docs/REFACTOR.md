@@ -23,10 +23,11 @@ should be removed or collapsed.
   improves the exact group64 rollback **143.679 -> 153.409 tok/s (+6.77%)**
   with **1,146/1,152** wins; all **1,296/1,296** positions, **36/36**
   start/final states, **2,592/2,592** counter checks, and lifecycle are exact.
-- Keep `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` as the group64 rollback through
-  the clean selector-unset profile and final Maple roadmap audit, then remove
-  the environment seam. Preserve the registered group64 kernel as the required
-  numerical fallback.
+- The clean selector-unset profile is complete at **199.772 tok/s / 5.006-ms
+  wall / 4.581-ms kernels / 271 launches**. Keep
+  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` through the final Maple roadmap audit,
+  then remove the environment seam. Preserve the registered group64 kernel as
+  the required numerical fallback.
 
 ## Maple D0 one-dispatch c1 router
 
