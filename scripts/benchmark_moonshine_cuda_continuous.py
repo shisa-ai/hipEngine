@@ -258,7 +258,23 @@ def benchmark_route(
     return [run(index) for index in range(iterations)]
 
 
-def _gpu_processes() -> list[dict[str, str]]:
+def _gpu_processes(gpu_index: int) -> list[dict[str, str]]:
+    gpu_output = subprocess.check_output(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,uuid",
+            "--format=csv,noheader,nounits",
+        ],
+        text=True,
+    )
+    uuids = {
+        int(index.strip()): uuid.strip()
+        for index, uuid in (line.split(",", 1) for line in gpu_output.splitlines())
+    }
+    try:
+        selected_uuid = uuids[gpu_index]
+    except KeyError as error:
+        raise ValueError(f"GPU index {gpu_index} is not visible to nvidia-smi") from error
     command = [
         "nvidia-smi",
         "--query-compute-apps=gpu_uuid,pid,process_name,used_memory",
@@ -270,7 +286,15 @@ def _gpu_processes() -> list[dict[str, str]]:
         if not line.strip():
             continue
         uuid, pid, name, memory = [part.strip() for part in line.split(",", 3)]
-        rows.append({"gpu_uuid": uuid, "pid": pid, "process": name, "memory_mib": memory})
+        if uuid == selected_uuid:
+            rows.append(
+                {
+                    "gpu_uuid": uuid,
+                    "pid": pid,
+                    "process": name,
+                    "memory_mib": memory,
+                }
+            )
     return rows
 
 
@@ -310,7 +334,7 @@ def main() -> int:
     state = git_state(root)
     if state["dirty"] and not args.allow_dirty:
         raise RuntimeError("refusing to publish continuous benchmark from a dirty tree")
-    before_processes = _gpu_processes()
+    before_processes = _gpu_processes(args.gpu_index)
     if args.exclusive_gpu and before_processes:
         raise RuntimeError(f"GPU is not exclusive before the run: {before_processes}")
 
