@@ -277,6 +277,7 @@ __global__ void maple_qknorm_rope_kv_write_batched_decode_kernel(
     const int64_t* __restrict__ token_positions,
     const uint8_t* __restrict__ evict_mask,
     const int64_t* __restrict__ row_positions,
+    const int64_t* __restrict__ row_base_offsets,
     int64_t q_heads,
     int64_t kv_heads,
     int64_t head_dim,
@@ -300,6 +301,7 @@ __global__ void maple_qknorm_rope_kv_write_batched_decode_kernel(
   const uint16_t* norm_weight = is_q ? q_norm_weight : k_norm_weight;
   const int64_t tid = threadIdx.x;
   const int64_t position = row_positions[row];
+  const int64_t slot = row_base_offsets[row] + position;
 
   extern __shared__ uint8_t shared_raw[];
   float* sums = reinterpret_cast<float*>(shared_raw);
@@ -342,7 +344,7 @@ __global__ void maple_qknorm_rope_kv_write_batched_decode_kernel(
     qkv[row_base + source_base + tid] = out_bits;
 
     if (!is_q) {
-      const int64_t logical_slot = positive_mod(position, capacity);
+      const int64_t logical_slot = positive_mod(slot, capacity);
       const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
       const bool valid = live_counts[row] > 0
           && token_positions[logical_slot] == position
@@ -372,6 +374,7 @@ __global__ void maple_attention_decode_batched_kernel(
     const int64_t* __restrict__ token_positions,
     const uint8_t* __restrict__ evict_mask,
     const int64_t* __restrict__ row_positions,
+    const int64_t* __restrict__ row_base_offsets,
     int64_t rows,
     int64_t q_heads,
     int64_t kv_heads,
@@ -391,6 +394,7 @@ __global__ void maple_attention_decode_batched_kernel(
   const int64_t qkv_stride = q_size + 2 * kv_stride;
   const int64_t live = live_counts[row] < capacity ? live_counts[row] : capacity;
   const int64_t query_position = row_positions[row];
+  const int64_t arena_base = row_base_offsets[row];
   const int64_t start_position = query_position - live + 1;
   const float q = tid < head_dim
       ? bf16_to_float(qkv[row * qkv_stride + q_head * head_dim + tid])
@@ -402,7 +406,8 @@ __global__ void maple_attention_decode_batched_kernel(
   extern __shared__ float dot_scratch[];
   for (int64_t token = 0; token < live; ++token) {
     const int64_t absolute_position = start_position + token;
-    const int64_t logical_slot = positive_mod(absolute_position, capacity);
+    const int64_t slot = arena_base + absolute_position;
+    const int64_t logical_slot = positive_mod(slot, capacity);
     const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
     const bool valid = physical_slot >= 0 && physical_slot < capacity
         && token_positions[logical_slot] == absolute_position
@@ -1031,6 +1036,7 @@ extern "C" int hipengine_maple_qknorm_rope_kv_write_batched_decode_bf16(
     const int64_t* token_positions,
     const uint8_t* evict_mask,
     const int64_t* row_positions,
+    const int64_t* row_base_offsets,
     int64_t q_heads,
     int64_t kv_heads,
     int64_t head_dim,
@@ -1065,6 +1071,7 @@ extern "C" int hipengine_maple_qknorm_rope_kv_write_batched_decode_bf16(
       token_positions,
       evict_mask,
       row_positions,
+      row_base_offsets,
       q_heads,
       kv_heads,
       head_dim,
@@ -1187,6 +1194,7 @@ extern "C" int hipengine_maple_attention_decode_batched_bf16(
     const int64_t* token_positions,
     const uint8_t* evict_mask,
     const int64_t* row_positions,
+    const int64_t* row_base_offsets,
     int64_t rows,
     int64_t q_heads,
     int64_t kv_heads,
@@ -1215,6 +1223,7 @@ extern "C" int hipengine_maple_attention_decode_batched_bf16(
       token_positions,
       evict_mask,
       row_positions,
+      row_base_offsets,
       rows,
       q_heads,
       kv_heads,

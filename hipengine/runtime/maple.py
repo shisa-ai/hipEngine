@@ -1121,11 +1121,15 @@ class MapleBatchRunner:
         self._token_host = np.full(self.capacity, -1, dtype=np.int64)
         self._evict_host = np.ones(self.capacity, dtype=np.bool_)
         self._row_host = np.full(self.batch_size, -1, dtype=np.int64)
+        self._rbo_host = (np.arange(self.batch_size) * self.per_capacity).astype(
+            np.int64
+        )
         self.base_offsets = owner.put(self._base_host)
         self.live_counts = owner.put(self._live_host)
         self.token_positions = owner.put(self._token_host)
         self.evict_mask = owner.put(self._evict_host)
         self.row_positions = owner.put(self._row_host)
+        self.row_base_offsets = owner.put(self._rbo_host)
         self.spans = KVLiveSpans(
             base_offsets=Tensor.from_handle(
                 self.base_offsets.ptr, (self.capacity,), DType.INT32, self.device
@@ -1202,9 +1206,6 @@ class MapleBatchRunner:
                 weights.free(runtime=runtime)
             raise
 
-    def _absolute_position(self, request: int) -> int:
-        return request * self.per_capacity + int(self._requests[request])
-
     def batch_step(self, token_ids: list[int] | tuple[int, ...]) -> list[int]:
         """Decode one token for each request; return the per-request argmax token."""
         self._require_open()
@@ -1229,11 +1230,12 @@ class MapleBatchRunner:
                 raise ValueError(
                     f"request {r} exceeds per-request capacity {self.per_capacity}"
                 )
-            p = self._absolute_position(r)
-            self._token_host[p] = p
-            self._evict_host[p] = False
-            self._live_host[r] = self._requests[r] + 1
-            self._row_host[r] = p
+            local = int(self._requests[r])
+            slot = r * self.per_capacity + local
+            self._token_host[slot] = local
+            self._evict_host[slot] = False
+            self._live_host[r] = local + 1
+            self._row_host[r] = local
         for buffer, host in (
             (self.token_positions, self._token_host),
             (self.evict_mask, self._evict_host),
@@ -1296,6 +1298,7 @@ class MapleBatchRunner:
                 kv_layer.key_cache.ptr,
                 kv_layer.value_cache.ptr,
                 kv_layer.spans,
+                row_base_offsets=self.row_base_offsets.ptr,
                 rows=rows,
                 q_heads=spec.num_attention_heads,
                 kv_heads=spec.num_key_value_heads,
@@ -1312,6 +1315,7 @@ class MapleBatchRunner:
                 kv_layer.value_cache.ptr,
                 b.attention.ptr,
                 kv_layer.spans,
+                row_base_offsets=self.row_base_offsets.ptr,
                 rows=rows,
                 q_heads=spec.num_attention_heads,
                 kv_heads=spec.num_key_value_heads,
