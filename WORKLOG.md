@@ -203589,3 +203589,30 @@ unknown-route rejection, and benchmark/common-source manifest coverage.
 Focused Ruff, compileall, diff checks, and tests **7/7** pass. Clean exclusive
 GPU0 reruns and docs-side retained-artifact assertions follow after this source
 commit.
+
+## 2026-08-08 — PRR-4 AOT source/prebuilt provenance implementation
+
+Hardened the c=1 AOT CuTe attention build identity:
+
+- source builds hash every file and relative path under both consumed
+  `include/cute` and `include/cutlass` trees (805 files in the selected clean
+  checkout), not merely the include path or a best-effort git descriptor;
+- build flags/cache keys now include exact git revision, full commit, and the
+  consumed-header SHA-256; any dirty consumed header tree is rejected;
+- source archives without git remain reproducible through the full content hash;
+- prebuilt `.so` mode continues to bypass the development header tree entirely.
+
+Selected clean development source
+`/home/lhl/flash-attention/csrc/cutlass` at
+`7127592069c2fe01b041e174ba4345ef9b279671`
+(`v4.3.0-48-g71275920`), consumed headers SHA-256
+`210fc2bd088c081745aa04acea1eb395ee245e58216f84d70ec0a7eda737c73f`,
+805 files. The path remains local `.env` state, not committed configuration.
+
+Added a committed CPU/GPU test module covering content/key invalidation, dirty
+rejection, prebuilt loading without CUTLASS, and custom-vs-AOT parity at all
+40/207/1,248 certified buckets through both source-build and exact prebuilt
+loading. Focused CPU **4 passed / 1 skipped**; exclusive GPU0 with the opt-in
+gate **5/5 passed**; Ruff and diff checks pass. Docs-side clean gate rerun will
+retain the exact generated `.so` hash/toolchain/source identity after this
+implementation commit.
