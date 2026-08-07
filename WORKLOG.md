@@ -203539,3 +203539,29 @@ reusable c=1 encoder graph per certified bucket) needed a measured stop verdict.
 ### Next actions
 - Record closure in `docs/OPTIMIZATION-CUDA-review.md` §8.8 and
   `docs/OPTIMIZATION-CUDA.md` C6.2 (docs repo); commit both repos.
+
+## 2026-08-08 — PRR-5 hybrid producer lifetime + fail-fast mask gate
+
+The post-coder independent review found that the event-ordered PyTorch encoder
+handoff retained only `hidden.data_ptr()`. The integer pointer did not own the
+Torch caching-allocator storage while the decoder's external CUDA stream waited
+on the producer event and copied it.
+
+Fixed `scripts/benchmark_moonshine_cuda_complete.py` to retain the latest Torch
+encoder output object (`self._torch_hidden`) across the event/D2D boundary. The
+reference is bounded to one output, replaced only after a public decode path has
+reached its result synchronization, and released after decoder teardown.
+Encoder-mask readback now raises immediately on mismatch instead of allowing an
+invalid raw report to survive until docs-side summarization.
+
+Added CPU regressions in `tests/test_benchmark_moonshine_cuda_complete.py` for:
+producer ownership under GC/replacement pressure, event-wait-before-D2D order,
+fail-fast mismatched readback, and the matching report contract.
+
+Validation on exclusive GPU0:
+
+- new CPU driver tests: **5/5 passed**;
+- one-warmup/one-iteration six-fixture `--mode torch-encoder` complete route:
+  every timed token stream exact to EOS, deterministic, and all six installed
+  int32 masks read back exactly; median-of-medians **4.052 ms** (diagnostic,
+  not a retained performance rerun).

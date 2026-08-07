@@ -248,12 +248,12 @@ class Route:
         # (review §8.3 item 3/4); the default keeps the custom kernel so the
         # deployment path never changes.
         if attention_route not in ("custom", "cutlass"):
-            raise ValueError(f"attention_route must be 'custom' or 'cutlass'")
+            raise ValueError("attention_route must be 'custom' or 'cutlass'")
         self.attention_route = attention_route
         # C6/RR-8 LM-head route: "fused" (exact C1f stage, default) or
         # "wave8" (fused wave8 + stable top-1 candidate, review §7.3).
         if lm_head_route not in ("fused", "wave8"):
-            raise ValueError(f"lm_head_route must be 'fused' or 'wave8'")
+            raise ValueError("lm_head_route must be 'fused' or 'wave8'")
         self.lm_head_route = lm_head_route
         self.enc = None
         self.dec = None
@@ -264,13 +264,18 @@ class Route:
         # RR-8: torch-encoder producer handoff event (replaces the global
         # ``torch.cuda.synchronize()`` producer sync with a stream-event wait).
         self._producer_event = None
+        # PRR-5: keep the Torch-owned encoder output alive while its raw pointer
+        # is consumed by the decoder's external CUDA stream.  A pointer alone
+        # does not retain the caching-allocator storage across the event/D2D
+        # boundary.
+        self._torch_hidden = None
+        self._torch_hidden_ptr = 0
 
     # -- preparation ---------------------------------------------------------
 
     def prepare(self) -> dict[str, Any]:
         """Create + prepare runtimes and capture token graphs; return timing."""
 
-        from hipengine.core.cuda import get_cuda_runtime
         from hipengine.core.device import Device
         from hipengine.core.memory import malloc
         from hipengine.loading.moonshine import load_moonshine_model
@@ -359,7 +364,7 @@ class Route:
             self.dec.set_device_owned_decode(True)
 
         t0 = time.perf_counter()
-        graphs = self.dec.capture_token_graphs()
+        self.dec.capture_token_graphs()
         prepare["capture_token_graphs_s"] = time.perf_counter() - t0
         contract = self.dec.token_graph_contract()
         prepare["graph_count"] = contract["graph_count"]
@@ -521,9 +526,22 @@ class Route:
         self.cuda_runtime.event_record(
             self._producer_event, torch.cuda.current_stream().cuda_stream
         )
-        self._torch_hidden_ptr = hidden.data_ptr()
+        self._retain_torch_hidden(hidden)
         # RR-1: hand the downsampled int32 encoder mask (not the audio mask).
         self._torch_mask_ptr = self._torch_enc_mask.data_ptr()
+
+    def _retain_torch_hidden(self, hidden) -> None:
+        """Retain the producer tensor across the external-stream D2D handoff.
+
+        PyTorch's caching allocator only owns the tensor object; converting it
+        to an integer pointer does not extend the storage lifetime.  Keeping the
+        latest output here is bounded (one small encoder tensor) and is safe to
+        replace on the next iteration because every public decode path reaches
+        a decoder-stream result synchronization before returning.
+        """
+
+        self._torch_hidden = hidden
+        self._torch_hidden_ptr = int(hidden.data_ptr())
 
     def run_once(self) -> tuple[list[int], int]:
         """Run the complete route to EOS and return (tokens, steps)."""
@@ -626,12 +644,18 @@ class Route:
             runtime=self.cuda_runtime,
         )
         matches = bool(np.array_equal(host, expected))
-        return {
+        report = {
             "source_frames": int(source_frames),
             "readback_matches": matches,
             "readback": [int(value) for value in host.tolist()],
             "expected": [int(value) for value in expected.tolist()],
         }
+        if not matches:
+            raise RuntimeError(
+                "decoder encoder-mask readback mismatch: the D2D handoff did "
+                "not install the expected downsampled int32 mask"
+            )
+        return report
 
     def footprint(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -661,10 +685,20 @@ class Route:
         if self.enc is not None:
             self.enc.close()
         if self.dec is not None:
+            # Exceptional teardown may occur after an async producer handoff
+            # but before a decode-result sync.  Drain the consumer stream while
+            # the Torch producer tensor is still strongly referenced.
+            if self._torch_hidden is not None:
+                self.cuda_runtime.stream_synchronize(self.dec.stream)
             self.dec.close()
         if self._producer_event is not None:
             self.cuda_runtime.event_destroy(self._producer_event)
             self._producer_event = None
+        # Decoder teardown synchronizes/destroys its stream before the final
+        # producer reference is released, so an external D2D cannot outlive the
+        # Torch allocation it reads.
+        self._torch_hidden = None
+        self._torch_hidden_ptr = 0
         for buffer in self._device_buffers:
             free(buffer, runtime=self.cuda_runtime)
         self._device_buffers.clear()
