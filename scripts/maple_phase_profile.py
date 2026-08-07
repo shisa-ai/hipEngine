@@ -36,9 +36,13 @@ PINNED_REVISION = "361db5da5e74ff6fcdd852d478e1f266ce11013a"
 
 FAMILY_RULES = (
     ("maple_selected_ternary_dual_gemv_batched", "expert_gate_up"),
+    ("maple_selected_ternary_dual_gemv", "expert_gate_up"),
     ("maple_selected_ternary_gemv_batched", "expert_down"),
+    ("maple_selected_ternary_gemv", "expert_down"),
     ("maple_ternary_qkv_gemm", "qkv_proj"),
+    ("maple_ternary_qkv_gemv", "qkv_proj"),
     ("maple_ternary_gemm", "o_proj"),
+    ("maple_ternary_gemv", "o_proj"),
     ("maple_affine4_gemv_batched", "lm_head"),
     ("maple_affine4_gemv", "lm_head"),
     ("maple_affine4_embed_batched", "embed"),
