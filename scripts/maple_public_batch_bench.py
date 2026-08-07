@@ -446,10 +446,6 @@ def main() -> int:
                     "HIPENGINE_COMPILER_VERSION_FILE",
                     "HIPENGINE_REQUIRE_CACHED_BUILD",
                     "HIPENGINE_MAPLE_PREFILL_GROUPED_MOE",
-                    "HIPENGINE_MAPLE_PREFILL_GQA4",
-                    "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH",
-                    "HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT",
-                    "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT",
                 )
             },
             "suite": str(args.suite),

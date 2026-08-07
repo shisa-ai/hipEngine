@@ -23,12 +23,12 @@ should be removed or collapsed.
   with 15/15 repeated 18-prompt trajectory sets, sparse/staggered reclaim,
   physical-c8 singleton preservation, and lifecycle exact. Evidence:
   `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
-- `MapleContinuousBatcher` remains only as a low-level D1 benchmark/correctness
-  harness. At the final Maple roadmap audit, either migrate remaining helper
-  benchmarks to the public owner and remove this duplicate orchestration class,
-  or record the concrete low-level coverage that still requires it. Do not add
-  a second public dispatch route. Fixed sparse K/V slots and the registered
-  unfused/kernel fallbacks are intentional and are not removal candidates.
+- **Closed at the final roadmap audit:** removed the duplicate
+  `MapleContinuousBatcher` orchestration class and its private admission tests.
+  `scripts/maple_batch_decode_bench.py` now drives `MapleBatchRunner.batch_step`
+  directly to isolate D1 helper throughput; public sparse/staggered admission and
+  reclaim remain owned and tested only by `MapleResidentModelRunner`. Fixed
+  sparse K/V slots and registered numerical fallbacks remain intentional.
 
 ## Maple D1 exact batched affine4 row-reuse head
 
@@ -45,10 +45,11 @@ should be removed or collapsed.
   and lifecycle are exact. Cached c8 tracing measures the head **10.490 ->
   3.734 ms (2.809x)** and total wall **25.925 -> 19.296 ms** at the unchanged
   293 launches/batch.
-- Selector-unset now uses row reuse for c2/c4/c8. Keep
-  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=0` as the original all-row exact
-  rollback through the final Maple roadmap audit, then remove the environment
-  seam while preserving the registered fallback primitive.
+- **Closed at the final roadmap audit:** removed the
+  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT` environment seam and dead
+  production branch. c2/c4/c8 now select row reuse directly; unsupported widths
+  use the all-row route. The original all-row primitive remains separately
+  registered and bit-exact tests compare both leaves directly.
 
 ## Maple D0 exact wave32 affine4 c1 head
 
@@ -60,10 +61,10 @@ should be removed or collapsed.
   with **1,146/1,152** wins; all **1,296/1,296** positions, **36/36**
   start/final states, **2,592/2,592** counter checks, and lifecycle are exact.
 - The clean selector-unset profile is complete at **199.772 tok/s / 5.006-ms
-  wall / 4.581-ms kernels / 271 launches**. Keep
-  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` through the final Maple roadmap audit,
-  then remove the environment seam. Preserve the registered group64 kernel as
-  the required numerical fallback.
+  wall / 4.581-ms kernels / 271 launches**. **Closed at the final roadmap
+  audit:** removed the `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT` environment seam and
+  dead production branch. The original group64 kernel remains separately
+  registered and directly tested as the exact numerical fallback.
 
 ## Maple D0 one-dispatch c1 router
 
@@ -75,10 +76,10 @@ should be removed or collapsed.
   **36/36** native-start/final states, **2,592/2,592** zero-counter checks, and
   lifecycle are exact. The current short profile is **180.935 tok/s** at 271
   launches/token.
-- Keep `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0` as the exact two-dispatch
-  rollback through the active affine4-head work and final Maple roadmap audit,
-  then remove the environment seam. Preserve the separately registered
-  two-dispatch kernels as the required numerical fallback.
+- **Closed at the final roadmap audit:** removed the
+  `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH` environment seam and dead production
+  branch. The two-dispatch router kernels remain separately registered and
+  directly compared with the retained composite as exact numerical fallbacks.
 
 ## Maple P2 exact wave32 GQA4 prefill attention
 
@@ -89,10 +90,10 @@ should be removed or collapsed.
   one K/V load across four query heads, and preserves every local128 LDS
   reduction stage plus online-softmax operation exactly.
 - Clean qualified publication passes at **749.175/741.368/754.000 tok/s** with
-  unchanged exact state and ownership. Keep `HIPENGINE_MAPLE_PREFILL_GQA4=0`
-  temporarily as the local128 rollback/bisection seam only through the final
-  Maple cumulative roadmap audit, then remove the environment seam. Preserve
-  the registered local128 kernel as the required unfused numerical fallback.
+  unchanged exact state and ownership. **Closed at the final roadmap audit:**
+  removed the `HIPENGINE_MAPLE_PREFILL_GQA4` environment seam. Qualified GQA4
+  geometry now dispatches directly; unsupported geometry uses local128. Both
+  primitives remain separately registered and directly compared bit-for-bit.
 
 ## SH16 gfx1151 private-c1 selective small-weight arena
 

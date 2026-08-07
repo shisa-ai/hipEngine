@@ -53,7 +53,6 @@ from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
     build_maple_moe,
     maple_clamped_swiglu_bf16,
     maple_router_topk_parallel_batched_bf16,
-    maple_router_topk_parallel_bf16,
     maple_router_topk_single_dispatch_bf16,
     maple_weighted_residual_batched_bf16,
     maple_weighted_residual_bf16,
@@ -69,7 +68,6 @@ from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     maple_affine4_embed_bf16,
     maple_affine4_gemv_batched_f32,
     maple_affine4_gemv_batched_rowreuse_exact_f32,
-    maple_affine4_gemv_f32,
     maple_affine4_gemv_wave32_exact_f32,
     maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_batched_bf16,
@@ -111,31 +109,11 @@ def _maple_fuse_qkattn() -> bool:
     return os.environ.get("HIPENGINE_MAPLE_FUSE_QKATTN", "0") != "0"
 
 
-def _maple_router_single_dispatch() -> bool:
-    # D0 exact last-block router composite is the c1 default after the complete
-    # byte-state and same-resident wall gates. Preserve =0 as the two-dispatch
-    # rollback.
-    return os.environ.get("HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH", "1") != "0"
-
-
-def _maple_affine4_wave32_exact() -> bool:
-    # D0 exact one-wave head is the c1/final-row default after the complete
-    # category/state and same-resident wall gates. Preserve =0 as the exact
-    # group64 rollback.
-    return os.environ.get("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "1") != "0"
-
-
-def _maple_batch_affine4_rowreuse_exact() -> bool:
-    # D1 exact row-reuse head is the c2/c4/c8 default after the complete width,
-    # natural/heldout, sparse/reclaimed-slot, lifecycle, and wall gates.
-    # Preserve =0 as the original all-row exact rollback.
-    return os.environ.get(
-        "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT", "1"
-    ) != "0"
-
-
 def _maple_batch_affine4_head(rows: int):
-    if rows in (2, 4, 8) and _maple_batch_affine4_rowreuse_exact():
+    # D1 row reuse is the only production route at qualified widths. The
+    # separately registered all-row primitive remains the exact fallback for
+    # unsupported widths and direct kernel qualification.
+    if rows in (2, 4, 8):
         return maple_affine4_gemv_batched_rowreuse_exact_f32
     return maple_affine4_gemv_batched_f32
 
@@ -144,12 +122,6 @@ def _maple_prefill_grouped_moe() -> bool:
     # P1 exact expert-major prefill is the default. Preserve the original
     # row/route-gather chain as HIPENGINE_MAPLE_PREFILL_GROUPED_MOE=0 rollback.
     return os.environ.get("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", "1") != "0"
-
-
-def _maple_prefill_gqa4() -> bool:
-    # P2 exact wave32 GQA4 is the prefill default after the complete byte-state
-    # and physical profile gates. Preserve local128 as =0 rollback.
-    return os.environ.get("HIPENGINE_MAPLE_PREFILL_GQA4", "1") != "0"
 
 
 def _maple_graph_enabled() -> bool:
@@ -782,8 +754,6 @@ class MapleRunner:
         )
         if capture_hidden:
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
-        single_dispatch_router = _maple_router_single_dispatch()
-        affine4_wave32_exact = _maple_affine4_wave32_exact()
         fuse_qkattn = _maple_fuse_qkattn()
         fuse_moe = _maple_fuse_moe()
 
@@ -891,35 +861,20 @@ class MapleRunner:
                     library=libs.norm,
                     runtime=self.runtime, stream=stream,
                 )
-                if single_dispatch_router:
-                    maple_router_topk_single_dispatch_bf16(
-                        b.normalized.ptr,
-                        layer_weights.router.ptr,
-                        b.selected_ids.ptr,
-                        b.routing_weights.ptr,
-                        b.router_logits.ptr,
-                        b.router_counter.ptr,
-                        spec.hidden_size,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        library=libs.moe,
-                        runtime=self.runtime,
-                        stream=stream,
-                    )
-                else:
-                    maple_router_topk_parallel_bf16(
-                        b.normalized.ptr,
-                        layer_weights.router.ptr,
-                        b.selected_ids.ptr,
-                        b.routing_weights.ptr,
-                        b.router_logits.ptr,
-                        spec.hidden_size,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        library=libs.moe,
-                        runtime=self.runtime,
-                        stream=stream,
-                    )
+                maple_router_topk_single_dispatch_bf16(
+                    b.normalized.ptr,
+                    layer_weights.router.ptr,
+                    b.selected_ids.ptr,
+                    b.routing_weights.ptr,
+                    b.router_logits.ptr,
+                    b.router_counter.ptr,
+                    spec.hidden_size,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    library=libs.moe,
+                    runtime=self.runtime,
+                    stream=stream,
+                )
                 if fuse_moe:
                     maple_moe_dual_swiglu_bf16(
                         b.normalized.ptr,
@@ -1023,12 +978,7 @@ class MapleRunner:
             )
             if capture_hidden:
                 captured.append(self._copy_bf16(b.normalized, spec.hidden_size))
-            affine4_head = (
-                maple_affine4_gemv_wave32_exact_f32
-                if affine4_wave32_exact
-                else maple_affine4_gemv_f32
-            )
-            affine4_head(
+            maple_affine4_gemv_wave32_exact_f32(
                 b.normalized.ptr,
                 self.weights.lm_head.weight.ptr,
                 self.weights.lm_head.scales.ptr,
@@ -1151,8 +1101,7 @@ class MapleRunner:
         intermediate = spec.moe_intermediate_size
         grouped_moe = _maple_prefill_grouped_moe()
         gqa4_attention = (
-            _maple_prefill_gqa4()
-            and spec.num_attention_heads == spec.num_key_value_heads * 4
+            spec.num_attention_heads == spec.num_key_value_heads * 4
             and spec.head_dim == 128
         )
         n = len(tokens)
@@ -1459,12 +1408,7 @@ class MapleRunner:
             library=libs.norm,
             runtime=self.runtime,
         )
-        affine4_head = (
-            maple_affine4_gemv_wave32_exact_f32
-            if _maple_affine4_wave32_exact()
-            else maple_affine4_gemv_f32
-        )
-        affine4_head(
+        maple_affine4_gemv_wave32_exact_f32(
             b.normalized.ptr,
             self.weights.lm_head.weight.ptr,
             self.weights.lm_head.scales.ptr,

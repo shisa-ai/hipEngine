@@ -199,45 +199,24 @@ def test_maple_prefill_grouped_moe_is_default_with_explicit_gather_rollback(
     assert maple_runtime._maple_prefill_grouped_moe() is False
 
 
-def test_maple_prefill_gqa4_is_default_with_local128_rollback(monkeypatch) -> None:
-    monkeypatch.delenv("HIPENGINE_MAPLE_PREFILL_GQA4", raising=False)
-    assert maple_runtime._maple_prefill_gqa4() is True
-    monkeypatch.setenv("HIPENGINE_MAPLE_PREFILL_GQA4", "0")
-    assert maple_runtime._maple_prefill_gqa4() is False
+def test_maple_retained_paths_have_no_environment_rollback_seams() -> None:
+    source = inspect.getsource(maple_runtime)
+    for selector in (
+        "HIPENGINE_MAPLE_PREFILL_GQA4",
+        "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH",
+        "HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT",
+        "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT",
+    ):
+        assert selector not in source
 
 
-def test_maple_router_single_dispatch_is_default_with_parallel_rollback(
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH", raising=False)
-    assert maple_runtime._maple_router_single_dispatch() is True
-    monkeypatch.setenv("HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH", "0")
-    assert maple_runtime._maple_router_single_dispatch() is False
-
-
-def test_maple_affine4_wave32_is_default_with_group64_rollback(monkeypatch) -> None:
-    monkeypatch.delenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", raising=False)
-    assert maple_runtime._maple_affine4_wave32_exact() is True
-    monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "0")
-    assert maple_runtime._maple_affine4_wave32_exact() is False
-
-
-def test_maple_batch_affine4_rowreuse_is_default_and_width_bounded(monkeypatch) -> None:
-    selector = "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT"
-    monkeypatch.delenv(selector, raising=False)
+def test_maple_batch_affine4_rowreuse_is_width_bounded() -> None:
     for rows in (2, 4, 8):
         assert (
             maple_runtime._maple_batch_affine4_head(rows)
             is maple_runtime.maple_affine4_gemv_batched_rowreuse_exact_f32
         )
     for rows in (1, 3, 16):
-        assert (
-            maple_runtime._maple_batch_affine4_head(rows)
-            is maple_runtime.maple_affine4_gemv_batched_f32
-        )
-
-    monkeypatch.setenv(selector, "0")
-    for rows in (2, 4, 8):
         assert (
             maple_runtime._maple_batch_affine4_head(rows)
             is maple_runtime.maple_affine4_gemv_batched_f32
@@ -274,14 +253,8 @@ def test_maple_step_snapshots_decode_selectors_once() -> None:
         assert nested_calls == []
 
 
-@pytest.mark.parametrize("wave32", [False, True])
-def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) -> None:
+def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
     from hipengine.core.memory import DeviceBuffer
-
-    if wave32:
-        monkeypatch.delenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "0")
 
     def buffer(ptr: int, nbytes: int = 4_096) -> DeviceBuffer:
         return DeviceBuffer(ptr=ptr, nbytes=nbytes)
@@ -372,13 +345,6 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) ->
     )
     monkeypatch.setattr(
         maple_runtime,
-        "maple_affine4_gemv_f32",
-        lambda *args, **kwargs: head_calls.append(
-            ("group64", int(args[0]), int(args[4]))
-        ),
-    )
-    monkeypatch.setattr(
-        maple_runtime,
         "maple_affine4_gemv_wave32_exact_f32",
         lambda *args, **kwargs: head_calls.append(
             ("wave32", int(args[0]), int(args[4]))
@@ -417,8 +383,7 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) ->
 
     assert embed_rows == [3, 2]
     assert tail_norm_calls == [(1_008, buffers.normalized.ptr, 1)]
-    expected_head = "wave32" if wave32 else "group64"
-    assert head_calls == [(expected_head, buffers.normalized.ptr, buffers.logits.ptr)]
+    assert head_calls == [("wave32", buffers.normalized.ptr, buffers.logits.ptr)]
     assert argmax_calls == [(buffers.logits.ptr, buffers.argmax_index.ptr)]
     assert result.position == 4
     assert result.token_id == 7
@@ -779,6 +744,32 @@ def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch, c) -> Non
     assert memory_stats()["active_allocations"] == 0
 
 
+def test_maple_batch_benchmark_drives_sparse_rows_without_private_scheduler() -> None:
+    from scripts.maple_batch_decode_bench import _run_batch
+
+    class FakeBatchRunner:
+        batch_size = 3
+
+        def __init__(self) -> None:
+            self.resets: list[int] = []
+            self.calls: list[tuple[list[int], list[bool]]] = []
+
+        def reset_request(self, request: int) -> None:
+            self.resets.append(request)
+
+        def batch_step(self, token_ids, *, active_mask=None):
+            self.calls.append((list(token_ids), list(active_mask)))
+            return [int(token) + 1 for token in token_ids]
+
+    runner = FakeBatchRunner()
+    outputs, elapsed = _run_batch(runner, [7, 11], steps=3)
+
+    assert outputs == [[8, 9, 10], [12, 13, 14]]
+    assert runner.resets == [0, 1]
+    assert [mask for _, mask in runner.calls] == [[True, True, False]] * 3
+    assert elapsed >= 0.0
+
+
 def test_maple_batch_decode_preserves_swa_after_wrap(hip_test_target_arch) -> None:
     """c=2 batch decode remains serial-exact beyond the SWA-512 boundary."""
     del hip_test_target_arch
@@ -821,89 +812,3 @@ def test_maple_batch_decode_preserves_swa_after_wrap(hip_test_target_arch) -> No
         batch.close()
 
     assert batch_outputs == serial_outputs
-
-
-def test_maple_continuous_batcher_validates_admission_and_steps_sparse_slots() -> None:
-    from hipengine.runtime.maple_batch import MapleContinuousBatcher
-
-    class FakeBatchRunner:
-        batch_size = 2
-        closed = False
-        checkpoint = SimpleNamespace(spec=SimpleNamespace(vocab_size=100))
-
-        def __init__(self) -> None:
-            self.reset_requests: list[int] = []
-            self.last_active_mask: list[bool] | None = None
-
-        def reset_request(self, request: int) -> None:
-            self.reset_requests.append(request)
-
-        def batch_step(self, token_ids, *, active_mask=None):
-            assert token_ids == [7, 0]
-            self.last_active_mask = list(active_mask)
-            return [11, 22]
-
-    runner = FakeBatchRunner()
-    batcher = MapleContinuousBatcher(runner)
-    with pytest.raises(ValueError, match="max_new"):
-        batcher.submit(7, max_new=0)
-    with pytest.raises(ValueError, match="seed"):
-        batcher.submit(100, max_new=1)
-
-    assert batcher.submit(7, max_new=1) == 0
-    assert batcher.step() == 1
-    assert batcher.active() == 0
-    assert batcher.completions == [[11]]
-    assert runner.last_active_mask == [True, False]
-
-
-def test_maple_continuous_batcher_matches_serial(hip_test_target_arch) -> None:
-    """Continuous-batching owner loop matches serial autoregressive decode."""
-    del hip_test_target_arch
-    try:
-        from hipengine.loading.maple import load_maple_checkpoint
-    except Exception as exc:  # noqa: BLE001 - import guard
-        pytest.skip(f"maple loading unavailable: {exc}")
-
-    from hipengine.runtime.maple import MapleBatchRunner
-    from hipengine.runtime.maple_batch import MapleContinuousBatcher
-
-    model = "deepgrove/maple-preview-2bit-mlx"
-    backend = "hip_gfx1151"
-    c = 2
-    seeds = [9000, 9001, 9002]
-    lengths = [2, 5, 3]
-    try:
-        checkpoint = load_maple_checkpoint(model)
-    except Exception as exc:  # noqa: BLE001 - checkpoint missing
-        pytest.skip(f"maple checkpoint unavailable: {exc}")
-
-    serial = []
-    runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
-    try:
-        for seed, length in zip(seeds, lengths):
-            runner.reset()
-            out = [runner.step(seed).token_id]
-            for _ in range(length - 1):
-                out.append(runner.step(out[-1]).token_id)
-            serial.append(out)
-    finally:
-        runner.close()
-
-    batch = MapleBatchRunner.load(
-        checkpoint, backend=backend, batch_size=c, per_capacity=64
-    )
-    batcher = MapleContinuousBatcher(batch)
-    try:
-        batcher.submit(seeds[0], max_new=lengths[0])
-        batcher.submit(seeds[1], max_new=lengths[1])
-        batcher.step()
-        batcher.step()  # request 0 completes and slot 0 is reclaimed
-        batcher.step()  # sparse round: request 1 advances while slot 0 is idle
-        assert batcher.submit(seeds[2], max_new=lengths[2]) == 0
-        while batcher.active():
-            batcher.step()
-    finally:
-        batch.close()
-
-    assert batcher.completions == serial

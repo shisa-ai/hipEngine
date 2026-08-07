@@ -554,11 +554,8 @@ def main() -> int:
                 "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get(
                     "HIPENGINE_REQUIRE_CACHED_BUILD"
                 ),
-                "HIPENGINE_MAPLE_PREFILL_GQA4": os.environ.get(
-                    "HIPENGINE_MAPLE_PREFILL_GQA4"
-                ),
-                "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH": os.environ.get(
-                    "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH"
+                "HIPENGINE_MAPLE_PREFILL_GROUPED_MOE": os.environ.get(
+                    "HIPENGINE_MAPLE_PREFILL_GROUPED_MOE"
                 ),
             },
             "backend": args.backend,

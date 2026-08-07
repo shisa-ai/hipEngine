@@ -108,9 +108,9 @@ also snapshots the two default-off fusion selectors once per step rather than
 once per layer, deleting 46 environment reads without changing this **271-
 launch** trace. Four-process fixed-token A/B improves **200.279 -> 202.580
 tok/s (+1.15%)**; the separate trace process is **5.018-ms wall / 4.550-ms
-kernels / 0.468-ms host gap = 199.293 tok/s**. Selector-unset production uses
-wave32; `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` retains the original group64
-rollback.
+kernels / 0.468-ms host gap = 199.293 tok/s**. Production now selects wave32
+directly after the final roadmap audit removed the temporary environment seam;
+the original group64 primitive remains registered and directly tested.
 
 The retained/default D1 batched head registers
 `maple_affine4_gemv/group64_batched_rowreuse_exact` for c2/c4/c8. One local128
@@ -123,10 +123,10 @@ samples, **18/18** natural/category-heldout trajectories, sparse and reclaimed
 slots, and lifecycle are exact. Cached c8 tracing names
 `maple_affine4_gemv_batched_rowreuse_exact_kernel<8>` at local128/VGPR96/
 SGPR128/scratch0, measures the head **10.490 -> 3.734 ms (2.809x)**, and reduces
-wall **25.925 -> 19.296 ms** with the same 293 launches/batch. Selector-unset
-uses row reuse at supported widths;
-`HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=0` keeps the registered original
-all-row exact rollback.
+wall **25.925 -> 19.296 ms** with the same 293 launches/batch. Production now
+selects row reuse directly at supported widths after the final roadmap audit;
+unsupported widths retain the registered original all-row route, and direct
+kernel tests compare both exact primitives.
 
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard
@@ -201,8 +201,9 @@ and D1 c2/c4/c8 otherwise; completion/rollback resets only that slot. The clean
 public protocol reaches **123.131/165.697/202.038/214.788 aggregate tok/s** at
 c1/c2/c4/c8, with all 15 repeated natural/heldout trajectory sets,
 physical-c8 singleton preservation, staggered slot reuse, and lifecycle exact.
-`MapleContinuousBatcher` remains the low-level helper/benchmark owner, not a
-second public dispatch route. Evidence:
+The final roadmap audit removes the duplicate `MapleContinuousBatcher` owner;
+the low-level D1 benchmark drives `MapleBatchRunner.batch_step` directly, while
+all admission/reclaim orchestration stays on the public runner. Evidence:
 `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
 
 The corrected 18-position packed-formula gate passes at max KL **0.013508** and

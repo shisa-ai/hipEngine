@@ -351,8 +351,9 @@ retained selector snapshot changes no kernel or launch and improves fresh-
 process fixed-token A/B **200.279 -> 202.580 tok/s (+1.15%)**, paired median
 saving **0.076 ms**, with **3/4** wins. The separate trace process measures
 **5.018-ms wall / 4.550-ms kernels / 0.468-ms host gap / 271 launches = 199.293
-tok/s**. `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` preserves the group64
-rollback.
+tok/s**. The final roadmap audit removes the temporary head environment seam;
+wave32 is the sole production route, while group64 remains separately registered
+and directly tested as the exact numerical fallback.
 
 D1 completes the rows>1 exact work: `group64_batched_rowreuse_exact` loads each
 packed weight row once across c2/c4/c8 while replaying the original per-request

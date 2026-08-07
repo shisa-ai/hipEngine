@@ -113,11 +113,13 @@ fixed-capacity `MapleResidentModelRunner` (maximum 8 physical rows).
   A retained staggered test completes slot 0 while slot 1 remains live, admits a
   third request into slot 0, and matches all serial trajectories.
 
-`MapleBatchRunner` and `MapleContinuousBatcher` remain useful low-level kernel
-and helper harnesses, but public generation now uses the same fixed-slot cache
-and c-aware decode machinery. Prompt **storage admission** is packed into those
-slots; prompt compute is currently native per request rather than one ragged
-multi-request GEMM.
+`MapleBatchRunner` remains the low-level D1 kernel/throughput harness, driven
+directly by `scripts/maple_batch_decode_bench.py`. The final roadmap audit
+removed the duplicate private continuous-batcher owner, so all admission,
+sparse/staggered reclaim, and c-aware decode orchestration now has one public
+implementation. Prompt **storage admission** is packed into fixed slots; prompt
+compute is currently native per request rather than one ragged multi-request
+GEMM.
 
 ## Interpreting DeepGrove's Apple numbers
 
@@ -438,27 +440,17 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_prefill_bench.py \
   --lengths 128,320,512 --repetitions 3 --warmups 1 \
   --continuation-steps 4 --out /tmp/maple-m5.json
 
-# D0 exact c1 production-vs-rollback qualification
+# Current exact c1 deterministic production-repeat qualification
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt \
 HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_c1_bench.py \
   --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
   --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
   --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
-  --comparison router --steps 32 --warmup-steps 4 --repetitions 2 \
-  --out /tmp/maple-d0-router.json
+  --steps 32 --warmup-steps 4 --repetitions 2 \
+  --out /tmp/maple-c1-production-repeat.json
 
-# D0 exact wave32 head vs group64 rollback qualification
-GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
-HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt \
-HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_c1_bench.py \
-  --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
-  --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
-  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
-  --comparison affine4_wave32 --steps 32 --warmup-steps 4 --repetitions 2 \
-  --out /tmp/maple-d0-affine4.json
-
-# M6+D1 selector-unset fixed-capacity helper recertification
+# M6+D1 direct fixed-capacity helper recertification
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt \
 HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_batch_decode_bench.py \
