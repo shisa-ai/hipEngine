@@ -3,8 +3,8 @@
 > **Status (2026-08-07):** implementation in progress. P0 documentation, P1
 > exact graph inspection, P2 direct public-HSA AQL, P3 retained gfx1100 PM4,
 > P4 lifecycle-reproducer safe controls, and P5 production GGUF graph integration
-> are complete. Performance/optimization P6 is next. Native HIP graphs remain
-> the package default. Explicit PM4 selection fails closed, and reset-prone
+> are complete. P6 measurement/optimization is in progress. Native HIP graphs
+> remain the package default. Explicit PM4 selection fails closed, and reset-prone
 > submit/recreate stress remains unrun pending a separate warning and approval.
 
 This document defines hipEngine's plan for a small, torch-free, in-tree
@@ -50,7 +50,7 @@ graph framework, compiler, profiler, or HIP interposer.
 | P3 retained gfx1100 PM4 | Complete | Strict descriptor admission, conservative PM4 tape, vendor-AQL IB, two bit-exact safe replays, and no fallback |
 | P4 lifecycle reproducer | Complete (safe controls) | Reuse, recreate/no-submit, HSA/HIP allocation, timestamps, queue-first quarantine, and complete per-cycle JSON; reset-prone submit/recreate stress implemented but intentionally unrun |
 | P5 production graph integration | Complete | Registry-selected session-owned transport, persistent context across graph generations, p512/d3 exact eager/HIP/AQL/PM4 token-state-KV-logit gate, cancellation/close, zero fallback, and exact memory recovery |
-| P6 performance/promotion | Next | No in-tree PM4 performance claim yet |
+| P6 performance/promotion | In progress | Clean p512/d128 baseline: PM4 synchronized replay is 6.699% lower wall than HIP graph, but first capture makes the complete request 3.310% slower; optimize setup before any promotion |
 
 ## Goals and non-goals
 
@@ -836,6 +836,20 @@ one stable-pointer graph per transport, exact reset/rearm, rotating order, and
 separate host-call/synchronized/capture-inclusive metrics. Native call wall is
 blocking by contract and includes its stream drain plus finite wait; synchronized
 replay is therefore the primary cross-transport comparison.
+
+**Baseline result (W7900/gfx1100, clean `bfc658195`):** the canonical one-warmup,
+five-round p512/d128 run is exact across all warmup/measured final tokens,
+recurrent/KV state, and final logits. PM4 synchronized replay improves
+**10.747345 -> 10.027337 ms/token (-6.699%)**, or **93.046 -> 99.727 tok/s
+(1.0718x)**, while direct AQL is **11.460463 ms/token**. PM4 first capture is
+**192.119 ms** versus HIP graph **46.475 ms**; after charging capture, PM4 is
+**11.528268 versus 11.110428 ms/token (+3.761%)**, and complete request wall is
+**3.310% slower**. The estimated capture break-even is about 202 decode tokens.
+Keep PM4 explicit and optimize setup before p512/d128 promotion. `rocprofv3`
+does not decode nested dispatches inside the vendor-AQL IB; it records no inner
+PM4 kernel rows, so device attribution needs direct-AQL tracing or retained GPU
+IB timestamps rather than a false kernel-family sum. Evidence:
+`benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-graph-baseline.json`.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact

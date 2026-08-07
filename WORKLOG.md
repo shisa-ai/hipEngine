@@ -209057,3 +209057,42 @@ Vulkan local sizes verbatim will close the measured gap.
   bounded 4 MiB delta after all owned resources closed. Record the delta and use
   the existing 64 MiB diagnostic tolerance; P5's isolated transport allocation
   recovery remains exactly zero-delta. No submit/recreate stress ran.
+
+## 2026-08-08 — Measure the clean conservative PM4 p512/d128 baseline
+
+- Clean source `bfc658195`, W7900/gfx1100 at PCI `0000:0d:00.0`, Qwen3.6
+  Q4_K_M sampled fingerprint `936659d6...c89fb`, BF16 K/V, one queue per native
+  transport, one discarded warmup plus five counterbalanced measured rounds.
+  Exact command:
+  `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1
+  HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3
+  scripts/pm4_graph_bench.py --prompt-length 512 --steps 128 --warmups 1
+  --repetitions 5 --compiler-version-file /tmp/hipengine-hipcc-version.txt
+  --require-cached --json
+  /tmp/hipengine-pm4-graph-bench-p512-d128-baseline.json`.
+- All 18 warmup/measured windows finish on token `9707` with exact shared
+  recurrent/KV hash `062dd376...f35a0` and final-logit hash
+  `67615105...291f9`. Both native contexts retire 768/768 submissions with zero
+  callback, unretired, or fallback state and close with zero owned children.
+  The bounded first-use `hipMemGetInfo` delta is 4 MiB; isolated P5 transport
+  teardown remains exact-zero.
+- Median synchronized replay: HIP graph **10.747345 ms/token / 93.046 tok/s**;
+  direct AQL **11.460463 / 87.257**; conservative PM4 **10.027337 / 99.727**.
+  PM4 therefore reduces replay wall **6.699%** and improves replay throughput
+  **1.0718x**. Its blocking API call is `10.037 ms` versus asynchronous HIP issue
+  `15.461 us`; synchronized replay is the valid comparison.
+- First capture/instantiate is HIP **46.475 ms**, AQL **196.011 ms**, PM4
+  **192.119 ms**. Charging one capture per p512/d128 request makes PM4
+  **11.528268 versus 11.110428 ms/token (+3.761%)** and complete request wall
+  **3.310% slower**; break-even is about 202 decode tokens. Retain the explicit
+  replay win but do not promote PM4 at p512/d128 until setup improves.
+- A cached `rocprofv3 1.3.2 --kernel-trace --marker-trace` p512/d8 child records
+  the PM4 host/provenance result (`8` vendor submissions, 626 nodes, exact
+  output), but its 3,165 CSV rows contain only HIP model-load/prefill dispatches:
+  rocprof does not decode kernel dispatches nested inside the vendor IB. Do not
+  misreport those rows as PM4 kernel-family time; use direct-AQL tracing or GPU
+  IB timestamps for device attribution.
+- Compact diagnostic artifact:
+  `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-graph-baseline.json`
+  (`performance_claim=false`). Next: attribute setup and test exact opt-in
+  register/dependency reductions; no submit/recreate stress ran.
