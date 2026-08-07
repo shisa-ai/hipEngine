@@ -29,10 +29,10 @@ class _Request:
 class MapleContinuousBatcher:
     """Fixed-batch continuous-batching owner loop over a MapleBatchRunner.
 
-    The batch is kept full: every active slot contributes one input token per
-    round to ``batch_step``. A slot is reclaimed the moment its request reaches
-    ``max_new`` generated tokens, and the freed slot can immediately host a new
-    request via :meth:`submit`.
+    Every active slot contributes one input token per round to ``batch_step``;
+    inactive rows are masked and do not advance or publish KV state. A slot is
+    reclaimed the moment its request reaches ``max_new`` generated tokens, and
+    the freed slot can immediately host a new request via :meth:`submit`.
     """
 
     def __init__(self, runner: MapleBatchRunner) -> None:
@@ -44,9 +44,16 @@ class MapleContinuousBatcher:
         self.completions: list[list[int]] = []
 
     def submit(self, seed: int, max_new: int) -> int:
-        """Admit a new request into the first free slot; return its slot id."""
+        """Admit a validated request into the first free slot; return its slot id."""
         if self.runner.closed:
             raise RuntimeError("Maple continuous batcher runner is closed")
+        seed = int(seed)
+        max_new = int(max_new)
+        if max_new <= 0:
+            raise ValueError("Maple max_new must be positive")
+        vocab_size = self.runner.checkpoint.spec.vocab_size
+        if seed < 0 or seed >= vocab_size:
+            raise ValueError(f"Maple seed must be in [0, {vocab_size})")
         for r in range(self.c):
             if self.slots[r] is None:
                 self.runner.reset_request(r)
@@ -60,15 +67,17 @@ class MapleContinuousBatcher:
         if self.runner.closed:
             raise RuntimeError("Maple continuous batcher runner is closed")
         ids = [0] * self.c
+        active_mask = [request is not None for request in self.slots]
+        if not any(active_mask):
+            return 0
         for r, req in enumerate(self.slots):
-            if req is None:
-                raise RuntimeError(
-                    "step() requires a full batch; submit() until all slots are active"
-                )
-            ids[r] = req.next_input(self.steps[r])
-        outs = self.runner.batch_step(ids)
+            if req is not None:
+                ids[r] = req.next_input(self.steps[r])
+        outs = self.runner.batch_step(ids, active_mask=active_mask)
         completed = 0
         for r, req in enumerate(self.slots):
+            if req is None:
+                continue
             req.generated.append(int(outs[r]))
             self.steps[r] += 1
             self.total_generated += 1

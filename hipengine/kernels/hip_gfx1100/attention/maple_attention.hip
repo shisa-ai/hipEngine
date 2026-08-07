@@ -301,7 +301,8 @@ __global__ void maple_qknorm_rope_kv_write_batched_decode_kernel(
   const uint16_t* norm_weight = is_q ? q_norm_weight : k_norm_weight;
   const int64_t tid = threadIdx.x;
   const int64_t position = row_positions[row];
-  const int64_t slot = row_base_offsets[row] + position;
+  const int64_t request_capacity = capacity / rows;
+  const int64_t slot = row_base_offsets[row] + positive_mod(position, request_capacity);
 
   extern __shared__ uint8_t shared_raw[];
   float* sums = reinterpret_cast<float*>(shared_raw);
@@ -392,7 +393,10 @@ __global__ void maple_attention_decode_batched_kernel(
   const int64_t kv_stride = kv_heads * head_dim;
   const int64_t q_size = q_heads * head_dim;
   const int64_t qkv_stride = q_size + 2 * kv_stride;
-  const int64_t live = live_counts[row] < capacity ? live_counts[row] : capacity;
+  const int64_t request_capacity = capacity / rows;
+  const int64_t live = live_counts[row] < request_capacity
+      ? live_counts[row]
+      : request_capacity;
   const int64_t query_position = row_positions[row];
   const int64_t arena_base = row_base_offsets[row];
   const int64_t start_position = query_position - live + 1;
@@ -406,8 +410,8 @@ __global__ void maple_attention_decode_batched_kernel(
   extern __shared__ float dot_scratch[];
   for (int64_t token = 0; token < live; ++token) {
     const int64_t absolute_position = start_position + token;
-    const int64_t slot = arena_base + absolute_position;
-    const int64_t logical_slot = positive_mod(slot, capacity);
+    const int64_t logical_slot =
+        arena_base + positive_mod(absolute_position, request_capacity);
     const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
     const bool valid = physical_slot >= 0 && physical_slot < capacity
         && token_positions[logical_slot] == absolute_position
@@ -1055,7 +1059,7 @@ extern "C" int hipengine_maple_qknorm_rope_kv_write_batched_decode_bf16(
     hipStream_t stream) {
   if (q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
       || head_dim <= 0 || head_dim > 128 || rope_dim < 0 || rope_dim > head_dim
-      || rope_dim % 2 != 0 || rows <= 0 || capacity <= 0) {
+      || rope_dim % 2 != 0 || rows <= 0 || capacity <= 0 || capacity % rows != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = launch_threads_for_dim(head_dim);
@@ -1210,7 +1214,7 @@ extern "C" int hipengine_maple_attention_decode_batched_bf16(
     int64_t capacity,
     hipStream_t stream) {
   if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
-      || head_dim <= 0 || head_dim > 128 || capacity <= 0) {
+      || head_dim <= 0 || head_dim > 128 || capacity <= 0 || capacity % rows != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = launch_threads_for_dim(head_dim);

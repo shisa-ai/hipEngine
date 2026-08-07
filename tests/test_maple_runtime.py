@@ -51,6 +51,52 @@ def test_equal_capacity_swa_and_global_span_owners_are_both_published(monkeypatc
     ]
 
 
+def test_maple_batch_step_rejects_invalid_tokens_before_launch() -> None:
+    from hipengine.runtime.maple import MapleBatchRunner
+
+    runner = object.__new__(MapleBatchRunner)
+    runner.closed = False
+    runner.batch_size = 2
+    runner.checkpoint = SimpleNamespace(spec=SimpleNamespace(vocab_size=151_936))
+
+    with pytest.raises(ValueError, match="token_id"):
+        runner.batch_step((1, -1))
+    with pytest.raises(ValueError, match="token_id"):
+        runner.batch_step((1, 151_936))
+
+
+def test_maple_batch_span_reset_copies_to_request_offsets(monkeypatch) -> None:
+    from hipengine.core.memory import DeviceBuffer
+    from hipengine.runtime.maple import MapleBatchSpanOwner
+
+    span_owner = object.__new__(MapleBatchSpanOwner)
+    span_owner.batch_size = 2
+    span_owner.per_request_capacity = 4
+    span_owner.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    span_owner.token_positions = DeviceBuffer(ptr=100, nbytes=64)
+    span_owner.evict_mask = DeviceBuffer(ptr=200, nbytes=8)
+    span_owner.live_counts = DeviceBuffer(ptr=300, nbytes=16)
+    span_owner.row_positions = DeviceBuffer(ptr=400, nbytes=16)
+    span_owner.token_host = np.arange(8, dtype=np.int64)
+    span_owner.evict_host = np.zeros(8, dtype=np.bool_)
+    span_owner.live_host = np.ones(2, dtype=np.int64)
+    span_owner.row_host = np.ones(2, dtype=np.int64)
+    calls: list[tuple[int, int]] = []
+
+    def fake_copy(buffer, host_ptr, nbytes=None, *, runtime=None):
+        del host_ptr, runtime
+        calls.append((buffer.ptr, buffer.nbytes if nbytes is None else nbytes))
+
+    monkeypatch.setattr(maple_runtime, "copy_host_to_device", fake_copy)
+    span_owner.reset_request(1)
+
+    assert calls == [(132, 32), (204, 4), (308, 8), (408, 8)]
+    assert np.all(span_owner.token_host[4:8] == -1)
+    assert np.all(span_owner.evict_host[4:8])
+    assert span_owner.live_host[1] == 0
+    assert span_owner.row_host[1] == -1
+
+
 def test_maple_prefill_native_rejects_invalid_chunk_and_token_before_launch() -> None:
     runner = object.__new__(MapleRunner)
     runner.closed = False
@@ -188,7 +234,7 @@ def test_maple_prefill_native_multichunk_continuation_gate(hip_test_target_arch)
         serial.close()
 
 
-@pytest.mark.parametrize("c", [2, 4])
+@pytest.mark.parametrize("c", [2, 4, 8])
 def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch, c) -> None:
     """MapleBatchRunner.batch_step (c>1) must equal c independent serial decodes.
 
@@ -217,18 +263,13 @@ def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch, c) -> Non
         pytest.skip(f"maple checkpoint unavailable: {exc}")
 
     serial_tokens = []
-    runners = []
+    runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
     try:
-        for r in range(c):
-            runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
-            runners.append(runner)
-            got = []
-            for tok in prompts[r]:
-                got.append(runner.step(tok).token_id)
-            serial_tokens.append(got)
+        for prompt in prompts:
+            runner.reset()
+            serial_tokens.append([runner.step(token).token_id for token in prompt])
     finally:
-        for runner in runners:
-            runner.close()
+        runner.close()
 
     batch_tokens = []
     batch = MapleBatchRunner.load(
@@ -249,6 +290,88 @@ def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch, c) -> Non
                 f"request {r} step {step}: batch={batch_tokens[step][r]} "
                 f"serial={serial_tokens[r][step]}"
             )
+    from hipengine.core.memory import memory_stats
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+def test_maple_batch_decode_preserves_swa_after_wrap(hip_test_target_arch) -> None:
+    """c=2 batch decode remains serial-exact beyond the SWA-512 boundary."""
+    del hip_test_target_arch
+    from hipengine.loading.maple import load_maple_checkpoint
+    from hipengine.runtime.maple import MapleBatchRunner
+
+    try:
+        checkpoint = load_maple_checkpoint("deepgrove/maple-preview-2bit-mlx")
+    except Exception as exc:  # noqa: BLE001 - checkpoint missing
+        pytest.skip(f"maple checkpoint unavailable: {exc}")
+    steps = 514
+    prompts = tuple(
+        tuple(9_000 + ((request * 37 + step) % 512) for step in range(steps))
+        for request in range(2)
+    )
+    serial_outputs: list[list[int]] = []
+    serial = MapleRunner.load(
+        checkpoint, backend="hip_gfx1151", max_context=steps + 2
+    )
+    try:
+        for prompt in prompts:
+            serial.reset()
+            serial_outputs.append([serial.step(token).token_id for token in prompt])
+    finally:
+        serial.close()
+
+    batch_outputs: list[list[int]] = [[], []]
+    batch = MapleBatchRunner.load(
+        checkpoint,
+        backend="hip_gfx1151",
+        batch_size=2,
+        per_capacity=steps + 2,
+    )
+    try:
+        for step in range(steps):
+            output = batch.batch_step([prompts[0][step], prompts[1][step]])
+            for request, token in enumerate(output):
+                batch_outputs[request].append(token)
+    finally:
+        batch.close()
+
+    assert batch_outputs == serial_outputs
+
+
+def test_maple_continuous_batcher_validates_admission_and_steps_sparse_slots() -> None:
+    from hipengine.runtime.maple_batch import MapleContinuousBatcher
+
+    class FakeBatchRunner:
+        batch_size = 2
+        closed = False
+        checkpoint = SimpleNamespace(spec=SimpleNamespace(vocab_size=100))
+
+        def __init__(self) -> None:
+            self.reset_requests: list[int] = []
+            self.last_active_mask: list[bool] | None = None
+
+        def reset_request(self, request: int) -> None:
+            self.reset_requests.append(request)
+
+        def batch_step(self, token_ids, *, active_mask=None):
+            assert token_ids == [7, 0]
+            self.last_active_mask = list(active_mask)
+            return [11, 22]
+
+    runner = FakeBatchRunner()
+    batcher = MapleContinuousBatcher(runner)
+    with pytest.raises(ValueError, match="max_new"):
+        batcher.submit(7, max_new=0)
+    with pytest.raises(ValueError, match="seed"):
+        batcher.submit(100, max_new=1)
+
+    assert batcher.submit(7, max_new=1) == 0
+    assert batcher.step() == 1
+    assert batcher.active() == 0
+    assert batcher.completions == [[11]]
+    assert runner.last_active_mask == [True, False]
 
 
 def test_maple_continuous_batcher_matches_serial(hip_test_target_arch) -> None:
@@ -265,41 +388,39 @@ def test_maple_continuous_batcher_matches_serial(hip_test_target_arch) -> None:
     model = "deepgrove/maple-preview-2bit-mlx"
     backend = "hip_gfx1151"
     c = 2
-    seeds = [9000, 9001]
-    n = 4
+    seeds = [9000, 9001, 9002]
+    lengths = [2, 5, 3]
     try:
         checkpoint = load_maple_checkpoint(model)
     except Exception as exc:  # noqa: BLE001 - checkpoint missing
         pytest.skip(f"maple checkpoint unavailable: {exc}")
 
     serial = []
-    runners = []
+    runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
     try:
-        for r in range(c):
-            runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
-            runners.append(runner)
-            out = [runner.step(seeds[r]).token_id]
-            for _ in range(n - 1):
+        for seed, length in zip(seeds, lengths):
+            runner.reset()
+            out = [runner.step(seed).token_id]
+            for _ in range(length - 1):
                 out.append(runner.step(out[-1]).token_id)
             serial.append(out)
     finally:
-        for runner in runners:
-            runner.close()
+        runner.close()
 
     batch = MapleBatchRunner.load(
         checkpoint, backend=backend, batch_size=c, per_capacity=64
     )
     batcher = MapleContinuousBatcher(batch)
     try:
-        for r in range(c):
-            batcher.submit(seeds[r], max_new=n)
+        batcher.submit(seeds[0], max_new=lengths[0])
+        batcher.submit(seeds[1], max_new=lengths[1])
+        batcher.step()
+        batcher.step()  # request 0 completes and slot 0 is reclaimed
+        batcher.step()  # sparse round: request 1 advances while slot 0 is idle
+        assert batcher.submit(seeds[2], max_new=lengths[2]) == 0
         while batcher.active():
             batcher.step()
     finally:
         batch.close()
 
-    assert len(batcher.completions) == c
-    for r in range(c):
-        assert batcher.completions[r] == serial[r], (
-            f"request {r}: batch={batcher.completions[r]} serial={serial[r]}"
-        )
+    assert batcher.completions == serial
