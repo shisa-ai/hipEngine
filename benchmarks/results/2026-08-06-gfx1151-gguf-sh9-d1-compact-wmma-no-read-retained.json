@@ -1,0 +1,378 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_gfx1151_sh9_d1_compact_wmma_no_read_transfer",
+  "date": "2026-08-06",
+  "created_at": "2026-08-06T09:59:33.503893+00:00",
+  "status": "retained_default_prefill_launch_reduction",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "topline_eligible": true,
+  "hardware": "AMD Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151, GPU 0",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_storage": "bf16",
+  "measurement_scope": "One private single-request pp512/128 eager process per route, one hardware queue, retained host token embedding, forced bulk compact-WMMA prefill, GEMV decode, one discarded plus three measured repetitions, 10-ms whole-GTT sampling; cached same-process ROCTX/HIP/kernel trace of one pp512 prefill per route.",
+  "scope_correction": {
+    "applies_to": "multi-row compact-WMMA prefill only",
+    "binding_shape": "pp512 has 512 rows * top_k 8 = 4096 selected rows and 40 MoE layers",
+    "does_not_apply_to": "rows==1 decode, which dispatches _run_post_attention_moe_c1 before this helper",
+    "credit": "40 scalar reads per pp512 request, not per decode token; no decode-parity credit"
+  },
+  "source": {
+    "sh8_checkpoint": "a19182639",
+    "parent_commit": "5c3d9912d082092e4c3b345934e15aba9cd37c24",
+    "paths": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "tests/test_gfx1151_backend.py",
+      "tests/test_qwen35_gguf_compact_moe_wmma_routing.py"
+    ],
+    "diff_sha256": "bf02f4c3a5c2ea5fae281b6999ddd5f5f5ecf043a7a7f707367ff49ba0317d78",
+    "lineage": "scripts/check_lineage.py remains blocked by absent /home/lhl/amd-gpu-tuning/reference/atlas; not a green verdict"
+  },
+  "change": {
+    "capability": "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
+    "gfx1151_before": 0,
+    "gfx1151_after": 4096,
+    "runtime_or_kernel_body_changed": false,
+    "fallback": "selected rows above 4096, insufficient WMMA-row capacity, or env override 0 use the exact scalar wmma_total read"
+  },
+  "bound": {
+    "selected_rows": 4096,
+    "num_experts": 256,
+    "active_experts_upper_bound": 256,
+    "upper_tiles": 496,
+    "upper_padded_rows": 7936,
+    "scratch_rows_capacity": 8192,
+    "formula": "A + floor((S-A)/16) tiles, A=min(S,E)",
+    "proof": "one first tile per potentially active expert; each further tile requires 16 additional selected rows; concentrating remaining rows attains the floor term",
+    "inactive_tile_contract": "tile-map initializes bounded tile ids to -1 and selected kernels reject negative expert ids"
+  },
+  "correctness": {
+    "exact_context_objects": true,
+    "finite": true,
+    "trajectory_steps": 4,
+    "prefill_logits": {
+      "blake2b_128": "cbf90a5996858a0ef355bcf737e6ef34",
+      "finite": true,
+      "max_abs": 27.93606948852539,
+      "nbytes": 993280,
+      "rms": 2.4903037456673447
+    },
+    "coverage": "prefill logits; every layer output; Conv/GDN/live BF16-KV state; four fixed-input decode logits; final state",
+    "final_ids_equal": true,
+    "final_token_ids": [
+      9707,
+      9707,
+      9707
+    ]
+  },
+  "wall": {
+    "protocol": "independent right-sized processes; one warmup/discard plus three measured runs; no graph; prefill queue drain none",
+    "scalar_prefill_tok_s": {
+      "count": 3,
+      "median": 1366.0401589568894,
+      "min": 1360.9079257538942,
+      "max": 1367.9411473576045,
+      "mean": 1364.9630773561294,
+      "stdev": 3.638217985875212
+    },
+    "candidate_prefill_tok_s": {
+      "count": 3,
+      "median": 1366.013086976379,
+      "min": 1361.9831274124263,
+      "max": 1367.8230522397946,
+      "mean": 1365.2730888762,
+      "stdev": 2.9894612204425455
+    },
+    "prefill_speedup": 0.9999801821488682,
+    "prefill_delta_percent": -0.0019817851131809228,
+    "scalar_decode_tok_s_diagnostic": {
+      "count": 3,
+      "median": 52.996977329144016,
+      "min": 52.94228299067419,
+      "max": 53.09675329384546,
+      "mean": 53.01200453788789,
+      "stdev": 0.07832388775099298
+    },
+    "candidate_decode_tok_s_diagnostic": {
+      "count": 3,
+      "median": 53.145684203945535,
+      "min": 52.98969112726874,
+      "max": 53.17334585851658,
+      "mean": 53.10290706324362,
+      "stdev": 0.09901857352235897
+    },
+    "decode_delta_percent_not_attributed": 0.28059501182107205,
+    "tracked_peak_gib": 20.566421270370483,
+    "tracked_peak_delta_gib": 0.0,
+    "scalar_whole_gtt_peak_gib": 21.00012969970703,
+    "candidate_whole_gtt_peak_gib": 21.00012969970703,
+    "whole_gtt_peak_delta_gib": 0.0,
+    "all_processes_close_to_zero_tracked_bytes": true,
+    "interpretation": "pp512 prefill is neutral/non-regressive within noise; decode movement is uncredited because the changed helper is not on rows==1 decode"
+  },
+  "trace": {
+    "cache_qualification": "global HIPENGINE_COMPILER_VERSION_FILE set; two complete pre-runs; second changed zero cache outputs; final rocprof stderr contains no hipcc/clang child",
+    "scalar": {
+      "start_timestamp": 1778650630855489,
+      "end_timestamp": 1778651012163033,
+      "span_ms": 381.307544,
+      "hip_api_calls": 5060,
+      "hip_function_counts": {
+        "__hipPopCallConfiguration": 1206,
+        "__hipPushCallConfiguration": 1206,
+        "hipDeviceSynchronize": 2,
+        "hipGetDevice": 10,
+        "hipGetLastError": 1206,
+        "hipLaunchKernel": 1206,
+        "hipMemcpy": 44,
+        "hipMemset": 140,
+        "hipMemsetAsync": 10,
+        "hipModuleLaunchKernel": 10,
+        "hipStreamGetDevice": 20
+      },
+      "hip_memcpy_calls": 44,
+      "hip_stream_sync_calls": 0,
+      "kernel_dispatches": 1409,
+      "copy_kernel_calls": 43,
+      "queue_ids": [
+        1
+      ],
+      "stream_ids": [
+        0
+      ],
+      "summed_kernel_ms": 368.520285,
+      "selected_kernel_calls": 80,
+      "selected_kernel_ms": 148.96035,
+      "selected_kernel_names": {
+        "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 5, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": 37,
+        "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 6, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": 3,
+        "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": 40
+      },
+      "selected_resources": [
+        [
+          48,
+          128,
+          0,
+          0
+        ],
+        [
+          72,
+          128,
+          0,
+          0
+        ]
+      ],
+      "tile_map_calls": 40,
+      "tile_map_ms": 0.140186
+    },
+    "candidate": {
+      "start_timestamp": 1778651394023897,
+      "end_timestamp": 1778651773595714,
+      "span_ms": 379.571817,
+      "hip_api_calls": 5020,
+      "hip_function_counts": {
+        "__hipPopCallConfiguration": 1206,
+        "__hipPushCallConfiguration": 1206,
+        "hipDeviceSynchronize": 2,
+        "hipGetDevice": 10,
+        "hipGetLastError": 1206,
+        "hipLaunchKernel": 1206,
+        "hipMemcpy": 4,
+        "hipMemset": 140,
+        "hipMemsetAsync": 10,
+        "hipModuleLaunchKernel": 10,
+        "hipStreamGetDevice": 20
+      },
+      "hip_memcpy_calls": 4,
+      "hip_stream_sync_calls": 0,
+      "kernel_dispatches": 1369,
+      "copy_kernel_calls": 3,
+      "queue_ids": [
+        1
+      ],
+      "stream_ids": [
+        0
+      ],
+      "summed_kernel_ms": 368.584176,
+      "selected_kernel_calls": 80,
+      "selected_kernel_ms": 149.069559,
+      "selected_kernel_names": {
+        "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 5, true>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": 37,
+        "void (anonymous namespace)::gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short, 6, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": 3,
+        "void (anonymous namespace)::gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short, false>(unsigned short const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)": 40
+      },
+      "selected_resources": [
+        [
+          48,
+          128,
+          0,
+          0
+        ],
+        [
+          72,
+          128,
+          0,
+          0
+        ]
+      ],
+      "tile_map_calls": 40,
+      "tile_map_ms": 0.144672
+    },
+    "delta": {
+      "hip_api_calls": -40,
+      "hip_memcpy_calls": -40,
+      "hip_stream_sync_calls": 0,
+      "kernel_dispatches": -40,
+      "copy_kernel_calls": -40,
+      "summed_kernel_ms": 0.06389100000001235,
+      "selected_kernel_ms": 0.10920899999999278,
+      "span_ms": -1.7357269999999971
+    },
+    "interpretation": "candidate removes 40 synchronous scalar hipMemcpy calls and their 40 copy-kernel dispatches while preserving all 80 selected-WMMA launches on queue 1 / stream 0"
+  },
+  "validation": {
+    "red": "three focused failures: gfx1151 package capability remained 0 and the in-scope route called _read_i64_device_scalar",
+    "green": "capability, in-bound no-read, and explicit below-bound scalar fallback all pass",
+    "historical_lcp2b_bundle": "62 passed, 9 skipped, 2 pre-existing hidden-seed fixture failures; focused test-only repair committed as 5c3d9912d, then changed file 21 passed",
+    "effective_four_file_result": "64 passed, 9 skipped using completed broad evidence plus focused repair; broad suite not repeated per policy",
+    "compileall": true,
+    "lineage_check": "blocked by missing Atlas checkout"
+  },
+  "commands": {
+    "state_scalar": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "scripts/gguf_sh_m1_screen.py",
+      "state-child",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--contexts",
+      "512",
+      "--query-rows",
+      "1024",
+      "--decode-steps",
+      "4",
+      "--max-sequence-length",
+      "1024",
+      "--backend",
+      "hip_gfx1151",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/hipengine-sh9-d1-20260806/state/scalar.json"
+    ],
+    "state_candidate": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "scripts/gguf_sh_m1_screen.py",
+      "state-child",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--contexts",
+      "512",
+      "--query-rows",
+      "1024",
+      "--decode-steps",
+      "4",
+      "--max-sequence-length",
+      "1024",
+      "--backend",
+      "hip_gfx1151",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/hipengine-sh9-d1-20260806/state/no-read.json"
+    ],
+    "wall": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "gguf",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--backend",
+      "hip_gfx1151",
+      "--workloads",
+      "512/128",
+      "--token-id",
+      "9707",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--warmup-decode-tokens",
+      "1",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode",
+      "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--no-graph-replay-decode",
+      "--prefill-queue-drain",
+      "none",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/hipengine-sh9-d1-20260806/wall/scalar.json"
+    ],
+    "trace": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt rocprofv3 --kernel-trace --marker-trace --hip-trace --output-format csv -d /tmp/hipengine-sh9-d1-20260806/trace -o sh9-d1 -- python3 /tmp/sh9_d1_prefill_profile.py"
+  },
+  "raw_evidence": {
+    "state_scalar": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/state/scalar.json",
+      "sha256": "5b90ae3777a5f0c2b38bc410b488639f48e2afc0913cc604638fd146d957cf9b"
+    },
+    "state_candidate": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/state/no-read.json",
+      "sha256": "e6a8e6d31c8c81f9501f5a0b05b6f44059c8ea92615d4003b17cff22eba5501f"
+    },
+    "state_comparison": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/state/comparison.json",
+      "sha256": "e71072cdd33e1d9897747e7cecf4af1ea8f7e1e90fea50fa1b0e1b55efa4d3dd"
+    },
+    "wall_scalar": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/wall/scalar.json",
+      "sha256": "52fb277983d46bed8ba0b829c0c57ecabc0c00346c0695c92b6af25268c72f26"
+    },
+    "wall_candidate": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/wall/no-read.json",
+      "sha256": "f3095467813854bf93e37a6ab2c8cb48758dc32d432aba4ce3ce7f1a64b2297e"
+    },
+    "wall_summary": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/wall/summary.json",
+      "sha256": "20f515ee43614d82b1e071047598c3aeaf3e1f5dd7609e26d4969760b733c3e5"
+    },
+    "trace_summary": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/trace/summary.json",
+      "sha256": "5ebfcac37bfdfba6c8fd880f9bdfe99a0412fcea0b931530dc3dbfbebf3396e6"
+    },
+    "trace_marker": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/trace/sh9-d1_marker_api_trace.csv",
+      "sha256": "07851562e36c874422085e433cf1538e38a976a3be22d80d4f4548aa519f59b5"
+    },
+    "trace_hip": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/trace/sh9-d1_hip_api_trace.csv",
+      "sha256": "f2be9ce4ce4f21bad36280419e284c791a09bf3d0912b706a55aaaf10ad2c836"
+    },
+    "trace_kernel": {
+      "path": "/tmp/hipengine-sh9-d1-20260806/trace/sh9-d1_kernel_trace.csv",
+      "sha256": "1780054d3298cd02fe97c34fa98450ba0efd58e5040c0a55bb4556a9ff2461c6"
+    }
+  },
+  "excluded_attempts": [
+    "state harness bg-81: candidate launcher failed before Python because env -u ordering was invalid; completed scalar child reused",
+    "state harness bg-82: candidate completed and matched; summary-only KeyError on nonexistent sha256 key, no rerun",
+    "first two profiler attempts: excluded because lazy wrappers probed/spawned compiler children before process-wide HIPENGINE_COMPILER_VERSION_FILE was set"
+  ],
+  "decision": {
+    "retain_default": true,
+    "reason": "exact and wall/memory non-regressive; verified launch/D2H reduction is retainable under project policy even with neutral aggregate prefill variance",
+    "rollback": "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0",
+    "decode_parity_changed": false,
+    "next_owner": "SH9-C1 scope-correct completion audit: publish prefill-only credit, carry retained SH7 decode/memory rows, and select the next genuinely open decode owner without reopening closed ladders"
+  }
+}

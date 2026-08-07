@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "id": "SH6-P1",
+  "status": "closed_rejected_prefill_guard",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "mall_bytes": 33554432
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt_token_id": 9707,
+    "prompt_length": 512,
+    "decode_tokens": 128
+  },
+  "source": {
+    "baseline_commit": "0dace5c1b80fdfc13497160493a5c30d92d5e3ea",
+    "converter_leaf_commit": "88188232d",
+    "source_dependency": "SH5-D1 raw rowvec8 default-off route",
+    "production_default_changed": false,
+    "candidate_surfaces_removed_after_failure": true
+  },
+  "frozen_contract": {
+    "persistent_weight_rule": "raw Q8_0 replaces the covered Q8T16 residents; no sidecar or persistent duplicate",
+    "scratch_byte_cap": 26738688,
+    "prefill_loss_limit_percent_each_depth": 1.0,
+    "depths": [512, 4096, 32768, 65536],
+    "quality_kl_max": 0.05,
+    "quality_top1_min": 0.9,
+    "stop_rule": "failure of any exact repack, one-owner lifecycle, prefill-depth, or complete quality gate removes the SH5 model route"
+  },
+  "converter_leaf": {
+    "registry_key": "layout_transform/gguf_q8_0/raw_pair_to_t16",
+    "kernel": "gguf_q8_0_raw_pair_to_t16_kernel",
+    "shape": {
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096,
+      "pair_bytes": 26738688
+    },
+    "byte_oracle": {
+      "host_reference": "repack_gguf_q8_0_tile16",
+      "production_tensors_covered": ["attn_qkv", "attn_gate"],
+      "thread_widths": [64, 128, 256],
+      "byte_exact_all": true
+    },
+    "cycling_screen": {
+      "source_copies": 3,
+      "cycling_source_bytes": 80216064,
+      "samples_per_width": 9,
+      "median_ms": {
+        "local64": 0.36091434955596924,
+        "local128": 0.40195131301879883,
+        "local256": 0.5026463270187378
+      },
+      "selected": "local64",
+      "raw_sha256": "c2c594f4605b0fca63c37466b72883d8b8e5e1b71f9acbef531e299d0e869754"
+    },
+    "cached_trace": {
+      "workgroup": 64,
+      "grid_workitems": 3145728,
+      "vgpr": 40,
+      "sgpr": 128,
+      "scratch_bytes": 0,
+      "duration_ns": 770256,
+      "kernel_csv_sha256": "d8b5f78f17e01f5edae7e6db5a3e2ace84691e332dff2bdecdf686d9d7a30dc4",
+      "agent_csv_sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+    }
+  },
+  "runtime_contract": {
+    "route": "one raw-pair transform followed by the two existing registered Q8T16 WMMA prefill consumers",
+    "scratch_owners": 1,
+    "scratch_bytes": 26738688,
+    "tracked_peak_delta_bytes": 26738688,
+    "persistent_duplicate_weight_bytes": 0,
+    "allocation_denial": "falls through to existing exact raw-Q8 WMMA prefill without aborting startup",
+    "teardown": "tracked_current_allocated_bytes_after_close equals zero in smoke and all three binding measurements",
+    "eligibility_fallbacks": [
+      "rows == 1 remains decode-only raw rowvec8",
+      "missing or undersized scratch returns false",
+      "non-BF16, non-WMMA, layout, quant, registry, and shape misses retain existing dispatch"
+    ]
+  },
+  "validation": {
+    "red": "runtime bridge import and allocation helper absent before implementation",
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_q8_0_raw_to_t16.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_qwen35_gguf_materialize_helpers.py tests/test_qwen35_gguf_materialize.py -q",
+    "focused_result": "88 passed, 21 skipped; exit 0",
+    "prefill_state": {
+      "context": 512,
+      "prefill_logits_byte_exact": true,
+      "complete_prefill_state_byte_exact": true,
+      "baseline_sha256": "8adff28c24c942979fbb6c060350aee9be7463dade73828de05c0e9221ff49b6",
+      "candidate_sha256": "16ff5eb2c02219825381c805ef3583ed13d73e6389c050ae121ea1224e696565"
+    },
+    "changed_decode_diagnostic": {
+      "fixed_transitions": 4,
+      "top1_matches": 4,
+      "complete_state_byte_exact": false,
+      "complete_quality_gate_run": false,
+      "reason_not_run": "the mandatory 512 prefill guard already failed, so the candidate was non-promotable and the expensive complete quality continuation was stopped"
+    }
+  },
+  "binding_512_128": {
+    "protocol": "independent persistent-session one-warmup/three-run eager process; forced bulk prefill, WMMA prefill, GEMV decode, cached builds, private-c1 host embedding",
+    "baseline": {
+      "prefill_tok_s": [1370.7489283724126, 1369.1201293436882, 1367.3746634061604],
+      "prefill_median_tok_s": 1369.1201293436882,
+      "decode_tok_s": [53.079585889872725, 52.876227248018786, 52.822406689161674],
+      "decode_median_tok_s": 52.876227248018786,
+      "tracked_peak_gib": 20.566421270370483,
+      "raw_sha256": "f5353efa91ab7d05521992524582557a7c503b243f6b0b19da76f827d0076109"
+    },
+    "candidate": {
+      "prefill_tok_s": [1314.6374830673913, 1318.9898134270372, 1318.195552827256],
+      "prefill_median_tok_s": 1318.195552827256,
+      "decode_tok_s": [54.15053399741815, 54.595947696688214, 54.48760103719802],
+      "decode_median_tok_s": 54.48760103719802,
+      "tracked_peak_gib": 20.591323614120483,
+      "raw_sha256": "35ad6444aaec26dc90b6c91ba3bc05101403d1d4dcadb3f6d4a46991492a4b66"
+    },
+    "prefill_change_percent": -3.7195111973734374,
+    "prefill_wall_change_percent": 3.8632034835202944,
+    "decode_change_percent": 3.047444708225866,
+    "tracked_peak_delta_gib": 0.02490234375,
+    "prefill_guard_passed": false
+  },
+  "stopped_continuation": {
+    "four_k_to_sixty_four_k_rows_run": false,
+    "complete_natural_category_quality_run": false,
+    "justification": "The frozen policy requires every depth within 1%. The controlled 512 row loses 3.720%, so no later row or quality result can make the conjunction pass; stopping avoids invalid promotion and unnecessary expensive validation."
+  },
+  "admission": {
+    "gpu_pack_byte_exact": true,
+    "bounded_one_owner_lifecycle": true,
+    "exact_prefill_state": true,
+    "prefill_512_within_one_percent": false,
+    "all_four_prefill_depths_within_one_percent": false,
+    "complete_quality_gate": false,
+    "promote": false
+  },
+  "decision": {
+    "result": "reject_runtime_candidate",
+    "production": "Q8T16 remains the sole covered linear-attention representation and dispatch path",
+    "retained": [
+      "standalone fork-attributed raw rowvec8 leaf and SH5 evidence",
+      "standalone exact raw-Q8_0-to-Q8T16 transform leaf and SH6 evidence"
+    ],
+    "removed": [
+      "HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR environment and materializer route",
+      "rowvec8 model dispatcher selection",
+      "runtime raw-to-T16 bridge, cached library route, and session scratch owner",
+      "candidate-only runtime and model-route tests"
+    ],
+    "next": "SH6-C1 clean-production cumulative fork-parity re-attribution"
+  }
+}

@@ -1,0 +1,187 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "id": "SH3-D1",
+  "status": "closed_rejected",
+  "performance_claim": false,
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395, gfx1151, GPU 0",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "exact_file_required": true,
+    "shape": {
+      "hidden": 2048,
+      "shared_ffn": 512,
+      "top_k": 8,
+      "layers": 40
+    }
+  },
+  "production": {
+    "revision": "2493b194b674956cbb5ca8cd09325db04e72a06e",
+    "changed": false,
+    "runtime_routed": false,
+    "unfused_fallback": "registered Q8T16 dual gate/up -> BF16 SiLU -> Q8T16 down -> weighted routed/shared-gate/residual combine"
+  },
+  "candidate": {
+    "description": "one cooperative exact-BF16 Q8T16 gate/up -> SiLU -> down -> residual producer/consumer with wave-private K-block scale LDS",
+    "observable_boundaries": [
+      "gate_up_bf16",
+      "intermediate_bf16",
+      "shared_down_bf16",
+      "final_out_bf16"
+    ],
+    "cooperative_capacity_blocks": 160,
+    "required_default_blocks": 128,
+    "transient_surfaces_removed": true,
+    "registry_key_removed": true
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "passed": false,
+    "blocked": true,
+    "reason": "/home/lhl/amd-gpu-tuning/reference/atlas is absent"
+  },
+  "red_green": {
+    "red_command": "uv run pytest -q tests/test_gguf_q8_0_t16_shared_expert_composite.py",
+    "red_result": "collection error: candidate module absent (expected RED)",
+    "green_command": "uv run pytest -q tests/test_gguf_q8_0_t16_shared_expert_composite.py",
+    "green_result": "2 passed",
+    "cpu_oracle": "independent GGUF Q8_0 gate/up and down reference with explicit BF16 SiLU/down/selected/combine rounding boundaries",
+    "exactness": {
+      "gate_up": {
+        "equal": true,
+        "mismatch": 0,
+        "sha256": "725d351edd590b9072bedaf26413e9311d5501fe86367d71f67a978766eea2b1"
+      },
+      "intermediate": {
+        "equal": true,
+        "mismatch": 0,
+        "sha256": "f8a36282f7167a66c6851b39d5f626f4bb45c058d65188a8a46f18fa1019ba1e"
+      },
+      "shared": {
+        "equal": true,
+        "mismatch": 0,
+        "sha256": "223f6c06483bfd0c406aaa2f1489cd59ecbad8f07384bda4eaf011579664b431"
+      },
+      "out": {
+        "equal": true,
+        "mismatch": 0,
+        "sha256": "a4e3d9c99e4e4daa14a73596cdcd1aa34058bb81bebd9ac61e0f9a7256dcf452"
+      }
+    },
+    "correctness_gate": {
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "required_kl_max": 0.05,
+      "required_top1_agreement": 0.9,
+      "passed": true,
+      "reproduction": {
+        "command": "PYTHONPATH=. python3 <inline reconstruction of seed-3601 CPU oracle and registered unfused chain>",
+        "max_abs": 0.0,
+        "cpu_top1": 50,
+        "gpu_top1": 50
+      },
+      "qualification": "candidate is byte-identical to the CPU-gated unfused output and all three retained intermediate boundaries"
+    }
+  },
+  "actual_weight_screen": {
+    "command": "python3 /tmp/sh3_d1_leaf.py --require-cached-build --warmup 200 --iters 2000 --repeats 5 --pool-copies 24 --grid-blocks 40,64,80,128 --json /tmp/hipengine-sh3-d1-20260806/leaf-grid-sweep.json",
+    "weight_pool": {
+      "copies": 24,
+      "bytes_per_copy": 3342336,
+      "total_bytes": 80216064
+    },
+    "warmup": 200,
+    "iterations": 2000,
+    "repeats": 5,
+    "baseline_median_us": 34.71937100403011,
+    "grid_sweep": {
+      "40": {
+        "candidate_median_us": 78.23541550897062,
+        "speedup": 0.44378074530771966,
+        "projected_40_layer_saving_ms_per_token": -1.7406417801976204,
+        "admission_speedup_1_15": false,
+        "admission_saving_0_5_ms": false
+      },
+      "64": {
+        "candidate_median_us": 46.018094988539815,
+        "speedup": 0.754472148677091,
+        "projected_40_layer_saving_ms_per_token": -0.45194895938038826,
+        "admission_speedup_1_15": false,
+        "admission_saving_0_5_ms": false
+      },
+      "80": {
+        "candidate_median_us": 46.346105518750846,
+        "speedup": 0.7491324376755506,
+        "projected_40_layer_saving_ms_per_token": -0.4650693805888295,
+        "admission_speedup_1_15": false,
+        "admission_saving_0_5_ms": false
+      },
+      "128": {
+        "candidate_median_us": 38.6114704888314,
+        "speedup": 0.8991983616390081,
+        "projected_40_layer_saving_ms_per_token": -0.1556839793920517,
+        "admission_speedup_1_15": false,
+        "admission_saving_0_5_ms": false
+      }
+    },
+    "best_grid_blocks": 128,
+    "best_candidate_median_us": 38.6114704888314,
+    "best_speedup": 0.8991983616390081,
+    "projected_40_layer_delta_ms_per_token": -0.1556839793920517,
+    "admission": {
+      "required_speedup": 1.15,
+      "alternative_required_saving_ms_per_token": 0.5,
+      "speedup_passed": false,
+      "saving_passed": false,
+      "passed": false
+    }
+  },
+  "cached_trace": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-directory /tmp/hipengine-sh3-d1-20260806/trace --output-format csv --output-file sh3-d1 -- python3 /tmp/sh3_d1_leaf.py --require-cached-build --warmup 1 --iters 1 --repeats 1 --pool-copies 1 --grid-blocks 128 --json /tmp/hipengine-sh3-d1-20260806/trace-run.json",
+    "candidate": {
+      "name": "(anonymous namespace)::q8_0_t16_shared_expert_composite_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short const*, float const*, float const*, unsigned short const*, unsigned short*, unsigned short*, unsigned short*, unsigned short*, long, long, long)",
+      "calls": 3,
+      "median_us": 25.287,
+      "min_us": 23.083,
+      "max_us": 27.772,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "workgroup_size_x": 128,
+      "grid_blocks": 128
+    },
+    "baseline_median_us_by_kernel": {
+      "gate_up": 12.022,
+      "silu": 1.162,
+      "down": 7.894,
+      "combine": 2.404
+    },
+    "baseline_complete_chain_sum_median_us": 23.482,
+    "kernel_only_speedup": 0.9286194487285957,
+    "csv_complete": true,
+    "profiler_process_exit_clean": false,
+    "post_output_failure": "rocprofv3 emitted complete CSV and then reported SIGSEGV in rocr::HSA::hsa_signal_store_screlease during teardown; trace rows and separate exactness screen are complete"
+  },
+  "raw_evidence": {
+    "leaf_grid_sweep": {
+      "path": "/tmp/hipengine-sh3-d1-20260806/leaf-grid-sweep.json",
+      "sha256": "3c0c56598b3715ae485692143b20bc1e4491e528419c34c329b0645ba2d1d543"
+    },
+    "trace_run": {
+      "path": "/tmp/hipengine-sh3-d1-20260806/trace-run.json",
+      "sha256": "89c2e2dabb8c0a2053d8a6d61699582e907dff9927e4feb3ba9a35bdcd46188b"
+    },
+    "kernel_trace": {
+      "path": "/tmp/hipengine-sh3-d1-20260806/trace/sh3-d1_kernel_trace.csv",
+      "sha256": "373955730607e7671af63fe964aa5cd278bee6ad3cfa6b91fa0b5915b32faeb1"
+    },
+    "leaf_harness": {
+      "path": "/tmp/sh3_d1_leaf.py",
+      "sha256": "a66885e81a53a546467b6523e9f1c90efd2f57d32233340d4c8323f252843b89"
+    }
+  },
+  "decision": "Reject and remove the composite before model routing. It is exact and spill-free, but the best actual-weight host screen is 0.899x and the named kernel-only trace is 0.929x; both are regressions and miss both frozen admission gates. Advance immediately to SH3-M1.",
+  "next": "SH3-M1 runner-safe exact 540,344,320-byte host embedding policy"
+}

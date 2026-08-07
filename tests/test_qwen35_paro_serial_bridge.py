@@ -103,6 +103,8 @@ def test_batch_position_upload_addresses_sparse_physical_slots(monkeypatch) -> N
         context_arr=np.zeros((6,), dtype=np.int64),
         position_buf=SimpleNamespace(ptr=1000),
         context_buf=SimpleNamespace(ptr=2000),
+        batch_compact_position_buf=SimpleNamespace(ptr=3000),
+        batch_compact_context_buf=SimpleNamespace(ptr=4000),
         libraries={"runtime_state": 7},
         runtime=object(),
         _check_position=lambda position: None,
@@ -127,7 +129,9 @@ def test_batch_position_upload_addresses_sparse_physical_slots(monkeypatch) -> N
     assert session.context_arr.tolist() == [0, 0, 513, 0, 0, 514]
     assert calls == [
         (1000 + 2 * 8, 2000 + 2 * 8, 512, 3),
+        (3000, 4000, 512, 3),
         (1000 + 5 * 8, 2000 + 5 * 8, 513, 3),
+        (3000 + 8, 4000 + 8, 513, 3),
     ]
 
 

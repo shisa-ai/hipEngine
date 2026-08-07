@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import statistics
 import sys
 import time
@@ -32,6 +33,7 @@ from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts.qwen35_gguf_bench import (
+    _RoctxProfilerControl,
     _memory_snapshot as _gguf_memory_snapshot,
     _memory_summary as _gguf_memory_summary,
     _prefill_chunk_sizes as _gguf_prefill_chunk_sizes,
@@ -49,6 +51,59 @@ DEFAULT_PARO_MODEL = Path(
     "snapshots/501ef8635e5cfb5a7497d232358ca8d1afc0c66e"
 )
 DEFAULT_GGUF_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_S.gguf")
+
+_CONSERVATIVE_PREFILL_KERNEL_SELECTORS = {
+    # Restore the unfused/baseline device routes that predate the first
+    # repeated-128K failure. Keep the already-eliminated host/dispatch knobs
+    # fixed as part of the diagnostic contract rather than inheriting package
+    # defaults that may move independently.
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": "chain",
+    "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "baseline",
+    "HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE": "baseline",
+    "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS": "512",
+    "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA": "0",
+}
+
+_PREFILL_KERNEL_PROFILES = {
+    # Preserve every backend package default except the one kernel route under
+    # test. This is the production-shaped fallback-validation profile.
+    "q4_baseline": {
+        "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "baseline",
+    },
+    "conservative": _CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
+    "gdn_exact": {
+        **_CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+    },
+    "q4_shared_x": {
+        **_CONSERVATIVE_PREFILL_KERNEL_SELECTORS,
+        "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "shared_x",
+    },
+}
+
+
+def _apply_prefill_kernel_profile(profile: str) -> dict[str, str]:
+    """Apply one fail-closed GGUF prefill kernel-isolation profile."""
+
+    normalized = str(profile).strip().lower()
+    if normalized == "default":
+        return {}
+    selectors = _PREFILL_KERNEL_PROFILES.get(normalized)
+    if selectors is None:
+        raise ValueError(
+            f"unsupported prefill kernel profile {profile!r}; expected default or one of "
+            f"{sorted(_PREFILL_KERNEL_PROFILES)}"
+        )
+
+    for name, expected in selectors.items():
+        existing = os.environ.get(name)
+        if existing is not None and existing.strip().lower() != expected:
+            raise ValueError(
+                f"--prefill-kernel-profile {normalized} conflicts with {name}={existing!r}; "
+                f"unset it or use the required value {expected!r}"
+            )
+    os.environ.update(selectors)
+    return dict(selectors)
 
 
 def main() -> int:
@@ -91,6 +146,21 @@ def main() -> int:
         choices=("chunk", "layer"),
         default="chunk",
         help="GGUF: GPU completion marker cadence (chunk is least perturbing)",
+    )
+    parser.add_argument(
+        "--prefill-queue-drain",
+        choices=("none", "chunk", "layer"),
+        default="none",
+        help="GGUF: synchronously drain the prefill stream at selected boundaries",
+    )
+    parser.add_argument(
+        "--prefill-kernel-profile",
+        choices=("default", *sorted(_PREFILL_KERNEL_PROFILES)),
+        default="default",
+        help=(
+            "GGUF: default package routes, the conservative kernel-isolation "
+            "profile, or a one-family split profile"
+        ),
     )
     parser.add_argument("--use-expert-sidecar", action="store_true")
     parser.add_argument("--expert-sidecar-cache-dir", type=Path, default=None)
@@ -135,6 +205,13 @@ def main() -> int:
         raise ValueError("--force-bulk-prefill and --no-bulk-prefill are mutually exclusive")
     if args.engine != "gguf" and args.prefill_flight_recorder is not None:
         raise ValueError("--prefill-flight-recorder is GGUF-only")
+    if args.engine != "gguf" and args.prefill_queue_drain != "none":
+        raise ValueError("--prefill-queue-drain is GGUF-only")
+    if args.engine != "gguf" and args.prefill_kernel_profile != "default":
+        raise ValueError("--prefill-kernel-profile is GGUF-only")
+    args.prefill_kernel_selectors = _apply_prefill_kernel_profile(
+        args.prefill_kernel_profile
+    )
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
     model = args.model or (DEFAULT_PARO_MODEL if args.engine == "paro" else DEFAULT_GGUF_MODEL)
@@ -420,6 +497,7 @@ def _run_gguf_sweep(
 
     use_bulk_prefill = True if args.force_bulk_prefill else False if args.no_bulk_prefill else None
     runtime = get_hip_runtime()
+    roctx = _RoctxProfilerControl(enabled=False)
     kv_policy = resolve_args_kv_policy(args, block_size=256)
     reset_memory_stats()
     persistent_memory: dict[str, Any] = {"before_load": _gguf_memory_snapshot("before_load", runtime)}
@@ -441,6 +519,7 @@ def _run_gguf_sweep(
         prefill_config=prefill_config,
         prefill_flight_recorder_path=args.prefill_flight_recorder,
         prefill_flight_recorder_granularity=args.prefill_flight_recorder_granularity,
+        prefill_queue_drain=args.prefill_queue_drain,
         kv_policy=kv_policy.create_policy(),
         kv_scale_dtype=kv_policy.scale_dtype,
         kv_scale_granularity=kv_policy.scale_granularity,
@@ -449,6 +528,7 @@ def _run_gguf_sweep(
     load_seconds = time.perf_counter() - load_start
     host_token_embedding_enabled = bool(getattr(session, "host_token_embedding_enabled", False))
     host_token_embedding_reason = getattr(session, "host_token_embedding_reason", None)
+    allocation_arena = session.allocation_arena_audit()
     persistent_memory["after_load"] = _gguf_memory_snapshot("after_load", runtime, session)
     runs_by_workload: dict[str, list[dict[str, Any]]] = {}
     try:
@@ -485,6 +565,8 @@ def _run_gguf_sweep(
                         load_seconds=load_seconds,
                         persistent_session=True,
                         graph_holder=graph_holder,
+                        roctx=roctx,
+                        rocprof_selected_region="none",
                     )
                     runs.append(run)
                     _print_run(label, run)
@@ -534,8 +616,12 @@ def _run_gguf_sweep(
                     "granularity": args.prefill_flight_recorder_granularity,
                 }
             ),
+            "prefill_queue_drain": args.prefill_queue_drain,
+            "prefill_kernel_profile": args.prefill_kernel_profile,
+            "prefill_kernel_selectors": dict(args.prefill_kernel_selectors),
             "host_token_embedding_enabled": host_token_embedding_enabled,
             "host_token_embedding_reason": host_token_embedding_reason,
+            "allocation_arena": allocation_arena,
         },
     )
 

@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-04",
+  "status": "accepted_default",
+  "performance_claim": true,
+  "topline_eligible": true,
+  "summary": "A reusable cross-layer head-major BF16 K/V scratch removes AOTriton's long-context token-major head stride. Copy-inclusive full prefill is neutral at 512, positive at 4K, and improves 32K/64K by 3.383%/7.001% with byte-exact full-model state. gfx1151 promotes the path through its backend capability through the validated 64K allocation class; gfx1100, explicit env=0, oversized contexts, and allocation denial retain strided AOTriton.",
+  "platform": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1
+  },
+  "source": {
+    "baseline_commit": "f8d49a25a",
+    "candidate_parent": "f8d49a25a",
+    "candidate_state": "candidate parent plus the paged-KV head-major kernel, registry/runtime integration, bounded scratch owner, tests, screen, and evidence in this logical unit",
+    "lineage": "net-new in-tree copy informed by Nathanw1014/llama.cpp ab5910a; no external source body copied"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "Repeated token ID 9707"
+  },
+  "implementation": {
+    "registry_keys": [
+      "paged_kv_copy/bf16/head_major_spans",
+      "paged_kv_copy/bf16/head_major_dense_prefix_spans"
+    ],
+    "physical_layout": "persistent KV remains token-major paged; temporary output is [kv_head, scratch_capacity, head_dim] BF16",
+    "owner": "one tracked K/V pair per resident session, reused across all full-attention layers",
+    "validated_default_scope": "hip_gfx1151 sessions with rounded capacity <=65792 tokens",
+    "fallbacks": [
+      "generic complete-KVLiveSpans page gather when dense identity is not proven",
+      "existing strided AOTriton when disabled, over token/byte cap, registry-missing, or allocation-denied",
+      "existing native paged attention below the AOTriton threshold"
+    ],
+    "rollback_env": "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV=0",
+    "capacity_envs": [
+      "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS",
+      "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
+    ]
+  },
+  "protocol": {
+    "session": "One independent right-sized resident process per end-to-end workload",
+    "workloads": ["512/128", "4K/128", "32K/128", "64K/128"],
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "prefill": "forced bulk prefill, bulk attention mode, WMMA prefill, GEMV decode, no queue drain",
+    "decode": "fresh state-bound graph replay for measured runs; eager discarded warmup",
+    "build": "hermetic TheRock HIP, precomputed compiler-version file, require-cached-build",
+    "control_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 GPU_MAX_HW_QUEUES=1 python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <shape>/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --prefill-queue-drain none --compiler-version-file <precomputed> --require-cached-build --json <output>",
+    "candidate_delta": "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV=1",
+    "subwindow_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 python3 scripts/qwen35_aotriton_head_major_screen.py --contexts 512,4096,32768,65536 --query-rows 4096 --warmups 2 --repetitions 5 --compiler-version-file <precomputed> --require-cached-build --json <output>",
+    "profile_command": "rocprofv3 --kernel-trace --output-format csv -- python3 scripts/qwen35_aotriton_head_major_screen.py --contexts 512,4096,32768,65536 --query-rows 4096 --warmups 0 --repetitions 1 --compiler-version-file <precomputed> --require-cached-build"
+  },
+  "end_to_end": {
+    "512/128": {
+      "control_prefill_tok_s": 1395.1679586031714,
+      "candidate_prefill_runs": [1394.7717350816215, 1393.8368658769477, 1395.160419712145],
+      "candidate_prefill_tok_s_median": 1394.7717350816215,
+      "prefill_delta_percent": -0.02839970048814644,
+      "control_decode_tok_s": 52.69216343039822,
+      "candidate_decode_tok_s": 52.71041485290166,
+      "decode_delta_percent": 0.03463783096997464,
+      "control_peak_gib": 21.478514462709427,
+      "candidate_peak_gib": 21.479979306459427,
+      "scratch_bytes": 1572864,
+      "scratch_capacity_tokens": 768
+    },
+    "4K/128": {
+      "control_prefill_tok_s": 1463.3113467685341,
+      "candidate_prefill_runs": [1475.5488321467105, 1472.330266622394, 1470.9027460029918],
+      "candidate_prefill_tok_s_median": 1472.330266622394,
+      "prefill_delta_percent": 0.6163363575206748,
+      "control_decode_tok_s": 55.201744121302475,
+      "candidate_decode_tok_s": 55.182885815731375,
+      "decode_delta_percent": -0.034162517636504575,
+      "control_peak_gib": 22.99906500428915,
+      "candidate_peak_gib": 23.00736578553915,
+      "scratch_bytes": 8912896,
+      "scratch_capacity_tokens": 4352
+    },
+    "32K/128": {
+      "control_prefill_tok_s": 1133.2716348931065,
+      "candidate_prefill_runs": [1172.7431951046108, 1171.6104200444493, 1171.0983313879265],
+      "candidate_prefill_tok_s_median": 1171.6104200444493,
+      "prefill_delta_percent": 3.38301815477442,
+      "control_decode_tok_s": 45.93407404014915,
+      "candidate_decode_tok_s": 45.942622584403914,
+      "decode_delta_percent": 0.018610463873280914,
+      "control_peak_gib": 23.59060098975897,
+      "candidate_peak_gib": 23.65358927100897,
+      "scratch_bytes": 67633152,
+      "scratch_capacity_tokens": 33024
+    },
+    "64K/128": {
+      "control_prefill_tok_s": 890.0334336166908,
+      "candidate_prefill_runs": [952.765794301275, 952.3484318028192, 952.1899451351658],
+      "candidate_prefill_tok_s_median": 952.3484318028192,
+      "prefill_delta_percent": 7.0014221749972405,
+      "control_decode_tok_s": 39.38542037555105,
+      "candidate_decode_tok_s": 39.36224067751139,
+      "decode_delta_percent": -0.05885349913403726,
+      "control_peak_gib": 24.26664211601019,
+      "candidate_peak_gib": 24.39213039726019,
+      "scratch_bytes": 134742016,
+      "scratch_capacity_tokens": 65792
+    }
+  },
+  "attention_subwindow": {
+    "correctness": "strided and head-major AOTriton outputs have zero BF16-bit mismatches at every shape",
+    "rows": [
+      {"context": 512, "query_rows": 512, "strided_ms": 0.3559829890727997, "copy_ms": 0.01126100029796362, "head_major_ms": 0.3536590039730072, "copy_inclusive_ms": 0.36303600668907166, "copy_inclusive_speedup": 0.9805721264934675},
+      {"context": 4096, "query_rows": 4096, "strided_ms": 13.27456283569336, "copy_ms": 0.12579600512981415, "head_major_ms": 12.4916410446167, "copy_inclusive_ms": 12.768928527832031, "copy_inclusive_speedup": 1.039598804767308},
+      {"context": 32768, "query_rows": 4096, "strided_ms": 179.44146728515625, "copy_ms": 1.1639059782028198, "head_major_ms": 154.18980407714844, "copy_inclusive_ms": 154.9831085205078, "copy_inclusive_speedup": 1.1578130610369841},
+      {"context": 65536, "query_rows": 4096, "strided_ms": 382.5422668457031, "copy_ms": 2.2329139709472656, "head_major_ms": 313.4593200683594, "copy_inclusive_ms": 315.41741943359375, "copy_inclusive_speedup": 1.2128127467805927}
+    ]
+  },
+  "correctness": {
+    "primitive": "lengths 1/255/256/257, two KV heads, permuted pages, untouched sentinels, and dense/generic equality are byte-exact",
+    "full_model_512": "candidate matches control token, selected-logit bits, all logits, all 40 post-layer hidden rows, all 30 Conv/GDN states, and all ten K/V prefixes",
+    "forced_capacity_denial": "one-byte cap allocates no head-major scratch and matches the same full state",
+    "measured_rows": "all candidate runs have finite stable logits and final token 9707",
+    "focused_tests": "39 passed before default promotion",
+    "post_promotion_tests": "61 passed, 15 skipped across head-major/paged-write/registry/benchmark-runner/full-attention/chunked-prefill/AOTriton-stream/INT8-KV/asymmetric-KV focused files"
+  },
+  "profiler": {
+    "copy_symbol": "qwen35_copy_paged_kv_bf16_to_head_major_kernel<true>",
+    "copy_dispatches": 12,
+    "copy_total_ms": 10.135149,
+    "copy_workgroup_size": 256,
+    "copy_vgpr": 16,
+    "copy_sgpr": 128,
+    "copy_lds_bytes": 0,
+    "copy_scratch_bytes": 0,
+    "aotriton_symbol": "attn_fwd",
+    "aotriton_dispatches": 20,
+    "aotriton_total_ms": 2595.474304,
+    "aotriton_workgroup_size": 128,
+    "aotriton_vgpr": 256,
+    "aotriton_sgpr": 128,
+    "aotriton_lds_bytes": 0,
+    "aotriton_scratch_bytes": 992,
+    "profile_csv_sha256": "f3d3900fc216ee512587cb6716719d7c03725d3a22527da170326b2313d0c600"
+  },
+  "raw_evidence_sha256": {
+    "baseline_32k": "c434c600fe554862764a45bcf960e520bd86bbf9d82a5d32958899ec9b6e51a8",
+    "candidate_right_sized_512": "83912df9cb7d441a9f85766fa86771f0402e924402d6a8eb5b4474b9d601bb93",
+    "candidate_right_sized_4k": "88b24fe02c85a2aa3d5baf818a2ba86928dca5fa3e2c0cb683d19a2cf3dbec93",
+    "candidate_combined_512_4k_32k": "54a12df5749d16bf5c0b8a8f7750655248893e4781e2c5c099b83d2bb2615fcc",
+    "candidate_right_sized_64k": "93912ac750256c97887c288e6b30cc77f81ceb816d0dbb0308c6ce27887c0a6e",
+    "full_state_ab": "5f6f3b37b47d4cd0da7ce70ab2d035996e9e723adb145878cfc3361316a681ae",
+    "full_state_capacity_denied_ab": "55be564b03ac7595f343983b58acd00faf3b27b9c8287f52cd9c1232c6f44a37",
+    "subwindow_all": "c9074aef4a462e4092d02abae36186d88d0a92170c266639dcc0037342b25551"
+  },
+  "decision": {
+    "action": "promote_bounded_gfx1151_default",
+    "reason": "The copy-inclusive path is neutral at 512, positive at 4K, materially positive at 32K/64K, byte-exact at primitive and full-model boundaries, and has bounded tracked allocation plus exact fallback.",
+    "short_context_gate": "512 -0.028%; 4K +0.616%",
+    "long_context_gate": "32K +3.383%; 64K +7.001%",
+    "unfused_fallback": "Existing strided AOTriton remains selected on explicit disable, cap/allocation/registry failure, unsupported backend, or oversized resident capacity."
+  },
+  "limitations": [
+    "The default is limited to gfx1151 and the validated rounded capacity class of at most 65792 tokens; larger sessions retain strided AOTriton.",
+    "The production dense-prefix copy is qualified before eviction; the generic sibling covers non-identity page tables but does not broaden AOTriton to sparse post-eviction contexts.",
+    "The performance workload uses repeated token ID 9707; correctness additionally compares complete hidden, recurrent, KV, and logit state rather than only the emitted token."
+  ]
+}

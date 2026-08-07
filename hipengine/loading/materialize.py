@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Protocol
 
 from safetensors import safe_open
 
@@ -35,6 +35,16 @@ _NUMPY_DTYPE_TO_SAFETENSORS = {
     "float32": "F32",
 }
 _DTYPE_TO_SAFETENSORS = {dtype: safetensors for safetensors, dtype in _SAFETENSORS_DTYPE_TO_DTYPE.items()}
+
+
+class DeviceBufferAllocator(Protocol):
+    """Optional owner-aware allocator used by bounded materializers."""
+
+    def allocate(self, nbytes: int) -> DeviceBuffer: ...
+
+    def owns(self, buffer: DeviceBuffer) -> bool: ...
+
+    def release(self, buffer: DeviceBuffer) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -221,6 +231,7 @@ def load_host_array_to_device_as_dtype(
     source_dtype: str | None = None,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
+    allocator: DeviceBufferAllocator | None = None,
 ) -> DeviceTensorAllocation:
     """Materialize a host array while assigning an explicit runtime dtype.
 
@@ -246,18 +257,32 @@ def load_host_array_to_device_as_dtype(
             f"host array byte size {nbytes} does not match dtype {parsed.value!r} and shape {shape}: "
             f"expected {expected_nbytes}"
         )
-    buffer = malloc(nbytes, runtime=runtime)
+    buffer = (
+        malloc(nbytes, runtime=runtime)
+        if allocator is None
+        else allocator.allocate(nbytes)
+    )
+    borrowed = allocator is not None and allocator.owns(buffer)
     try:
         copy_host_to_device(buffer, host_array_ptr(array), nbytes, runtime=runtime)
     except Exception:
-        free(buffer, runtime=runtime)
+        if borrowed:
+            allocator.release(buffer)
+        else:
+            free(buffer, runtime=runtime)
         raise
     safetensors_dtype = source_dtype or _DTYPE_TO_SAFETENSORS.get(parsed)
     if safetensors_dtype is None:
         raise ValueError(f"dtype {parsed.value!r} cannot be represented as safetensors metadata")
     source = TensorInfo(name=name, shard_path=index_virtual_path(name), dtype=safetensors_dtype, shape=shape)
     tensor = Tensor.from_handle(buffer.ptr, shape, parsed, device or Device("hip", 0))
-    return DeviceTensorAllocation(name=name, source=source, buffer=buffer, tensor=tensor)
+    return DeviceTensorAllocation(
+        name=name,
+        source=source,
+        buffer=buffer,
+        tensor=tensor,
+        owns_buffer=not borrowed,
+    )
 
 
 def float_array_to_bf16_bits(array: object):

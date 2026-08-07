@@ -144,6 +144,101 @@ def test_gfx1100_explicit_exact_direct_liveness_omits_materialized_qkv(
     assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
 
 
+def test_gfx1151_right_sized_short_scratch_uses_owner_slots(monkeypatch) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner("hip_gfx1151"),
+        rows=768,
+        capacity=768,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "liveness_aliased"
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 69_790_760
+    assert len(set(scratch.allocation_groups.values())) == 21
+    assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.conv_out.ptr == scratch.moe_down_out.ptr
+    assert scratch.linear_qkv_f32.ptr != scratch.conv_out.ptr
+    assert scratch.allocation_offsets
+
+
+def test_gfx1151_short_diagnostics_keep_dedicated_scratch_fallback(monkeypatch) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE", "1")
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner("hip_gfx1151"),
+        rows=768,
+        capacity=768,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "dedicated"
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 355_182_664
+    assert scratch.moe_down_out_f32.ptr != 0
+    assert not scratch.allocation_offsets
+    assert not scratch.allocation_groups
+
+
+def test_gfx1151_exact_prefill_scratch_uses_bounded_liveness_owners(monkeypatch) -> None:
+    allocations = _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner("hip_gfx1151"),
+        rows=4096,
+        capacity=4352,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    assert scratch.allocation_mode == "liveness_aliased"
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
+    assert scratch.prefill_query == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.prefill_key == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.linear_qkv_f32.ptr != 0
+    assert scratch.conv_out.ptr != 0
+    assert scratch.moe_down_out.ptr != 0
+    assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
+
+    offsets = dict(scratch.allocation_offsets)
+    lifetimes = dict(scratch.allocation_lifetimes)
+    # SH-M2 graph-colors route/stage-disjoint fields into allocator-owned
+    # slots. The 128-MiB conv and post-attention outputs reuse one owner, while
+    # simultaneously-live linear_qkv_f32 remains on another owner.
+    groups = dict(scratch.allocation_groups)
+    assert groups["conv_out"] == groups["moe_down_out"]
+    assert groups["conv_out"].startswith("owner_slot_")
+    assert scratch.conv_out.ptr == scratch.moe_down_out.ptr
+    assert scratch.linear_qkv_f32.ptr != scratch.conv_out.ptr
+    linear_qkv_offset, linear_qkv_size = offsets["linear_qkv_f32"]
+    conv_offset, conv_size = offsets["conv_out"]
+    assert linear_qkv_offset >= conv_offset + conv_size or conv_offset >= linear_qkv_offset + linear_qkv_size
+    entries = list(offsets.items())
+    for index, (name_a, (offset_a, size_a)) in enumerate(entries):
+        for name_b, (offset_b, size_b) in entries[index + 1 :]:
+            lifetimes_overlap = gguf_runner._prefill_scratch_lifetimes_overlap(
+                lifetimes[name_a],
+                lifetimes[name_b],
+            )
+            ranges_overlap = offset_a < offset_b + size_b and offset_b < offset_a + size_a
+            assert not (lifetimes_overlap and ranges_overlap), (
+                f"live scratch buffers overlap: {name_a}={offsets[name_a]}, "
+                f"{name_b}={offsets[name_b]}"
+            )
+
+    largest_owner = max(allocations, key=lambda buffer: buffer.nbytes)
+    assert largest_owner in scratch.buffers
+    assert largest_owner.nbytes <= 384 * _MIB
+
+
 def test_prefill_scratch_keeps_dedicated_layout_for_diagnostics_and_unvalidated_backend(monkeypatch) -> None:
     _install_fake_device(monkeypatch)
     _clear_diagnostic_environment(monkeypatch)
@@ -162,12 +257,12 @@ def test_prefill_scratch_keeps_dedicated_layout_for_diagnostics_and_unvalidated_
     assert not diagnostic.allocation_offsets
 
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE")
-    gfx1151 = _GGUFFullAttentionPrefillScratch.allocate(
-        _fake_runner("hip_gfx1151"),
+    unvalidated = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_runner("cpu_reference"),
         rows=4096,
         capacity=4352,
         allocate_kv_cache=False,
         runtime=SimpleNamespace(),
     )
-    assert gfx1151.allocation_mode == "dedicated"
-    assert sum(buffer.nbytes for buffer in gfx1151.buffers) > 1700 * _MIB
+    assert unvalidated.allocation_mode == "dedicated"
+    assert sum(buffer.nbytes for buffer in unvalidated.buffers) > 1700 * _MIB

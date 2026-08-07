@@ -187,7 +187,7 @@ def test_router_projection_wave0_tree_package_registry_scope_and_fallback() -> N
         assert not is_registered(KernelKey(backend, _LAYER, _QUANT, _VARIANT))
 
     runtime_source = _RUNTIME.read_text(encoding="utf-8")
-    assert runtime_source.count(_VARIANT) == 1
+    assert runtime_source.count(f'"{_VARIANT}"') == 1
     assert _SYMBOL not in runtime_source
     import hipengine.kernels.hip_gfx1100 as backend
 
