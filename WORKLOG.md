@@ -209213,3 +209213,26 @@ Vulkan local sizes verbatim will close the measured gap.
   **205.818900 -> 164.958699 ms (-19.852%)**; native timing is stable. Next:
   clean confirmation with phase detail, then replace the measured 626 HSA
   kernarg allocations with one aligned slab. No destructive lifecycle arm ran.
+
+## 2026-08-08 — Collapse per-node native kernargs into one owned slab
+
+- The committed-clean function-resolution cache run passes exact p512/d3 at
+  **166.749630 ms** capture. Phase attribution confirms **85.811397 ms** graph
+  inspection and **44.167123 ms** native instantiation; DSO read/extract/hash/
+  metadata owns **51.554970 ms**, while 626 HSA kernarg allocations own
+  **29.986474 ms**.
+- Replace those 626 separately rounded allocations with one executable-owned,
+  max-aligned kernarg slab. Stage each immutable node byte range at a checked
+  aligned offset, make direct-AQL packets and PM4 user SGPRs point at the same
+  slab slices, publish slab/slice provenance, and release the slab only after
+  proven submission retirement. For the 626-node graph this changes
+  2,564,096 allocated bytes to **200,240 logical / 200,704 allocated bytes**.
+- The exact dirty-tree p512/d3 gate passes with the same tokens, recurrent/KV
+  state, and all logits. Native instantiation falls **44.167123 -> 12.760156 ms
+  (-71.110%)**; staging is **0.178933 ms** and the one HSA allocation+copy is
+  **0.106911 ms** versus 29.986474 ms before. Total capture is separately
+  measured at **142.550012 ms**, down 14.512% despite graph-inspection wall
+  varying adversely by 5.520 ms. Full native GPU and transport suites pass (2),
+  packet/native-build/benchmark unit bundle passes (10), Ruff and diff checks
+  pass. Next: committed-clean confirmation and remaining DSO inspection work.
+  No destructive lifecycle arm ran.

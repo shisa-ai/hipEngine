@@ -881,10 +881,16 @@ kernarg allocations, **6.936 ms** for all 17 HSA module load/freezes, and only
 **0.144 ms** for PM4 encoding. Caching immutable kernel name/DSO/metadata
 resolution by repeated HIP function pointer within one inspection is exact and
 cuts inspection **126.023 -> 86.590 ms (-31.290%)** and total capture
-**205.819 -> 164.959 ms (-19.852%)** in a dirty-tree directional run. This
-removes the single-freeze idea from the top of the setup queue; one aligned
-kernarg slab and the remaining inspection phases are next. Clean publication is
-pending.
+**205.819 -> 164.959 ms (-19.852%)** in the directional run; a committed-clean
+repeat is exact at **85.811 ms** inspection and **166.750 ms** capture. Replacing
+626 separately rounded HSA allocations (2,564,096 bytes) with one aligned
+200,240-byte logical/200,704-byte allocated kernarg slab then cuts native
+instantiation **44.167 -> 12.760 ms (-71.110%)**, kernarg staging plus allocation
+to **0.286 ms**, and separately measured total capture **166.750 -> 142.550 ms
+(-14.512%)** despite 5.520 ms adverse inspection variance. Module load/freeze is
+not the high-leverage target; DSO read/extract/hash/metadata owns **51.555 ms**
+of remaining clean inspection. Slab publication and a same-session end-to-end
+comparison remain pending.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact

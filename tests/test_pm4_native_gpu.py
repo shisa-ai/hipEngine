@@ -118,6 +118,7 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         assert provenance["last_transport"] == "pm4"
         assert provenance["module_load_ns"] > 0
         assert provenance["kernel_resolve_ns"] > 0
+        assert provenance["kernarg_stage_ns"] > 0
         assert provenance["kernarg_allocate_ns"] > 0
         assert provenance["aql_packet_build_ns"] > 0
         assert provenance["pm4_encode_ns"] > 0
@@ -127,11 +128,16 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         assert len(provenance["module_records"]) == 1
         assert provenance["module_records"][0]["reader_handle"] != 0
         assert provenance["module_records"][0]["executable_handle"] != 0
+        assert provenance["kernarg_slab_address"] != 0
+        assert provenance["kernarg_slab_bytes"] > 0
+        assert provenance["kernarg_slab_allocated_bytes"] >= provenance["kernarg_slab_bytes"]
         assert len(provenance["dispatch_records"]) == 1
         dispatch = provenance["dispatch_records"][0]
         assert dispatch["symbol"] == "hipengine_smoke_add_f32_kernel.kd"
         assert dispatch["kernel_object"] != 0
         assert dispatch["code_entry"] != 0
+        assert dispatch["kernarg_offset"] == 0
+        assert dispatch["kernarg_address"] == provenance["kernarg_slab_address"]
         assert dispatch["kernarg_address"] % dispatch["kernarg_align"] == 0
         assert context_provenance["process_id"] == os.getpid()
         assert context_provenance["hsa_version_major"] >= 1

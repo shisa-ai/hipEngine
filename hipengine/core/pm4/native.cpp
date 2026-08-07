@@ -81,6 +81,14 @@ class Error : public std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
+size_t align_up(size_t value, size_t alignment) {
+  if (alignment == 0 || (alignment & (alignment - 1)) != 0)
+    throw Error("alignment is not a power of two");
+  if (value > std::numeric_limits<size_t>::max() - (alignment - 1))
+    throw Error("aligned size overflows");
+  return (value + alignment - 1) & ~(alignment - 1);
+}
+
 std::string hsa_error(const char* operation, hsa_status_t status) {
   const char* detail = nullptr;
   (void)hsa_status_string(status, &detail);
@@ -707,7 +715,10 @@ void set_sh_regs(std::vector<uint32_t>* words, uint32_t first,
 
 struct Dispatch {
   KernelInfo kernel;
-  Allocation kernarg;
+  void* kernarg = nullptr;
+  size_t kernarg_offset = 0;
+  uint32_t kernarg_size = 0;
+  uint32_t kernarg_align = 0;
   std::string symbol;
   size_t module_index = 0;
   std::array<uint32_t, 3> grid{};
@@ -744,8 +755,8 @@ void append_dispatch(std::vector<uint32_t>* words, const Dispatch& dispatch,
   if ((image.properties & kEnablePrivateSegmentBuffer) != 0)
     user_sgprs.insert(user_sgprs.end(), {0, 0, 0, 0});
   if ((image.properties & kEnableKernargPtr) != 0) {
-    if (dispatch.kernarg.pointer == nullptr) throw Error("kernel requires non-null kernarg");
-    const uint64_t address = reinterpret_cast<uintptr_t>(dispatch.kernarg.pointer);
+    if (dispatch.kernarg == nullptr) throw Error("kernel requires non-null kernarg");
+    const uint64_t address = reinterpret_cast<uintptr_t>(dispatch.kernarg);
     user_sgprs.push_back(static_cast<uint32_t>(address));
     user_sgprs.push_back(static_cast<uint32_t>(address >> 32));
   }
@@ -805,6 +816,7 @@ struct Executable {
   std::vector<Dispatch> dispatches;
   std::vector<hsa_kernel_dispatch_packet_t> aql_packets;
   std::vector<uint32_t> pm4_words;
+  Allocation kernargs;
   Allocation indirect;
   Allocation timestamps;
   std::array<uint8_t, kPacketBytes> pm4_packet{};
@@ -816,6 +828,7 @@ struct Executable {
   uint64_t last_timeout_ns = 0;
   uint64_t module_load_ns = 0;
   uint64_t kernel_resolve_ns = 0;
+  uint64_t kernarg_stage_ns = 0;
   uint64_t kernarg_allocate_ns = 0;
   uint64_t aql_packet_build_ns = 0;
   uint64_t pm4_encode_ns = 0;
@@ -1062,6 +1075,10 @@ std::string executable_json(Executable* executable) {
       << ",\"pm4_publication\":" << pm4_publication << ",\"timestamp_address\":"
       << reinterpret_cast<uintptr_t>(executable->timestamps.pointer)
       << ",\"timestamp_bytes\":" << executable->timestamps.length
+      << ",\"kernarg_slab_address\":"
+      << reinterpret_cast<uintptr_t>(executable->kernargs.pointer)
+      << ",\"kernarg_slab_bytes\":" << executable->kernargs.length
+      << ",\"kernarg_slab_allocated_bytes\":" << executable->kernargs.allocated
       << ",\"stateful_registers\":"
       << (executable->stateful_registers ? "true" : "false")
       << ",\"aql_submissions\":" << executable->aql_submissions
@@ -1071,6 +1088,7 @@ std::string executable_json(Executable* executable) {
       << ",\"last_timeout_ns\":" << executable->last_timeout_ns
       << ",\"module_load_ns\":" << executable->module_load_ns
       << ",\"kernel_resolve_ns\":" << executable->kernel_resolve_ns
+      << ",\"kernarg_stage_ns\":" << executable->kernarg_stage_ns
       << ",\"kernarg_allocate_ns\":" << executable->kernarg_allocate_ns
       << ",\"aql_packet_build_ns\":" << executable->aql_packet_build_ns
       << ",\"pm4_encode_ns\":" << executable->pm4_encode_ns
@@ -1098,11 +1116,11 @@ std::string executable_json(Executable* executable) {
     append_json_string(&out, dispatch.symbol);
     out << ",\"kernel_object\":" << dispatch.kernel.kernel_object
         << ",\"code_entry\":" << dispatch.kernel.code_entry
-        << ",\"kernarg_address\":"
-        << reinterpret_cast<uintptr_t>(dispatch.kernarg.pointer)
-        << ",\"kernarg_bytes\":" << dispatch.kernarg.length
-        << ",\"kernarg_allocated_bytes\":" << dispatch.kernarg.allocated
-        << ",\"kernarg_align\":" << dispatch.kernel.kernarg_align
+        << ",\"kernarg_address\":" << reinterpret_cast<uintptr_t>(dispatch.kernarg)
+        << ",\"kernarg_offset\":" << dispatch.kernarg_offset
+        << ",\"kernarg_bytes\":" << dispatch.kernarg_size
+        << ",\"kernarg_allocated_bytes\":" << dispatch.kernarg_size
+        << ",\"kernarg_align\":" << dispatch.kernarg_align
         << ",\"group_segment_bytes\":"
         << dispatch.kernel.group_size + dispatch.dynamic_lds
         << ",\"private_segment_bytes\":" << dispatch.kernel.private_size
@@ -1355,6 +1373,8 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
     executable->stateful_registers = (flags & kExecutableFlagStatefulRegisters) != 0;
     executable->modules.reserve(count);
     executable->dispatches.reserve(count);
+    std::vector<uint8_t> staged_kernargs;
+    size_t slab_alignment = 16;
 
     for (size_t index = 0; index < count; ++index) {
       const he_pm4_node& source = input[index];
@@ -1408,15 +1428,19 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
       dispatch.kernel = kernel;
       dispatch.symbol = source.symbol;
       dispatch.module_index = module_index;
-      const auto kernarg_allocate_start = SteadyClock::now();
-      dispatch.kernarg = allocate(
-          context->pool, context->pool_granule, context->pool_alignment,
-          context->gpu, source.kernarg_size,
-          std::max<size_t>({16, source.kernarg_align, kernel.kernarg_align}),
-          HSA_AMD_MEMORY_POOL_STANDARD_FLAG);
+      const auto kernarg_stage_start = SteadyClock::now();
+      dispatch.kernarg_align = static_cast<uint32_t>(
+          std::max<size_t>({16, source.kernarg_align, kernel.kernarg_align}));
+      dispatch.kernarg_offset = align_up(staged_kernargs.size(), dispatch.kernarg_align);
+      dispatch.kernarg_size = source.kernarg_size;
+      if (dispatch.kernarg_offset > std::numeric_limits<size_t>::max() - source.kernarg_size)
+        throw Error("kernarg slab size overflows");
+      staged_kernargs.resize(dispatch.kernarg_offset + source.kernarg_size);
       if (source.kernarg_size != 0)
-        std::memcpy(dispatch.kernarg.pointer, source.kernarg, source.kernarg_size);
-      executable->kernarg_allocate_ns += elapsed_ns(kernarg_allocate_start);
+        std::memcpy(staged_kernargs.data() + dispatch.kernarg_offset,
+                    source.kernarg, source.kernarg_size);
+      slab_alignment = std::max(slab_alignment, static_cast<size_t>(dispatch.kernarg_align));
+      executable->kernarg_stage_ns += elapsed_ns(kernarg_stage_start);
       for (size_t axis = 0; axis < 3; ++axis) {
         if (source.grid[axis] == 0 || source.block[axis] == 0 || source.block[axis] > 0xffff)
           throw Error("graph node has invalid launch geometry");
@@ -1426,6 +1450,23 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
       dispatch.dynamic_lds = source.dynamic_lds;
       executable->dispatches.push_back(std::move(dispatch));
     }
+
+    const auto kernarg_allocate_start = SteadyClock::now();
+    executable->kernargs = allocate(
+        context->pool, context->pool_granule, context->pool_alignment,
+        context->gpu, staged_kernargs.size(), slab_alignment,
+        HSA_AMD_MEMORY_POOL_STANDARD_FLAG);
+    if (!staged_kernargs.empty())
+      std::memcpy(executable->kernargs.pointer, staged_kernargs.data(),
+                  staged_kernargs.size());
+    for (Dispatch& dispatch : executable->dispatches) {
+      if (dispatch.kernarg_size == 0) continue;
+      dispatch.kernarg = static_cast<uint8_t*>(executable->kernargs.pointer) +
+                         dispatch.kernarg_offset;
+      if (reinterpret_cast<uintptr_t>(dispatch.kernarg) % dispatch.kernarg_align != 0)
+        throw Error("kernarg slab slice is misaligned");
+    }
+    executable->kernarg_allocate_ns = elapsed_ns(kernarg_allocate_start);
 
     const auto aql_packet_build_start = SteadyClock::now();
     executable->aql_packets.resize(count);
@@ -1445,7 +1486,7 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
       packet.private_segment_size = dispatch.kernel.private_size;
       packet.group_segment_size = dispatch.kernel.group_size + dispatch.dynamic_lds;
       packet.kernel_object = dispatch.kernel.kernel_object;
-      packet.kernarg_address = dispatch.kernarg.pointer;
+      packet.kernarg_address = dispatch.kernarg;
       executable->aql_packets[index] = packet;
     }
     executable->aql_packet_build_ns = elapsed_ns(aql_packet_build_start);
@@ -1508,7 +1549,7 @@ int he_pm4_executable_destroy(he_pm4_executable* opaque, char* error, size_t err
     if (context->children == 0) throw Error("PM4 executable/context child ledger underflow");
     executable->indirect.release_checked();
     executable->timestamps.release_checked();
-    for (auto& dispatch : executable->dispatches) dispatch.kernarg.release_checked();
+    executable->kernargs.release_checked();
     for (auto& module : executable->modules) module.release_checked();
     --context->children;
     delete opaque;
