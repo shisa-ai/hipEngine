@@ -235,6 +235,7 @@ Primary evidence:
 
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
+- [P3 dense token-tile rejection](../benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json)
 - [P2/M5 GQA4 recertification](../benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json)
 - [P1/M5 expert-major recertification](../benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json)
 - [P0/M5 final-row recertification](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json)
@@ -242,11 +243,11 @@ Primary evidence:
 
 ## Optimization review and next work
 
-Clean cached-only profiles freeze every completed phase: retained P0 is the
-immutable P1 baseline, retained P1 is the immutable P2 baseline, and retained
-P2 selects P3. The c1 and c8 rows remain the corrected decode baselines because
-P0-P2 do not alter those paths (later diagnostics remeasure them within ordinary
-run variance):
+Clean cached-only profiles freeze every retained phase: P0 is the immutable P1
+baseline, P1 is the immutable P2 baseline, and P2 remains the current prefill
+production row after P3's exact tile-16/32 screen regressed. The c1 and c8 rows
+remain the corrected decode baselines because P0-P3 do not alter those paths
+(later diagnostics remeasure them within ordinary run variance):
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
@@ -304,8 +305,8 @@ exact and no additional persistent memory. Local128 remains the rollback.
 | **P0 — DONE** | Sample only the final prompt row | Retained at 700.643/649.280/614.874 tok/s, 18/18 byte-exact state hashes, and 148.813 MiB lower residency. |
 | **P1 — DONE / SCALAR BLOCKER** | True expert-major compact MoE | Retained at 726.421/679.632/650.745 tok/s and byte-exact; expert family improves 1.086x but misses the 2.826x ceiling, selecting a future matrix/SIMD ternary consumer rather than more grouping geometry. |
 | **P2 — DONE** | GQA/query-row prefill attention | Retained at 749.175/741.368/754.000 tok/s and byte-exact; attention falls **63.993 -> 21.916 ms (2.920x)** with no memory or launch increase. |
-| **P3 — NEXT** | Retune dense ternary row tiles | Post-P2 QKV+O consume **124.770 ms (28.90% of kernel time)**. Their exact kernel reuses a weight row across a fixed tile of eight prompt rows; sweep 8/16/32 and only then consider a new WMMA layout. |
-| **D0** | Exact c1 kernel work, not graph promotion | A controlled 3+3-process review measured current graph replay at only **1.0047x** (0.033 ms saved), exact and leak-free. The corrected kernel-only roof is 198.591 tok/s, so exact 200+ needs at least one kernel win: first test DeepGrove's one-dispatch router pattern and then affine4-head bandwidth/layout changes. |
+| **P3 — DONE / REJECTED** | Retune dense ternary row tiles | Tile 8/16/32 are bit-exact, but a counterbalanced natural+heldout screen measures **744.116/731.182/571.923 tok/s**; tile 16/32 lose all 16 paired samples, so all candidate surfaces are removed and tile 8 remains production. |
+| **D0 — NEXT** | Exact c1 kernel work, not graph promotion | A controlled 3+3-process review measured current graph replay at only **1.0047x** (0.033 ms saved), exact and leak-free. The corrected kernel-only roof is 198.591 tok/s, so exact 200+ needs at least one kernel win: first test DeepGrove's one-dispatch router pattern and then affine4-head bandwidth/layout changes. |
 | **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
 
 The 200+ decode target is therefore realistic in two distinct forms:

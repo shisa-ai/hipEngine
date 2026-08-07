@@ -64,6 +64,15 @@ scratch0). Stable metadata costs 0.444 ms/request. The expert family changes
 gate/up scalar unpack/reduction as the measured blocker to the 97.708-ms P1
 target. The row/route gather remains an environment-controlled rollback.
 
+The P3 dense token-tile sweep leaves the original tile-8 QKV/O consumers
+unchanged. Exact tile 16/32 candidates preserved the production 2,048-wide
+reduction bit-for-bit but measured **731.182/571.923 tok/s** versus tile 8
+**744.116 tok/s**, with **0/16** paired wins for each candidate. The regression
+is consistent with larger dynamic LDS (8/16 KiB versus 4 KiB) and longer block
+residency dominating the saved 512-byte weight-row reloads. All temporary
+selectors and alternate exports were
+removed; do not repeat this scalar schedule.
+
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard
 QK-RMSNorm plus rotate-half partial RoPE, BF16 K/V append, and online-softmax

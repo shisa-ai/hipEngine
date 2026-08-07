@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-08
 
+- [Maple P3 dense token-tile sweep rejected; no production-row change] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / public prefill320 on Radeon 8060S/gfx1151: exact tile **8/16/32** measures **744.116/731.182/571.923 tok/s**, so tile 16/32 regress **1.74%/23.14%** with **0/16** paired wins despite identical token/top-logit outputs; all temporary selector/export surfaces are removed and tile 8 remains production; `benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json`.
 - [retained/default Maple P2 exact GQA4 native prefill] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / public 128/320/512 on Radeon 8060S/gfx1151: **726.421/679.632/650.745 -> 749.175/741.368/754.000 tok/s (+3.13%/+9.08%/+15.87%)** by mapping each four-head GQA group to one exact wave32 consumer while preserving the local128 LDS/FMA order; clean tracing cuts attention **63.993 -> 21.916 ms (2.920x)** at unchanged 730 launches, all **18/18** state hashes and **90/90** positions remain byte/exact with KL 0, residency remains **5,355,881,848 bytes**, and close returns zero ownership; `benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json` and `benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json`.
 
 ## 2026-08-07
