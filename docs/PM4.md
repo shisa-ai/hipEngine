@@ -889,8 +889,13 @@ instantiation **44.167 -> 12.760 ms (-71.110%)**, kernarg staging plus allocatio
 to **0.286 ms**, and separately measured total capture **166.750 -> 142.550 ms
 (-14.512%)** despite 5.520 ms adverse inspection variance. Module load/freeze is
 not the high-leverage target; DSO read/extract/hash/metadata owns **51.555 ms**
-of remaining clean inspection. Slab publication and a same-session end-to-end
-comparison remain pending.
+of remaining clean inspection. Identity-checked immutable DSO reuse by
+`(path, gfx, device, inode, size, mtime, ctime)` makes a subsequent exact graph
+capture pay **0.057 ms** rather than **57.407 ms** for DSO loading; in the
+same-process directional run, inspection is **91.699 -> 30.448 ms** and capture
+**145.042 -> 75.914 ms**. Eight-way cold DSO loading regressed that phase
+**55.061 -> 63.072 ms** and was removed. Slab/cache publication and a
+same-session p512/d128 end-to-end comparison remain pending.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact
