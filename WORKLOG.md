@@ -208981,3 +208981,53 @@ Vulkan local sizes verbatim will close the measured gap.
   tests/test_pm4_packets.py tests/test_pm4_native_build.py -q` -> 9 passed;
   native compilation, Ruff, `compileall`, and `git diff --check` pass. No
   performance claim is made.
+
+## 2026-08-07 — Integrate retained PM4 into one production GGUF graph (P5)
+
+- Add `hipengine/core/pm4/transport.py`: exact backend/transport registrations
+  for `hipgraph`, diagnostic `aql`, and explicit gfx1100 `pm4`; environment/API
+  selection is parsed at graph-owner construction. Unsupported architecture or
+  graph admission fails before submit, and no explicit native route can fall
+  back to HIP. Provenance records source, graph/HSACO identity, launch attempts,
+  queue/executable ledgers, retirement, and zero-fallback count.
+- Integrate the registry into the state-bound Qwen3.6 GGUF decode graph. Native
+  launch drains the caller HIP stream, submits/waits with the native finite
+  deadline, and returns to the caller's existing synchronization boundary.
+  The resident session owns one native transport context/ROCr queue across
+  executable pointer/topology generations; graph close frees only the retained
+  executable, while checked session/context close retires the queue. Native HIP
+  graph remains the default, and gfx1151 has no AQL/PM4 registration.
+- Add `scripts/pm4_gguf_decode_gate.py` and transport/unit/GPU tests. The gate
+  deliberately uses one persistent queue and never runs submit+queue-recreate
+  stress. It compares eager, native HIP graph, direct AQL, and retained PM4 for
+  tokens, FP32 hidden plus every Conv/GDN state pair, every live BF16 K/V prefix,
+  all final FP32 logits, third-and-later replay, no-submit cancellation, checked
+  close, transport proof, and memory recovery. The first AQL attempt stopped
+  before native context creation because the harness assumed rank-1 rather than
+  `(1, vocab)` logits; flattening that readback is covered by a focused test.
+- W7900/gfx1100 p512/d3 direct-AQL command:
+  `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1
+  HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3
+  scripts/pm4_gguf_decode_gate.py --submission-transport aql --prompt-length
+  512 --steps 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt
+  --require-cached --json /tmp/hipengine-p5-aql-p512-d3.json` -> accepted.
+  The 627-node/17-HSACO graph consumed 1,881 standard AQL packets over three
+  submissions; tokens, all three state/KV checkpoints, and 248,320 final logits
+  were bit exact versus eager/HIP graph. Callback status and unretired count
+  were zero, with no fallback and exact memory recovery after context close.
+- Same W7900 retained-PM4 command with `--submission-transport pm4` and output
+  `/tmp/hipengine-p5-pm4-p512-d3.json` -> accepted. Three replays consumed three
+  vendor packets referencing one 25,707-dword / 102,828-byte IB. All token,
+  state/KV, and final-logit hashes match eager/HIP/AQL exactly; provenance records
+  `pm4_submissions=3`, `aql_submissions=0`, zero fallback/callback/unretired
+  state, one reused queue, cancellation close, checked context teardown, and
+  exact recovery of the retained 2 MiB allocation.
+- Compact accepted correctness artifact:
+  `benchmarks/results/2026-08-07-gfx1100-in-tree-pm4-gguf-p5-correctness.json`.
+  This is not a performance claim. Destructive submit/recreate stress for
+  ROCm/ROCm#6529 remains intentionally unrun; P6 measurement/optimization is
+  next.
+- Validation: all PM4 tests (including guarded safe GPU inspection/native/
+  lifecycle/registry controls), GGUF decode-graph contracts, G5 helpers, and
+  GGUF generation routing pass in one affected bundle. Ruff, `compileall`, JSON
+  validation, torch/backend-branch audits, and `git diff --check` pass.

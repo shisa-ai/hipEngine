@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_pm4_gguf_decode_p5_correctness",
+  "created_at": "2026-08-07T16:13:18Z",
+  "status": "accepted",
+  "performance_claim": false,
+  "source_parent_commit": "e9cfe512f",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "mtime_ns": 1781563726148079585,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "gfx_arch": "gfx1100",
+    "pci_bdf": "0000:0d:00.0",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": "1"
+  },
+  "workload": {
+    "prompt_source": "repeated-token transport correctness fixture",
+    "prompt_token_id": 9707,
+    "expected_token_id": 9707,
+    "prompt_length": 512,
+    "decode_steps": 3,
+    "third_and_later_replays_checked": 1
+  },
+  "commands": {
+    "aql": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/pm4_gguf_decode_gate.py --submission-transport aql --prompt-length 512 --steps 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/hipengine-p5-aql-p512-d3.json",
+    "pm4": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/pm4_gguf_decode_gate.py --submission-transport pm4 --prompt-length 512 --steps 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/hipengine-p5-pm4-p512-d3.json"
+  },
+  "common_graph": {
+    "nodes": 627,
+    "modules": 17,
+    "unique_hsaco_count": 17,
+    "pm4_dwords": 25707,
+    "pm4_ib_bytes": 102828,
+    "hsaco_sha256": [
+      "010a03e7714d48d6531b8c44f13d14811d32fbb50340268608c1492dea883333",
+      "1358724286cc9278b325c339f839889a2246257df250b62c73b7ad6fd50786f7",
+      "212b592471906ced588c916c719a12dfc16d535fbed6d0e42b2f0f856e98c573",
+      "2f34dd7d216973120dcd304e2abdeb1c4d727795a8c10631da2d8b3ba175fe80",
+      "396e77e47a1beba5c7ca28cd9a414d2b534b6f294f90682a4e2b51e5d240ecf6",
+      "3c2a910690cb3796430b3eede532e847678b31da21c486f1c7933e7db9820906",
+      "5e1b23c24aa5d09b194db546a6216cae5035ab870672f84e429f6f720379dc67",
+      "79ada18c36e054c169ee1523ce9eeee7e582fbd7855b6642599a0c568bcc2e2e",
+      "97804d2ecdff3b998c2cb99221ef78f0b76ef7c61fe52216d99aa19271dab35c",
+      "c1d97e3949c608dfebce49f878530d8163bc5ffe5a709eef7e23408205210081",
+      "c4e7df113076d09822298ba14d086331a04b04d9c713427c57780614fa2bb1fc",
+      "d36b177f2563e980a0710810f5f6745ae6e5a8d7f1dc756fa4f103dda2ef8f90",
+      "d6f72c8dfb97de5b6b1ad2bcf92d0d0557df74dc52abcf9a3ec24f1d5d39b578",
+      "eb9e55c1776ca4eb9276536580d06f48e83db12c251c13fcf6aea4a4529dd50c",
+      "f139b342dfaebce442bf24be7fa7f46f92f6b5fb01ff4a4f1cd7e4aecc958ef0",
+      "f41ab3ad90da9386d42ad2446e3545019d6a79b1124465df2e4badcdfda07b17",
+      "fdabab51e17aa0f794142596a3b7bfd49347a9b787b651a1dd862e1b3e82dcfa"
+    ]
+  },
+  "aql": {
+    "graph_fingerprint": "ee19aa8e7f9d751c45f1031065a2243e83ad48ad644eb7890e1890ad4456a680",
+    "queue_submissions": 3,
+    "aql_submissions": 3,
+    "pm4_submissions": 0,
+    "queue_packets_consumed": 1881,
+    "native_fallbacks": 0,
+    "retired": true,
+    "callback_status": 0,
+    "context_generations": 2,
+    "context_closed": true
+  },
+  "pm4": {
+    "graph_fingerprint": "fcddbf62fde027322c8d586e2e79296a7eb6fc27d44143718ec42d2e87396565",
+    "queue_submissions": 3,
+    "aql_submissions": 0,
+    "pm4_submissions": 3,
+    "queue_packets_consumed": 3,
+    "native_fallbacks": 0,
+    "retired": true,
+    "callback_status": 0,
+    "context_generations": 2,
+    "context_closed": true
+  },
+  "correctness": {
+    "generated_token_ids": [9707, 9707, 9707],
+    "state_sha256_by_step": [
+      "e3fae18e531e799b0545add146b689eccf013c1a45cba32e77702afaa4abf0cb",
+      "08f2cdb05dcae650310cca18c677a8b09fa0b57dfd297c5366635f07d527a4a4",
+      "92e0c4447ca1a745697703eb80d1d2ca7d5ea0fc14be511716edf7c7fa6d7a7e"
+    ],
+    "final_logits": {
+      "shape": [248320],
+      "dtype": "float32",
+      "sha256": "7d887b4092e84924a472b37410e2f1f736d4504d342bdd743d24e7cddaf7e357",
+      "top1": 9707,
+      "finite": true
+    },
+    "eager_hipgraph_aql_pm4_tokens_bit_exact": true,
+    "eager_hipgraph_aql_pm4_hidden_recurrent_kv_bit_exact": true,
+    "eager_hipgraph_aql_pm4_final_logits_bit_exact": true
+  },
+  "lifecycle": {
+    "one_persistent_queue_per_native_run": true,
+    "candidate_graph_generations": 1,
+    "cancelled_no_submit_graph_generations": 1,
+    "submit_queue_recreate_stress_run": false,
+    "unretired_submissions_after_each_run": 0,
+    "live_children_before_context_close": 0,
+    "native_context_closed": true,
+    "free_bytes_before_native_context": 25003679744,
+    "free_bytes_with_context_retained": 25001582592,
+    "free_bytes_after_context_close": 25003679744,
+    "memory_recovered_exactly": true
+  },
+  "checks": {
+    "expected_tokens": true,
+    "hipgraph_tokens_exact": true,
+    "aql_tokens_exact": true,
+    "pm4_tokens_exact": true,
+    "hipgraph_state_kv_exact": true,
+    "aql_state_kv_exact": true,
+    "pm4_state_kv_exact": true,
+    "final_logits_bit_exact": true,
+    "native_transport_proof": true,
+    "cancel_close": true,
+    "memory_recovered": true
+  },
+  "notes": [
+    "Correctness and lifecycle evidence only; no throughput or speedup claim.",
+    "The explicit PM4 route submitted one vendor-AQL IB packet per replay and recorded zero HIP fallback.",
+    "Destructive submit-plus-queue-recreate stress for ROCm/ROCm#6529 remains intentionally unrun."
+  ]
+}

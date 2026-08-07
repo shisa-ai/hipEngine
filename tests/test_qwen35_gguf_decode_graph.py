@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
@@ -198,6 +199,83 @@ def test_decode_graph_close_releases_device_kv_pin_after_destroy() -> None:
     assert calls == [("exec", 12), ("graph", 11), ("stream", 13)]
 
 
+def test_decode_graph_delegates_replay_provenance_and_close_to_submission_owner() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class FakeSubmission:
+        name = "pm4"
+        graph_exec = 0
+
+        def launch(self, stream: int) -> None:
+            calls.append(("submit", stream))
+
+        def provenance(self) -> dict[str, object]:
+            return {"transport": "pm4", "launches": 1, "native_fallbacks": 0}
+
+        def close(self) -> None:
+            calls.append(("submission_close",))
+
+    runtime = SimpleNamespace(
+        stream_synchronize=lambda stream: calls.append(("stream_sync", int(stream))),
+        graph_destroy=lambda handle: calls.append(("graph_destroy", int(handle))),
+        stream_destroy=lambda handle: calls.append(("stream_destroy", int(handle))),
+    )
+    scratch = SimpleNamespace(
+        position_host=np.zeros((1,), dtype=np.int64),
+        context_host=np.zeros((1,), dtype=np.int64),
+    )
+    unpinned: list[object] = []
+    session = SimpleNamespace(
+        position=0,
+        _position=0,
+        runtime=runtime,
+        scratch=scratch,
+        _decode_graphs=[],
+    )
+    session._unpin_device_kv_graph = lambda graph: unpinned.append(graph)
+    graph = Qwen35GGUFDecodeGraph(
+        session=session,
+        graph=11,
+        graph_exec=0,
+        stream=13,
+        position=0,
+        steps_per_replay=1,
+        max_replay_steps=1,
+        generated=None,
+        generated_hidden_seeds=None,
+        generated_index=None,
+        record_steps=0,
+        bucket_key=SimpleNamespace(key_sha256="decode-key"),
+        attention_max_context_len=1,
+        capture_hidden_seed_fp32=False,
+        submission=FakeSubmission(),
+    )
+    session._decode_graphs.append(graph)
+
+    graph.replay(1)
+    provenance = graph.transport_provenance()
+    graph.close()
+
+    assert graph.replayed_steps == 1
+    assert session._position == 1
+    assert scratch.position_host.tolist() == [1]
+    assert provenance == {
+        "transport": "pm4",
+        "launches": 1,
+        "native_fallbacks": 0,
+        "decode_graph_key_sha256": "decode-key",
+        "replayed_steps": 1,
+    }
+    assert calls == [
+        ("submit", 13),
+        ("stream_sync", 13),
+        ("submission_close",),
+        ("graph_destroy", 11),
+        ("stream_destroy", 13),
+    ]
+    assert unpinned == [graph]
+
+
 def test_decode_graph_rearm_replay_window_requires_restored_capture_cursor() -> None:
     session = SimpleNamespace(position=512)
     graph = Qwen35GGUFDecodeGraph(
@@ -256,6 +334,52 @@ def test_decode_graph_input_seed_updates_feedback_buffer_before_cross_stream_cap
     session._seed_decode_graph_input_token(42)
 
     assert calls == [("seed", 0x1234, 42, 0), ("synchronize",)]
+
+
+def test_resident_session_reuses_one_submission_context_across_graph_generations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.core.pm4.transport as transport_module
+    import hipengine.runtime.gguf_decode_graph as decode_graph_module
+
+    calls: list[tuple[object, ...]] = []
+    context = object()
+    graphs = [SimpleNamespace(name="first"), SimpleNamespace(name="second")]
+    monkeypatch.setattr(gguf_runner, "_gguf_moe_graph_enabled", lambda: False)
+    monkeypatch.setattr(transport_module, "select_submission_transport", lambda value=None: "pm4")
+    monkeypatch.setattr(
+        transport_module,
+        "create_graph_submission_context",
+        lambda **kwargs: calls.append(("create_context", kwargs["backend"], kwargs["gfx_arch"]))
+        or context,
+    )
+    monkeypatch.setattr(
+        decode_graph_module,
+        "capture_qwen35_gguf_decode_graph",
+        lambda session, **kwargs: calls.append(
+            ("capture", kwargs["submission_transport"], kwargs["submission_context"])
+        )
+        or graphs.pop(0),
+    )
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100")
+    session.runtime = object()
+    session._decode_graph_submission_contexts = {}
+    session._decode_graph_default_submission_transport = None
+    session._pin_device_kv_graph = lambda graph: calls.append(("pin", graph.name))
+
+    first = session.capture_decode_graph(position=4, submission_transport="pm4")
+    second = session.capture_decode_graph(position=5, submission_transport="pm4")
+
+    assert first.name == "first"
+    assert second.name == "second"
+    assert calls == [
+        ("create_context", "hip_gfx1100", "gfx1100"),
+        ("capture", "pm4", context),
+        ("pin", "first"),
+        ("capture", "pm4", context),
+        ("pin", "second"),
+    ]
 
 
 def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> None:
