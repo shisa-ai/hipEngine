@@ -1,9 +1,11 @@
 # In-Tree Retained-PM4 Submission
 
-> **Status (2026-08-07):** approved implementation plan; native HIP graphs remain
-> the package default. The first admitted target is gfx1100. Explicit PM4
-> selection must fail closed, and reset-prone recreate stress requires a
-> separate warning and approval before it is run.
+> **Status (2026-08-07):** implementation in progress. P0 documentation and P1
+> exact HIP graph/DSO/HSACO/kernarg inspection are complete; the public-HSA
+> direct-AQL core is next. Native HIP graphs remain the package default. The
+> first admitted target is gfx1100. Explicit PM4 selection must fail closed, and
+> reset-prone recreate stress requires a separate warning and approval before it
+> is run.
 
 This document defines hipEngine's plan for a small, torch-free, in-tree
 retained-PM4 transport. The transport is intended to preserve the useful launch
@@ -37,6 +39,18 @@ Build the transport in-tree.
 The intended production surface is about 2–3k lines of native/Python runtime
 code plus tests and the lifecycle reproducer. It is deliberately not a generic
 graph framework, compiler, profiler, or HIP interposer.
+
+## Implementation status
+
+| Phase | Status | Current evidence |
+| --- | --- | --- |
+| P0 documentation/contract | Complete | This document, PLAN cross-link, and WORKLOG decision |
+| P1 exact graph inspection | Complete | Bounded ELF64/bundle/MessagePack parsing, exact kernarg packing, deterministic DAG validation, and live gfx1100 `smoke_add` reconciliation |
+| P2 direct public-HSA AQL | Next | Native ownership and packet implementation pending |
+| P3 retained gfx1100 PM4 | Pending | Blocked on P2 |
+| P4 lifecycle reproducer | Pending | Reset-prone arms will not be run without separate approval |
+| P5 production graph integration | Pending | Blocked on P2/P3 correctness |
+| P6 performance/promotion | Pending | No in-tree PM4 performance claim yet |
 
 ## Goals and non-goals
 

@@ -208858,3 +208858,38 @@ Vulkan local sizes verbatim will close the measured gap.
   source/commit notices where packet/register/lifecycle logic is adapted.
   Update `docs/PLAN.md` to link the implementation program and preserve native
   HIP as the baseline/default.
+
+## 2026-08-07 — Complete exact HIP graph and HSACO inspection (PM4 P1)
+
+- Add a lazy, torch-free `hipengine.core.pm4` frontend. `HipRuntime` now exposes
+  typed public graph inspection helpers for node/edge enumeration, node type,
+  kernel params, kernel-name lookup, current device, and PCI BDF. The
+  `hipKernelNodeParams` ctypes declaration follows ROCm's ABI-significant field
+  order (`blockDim`, `extra`, `func`, `gridDim`, `kernelParams`,
+  `sharedMemBytes`), caught by the live RED/GREEN gate.
+- Add bounded little-endian ELF64 section parsing, classic clang offload-bundle
+  target selection, AMDGPU ELF-note extraction, bounded MessagePack decoding,
+  exact `.symbol` metadata resolution, and explicit/hidden kernarg packing. The
+  production path has no sequential-pointer metadata fallback and rejects
+  malformed/ambiguous bundles, overlapping fields, unknown hidden args,
+  unsupported node types, graph cycles/mutation, null pointers, and size
+  mismatches.
+- The deterministic RED test initially failed at collection because the PM4
+  package did not exist. Seven CPU tests now cover exact target/section
+  extraction, missing/ambiguous/malformed bundles, metadata bounds and overlap,
+  hidden/explicit packing, DAG validation, fake-runtime end-to-end manifest
+  construction, and non-kernel rejection.
+- Live W7900 inspection initially exposed an incorrect CUDA-assumed ctypes field
+  order (`func=0x100000100`, no kernel name); correcting it to the installed
+  ROCm header makes the guarded graph test pass. The final manifest reconciles
+  one `hipengine_smoke_add_f32_kernel` node, grid `(1,1,1)`, block
+  `(256,1,1)`, 288-byte kernarg, all four explicit values, hidden fields, exact
+  JIT DSO/`.hip_fatbin`, 5,224-byte gfx1100 HSACO, symbol, and hashes without
+  interposition.
+- Validation:
+  `python3 -m pytest tests/test_pm4_inspection.py tests/test_hip_runtime.py -q`
+  -> 12 passed;
+  `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1
+  HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest
+  tests/test_pm4_graph_inspection_gpu.py -q` -> 1 passed;
+  targeted `compileall`, Ruff, torch audit, and `git diff --check` pass.
