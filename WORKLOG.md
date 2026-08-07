@@ -203232,3 +203232,33 @@ Vulkan local sizes verbatim will close the measured gap.
 - Correctness: new `test_maple_kv_span_update_batched_publishes_range` checks
   live/row/positions/evict for start=3, rows=4. 9/9 attention tests pass;
   ruff clean.
+
+## 2026-08-07 — M2/D2: fuse Maple MoE gate/up + clamped SiLU (dual+swiglu)
+
+- Add `maple_moe_dual_swiglu_bf16` (quant plugin): one kernel replaces
+  `maple_selected_ternary_dual_gemv_bf16` + `maple_clamped_swiglu_bf16`,
+  computing gate/up with the same FP32 block reduce + bf16 scaling, then the
+  same clamp-7 swiglu, writing a single `[top_k, intermediate]` buffer.
+  Bit-exact with the unfused chain. Wired into the c1 decode path behind
+  `HIPENGINE_MAPLE_FUSE_MOE=1` (default; `=0` keeps the unfused chain).
+- Correctness: new `test_maple_moe_fused_dual_swiglu_matches_unfused_chain`
+  asserts fused intermediate == unfused dual+swiglu intermediate bit-for-bit on
+  gfx1151. Real-model packed-oracle max/mean KL and top-1 are identical between
+  fused and unfused (max_kl 0.4626542322267913, mean 0.053982395728220854,
+  top-1 1.0 on the 12-pos prompt). 37/37 maple tests pass; ruff clean.
+- Perf: fused decode 295→271 launches/step (24, one per MoE layer) and drops
+  the gate/up `[8,4096]` intermediate round-trips. Interleaved eager A/B/A/B
+  median wall ≈ +0.8% (faster, within AR variance); validate script ≈ -2.3%.
+  Launch-count and intermediate-memory reduction retained even though same-
+  session AR variance hides the headline wall ratio.
+- **Rejected:** fused down gemv + weighted residual (`maple_moe_down_weighted_...`)
+  was built, verified bit-exact, but regresses decode ~3.5% (serializing the 8
+  selected experts per output row loses the parallel-expert down grid + stride-8
+  weight reads). Reverted kernel+wrapper; see `docs/REFACTOR.md`.
+- ROCm: `python3 scripts/maple_profile.py --prebuild` (cached) then `--profile`
+  on gfx1151 Radeon 8060S. Update `docs/MAPLE-PERF.md` D2 status + M2 row.
+- **Final call: NOT promoted as default.** The fused kernel is ~9% slower per MoE layer
+  than the unfused dual+swiglu pair (interleaved micro-benchmark 229.7 vs 210.7 us). In
+  eager mode the launch savings offset it (step wall neutral), but in the hipGraph path
+  (M1/M6) launches are already amortized so the fusion would regress ~1.4%. Kept opt-in via
+  `HIPENGINE_MAPLE_FUSE_MOE=1` (default 0); blocker recorded in `docs/REFACTOR.md`.

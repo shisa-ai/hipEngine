@@ -3121,3 +3121,30 @@ should be boring.
   ownership and focused integration tests are removed. Keep only the separately
   registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
   production remains exact and H2 must not stack H1 arithmetic.
+
+## Maple M2 fusion flag + rejected down+weighted composite
+
+- `HIPENGINE_MAPLE_FUSE_MOE` (default `1`): on, the c1 decode path replaces
+  `maple_selected_ternary_dual_gemv_bf16` + `maple_clamped_swiglu_bf16` with the
+  fused `maple_moe_dual_swiglu_bf16` (one launch, no gate/up intermediate).
+  Keep the `=0` opt-out while M6 batch/decode and the qknorm+attention fusion
+  land, then remove the flag and the unfused dual+swiglu branch.
+- **Rejected path (do not re-promote as-is):** fused down gemv + weighted
+  residual in one kernel. Verified bit-exact but regresses decode ~3.5% because
+  grid=`out_features` serializes the 8 selected experts per output row, losing
+  the parallel-expert down grid and stride-8 weight reads. If revisited, use a
+  parallel-expert grid with a two-pass/atomic weighted residual instead of
+  serializing experts.
+
+## Maple M2 dual+swiglu fusion — opt-in, efficiency blocker
+
+- `HIPENGINE_MAPLE_FUSE_MOE` default `0` (unfused is the fast path). `=1` uses
+  `maple_moe_dual_swiglu_bf16` (fuses dual gate/up gemv + clamped SiLU), which is
+  bit-exact and cuts decode launches 295→271 but is ~9% slower per MoE layer
+  (interleaved micro-benchmark 229.7 vs 210.7 us). The launch savings offset the
+  kernel regression in eager mode (step wall neutral), but in the hipGraph path
+  (M1/M6) launch overhead is already amortized so the fusion would regress ~1.4%.
+- Blocker to promote: understand/eliminate the fused kernel's ~9% efficiency gap
+  vs the unfused pair (likely swiglu `expf` tail in tid 0 and/or register/
+  occupancy change). Once the fused kernel is ≤ the unfused pair, flip the
+  default to 1 and remove the flag + unfused dual+swiglu branch.

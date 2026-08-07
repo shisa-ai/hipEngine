@@ -365,6 +365,89 @@ __global__ void maple_selected_ternary_gemv_kernel(
   }
 }
 
+// Fused MoE gate/up dual GEMV + clamped SiLU (D2 fusion).
+// Replaces maple_selected_ternary_dual_gemv_kernel + maple_clamped_swiglu_kernel:
+// computes gate/up exactly as the dual gemv (FP32 block reduce, bf16 scaling),
+// then applies the same clamped swiglu as the standalone kernel and writes a
+// single [top_k, out_features] intermediate buffer. Bit-exact with the unfused
+// chain. Grid is (out_features, top_k); block (row, route).
+__global__ void maple_moe_dual_swiglu_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ a_weight,
+    const uint16_t* __restrict__ a_alpha,
+    const uint32_t* __restrict__ b_weight,
+    const uint16_t* __restrict__ b_alpha,
+    const int32_t* __restrict__ selected_experts,
+    uint16_t* __restrict__ out,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t block = blockIdx.x;
+  const int64_t route = block / out_features;
+  const int64_t row = block - route * out_features;
+  if (route >= top_k) {
+    return;
+  }
+  const int64_t out_idx = route * out_features + row;
+  const int32_t expert = selected_experts[route];
+  if (expert < 0 || expert >= num_experts) {
+    if (threadIdx.x == 0) {
+      out[out_idx] = float_to_bf16(0.0f);
+    }
+    return;
+  }
+  const int64_t words = in_features / 16;
+  const int64_t matrix_row = static_cast<int64_t>(expert) * out_features + row;
+  float a_partial = 0.0f;
+  float b_partial = 0.0f;
+  const uint32_t* a_row = a_weight + matrix_row * words;
+  const uint32_t* b_row = b_weight + matrix_row * words;
+  for (int64_t word_idx = threadIdx.x; word_idx < words; word_idx += blockDim.x) {
+    const uint32_t a_word = a_row[word_idx];
+    const uint32_t b_word = b_row[word_idx];
+    const int64_t base = word_idx * 16;
+#pragma unroll
+    for (int lane = 0; lane < 16; ++lane) {
+      const float xv = bf16_to_float(x[base + lane]);
+      const int a_code = static_cast<int>((a_word >> (2 * lane)) & 0x3U) - 1;
+      const int b_code = static_cast<int>((b_word >> (2 * lane)) & 0x3U) - 1;
+      a_partial += xv * static_cast<float>(a_code);
+      b_partial += xv * static_cast<float>(b_code);
+    }
+  }
+  extern __shared__ float scratch[];
+  float* a_scratch = scratch;
+  float* b_scratch = scratch + blockDim.x;
+  const int tid = static_cast<int>(threadIdx.x);
+  a_scratch[tid] = a_partial;
+  b_scratch[tid] = b_partial;
+  __syncthreads();
+  for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      a_scratch[tid] += a_scratch[tid + stride];
+      b_scratch[tid] += b_scratch[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    const uint16_t gate = float_to_bf16(
+        a_scratch[0] * bf16_to_float(a_alpha[matrix_row]));
+    const uint16_t up = float_to_bf16(
+        b_scratch[0] * bf16_to_float(b_alpha[matrix_row]));
+    const float gate_value = fminf(bf16_to_float(gate), 7.0f);
+    const float up_value = fminf(fmaxf(bf16_to_float(up), -7.0f), 7.0f);
+    const float silu = gate_value / (1.0f + expf(-gate_value));
+    out[out_idx] = float_to_bf16(silu * up_value);
+  }
+}
+
+// Fused MoE down GEMV + weighted residual (D2 fusion) is intentionally not
+// promoted: serializing the top-k selected experts per output row (grid=
+// out_features) regresses decode ~3.5% vs the parallel-expert standalone down
+// gemv + weighted residual. The bit-exact composite was verified and reverted;
+// see docs/REFACTOR.md.
+
 __global__ void maple_affine4_embed_kernel(
     const uint32_t* __restrict__ weight,
     const uint16_t* __restrict__ scales,
@@ -967,6 +1050,45 @@ extern "C" int hipengine_maple_selected_ternary_gemv_bf16(
       x,
       weight,
       row_alpha,
+      selected_experts,
+      out,
+      num_experts,
+      top_k,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_moe_dual_swiglu_bf16(
+    const uint16_t* x,
+    const uint32_t* a_weight,
+    const uint16_t* a_alpha,
+    const uint32_t* b_weight,
+    const uint16_t* b_alpha,
+    const int32_t* selected_experts,
+    uint16_t* out,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (num_experts <= 0 || top_k <= 0 || in_features <= 0 || out_features <= 0
+      || in_features % 16 != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_words(in_features / 16);
+  const int64_t blocks = top_k * out_features;
+  hipLaunchKernelGGL(
+      maple_moe_dual_swiglu_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      2 * threads * sizeof(float),
+      stream,
+      x,
+      a_weight,
+      a_alpha,
+      b_weight,
+      b_alpha,
       selected_experts,
       out,
       num_experts,

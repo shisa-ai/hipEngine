@@ -25,10 +25,15 @@ from hipengine.kernels.cpu_reference.maple import (
     f32_to_bf16_bits,
     ternary_gemv,
 )
+from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
+    build_maple_moe,
+    maple_clamped_swiglu_bf16,
+)
 from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     build_maple_ternary,
     maple_affine4_embed_bf16,
     maple_affine4_gemv_f32,
+    maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_bf16,
     maple_selected_ternary_gemv_bf16,
     maple_ternary_gemv_bf16,
@@ -608,3 +613,68 @@ def test_maple_selected_ternary_gemv_batched_matches_oracle(maple_ternary_lib) -
 
     assert np.array_equal(out, expected)
 
+
+
+def test_maple_moe_fused_dual_swiglu_matches_unfused_chain(
+    maple_ternary_lib, hip_test_target_arch
+) -> None:
+    """M2 fused dual gate/up + clamped SiLU is bit-exact with the unfused chain.
+
+    Compares maple_moe_dual_swiglu against the standalone dual gemv + clamped
+    swiglu chain. The fused intermediate output must match bit-for-bit.
+    """
+    with hip_target_arch_environment(hip_test_target_arch):
+        moe_lib = build_maple_moe(load=True)
+
+    rng = np.random.default_rng(44)
+    experts, top_k, hidden, intermediate = 4, 2, 32, 64
+    selected = np.asarray([3, 1], dtype=np.int32)
+
+    # gate/up dual gemv inputs (x -> [top_k, intermediate] gate and up).
+    x_f32 = rng.normal(size=hidden).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    gate_values = rng.integers(-1, 2, size=(experts, intermediate, hidden), dtype=np.int8)
+    up_values = rng.integers(-1, 2, size=(experts, intermediate, hidden), dtype=np.int8)
+    gate = pack2(gate_values)
+    up = pack2(up_values)
+    gate_alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, intermediate)).astype(np.float32)
+    )
+    up_alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, intermediate)).astype(np.float32)
+    )
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        selected_d = dev.put(selected)
+        gate_d, up_d = dev.put(gate), dev.put(up)
+        gate_alpha_d, up_alpha_d = dev.put(gate_alpha), dev.put(up_alpha)
+
+        # Unfused chain: dual gemv -> gate/up, then clamped swiglu -> intermediate.
+        _, gate_out_d = dev.empty((top_k, intermediate), np.dtype(np.uint16))
+        _, up_out_d = dev.empty((top_k, intermediate), np.dtype(np.uint16))
+        maple_selected_ternary_dual_gemv_bf16(
+            x_d.ptr, gate_d.ptr, gate_alpha_d.ptr, up_d.ptr, up_alpha_d.ptr,
+            selected_d.ptr, gate_out_d.ptr, up_out_d.ptr,
+            experts, top_k, hidden, intermediate, library=maple_ternary_lib,
+        )
+        inter, inter_d = dev.empty((top_k, intermediate), np.dtype(np.uint16))
+        maple_clamped_swiglu_bf16(
+            gate_out_d.ptr, up_out_d.ptr, inter_d.ptr,
+            top_k, intermediate, library=moe_lib,
+        )
+
+        # Fused path: single kernel -> intermediate.
+        fused_inter, fused_inter_d = dev.empty((top_k, intermediate), np.dtype(np.uint16))
+        maple_moe_dual_swiglu_bf16(
+            x_d.ptr, gate_d.ptr, gate_alpha_d.ptr, up_d.ptr, up_alpha_d.ptr,
+            selected_d.ptr, fused_inter_d.ptr,
+            experts, top_k, hidden, intermediate, library=maple_ternary_lib,
+        )
+
+        dev.get(inter, inter_d)
+        dev.get(fused_inter, fused_inter_d)
+
+    assert np.array_equal(
+        fused_inter, inter
+    ), "fused dual+swiglu intermediate mismatch"
