@@ -208893,3 +208893,51 @@ Vulkan local sizes verbatim will close the measured gap.
   HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest
   tests/test_pm4_graph_inspection_gpu.py -q` -> 1 passed;
   targeted `compileall`, Ruff, torch audit, and `git diff --check` pass.
+
+## 2026-08-07 — Complete direct-AQL and retained gfx1100 PM4 core (P2/P3)
+
+- Add a lazily built C++17 C-ABI core using only public HSA/ROCr APIs plus the
+  existing HIP toolchain. It matches the HIP device to exactly one HSA GPU by
+  physical PCI domain/BDF and exact `gfx1100`, discovers a CPU fine-grained
+  kernarg-init pool, owns one persistent 4,096-packet queue and completion
+  signal, release-publishes AQL packets, rings absolute packet IDs, waits with a
+  finite HSA timestamp deadline, records callback faults and queue/resource
+  generations, and tears down in queue-first order.
+- Load the exact inspected HSACO through
+  `hsa_code_object_reader_create_from_memory` and public executable APIs,
+  deduplicate modules, resolve `.kd` symbols, cross-check loader metadata, and
+  parse the loaded kernel descriptor for relocated code entry/RSRC/properties.
+  ROCr reports kernarg alignment 16 for smoke metadata alignment 8; admit this
+  only as a compatible stricter loader alignment while requiring exact size,
+  group/private bytes, dynamic-stack state, and wave32.
+- Add both transport paths over the same retained ownership. Direct AQL emits
+  conservative system-scope barriered kernel packets. PM4 admits exact gfx1100
+  zero-scratch wave32 descriptors, emits system acquire, full register state,
+  conservative idle/global boundaries, `DISPATCH_DIRECT`, mandatory final
+  `CS_PARTIAL_FLUSH`, and one AMD vendor-AQL indirect-buffer packet. No
+  timestamps, state elision, implicit fallback, or architecture wildcard are
+  active.
+- Add fail-stop lifecycle rules: any post-begin error marks executable/context
+  unusable and inactivates the queue; unretired pointees cannot be freed;
+  context close rejects live executables; checked normal teardown reports HSA
+  free/executable/reader/signal/queue errors. Construction-only destructors
+  clean safely and deliberately leak callback/runtime ownership if queue
+  destruction itself refuses.
+- Add pure packet goldens and lazy-build tests. Seventeen CPU/runtime tests pass.
+  The safe W7900 same-HSACO gate (no recreate loop) runs native HIP graph,
+  direct AQL, and retained PM4 twice each on fresh 257-element inputs. All six
+  outputs are bit exact; native provenance reports one node/module, two AQL and
+  two PM4 submissions, four context submissions, zero callback status, proven
+  retirement, and clean executable/context close. The first instantiate gate
+  correctly caught the loader-16/metadata-8 alignment distinction before any
+  direct submission.
+- Validation commands:
+  `python3 -m pytest tests/test_pm4_packets.py tests/test_pm4_native_build.py
+  tests/test_pm4_inspection.py tests/test_hip_runtime.py -q` -> 17 passed;
+  `HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1
+  HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest tests/test_pm4_native_gpu.py -q`
+  -> 1 passed. Native compilation, Ruff, `compileall`, torch audit, and
+  `git diff --check` pass. No performance claim is made.
+- Pin packet provenance to read-only
+  `warpfront/redline@33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e` and public
+  `ROCm/rocm-systems@c0430a50286200ab0562f4733445cdee6e48d416`.
