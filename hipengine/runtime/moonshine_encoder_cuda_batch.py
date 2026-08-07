@@ -51,6 +51,41 @@ from hipengine.runtime.workspace import RuntimeWorkspace
 MOONSHINE_CUDA_ENC_BUCKETS = (40, 207, 1248)
 
 
+@dataclass
+class MoonshineCudaBatchEncoderChainGraph:
+    """One captured fixed-address batch encoder + handoff + cross-KV graph.
+
+    Mirrors ``MoonshineCudaBatchTokenGraph`` on the encoder side of the
+    static-B chain: the capture records the decoder's fresh-generation memsets
+    (self/cross KV + mask), the full batch encoder DAG (conv front end, eight
+    encoder layers, final LayerNorm), and the batch cross-KV handoff
+    projection + mask D2D copy on the decoder's stream, so one
+    :meth:`~MoonshineCudaBatchEncoderRuntime.graph_encode_and_handoff` replay
+    replaces the per-request Python dispatch of ~101 encoder kernels plus the
+    eight cross-KV projections and the mask copy.  The graph is bound to this
+    runtime's fixed ``(max_batch, audio_samples)`` encoder bucket.
+    """
+
+    owner: "MoonshineCudaBatchEncoderRuntime"
+    graph: int
+    graph_exec: int
+    capture_wall_ms: float
+    instantiate_wall_ms: float
+    replay_count: int = 0
+    closed: bool = False
+
+    def close(self) -> None:
+        """Destroy the graph and detach it from the owner runtime."""
+
+        if self.closed:
+            return
+        self.closed = True
+        self.owner.runtime.graph_exec_destroy(self.graph_exec)
+        self.owner.runtime.graph_destroy(self.graph)
+        if self.owner._enc_chain_graph is self:
+            self.owner._enc_chain_graph = None
+
+
 class MoonshineCudaBatchEncoderRuntime:
     """Own every fixed-address object needed to encode B Moonshine audio rows.
 
@@ -124,6 +159,7 @@ class MoonshineCudaBatchEncoderRuntime:
         self.cublaslt: object | None = None
         self._lt_problems: dict | None = None
         self._lt_epilogue_library: object | None = None
+        self._enc_chain_graph: MoonshineCudaBatchEncoderChainGraph | None = None
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
         self._input_uploaded = False
@@ -760,6 +796,139 @@ class MoonshineCudaBatchEncoderRuntime:
             **common,
         )
 
+    def capture_encoder_chain(
+        self, decoder: object
+    ) -> MoonshineCudaBatchEncoderChainGraph:
+        """Capture the batch encoder DAG + reset + cross-KV handoff as one graph.
+
+        Requires a prepared ``MoonshineCudaBatchRuntime`` decoder and a
+        resident input (``upload_input``).  The capture runs on the decoder's
+        stream and records, in order: the decoder's fresh-generation memsets
+        (self/cross KV + mask), the full batch encoder DAG, and the cross-KV
+        handoff projection + mask D2D copy.  Each replay of the resulting
+        graph is therefore a complete, self-contained new-generation
+        encode+handoff (no host reset or per-request kernel dispatch), and the
+        decoder is left with a valid cross cache ready to decode from position
+        0.  The graph is bound to this runtime's fixed
+        ``(max_batch, audio_samples)`` encoder bucket; capture twice returns
+        the existing capture.  Capturing an already-armed cuBLASLt route
+        records the ``cublasLtMatmul`` calls into the same graph (they enqueue
+        on the capturing stream).
+        """
+
+        import time
+
+        from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+
+        if not isinstance(decoder, MoonshineCudaBatchRuntime):
+            raise TypeError("decoder must be a MoonshineCudaBatchRuntime")
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine batch encoder runtime is closed")
+        if self.encoder_libraries is None:
+            raise RuntimeError("Moonshine batch encoder kernels are not prepared")
+        if not self._input_uploaded:
+            raise RuntimeError("Moonshine batch encoder input is not uploaded")
+        if decoder.decoder_libraries is None:
+            raise RuntimeError("Moonshine batch decoder kernels are not prepared")
+        existing = self._enc_chain_graph
+        if existing is not None and not existing.closed:
+            return existing
+
+        stream = decoder.stream
+        # Both sides must be idle before capture records a stable DAG.
+        self.runtime.stream_synchronize(self.stream)
+        self.runtime.stream_synchronize(stream)
+        # Host-side fresh generation; the device memsets run inside the capture.
+        decoder._reset_generation_host_state(clear_cross_cache=True)
+        graph = 0
+        capture_start = time.perf_counter_ns()
+        self.runtime.stream_begin_capture(stream)
+        try:
+            decoder._enqueue_generation_reset(
+                stream=stream,
+                clear_cross_cache=True,
+            )
+            self._enqueue_encode(stream=stream)
+            decoder._enqueue_cross_kv_handoff(
+                encoder_hidden_ptr=self.tensor("encoder_output").ptr,
+                attention_mask_ptr=self.tensor("encoder_attention_mask").ptr,
+                source_frames=self.real_frames,
+                stream=stream,
+            )
+            graph = self.runtime.stream_end_capture(stream)
+        except Exception:
+            try:
+                leaked = self.runtime.stream_end_capture(stream)
+                if leaked:
+                    self.runtime.graph_destroy(leaked)
+            except Exception:
+                pass
+            raise
+        capture_wall_ms = (time.perf_counter_ns() - capture_start) / 1.0e6
+        instantiate_start = time.perf_counter_ns()
+        try:
+            graph_exec = self.runtime.graph_instantiate(graph)
+        except Exception:
+            self.runtime.graph_destroy(graph)
+            raise
+        instantiate_wall_ms = (time.perf_counter_ns() - instantiate_start) / 1.0e6
+        # The captured graph (and its memsets) leave a valid cross cache on replay.
+        decoder.cross_cache_valid = True
+        decoder.encoder_state_valid = True
+        capture = MoonshineCudaBatchEncoderChainGraph(
+            owner=self,
+            graph=graph,
+            graph_exec=graph_exec,
+            capture_wall_ms=float(capture_wall_ms),
+            instantiate_wall_ms=float(instantiate_wall_ms),
+        )
+        self._enc_chain_graph = capture
+        return capture
+
+    def graph_encode_and_handoff(self, decoder: object) -> None:
+        """Replay the captured encoder+reset+handoff+cross-KV graph.
+
+        The graph encodes the resident audio and hands the cross K/V into
+        ``decoder`` on its stream, leaving a fresh generation ready to decode
+        from position 0.  No host reset or per-request kernel dispatch is
+        needed; the caller still uploads new audio with :meth:`upload_input`
+        between replays (the graph reads the fixed audio buffer).
+        """
+
+        from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+
+        if not isinstance(decoder, MoonshineCudaBatchRuntime):
+            raise TypeError("decoder must be a MoonshineCudaBatchRuntime")
+        if self.closed:
+            raise RuntimeError("Moonshine batch encoder runtime is closed")
+        capture = self._enc_chain_graph
+        if capture is None or capture.closed:
+            raise RuntimeError(
+                "Moonshine batch encoder chain graph is not captured; "
+                "call capture_encoder_chain first"
+            )
+        self.runtime.graph_launch(capture.graph_exec, decoder.stream)
+        capture.replay_count += 1
+        # The graph's memsets + handoff establish a fresh valid generation.
+        decoder.self_cache_length = 0
+        decoder.decode_position = None
+        decoder.cross_cache_valid = True
+        decoder.encoder_state_valid = True
+
+    def encoder_chain_graph_contract(self) -> dict[str, object]:
+        """Current encoder-chain graph capture/replay contract for reporting."""
+
+        capture = self._enc_chain_graph
+        captured = capture is not None and not capture.closed
+        return {
+            "captured": captured,
+            "graph": 0 if not captured else capture.graph,
+            "graph_exec": 0 if not captured else capture.graph_exec,
+            "capture_wall_ms": 0.0 if not captured else capture.capture_wall_ms,
+            "instantiate_wall_ms": 0.0 if not captured else capture.instantiate_wall_ms,
+            "replay_count": 0 if not captured else capture.replay_count,
+        }
+
     def handoff_to(self, decoder: object, *, synchronize: bool = True) -> None:
         """Hand the resident B encoder rows + masks to a ``MoonshineCudaBatchRuntime``.
 
@@ -788,6 +957,9 @@ class MoonshineCudaBatchEncoderRuntime:
             return
         self.closed = True
         try:
+            if self._enc_chain_graph is not None:
+                self._enc_chain_graph.close()
+                self._enc_chain_graph = None
             if self.cublaslt is not None:
                 self.cublaslt.close()
                 self.cublaslt = None
