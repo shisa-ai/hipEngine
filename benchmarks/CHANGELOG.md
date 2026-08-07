@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-08
+
+- [retained exact PM4 encoder candidate; package default unchanged] Qwen3.6-35B-A3B Q4_K_M / p512/d128 focused transport replay / W7900: stateful SH-register elision cuts the retained tape **25,666 -> 18,079 dwords (-29.560%)** and synchronized PM4 replay **10.044991 -> 9.989421 ms/token (-0.553%, 5/5 paired wins; +0.556% tok/s)** in one tracked-clean counterbalanced session, with exact token/recurrent-KV/logit hashes, zero fallback, full retirement, and clean context teardown; keep native HIP graph as package default pending broad PM4 gates; `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`.
+
 ## 2026-08-07
 
 - [MTP-only causal profile; topline unchanged] Qwen3.6-27B Q4_K_M / natural25 hipEngine B3 versus llama.cpp Vulkan B3/B4 / W7900: matched B3 executes **76 vs 77 cycles** but costs **51.644 vs 46.052 ms/cycle**, so per-cycle execution contributes **+425.303 ms** while topology favors hipEngine by **46.298 ms**; against selected B4, seven fewer Vulkan target cycles explain **376.685 ms / 77.4%** of the **486.478-ms** gap and per-cycle cost explains **109.793 ms / 22.6%**; fresh per-graph Vulkan queries cover **98.10-99.48%** of independent wall and localize the residual to proposal-to-target verification rather than commit/sampling/HTTP; canonical hipEngine B3 remains **61.394 tok/s** versus Vulkan B4 **69.798 tok/s**; `benchmarks/results/2026-08-07-qwen36-27b-mtp-cycle-deep-profile.json`.

@@ -209131,3 +209131,12 @@ Vulkan local sizes verbatim will close the measured gap.
   **-0.061988-ms/token** paired median. Keep the candidate explicit until a
   tracked-clean confirmation and the broader PM4 promotion gates; no
   submit/recreate stress ran.
+- Tracked-clean source `f78fdb3a3` repeats the same command to
+  `/tmp/hipengine-pm4-stateful-clean-p512-d128.json`. HIP graph is
+  **10.788071 ms/token**, conservative PM4 **10.044991**, and stateful PM4
+  **9.989421**: **-0.553% / +0.556% tok/s**, **5/5 paired wins**, and a
+  **-0.061123-ms/token / -0.611%** paired median. All hashes and lifecycle proof
+  repeat exactly. Publish the compact diagnostic artifact
+  `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`
+  and update the benchmark rollup/changelog. The stateful encoder remains
+  explicit; `performance_claim=false`; no submit/recreate stress ran.
