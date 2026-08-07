@@ -17,33 +17,46 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 
 | Quantity | Value | Source |
 | --- | ---: | --- |
-| Resident repeat wall (18-prefill + 36-decode) | 0.703 s | smoke artifact |
-| Inferred decode | ~76.8 tok/s (13.0 ms/token) | smoke artifact |
-| HIP kernels per decode token | ~271 (24 × 11 + top-level) | `runtime/maple.py` |
-| Active weight traffic per token | ~9.5 MB | ternary 0.25 B/elem |
-| Bandwidth floor for decode | ~37 µs/token | 9.5 MB @ 256 GB/s |
-| Serial prefill of 4K prompt | ~52 s (token-serial) | 18 tokens ≈ 234 ms → 4K ≈ 52 s |
+| Public native prefill 128/320/512 | 339.890 / 326.573 / 317.488 tok/s | M5 recertification |
+| Current c1 decode profile | 163.459 tok/s (6.118 ms/token) | corrected cached trace |
+| Fixed-helper c8 decode64 | 299.181 aggregate tok/s median | M6 recertification |
+| HIP kernels per c1 decode token | 295 | corrected cached trace |
+| Exact affine4 lm-head payload | 166.922 MiB | packed weight + BF16 scale/bias |
+| Public tracked residency (max context 512) | 5.133 GiB | M5 recertification |
+| Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
 
-**Conclusion (corrected by M0 profile).** Decode is **kernel-time-bound**, not
-launch-bound: a `rocprofv3 --kernel-trace` of one warm decode step shows
-**12,209 µs kernel / 12,758 µs wall (95.7% kernel, only 4.3% host gap)**. The
-serial 256-expert router dominates at **7,807 µs (61%)**; the affine4 lm_head
-is **1,234 µs**, selected-expert gate/up + down **~1,571 µs**, attention
-**562 µs**, QKV **434 µs**, o_proj **296 µs**. The host gap (~549 µs) is small, so
-hipGraph capture is a minor win; the real wins are kernel-level, headed by the
-router. Prefill is **serial**, paying one full forward per prompt token with no
-weight reuse. Every optimization must pass the repo's correctness gate (KL ≤
-0.05, top-1 ≥ 90%, device argmax exact) and be measured on gfx1151.
+**Current conclusion (corrected M5/M6 reprofile).** The public <=512 prefill
+and fixed c8 helper are overwhelmingly kernel-bound; c1 retains a larger but
+secondary host gap. Cached-only `rocprofv3` at clean `4ca05d8db` measures:
+
+| Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| public native prefill320 | 982.015 ms/request | 975.347 ms | 6.668 ms (0.68%) | 590 | 325.861 tok/s |
+| autoregressive c1 decode | 6.118 ms/token | 5.035 ms | 1.082 ms (17.69%) | 295 | 163.459 tok/s |
+| fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
+
+The exact affine4 lm-head is now the common top owner: **49.90%** of prefill320
+kernel time, **28.75%** of c1, and **46.52%** of c8. Gate/up + down adds
+**28.10%/22.55%/29.67%** respectively. The current batched lm-head grid is
+`(vocab, rows)`, so it rereads the complete **166.922-MiB** packed-weight +
+scale/bias payload independently for every row, sustaining only about
+**115-121 GB/s** effective traffic. The next high-leverage exact owner is
+therefore a **rows>1 affine4 lm-head tile that reuses each weight row across
+multiple prompt/request rows**. Preserve the proven c1 kernel: the earlier c1
+tile was a 0.96x dead end, while row reuse is available only for prefill/c8.
+No prompt-conditioned routing or approximate FlashHead is part of this target.
+Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json`.
 
 ## 2. Phase 0 — Profile before optimizing (gate: no math changes) — DONE
 
 `scripts/maple_profile.py` (prebuild then cached-only `rocprofv3 --kernel-trace`
 of a warm decode step) produced `benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json`.
 
-### Post-M3a profile (current default path, 2026-08-07)
+### Post-M3a c1 profile (historical; superseded above, 2026-08-07)
 
-Re-profiled after the parallel router (M3a) so the roadmap reflects the current
-kernel-time split. One token = 9707, 4 warmup + 32 measured steps.
+This earlier fixed-token profile followed the parallel-router change but
+predates the corrected M5/M6 reprofile above. It remains useful as M3a
+historical attribution. One token = 9707, 4 warmup + 32 measured steps.
 
 | Family | µs/step | Share | Note |
 | --- | ---: | ---: | --- |

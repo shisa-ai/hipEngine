@@ -206881,3 +206881,36 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   provenance/lifecycle/category evidence, and called an unintegrated helper a
   server. The corrected M6 claim is explicitly fixed-capacity resident decode;
   public prompt batching and server admission remain open.
+
+## 2026-08-07 — Reprofile corrected Maple paths and select the next owner
+
+- Add and commit a cache-checked three-phase profiler, then repair singleton
+  family classification before the retained capture. Clean revision
+  `4ca05d8dbdd2c198c49e245119b99caaeefd3508` prebuilds all five Maple JIT
+  libraries outside `rocprofv3` with a pinned compiler-version file; every
+  profiled child resolves those exact cached artifacts.
+- Exact command: `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 python3
+  scripts/maple_phase_profile.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --version-file /tmp/hipengine-maple-hipcc-version.txt
+  --raw-root /tmp/hipengine-maple-phase-profile-20260807 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json`.
+- Public native prefill320 is **982.015 ms wall / 975.347 ms kernel**, only
+  **6.668 ms (0.68%)** host gap, **590 launches/request**, and **325.861 tok/s**
+  in the profiled request. Kernel shares: affine4 lm-head **49.90%**, selected
+  gate/up **15.60%**, selected down **12.50%**, QKV **7.57%**, attention
+  **6.46%**, and O projection **5.00%**.
+- Autoregressive c1 is **6.118 ms wall / 5.035 ms kernel**, **1.082 ms (17.69%)**
+  host gap, **295 launches/token**, and **163.459 tok/s** diagnostic. Its shares
+  are lm-head **28.75%**, router top-k **14.34%**, gate/up **12.12%**, down
+  **10.42%**, attention **10.40%**, and router logits **7.67%**.
+- Fixed-helper c8 is **27.256 ms wall / 25.337 ms kernel**, **1.919 ms (7.04%)**
+  host gap, **293 launches/batch**, and **293.514 aggregate tok/s** diagnostic.
+  Its shares are lm-head **46.52%**, gate/up **16.30%**, down **13.37%**, QKV
+  **8.12%**, and O projection **5.63%**.
+- Select the **rows>1 exact affine4 lm-head** as the next performance owner. The
+  current `(vocab, rows)` body rereads the complete **166.922-MiB** packed
+  weight+scale+bias payload for every row and sustains only **115-121 GB/s**
+  effective traffic. A row-tiled consumer can reuse each weight row across
+  prompt/c8 rows. Keep c1 on the proven singleton: its prior tile was a 0.96x
+  dead end. Do not use FlashHead, token-conditioned branches, or fixed-prompt
+  scoring. Artifact SHA-256: `6bd92a26...5b362`; raw traces remain in `/tmp`.

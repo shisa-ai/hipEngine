@@ -15,7 +15,11 @@ is not yet public server throughput. The former 223.2/275.6/321.1 rows are
 invalid (wrong hardware label and c=1-only gate). Evidence:
 [`M5`](results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json),
 [`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json), and
-`docs/MAPLE-PERF.md`.
+`docs/MAPLE-PERF.md`. The corrected cached-only
+[`phase profile`](results/2026-08-07-gfx1151-maple-corrected-phase-profile.json)
+attributes the exact affine4 lm-head as **49.90%/28.75%/46.52%** of kernel time
+for prefill320/c1/c8; rows>1 weight reuse is the next exact owner, while the
+previously rejected c1 tile remains unchanged.
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
