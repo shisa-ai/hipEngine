@@ -89,18 +89,13 @@ def _summarize_runs(
     replay_walls = [float(row["replay_wall_ms"]) for row in rows]
     median_wall = float(statistics.median(replay_walls))
     per_run_host_ns = [
-        float(statistics.median(float(value) for value in row["host_call_ns"]))
-        for row in rows
+        float(statistics.median(float(value) for value in row["host_call_ns"])) for row in rows
     ]
     per_run_synced_ns = [
         float(statistics.median(float(value) for value in row["synchronized_step_ns"]))
         for row in rows
     ]
-    all_synced_ns = [
-        float(value)
-        for row in rows
-        for value in row["synchronized_step_ns"]
-    ]
+    all_synced_ns = [float(value) for row in rows for value in row["synchronized_step_ns"]]
     median_ms_per_token = median_wall / steps
     median_prefill_ms = float(statistics.median(float(row["prefill_ms"]) for row in rows))
     summary = {
@@ -132,6 +127,34 @@ def _summarize_runs(
             }
         )
     return summary
+
+
+def _setup_breakdown(capture_ms: float, provenance: dict[str, Any]) -> dict[str, float]:
+    transport_context = provenance.get("transport_context", {})
+    executable = provenance.get("executable", {})
+    context_create_ms = float(transport_context.get("context_create_ns", 0)) / 1e6
+    graph_inspection_ms = float(transport_context.get("last_graph_inspection_ns", 0)) / 1e6
+    native_instantiate_ms = float(transport_context.get("last_native_instantiate_ns", 0)) / 1e6
+    attributed_ms = context_create_ms + graph_inspection_ms + native_instantiate_ms
+    result = {
+        "capture_total_ms": float(capture_ms),
+        "context_create_ms": context_create_ms,
+        "graph_inspection_ms": graph_inspection_ms,
+        "native_instantiate_ms": native_instantiate_ms,
+        "capture_residual_ms": float(capture_ms) - attributed_ms,
+    }
+    for key, value in transport_context.get("last_graph_inspection_phases_ns", {}).items():
+        result[f"graph_inspection_{key.removesuffix('_ns')}_ms"] = float(value) / 1e6
+    for key in (
+        "module_load_ns",
+        "kernel_resolve_ns",
+        "kernarg_allocate_ns",
+        "aql_packet_build_ns",
+        "pm4_encode_ns",
+        "ib_allocate_ns",
+    ):
+        result[key.removesuffix("_ns") + "_ms"] = float(executable.get(key, 0)) / 1e6
+    return result
 
 
 def _validate_cross_transport(
@@ -278,9 +301,7 @@ def _read_compiler_version(path: Path | None) -> str | None:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     transports = tuple(dict.fromkeys(str(mode) for mode in args.transports))
     if not transports or any(mode not in _BENCHMARK_MODES for mode in transports):
-        raise ValueError(
-            "transports must be selected from hipgraph, aql, pm4, and pm4_stateful"
-        )
+        raise ValueError("transports must be selected from hipgraph, aql, pm4, and pm4_stateful")
     if args.backend != "hip_gfx1100" and any(
         _transport_spec(mode)[0] != "hipgraph" for mode in transports
     ):
@@ -433,10 +454,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         free_after_graphs, total_after = session.runtime.mem_get_info()
         pci_bdf = session.runtime.device_pci_bus_id()
 
-    correctness_runs = {
-        mode: [*warmup_rows[mode], *measured_rows[mode]]
-        for mode in transports
-    }
+    correctness_runs = {mode: [*warmup_rows[mode], *measured_rows[mode]] for mode in transports}
     correctness = _validate_cross_transport(
         correctness_runs,
         expected_token_id=int(args.expected_token_id),
@@ -459,8 +477,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             and teardown["contexts"][mode]["after"].get("closed") is True
             and (
                 _transport_spec(mode)[1] is None
-                or teardown[mode]["live"].get("stateful_registers")
-                is _transport_spec(mode)[1]
+                or teardown[mode]["live"].get("stateful_registers") is _transport_spec(mode)[1]
             )
         )
         for mode in transports
@@ -485,9 +502,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "ROCR_VISIBLE_DEVICES": os.environ.get("ROCR_VISIBLE_DEVICES"),
             "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
             "HIPENGINE_HIP_ARCH": target_arch,
-            "HIPENGINE_PM4_STATEFUL_REGISTERS": os.environ.get(
-                "HIPENGINE_PM4_STATEFUL_REGISTERS"
-            ),
+            "HIPENGINE_PM4_STATEFUL_REGISTERS": os.environ.get("HIPENGINE_PM4_STATEFUL_REGISTERS"),
         },
         build_profile="pm4_graph_bench",
         timing_protocol=(
@@ -533,6 +548,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             },
         },
         "capture_ms": capture_ms,
+        "setup_breakdown_ms": {
+            mode: _setup_breakdown(capture_ms[mode], teardown[mode]["live"]) for mode in transports
+        },
         "summaries": summaries,
         "correctness": correctness,
         "native_transport_proof": native_proof,

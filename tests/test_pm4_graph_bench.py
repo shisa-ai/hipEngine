@@ -4,6 +4,7 @@ import pytest
 
 from scripts.pm4_graph_bench import (
     _rotation,
+    _setup_breakdown,
     _summarize_runs,
     _transport_spec,
     _validate_cross_transport,
@@ -53,6 +54,30 @@ def test_pm4_graph_bench_summary_separates_issue_and_synchronized_wall() -> None
     assert summary["median_synchronized_step_ms"] == pytest.approx(10.0)
     assert summary["capture_inclusive_ms_per_token"] == pytest.approx(12.0)
     assert summary["median_prefill_ms"] == pytest.approx(6.0)
+
+
+def test_pm4_graph_bench_setup_breakdown_separates_python_and_native_phases() -> None:
+    result = _setup_breakdown(
+        20.0,
+        {
+            "transport_context": {
+                "context_create_ns": 1_000_000,
+                "last_graph_inspection_ns": 2_000_000,
+                "last_graph_inspection_phases_ns": {"dso_load_ns": 1_250_000},
+                "last_native_instantiate_ns": 3_000_000,
+            },
+            "executable": {
+                "module_load_ns": 500_000,
+                "kernarg_allocate_ns": 750_000,
+            },
+        },
+    )
+
+    assert result["capture_total_ms"] == 20.0
+    assert result["capture_residual_ms"] == 14.0
+    assert result["graph_inspection_dso_load_ms"] == 1.25
+    assert result["module_load_ms"] == 0.5
+    assert result["kernarg_allocate_ms"] == 0.75
 
 
 def test_pm4_graph_bench_stateful_register_comparison_is_explicit_and_default_off() -> None:

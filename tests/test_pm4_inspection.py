@@ -308,6 +308,8 @@ def test_inspects_fake_kernel_graph_into_immutable_exact_manifest(tmp_path: Path
     )
 
     class FakeRuntime:
+        name_calls = 0
+
         def graph_nodes(self, graph: int) -> tuple[int, ...]:
             assert graph == 0xCAFE
             return (0x11,)
@@ -326,17 +328,24 @@ def test_inspects_fake_kernel_graph_into_immutable_exact_manifest(tmp_path: Path
 
         def kernel_name_ref_by_ptr(self, function: int, stream: int = 0) -> str:
             assert function == 0xABC0
+            self.name_calls += 1
             return "test_kernel"
 
+    runtime = FakeRuntime()
+    timings: dict[str, int] = {}
     manifest = inspect_hip_graph(
-        FakeRuntime(),
+        runtime,
         0xCAFE,
         gfx_arch="gfx1100",
         stream=0,
         dso_resolver=lambda function: dso_path,
+        timings=timings,
     )
 
+    assert timings["total_ns"] > 0
+    assert timings["dso_load_ns"] > 0
     assert manifest.graph_handle == 0xCAFE
+    assert runtime.name_calls == 1
     assert manifest.order == (0x11,)
     assert manifest.edges == ()
     assert len(manifest.nodes) == 1

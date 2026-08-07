@@ -18,7 +18,9 @@ from hipengine.core.pm4.transport import (
 def test_submission_transport_selection_is_default_hipgraph_and_environment_is_explicit() -> None:
     assert select_submission_transport(env={}) == "hipgraph"
     assert select_submission_transport(env={"HIPENGINE_SUBMISSION_TRANSPORT": " pm4 "}) == "pm4"
-    assert select_submission_transport("aql", env={"HIPENGINE_SUBMISSION_TRANSPORT": "pm4"}) == "aql"
+    assert (
+        select_submission_transport("aql", env={"HIPENGINE_SUBMISSION_TRANSPORT": "pm4"}) == "aql"
+    )
     with pytest.raises(ValueError, match="non-empty"):
         select_submission_transport("   ", env={})
 
@@ -100,9 +102,7 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
         def instantiate(
             self, observed_manifest, *, stateful_registers: bool = False
         ) -> FakeExecutable:
-            calls.append(
-                ("native_instantiate", observed_manifest.fingerprint, stateful_registers)
-            )
+            calls.append(("native_instantiate", observed_manifest.fingerprint, stateful_registers))
             return FakeExecutable()
 
         def provenance(self) -> dict[str, object]:
@@ -124,16 +124,16 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
     monkeypatch.setattr(
         transport_module.NativePm4Context,
         "create",
-        lambda **kwargs: calls.append(
-            ("context_create", kwargs["pci_bdf"], kwargs["gfx_arch"])
-        )
+        lambda **kwargs: calls.append(("context_create", kwargs["pci_bdf"], kwargs["gfx_arch"]))
         or fake_context,
     )
     runtime = SimpleNamespace(
         device_pci_bus_id=lambda: "0000:03:00.0",
         stream_synchronize=lambda stream: calls.append(("stream_sync", stream)),
         graph_instantiate=lambda graph: pytest.fail("explicit PM4 must not instantiate HIP graph"),
-        graph_launch=lambda executable, stream: pytest.fail("explicit PM4 must not launch HIP graph"),
+        graph_launch=lambda executable, stream: pytest.fail(
+            "explicit PM4 must not launch HIP graph"
+        ),
     )
 
     submission = create_graph_submission(
@@ -250,6 +250,9 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
     assert owner.provenance()["children"] == 0
     assert owner.provenance()["generations"] == 2
     assert owner.provenance()["stateful_registers"] is True
+    assert owner.provenance()["context_create_ns"] >= 0
+    assert owner.provenance()["last_graph_inspection_ns"] > 0
+    assert owner.provenance()["last_native_instantiate_ns"] > 0
     assert fake_context.handle == 71
     owner.close()
     assert owner.provenance()["closed"] is True
@@ -281,7 +284,9 @@ def test_explicit_pm4_instantiation_failure_closes_context_without_hip_fallback(
             self.handle = 0
 
     monkeypatch.setattr(transport_module, "inspect_hip_graph", lambda *args, **kwargs: manifest)
-    monkeypatch.setattr(transport_module.NativePm4Context, "create", lambda **kwargs: RejectingContext())
+    monkeypatch.setattr(
+        transport_module.NativePm4Context, "create", lambda **kwargs: RejectingContext()
+    )
     runtime = SimpleNamespace(
         device_pci_bus_id=lambda: "0000:03:00.0",
         graph_instantiate=lambda graph: calls.append("hip_fallback"),
