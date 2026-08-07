@@ -136,6 +136,41 @@ def maple_weighted_residual_bf16(
     )
 
 
+def maple_router_topk_parallel_bf16(
+    x_ptr: int,
+    weight_ptr: int,
+    selected_experts_ptr: int,
+    selected_weights_ptr: int,
+    logits_scratch_ptr: int,
+    hidden_size: int,
+    num_experts: int,
+    top_k: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Parallel grid-over-experts router (coalesced dot + parallel softmax/top-k)."""
+
+    _launch(
+        "hipengine_maple_router_topk_parallel_bf16",
+        (_PTR, _PTR, _PTR, _PTR, _PTR, _I64, _I64, _I64, _PTR),
+        (
+            x_ptr,
+            weight_ptr,
+            selected_experts_ptr,
+            selected_weights_ptr,
+            logits_scratch_ptr,
+            hidden_size,
+            num_experts,
+            top_k,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_maple_moe_kernels(
     *,
     backend: str = "hip_gfx1100",
@@ -146,6 +181,10 @@ def register_maple_moe_kernels(
             "maple_router_topk",
             "bf16_fp32_softmax_renorm",
         ): maple_router_topk_bf16,
+        (
+            "maple_router_topk",
+            "bf16_fp32_parallel_grid",
+        ): maple_router_topk_parallel_bf16,
         ("maple_clamped_swiglu", "clamp7_bf16"): maple_clamped_swiglu_bf16,
         (
             "maple_weighted_residual",
@@ -184,6 +223,7 @@ __all__ = [
     "build_maple_moe",
     "maple_clamped_swiglu_bf16",
     "maple_router_topk_bf16",
+    "maple_router_topk_parallel_bf16",
     "maple_weighted_residual_bf16",
     "plan_maple_moe_build",
     "register_maple_moe_kernels",

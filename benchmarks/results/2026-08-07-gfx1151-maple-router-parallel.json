@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-07",
+  "artifact_type": "decode_perf",
+  "performance_claim": true,
+  "status": "accepted",
+  "backend": "hip_gfx1151",
+  "model": "deepgrove/maple-preview-2bit-mlx",
+  "quant": "maple_ternary2",
+  "hardware": {
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "workload": "single decode step, token 9707, resident 4096 context, 24 MoE layers, 256 experts top-8, hidden 2048",
+  "change": "M3a parallelize router topk: grid-over-experts coalesced dot + parallel softmax/top-k (maple_router_topk_parallel_bf16), replacing the single-block serial 256-expert router",
+  "baseline": {
+    "command": "scripts/maple_profile.py --profile (M0 rocprofv3 --kernel-trace)",
+    "decode_step_wall_us": 12758,
+    "router_per_call_us": 277.3,
+    "router_per_step_us": 7807
+  },
+  "result": {
+    "command": "PYTHONPATH=$PWD python3 /tmp/model_step.py (resident runner, 40-step median)",
+    "decode_step_wall_us": 6131.9,
+    "router_per_call_us": 48.2,
+    "decode_step_speedup_x": 2.08
+  },
+  "correctness": {
+    "gate": "packed formula oracle, 18-position teacher-forced decode",
+    "command": "python3 scripts/maple_correctness.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --token-ids <18 IDs> --oracle packed",
+    "max_kl": 0.013856,
+    "mean_kl": 0.001677,
+    "top1_agreement": 1.0,
+    "passed": true
+  },
+  "notes": [
+    "Router is the M0-confirmed decode hotspot (61% of step). Parallel variant cuts it 5.75x and decode step 2.08x.",
+    "Parallel router computes each expert logit with a coalesced block tree reduce; a few near-zero routing weights differ by several ULP from the numpy BLAS reference, but top-k IDs are exact and the model-level gate passes (max_kl essentially unchanged 0.0135 -> 0.0139, top-1 18/18).",
+    "The exact single-block router is retained as reference/fallback and its primitive 1-ULP test still passes."
+  ]
+}

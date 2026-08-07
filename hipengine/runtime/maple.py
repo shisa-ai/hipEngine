@@ -36,6 +36,7 @@ from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
     build_maple_moe,
     maple_clamped_swiglu_bf16,
     maple_router_topk_bf16,
+    maple_router_topk_parallel_bf16,
     maple_weighted_residual_bf16,
 )
 from hipengine.kernels.hip_gfx1100.norm.rmsnorm import (
@@ -191,6 +192,7 @@ class MapleRuntimeBuffers:
         self.projection = owner.allocate(h * 2)
         self.selected_ids = owner.allocate(top_k * 4)
         self.routing_weights = owner.allocate(top_k * 4)
+        self.router_logits = owner.allocate(spec.num_experts * 4)
         self.expert_gate = owner.allocate(top_k * intermediate * 2)
         self.expert_up = owner.allocate(top_k * intermediate * 2)
         self.expert_intermediate = owner.allocate(top_k * intermediate * 2)
@@ -423,11 +425,12 @@ class MapleRunner:
                 library=libs.norm,
                 runtime=self.runtime,
             )
-            maple_router_topk_bf16(
+            maple_router_topk_parallel_bf16(
                 b.normalized.ptr,
                 layer_weights.router.ptr,
                 b.selected_ids.ptr,
                 b.routing_weights.ptr,
+                b.router_logits.ptr,
                 spec.hidden_size,
                 spec.num_experts,
                 spec.num_experts_per_tok,
