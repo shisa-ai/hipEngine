@@ -148,9 +148,9 @@ software versions, or a correctness protocol, and Apple M4 and Radeon 8060S
 are different systems. It is directional evidence, not an apples-to-apples
 benchmark. The useful comparison is nevertheless clear: hipEngine's
 **163.459 tok/s exact c1** is only 3.3% below the published M4 exact rate, not
-25% below the approximate 218 headline, while hipEngine's 320-token prefill is
-about 3.3x below the published M4 prefill rate. Decode is competitive; prefill
-is materially underoptimized.
+25% below the approximate 218 headline. After P0, hipEngine's 649.280 tok/s at
+320 tokens is about 1.66x below the published M4 prefill rate, down from a 3.3x
+gap. Decode is competitive; prefill remains materially underoptimized.
 
 ## Current Radeon 8060S / gfx1151 performance
 
@@ -167,17 +167,18 @@ Japanese/English—after one warmup, with three repetitions.
 
 | Prompt tokens | Native prefill tok/s | Serial reference tok/s | Speedup |
 | ---: | ---: | ---: | ---: |
-| 128 | **339.890** | 148.180 | **2.294x** |
-| 320 | **326.573** | 106.639 | **3.062x** |
-| 512 | **317.488** | 83.257 | **3.813x** |
+| 128 | **700.643** | 147.082 | **4.764x** |
+| 320 | **649.280** | 105.871 | **6.133x** |
+| 512 | **614.874** | 82.608 | **7.443x** |
 
-Native sample ranges are 337.300-341.801, 325.396-328.104, and
-315.630-319.462 tok/s respectively. The earlier ~347.5 tok/s 320-token number
-is superseded: it predated the cross-chunk causal-prefix correction and did not
-carry the current multi-prompt gate.
+Native sample ranges are 690.952-707.692, 644.680-653.821, and
+610.327-620.205 tok/s respectively. P0 final-row sampling improves the
+corrected prior native rows by **106.14%/98.82%/93.67%** while preserving every
+prompt-state byte. The prior 339.890/326.573/317.488 rows remain the corrected
+bring-up baseline but are superseded for production.
 
 Evidence:
-[`2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json`](../benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json).
+[`2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json).
 
 ### Decode
 
@@ -201,8 +202,7 @@ Evidence:
 | Resident configuration | hipEngine-owned device memory |
 | --- | ---: |
 | Exact checkpoint payload alone | **4.944 GiB** |
-| Public c1 runner, max context 512 (M5 protocol) | **5.133 GiB** |
-| Public c1 runner, default context 4096 (diagnostic smoke) | **5.174 GiB** |
+| Public c1 runner, max context 512 (P0/M5 protocol) | **4.988 GiB** |
 | Batch helper c=2 / c=4 / c=8, capacity 66/request | **4.951 / 4.958 / 4.973 GiB** |
 | After `close()` | **0 bytes / 0 active allocations** |
 
@@ -220,7 +220,7 @@ text as proof of numerical correctness.
 | --- | --- |
 | Packed NumPy/Torch formula vs hipEngine, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
 | Pinned HF `trust_remote_code` oracle with matched affine4 endpoints | max KL **0.004719**, mean KL 0.000723, top-1 **18/18** |
-| M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | max/mean KL **0/0**, top-1 **90/90**, token equality **90/90** |
+| P0/M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | **18/18** byte-exact final-hidden/normalized/live-KV/span state hashes; max/mean KL **0/0**; top-1/token equality **90/90** |
 | M5 260-token cross-chunk continuation | seed plus three subsequent decode tokens exact |
 | M6 c=2/4/8 and 514-step SWA-wrap tests | all generated trajectories exact |
 | Public canonical prompt | coherent 37-token answer, real EOS 151645, deterministic resident repeat |
@@ -235,35 +235,32 @@ Primary evidence:
 
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
-- [M5 recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json)
+- [P0/M5 final-row recertification](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json)
 - [M6 recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json)
 
 ## Optimization review and next work
 
-The corrected cached-only phase profile shows that the measured paths are
-predominantly kernel-bound:
+The corrected cached-only phase profile predates P0 for prefill but remains the
+attribution baseline for unchanged layer work:
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
-| native prefill320 | 982.015 ms/request | 975.347 ms | 0.68% | **49.90%** |
+| native prefill320, pre-P0 | 982.015 ms/request | 975.347 ms | 0.68% | **49.90%** |
 | c1 decode | 6.118 ms/token | 5.035 ms | 17.69% | **28.75%** |
 | c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
 
-### Review correction: prefill does not need a rows>1 LM head
+### P0 retained: sample only the final prefill row
 
-`prefill_native()` currently runs final RMSNorm, the exact 151,936-row LM head,
-and row-wise argmax for **every row after every chunk**, then copies only the
-last row's result. None of the other prompt logits are consumed. This is the
-largest current defect in the performance schedule: tiling the unnecessary
-heads would optimize work that should be deleted.
+`prefill_native()` now preserves every batched layer/KV update but executes
+final RMSNorm, the exact 151,936-row LM head, and argmax only once on the final
+row of the final chunk. The measured 320-token result is **649.280 tok/s**,
+within 0.54% of the 645.811 tok/s profile projection and **98.82% faster** than
+the corrected 326.573 tok/s baseline.
 
-The accepted profile measures 486.694 ms of LM head and 1.276 ms of argmax for
-320 rows. Replacing those with the already-proven c1 tail gives an
-Amdahl projection of **495.501 ms / 645.811 tok/s** before any kernel tuning,
-versus 982.015 ms / 325.861 tok/s in the profiled request. This is a prediction
-from measured buckets, not yet a retained benchmark. It should also remove
-about **148.8 MiB** of 256-row all-row logit/argmax scratch from the public
-runner (148.375 MiB is the FP32 logits buffer itself).
+The public max-context-512 runner falls **5.133 -> 4.988 GiB**, an exact
+**148.813-MiB** reduction from deleting the 256-row logit/argmax buffers. The
+batch helper retains its separate all-row buffers because every active request
+still needs a sampled result.
 
 ### Review correction: current prefill MoE is not grouped
 
@@ -285,8 +282,8 @@ count/prefix/scatter machinery in its GGUF/PARO paths.
 
 | Priority | Work | Measured rationale and gate |
 | ---: | --- | --- |
-| **P0** | Sample only the final prompt row | Delete non-final final-norm/head/argmax work; require byte-exact final hidden/KV state, top logit, seed token, and continuation across all 18 natural+heldout prompts. This is the immediate next optimization. |
-| **P1** | True expert-major compact MoE | Reuse the existing device count/prefix/scatter ABI, add ternary grouped gate/up/down consumers, and restore original row/route order before weighted combine. Target at least 2.8x on the 274.073-ms family without changing any BF16 boundary. |
+| **P0 — DONE** | Sample only the final prompt row | Retained at 700.643/649.280/614.874 tok/s, 18/18 byte-exact state hashes, and 148.813 MiB lower residency. |
+| **P1 — NEXT** | True expert-major compact MoE | Reuse the existing device count/prefix/scatter ABI, add ternary grouped gate/up/down consumers, and restore original row/route order before weighted combine. Reprofile P0 first, then target the unchanged expert family without changing any BF16 boundary. |
 | **P2** | GQA/query-row prefill attention | The current 62.995-ms prefill320 kernel assigns one block per `(query head,row)`, rereads each KV stream for all four GQA heads, and barriers once per key. Transfer the exact qrow/GQA-reuse pattern or evaluate AOTriton after P0/P1 reprofile. |
 | **P3** | Retune dense ternary row tiles | QKV+O consume 122.555 ms. Their exact kernel reuses a weight row across a fixed tile of eight prompt rows; sweep 8/16/32 and only then consider a new WMMA layout. |
 | **D0** | Exact c1 kernel work, not graph promotion | A controlled 3+3-process review measured current graph replay at only **1.0047x** (0.033 ms saved), exact and leak-free. The corrected kernel-only roof is 198.591 tok/s, so exact 200+ needs at least one kernel win: first test DeepGrove's one-dispatch router pattern and then affine4-head bandwidth/layout changes. |
@@ -303,7 +300,8 @@ The 200+ decode target is therefore realistic in two distinct forms:
   so router/head kernel work is mandatory.
 
 Evidence:
-[`corrected phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json),
+[`P0 final-row prefill`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json),
+[`corrected pre-P0 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json),
 [`c1 graph review`](../benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json),
 and [`MAPLE-PERF.md`](MAPLE-PERF.md). Kernel names and trace resources are in
 [`KERNELS.md`](KERNELS.md).
@@ -326,7 +324,7 @@ python3 -m pytest tests/test_maple_runtime.py tests/test_maple_generation.py -q
 # M5 public-native prefill recertification
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
-python3 scripts/maple_prefill_bench.py \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_prefill_bench.py \
   --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
   --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
   --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
