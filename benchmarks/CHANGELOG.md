@@ -2473,3 +2473,4 @@ Examples:
 - [lineage target] Qwen3.5-35B-A3B-PARO / w4a16 / 512-128K sweeps: recorded compact-WMMA + graph-replay target rows from `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 - [external baseline] Added llama.cpp ROCm and Qwen3-0.6B host-architecture comparison baselines from `docs/BENCHMARK.md` / `~/amd-gpu-tuning/WORKLOG.md`.
 - [smoke] Recorded `smoke_add` as a build/runtime correctness smoke only, not a throughput row.
+- [maple] deepgrove/maple-preview-2bit-mlx / gfx1151 M6 batch decode: added retained c2/c4/c8 rows at 223.2/275.6/321.1 tok/s aggregate (64 tok/req) via MapleBatchRunner + MapleContinuousBatcher, bit-exact vs serial; artifact `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode.json`.

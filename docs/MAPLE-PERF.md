@@ -268,15 +268,19 @@ reused across requests:
 - Then a continuous-batching owner loop (admission, chunked prefill, decode
   steps, sampler routing, reclaim) reusing the GGUF/PARO server patterns.
 
-**M6 status: OPEN (not started).** The M4/M5 batched kernels implement
-single-sequence causal processing (row `r` attends a shared `[start, start+r]`
-prefix), not independent per-request KV spans, so they do not directly give
-correct c>1 decode of independent requests. Batch decode needs (a) multi-row
-ternary decode GEMMs reusing weights per group (the batched GEMM primitives
-cover the linear/FFN side), (b) a batched GQA attention + KV append kernel that
-reads per-row `KVLiveSpans`, and (c) a continuous-batching owner loop. Each is a
-focused follow-up; the batched prefill primitive set (M4/M5) is the shared
-building block.
+**M6 status: DONE.** Batch decode of c independent requests is implemented and
+validated bit-exact vs c serial decodes on the real checkpoint:
+- Batched per-request QK-norm+RoPE+KV write and batched GQA attention decode
+  kernels with a batch grid dimension and per-row `KVLiveSpans`
+  (`maple_qknorm_rope_kv_write_batched_decode_bf16`,
+  `maple_attention_decode_batched_bf16`). Each request owns a disjoint arena
+  range via `row_base_offsets[row]` while using its own local RoPE position.
+- `MapleBatchRunner.batch_step` runs c requests through the full batched
+  ternary chain (embed, QKV GEMM, attention, MoE, lm_head) reusing weights
+  across the batch.
+- `MapleContinuousBatcher` is a fixed-batch owner loop with admission, decode
+  rounds, and slot reclaim (`reset_request`), reusing the GGUF/PARO pattern.
+- Retained c2/c4/c8 rows on gfx1151 (W7900), see `benchmarks/README.md`.
 
 ## 4. Prefill plan (serial → batched, compute-bound)
 
@@ -372,7 +376,7 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | GEMM + QKV GEMM primitives in (done) |
 | M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `prefill_native` wired + validated (ac118f0b7): 12-tok ~64 ms, 320-tok ~347 tok/s, matches serial next-token |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
-| M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | OPEN: batched prefill kernels implement single-sequence causal, not independent per-request KV spans; needs multi-request kernels + continuous-batching loop |
+| M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | `MapleBatchRunner` + `MapleContinuousBatcher` wired + validated bit-exact vs serial; retained c2/c4/c8 rows in `benchmarks/README.md` |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):

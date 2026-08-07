@@ -203291,3 +203291,27 @@ Vulkan local sizes verbatim will close the measured gap.
   dual+swiglu (~9% micro regression), down+weighted (~3.5%, reverted), and
   qknorm+attention (~1% step regression) all regress on gfx1151 small-batch, so
   none is promoted; launch reduction is served by hipGraph (M1).
+
+## 2026-08-07 — M6/D5: batch decode c>1 + continuous batching (retained)
+
+- Add batched per-request decode primitives: `maple_qknorm_rope_kv_write_batched_decode_bf16`
+  (per-row QK-norm+RoPE+KV write) and `maple_attention_decode_batched_bf16`
+  (per-row GQA attention decode), each with a batch grid dimension and per-row
+  `KVLiveSpans` (live_counts/row_positions). Bit-exact vs running the c1 kernels
+  per row.
+- Key ABI decision: `row_base_offsets[row]` decouples the per-request arena base
+  from `row_positions[row]` (local RoPE position). Without it requests got global
+  RoPE phases and c=4/8 diverged from serial (c=2 matched only by coincidence).
+- `MapleBatchRunner.batch_step(ids)` runs c requests through the full batched
+  ternary chain (embed, QKV GEMM, attention, MoE, lm_head) in a shared identity
+  arena where request r owns arena range [r*per_capacity, +per_capacity).
+- `MapleContinuousBatcher` = fixed-batch owner loop: admission (submit), decode
+  rounds (step), slot reclaim (reset_request); mirrors GGUF/PARO pattern.
+- Correctness: batch decode bit-exact vs c independent serial `MapleRunner.step`
+  on the real checkpoint for c=2/4/8 (test parametrized c=2,4); continuous
+  batcher matches serial autoregressive.
+- Retained c2/c4/c8 rows on gfx1151 (W7900), 64 tok/request:
+  c=2 223.2, c=4 275.6, c=8 321.1 tok/s aggregate.
+  Artifact: `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode.json`.
+- Commits: e5587b1b0 (kernels), 5d324031d (MapleBatchRunner),
+  1f26e8bdd (RoPE/arena decouple fix).

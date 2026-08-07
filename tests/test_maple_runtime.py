@@ -148,3 +148,57 @@ def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch, c) -> Non
                 f"request {r} step {step}: batch={batch_tokens[step][r]} "
                 f"serial={serial_tokens[r][step]}"
             )
+
+
+def test_maple_continuous_batcher_matches_serial(hip_test_target_arch) -> None:
+    """Continuous-batching owner loop matches serial autoregressive decode."""
+    del hip_test_target_arch
+    try:
+        from hipengine.loading.maple import load_maple_checkpoint
+    except Exception as exc:  # noqa: BLE001 - import guard
+        pytest.skip(f"maple loading unavailable: {exc}")
+
+    from hipengine.runtime.maple import MapleBatchRunner
+    from hipengine.runtime.maple_batch import MapleContinuousBatcher
+
+    model = "deepgrove/maple-preview-2bit-mlx"
+    backend = "hip_gfx1151"
+    c = 2
+    seeds = [9000, 9001]
+    n = 4
+    try:
+        checkpoint = load_maple_checkpoint(model)
+    except Exception as exc:  # noqa: BLE001 - checkpoint missing
+        pytest.skip(f"maple checkpoint unavailable: {exc}")
+
+    serial = []
+    runners = []
+    try:
+        for r in range(c):
+            runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
+            runners.append(runner)
+            out = [runner.step(seeds[r]).token_id]
+            for _ in range(n - 1):
+                out.append(runner.step(out[-1]).token_id)
+            serial.append(out)
+    finally:
+        for runner in runners:
+            runner.close()
+
+    batch = MapleBatchRunner.load(
+        checkpoint, backend=backend, batch_size=c, per_capacity=64
+    )
+    batcher = MapleContinuousBatcher(batch)
+    try:
+        for r in range(c):
+            batcher.submit(seeds[r], max_new=n)
+        while batcher.active():
+            batcher.step()
+    finally:
+        batch.close()
+
+    assert len(batcher.completions) == c
+    for r in range(c):
+        assert batcher.completions[r] == serial[r], (
+            f"request {r}: batch={batcher.completions[r]} serial={serial[r]}"
+        )
