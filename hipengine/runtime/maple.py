@@ -1473,6 +1473,44 @@ class MapleBatchRunner:
                 buffer, host_array_ptr(host), runtime=self.runtime
             )
 
+    def reset_request(self, request: int) -> None:
+        """Reclaim one request slot: clear its arena region and local position."""
+        self._require_open()
+        if not (0 <= request < self.batch_size):
+            raise ValueError(f"request {request} out of range")
+        lo = request * self.per_capacity
+        hi = lo + self.per_capacity
+        self._token_host[lo:hi] = -1
+        self._evict_host[lo:hi] = True
+        self._live_host[request] = 0
+        self._row_host[request] = -1
+        self._requests[request] = 0
+        copy_host_to_device(
+            self.token_positions,
+            host_array_ptr(self._token_host[lo:hi]),
+            nbytes=self._token_host[lo:hi].nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.evict_mask,
+            host_array_ptr(self._evict_host[lo:hi]),
+            nbytes=self._evict_host[lo:hi].nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.live_counts,
+            host_array_ptr(self._live_host[request : request + 1]),
+            nbytes=8,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.row_positions,
+            host_array_ptr(self._row_host[request : request + 1]),
+            nbytes=8,
+            runtime=self.runtime,
+        )
+        self.runtime.device_synchronize()
+
     def close(self) -> None:
         if self.closed:
             return

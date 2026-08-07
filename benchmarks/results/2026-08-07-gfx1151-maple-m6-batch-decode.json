@@ -1,0 +1,30 @@
+{
+  "model": "deepgrove/maple-preview-2bit-mlx",
+  "backend": "hip_gfx1151",
+  "hardware": "AMD Radeon Pro W7900 (gfx1151)",
+  "per_request_tokens": 64,
+  "correctness_gate": true,
+  "rows": [
+    {
+      "c": 2,
+      "steps": 64,
+      "total_tokens": 128,
+      "elapsed_ms": 573.38,
+      "tokens_per_sec": 223.24
+    },
+    {
+      "c": 4,
+      "steps": 64,
+      "total_tokens": 256,
+      "elapsed_ms": 928.791,
+      "tokens_per_sec": 275.63
+    },
+    {
+      "c": 8,
+      "steps": 64,
+      "total_tokens": 512,
+      "elapsed_ms": 1594.535,
+      "tokens_per_sec": 321.1
+    }
+  ]
+}

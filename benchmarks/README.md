@@ -1,6 +1,12 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-04**
+Last updated: **2026-08-07**
+
+**Maple M6 batch decode (D5) retained:** deepgrove/maple-preview-2bit-mlx on
+gfx1151 (W7900) reaches c=2 223.2 / c=4 275.6 / c=8 321.1 tok/s aggregate via
+`MapleBatchRunner` + `MapleContinuousBatcher`, bit-exact vs serial c1 decode.
+See `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode.json` and
+`docs/MAPLE-PERF.md`.
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
