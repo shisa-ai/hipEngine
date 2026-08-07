@@ -288,6 +288,25 @@ open: batched affine4 embed, batched rmsnorm/add_rmsnorm, **grouped MoE over
 rows (P3)**, batched final norm + lm_head GEMM, and the `prefill_native`
 wiring + measured prefill tok/s artifact.
 
+**Prefill primitive set now COMPLETE (2026-08-07).** The full chain is wired
+from these kernels; rmsnorm/add_rmsnorm already take a `rows` arg, and
+row-wise argmax is `argmax_f32_rows_i32`:
+
+- embed: `maple_affine4_embed_batched_kernel` (`66c5a7a11`)
+- QKV: `maple_ternary_qkv_gemm_kernel` (`a4b9808d8`) / o_proj:
+  `maple_ternary_gemm_kernel` (`7c1624080`)
+- qknorm+RoPE+KV ring write: `maple_qknorm_rope_kv_write_batched_kernel`
+  (`d7185caaa`)
+- attention: `maple_attention_prefill_ring_kernel` (`ffe822eae`)
+- router: `maple_router_topk_parallel_batched_kernel` (`3820527ed`)
+- MoE: `maple_selected_ternary_dual_gemv_batched_kernel` (`2bdd79497`),
+  `maple_selected_ternary_gemv_batched_kernel` + `maple_weighted_residual_batched_kernel`
+  (`bb3ac7569`)
+- lm_head: `maple_affine4_gemv_batched_kernel` (`8e7b400db`)
+
+Open: `prefill_native` runner wiring (T-sized buffers, chunked admission) and
+the measured prefill tok/s artifact.
+
 ### P2 — Batched attention prefill (append-then-attend)
 
 - Batched Q/K/V projection, batched head RMSNorm+RoPE, batched KV append.
