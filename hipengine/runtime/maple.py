@@ -67,6 +67,7 @@ from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     maple_affine4_embed_batched_bf16,
     maple_affine4_embed_bf16,
     maple_affine4_gemv_batched_f32,
+    maple_affine4_gemv_batched_rowreuse_exact_f32,
     maple_affine4_gemv_f32,
     maple_affine4_gemv_wave32_exact_f32,
     maple_moe_dual_swiglu_bf16,
@@ -121,6 +122,20 @@ def _maple_affine4_wave32_exact() -> bool:
     # category/state and same-resident wall gates. Preserve =0 as the exact
     # group64 rollback.
     return os.environ.get("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "1") != "0"
+
+
+def _maple_batch_affine4_rowreuse_exact() -> bool:
+    # D1 candidate: default off until the complete c2/c4/c8 state, sparse-slot,
+    # lifecycle, and same-protocol wall gates qualify it.
+    return os.environ.get(
+        "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT", "0"
+    ) != "0"
+
+
+def _maple_batch_affine4_head(rows: int):
+    if rows in (2, 4, 8) and _maple_batch_affine4_rowreuse_exact():
+        return maple_affine4_gemv_batched_rowreuse_exact_f32
+    return maple_affine4_gemv_batched_f32
 
 
 def _maple_prefill_grouped_moe() -> bool:
@@ -1579,6 +1594,7 @@ class MapleBatchRunner:
         top_k = spec.num_experts_per_tok
         intermediate = spec.moe_intermediate_size
         rows = self.batch_size
+        affine4_head = _maple_batch_affine4_head(rows)
 
         # Publish each active request's current position into both capacity classes.
         for request, is_active in enumerate(active):
@@ -1769,7 +1785,7 @@ class MapleBatchRunner:
             library=libs.norm,
             runtime=self.runtime,
         )
-        maple_affine4_gemv_batched_f32(
+        affine4_head(
             b.normalized.ptr,
             self.weights.lm_head.weight.ptr,
             self.weights.lm_head.scales.ptr,

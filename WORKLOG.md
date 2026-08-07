@@ -207613,3 +207613,31 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `a32f2db9708eeddce989e33bef5b49a69dfa3b57f98b451e893707ff03b64a27`).
   D0's exact fixed-token target is reached under the retained A/B protocol;
   advance Task #92 to c2/c4/c8 affine4 row reuse.
+
+## 2026-08-08 — Maple D1 exact batched affine4 row-reuse candidate
+
+- Start Task #92 from clean `6da6755ac`. The production c2/c4/c8 head launches
+  one 128-thread block per `(vocab,row)`, so its exact **166.922-MiB** packed
+  weight/scale/bias payload is logically reread for every request row.
+- Add a default-off registered leaf that assigns one 128-thread block to one
+  vocabulary row and carries 2/4/8 independent request partials. Packed words,
+  scales, and biases are loaded once; each request preserves the original
+  word/lane order and stride-64/32/16/8/4/2/1 LDS reduction tree. A
+  production-K=2,048 RED/GREEN fixture is FP32-bit exact for c2/c4/c8.
+- The dirty real-head admission screen at 151,936x2,048 is exact at every logit
+  and identical at argmax. Mean latency changes **2.763 -> 1.532 ms (1.803x)**
+  for c2, **5.281 -> 2.023 ms (2.611x)** for c4, and **10.554 -> 3.763 ms
+  (2.804x)** for c8; the candidate wins all **96/96** alternating pairs and
+  every runner closes at **0 bytes / 0 allocations**.
+- Wire only c2/c4/c8 through default-off
+  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1`; unsupported widths and
+  selector-unset/`=0` preserve the original all-row head. Promotion requires a
+  clean same-protocol aggregate c2/c4/c8 gate, the complete natural/category-
+  heldout trajectories including sparse/reclaimed slots, lifecycle, and a
+  cached named-kernel trace. No end-to-end performance claim is made yet.
+- Implementation validation: the full packed Maple kernel file passes
+  **17/17**, the bounded runtime-selector node passes, Python compilation and
+  `git diff --check` pass. The required narrow lineage query selects zero Maple
+  parents (`tracked_sources: 0 changed_or_dirty: 0`), consistent with this
+  in-tree original schedule; the all-kernel query cannot inspect an unrelated
+  manifest entry because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
