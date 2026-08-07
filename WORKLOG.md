@@ -207009,3 +207009,42 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   tests/test_benchmark_readme_sync.py -q --tb=short` passes **6/6**. Runtime and
   HIP edits are comments only, with no kernel/math/dispatch change, so this
   docs/review unit does not repeat the already-qualified GPU suites.
+
+## 2026-08-07 — Maple P0 final-row-only native-prefill tail
+
+- Contract before implementation: preserve every batched layer, hidden row, and
+  `KVLiveSpans` write, but skip final norm/head/argmax for intermediate chunks
+  and run the proven c1 tail exactly once on the final row of the final chunk.
+  Reuse resident c1 logits/argmax buffers and remove the public runner's all-row
+  tail scratch. The serial runner is the independent model/state oracle.
+- RED command:
+  `/home/lhl/miniforge3/envs/therock/bin/python3 -m pytest
+  tests/test_maple_runtime.py::test_maple_prefill_buffers_exclude_all_row_sampling_scratch
+  tests/test_maple_runtime.py::test_maple_prefill_native_samples_only_the_final_row
+  -q --tb=short` -> **2 failed** as intended: `_PrefillBuffers` still owns
+  all-row logits/argmax allocations and `prefill_native()` still launches
+  `maple_affine4_gemv_batched_f32` after each chunk.
+- GREEN implementation splits public `_PrefillBuffers` from batch-only
+  `_BatchBuffers`, retains all-row head scratch only for c>1, and runs
+  final-row RMSNorm + `maple_affine4_gemv_f32` + `argmax_f32` once after the
+  final chunk. The focused two-node RED set is now **2/2 passing**; adding the
+  invalid-input node gives **3/3**. Existing real-checkpoint short and
+  260-token multichunk continuation nodes pass **2/2** under cached-only
+  gfx1151 execution.
+- Strengthen `scripts/maple_prefill_bench.py` so the M5 gate now compares the
+  serial/native final hidden and normalized bytes, each layer's complete live
+  K/V prefix, and both device `KVLiveSpans` metadata sets in addition to full
+  logits and continuations. A dirty-tree state smoke over all 18 natural plus
+  heldout prompts passes **18/18 state hashes**, **36/36 tokens/top-1**, and
+  max/mean KL **0/0**. Its one-repeat 128 diagnostic is **697.490 tok/s**; the
+  artifact is intentionally `rejected` because tracked cleanliness and the
+  full 128/320/512 x3 protocol are reserved for the committed run. The harness
+  now mechanically marks only `(128,320,512)`, >=3 repeats, >=1 warmup, and >=4
+  continuation steps as a qualified protocol.
+- Focused runtime bundle after GREEN:
+  `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 ... python3 -m pytest
+  tests/test_maple_runtime.py -q --tb=short` -> **16 passed**. This includes
+  c1 native prefill, multichunk continuation, c2/c4/c8 decode, 514-step SWA
+  wrap, sparse reclaim, and lifecycle coverage.
