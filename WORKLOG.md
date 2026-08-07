@@ -206936,3 +206936,76 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   linked artifacts/paths and key claims, run the focused generator tests, and
   run Markdown/diff/WORKLOG checks. No additional GPU benchmark is needed for
   this docs unit; all displayed values come from committed accepted artifacts.
+
+## 2026-08-07 — Review all Maple work and correct the optimization roadmap
+
+- Synchronize before review: fetch `origin/main` and `origin/maple`, confirm no
+  incoming Maple commits, then push the complete 100-commit local series.
+  Local HEAD, tracking ref, and remote `maple` all resolve to
+  `9b3e45f10157f5788709c9107098679dfeb6b1bd` before this review unit.
+- Audit DeepGrove's authoritative MLX implementation at
+  `mlx-lm-deepgrove@eba96c16158f032821b0bf374ea1421cfddef0a9` plus the pinned
+  deployment config. The published M4 table is **169 tok/s exact/default**,
+  **218 tok/s approximate FlashHead**, and **1075 tok/s prefill**; the headline
+  218 is not an exact dense-head result. FlashHead probes 512 of 4,748 clusters,
+  or 16,384/151,936 vocabulary rows plus three forced controls. The upstream
+  table omits workload lengths, repeats, and software versions, so it is
+  directional rather than a cross-device benchmark. Marketing says 131,072
+  context while the pinned config says `max_position_embeddings=128000`.
+- Identify the primary prefill scheduling bug from source plus the accepted
+  profile: `prefill_native()` executes final norm, the full exact head, and
+  row-wise argmax after every chunk for every row, but consumes only the last
+  row. The measured prefill320 head+argmax is **487.969 ms**. Replacing it with
+  the measured c1 tail projects **982.015 -> 495.501 ms** and **325.861 ->
+  645.811 tok/s**, while eliminating about **148.8 MiB** of all-row
+  logit/argmax scratch. This is a measured-bucket projection, not a retained
+  speed result.
+- Correct the second classification error: Maple's batched expert grid is
+  `(output, route, row)` and rereads expert weights per assignment. It is a
+  correct row/route-gather bring-up path, not grouped MoE. DeepGrove sorts >=64
+  assignments by expert, and hipEngine already has device count/prefix/scatter
+  machinery in GGUF/PARO. After final-row tail selection, the measured
+  **274.073-ms** expert family must reach **<=98.572 ms (2.780x)** for a
+  profile-based 1000 tok/s target with other buckets fixed.
+- Record later exact owners rather than tuning blindly: current prefill
+  attention assigns one block per `(query head,row)`, rereads every KV stream
+  for four GQA heads, and barriers per key; transfer qrow/GQA reuse or evaluate
+  AOTriton only after P0/P1 reprofile. QKV+O consume **122.555 ms** and use an
+  unswept fixed eight-row weight tile; sweep exact 8/16/32 before WMMA.
+- Recheck c1 graph on the corrected path with six independent processes in
+  counterbalanced eager/graph/graph/eager/eager/graph order, each 4 warmup + 128
+  measured positions under `GPU_MAX_HW_QUEUES=1`. Eager trial medians are
+  **7.1434/7.0661/7.0315 ms**; graph is **7.0657/7.0329/7.0066 ms**. The
+  median-of-medians change is only **1.00473x (+0.473%, 0.0332 ms)**. IDs and
+  top-logit hashes match; every graph reports capture=1/replay=131/reject=0;
+  each runner buffer owner is empty after close. Keep graph opt-in. Artifact:
+  `benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json`, SHA-256
+  `b53b364c7894792df9be1f96d53a4cf41e8ff30bf14d8ca05599fe9d588235a1`;
+  its temporary child source is pinned in the artifact by SHA-256
+  `42a75f83555d48161fc5d62815c020150c7e3491da6df24d1becb6ae79c7df7a`.
+- Exact c1 is already within 3.3% of DeepGrove's published M4 exact number. The
+  corrected trace's kernel-only roof is **198.591 tok/s**, so graph alone cannot
+  reach 200. Exact 200 needs **1.118 ms** total saving; exact 218 needs
+  **1.531 ms**. Prioritize DeepGrove's one-dispatch last-threadgroup router
+  pattern, then a materially different affine4 head layout. Treat FlashHead as
+  a separate opt-in approximate/quality-gated track. For c2/c4/c8, rows>1
+  affine4 weight reuse remains valid because every active request needs logits.
+- Update `docs/MAPLE.md` and `docs/MAPLE-PERF.md` with the exact-vs-FlashHead
+  comparison, corrected P0/P1 ordering, quantitative ceilings, and later
+  attention/dense/decode work. Remove duplicated/stale MAPLE-PERF planning,
+  correct the false claim that M6 reuses the c1 graph, correct runtime/kernel
+  comments that called gather MoE grouped, and collapse contradictory
+  default-1/default-0 Maple fusion entries in `docs/REFACTOR.md`. Update the
+  benchmark README/changelog to supersede the stale all-row prefill-head action
+  and retain the graph review as a diagnostic without changing topline rows.
+- Immediate next implementation is **P0 final-row-only prefill tail**, gated by
+  byte-exact hidden/KV state, seed/top-logit, and continuation on all 18
+  natural+heldout prompts. Then implement true expert-major compact ternary MoE.
+  No production performance row changes in this review unit, so benchmark
+  topline rows remain unchanged.
+- Validation: re-read both Maple documents end to end; relative Markdown links,
+  JSON parsing, `git diff --check`, and the WORKLOG conflict check pass;
+  `/home/lhl/miniforge3/envs/therock/bin/python3 -m pytest
+  tests/test_benchmark_readme_sync.py -q --tb=short` passes **6/6**. Runtime and
+  HIP edits are comments only, with no kernel/math/dispatch change, so this
+  docs/review unit does not repeat the already-qualified GPU suites.

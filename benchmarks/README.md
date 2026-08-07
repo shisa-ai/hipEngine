@@ -18,8 +18,14 @@ invalid (wrong hardware label and c=1-only gate). Evidence:
 `docs/MAPLE-PERF.md`. The corrected cached-only
 [`phase profile`](results/2026-08-07-gfx1151-maple-corrected-phase-profile.json)
 attributes the exact affine4 lm-head as **49.90%/28.75%/46.52%** of kernel time
-for prefill320/c1/c8; rows>1 weight reuse is the next exact owner, while the
-previously rejected c1 tile remains unchanged.
+for prefill320/c1/c8. Source review corrects the actions by path: public prefill
+must delete discarded non-final heads first (measured-bucket projection
+**325.861 -> 645.811 tok/s**, not a retained row), then replace row/route-gather
+MoE with true expert-major compact execution; c2/c4/c8 still need affine4 row
+reuse. A counterbalanced exact/leak-free
+[`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
+measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
+the rejected c1 head tile remains closed.
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
