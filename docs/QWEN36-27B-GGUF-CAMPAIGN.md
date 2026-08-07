@@ -1938,6 +1938,29 @@ register schedule appears; reconciliation advances to Vulkan's genuinely
 uncovered Q4_K Q8_1/integer-dot route. Artifact:
 `benchmarks/results/2026-08-06-qwen36-27b-q6-vulkan-source-geometry-rejected.json`.
 
+The Q4_K route is now source-reproduced and rejected rather than inferred from
+older selected-MoE screens. Clean Vulkan `c8e03ce81` uses one local32 wave per
+output, `K_PER_ITER=16`, four packed integer dots per lane iteration, and one
+cached Q8_1 quantization when Q/K/V share an activation. Disposable raw-layout
+and compact-T16 leaves reproduce that schedule on actual GPU1 Q/K/Q4-V tensors.
+At binding rows=4, raw prequantized Q/K/V move current exact
+**54.708/9.200/9.238 -> 54.850/8.237/8.293 us**: narrow K/V improve, but wide Q
+is neutral-negative. Even using the most favorable **3.412-us** quantization
+median once across all projections, a Q4-V layer regresses **73.145 -> 74.792 us
+(+2.25%)** and a Q6-V layer regresses Q+K **63.908 -> 66.499 us (+4.06%)**.
+True-AR rows=1 is worse still: a Q4-V Q+K+V layer moves **48.095 -> 57.167 us
+(+18.86%)**. Every actual-weight top-1 agrees and max KL is at most
+**7.57e-7**, so performance—not quality—rejects the route. The compact col2
+upper bound is also slower inclusive; all diagnostic code is removed.
+
+Full-attention K/V therefore remains **3.762 ms** versus Vulkan **2.040 ms**, but
+the current Vulkan Q4/Q6 source-mechanism ladder is explicitly exhausted under
+hipEngine's exact compact owners. Reopen only for a producer-fused Q8_1 path
+below the approximately **1.29-us** mixed-layer break-even with full-category
+quality, a materially new primitive, or changed source/compiler/model. D27-R2
+advances to root projection. Artifact:
+`benchmarks/results/2026-08-07-qwen36-27b-q4-vulkan-q8-1-source-rejected.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1948,7 +1971,7 @@ uncovered Q4_K Q8_1/integer-dot route. Artifact:
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; exact compact K and sole-resident planar-Q6 V reduce combined K/V **4.958 -> 3.762 ms**, still **1.723 ms** behind Vulkan; source-faithful Q6 local32/col2 loses at binding rows4 (**0.545x**) and is removed; screen Q4_K Q8_1/integer-dot before root |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; exact compact K and sole-resident planar-Q6 V reduce combined K/V **4.958 -> 3.762 ms**, still **1.723 ms** behind Vulkan; source-faithful Q6 local32/col2 loses at binding rows4 (**0.545x**), while amortized Q4 Q8_1/MMVQ loses **2.25%-4.06%** at rows4; both are removed and K/V is source-audited closed; advance to root projection |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 

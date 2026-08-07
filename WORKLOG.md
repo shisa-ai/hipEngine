@@ -208634,3 +208634,43 @@ Vulkan local sizes verbatim will close the measured gap.
   Raw screen/harness hashes are `327d102d...af89` / `38e95a67...6888`.
   Q6 V is source-audited closed unless a materially different rows4 register
   schedule appears. Next reconcile the uncovered Q4_K Q8_1/integer-dot route.
+
+## 2026-08-07 — Reject Vulkan-source Q4 Q8_1/MMVQ route
+
+- Read tracked-clean llama.cpp Vulkan `c8e03ce81` end to end before interpreting
+  the first leaf. On AMD, `ggml_vk_should_use_mmvq()` selects Q4_K for batch
+  `n>1`; `mul_mat_vecq.comp` uses local32, one output row, `K_PER_ITER=16`, four
+  packed integer dots per lane iteration, and cached Q8_1 staging when the same
+  activation tensor feeds multiple projections. The first disposable compact
+  leaf used K4 groups and measured poorly; correcting it to the actual K16
+  schedule moved the prequantized K rows1/2/3/4 body from
+  **11.716/13.108/14.447/15.787** to **7.461/8.086/8.562/9.112 us**. This source
+  correction was essential before rejection.
+- Reproduce the exact remaining mechanism with a second disposable raw-Q4
+  local32/col1 K16 leaf, then screen actual GPU1 tensors. At binding rows4,
+  exact compact -> raw prequantized Q/K/Q4-V is
+  **54.708/9.200/9.238 -> 54.850/8.237/8.293 us**. K/V individually improve,
+  but Q is neutral-negative. The existing activation quantizer costs a
+  favorable **3.412 us** once. Amortized across shared Q/K/V, a Q4-V layer is
+  therefore **73.145 -> 74.792 us (+2.251%)**; across Q/K in a Q6-V layer it is
+  **63.908 -> 66.499 us (+4.055%)**. True-AR rows1 Q+K+Q4-V is
+  **48.095 -> 57.167 us (+18.863%)**. The mixed rows4 break-even would require
+  effective quantization below about **1.293 us**, a **62.1%** reduction from
+  the measured K screen, before accounting for full-model quality.
+- Actual-weight numerical quality is strong (all top-1 agree, maximum KL
+  **7.57e-7**), but a disposable synthetic CPU-reference fixture also exposes
+  one rows3 max-KL **0.1296** failure under its per-row strict gate. No quality
+  exception is needed because performance already rejects the route. A compact
+  T16 col2 upper bound also loses inclusive at rows4 (**9.196 -> 12.406 us**)
+  and is slower than the exact raw-source dot.
+- Remove every diagnostic HIP/Python/registry/test insertion; production code
+  returns exactly to `9d8dfc564`. Publish only
+  `benchmarks/results/2026-08-07-qwen36-27b-q4-vulkan-q8-1-source-rejected.json`
+  plus the campaign and this handoff. Raw Q/K/V screen hashes are
+  `6d0262e8...9e07` / `e6f195a1...410d` / `a80650de...201`, and raw
+  harness/kernel hashes are `5cd95710...0feb` / `5800344f...00d3`.
+- Full-attention K/V remains **3.762205 ms** versus Vulkan **2.039520 ms**, but
+  the current source-faithful Q4/Q6 mechanism ladder is now explicitly
+  exhausted. Reopen only for a materially different producer-fused Q8_1 path
+  below the measured break-even with full-category quality, a new primitive,
+  or changed source/compiler/model. D27-R2 advances to root projection.
