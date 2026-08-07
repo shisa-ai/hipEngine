@@ -1894,6 +1894,35 @@ headline. The inferred matched full-attention K/V bucket falls **4.958 ->
 within the module to V before root. Artifact:
 `benchmarks/results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json`.
 
+The next V ownership unit is retained, and review recovers the complete
+promotion packet that was measured but omitted from the original commit's
+publication. Eight Q6_K `layers.*.attn_v` tensors now use one
+`gguf_q6_k_t16_qmicro_planar_v1` owner across c1, native rows, and populated
+prefill. Relative to committed production this replaces **80.0 MiB** of dense
+BF16 with **32.8125 MiB** of qmicro tiles, saving **47.1875 MiB**; the earlier
+“removes duplicate 32.8 MiB” wording was imprecise and referred to a rejected
+transient dual-resident experiment.
+
+Actual-weight GPU1 rows 2/3/4 improve **1.237x/1.251x/1.341x**, are BF16-bit
+exact to independent qmicro c1 launches, and pass dense-relative max KL
+**1.28e-7** / top-1 **100%**. The complete W7900 binding B1-B3 transaction
+passes logits, accept, reject/partial/full/rollback state, dynamic graph reuse,
+K/V, physical ownership, provider output, and teardown. A marked W7900 trace
+replaces exactly **56 dense V / 1.760127 ms** with **56 qmicro V / 1.472815 ms
+(-16.323%, 1.195x)**.
+
+The full ten-prompt packet versus the K-sidecar route remains exact and moves
+true AR/B1/B2/B3 **24.249/44.319/56.261/61.122 ->
+24.247/44.635/56.290/61.235 tok/s (-0.006%/+0.714%/+0.052%/+0.185%)**.
+Generated IDs are unchanged and every GPU accept matches CPU. B1 aggregate
+acceptance improves **115/127 -> 115/126**; B2/B3 aggregates remain **151/182**
+and **169/219**, with prompt-local sequence changes disclosed in the artifact.
+Candidate B3 is still **0.260%** below canonical **61.394**, so the topline does
+not change. The inferred combined K/V bucket falls **4.050 -> 3.762 ms**, still
+**1.723 ms / 1.845x** above Vulkan's **2.040 ms**. D27-R2 therefore remains in
+K/V for exact residual source/dispatch reconciliation before root. Artifact:
+`benchmarks/results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1904,7 +1933,7 @@ within the module to V before root. Artifact:
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; exact compact K cuts **2.410 -> 1.501 ms**, leaving combined K/V **2.010 ms** behind Vulkan; advance to V, then root |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; exact compact K and sole-resident planar-Q6 V reduce combined K/V **4.958 -> 3.762 ms**, still **1.723 ms** behind Vulkan; reconcile the residual K/V source/dispatch before root |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 
