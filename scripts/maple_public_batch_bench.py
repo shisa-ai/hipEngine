@@ -354,10 +354,38 @@ def main() -> int:
         all(row["lifecycle_passed"] for row in width_rows)
         and single_active["lifecycle_passed"]
     )
+    reclaim_passed = all(
+        group["slots_reclaimed"]
+        for row in (*width_rows, single_active)
+        for sample in row["samples"]
+        for group in sample["groups"]
+    )
+    physical_width_passed = all(
+        group["physical_rows"] == row["concurrency"]
+        for row in width_rows
+        for sample in row["samples"]
+        for group in sample["groups"]
+    ) and all(
+        group["physical_rows"] == single_active["physical_capacity"]
+        for sample in single_active["samples"]
+        for group in sample["groups"]
+    )
+    sparse_final_groups_passed = all(
+        any(
+            group["logical_rows"] < group["physical_rows"]
+            for sample in row["samples"]
+            for group in sample["groups"]
+        )
+        for row in width_rows
+        if row["concurrency"] in (4, 8)
+    )
     accepted = (
         qualified
         and correctness_passed
         and lifecycle_passed
+        and reclaim_passed
+        and physical_width_passed
+        and sparse_final_groups_passed
         and not tracked_status
     )
     timestamp = datetime.now(timezone.utc)
@@ -452,13 +480,9 @@ def main() -> int:
                 len(width_rows) * args.repetitions + args.repetitions
             ),
             "trajectory_rows_per_set": len(prompt_rows),
-            "sparse_final_groups": True,
-            "all_groups_reclaimed": all(
-                group["slots_reclaimed"]
-                for row in width_rows
-                for sample in row["samples"]
-                for group in sample["groups"]
-            ),
+            "sparse_final_groups": sparse_final_groups_passed,
+            "physical_widths_match": physical_width_passed,
+            "all_groups_reclaimed": reclaim_passed,
         },
         "lifecycle": {
             "passed": lifecycle_passed,
