@@ -1182,3 +1182,262 @@ def test_moonshine_cuda_batch_encoder_chain_graph_validation() -> None:
             benc.close()
     finally:
         loaded.weights.free(runtime=runtime)
+
+
+# ---------------------------------------------------------------------------
+# C8 P2 closure: opt-in cuDNN conv front-end route (long-bucket, non-default).
+# The C6/7.4 conv screen measured cudnnConvolutionForward at 9.2-23.6x over
+# the custom conv kernels at 1,248 frames, but cuDNN 9.25 only exposes fp16
+# output via the legacy API, so the activation epilogues run on the fp16
+# rounded conv output rather than the fp32 accumulator.  That divergence is
+# larger than the cuBLASLt reduction-order-only divergence and flips a token
+# on the retained synthetic fixture, so the cuDNN conv route is OPT-IN and
+# NON-DEFAULT (custom stays byte-exact); below the frame threshold it falls
+# back to the exact custom kernels.  The gates below characterize it.
+# ---------------------------------------------------------------------------
+
+
+def _conv_route_gate_requested() -> bool:
+    return os.environ.get("HIPENGINE_RUN_CUDA_CUDNN_ROUTE_GATE") == "1"
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_cudnn_route_validation() -> None:
+    """The cuDNN conv route and frame threshold validate their inputs."""
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    try:
+        with pytest.raises(ValueError, match="conv_route"):
+            MoonshineCudaBatchEncoderRuntime(
+                max_batch=1, audio_samples=_AUDIO_SAMPLES, loaded_model=loaded,
+                owns_weights=False, conv_route="bogus",
+            )
+        with pytest.raises(ValueError, match="long_bucket_conv_frames"):
+            MoonshineCudaBatchEncoderRuntime(
+                max_batch=1, audio_samples=_AUDIO_SAMPLES, loaded_model=loaded,
+                owns_weights=False, long_bucket_conv_frames=0,
+            )
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_cudnn_threshold_fallback_bit_exact() -> None:
+    """Below the frame threshold the cuDNN conv route is byte-exact (custom).
+
+    At the 40-frame bucket (frames < long_bucket_conv_frames) the opt-in
+    cuDNN route must not arm and the encoder output must be bit-identical to
+    the exact custom conv route.
+    """
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    audio = np.random.default_rng(11).standard_normal(
+        (1, _AUDIO_SAMPLES)
+    ).astype(np.float16)
+    mask = np.ones((1, _AUDIO_SAMPLES), dtype=np.int64)
+    try:
+        outputs = {}
+        for croute in ("custom", "cudnn"):
+            benc = MoonshineCudaBatchEncoderRuntime(
+                max_batch=1,
+                audio_samples=_AUDIO_SAMPLES,
+                loaded_model=loaded,
+                owns_weights=False,
+                conv_route=croute,
+            )
+            benc.prepare_encoder_kernels()
+            try:
+                benc.encode(audio, mask)
+                outputs[croute] = _tensor_to_host(runtime, benc.encoder_output())
+            finally:
+                benc.close()
+        assert np.array_equal(outputs["custom"], outputs["cudnn"]), (
+            "cuDNN conv route armed below the frame threshold"
+        )
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_cudnn_arithmetic_gate_long_bucket() -> None:
+    """Re-derived gate: cuDNN conv output stays bounded at the 1,248 bucket.
+
+    On the long bucket (rows = 1248) with the custom projection route (so only
+    the conv front end differs), the encoder output divergence from the exact
+    custom route must stay within the measured envelope: max-abs FP16 diff
+    <= 0.25 and relative L2 <= 4e-2 (the synthetic-tone measurement was
+    ~0.195 / 2.7e-2).  This is the deterministic arithmetic gate that replaces
+    the unusable exact token gate; it does NOT establish token identity, which
+    is why the cuDNN conv route stays opt-in and non-default.
+    """
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    audio = _lt_speech_audio(1, _LT_BUCKET_SAMPLES)
+    mask = np.ones((1, _LT_BUCKET_SAMPLES), dtype=np.int64)
+    try:
+        outputs = {}
+        for croute in ("custom", "cudnn"):
+            benc = MoonshineCudaBatchEncoderRuntime(
+                max_batch=1,
+                audio_samples=_LT_BUCKET_SAMPLES,
+                loaded_model=loaded,
+                owns_weights=False,
+                projection_route="custom",
+                conv_route=croute,
+            )
+            benc.prepare_encoder_kernels()
+            try:
+                benc.encode(audio, mask)
+                outputs[croute] = _tensor_to_host(runtime, benc.encoder_output())
+            finally:
+                benc.close()
+        custom = outputs["custom"].astype(np.float32)
+        cudnn = outputs["cudnn"].astype(np.float32)
+        assert np.isfinite(custom).all() and np.isfinite(cudnn).all()
+        diff = custom - cudnn
+        max_abs = float(np.max(np.abs(diff)))
+        rel_l2 = float(np.linalg.norm(diff) / np.linalg.norm(custom))
+        assert max_abs <= 0.25, f"max-abs FP16 diff {max_abs} exceeds 0.25"
+        assert rel_l2 <= 4e-2, f"relative L2 {rel_l2} exceeds 4e-2"
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled()
+    or not _snapshot_available()
+    or not _conv_route_gate_requested()
+    or not os.path.isdir(_FIXTURE_DIR),
+    reason="CUDA sm_120a gate, opt-in env, or fixture directory unavailable",
+)
+def test_moonshine_cuda_batch_encoder_cudnn_fixture_token_gate() -> None:
+    """Opt-in quality gate: real fixtures stay token-identical with cuDNN conv.
+
+    Forces the cuDNN conv route on at each retained fixture's native short
+    frame count (``long_bucket_conv_frames=24``, below the 768 production
+    threshold but exercising the same code path) with the custom projection
+    route, decodes to EOS seeded by the fixture's reference start token, and
+    asserts the transcript is token-identical to the exact custom route.
+
+    The synthetic ``synthetic-1s-seed1234`` fixture is intentionally excluded:
+    with the fp16-output cuDNN conv it flips one token versus custom (documented
+    as the reason the cuDNN conv route stays opt-in and non-default).
+    """
+    import json
+
+    from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+
+    def frames_for(samples: int) -> int:
+        length = (samples - 127) // 64 + 1
+        length = (length - 7) // 3 + 1
+        return (length - 3) // 2 + 1
+
+    def run_route(fixture: str, croute: str) -> list[int]:
+        path = os.path.join(_FIXTURE_DIR, f"{fixture}.npz")
+        with np.load(path) as data:
+            audio = data["input.values"].astype(np.float16)
+            mask = data["input.attention_mask"].astype(np.int64)
+        with open(path.replace(".npz", ".json")) as handle:
+            reference = [
+                int(t) for t in json.load(handle)["decoder"]["token_ids"]
+            ]
+        frames = frames_for(audio.shape[1])
+        benc = MoonshineCudaBatchEncoderRuntime(
+            max_batch=1,
+            audio_samples=audio.shape[1],
+            loaded_model=loaded,
+            owns_weights=False,
+            projection_route="custom",
+            conv_route=croute,
+            long_bucket_conv_frames=24,
+        )
+        benc.prepare_encoder_kernels()
+        bdec = MoonshineCudaBatchRuntime(
+            max_batch=1,
+            encoder_frames=frames,
+            loaded_model=loaded,
+            owns_weights=False,
+        )
+        bdec.prepare_decoder_kernels()
+        try:
+            benc.encode(audio, mask)
+            benc.handoff_to(bdec)
+            seed = reference[0] if reference else 0
+            transcripts: list[int] = []
+            toks = np.array([seed], dtype=np.int64)
+            done = False
+            for _position in range(_LT_MAX_STEPS):
+                bdec.set_batch_decode_state(
+                    tokens=toks.tolist(), position=bdec.self_cache_length
+                )
+                bdec.batch_token_step()
+                toks = bdec.read_tokens()
+                if done:
+                    continue
+                if int(toks[0]) == _EOS_ID:
+                    done = True
+                else:
+                    transcripts.append(int(toks[0]))
+                if done:
+                    break
+            return transcripts
+        finally:
+            bdec.close()
+            benc.close()
+
+    real_fixtures = [
+        "audio-hai-fp16",
+        "audio-konichiwa-fp16",
+        "audio-konichiwa.ogenkidesuka-fp16",
+        "audio-kumbawa-fp16",
+        "audio-sosososo-fp16",
+        "audio-sumimasen-fp16",
+    ]
+    try:
+        for fixture in real_fixtures:
+            custom = run_route(fixture, "custom")
+            cudnn = run_route(fixture, "cudnn")
+            assert custom == cudnn, (
+                f"{fixture}: cuDNN conv transcript diverged at position "
+                f"{next((i for i, (a, b) in enumerate(zip(custom, cudnn)) if a != b), len(custom))}"
+            )
+    finally:
+        loaded.weights.free(runtime=runtime)

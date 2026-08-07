@@ -129,6 +129,8 @@ class MoonshineCudaBatchEncoderRuntime:
         owns_weights: bool = True,
         projection_route: str = "custom",
         long_bucket_gemm_rows: int = 768,
+        conv_route: str = "custom",
+        long_bucket_conv_frames: int = 768,
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -138,10 +140,16 @@ class MoonshineCudaBatchEncoderRuntime:
             raise ValueError("max_batch must be a positive integer")
         if projection_route not in ("custom", "cublaslt"):
             raise ValueError("projection_route must be 'custom' or 'cublaslt'")
+        if conv_route not in ("custom", "cudnn"):
+            raise ValueError("conv_route must be 'custom' or 'cudnn'")
         if isinstance(long_bucket_gemm_rows, bool) or not isinstance(long_bucket_gemm_rows, int):
             raise ValueError("long_bucket_gemm_rows must be a positive integer")
         if long_bucket_gemm_rows <= 0:
             raise ValueError("long_bucket_gemm_rows must be a positive integer")
+        if isinstance(long_bucket_conv_frames, bool) or not isinstance(long_bucket_conv_frames, int):
+            raise ValueError("long_bucket_conv_frames must be a positive integer")
+        if long_bucket_conv_frames <= 0:
+            raise ValueError("long_bucket_conv_frames must be a positive integer")
         self.runtime = runtime or get_cuda_runtime()
         self.device = device or Device("cuda", 0)
         self.loaded_model = loaded_model
@@ -152,6 +160,8 @@ class MoonshineCudaBatchEncoderRuntime:
         self.audio_samples = int(audio_samples)
         self.projection_route = str(projection_route)
         self.long_bucket_gemm_rows = int(long_bucket_gemm_rows)
+        self.conv_route = str(conv_route)
+        self.long_bucket_conv_frames = int(long_bucket_conv_frames)
         self.encoder_frames = moonshine_encoder_frames_from_audio(self.audio_samples)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
         self.stream = 0
@@ -159,6 +169,10 @@ class MoonshineCudaBatchEncoderRuntime:
         self.cublaslt: object | None = None
         self._lt_problems: dict | None = None
         self._lt_epilogue_library: object | None = None
+        self.cudnn: object | None = None
+        self._conv_problems: dict | None = None
+        self._conv_lengths: dict | None = None
+        self._cudnn_epilogue_library: object | None = None
         self._enc_chain_graph: MoonshineCudaBatchEncoderChainGraph | None = None
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
@@ -219,6 +233,10 @@ class MoonshineCudaBatchEncoderRuntime:
         if self.projection_route == "cublaslt":
             # FP32 GEMM boundary for the fc1/fc2 bias/residual epilogues.
             reserve("gemm_f32", (batch, frames, intermediate), DType.FP32)
+        if self.conv_route == "cudnn":
+            # cuDNN conv3 outputs NCHW [B, 416, frames]; the row-major epilogue
+            # transposes it into the encoder "hidden" [B, frames, 416] layout.
+            reserve("conv3_out", (batch, hidden, frames), DType.FP16)
 
     def _initialize_workspace(self) -> None:
         assert self.spec is not None
@@ -278,12 +296,19 @@ class MoonshineCudaBatchEncoderRuntime:
             )
         self.encoder_libraries = libraries
         self._prepare_long_bucket_gemm()
+        self._prepare_long_bucket_conv()
         if self._use_cublaslt():
             from hipengine.kernels.cuda_sm120a.encoder.moonshine_encoder_lt import (
                 build_moonshine_encoder_lt,
             )
 
             self._lt_epilogue_library = build_moonshine_encoder_lt(load=True)
+        if self._use_cudnn_conv():
+            from hipengine.kernels.cuda_sm120a.encoder.moonshine_encoder_cudnn import (
+                build_moonshine_encoder_cudnn,
+            )
+
+            self._cudnn_epilogue_library = build_moonshine_encoder_cudnn(load=True)
         return libraries
 
     def _use_cublaslt(self) -> bool:
@@ -293,6 +318,160 @@ class MoonshineCudaBatchEncoderRuntime:
             self.projection_route == "cublaslt"
             and self.cublaslt is not None
             and self.max_batch * self.encoder_frames >= self.long_bucket_gemm_rows
+        )
+
+    def _use_cudnn_conv(self) -> bool:
+        """True when the long-bucket cuDNN conv route is armed for this batch."""
+
+        return (
+            self.conv_route == "cudnn"
+            and self.cudnn is not None
+            and self.encoder_frames >= self.long_bucket_conv_frames
+        )
+
+    def _prepare_long_bucket_conv(self) -> None:
+        """Create the three fixed-shape cuDNN conv problems (outside timing)."""
+
+        if self.conv_route != "cudnn":
+            return
+        if self.spec is None or self.weights is None:
+            return
+        if self.encoder_frames < self.long_bucket_conv_frames:
+            return
+        from hipengine.core.cudnn import Cudnn
+
+        batch = self.max_batch
+        hidden = self.spec.hidden_size
+        conv1_len = (self.audio_samples - _CONV1_KERNEL) // _CONV1_STRIDE + 1
+        conv2_len = (conv1_len - _CONV2_KERNEL) // _CONV2_STRIDE + 1
+        conv3_len = (conv2_len - _CONV3_KERNEL) // _CONV3_STRIDE + 1
+        assert conv3_len == self.encoder_frames
+        owner = Cudnn(runtime=self.runtime)
+        try:
+            convs = {
+                "conv1": owner.conv(
+                    batch, 1, hidden, _CONV1_KERNEL, _CONV1_STRIDE,
+                    self.audio_samples,
+                ),
+                "conv2": owner.conv(
+                    batch, hidden, 2 * hidden, _CONV2_KERNEL, _CONV2_STRIDE,
+                    conv1_len,
+                ),
+                "conv3": owner.conv(
+                    batch, 2 * hidden, hidden, _CONV3_KERNEL, _CONV3_STRIDE,
+                    conv2_len,
+                ),
+            }
+        except Exception:
+            owner.close()
+            raise
+        self.cudnn = owner
+        self._conv_problems = convs
+        self._conv_lengths = {
+            "conv1": conv1_len,
+            "conv2": conv2_len,
+            "conv3": conv3_len,
+        }
+
+    def _enqueue_conv_frontend_cudnn(
+        self, *, stream: int, conv1_len: int, conv2_len: int
+    ) -> None:
+        """cuDNN conv front end + retained FP16-rounding activation epilogues.
+
+        conv1+tanh, GroupNorm, conv2+gelu, conv3+gelu-with-transpose into the
+        encoder ``hidden`` layout, using the fixed cuDNN problems created by
+        :meth:`_prepare_long_bucket_conv` and the element-wise epilogue
+        kernels of ``moonshine_encoder_cudnn``.  The only divergence from the
+        exact custom route is the FP32-reassociation/ULP rounding of the
+        cuDNN conv output before the epilogue (the accepted C8 re-derived
+        numerical gate).
+        """
+
+        if self.spec is None or self.weights is None or self.cudnn is None:
+            raise RuntimeError("Moonshine batch encoder runtime is closed")
+        from hipengine.kernels.cuda_sm120a.encoder.moonshine_encoder import (
+            moonshine_groupnorm_batch_fp16,
+        )
+        from hipengine.kernels.cuda_sm120a.encoder.moonshine_encoder_cudnn import (
+            moonshine_bias_gelu_apply_fp16,
+            moonshine_bias_gelu_apply_rowmajor_fp16,
+            moonshine_tanh_apply_fp16,
+        )
+
+        batch = self.max_batch
+        hidden = self.spec.hidden_size
+        convs = self._conv_problems
+        assert convs is not None
+        lib = self._cudnn_epilogue_library
+        if lib is None:
+            raise RuntimeError("Moonshine batch encoder cuDNN epilogues are not prepared")
+        common = {"stream": stream, "runtime": self.runtime}
+        epilogue = {"stream": stream, "library": lib, "runtime": self.runtime}
+        weights = self.weights
+        # conv1: [B, 1, samples] -> [B, hidden, conv1_len] fp16 output, then
+        # fp16(tanhf(fp32(in))) in place on conv1_out.
+        convs["conv1"].forward(
+            self.tensor("audio").ptr,
+            weights["model.encoder.conv1.weight"].ptr,
+            self.tensor("conv1_out").ptr,
+            workspace_ptr=0,
+            stream=stream,
+        )
+        moonshine_tanh_apply_fp16(
+            self.tensor("conv1_out").ptr,
+            self.tensor("conv1_out").ptr,
+            batch * hidden * conv1_len,
+            **epilogue,
+        )
+        moonshine_groupnorm_batch_fp16(
+            self.tensor("conv1_out").ptr,
+            weights["model.encoder.groupnorm.weight"].ptr,
+            weights["model.encoder.groupnorm.bias"].ptr,
+            self.tensor("conv1_out").ptr,
+            self.tensor("groupnorm_partial").ptr,
+            self.tensor("groupnorm_mean_rstd").ptr,
+            batch,
+            hidden,
+            conv1_len,
+            eps=_GROUPNORM_EPS,
+            library=self.encoder_libraries.encoder,
+            **common,
+        )
+        # conv2: [B, hidden, conv1_len] -> [B, 2*hidden, conv2_len] fp16
+        # output, then bias+gelu in place on conv2_out.
+        convs["conv2"].forward(
+            self.tensor("conv1_out").ptr,
+            weights["model.encoder.conv2.weight"].ptr,
+            self.tensor("conv2_out").ptr,
+            workspace_ptr=0,
+            stream=stream,
+        )
+        moonshine_bias_gelu_apply_fp16(
+            self.tensor("conv2_out").ptr,
+            weights["model.encoder.conv2.bias"].ptr,
+            self.tensor("conv2_out").ptr,
+            batch * 2 * hidden * conv2_len,
+            2 * hidden,
+            conv2_len,
+            **epilogue,
+        )
+        # conv3: [B, 2*hidden, conv2_len] -> NCHW fp16 scratch, then row-major
+        # bias+gelu into the encoder "hidden" [B, frames, hidden] layout.
+        convs["conv3"].forward(
+            self.tensor("conv2_out").ptr,
+            weights["model.encoder.conv3.weight"].ptr,
+            self.tensor("conv3_out").ptr,
+            workspace_ptr=0,
+            stream=stream,
+        )
+        moonshine_bias_gelu_apply_rowmajor_fp16(
+            self.tensor("conv3_out").ptr,
+            weights["model.encoder.conv3.bias"].ptr,
+            self.tensor("hidden").ptr,
+            batch,
+            hidden,
+            self.encoder_frames,
+            **epilogue,
         )
 
     def _prepare_long_bucket_gemm(self) -> None:
@@ -590,56 +769,66 @@ class MoonshineCudaBatchEncoderRuntime:
 
         # ---- conv front end -------------------------------------------------
         length = (real_samples - _CONV1_KERNEL) // _CONV1_STRIDE + 1
-        moonshine_conv1_tanh_batch_fp16(
-            self.tensor("audio").ptr,
-            self.weights["model.encoder.conv1.weight"].ptr,
-            self.tensor("conv1_out").ptr,
-            batch,
-            real_samples,
-            length,
-            library=libraries.encoder,
-            **common,
-        )
-        moonshine_groupnorm_batch_fp16(
-            self.tensor("conv1_out").ptr,
-            self.weights["model.encoder.groupnorm.weight"].ptr,
-            self.weights["model.encoder.groupnorm.bias"].ptr,
-            self.tensor("conv1_out").ptr,
-            self.tensor("groupnorm_partial").ptr,
-            self.tensor("groupnorm_mean_rstd").ptr,
-            batch,
-            hidden,
-            length,
-            eps=_GROUPNORM_EPS,
-            library=libraries.encoder,
-            **common,
-        )
-        conv1_length = length
         conv2_length = (length - _CONV2_KERNEL) // _CONV2_STRIDE + 1
-        moonshine_conv2_gelu_batch_fp16(
-            self.tensor("conv1_out").ptr,
-            self.weights["model.encoder.conv2.weight"].ptr,
-            self.weights["model.encoder.conv2.bias"].ptr,
-            self.tensor("conv2_out").ptr,
-            batch,
-            conv1_length,
-            conv2_length,
-            library=libraries.encoder,
-            **common,
-        )
+        if self._use_cudnn_conv():
+            self._enqueue_conv_frontend_cudnn(
+                stream=stream,
+                conv1_len=length,
+                conv2_len=conv2_length,
+            )
+        else:
+            moonshine_conv1_tanh_batch_fp16(
+                self.tensor("audio").ptr,
+                self.weights["model.encoder.conv1.weight"].ptr,
+                self.tensor("conv1_out").ptr,
+                batch,
+                real_samples,
+                length,
+                library=libraries.encoder,
+                **common,
+            )
+            moonshine_groupnorm_batch_fp16(
+                self.tensor("conv1_out").ptr,
+                self.weights["model.encoder.groupnorm.weight"].ptr,
+                self.weights["model.encoder.groupnorm.bias"].ptr,
+                self.tensor("conv1_out").ptr,
+                self.tensor("groupnorm_partial").ptr,
+                self.tensor("groupnorm_mean_rstd").ptr,
+                batch,
+                hidden,
+                length,
+                eps=_GROUPNORM_EPS,
+                library=libraries.encoder,
+                **common,
+            )
+            moonshine_conv2_gelu_batch_fp16(
+                self.tensor("conv1_out").ptr,
+                self.weights["model.encoder.conv2.weight"].ptr,
+                self.weights["model.encoder.conv2.bias"].ptr,
+                self.tensor("conv2_out").ptr,
+                batch,
+                length,
+                conv2_length,
+                library=libraries.encoder,
+                **common,
+            )
         conv3_length = (conv2_length - _CONV3_KERNEL) // _CONV3_STRIDE + 1
         assert conv3_length == frames
-        moonshine_conv3_gelu_batch_fp16(
-            self.tensor("conv2_out").ptr,
-            self.weights["model.encoder.conv3.weight"].ptr,
-            self.weights["model.encoder.conv3.bias"].ptr,
-            self.tensor("hidden").ptr,
-            batch,
-            conv2_length,
-            conv3_length,
-            library=libraries.encoder,
-            **common,
-        )
+        if self._use_cudnn_conv():
+            # The cuDNN branch already wrote the encoder ``hidden`` tensor.
+            pass
+        else:
+            moonshine_conv3_gelu_batch_fp16(
+                self.tensor("conv2_out").ptr,
+                self.weights["model.encoder.conv3.weight"].ptr,
+                self.weights["model.encoder.conv3.bias"].ptr,
+                self.tensor("hidden").ptr,
+                batch,
+                conv2_length,
+                conv3_length,
+                library=libraries.encoder,
+                **common,
+            )
 
         # ---- eight encoder layers -------------------------------------------
         mask = self.tensor("encoder_attention_mask").ptr
@@ -963,6 +1152,9 @@ class MoonshineCudaBatchEncoderRuntime:
             if self.cublaslt is not None:
                 self.cublaslt.close()
                 self.cublaslt = None
+            if self.cudnn is not None:
+                self.cudnn.close()
+                self.cudnn = None
             if self.workspace is not None:
                 self.workspace.free()
             if self.owns_weights and self.loaded_model is not None and self.weights is not None:
