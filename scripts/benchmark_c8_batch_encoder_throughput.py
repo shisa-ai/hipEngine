@@ -46,6 +46,9 @@ from hipengine.runtime.moonshine_encoder_cuda_batch import (
     MoonshineCudaBatchEncoderRuntime,
 )
 
+from c8_report_common import build_report, percentile
+
+
 _SNAPSHOT = os.environ.get(
     "HIPENGINE_MOONSHINE_SNAPSHOT",
     "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/"
@@ -175,12 +178,20 @@ def _batch_enc_handoff_graph_timing(
     }
 
 
-def _print_graph_row(batch: int, label: str, eager_ms: float, graph_ms: float) -> dict:
+def _print_graph_row(batch: int, label: str, eager_ms: float, graph_ms: float,
+                    *, eager_raw: list[float] | None = None,
+                    graph_raw: list[float] | None = None) -> dict:
     speedup = eager_ms / graph_ms if graph_ms > 0 else float("inf")
     print(f"{batch:>3} {label:<16} {eager_ms:>9.3f} {graph_ms:>9.3f} "
           f"{speedup:>9.2f}x")
-    return {"eager_enc_handoff_ms": float(eager_ms), "graph_enc_handoff_ms": float(graph_ms),
-            "graph_speedup": float(speedup)}
+    row: dict = {"eager_enc_handoff_ms": float(eager_ms), "graph_enc_handoff_ms": float(graph_ms),
+                 "graph_speedup": float(speedup)}
+    # RR-6: retain raw per-route wall samples for the graph vs eager pair.
+    if eager_raw is not None:
+        row["eager_enc_handoff_ms_raw"] = [float(v) for v in eager_raw]
+    if graph_raw is not None:
+        row["graph_enc_handoff_ms_raw"] = [float(v) for v in graph_raw]
+    return row
 
 
 def _c1_full_route(runtime, loaded, audio, mask, seeds) -> tuple[float, list[list[int]]]:
@@ -283,15 +294,24 @@ def _pct(sorted_vals: list[float], pct: float) -> float:
 def _print_row(batch: int, label: str, times: list[float], c1_total_s: float) -> dict:
     median = statistics.median(times)
     sorted_times = sorted(times)
-    p50 = _pct(sorted_times, 50) * 1000.0
-    p95 = _pct(sorted_times, 95) * 1000.0
+    p50 = percentile(sorted_times, 50) * 1000.0
+    p95 = percentile(sorted_times, 95) * 1000.0
     req_s = batch / median
     c1_req_s = batch / c1_total_s
     speedup = req_s / c1_req_s
     print(f"{batch:>3} {label:<14} {median*1000:>9.3f} {req_s:>8.1f} {p50:>8.3f} "
           f"{p95:>8.3f} {speedup:>9.2f}x")
-    return {"c1_seq_total_s": float(c1_total_s), "batch_median_ms": float(median),
-            "batch_req_per_s": float(req_s), "vs_c1_seq_req_per_s": float(speedup)}
+    return {
+        "c1_seq_total_s": float(c1_total_s),
+        "batch_median_ms": float(median),
+        "batch_req_per_s": float(req_s),
+        "vs_c1_seq_req_per_s": float(speedup),
+        # RR-6: retain the raw per-route wall samples and actual P50/P95.
+        "route_wall_s_raw": [float(value) for value in times],
+        "p50_ms": float(p50),
+        "p95_ms": float(p95),
+        "sample_count": len(times),
+    }
 
 
 def main() -> None:
@@ -414,6 +434,8 @@ def main() -> None:
                         batch, "lt-graph",
                         statistics.median(eager) * 1000.0,
                         statistics.median(graph) * 1000.0,
+                        eager_raw=[value * 1000.0 for value in eager],
+                        graph_raw=[value * 1000.0 for value in graph],
                     )
                     row.update(contract)
                     results["graph"][str(batch)] = row
@@ -432,10 +454,46 @@ def main() -> None:
         "warmup_routes": _WARMUP,
         "timed_routes": _ROUTES,
     }
+    # RR-6: complete retained report with raw samples, P50/P95, full source
+    # manifest hashes, clean git revision, and dependency-adjusted bytes.  The
+    # in-loop transcript assertions passed (they raise on divergence), so the
+    # full-route batch is bit-exact vs the c=1 sessions at every B.
+    results.setdefault("correctness", {})
+    results["correctness"]["batch_transcripts_bit_exact_vs_c1"] = True
+    report = build_report(
+        artifact="moonshine_cuda_c8_batch_encoder_throughput",
+        scope={
+            "target": "batch_encoder_full_route_and_encoder_only",
+            "gpu_index": 0,
+            "exclusive_gpu": True,
+            "fixtures": [_LONG_FIXTURE, "synthetic-1248-long-bucket"],
+        },
+        environment={
+            "torch": _torch_version(),
+            "platform": __import__("platform").platform(),
+        },
+        results=results["results"],
+        correctness=results["correctness"],
+        method=results["method"],
+        dependency_route=(
+            "c8_batch_encoder_cublaslt_route"
+            if args.encoder_graph
+            else "custom_cuda_runtime_subset"
+        ),
+    )
     if args.json_out:
         with open(args.json_out, "w") as handle:
-            json.dump(results, handle, indent=2)
+            json.dump(report, handle, indent=2)
         print(f"wrote {args.json_out}")
+
+
+def _torch_version() -> str:
+    try:
+        import torch
+
+        return torch.__version__
+    except Exception:
+        return "n/a"
 
 
 if __name__ == "__main__":
