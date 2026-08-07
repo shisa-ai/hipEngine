@@ -362,8 +362,15 @@ def main() -> int:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--version-file", type=Path, default=DEFAULT_VERSION_FILE)
     parser.add_argument("--raw-root", type=Path, default=DEFAULT_RAW_ROOT)
+    parser.add_argument(
+        "--phase",
+        action="append",
+        choices=tuple(PHASES),
+        help="profile only this phase; repeat for multiple phases",
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    selected_phases = tuple(args.phase or PHASES)
 
     git = _git_context()
     compiler_version = write_version_file(args.version_file)
@@ -379,7 +386,7 @@ def main() -> int:
             raw_root=args.raw_root,
             version_file=args.version_file,
         )
-        for phase in PHASES
+        for phase in selected_phases
     ]
     rocminfo = _capture(["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"])
     artifact = {
@@ -419,9 +426,12 @@ def main() -> int:
                 "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH": os.environ.get(
                     "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH"
                 ),
+                "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT": os.environ.get(
+                    "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT"
+                ),
             },
             "raw_root": str(args.raw_root),
-            "profiles": list(PHASES),
+            "profiles": list(selected_phases),
         },
         "profiles": profiles,
         "notes": [
