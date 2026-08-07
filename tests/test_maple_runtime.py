@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.runtime import maple as maple_runtime
 from hipengine.runtime.maple import MapleRunner
 
@@ -46,3 +48,40 @@ def test_equal_capacity_swa_and_global_span_owners_are_both_published(monkeypatc
         (sliding_spans, 7, "attention-library", "runtime"),
         (global_spans, 7, "attention-library", "runtime"),
     ]
+
+
+def test_maple_prefill_native_matches_serial_step_gate(hip_test_target_arch) -> None:
+    """prefill_native (batched P4) must agree with the serial step-loop next token.
+
+    GPU + real checkpoint guarded: skipped when no supported HIP target or when
+    the Maple checkpoint cannot be resolved locally.
+    """
+    del hip_test_target_arch
+    try:
+        from hipengine.loading.maple import load_maple_checkpoint
+    except Exception as exc:  # noqa: BLE001 - import guard
+        pytest.skip(f"maple loading unavailable: {exc}")
+
+    model = "deepgrove/maple-preview-2bit-mlx"
+    backend = "hip_gfx1151"
+    prompt = (9707, 13, 358, 1093, 220, 3100, 1066, 13, 366, 264, 1156, 15)
+    try:
+        checkpoint = load_maple_checkpoint(model)
+    except Exception as exc:  # noqa: BLE001 - checkpoint missing
+        pytest.skip(f"maple checkpoint unavailable: {exc}")
+
+    serial_token = None
+    runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
+    try:
+        for tok in prompt:
+            serial_token = runner.step(tok).token_id
+    finally:
+        runner.close()
+
+    runner2 = MapleRunner.load(checkpoint, backend=backend, max_context=64)
+    try:
+        native = runner2.prefill_native(prompt)
+    finally:
+        runner2.close()
+
+    assert native.token_id == serial_token
