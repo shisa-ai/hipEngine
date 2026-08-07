@@ -13,6 +13,7 @@ import pytest
 from hipengine.runtime.moonshine_cuda_continuous import (
     ContinuousBatchBackpressureError,
     MoonshineCudaContinuousBatchRuntime,
+    MoonshineCudaExactContinuousBatchRuntime,
 )
 
 _FIXTURE_DIR = Path(
@@ -61,7 +62,7 @@ class _Spec:
     decoder_layers: int = 1
     decoder_kv_heads: int = 1
     head_dim: int = 1
-    self_cache_capacity: int = 8
+    self_cache_capacity: int = 12
     vocab_size: int = 256
 
 
@@ -135,6 +136,9 @@ class _FakeDecoder:
         self.program_lengths[destination] = self.program_lengths[source]
         self.moves.append((source, destination))
 
+    def copy_batch_row_to(self, destination_runtime, source, destination) -> None:
+        destination_runtime.program_lengths[destination] = self.program_lengths[source]
+
     def set_mixed_batch_decode_state(self, *, tokens, positions, active_batch) -> None:
         assert len(tokens) == len(positions) == active_batch
         self.tokens[:active_batch] = tokens
@@ -152,8 +156,7 @@ class _FakeDecoder:
     def _enqueue_batch_token_step(
         self, *, route_position, threads, stream, active_batch
     ) -> None:
-        assert route_position == 7
-        assert threads == 256
+        assert (route_position, threads) in ((0, 32), (7, 256))
         assert stream == self.stream
         if self.runtime.capturing:
             self.runtime.capture_callback = lambda: self._compute(active_batch)
@@ -220,6 +223,48 @@ def test_continuous_scheduler_fifo_mixed_positions_reclaim_and_lru() -> None:
     assert decoder.closed is True
     assert decoder.runtime.destroyed_graphs
     assert decoder.runtime.destroyed_execs
+
+
+def test_exact_continuous_scheduler_transfers_once_between_topology_regions() -> None:
+    early = _FakeDecoder(max_batch=2)
+    mature = _FakeDecoder(max_batch=2)
+    scheduler = MoonshineCudaExactContinuousBatchRuntime(
+        early,
+        mature,
+        owns_decoders=True,
+        max_pending=3,
+        max_graphs=2,
+    )
+    for request_id, length in (("long", 9), ("short", 3), ("queued", 2)):
+        keys, values, mask = _request_arrays(length)
+        scheduler.submit(request_id, keys, values, mask=mask)
+    transfers = []
+    while not scheduler.idle:
+        transfers.extend(scheduler.step().transferred)
+    assert transfers == ["long"]
+    assert scheduler.take_completed("long").tokens == (
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        2,
+    )
+    assert scheduler.take_completed("short").tokens == (100, 101, 2)
+    assert scheduler.take_completed("queued").tokens == (100, 2)
+    graph = scheduler.graph_cache_contract()
+    assert graph["topology"] == "exact_two_region"
+    assert graph["size"] <= 2
+    assert graph["evictions"] > 0
+    contract = scheduler.scheduler_contract()
+    assert contract["region_transfers"] == 1
+    assert contract["maximum_active"] == 2
+    scheduler.close()
+    assert early.closed is True
+    assert mature.closed is True
 
 
 def test_continuous_scheduler_backpressure_duplicates_cancel_and_bounds() -> None:
@@ -332,4 +377,82 @@ def test_continuous_scheduler_real_fixtures_dynamic_arrival_exact_to_eos() -> No
     finally:
         scheduler.close()
         assert decoder.teardown_returned_to_baseline is True
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_gate_enabled(),
+    reason="CUDA sm_120a gate or Moonshine fixtures are not available",
+)
+def test_exact_continuous_scheduler_real_dynamic_arrival_exact_to_eos() -> None:
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.device import Device
+    from hipengine.loading.moonshine import load_moonshine_model
+    from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    frames = max(
+        int(
+            json.loads((_FIXTURE_DIR / f"{name}.json").read_text())["input"][
+                "encoder_frames"
+            ]
+        )
+        for name in _FIXTURES
+    )
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    early = MoonshineCudaBatchRuntime(
+        max_batch=4,
+        encoder_frames=frames,
+        loaded_model=loaded,
+        owns_weights=False,
+    )
+    mature = MoonshineCudaBatchRuntime(
+        max_batch=4,
+        encoder_frames=frames,
+        loaded_model=loaded,
+        owns_weights=False,
+    )
+    early.prepare_decoder_kernels()
+    mature.prepare_decoder_kernels()
+    scheduler = MoonshineCudaExactContinuousBatchRuntime(
+        early,
+        mature,
+        owns_decoders=True,
+        max_pending=8,
+        max_graphs=4,
+    )
+    expected: dict[str, list[int]] = {}
+    try:
+        for name in _FIXTURES[:2]:
+            keys, values, mask, reference = _load_fixture(name, frames)
+            scheduler.submit(name, keys, values, mask=mask, seed_token_id=reference[0])
+            expected[name] = reference[1 : reference.index(2, 1) + 1]
+        scheduler.step()
+        scheduler.step()
+        for name in _FIXTURES[2:]:
+            keys, values, mask, reference = _load_fixture(name, frames)
+            scheduler.submit(name, keys, values, mask=mask, seed_token_id=reference[0])
+            expected[name] = reference[1 : reference.index(2, 1) + 1]
+        while not scheduler.idle:
+            scheduler.step()
+        for name in _FIXTURES:
+            result = scheduler.take_completed(name)
+            assert result.reason == "eos"
+            assert list(result.tokens) == expected[name]
+        contract = scheduler.scheduler_contract()
+        assert contract["submitted"] == 6
+        assert contract["completed"] == 6
+        assert contract["maximum_active"] == 4
+        assert contract["region_transfers"] >= 1
+        graph = scheduler.graph_cache_contract()
+        assert graph["topology"] == "exact_two_region"
+        assert graph["size"] <= 4
+        assert graph["replays"] > 0
+    finally:
+        scheduler.close()
+        assert mature.teardown_returned_to_baseline is True
+        assert early.teardown_returned_to_baseline is True
         loaded.weights.free(runtime=runtime)

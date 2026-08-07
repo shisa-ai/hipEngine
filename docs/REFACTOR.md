@@ -3121,3 +3121,16 @@ should be boring.
   ownership and focused integration tests are removed. Keep only the separately
   registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
   production remains exact and H2 must not stack H1 arithmetic.
+
+## Moonshine uniform-t256 continuous scheduler — rejected diagnostic
+
+- The one-region `MoonshineCudaContinuousBatchRuntime` remains only to reproduce
+  the lower-workspace Design-B experiment and its rejection evidence. Its clean
+  full 266-case Japanese FLEURS gate is deterministic/EOS-clean but changes one
+  transcript and regresses **1,062 -> 1,064** character errors, so it must never
+  become the default or be described as quality-promoted.
+- Production selection is the exact two-region scheduler (t32 positions 0-6,
+  one D2D state transfer, t256 positions 7-193). Remove the uniform class after
+  the rejected report and exact replacement have survived one clean release,
+  unless it remains necessary for explicit arithmetic bisection. Preserve the
+  static lockstep runtime as the exact rollback/comparison route.

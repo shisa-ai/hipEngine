@@ -345,7 +345,7 @@ def main() -> int:
     from hipengine.loading.moonshine import load_moonshine_model
     from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
     from hipengine.runtime.moonshine_cuda_continuous import (
-        MoonshineCudaContinuousBatchRuntime,
+        MoonshineCudaExactContinuousBatchRuntime,
     )
 
     runtime = get_cuda_runtime()
@@ -360,16 +360,24 @@ def main() -> int:
     results: dict[str, Any] = {}
     try:
         for batch in args.batches:
-            continuous_decoder = MoonshineCudaBatchRuntime(
+            early_decoder = MoonshineCudaBatchRuntime(
                 max_batch=batch,
                 encoder_frames=frames,
                 loaded_model=loaded,
                 owns_weights=False,
             )
-            continuous_decoder.prepare_decoder_kernels()
-            continuous = MoonshineCudaContinuousBatchRuntime(
-                continuous_decoder,
-                owns_decoder=True,
+            mature_decoder = MoonshineCudaBatchRuntime(
+                max_batch=batch,
+                encoder_frames=frames,
+                loaded_model=loaded,
+                owns_weights=False,
+            )
+            early_decoder.prepare_decoder_kernels()
+            mature_decoder.prepare_decoder_kernels()
+            continuous = MoonshineCudaExactContinuousBatchRuntime(
+                early_decoder,
+                mature_decoder,
+                owns_decoders=True,
                 max_pending=args.requests,
                 max_graphs=args.max_graphs,
             )
@@ -383,13 +391,20 @@ def main() -> int:
                 )
                 continuous_graph = continuous.graph_cache_contract()
                 continuous_scheduler = continuous.scheduler_contract()
-                continuous_workspace = continuous_decoder.allocation_contract()[
-                    "workspace_nbytes"
-                ]
+                continuous_workspace = sum(
+                    decoder.allocation_contract()["workspace_nbytes"]
+                    for decoder in (early_decoder, mature_decoder)
+                )
             finally:
                 continuous.close()
-            if not continuous_decoder.teardown_returned_to_baseline:
-                raise RuntimeError(f"continuous B={batch} decoder teardown leaked")
+            if not mature_decoder.teardown_returned_to_baseline:
+                raise RuntimeError(
+                    f"continuous B={batch} mature decoder teardown leaked"
+                )
+            if not early_decoder.teardown_returned_to_baseline:
+                raise RuntimeError(
+                    f"continuous B={batch} early decoder teardown leaked"
+                )
 
             lockstep_decoder = MoonshineCudaBatchRuntime(
                 max_batch=batch,
@@ -479,7 +494,7 @@ def main() -> int:
             "encoder_frames": frames,
             "warmup_samples": args.warmup,
             "timed_samples": args.iterations,
-            "continuous_topology": "uniform_t256_rederived",
+            "continuous_topology": "exact two-region: t32 positions 0-6 / t256 positions 7-193",
             "lockstep_topology": "exact t32 positions 0-6 / t256 positions 7-193",
             "timing": "synchronized end-to-end scheduler wall including cross-cache admission",
             "all_requests_logically_submitted_at_sample_start": True,
@@ -490,9 +505,9 @@ def main() -> int:
         "correctness": {
             "all_outputs_exact_to_six_fixture_references": True,
             "all_routes_repeat_deterministic": True,
-            "uniform_t256_quality_contract": (
-                "re-derived: six retained fixtures exact to EOS; broader labeled gate "
-                "is owned by the docs-side promotion packet"
+            "continuous_numerical_contract": (
+                "bit-exact topology per request: t32 positions 0-6, one D2D state "
+                "transfer, then t256 positions 7-193"
             ),
         },
         "results": results,
