@@ -35,8 +35,9 @@ used** by the exact production path.
 - c1 decode is resident and exact. The qualified one-dispatch router and exact
   wave32 affine4 head are defaults; sampling remains greedy-only
   (`temperature=0`).
-- c=2/4/8 batch decode and sparse slot reclaim are validated as a
-  **fixed-capacity runtime helper**, not yet as public server throughput.
+- c=2/4/8 batch decode uses the retained exact affine4 row-reuse head; sparse
+  slot reclaim is validated as a **fixed-capacity runtime helper**, not yet as
+  public server throughput.
 - All tracked allocations return to zero on close.
 
 ## Model architecture
@@ -108,8 +109,10 @@ device until `close()`.
 `MapleBatchRunner` runs fixed c=2/4/8 rows through the batched embedding,
 attention, MoE, LM-head, and argmax chain. Each request has disjoint SWA and
 global ring regions; positions wrap inside that request rather than into an
-adjacent slot. `MapleContinuousBatcher` adds validated admission, sparse active
-masks, and offset-correct reclaim.
+adjacent slot. The c2/c4/c8 LM head loads each full-vocabulary affine4 row once
+across request rows while preserving each request's exact FP32 result.
+`MapleContinuousBatcher` adds validated admission, sparse active masks, and
+offset-correct reclaim.
 
 This helper is useful for kernel and throughput work, but it is **not connected
 to hipEngine's public generation scheduler or a production server endpoint**.
@@ -191,9 +194,9 @@ Evidence:
 | c1 natural+heldout contexts | **153.201 tok/s** (6.527-ms mean, 6.498-ms median) | clean paired 18-prompt qualification; model load, native prefill, and warmup excluded |
 | c1 fixed-token A/B candidate | **202.580 tok/s** (4.936-ms process mean) | four alternating fresh baseline/candidate processes; all candidate processes >201 tok/s |
 | c1 cached-trace companion | **199.293 tok/s** (5.018-ms median) | separate clean trace process; 4.550-ms kernels and 271 launches/token |
-| c=2, 64 tokens/request | **218.818 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
-| c=4, 64 tokens/request | **261.099 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
-| c=8, 64 tokens/request | **299.181 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
+| c=2, 64 tokens/request | **250.481 aggregate tok/s** | exact row-reuse helper median, 3 repeats |
+| c=4, 64 tokens/request | **346.365 aggregate tok/s** | exact row-reuse helper median, 3 repeats |
+| c=8, 64 tokens/request | **428.063 aggregate tok/s** | exact row-reuse helper median, 3 repeats |
 
 The D0 one-dispatch router is retained/default. On all natural and heldout
 contexts it improves its exact two-dispatch rollback **139.538 -> 145.321
@@ -216,12 +219,18 @@ above 201 tok/s. It changes no kernel, launch, pointer, allocation, or math. The
 complete current category gate is exact and its 153.201 tok/s candidate is only
 **0.14%** below the prior natural-context row.
 
-Every measured c=2/4/8 trajectory matches an independent c1 trajectory. The
-18-prompt category/heldout seed gate also passes, including a sparse final c=8
-group. These batch rows exclude model load and prompt prefill and must not be
-reported as public server throughput.
+D1's exact batched affine4 head is retained/default. One block owns one
+vocabulary row across all requests, reducing clean selector-unset c2/c4/c8
+helper medians **218.818/261.099/299.181 -> 250.481/346.365/428.063 tok/s
+(+14.47%/+32.66%/+43.08%)**. Every measured c2/c4/c8 trajectory matches an
+independent c1 trajectory. The 18-prompt category/heldout seed gate also passes,
+including a sparse final c8 group, and explicit reclaimed-slot reuse is exact.
+The head writes logits only and is FP32-bit exact to the original all-row
+kernel, so hidden/KV/span state has no new writer. These rows exclude model load
+and prompt prefill and must not be reported as public server throughput.
 
 Evidence:
+[D1 batched affine4 row reuse](../benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json),
 [D0 c1 router qualification](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
 [D0 affine4 qualification](../benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
 [D0 selector snapshot](../benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json),
@@ -256,7 +265,7 @@ text as proof of numerical correctness.
 | D0 wave32 vs group64 affine4 head, same complete protocol | **36/36** native-start and final state hashes; **1,296/1,296** tokens/top logits; **2,592/2,592** zero-counter checks |
 | D0 selector-snapshot current production, repeated complete protocol | same **36/36** state pairs, **1,296/1,296** positions, **2,592/2,592** zero-counter checks, and exact teardown |
 | M5 260-token cross-chunk continuation | seed plus three subsequent decode tokens exact |
-| M6 c=2/4/8 and 514-step SWA-wrap tests | all generated trajectories exact |
+| D1/M6 c=2/4/8, sparse/reclaimed slots, and 514-step SWA wrap | FP32 head bits and all generated trajectories exact |
 | Public canonical prompt | coherent 37-token answer, real EOS 151645, deterministic resident repeat |
 | Lifecycle | tracked ownership returns to zero |
 
@@ -269,6 +278,7 @@ Primary evidence:
 
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
+- [D1 exact batched affine4 row reuse](../benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json)
 - [D0 one-dispatch c1 router](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json)
 - [D0 exact wave32 affine4 head](../benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json)
 - [D0 selector snapshot](../benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json)
@@ -286,13 +296,14 @@ Clean cached-only profiles freeze every retained phase: P0 is the immutable P1
 baseline, P1 is the immutable P2 baseline, and P2 remains the current prefill
 production row after P3's exact tile-16/32 screen regressed and direct BF16
 WMMA failed byte exactness. D0 supersedes the old c1 diagnostic with a clean
-selector-unset profile; c8 remains the corrected helper baseline:
+selector-unset profile; D1 supersedes the corrected pre-row-reuse c8 helper
+profile:
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
 | native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **1.78%** | **0.31%** |
 | c1 decode, post-D0 selector snapshot (trace process) | **5.018 ms/token** | **4.550 ms** | **9.32%** | **21.28%** |
-| c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
+| c8 helper decode, post-D1 | **19.296 ms/batch** | **17.305 ms** | **10.32%** | **21.58%** |
 
 ### P0 retained: sample only the final prefill row
 
@@ -346,7 +357,8 @@ exact and no additional persistent memory. Local128 remains the rollback.
 | **P2 — DONE** | GQA/query-row prefill attention | Retained at 749.175/741.368/754.000 tok/s and byte-exact; attention falls **63.993 -> 21.916 ms (2.920x)** with no memory or launch increase. |
 | **P3 — DONE / REJECTED** | Retune dense ternary row tiles and test native BF16 WMMA | Tile 8/16/32 are bit-exact, but a counterbalanced natural+heldout screen measures **744.116/731.182/571.923 tok/s** and tile 16/32 lose all 16 pairs. Direct WMMA then changes **106/256 FP32** K16 partials and **43/655,360 BF16** production-shape outputs. All candidate surfaces are removed; tile 8 remains production. |
 | **D0 — DONE** | Exact c1 kernel/host work, not graph promotion | The default router passes clean at **+4.14%**, exact wave32 affine4 passes at **+6.77%**, and per-token selector snapshotting improves fresh-process fixed-token A/B **200.279 -> 202.580 tok/s (+1.15%)** with all four candidate processes >201 tok/s. Current natural-context throughput is 153.201 tok/s with the complete exact gate. |
-| **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
+| **D1 — DONE** | c2/c4/c8 exact affine4 row reuse | Retained at **250.481/346.365/428.063 aggregate tok/s (+14.47%/+32.66%/+43.08%)** with exact full logits/trajectories, sparse/reclaimed slots, lifecycle, and a named cached trace; c1 remains on its proven wave32 kernel. |
+| **P4 — NEXT** | Safe long-prompt and public batch admission | Preserve serial correctness above native SWA-512 while adding packed prompt admission to the fixed-capacity helper; require natural/category-heldout state and lifecycle gates. |
 
 The 200+ decode target is therefore realistic in two distinct forms:
 
@@ -360,6 +372,7 @@ The 200+ decode target is therefore realistic in two distinct forms:
   than a universal floor. The natural-context exact row is 153.201 tok/s.
 
 Evidence:
+[`D1 batched affine4 row reuse`](../benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json),
 [`D0 c1 router`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
 [`D0 affine4 head`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
 [`D0 selector snapshot`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json),
@@ -421,10 +434,10 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_c1_bench.py \
   --comparison affine4_wave32 --steps 32 --warmup-steps 4 --repetitions 2 \
   --out /tmp/maple-d0-affine4.json
 
-# M6 fixed-capacity helper recertification
+# M6+D1 selector-unset fixed-capacity helper recertification
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
-HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
-python3 scripts/maple_batch_decode_bench.py \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_batch_decode_bench.py \
   --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
   --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
   --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
@@ -437,7 +450,7 @@ python3 scripts/maple_batch_decode_bench.py \
 - Public sampling is greedy-only; temperature/top-p sampling is not implemented.
 - Native prefill is qualified only through 512 tokens; longer prompts are exact
   but token-serial.
-- M6 does not provide public batched prompt prefill, scheduler integration, HTTP
+- M6+D1 does not provide public batched prompt prefill, scheduler integration, HTTP
   serving, or a public concurrency API.
 - FlashHead is approximate and excluded from the exact default.
 - CUDA-peer support, speculative decoding, tensor parallelism, and 128K runtime

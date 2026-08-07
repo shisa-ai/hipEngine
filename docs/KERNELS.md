@@ -118,7 +118,7 @@ block owns one vocabulary row across all request rows, loads each packed
 word/scale/bias once, and replays the original 128-thread FP32 tree independently
 for every request. Production-shape c2/c4/c8 logits are bit-exact to the original
 all-row kernel. The clean fixed-helper gate improves aggregate throughput
-**218.818/261.099/299.181 -> 250.037/347.511/427.929 tok/s**; all nine timing
+**218.818/261.099/299.181 -> 250.481/346.365/428.063 tok/s**; all nine timing
 samples, **18/18** natural/category-heldout trajectories, sparse and reclaimed
 slots, and lifecycle are exact. Cached c8 tracing names
 `maple_affine4_gemv_batched_rowreuse_exact_kernel<8>` at local128/VGPR96/
