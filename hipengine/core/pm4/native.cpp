@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <unistd.h>
 
 namespace {
 
@@ -343,9 +344,12 @@ struct Context {
   std::unique_ptr<QueueFault> fault;
   hsa_signal_t completion{0};
   uint64_t timestamp_frequency = 0;
+  uint16_t hsa_version_major = 0;
+  uint16_t hsa_version_minor = 0;
   std::mutex mutex;
   uint64_t generation = 1;
   uint64_t submissions = 0;
+  uint64_t last_doorbell_value = 0;
   uint32_t children = 0;
   uint32_t unretired_submissions = 0;
   bool usable = true;
@@ -600,6 +604,7 @@ KernelInfo load_kernel(Context* context, Module* module, const std::string& name
   check(hsa_executable_symbol_get_info(symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT,
                                        &info.kernel_object),
         "hsa_executable_symbol_get_info(kernel_object)");
+  if (info.kernel_object == 0) throw Error("HSA loader returned a null kernel object");
   check(hsa_executable_symbol_get_info(
             symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE, &info.kernarg_size),
         "hsa_executable_symbol_get_info(kernarg_size)");
@@ -696,6 +701,8 @@ void set_sh_regs(std::vector<uint32_t>* words, uint32_t first,
 struct Dispatch {
   KernelInfo kernel;
   Allocation kernarg;
+  std::string symbol;
+  size_t module_index = 0;
   std::array<uint32_t, 3> grid{};
   std::array<uint32_t, 3> block{};
   uint32_t dynamic_lds = 0;
@@ -797,6 +804,11 @@ struct Executable {
   uint64_t generation = 0;
   uint64_t aql_submissions = 0;
   uint64_t pm4_submissions = 0;
+  uint64_t last_packet_id = 0;
+  uint64_t last_packet_count = 0;
+  uint64_t last_timeout_ns = 0;
+  hsa_signal_value_t last_completion_value = 1;
+  std::string last_transport = "none";
   bool stateful_registers = false;
   bool usable = true;
   bool in_flight = false;
@@ -859,6 +871,7 @@ void wait_completion(Executable* executable, uint64_t timeout_ns) {
   const hsa_signal_value_t observed = hsa_signal_wait_scacquire(
       context->completion, HSA_SIGNAL_CONDITION_LT, 1, timeout_ticks(context, timeout_ns),
       HSA_WAIT_STATE_BLOCKED);
+  executable->last_completion_value = observed;
   const uint32_t fault = context->fault->status.load(std::memory_order_acquire);
   if (observed >= 1 || fault != 0) {
     executable->usable = false;
@@ -908,10 +921,14 @@ void quarantine_failed_submission(Executable* executable) noexcept {
 
 void launch_aql(Executable* executable, uint64_t timeout_ns) {
   std::lock_guard<std::mutex> lock(executable->context->mutex);
+  executable->last_transport = "aql";
+  executable->last_timeout_ns = timeout_ns;
   begin_submission(executable);
   Context* context = executable->context;
   try {
     const uint64_t first = reserve_packets(context, executable->aql_packets.size(), timeout_ns);
+    executable->last_packet_id = first;
+    executable->last_packet_count = executable->aql_packets.size();
     for (size_t index = 0; index < executable->aql_packets.size(); ++index) {
       hsa_kernel_dispatch_packet_t packet = executable->aql_packets[index];
       packet.completion_signal =
@@ -921,9 +938,10 @@ void launch_aql(Executable* executable, uint64_t timeout_ns) {
       std::memcpy(bytes.data(), &packet, sizeof(packet));
       publish_packet(context, first + index, bytes.data(), publication);
     }
+    context->last_doorbell_value = first + executable->aql_packets.size() - 1;
     hsa_signal_store_relaxed(
         context->queue->doorbell_signal,
-        static_cast<hsa_signal_value_t>(first + executable->aql_packets.size() - 1));
+        static_cast<hsa_signal_value_t>(context->last_doorbell_value));
     wait_completion(executable, timeout_ns);
     ++executable->aql_submissions;
   } catch (...) {
@@ -934,15 +952,20 @@ void launch_aql(Executable* executable, uint64_t timeout_ns) {
 
 void launch_pm4(Executable* executable, uint64_t timeout_ns) {
   std::lock_guard<std::mutex> lock(executable->context->mutex);
+  executable->last_transport = "pm4";
+  executable->last_timeout_ns = timeout_ns;
   begin_submission(executable);
   Context* context = executable->context;
   try {
     const uint64_t packet_id = reserve_packets(context, 1, timeout_ns);
+    executable->last_packet_id = packet_id;
+    executable->last_packet_count = 1;
     uint32_t publication = 0;
     std::memcpy(&publication, executable->pm4_packet.data(), sizeof(publication));
     publish_packet(context, packet_id, executable->pm4_packet.data(), publication);
+    context->last_doorbell_value = packet_id;
     hsa_signal_store_relaxed(context->queue->doorbell_signal,
-                             static_cast<hsa_signal_value_t>(packet_id));
+                             static_cast<hsa_signal_value_t>(context->last_doorbell_value));
     wait_completion(executable, timeout_ns);
     ++executable->pm4_submissions;
   } catch (...) {
@@ -955,17 +978,27 @@ std::string context_json(Context* context) {
   std::lock_guard<std::mutex> lock(context->mutex);
   const uint64_t read = context->queue == nullptr ? 0 : hsa_queue_load_read_index_relaxed(context->queue);
   const uint64_t write = context->queue == nullptr ? 0 : hsa_queue_load_write_index_relaxed(context->queue);
+  const hsa_signal_value_t completion_value =
+      context->completion.handle == 0 ? 0 : hsa_signal_load_scacquire(context->completion);
+  const hsa_signal_value_t doorbell_value =
+      context->queue == nullptr ? 0 : hsa_signal_load_relaxed(context->queue->doorbell_signal);
   std::ostringstream out;
-  out << "{\"abi_version\":" << kAbiVersion << ",\"gfx\":\"" << context->gfx
+  out << "{\"abi_version\":" << kAbiVersion << ",\"process_id\":"
+      << static_cast<uint64_t>(getpid()) << ",\"hsa_version_major\":"
+      << context->hsa_version_major << ",\"hsa_version_minor\":"
+      << context->hsa_version_minor << ",\"gfx\":\"" << context->gfx
       << "\",\"pci_bdf\":\"" << context->pci << "\",\"agent_handle\":"
       << context->gpu.handle << ",\"queue_id\":"
       << (context->queue == nullptr ? 0 : context->queue->id) << ",\"queue_size\":"
       << (context->queue == nullptr ? 0 : context->queue->size) << ",\"queue_base\":"
       << (context->queue == nullptr ? 0 : reinterpret_cast<uintptr_t>(context->queue->base_address))
-      << ",\"doorbell_handle\":"
+      << ",\"queue_type\":\"multi\",\"doorbell_handle\":"
       << (context->queue == nullptr ? 0 : context->queue->doorbell_signal.handle)
+      << ",\"doorbell_value\":" << doorbell_value
+      << ",\"last_doorbell_value\":" << context->last_doorbell_value
       << ",\"read_index\":" << read << ",\"write_index\":" << write
       << ",\"completion_handle\":" << context->completion.handle
+      << ",\"completion_value\":" << completion_value
       << ",\"generation\":" << context->generation << ",\"submissions\":"
       << context->submissions << ",\"children\":" << context->children
       << ",\"unretired_submissions\":" << context->unretired_submissions
@@ -975,25 +1008,90 @@ std::string context_json(Context* context) {
   return out.str();
 }
 
+void append_json_string(std::ostringstream* out, const std::string& value) {
+  *out << '"';
+  for (const unsigned char byte : value) {
+    switch (byte) {
+      case '"': *out << "\\\""; break;
+      case '\\': *out << "\\\\"; break;
+      case '\b': *out << "\\b"; break;
+      case '\f': *out << "\\f"; break;
+      case '\n': *out << "\\n"; break;
+      case '\r': *out << "\\r"; break;
+      case '\t': *out << "\\t"; break;
+      default:
+        if (byte < 0x20) {
+          char escaped[7] = {};
+          std::snprintf(escaped, sizeof(escaped), "\\u%04x", byte);
+          *out << escaped;
+        } else {
+          *out << static_cast<char>(byte);
+        }
+    }
+  }
+  *out << '"';
+}
+
 std::string executable_json(Executable* executable) {
   std::lock_guard<std::mutex> lock(executable->context->mutex);
+  uint32_t pm4_publication = 0;
+  std::memcpy(&pm4_publication, executable->pm4_packet.data(), sizeof(pm4_publication));
+  const uint32_t aql_publication = executable->aql_packets.empty()
+                                       ? 0
+                                       : executable->aql_packets.front().full_header;
   std::ostringstream out;
   out << "{\"abi_version\":" << kAbiVersion << ",\"generation\":"
       << executable->generation << ",\"nodes\":" << executable->dispatches.size()
       << ",\"modules\":" << executable->modules.size() << ",\"pm4_dwords\":"
       << executable->pm4_words.size() << ",\"ib_address\":"
       << reinterpret_cast<uintptr_t>(executable->indirect.pointer) << ",\"ib_bytes\":"
-      << executable->indirect.length << ",\"timestamp_address\":"
+      << executable->indirect.length << ",\"aql_publication\":" << aql_publication
+      << ",\"pm4_publication\":" << pm4_publication << ",\"timestamp_address\":"
       << reinterpret_cast<uintptr_t>(executable->timestamps.pointer)
       << ",\"timestamp_bytes\":" << executable->timestamps.length
       << ",\"stateful_registers\":"
       << (executable->stateful_registers ? "true" : "false")
-      << ",\"aql_submissions\":"
-      << executable->aql_submissions << ",\"pm4_submissions\":"
-      << executable->pm4_submissions << ",\"in_flight\":"
-      << (executable->in_flight ? "true" : "false") << ",\"retired\":"
-      << (executable->retired ? "true" : "false") << ",\"usable\":"
-      << (executable->usable ? "true" : "false") << "}";
+      << ",\"aql_submissions\":" << executable->aql_submissions
+      << ",\"pm4_submissions\":" << executable->pm4_submissions
+      << ",\"last_packet_id\":" << executable->last_packet_id
+      << ",\"last_packet_count\":" << executable->last_packet_count
+      << ",\"last_timeout_ns\":" << executable->last_timeout_ns
+      << ",\"last_completion_value\":" << executable->last_completion_value
+      << ",\"last_transport\":";
+  append_json_string(&out, executable->last_transport);
+  out << ",\"in_flight\":" << (executable->in_flight ? "true" : "false")
+      << ",\"retired\":" << (executable->retired ? "true" : "false")
+      << ",\"usable\":" << (executable->usable ? "true" : "false")
+      << ",\"module_records\":[";
+  for (size_t index = 0; index < executable->modules.size(); ++index) {
+    if (index != 0) out << ',';
+    const Module& module = executable->modules[index];
+    out << "{\"index\":" << index << ",\"reader_handle\":" << module.reader.handle
+        << ",\"executable_handle\":" << module.executable.handle
+        << ",\"hsaco_bytes\":" << module.bytes.size() << '}';
+  }
+  out << "],\"dispatch_records\":[";
+  for (size_t index = 0; index < executable->dispatches.size(); ++index) {
+    if (index != 0) out << ',';
+    const Dispatch& dispatch = executable->dispatches[index];
+    out << "{\"index\":" << index << ",\"module_index\":" << dispatch.module_index
+        << ",\"symbol\":";
+    append_json_string(&out, dispatch.symbol);
+    out << ",\"kernel_object\":" << dispatch.kernel.kernel_object
+        << ",\"code_entry\":" << dispatch.kernel.code_entry
+        << ",\"kernarg_address\":"
+        << reinterpret_cast<uintptr_t>(dispatch.kernarg.pointer)
+        << ",\"kernarg_bytes\":" << dispatch.kernarg.length
+        << ",\"kernarg_allocated_bytes\":" << dispatch.kernarg.allocated
+        << ",\"kernarg_align\":" << dispatch.kernel.kernarg_align
+        << ",\"group_segment_bytes\":"
+        << dispatch.kernel.group_size + dispatch.dynamic_lds
+        << ",\"private_segment_bytes\":" << dispatch.kernel.private_size
+        << ",\"grid\":[" << dispatch.grid[0] << ',' << dispatch.grid[1] << ','
+        << dispatch.grid[2] << "],\"block\":[" << dispatch.block[0] << ','
+        << dispatch.block[1] << ',' << dispatch.block[2] << "]}";
+  }
+  out << "]}";
   return out.str();
 }
 
@@ -1093,6 +1191,12 @@ int he_pm4_context_create(const char* pci_bdf, const char* gfx_target,
     check(hsa_system_get_info(HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY,
                               &context->timestamp_frequency),
           "hsa_system_get_info(timestamp_frequency)");
+    check(hsa_system_get_info(HSA_SYSTEM_INFO_VERSION_MAJOR,
+                              &context->hsa_version_major),
+          "hsa_system_get_info(version_major)");
+    check(hsa_system_get_info(HSA_SYSTEM_INFO_VERSION_MINOR,
+                              &context->hsa_version_minor),
+          "hsa_system_get_info(version_minor)");
     PoolSearch pools;
     check(hsa_amd_agent_iterate_memory_pools(context->cpu, find_kernarg_pool, &pools),
           "hsa_amd_agent_iterate_memory_pools");
@@ -1251,8 +1355,12 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
         executable->modules.push_back(load_module(context, source.hsaco, source.hsaco_size));
       Module* module = &executable->modules[module_index];
       KernelInfo kernel = load_kernel(context, module, source.symbol);
+      const bool loader_alignment_valid =
+          kernel.kernarg_align != 0 &&
+          (kernel.kernarg_align & (kernel.kernarg_align - 1)) == 0;
       const bool alignment_compatible =
-          source.kernarg_align != 0 && kernel.kernarg_align >= source.kernarg_align &&
+          loader_alignment_valid && source.kernarg_align != 0 &&
+          kernel.kernarg_align >= source.kernarg_align &&
           kernel.kernarg_align % source.kernarg_align == 0;
       if (kernel.kernarg_size != source.kernarg_size || !alignment_compatible ||
           kernel.group_size != source.expected_group_segment_size ||
@@ -1274,11 +1382,13 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
         throw Error("graph node kernarg bytes are null");
       Dispatch dispatch;
       dispatch.kernel = kernel;
-      dispatch.kernarg = allocate(context->pool, context->pool_granule,
-                                  context->pool_alignment, context->gpu,
-                                  source.kernarg_size,
-                                  std::max<size_t>(16, source.kernarg_align),
-                                  HSA_AMD_MEMORY_POOL_STANDARD_FLAG);
+      dispatch.symbol = source.symbol;
+      dispatch.module_index = module_index;
+      dispatch.kernarg = allocate(
+          context->pool, context->pool_granule, context->pool_alignment,
+          context->gpu, source.kernarg_size,
+          std::max<size_t>({16, source.kernarg_align, kernel.kernarg_align}),
+          HSA_AMD_MEMORY_POOL_STANDARD_FLAG);
       if (source.kernarg_size != 0)
         std::memcpy(dispatch.kernarg.pointer, source.kernarg, source.kernarg_size);
       for (size_t axis = 0; axis < 3; ++axis) {

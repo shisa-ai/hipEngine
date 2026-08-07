@@ -18,7 +18,11 @@ from hipengine.core.hip import (
 from hipengine.core.pm4.elf import extract_elf_section, select_amdgpu_code_object
 from hipengine.core.pm4.errors import Pm4InspectionError
 from hipengine.core.pm4.kernarg import LaunchContext, pack_kernel_node_params
-from hipengine.core.pm4.metadata import parse_amdgpu_kernels, resolve_kernel_metadata
+from hipengine.core.pm4.metadata import (
+    AmdgpuKernelMetadata,
+    parse_amdgpu_kernels,
+    resolve_kernel_metadata,
+)
 
 
 class _GraphRuntime(Protocol):
@@ -261,6 +265,7 @@ def inspect_hip_graph(
     order = topological_order(handles, edges)
 
     dso_cache: dict[Path, _DsoImage] = {}
+    metadata_by_handle: dict[int, AmdgpuKernelMetadata] = {}
     manifests: list[KernelNodeManifest] = []
     for handle in order:
         node_type = int(runtime.graph_node_type(handle))
@@ -287,6 +292,7 @@ def inspect_hip_graph(
             dso = _load_dso(path, gfx_arch)
             dso_cache[path] = dso
         metadata = resolve_kernel_metadata(dso.kernels, name)
+        metadata_by_handle[handle] = metadata
 
         grid_blocks = _dimensions(params.gridDim, "grid")
         block = _dimensions(params.blockDim, "block")
@@ -323,10 +329,38 @@ def inspect_hip_graph(
             )
         )
 
-    # Re-enumerate after every pointer copy. A mutation invalidates the complete
-    # manifest rather than leaving a mixed graph generation.
+    # Re-enumerate and recopy every launch field after the first complete pass.
+    # Topology-only validation would miss concurrent scalar/pointer mutation and
+    # could otherwise produce a mixed graph generation.
     if tuple(runtime.graph_nodes(graph)) != handles or tuple(runtime.graph_edges(graph)) != edges:
         raise Pm4InspectionError("HIP graph changed during inspection")
+    for node in manifests:
+        try:
+            if int(runtime.graph_node_type(node.handle)) != HIP_GRAPH_NODE_TYPE_KERNEL:
+                raise Pm4InspectionError("kernel node type changed")
+            params = runtime.graph_kernel_node_params(node.handle)
+            function = int(params.func or 0)
+            name = runtime.kernel_name_ref_by_ptr(function, stream)
+            grid_blocks = _dimensions(params.gridDim, "grid")
+            block = _dimensions(params.blockDim, "block")
+            dynamic_shared = int(params.sharedMemBytes)
+            kernarg = pack_kernel_node_params(
+                metadata_by_handle[node.handle],
+                params.kernelParams,
+                params.extra,
+                LaunchContext(grid_blocks, block, dynamic_shared),
+            )
+        except Exception as exc:
+            raise Pm4InspectionError("HIP graph changed during inspection") from exc
+        if (
+            function != node.function
+            or name != node.name
+            or grid_blocks != node.grid_blocks
+            or block != node.block
+            or dynamic_shared != node.dynamic_shared_bytes
+            or kernarg != node.kernarg
+        ):
+            raise Pm4InspectionError("HIP graph changed during inspection")
     nodes = tuple(manifests)
     return HipGraphManifest(
         graph_handle=graph,

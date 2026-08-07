@@ -353,6 +353,31 @@ def test_inspects_fake_kernel_graph_into_immutable_exact_manifest(tmp_path: Path
     assert node.dso_sha256 == hashlib.sha256(dso_bytes).hexdigest()
     assert len(manifest.fingerprint) == 64
 
+    mutated_params = HipKernelNodeParams(
+        HipDim3(256, 1, 1),
+        ctypes.POINTER(ctypes.c_void_p)(),
+        ctypes.c_void_p(0xABC0),
+        HipDim3(8, 2, 1),
+        ctypes.cast(params_array, ctypes.POINTER(ctypes.c_void_p)),
+        0,
+    )
+
+    class MutatingRuntime(FakeRuntime):
+        calls = 0
+
+        def graph_kernel_node_params(self, node: int) -> HipKernelNodeParams:
+            self.calls += 1
+            return params if self.calls == 1 else mutated_params
+
+    with pytest.raises(Pm4InspectionError, match="changed during inspection"):
+        inspect_hip_graph(
+            MutatingRuntime(),
+            0xCAFE,
+            gfx_arch="gfx1100",
+            stream=0,
+            dso_resolver=lambda function: dso_path,
+        )
+
 
 def test_inspector_fails_closed_on_non_kernel_node(tmp_path: Path) -> None:
     class FakeRuntime:
