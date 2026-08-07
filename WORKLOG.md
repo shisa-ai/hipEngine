@@ -209140,3 +209140,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`
   and update the benchmark rollup/changelog. The stateful encoder remains
   explicit; `performance_claim=false`; no submit/recreate stress ran.
+
+## 2026-08-08 — Harden the #6529 lifecycle minimizer before destructive use
+
+- Review found the reset-risk guard was too permissive: it required
+  `--ack-reset-risk` only at 32+ queue-recreate cycles, although one direct-AQL
+  or PM4 submit followed by executable/IB/kernarg resource recreation crosses
+  the suspected retirement boundary. Any native submit with
+  `resource_mode=recreate` is now classified destructive and rejected without
+  the acknowledgement; no-submit recreate controls and persistent reuse remain
+  safe/default.
+- Review also found that queue-retire, executable-destroy, buffer-free, or
+  context-destroy failures raised from `finally` could collapse the rich cycle
+  ledger into the CLI's generic exception artifact. Teardown now records every
+  attempted operation as pass/fail, preserves the first error independently,
+  marks dependent pointee releases skipped, stops further cycles, and retains
+  unsafe resources until process exit. Queue-first quarantine now retains local
+  HIP buffers and graph handles together with native executable/HSA resources
+  instead of freeing mixed-allocation pointees early.
+- RED/GREEN covers one-cycle acknowledgement, first-failure preservation, and
+  skipped dependent release. Safe guarded W7900 controls remain green: HSA
+  interop+timestamp persistent reuse and two-generation no-submit queue-first
+  quarantine both report `final_cleanup_passed=true`; no native
+  submit/resource-recreate arm was run.

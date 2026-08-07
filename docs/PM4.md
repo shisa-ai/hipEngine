@@ -652,10 +652,12 @@ buffers across three transports:
 The default command runs four safe correctness/reuse cycles. The implementation
 also supports queue/resource/buffer reuse or recreation, submit versus
 create/drop-only, HIP versus fine-grained HSA allocations, optional PM4 GPU
-timestamps, and queue-first bounded-generation quarantine. Submit/recreate runs
-at 32 or more cycles are rejected unless `--ack-reset-risk` is present.
-`--stress` selects 128 submit/recreate cycles and therefore also requires that
-acknowledgement. The stress arm is implemented but has not been run.
+timestamps, and queue-first bounded-generation quarantine. Every direct-AQL or
+PM4 submit arm that recreates executable packet resources is rejected unless
+`--ack-reset-risk` is present—even one cycle exercises the suspected retirement
+boundary. `--stress` selects 128 submit/recreate cycles and therefore also
+requires that acknowledgement. The destructive arms are implemented but have
+not been run.
 
 ### Controls
 

@@ -37,6 +37,7 @@ def test_safe_hsa_interop_timestamp_reuse_is_exact() -> None:
 
     assert result["status"] == "pass"
     assert result["summary"]["cycles_passed"] == 2
+    assert result["summary"]["final_cleanup_passed"] is True
     assert all(cycle["correct"] is True for cycle in result["cycles"])
     assert all(cycle["executable_after"]["timestamp_bytes"] == 16 for cycle in result["cycles"])
     assert len({tuple(cycle["buffer_addresses"]) for cycle in result["cycles"]}) == 1
@@ -57,6 +58,7 @@ def test_safe_no_submit_queue_first_quarantine_records_generations() -> None:
 
     assert result["status"] == "pass"
     assert result["summary"]["cycles_passed"] == 2
+    assert result["summary"]["final_cleanup_passed"] is True
     queue_ids = [cycle["queue_before_retire"]["queue_id"] for cycle in result["cycles"]]
     assert len(set(queue_ids)) == 2
     assert all(cycle["context_after_queue_retire"]["queue_id"] == 0 for cycle in result["cycles"])
