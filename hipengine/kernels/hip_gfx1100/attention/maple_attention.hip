@@ -408,7 +408,8 @@ __global__ void maple_attention_prefill_kernel(
 // slot), so it can consume the output of
 // maple_qknorm_rope_kv_write_batched_kernel and share one cache with decode.
 // Grid is (q_heads x T); block (qh, row) attends to absolute positions
-// [start, start+row].  qkv is a q-only [T, q_size] buffer.
+// [start, start+row].  qkv is the full [T, q_size + 2*kv_size] buffer and the
+// query is read from its q-region.
 __global__ void maple_attention_prefill_ring_kernel(
     const uint16_t* __restrict__ qkv,
     const uint16_t* __restrict__ key_cache,
@@ -431,8 +432,10 @@ __global__ void maple_attention_prefill_ring_kernel(
   const int64_t group_size = q_heads / kv_heads;
   const int64_t kv_head = q_head / group_size;
   const int64_t kv_stride = kv_heads * head_dim;
+  const int64_t q_size = q_heads * head_dim;
+  const int64_t qkv_stride = q_size + 2 * kv_stride;
   const float q = tid < head_dim
-      ? bf16_to_float(qkv[row * q_heads * head_dim + q_head * head_dim + tid])
+      ? bf16_to_float(qkv[row * qkv_stride + q_head * head_dim + tid])
       : 0.0f;
   float accumulator = 0.0f;
   float running_max = -INFINITY;

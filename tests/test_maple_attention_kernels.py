@@ -390,6 +390,7 @@ def test_maple_prefill_attention_ring_matches_causal_oracle(maple_attention_lib)
     rng = np.random.default_rng(99)
     rows, q_heads, kv_heads, head_dim = 5, 4, 2, 4
     q_size = q_heads * head_dim
+    kv_size = kv_heads * head_dim
     start, capacity = 3, 8
     q = bf16_round(rng.normal(size=(rows, q_heads, head_dim)).astype(np.float32))
     keys = bf16_round(rng.normal(size=(rows, kv_heads, head_dim)).astype(np.float32))
@@ -409,7 +410,7 @@ def test_maple_prefill_attention_ring_matches_causal_oracle(maple_attention_lib)
         token_positions[logical] = start + r
         key_cache[physical] = keys[r]
         value_cache[physical] = values[r]
-    qkv = np.zeros((rows, q_size), dtype=np.uint16)
+    qkv = np.zeros((rows, q_size + 2 * kv_size), dtype=np.uint16)
     qkv[:, :q_size] = f32_to_bf16_bits(q.reshape(rows, -1))
 
     with DeviceArrays() as dev:
