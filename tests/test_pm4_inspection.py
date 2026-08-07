@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import hipengine.core.pm4.graph as pm4_graph
 from hipengine.core.pm4 import (
     HipDim3,
     HipKernelNodeParams,
@@ -162,6 +163,34 @@ def _bundle(entries: list[tuple[str, bytes]]) -> bytes:
 
 def _dso(fatbin: bytes) -> bytes:
     return _elf_with_sections([(".hip_fatbin", 1, fatbin)])
+
+
+def test_dso_cache_reuses_only_an_unchanged_file_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "cached.so"
+    data = _dso(_bundle([("hipv4-amdgcn-amd-amdhsa--gfx1100", _hsaco())]))
+    path.write_bytes(data)
+    pm4_graph.clear_dso_cache_for_tests()
+    reads = 0
+    real_read_stable = pm4_graph._read_stable
+
+    def counted_read_stable(candidate: Path) -> bytes:
+        nonlocal reads
+        reads += 1
+        return real_read_stable(candidate)
+
+    monkeypatch.setattr(pm4_graph, "_read_stable", counted_read_stable)
+    first = pm4_graph._load_dso(path, "gfx1100")
+    second = pm4_graph._load_dso(path, "gfx1100")
+    assert first is second
+    assert reads == 1
+
+    path.write_bytes(data)
+    third = pm4_graph._load_dso(path, "gfx1100")
+    assert third is not first
+    assert reads == 2
+    pm4_graph.clear_dso_cache_for_tests()
 
 
 def test_extracts_exact_fatbin_and_selects_exact_gfx_target() -> None:

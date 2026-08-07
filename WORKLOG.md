@@ -209236,3 +209236,25 @@ Vulkan local sizes verbatim will close the measured gap.
   packet/native-build/benchmark unit bundle passes (10), Ruff and diff checks
   pass. Next: committed-clean confirmation and remaining DSO inspection work.
   No destructive lifecycle arm ran.
+
+## 2026-08-08 — Reuse immutable DSO inspection across graph generations
+
+- Add a process cache for selected HSACO bytes, hashes, and parsed AMDGPU
+  metadata keyed by the complete observed file identity `(path, gfx, dev, ino,
+  size, mtime_ns, ctime_ns)`. Every cold fill retains the stable-read check and
+  rechecks identity before publication; a file identity change cannot reuse the
+  old image and evicts stale identities for that path/target. A deterministic
+  test proves one unchanged-file read and invalidation after rewrite.
+- The exact same-process p512/d3 directional run captures stateful PM4 cold
+  first, then conservative PM4 warm. Cold DSO inspection is **57.407471 ms**;
+  the second generation pays **0.057301 ms**. Total graph inspection falls
+  **91.698525 -> 30.448060 ms**, and capture **145.041979 -> 75.914324 ms**.
+  Tokens, recurrent/KV state, and all logits match exactly across both encoders;
+  the DSO cache itself is encoder-independent.
+- A cold eight-worker DSO-load candidate was exact but regressed DSO wall
+  **55.060629 -> 63.072495 ms** and capture **142.550012 -> 152.339291 ms**;
+  remove it and restore serial cold loading. The retained cache changes later
+  graph generations only. Inspection unit tests pass (8), the complete CPU
+  inspection/transport bundle passes (14), the guarded live HIP graph
+  inspection test passes, Ruff/format/diff checks pass. No destructive
+  lifecycle arm ran.

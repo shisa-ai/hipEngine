@@ -9,6 +9,7 @@ import heapq
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Callable, Protocol
 
 from hipengine.core.hip import (
@@ -93,6 +94,8 @@ class _DlInfo(ctypes.Structure):
 
 
 _LIBDL: ctypes.CDLL | None = None
+_DSO_CACHE: dict[tuple[Path, str, int, int, int, int, int], _DsoImage] = {}
+_DSO_CACHE_LOCK = Lock()
 
 
 def resolve_dso_for_function(function: int) -> Path:
@@ -138,12 +141,34 @@ def _read_stable(path: Path) -> bytes:
     return data
 
 
+def _dso_identity(path: Path, gfx_arch: str) -> tuple[Path, str, int, int, int, int, int]:
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        raise Pm4InspectionError(f"cannot stat kernel shared object {path}") from exc
+    return (
+        path,
+        gfx_arch,
+        stat.st_dev,
+        stat.st_ino,
+        stat.st_size,
+        stat.st_mtime_ns,
+        stat.st_ctime_ns,
+    )
+
+
 def _load_dso(path: Path, gfx_arch: str) -> _DsoImage:
+    identity = _dso_identity(path, gfx_arch)
+    with _DSO_CACHE_LOCK:
+        cached = _DSO_CACHE.get(identity)
+    if cached is not None:
+        return cached
+
     data = _read_stable(path)
     fatbin = extract_elf_section(data, ".hip_fatbin")
     selected = select_amdgpu_code_object(fatbin, gfx_arch)
     kernels = parse_amdgpu_kernels(selected.image)
-    return _DsoImage(
+    result = _DsoImage(
         path=path,
         sha256=hashlib.sha256(data).hexdigest(),
         fatbin_sha256=hashlib.sha256(fatbin).hexdigest(),
@@ -152,6 +177,19 @@ def _load_dso(path: Path, gfx_arch: str) -> _DsoImage:
         hsaco_sha256=selected.sha256,
         kernels=kernels,
     )
+    if _dso_identity(path, gfx_arch) != identity:
+        raise Pm4InspectionError(f"kernel shared object changed while being cached: {path}")
+    with _DSO_CACHE_LOCK:
+        stale = [key for key in _DSO_CACHE if key[:2] == identity[:2] and key != identity]
+        for key in stale:
+            del _DSO_CACHE[key]
+        _DSO_CACHE[identity] = result
+    return result
+
+
+def clear_dso_cache_for_tests() -> None:
+    with _DSO_CACHE_LOCK:
+        _DSO_CACHE.clear()
 
 
 def topological_order(
