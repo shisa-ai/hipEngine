@@ -69,6 +69,38 @@ def test_maple_batch_step_rejects_invalid_tokens_before_launch() -> None:
         runner.batch_step((1, 151_936))
 
 
+def test_maple_batch_span_exposes_request_local_prefill_views() -> None:
+    from hipengine.core.memory import DeviceBuffer
+    from hipengine.runtime.maple import MapleBatchSpanOwner
+
+    class FakeOwner:
+        runtime = object()
+
+        def __init__(self) -> None:
+            self.next_ptr = 1_000
+
+        def put(self, array) -> DeviceBuffer:
+            buffer = DeviceBuffer(ptr=self.next_ptr, nbytes=array.nbytes)
+            self.next_ptr += array.nbytes
+            return buffer
+
+    owner = MapleBatchSpanOwner(
+        FakeOwner(),
+        batch_size=2,
+        per_request_capacity=4,
+        device=maple_runtime.Device("hip", 0),
+    )
+
+    assert len(owner.request_spans) == 2
+    for request, spans in enumerate(owner.request_spans):
+        assert spans.max_live_count == 4
+        assert spans.base_offsets.ptr == owner._request_base_offsets.ptr
+        assert spans.live_counts.ptr == owner.live_counts.ptr + request * 8
+        assert spans.token_positions.ptr == owner.token_positions.ptr + request * 4 * 8
+        assert spans.evict_mask.ptr == owner.evict_mask.ptr + request * 4
+        assert spans.row_positions.ptr == owner.row_positions.ptr + request * 8
+
+
 def test_maple_batch_span_reset_copies_to_request_offsets(monkeypatch) -> None:
     from hipengine.core.memory import DeviceBuffer
     from hipengine.runtime.maple import MapleBatchSpanOwner
@@ -608,6 +640,77 @@ def test_maple_prefill_native_multichunk_continuation_gate(hip_test_target_arch)
     finally:
         native.close()
         serial.close()
+
+
+def test_maple_batch_prefill_admission_matches_serial(hip_test_target_arch) -> None:
+    """Request-local native prefill feeds exact shared-weight c2 decode."""
+    del hip_test_target_arch
+    from hipengine.core.memory import memory_stats
+    from hipengine.loading.maple import load_maple_checkpoint
+    from hipengine.runtime.maple import MapleBatchRunner
+
+    try:
+        checkpoint = load_maple_checkpoint("deepgrove/maple-preview-2bit-mlx")
+    except Exception as exc:  # noqa: BLE001 - checkpoint missing
+        pytest.skip(f"maple checkpoint unavailable: {exc}")
+    prompts = (
+        tuple(9_000 + index for index in range(12)),
+        tuple(9_100 + index * 3 for index in range(17)),
+    )
+    serial = MapleRunner.load(
+        checkpoint, backend="hip_gfx1151", max_context=64
+    )
+    expected: list[list[int]] = []
+    expected_top_bits: list[int] = []
+    try:
+        for prompt in prompts:
+            serial.reset()
+            result = serial.prefill_native(prompt)
+            trajectory = [result.token_id]
+            expected_top_bits.append(
+                int(np.asarray(result.top_logit, np.float32).view(np.uint32))
+            )
+            for _ in range(2):
+                trajectory.append(serial.step(trajectory[-1]).token_id)
+            expected.append(trajectory)
+
+        batch = MapleBatchRunner.from_runner(
+            serial, batch_size=2, per_capacity=64
+        )
+        try:
+            admitted = [
+                batch.prefill_request(request, prompt)
+                for request, prompt in enumerate(prompts)
+            ]
+            assert batch._prefill_runners is not None
+            for runner in batch._prefill_runners:
+                assert runner.buffers.argmax_index.nbytes == 8
+                assert runner.buffers.argmax_value.nbytes == 4
+                assert runner.buffers.logits.nbytes == checkpoint.spec.vocab_size * 4
+            assert [result.token_id for result in admitted] == [row[0] for row in expected]
+            assert [
+                int(np.asarray(result.top_logit, np.float32).view(np.uint32))
+                for result in admitted
+            ] == expected_top_bits
+            current = [result.token_id for result in admitted]
+            for step in range(1, 3):
+                current = batch.batch_step(current)
+                assert current == [row[step] for row in expected]
+
+            batch.reset()
+            single = batch.prefill_request(0, prompts[0])
+            assert single.token_id == expected[0][0]
+            for step in range(1, 3):
+                single = batch.step_request(0, single.token_id)
+                assert single.token_id == expected[0][step]
+        finally:
+            batch.close()
+        assert not serial.closed
+    finally:
+        serial.close()
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
 
 
 @pytest.mark.parametrize("c", [2, 4, 8])

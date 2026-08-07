@@ -207744,3 +207744,50 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Freeze this long-prompt implementation as its own logical unit before wiring
   fixed-capacity prompt admission into the public scheduler. A clean retained
   P4 publication will combine the long-prompt and public-admission gates.
+
+## 2026-08-08 — Maple P4 public fixed-slot admission candidate
+
+- Wire `MapleGenerator.create_resident_model_runner()` into the existing
+  `SubmitPollTextGenerator` protocol at public capacity 8. One c1 runner owns
+  the immutable 5.31-GB checkpoint; a `MapleBatchRunner.from_runner()` owner
+  adds only fixed request-local SWA/global rings and batched scratch. Lazy
+  request-local `KVLiveSpans` views point directly into each physical slot, so
+  native prompt chunks land in the same K/V storage consumed by c2/c4/c8 decode
+  without duplicating weights or copying cache state.
+- RED/GREEN tests freeze request-local span pointers, shared weight ownership,
+  native prefill into c2 continuation, scheduler admission/reclaim, >512 public
+  generation, and lifecycle. The first real public short/520 smoke exposed a
+  scheduler-boundary defect: legacy prefill work omits physical slots, and the
+  fallback assigned both singleton chunks to slot 0. Reserve Maple's private
+  physical slot in `reserve_admission`, validate any explicit slot, and release
+  it on rollback/reclaim. The corrected public smoke is exact for all four
+  generated positions and closes to zero.
+- A staggered public submit/poll gate proves continuous reuse rather than only
+  whole-batch reuse: request 0 completes while request 1 remains live; request 2
+  then occupies reclaimed slot 0 (`slot_to_request=[2, 1]`). All three
+  trajectories equal independent serial c1 and final teardown is zero.
+- Run the full 18-prompt natural/category-heldout public protocol at 64 generated
+  tokens/request, three repetitions, prompt admission included, and fixed
+  physical c2/c4/c8 widths including sparse final groups. After symmetric
+  excluded warmup, direct serial c1 is **124.341 tok/s** and public c2/c4/c8 is
+  **167.657/203.286/214.554 aggregate tok/s**, or
+  **1.348x/1.635x/1.726x**. All **54/54** repeated trajectory sets are exact,
+  every group reclaims all slots, and each owner closes to **0 bytes / 0
+  allocations**. Harness SHA-256 is `c0954b28...ee7384612`; result SHA-256 is
+  `1abc136b...eee16`.
+- Do not let an idle fixed c8 owner execute seven empty model rows. When exactly
+  one request advances, route that physical slot through the retained D0 c1
+  step against its request-local K/V view; c>=2 keeps D1 batched decode. The
+  first lone-active gate found a real D2H overflow: the c1 view exposed the
+  entire c8 `argmax_value` allocation, so a generic copy wrote 32 bytes into a
+  four-byte host scalar. Bound request-local logits to one vocabulary row and
+  argmax value to four bytes, then assert those ABI sizes in the GPU regression.
+  The repaired 18-prompt c8-owner singleton gate is exact at **122.845 tok/s**,
+  versus the same warmed direct c1 protocol's **124.341 tok/s**; teardown is
+  exact. Harness/result SHA-256 values are `b240c333...ef02` and
+  `a67774b7...fc68`.
+- Post-fix validation is GREEN: focused runtime admission plus the complete
+  Maple generation file pass **8/8**; the explicit staggered host test now
+  covers both c2 decode and transition to the lone-active c1 path; Python
+  compilation and `git diff --check` pass. Freeze this admission implementation
+  before the clean retained P4 rerun and documentation/benchmark rollup.

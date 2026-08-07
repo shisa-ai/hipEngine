@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -441,6 +442,54 @@ class MapleBatchSpanOwner:
                 self.row_positions.ptr, (self.batch_size,), DType.INT64, self.device
             ),
         )
+        self._request_base_offsets: DeviceBuffer | None = None
+        self._request_spans: tuple[KVLiveSpans, ...] | None = None
+
+    @property
+    def request_spans(self) -> tuple[KVLiveSpans, ...]:
+        """Lazily expose request-local rings for native packed admission."""
+
+        if self._request_spans is None:
+            local_base = np.arange(self.per_request_capacity, dtype=np.int32)
+            self._request_base_offsets = self.owner.put(local_base)
+            self._request_spans = tuple(
+                KVLiveSpans.sliding_ring(
+                    base_offsets=Tensor.from_handle(
+                        self._request_base_offsets.ptr,
+                        (self.per_request_capacity,),
+                        DType.INT32,
+                        self.device,
+                    ),
+                    live_counts=Tensor.from_handle(
+                        self.live_counts.ptr + request * 8,
+                        (1,),
+                        DType.INT64,
+                        self.device,
+                    ),
+                    token_positions=Tensor.from_handle(
+                        self.token_positions.ptr
+                        + request * self.per_request_capacity * 8,
+                        (self.per_request_capacity,),
+                        DType.INT64,
+                        self.device,
+                    ),
+                    evict_mask=Tensor.from_handle(
+                        self.evict_mask.ptr + request * self.per_request_capacity,
+                        (self.per_request_capacity,),
+                        DType.BOOL,
+                        self.device,
+                    ),
+                    row_positions=Tensor.from_handle(
+                        self.row_positions.ptr + request * 8,
+                        (1,),
+                        DType.INT64,
+                        self.device,
+                    ),
+                    capacity=self.per_request_capacity,
+                )
+                for request in range(self.batch_size)
+            )
+        return self._request_spans
 
     @staticmethod
     def _view(buffer: DeviceBuffer, offset: int, nbytes: int) -> DeviceBuffer:
@@ -1524,6 +1573,7 @@ class MapleBatchRunner:
         batch_size: int,
         per_capacity: int,
         runtime: HipRuntime,
+        owns_weights: bool = True,
     ) -> None:
         self.checkpoint = checkpoint
         self.weights = weights
@@ -1533,12 +1583,17 @@ class MapleBatchRunner:
         self.runtime = runtime
         self.batch_size = int(batch_size)
         self.per_capacity = int(per_capacity)
+        self.owns_weights = bool(owns_weights)
         spec = checkpoint.spec
         if self.batch_size <= 0 or self.per_capacity <= 0:
             raise ValueError("batch_size and per_capacity must be positive")
         self.capacity = self.batch_size * self.per_capacity
         self.device = Device("hip", 0)
         self._requests = np.zeros(self.batch_size, dtype=np.int64)
+        self._prefill_scratch: _PrefillBuffers | None = None
+        self._prefill_argmax_index: DeviceBuffer | None = None
+        self._prefill_router_counter: DeviceBuffer | None = None
+        self._prefill_runners: tuple[MapleRunner, ...] | None = None
         self.closed = False
 
         kv_size = spec.kv_size
@@ -1601,6 +1656,11 @@ class MapleBatchRunner:
                 moe=build_maple_moe(load=True),
                 norm=build_qwen35_rmsnorm(load=True),
                 lm_head=build_lm_head(load=True),
+                group_scatter=(
+                    build_qwen35_moe_group_scatter(load=True)
+                    if _maple_prefill_grouped_moe()
+                    else None
+                ),
             )
         weights: MapleDeviceWeights | None = None
         owner = _BufferOwner(runtime)
@@ -1615,12 +1675,204 @@ class MapleBatchRunner:
                 batch_size=int(batch_size),
                 per_capacity=int(per_capacity),
                 runtime=runtime,
+                owns_weights=True,
             )
         except Exception:
             owner.close()
             if weights is not None:
                 weights.free(runtime=runtime)
             raise
+
+    @classmethod
+    def from_runner(
+        cls,
+        runner: MapleRunner,
+        *,
+        batch_size: int,
+        per_capacity: int | None = None,
+    ) -> MapleBatchRunner:
+        """Create batch state while sharing one resident c1 weight owner."""
+
+        runner._require_open()
+        owner = _BufferOwner(runner.runtime)
+        try:
+            return cls(
+                checkpoint=runner.checkpoint,
+                weights=runner.weights,
+                libraries=runner.libraries,
+                owner=owner,
+                backend=runner.backend,
+                batch_size=int(batch_size),
+                per_capacity=(
+                    runner.max_context
+                    if per_capacity is None
+                    else int(per_capacity)
+                ),
+                runtime=runner.runtime,
+                owns_weights=False,
+            )
+        except Exception:
+            owner.close()
+            raise
+
+    def prefill_request(
+        self,
+        request: int,
+        token_ids: tuple[int, ...] | list[int],
+        *,
+        chunk_size: int = PREFILL_CHUNK,
+    ) -> MapleStepResult:
+        """Native-prefill one fixed batch slot without duplicating model weights."""
+
+        self._require_open()
+        request = int(request)
+        if not 0 <= request < self.batch_size:
+            raise ValueError(f"request {request} out of range")
+        self._ensure_prefill_runners()
+        assert self._prefill_runners is not None
+        runner = self._prefill_runners[request]
+        start = int(self._requests[request])
+        runner.position = start
+        try:
+            result = runner.prefill_native(token_ids, chunk_size=chunk_size)
+        except BaseException:
+            self.reset_request(request)
+            raise
+        self._requests[request] = runner.position
+        self._update_request_host_state(request, start=start)
+        return result
+
+    def step_request(self, request: int, token_id: int) -> MapleStepResult:
+        """Run the retained c1 path against one request-local batch slot."""
+
+        self._require_open()
+        request = int(request)
+        if not 0 <= request < self.batch_size:
+            raise ValueError(f"request {request} out of range")
+        self._ensure_prefill_runners()
+        assert self._prefill_runners is not None
+        runner = self._prefill_runners[request]
+        start = int(self._requests[request])
+        runner.position = start
+        try:
+            result = runner.step(int(token_id))
+        except BaseException:
+            self.reset_request(request)
+            raise
+        self._requests[request] = runner.position
+        self._update_request_host_state(request, start=start)
+        return result
+
+    def _update_request_host_state(self, request: int, *, start: int) -> None:
+        end = int(self._requests[request])
+        for span_owner in (self.sliding_span_owner, self.global_span_owner):
+            capacity = span_owner.per_request_capacity
+            base = request * capacity
+            for position in range(int(start), end):
+                slot = base + position % capacity
+                span_owner.token_host[slot] = position
+                span_owner.evict_host[slot] = False
+            span_owner.live_host[request] = min(end, capacity)
+            span_owner.row_host[request] = end - 1
+
+    def _ensure_prefill_runners(self) -> None:
+        if self._prefill_runners is not None:
+            return
+        spec = self.checkpoint.spec
+        self._prefill_scratch = _PrefillBuffers(
+            owner=self.owner,
+            spec=spec,
+            top_k=spec.num_experts_per_tok,
+            intermediate=spec.moe_intermediate_size,
+            T=PREFILL_CHUNK,
+        )
+        self._prefill_argmax_index = self.owner.allocate(8)
+        self._prefill_router_counter = self.owner.put(
+            np.zeros(1, dtype=np.uint32)
+        )
+        sliding_spans = self.sliding_span_owner.request_spans
+        global_spans = self.global_span_owner.request_spans
+        runners: list[MapleRunner] = []
+        for request in range(self.batch_size):
+            layers: list[MapleKVLayer] = []
+            for kv_layer, kind in zip(
+                self.layers, spec.layer_types, strict=True
+            ):
+                span_owner = (
+                    self.sliding_span_owner
+                    if kind == "sliding_attention"
+                    else self.global_span_owner
+                )
+                spans = (
+                    sliding_spans[request]
+                    if kind == "sliding_attention"
+                    else global_spans[request]
+                )
+                cache_bytes = span_owner.per_request_capacity * spec.kv_size * 2
+                cache_offset = request * cache_bytes
+                layers.append(
+                    MapleKVLayer(
+                        key_cache=DeviceBuffer(
+                            ptr=kv_layer.key_cache.ptr + cache_offset,
+                            nbytes=cache_bytes,
+                        ),
+                        value_cache=DeviceBuffer(
+                            ptr=kv_layer.value_cache.ptr + cache_offset,
+                            nbytes=cache_bytes,
+                        ),
+                        spans=spans,
+                    )
+                )
+            buffers = SimpleNamespace(
+                pf=self._prefill_scratch,
+                hidden=self.pf.hidden,
+                normalized=self.pf.normalized,
+                residual=self.pf.residual,
+                qkv=self.pf.qkv,
+                attention=self.pf.attention,
+                projection=self.pf.projection,
+                selected_ids=self.pf.selected_ids,
+                routing_weights=self.pf.routing_weights,
+                router_logits=self.pf.router_logits,
+                router_counter=self._prefill_router_counter,
+                expert_gate=self.pf.expert_gate,
+                expert_up=self.pf.expert_up,
+                expert_intermediate=self.pf.expert_intermediate,
+                expert_down=self.pf.expert_down,
+                logits=DeviceBuffer(
+                    ptr=self.pf.logits.ptr,
+                    nbytes=spec.vocab_size * 4,
+                ),
+                argmax_block_values=self.pf.argmax_block_values,
+                argmax_block_indices=self.pf.argmax_block_indices,
+                argmax_index=self._prefill_argmax_index,
+                argmax_value=DeviceBuffer(
+                    ptr=self.pf.argmax_value.ptr,
+                    nbytes=4,
+                ),
+                sliding_span_owner=SimpleNamespace(
+                    capacity=self.sliding_span_owner.per_request_capacity,
+                    spans=sliding_spans[request],
+                ),
+                global_span_owner=SimpleNamespace(
+                    capacity=self.global_span_owner.per_request_capacity,
+                    spans=global_spans[request],
+                ),
+                layers=tuple(layers),
+            )
+            runners.append(
+                MapleRunner(
+                    checkpoint=self.checkpoint,
+                    weights=self.weights,
+                    buffers=buffers,
+                    libraries=self.libraries,
+                    owner=self.owner,
+                    backend=self.backend,
+                    max_context=self.per_capacity,
+                    runtime=self.runtime,
+                )
+            )
+        self._prefill_runners = tuple(runners)
 
     def batch_step(
         self,
@@ -1891,6 +2143,9 @@ class MapleBatchRunner:
         self._require_open()
         self.runtime.device_synchronize()
         self._requests.fill(0)
+        if self._prefill_runners is not None:
+            for runner in self._prefill_runners:
+                runner.position = 0
         self.sliding_span_owner.reset()
         self.global_span_owner.reset()
 
@@ -1900,6 +2155,8 @@ class MapleBatchRunner:
         if not 0 <= request < self.batch_size:
             raise ValueError(f"request {request} out of range")
         self._requests[request] = 0
+        if self._prefill_runners is not None:
+            self._prefill_runners[request].position = 0
         self.sliding_span_owner.reset_request(request)
         self.global_span_owner.reset_request(request)
         self.runtime.device_synchronize()
@@ -1909,8 +2166,14 @@ class MapleBatchRunner:
             return
         self.closed = True
         self.runtime.device_synchronize()
+        if self._prefill_runners is not None:
+            for runner in self._prefill_runners:
+                if runner._graph is not None:
+                    runner._graph.close()
+                    runner._graph = None
         self.owner.close()
-        self.weights.free(runtime=self.runtime)
+        if self.owns_weights:
+            self.weights.free(runtime=self.runtime)
 
     def _require_open(self) -> None:
         if self.closed:
