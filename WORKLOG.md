@@ -207163,3 +207163,31 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   P2 GQA/query-row attention the active optimization. A future P1b may revisit
   matrix/SIMD ternary contraction; the rejected grouped-lane geometries stay
   closed.
+
+## 2026-08-08 — Maple P2 exact qrow/GQA prefill attention
+
+- Start from clean retained P1 evidence commit `ed25308eb`. ROCm is alive on
+  Radeon 8060S/gfx1151. The broad kernel-lineage command is blocked by the
+  already-absent optional `/home/lhl/amd-gpu-tuning/reference/atlas` checkout;
+  the narrow Maple-attention query selects no tracked external source. No
+  external file is copied. The in-tree Laguna qrow family is an arithmetic and
+  scheduling reference only.
+- Run the clean cached-only corrected phase profiler with one hardware queue,
+  precomputed compiler version, and `HIPENGINE_REQUIRE_CACHED_BUILD=1`.
+  Post-P1 prefill320 is **478.176 ms/request / 472.321 ms kernel / 669.210
+  tok/s**, **730 launches**, and a **1.22%** host gap. Attention is **63.993 ms
+  (13.55% of kernel time)** across 48 chunk/layer calls. QKV+O is **124.379
+  ms**. Artifact
+  `benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json` is
+  accepted diagnostic evidence, SHA-256
+  `b024726b8474e4d9d440f3546029786602fafc8078c88f50db5c85cf21a322c3`.
+- Freeze P2's stretch target at attention **<=31.996 ms (2.0x)** while retaining
+  any exact same-suite non-regressive gain. The current local128/VGPR16 body
+  owns one `(query head,row)` block, rereads every K/V stream for four GQA
+  heads, and performs a barriered 128-thread reduction for every key. The first
+  RED/GREEN candidate must consume complete `KVLiveSpans` and map that exact
+  tree to wave32: each lane computes
+  `(x[lane]+x[lane+64])+(x[lane+32]+x[lane+96])`, followed by the unchanged
+  16/8/4/2/1 tree. This preserves FP32 association and online-softmax/PV order
+  while enabling adjacent-query and/or GQA K/V reuse; local128 remains the
+  oracle/rollback.

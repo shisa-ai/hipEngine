@@ -58,11 +58,11 @@ final kernels ran as `maple_selected_ternary_dual_grouped_kernel<128, 1>`
 `maple_selected_ternary_grouped_kernel<32, 1>` (local32, VGPR48, LDS512,
 scratch0). Stable metadata costs 0.444 ms/request. The expert family changes
 **276.150 -> 254.179 ms (1.086x)** and traced prefill320 changes **498.442 ->
-476.730 ms (1.046x)**; these are diagnostic candidate measurements pending the
-clean qualified row, not retained performance claims. Exact 2-/4-lane
-cooperative schedules regress, leaving gate/up scalar unpack/reduction as the
-measured blocker to the 97.708-ms P1 target. The row/route gather remains an
-environment-controlled rollback.
+476.730 ms (1.046x)** in the implementation trace. Clean qualification retains
+**726.421/679.632/650.745 tok/s** at 128/320/512 with 18/18 state hashes and
+90/90 positions exact. Exact 2-/4-lane cooperative schedules regress, leaving
+gate/up scalar unpack/reduction as the measured blocker to the 97.708-ms P1
+target. The row/route gather remains an environment-controlled rollback.
 
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard
@@ -77,7 +77,12 @@ cache-only gfx1151 trace reports QK/RoPE/KV-write at local32/VGPR24/scratch0,
 fixture. The batched ring-prefill attention reads the complete live causal
 prefix across chunk boundaries; its prefix-aware fixture is BF16-bit exact and
 a cached gfx1151 trace names `maple_attention_prefill_ring_kernel` at **6,452
-ns**, VGPR16, LDS0, scratch0. Batched decode uses disjoint per-request rings
+ns**, VGPR16, LDS0, scratch0. The clean post-P1 prefill320 trace measures 48
+chunk/layer calls at **63.993 ms/request (13.55% of kernel time)**, local128,
+VGPR16, LDS0, scratch0. This local128 body owns one `(query head,row)` per block,
+rereads each KV stream for all four GQA query heads, and barriers throughout the
+per-key reduction; exact wave32 qrow/GQA reuse is the active P2 target. Batched
+decode uses disjoint per-request rings
 and separate SWA/global capacity owners; wrapped positions remain inside their
 request arena after position 512. The wrapped c=3 primitive is BF16-bit exact;
 cached tracing reports batched QK/RoPE/KV write at **3,967 ns** (VGPR24) and
