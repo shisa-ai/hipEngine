@@ -46,7 +46,7 @@ from hipengine.runtime.moonshine_encoder_cuda_batch import (
     MoonshineCudaBatchEncoderRuntime,
 )
 
-from c8_report_common import build_report, percentile
+from c8_report_common import build_report, percentile, route_timing_result
 
 
 _SNAPSHOT = os.environ.get(
@@ -188,9 +188,17 @@ def _print_graph_row(batch: int, label: str, eager_ms: float, graph_ms: float,
                  "graph_speedup": float(speedup)}
     # RR-6: retain raw per-route wall samples for the graph vs eager pair.
     if eager_raw is not None:
-        row["eager_enc_handoff_ms_raw"] = [float(v) for v in eager_raw]
+        eager_values = [float(v) for v in eager_raw]
+        row["eager_enc_handoff_ms_raw"] = eager_values
+        row["eager_p50_ms"] = percentile(sorted(eager_values), 50)
+        row["eager_p95_ms"] = percentile(sorted(eager_values), 95)
+        row["eager_sample_count"] = len(eager_values)
     if graph_raw is not None:
-        row["graph_enc_handoff_ms_raw"] = [float(v) for v in graph_raw]
+        graph_values = [float(v) for v in graph_raw]
+        row["graph_enc_handoff_ms_raw"] = graph_values
+        row["graph_p50_ms"] = percentile(sorted(graph_values), 50)
+        row["graph_p95_ms"] = percentile(sorted(graph_values), 95)
+        row["graph_sample_count"] = len(graph_values)
     return row
 
 
@@ -284,34 +292,18 @@ def _batch_full_route(runtime, loaded, benc, bdec, audio, mask, seeds) -> tuple[
     return wall, transcripts
 
 
-def _pct(sorted_vals: list[float], pct: float) -> float:
-    if not sorted_vals:
-        return 0.0
-    index = min(len(sorted_vals) - 1, int(round(pct / 100.0 * (len(sorted_vals) - 1))))
-    return sorted_vals[index]
-
-
 def _print_row(batch: int, label: str, times: list[float], c1_total_s: float) -> dict:
-    median = statistics.median(times)
-    sorted_times = sorted(times)
-    p50 = percentile(sorted_times, 50) * 1000.0
-    p95 = percentile(sorted_times, 95) * 1000.0
-    req_s = batch / median
-    c1_req_s = batch / c1_total_s
-    speedup = req_s / c1_req_s
-    print(f"{batch:>3} {label:<14} {median*1000:>9.3f} {req_s:>8.1f} {p50:>8.3f} "
-          f"{p95:>8.3f} {speedup:>9.2f}x")
-    return {
-        "c1_seq_total_s": float(c1_total_s),
-        "batch_median_ms": float(median),
-        "batch_req_per_s": float(req_s),
-        "vs_c1_seq_req_per_s": float(speedup),
-        # RR-6: retain the raw per-route wall samples and actual P50/P95.
-        "route_wall_s_raw": [float(value) for value in times],
-        "p50_ms": float(p50),
-        "p95_ms": float(p95),
-        "sample_count": len(times),
-    }
+    row = route_timing_result(
+        times,
+        batch=batch,
+        c1_seq_total_s=c1_total_s,
+    )
+    print(
+        f"{batch:>3} {label:<14} {row['batch_median_ms']:>9.3f} "
+        f"{row['batch_req_per_s']:>8.1f} {row['p50_ms']:>8.3f} "
+        f"{row['p95_ms']:>8.3f} {row['vs_c1_seq_req_per_s']:>9.2f}x"
+    )
+    return row
 
 
 def main() -> None:
@@ -388,8 +380,8 @@ def main() -> None:
 
         # ---- Table B: long-bucket (1,248-frame) encoder-only scaling --------
         if not args.skip_long_bucket:
-            print(f"[B] encoder-only, 480000 samples -> 1,248-frame bucket "
-                  f"(synthetic, homogeneous); secondary long-bucket scaling")
+            print("[B] encoder-only, 480000 samples -> 1,248-frame bucket "
+                  "(synthetic, homogeneous); secondary long-bucket scaling")
             print(f"{'B':>3} {'route':<14} {'ms/route':>9} {'req/s':>8} {'P50(ms)':>8} "
                   f"{'P95(ms)':>8} {'vs c1-seq':>9}")
             for batch in _BATCH_SIZES:
@@ -409,8 +401,8 @@ def main() -> None:
 
         # ---- Table C: encoder-chain graph vs eager encode+handoff ----------
         if args.encoder_graph:
-            print(f"[C] encoder-chain graph capture vs eager encode+handoff, "
-                  f"long-bucket cuBLASLt route (480000 samples -> 1,248 frames)")
+            print("[C] encoder-chain graph capture vs eager encode+handoff, "
+                  "long-bucket cuBLASLt route (480000 samples -> 1,248 frames)")
             print(f"{'B':>3} {'route':<16} {'eager ms':>9} {'graph ms':>9} {'speedup':>9}")
             results["graph"] = {}
             for batch in _BATCH_SIZES:
@@ -488,6 +480,7 @@ def main() -> None:
             if args.encoder_graph
             else "custom_cuda_runtime_subset"
         ),
+        benchmark_source="scripts/benchmark_c8_batch_encoder_throughput.py",
     )
     if args.json_out:
         with open(args.json_out, "w") as handle:
