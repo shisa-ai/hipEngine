@@ -207145,3 +207145,21 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   weight rereads. Commit the validated implementation before clean qualified
   recertification; a materially different matrix/SIMD contraction belongs in
   later P1 follow-up rather than another grouped-lane geometry sweep.
+- Freeze implementation commit `12106b8a4`, push it, and run the binding clean
+  cached-only M5 protocol at that revision. The artifact is **accepted**:
+  qualified 128/320/512 throughput is **726.421/679.632/650.745 tok/s**, versus
+  retained P0 **700.643/649.280/614.874** (**+3.679%/+4.675%/+5.834%**), and
+  same-run serial **148.445/106.501/83.131** (**4.894x/6.381x/7.828x**).
+  Sample ranges are **715.706-733.806 / 674.384-685.617 /
+  648.157-653.655 tok/s**.
+- Binding correctness remains **18/18** natural+heldout state hashes, **90/90**
+  tokens/top-1, and max/mean KL **0/0**. Fixed P1 metadata increases tracked
+  max-context-512 ownership exactly **5,355,836,776 -> 5,355,881,848 bytes
+  (+45,072 bytes / 0.043 MiB)**; close is **0 bytes / 0 allocations**. Publish
+  `benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json`,
+  SHA-256 `4fab10a99a5733e434f638fbd1a33d64ab5754f8e6ae9ebdc01fa2e8a4233608`.
+- P1 is retained/default as an exact non-regressive win, but the 2.826x expert
+  target is not claimed. Mark P1 done with the scalar-consumer blocker and make
+  P2 GQA/query-row attention the active optimization. A future P1b may revisit
+  matrix/SIMD ternary contraction; the rejected grouped-lane geometries stay
+  closed.

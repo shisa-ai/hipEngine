@@ -148,9 +148,10 @@ software versions, or a correctness protocol, and Apple M4 and Radeon 8060S
 are different systems. It is directional evidence, not an apples-to-apples
 benchmark. The useful comparison is nevertheless clear: hipEngine's
 **163.459 tok/s exact c1** is only 3.3% below the published M4 exact rate, not
-25% below the approximate 218 headline. After P0, hipEngine's 649.280 tok/s at
-320 tokens is about 1.66x below the published M4 prefill rate, down from a 3.3x
-gap. Decode is competitive; prefill remains materially underoptimized.
+25% below the approximate 218 headline. After P0+P1, hipEngine's **679.632
+tok/s** at 320 tokens is about 1.58x below the published M4 prefill rate, down
+from a 3.3x gap. Decode is competitive; prefill remains materially
+underoptimized.
 
 ## Current Radeon 8060S / gfx1151 performance
 
@@ -167,18 +168,18 @@ Japanese/English—after one warmup, with three repetitions.
 
 | Prompt tokens | Native prefill tok/s | Serial reference tok/s | Speedup |
 | ---: | ---: | ---: | ---: |
-| 128 | **700.643** | 147.082 | **4.764x** |
-| 320 | **649.280** | 105.871 | **6.133x** |
-| 512 | **614.874** | 82.608 | **7.443x** |
+| 128 | **726.421** | 148.445 | **4.894x** |
+| 320 | **679.632** | 106.501 | **6.381x** |
+| 512 | **650.745** | 83.131 | **7.828x** |
 
-Native sample ranges are 690.952-707.692, 644.680-653.821, and
-610.327-620.205 tok/s respectively. P0 final-row sampling improves the
-corrected prior native rows by **106.14%/98.82%/93.67%** while preserving every
-prompt-state byte. The prior 339.890/326.573/317.488 rows remain the corrected
-bring-up baseline but are superseded for production.
+Native sample ranges are 715.706-733.806, 674.384-685.617, and
+648.157-653.655 tok/s respectively. P1 expert-major MoE improves the retained
+P0 rows by **3.68%/4.67%/5.83%** while preserving every prompt-state byte. The
+prior 700.643/649.280/614.874 P0 rows and 339.890/326.573/317.488 bring-up rows
+remain superseded evidence.
 
 Evidence:
-[`2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json).
+[`2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json`](../benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json).
 
 ### Decode
 
@@ -202,7 +203,7 @@ Evidence:
 | Resident configuration | hipEngine-owned device memory |
 | --- | ---: |
 | Exact checkpoint payload alone | **4.944 GiB** |
-| Public c1 runner, max context 512 (P0/M5 protocol) | **4.988 GiB** |
+| Public c1 runner, max context 512 (P1/M5 protocol) | **4.988 GiB** |
 | Batch helper c=2 / c=4 / c=8, capacity 66/request | **4.951 / 4.958 / 4.973 GiB** |
 | After `close()` | **0 bytes / 0 active allocations** |
 
@@ -220,7 +221,7 @@ text as proof of numerical correctness.
 | --- | --- |
 | Packed NumPy/Torch formula vs hipEngine, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
 | Pinned HF `trust_remote_code` oracle with matched affine4 endpoints | max KL **0.004719**, mean KL 0.000723, top-1 **18/18** |
-| P0/M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | **18/18** byte-exact final-hidden/normalized/live-KV/span state hashes; max/mean KL **0/0**; top-1/token equality **90/90** |
+| P1/M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | **18/18** byte-exact final-hidden/normalized/live-KV/span state hashes; max/mean KL **0/0**; top-1/token equality **90/90** |
 | M5 260-token cross-chunk continuation | seed plus three subsequent decode tokens exact |
 | M6 c=2/4/8 and 514-step SWA-wrap tests | all generated trajectories exact |
 | Public canonical prompt | coherent 37-token answer, real EOS 151645, deterministic resident repeat |
@@ -235,14 +236,16 @@ Primary evidence:
 
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
+- [P1/M5 expert-major recertification](../benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json)
 - [P0/M5 final-row recertification](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json)
 - [M6 recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json)
 
 ## Optimization review and next work
 
-A clean cached-only profile at retained P0 updates prefill attribution; the c1
-and c8 rows remain the corrected decode baselines because P0 does not alter
-those paths:
+The clean cached-only retained-P0 profile is the immutable baseline for P1; a
+clean post-P1 profile follows the retained throughput publication. The c1 and
+c8 rows remain the corrected decode baselines because P0/P1 do not alter those
+paths:
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
@@ -263,29 +266,33 @@ The public max-context-512 runner falls **5.133 -> 4.988 GiB**, an exact
 batch helper retains its separate all-row buffers because every active request
 still needs a sampled result.
 
-### Review correction: current prefill MoE is not grouped
+### P1 retained: true expert-major compact MoE
 
-The batched selected-expert kernels use grid `(output, route, row)`. Every
-routed row independently rereads its expert weight; no count, prefix, scatter,
-or expert-major execution occurs. Calling this path "grouped MoE" was
-incorrect. It is a correct row/route gather bring-up path, while the retained
-hipEngine prefill contract and DeepGrove's MLX path both group routed rows by
-expert.
+P1 replaces the row/route gather default with registered stable int32
+count/prefix/scatter metadata plus expert-major ternary gate/up/down consumers.
+Each consumer stages one expert/output weight row and writes directly back to
+original row/route order, preserving the existing SwiGLU and weighted-combine
+boundaries. The gather chain remains an explicit rollback.
 
-At retained P0 and 320 rows, gate/up plus down consume **276.150 ms**, or
-**56.0%** of all kernel time. A 1000 tok/s target requires this family to fall
-to **<=97.708 ms** (**2.826x**), assuming other measured buckets stay fixed.
-That is an aggressive but credible target because 2,560 routed assignments currently
-average ten rows per expert, and hipEngine already has device-side
-count/prefix/scatter machinery in its GGUF/PARO paths.
+Qualified throughput is **726.421/679.632/650.745 tok/s**, up
+**3.68%/4.67%/5.83%** over P0, with all 18 state hashes and 90 positions exact.
+The metadata owner is exactly **45,072 bytes**, moving tracked residency from
+5,355,836,776 to **5,355,881,848 bytes** while close still reaches zero.
+
+P1 does not meet the aggressive profile ceiling. The final diagnostic changes
+the expert family only **276.150 -> 254.179 ms (1.086x)**; stable metadata costs
+0.444 ms and exact 2-/4-lane schedules regress. The measured blocker is now the
+scalar ternary unpack/dot/reduction, especially dual gate/up. Reaching the
+original **<=97.708-ms** target requires a materially different matrix/SIMD
+consumer rather than more sorting or grouped-lane geometry.
 
 ### Prioritized exact roadmap
 
 | Priority | Work | Measured rationale and gate |
 | ---: | --- | --- |
 | **P0 — DONE** | Sample only the final prompt row | Retained at 700.643/649.280/614.874 tok/s, 18/18 byte-exact state hashes, and 148.813 MiB lower residency. |
-| **P1 — NEXT** | True expert-major compact MoE | Reuse the existing device count/prefix/scatter ABI, add ternary grouped gate/up/down consumers, and restore original row/route order before weighted combine. Reprofile P0 first, then target the unchanged expert family without changing any BF16 boundary. |
-| **P2** | GQA/query-row prefill attention | The current 62.995-ms prefill320 kernel assigns one block per `(query head,row)`, rereads each KV stream for all four GQA heads, and barriers once per key. Transfer the exact qrow/GQA-reuse pattern or evaluate AOTriton after P0/P1 reprofile. |
+| **P1 — DONE / SCALAR BLOCKER** | True expert-major compact MoE | Retained at 726.421/679.632/650.745 tok/s and byte-exact; expert family improves 1.086x but misses the 2.826x ceiling, selecting a future matrix/SIMD ternary consumer rather than more grouping geometry. |
+| **P2 — NEXT** | GQA/query-row prefill attention | The current 62.995-ms prefill320 kernel assigns one block per `(query head,row)`, rereads each KV stream for all four GQA heads, and barriers once per key. Transfer the exact qrow/GQA-reuse pattern or evaluate AOTriton from the clean post-P1 profile. |
 | **P3** | Retune dense ternary row tiles | QKV+O consume 122.555 ms. Their exact kernel reuses a weight row across a fixed tile of eight prompt rows; sweep 8/16/32 and only then consider a new WMMA layout. |
 | **D0** | Exact c1 kernel work, not graph promotion | A controlled 3+3-process review measured current graph replay at only **1.0047x** (0.033 ms saved), exact and leak-free. The corrected kernel-only roof is 198.591 tok/s, so exact 200+ needs at least one kernel win: first test DeepGrove's one-dispatch router pattern and then affine4-head bandwidth/layout changes. |
 | **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
@@ -301,6 +308,7 @@ The 200+ decode target is therefore realistic in two distinct forms:
   so router/head kernel work is mandatory.
 
 Evidence:
+[`P1 expert-major prefill`](../benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json),
 [`P0 final-row prefill`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json),
 [`post-P0 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json),
 [`corrected pre-P0 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json),
