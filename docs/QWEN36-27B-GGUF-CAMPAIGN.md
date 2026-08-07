@@ -1923,6 +1923,21 @@ not change. The inferred combined K/V bucket falls **4.050 -> 3.762 ms**, still
 K/V for exact residual source/dispatch reconciliation before root. Artifact:
 `benchmarks/results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`.
 
+The residual source audit next reproduces Vulkan's AMD Q6 floating geometry
+rather than assuming the earlier local128 col4 screen covered it. Vulkan
+explicitly rejects Q6_K Q8_1/MMVQ on AMD and assigns one local32 wave two output
+columns plus every activation row. On actual GPU1 K5,120/N1,024 V bytes, the
+source-layout local32/col2 leaf is exact and improves rows 1/2/3 from
+**13.495/13.871/15.066 us** to **8.695/11.780/13.029 us**, but the binding B3
+rows=4 specialization reaches **144 VGPR** and regresses **15.403 -> 28.247 us
+(0.545x)**. Replacing the sole qmicro owner would slow B3; preserving raw Q6 as
+an additional resident would add **32.8125 MiB** across eight tensors without
+helping B3. The diagnostic source, wrappers, registry leaves, and tests are
+removed. Q6 V is source-audited closed unless a materially different rows=4
+register schedule appears; reconciliation advances to Vulkan's genuinely
+uncovered Q4_K Q8_1/integer-dot route. Artifact:
+`benchmarks/results/2026-08-06-qwen36-27b-q6-vulkan-source-geometry-rejected.json`.
+
 ---
 
 ## 7. Prioritized execution plan
@@ -1933,7 +1948,7 @@ K/V for exact residual source/dispatch reconciliation before root. Artifact:
 | ---: | --- | --- | --- | --- |
 | 0 | D27-R0 | Rebuild and freeze latest llama.cpp Vulkan, rerun low-level, stateful AR, natural B3/B4, and budget selection. | Same model/device/protocol; candidate-local warmup; compact raw hashes and rollup. | complete at `c8e03ce81`; B4 selected at 69.798 tok/s |
 | 0 | D27-R1 | Reprofile latest Vulkan B3/B4 and current hipEngine B3; reconcile every kernel, queue/host, copy/state, proposal, target, commit, and sampling bucket to wall. | Matched one-prompt trajectories and <=10% residual or explicit overlap/measurement explanation. | complete; aggregate HIP kernels are 31.20 ms ahead, but steady graph/queue/host is 41.35 ms behind |
-| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; exact compact K and sole-resident planar-Q6 V reduce combined K/V **4.958 -> 3.762 ms**, still **1.723 ms** behind Vulkan; reconcile the residual K/V source/dispatch before root |
+| 1 | D27-R2 | Close profiler-ranked module deficits sequentially using the exact Vulkan shader/dispatch/generated behavior as source evidence. | Do not advance to the next slower hipEngine module until the current module is >= Vulkan under a matched call/shape normalization and all correctness/state gates pass, or the source-faithful mechanism ladder is explicitly exhausted. | in progress; submission residual **41.346 -> 20.467 ms**, parent/child 0/13 and rejected; latest Q5 and wide-Q6 shader/selector paths are byte-identical and their measured ladders remain exhausted; exact compact K and sole-resident planar-Q6 V reduce combined K/V **4.958 -> 3.762 ms**, still **1.723 ms** behind Vulkan; source-faithful Q6 local32/col2 loses at binding rows4 (**0.545x**) and is removed; screen Q4_K Q8_1/integer-dot before root |
 | 2 | D27-R3 | Close non-arithmetic/algorithmic residuals, including budget/schedule topology. | Complete natural25 selected hipEngine path >= selected Vulkan B4, without fixed-prompt tuning. | pending module closure |
 | 3 | D27-R4 | Publish final controls, artifacts, rollups, refactor cleanup, and defaults. | 512/4096 prefill+AR controls, full category/heldout natural gate, exact state, atomic commits. | pending parity |
 

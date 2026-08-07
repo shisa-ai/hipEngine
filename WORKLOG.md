@@ -208607,3 +208607,30 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`
   plus campaign/README/changelog updates. Raw natural/comparison/profile hashes
   are `28a2c52a...1c77` / `c442d3d3...416` / `a6e57bc8...bff`.
+
+## 2026-08-06 — Reject Vulkan-source Q6 V local32/col2 geometry
+
+- Reconcile the remaining Q6 V source path against tracked-clean llama.cpp
+  Vulkan `c8e03ce81`. Its AMD selector deliberately rejects Q6_K Q8_1/MMVQ;
+  `mul_mat_vec_q6_k.comp` instead assigns one local32 wave two adjacent output
+  columns and every activation row. The earlier hipEngine col4 diagnostic kept
+  local128 and therefore did not test this constant-total-thread geometry.
+- Implement two disposable leaves: a direct raw-Q6 source-layout reproduction
+  and a byte-neutral planar-qmicro sibling. After correcting the raw source
+  scale cache and compiler association, the actual GPU1 K5,120/N1,024 V screen
+  is exact and moves current col8 -> source local32/col2 at rows 1/2/3 from
+  **13.495/13.871/15.066 us** to **8.695/11.780/13.029 us
+  (1.552x/1.177x/1.156x)**. At binding B3 rows=4, however, the template reaches
+  **144 VGPR** and regresses **15.403 -> 28.247 us (0.545x)**. All top-1 gates
+  are 100%; rows4 is BF16-bit exact and rows3 differs by only 2/3,072 outputs
+  with max KL **8.93e-16**.
+- Reject the candidate. Replacing the sole qmicro owner would slow B3, while
+  retaining raw source bytes beside qmicro would add **34,406,400 bytes /
+  32.8125 MiB** across eight V tensors without helping rows4. Remove all
+  diagnostic HIP/Python/registry/test changes; working production code returns
+  exactly to `6b778651d`.
+- Publish compact rejection artifact
+  `benchmarks/results/2026-08-06-qwen36-27b-q6-vulkan-source-geometry-rejected.json`.
+  Raw screen/harness hashes are `327d102d...af89` / `38e95a67...6888`.
+  Q6 V is source-audited closed unless a materially different rows4 register
+  schedule appears. Next reconcile the uncovered Q4_K Q8_1/integer-dot route.
