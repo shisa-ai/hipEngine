@@ -207435,3 +207435,50 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   tok/s. Update MAPLE overview/performance/kernel/refactor docs plus benchmark
   rollup/changelog without replacing the natural-context 145.321 row with the
   incomparable short diagnostic.
+
+## 2026-08-08 — Maple D0 exact wave32 affine4 head candidate
+
+- Start from clean retained router commit `e972e5399`. The refreshed c1 profile
+  identifies the exact affine4 head at **1.278 ms / 26.30%** of kernels. M3b's
+  rejected eight-output-row tile only cached the already-hot 4-KiB hidden vector
+  and measured 0.96x; do not repeat it. Narrow lineage selects no external
+  parent and no source is copied.
+- Audit the current gfx1151 code object. Production uses local128/VGPR24/
+  SGPR128/dynamic-LDS512/scratch0. Compiler ISA already hoists one BF16 scale
+  and bias per packed word, issues a B32 weight load plus B128 activation load,
+  and preserves eight FMA terms per word, so superficial metadata/CSE cleanup
+  has no remaining lever. The structural candidate instead maps the four
+  current waves onto four virtual partials per physical lane and reconstructs
+  the exact 64/32/16/8/4/2/1 tree with wave32 shuffles.
+- RED first fails on the intentionally absent
+  `maple_affine4_gemv_wave32_exact_f32` wrapper. Add a separately registered
+  `maple_affine4_gemv/group64_wave32_exact` primitive and a default-off
+  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=1` runtime route for c1 and the native
+  prefill final-row tail. The original group64 kernel remains unchanged.
+- GREEN at production K=2048 is FP32-bit exact. The real
+  **151,936x2,048 / 166.922-MiB** checkpoint head has **0/151,936** logit
+  mismatches, identical argmax/hash, and improves **1.527 -> 1.020 ms
+  (1.496x)** with **48/48** paired wins and **0.509-ms** paired median saving.
+- Dirty full-category screen (18 prompts, 4 warmup + 16 measured steps,
+  one repetition) improves exact group64 control **148.409 -> 158.903 tok/s
+  (+7.071%)**, saves **0.442 ms** at paired median, and wins **287/288** pairs.
+  All **18/18** native-start/final states, **360/360** tokens/top logits,
+  **720/720** zero-counter checks, all four categories, and lifecycle are exact.
+  This remains diagnostic because the tree is dirty and the protocol is below
+  the 32-step/two-repeat publication floor.
+- Cached-only profiling names
+  `maple_affine4_gemv_wave32_exact_kernel` at local32/VGPR16/SGPR128/LDS0/
+  scratch0, **0.983 ms/step**, with unchanged 271 launches. The dirty short
+  profile is **5.009-ms wall / 4.579-ms kernels = 199.659 tok/s**; this is a
+  diagnostic, not a retained 200 claim. Raw trace SHA-256 is
+  `0b62d9eca18e303bf96db73f42249f9c75978499fff08eb523fd3c53bd07db30`.
+- Extend `scripts/maple_c1_bench.py --comparison router|affine4_wave32` so the
+  clean binding run can isolate only the head while holding the retained router
+  fixed. Its formal one-step dirty smoke passes **18/18** states/positions and
+  exact lifecycle; candidate is **165.873 vs 154.120 tok/s**, **17/18** wins,
+  but remains unqualified by design.
+- Validation before implementation commit: Maple ternary plus selector/final-
+  tail unit bundle passes **17/17**; real-checkpoint short/natural/cross-chunk
+  candidate gates pass **3/3**; Python compile, `--help`, diff, narrow lineage,
+  exact full-logit screen, complete dirty state gate, and named cached trace
+  pass. Commit default-off before clean 32-step/two-repeat qualification.

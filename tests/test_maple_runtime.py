@@ -180,8 +180,21 @@ def test_maple_router_single_dispatch_is_default_with_parallel_rollback(
     assert maple_runtime._maple_router_single_dispatch() is False
 
 
-def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
+def test_maple_affine4_wave32_candidate_is_default_off(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", raising=False)
+    assert maple_runtime._maple_affine4_wave32_exact() is False
+    monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "1")
+    assert maple_runtime._maple_affine4_wave32_exact() is True
+
+
+@pytest.mark.parametrize("wave32", [False, True])
+def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) -> None:
     from hipengine.core.memory import DeviceBuffer
+
+    if wave32:
+        monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", raising=False)
 
     def buffer(ptr: int, nbytes: int = 4_096) -> DeviceBuffer:
         return DeviceBuffer(ptr=ptr, nbytes=nbytes)
@@ -250,7 +263,7 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
 
     embed_rows: list[int] = []
     tail_norm_calls: list[tuple[int, int, int]] = []
-    head_calls: list[tuple[int, int]] = []
+    head_calls: list[tuple[str, int, int]] = []
     argmax_calls: list[tuple[int, int]] = []
 
     monkeypatch.setattr(
@@ -272,7 +285,16 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
     monkeypatch.setattr(
         maple_runtime,
         "maple_affine4_gemv_f32",
-        lambda *args, **kwargs: head_calls.append((int(args[0]), int(args[4]))),
+        lambda *args, **kwargs: head_calls.append(
+            ("group64", int(args[0]), int(args[4]))
+        ),
+    )
+    monkeypatch.setattr(
+        maple_runtime,
+        "maple_affine4_gemv_wave32_exact_f32",
+        lambda *args, **kwargs: head_calls.append(
+            ("wave32", int(args[0]), int(args[4]))
+        ),
     )
     monkeypatch.setattr(
         maple_runtime,
@@ -307,7 +329,8 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
 
     assert embed_rows == [3, 2]
     assert tail_norm_calls == [(1_008, buffers.normalized.ptr, 1)]
-    assert head_calls == [(buffers.normalized.ptr, buffers.logits.ptr)]
+    expected_head = "wave32" if wave32 else "group64"
+    assert head_calls == [(expected_head, buffers.normalized.ptr, buffers.logits.ptr)]
     assert argmax_calls == [(buffers.logits.ptr, buffers.argmax_index.ptr)]
     assert result.position == 4
     assert result.token_id == 7
