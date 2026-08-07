@@ -1,6 +1,6 @@
 # MAPLE — gfx1151 Prefill & Decode Performance Plan
 
-Last updated: 2026-08-05 (branch `maple`)
+Last updated: 2026-08-07 (branch `maple`)
 
 This is the authoritative performance punchlist for
 `deepgrove/maple-preview-2bit-mlx` on Radeon 8060S / `hip_gfx1151`. It reuses
@@ -263,7 +263,6 @@ append-position = `start + r` / context = `start + r + 1`.
 Today the ternary kernels are c1 GEMV (`grid = out_features`, one row per
 block). Add tiled/GEMM variants that **reuse weights across the T prompt rows**
 and exploit the 2-bit packing:
-
 - Embedding + all projections (`qkv`, `o_proj`, expert `gate/up/down`) become
   `[T, out]` = `x[T,in] · W[in,out]`.
 - Use RDNA3.5 **INT4-WMMA** (`118.8 TOP/s`) to do the 2-bit ternary matmul as
@@ -271,6 +270,23 @@ and exploit the 2-bit packing:
   bit-exact CPU/NumPy oracle and the packed-formula gate.
 - Chunk `T` into 256-row chunks per `docs/TUNING-gfx1151.md` Lesson 0 (the
   original gfx1151 win was shape/chunking; 4K → 1K+ prefill tok/s for PARO).
+
+**Landed prefill primitives (2026-08-07, all bit-exact vs CPU oracle, tested):**
+
+| Primitive | Key / commit | Purpose |
+| --- | --- | --- |
+| `maple_ternary_gemm_bf16` | P1 GEMM `7c1624080` | `[rows,out]=[rows,in]x ternary W`, weight row in LDS reused over 8-token tile |
+| `maple_ternary_qkv_gemm_bf16` | P1 QKV GEMM `a4b9808d8` | full `[T, q+2kv]` qkv buffer from q/k/v projections |
+| `maple_attention_prefill_kernel` | P2 dense attn `450bacdb8` | causal online-softmax over dense prefix cache |
+| `maple_qknorm_rope_kv_write_batched_kernel` | P2 qknorm ring write `d7185caaa` | T-row qknorm+RoPE+KV write into shared ring |
+| `maple_attention_prefill_ring_kernel` | P2 ring attn `ffe822eae` | causal attn through KVLiveSpans ring (shared cache) |
+| `maple_router_topk_parallel_batched_kernel` | P3 router `3820527ed` | batched logits + softmax/top-k over T rows |
+
+These complete the **attention half** of a prefill layer chain (QKV GEMM →
+qknorm ring write → ring prefill attn → o_proj GEMM) and the **router**. Still
+open: batched affine4 embed, batched rmsnorm/add_rmsnorm, **grouped MoE over
+rows (P3)**, batched final norm + lm_head GEMM, and the `prefill_native`
+wiring + measured prefill tok/s artifact.
 
 ### P2 — Batched attention prefill (append-then-attend)
 
@@ -307,8 +323,8 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M3a | Parallelize router topk | exact one-ULP; decode wall ↓ 61% | `WORKLOG.md` + artifact |
 | M3b | lm_head affine4 | exact; dead-end (tiled 0.96×, weight-bandwidth bound) | `WORKLOG.md` |
 | M3c | selected-expert grouping | exact; dead-end (grouped 0.69×, x is L2-cached) | `WORKLOG.md` |
-| M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | `...-maple-prefill.json` |
-| M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `benchmarks/README.md` |
+| M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | GEMM+QKV GEMM primitives in; full path open |
+| M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | attn+qknorm+ring-attn+router primitives in; grouped MoE+wiring open |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
 | M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | `benchmarks/README.md` |
 | M2 | D2 fusion | exact, non-regressive | `WORKLOG.md` |
