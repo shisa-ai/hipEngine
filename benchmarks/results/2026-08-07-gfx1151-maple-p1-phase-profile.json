@@ -1,0 +1,688 @@
+{
+  "artifact_type": "maple_corrected_phase_profile",
+  "date": "2026-08-08",
+  "hardware": {
+    "architecture": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "host": "gfx1151",
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|Marketing Name:|gfx'\"'\"' | head -8'",
+      "output": "Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Name:                    gfx1151                            \n  Marketing Name:          AMD Radeon 8060S Graphics          \n  Vendor Name:             AMD                                \n      Name:                    amdgcn-amd-amdhsa--gfx1151         \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic",
+      "returncode": 0
+    }
+  },
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "quant": "maple_ternary2",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a"
+  },
+  "notes": [
+    "Raw rocprof output stays outside the repository under raw_root.",
+    "Prefill attribution averages one warm and one measured 320-token native request; wall throughput uses the measured request.",
+    "Decode attribution includes warm and measured autoregressive steps with identical kernel structure; wall medians use measured steps only.",
+    "This artifact attributes the corrected paths and does not itself retain a new throughput row."
+  ],
+  "performance_claim": false,
+  "profiles": [
+    {
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-maple-phase-profile/prefill320 -- /home/lhl/miniforge3/envs/therock/bin/python /tmp/hipengine-maple-phase-profile/prefill320_child.py prefill320 deepgrove/maple-preview-2bit-mlx hip_gfx1151",
+      "families": [
+        {
+          "family": "expert_gate_up",
+          "kernel_share": 0.32852007270848343,
+          "microseconds_per_useful_token": 484.896603125,
+          "milliseconds_per_unit": 155.166913
+        },
+        {
+          "family": "expert_down",
+          "kernel_share": 0.20951788692676251,
+          "microseconds_per_useful_token": 309.2490234375,
+          "milliseconds_per_unit": 98.9596875
+        },
+        {
+          "family": "qkv_proj",
+          "kernel_share": 0.1596298299285371,
+          "microseconds_per_useful_token": 235.614103125,
+          "milliseconds_per_unit": 75.396513
+        },
+        {
+          "family": "attention",
+          "kernel_share": 0.135485783411168,
+          "microseconds_per_useful_token": 199.97741875,
+          "milliseconds_per_unit": 63.992774
+        },
+        {
+          "family": "o_proj",
+          "kernel_share": 0.10370657801257113,
+          "microseconds_per_useful_token": 153.0712171875,
+          "milliseconds_per_unit": 48.9827895
+        },
+        {
+          "family": "router_logits",
+          "kernel_share": 0.0465419308136322,
+          "microseconds_per_useful_token": 68.696028125,
+          "milliseconds_per_unit": 21.982729
+        },
+        {
+          "family": "router_topk",
+          "kernel_share": 0.005556697193342052,
+          "microseconds_per_useful_token": 8.2017015625,
+          "milliseconds_per_unit": 2.6245445
+        },
+        {
+          "family": "lm_head",
+          "kernel_share": 0.003121662290099918,
+          "microseconds_per_useful_token": 4.6075828125000005,
+          "milliseconds_per_unit": 1.4744265
+        },
+        {
+          "family": "weighted_residual",
+          "kernel_share": 0.002716930084599328,
+          "microseconds_per_useful_token": 4.010196875,
+          "milliseconds_per_unit": 1.283263
+        },
+        {
+          "family": "swiglu",
+          "kernel_share": 0.0016535493485377376,
+          "microseconds_per_useful_token": 2.44064375,
+          "milliseconds_per_unit": 0.781006
+        },
+        {
+          "family": "qknorm_kvwrite",
+          "kernel_share": 0.001626734954667229,
+          "microseconds_per_useful_token": 2.401065625,
+          "milliseconds_per_unit": 0.768341
+        },
+        {
+          "family": "moe_compaction",
+          "kernel_share": 0.0009538101147600905,
+          "microseconds_per_useful_token": 1.4078265625,
+          "milliseconds_per_unit": 0.4505045
+        },
+        {
+          "family": "add_rmsnorm",
+          "kernel_share": 0.0005207528900414508,
+          "microseconds_per_useful_token": 0.7686328125,
+          "milliseconds_per_unit": 0.2459625
+        },
+        {
+          "family": "rmsnorm",
+          "kernel_share": 0.00038932107458993604,
+          "microseconds_per_useful_token": 0.5746390625,
+          "milliseconds_per_unit": 0.1838845
+        },
+        {
+          "family": "embed",
+          "kernel_share": 3.1138783880813686e-05,
+          "microseconds_per_useful_token": 0.0459609375,
+          "milliseconds_per_unit": 0.0147075
+        },
+        {
+          "family": "argmax",
+          "kernel_share": 1.739389284193948e-05,
+          "microseconds_per_useful_token": 0.0256734375,
+          "milliseconds_per_unit": 0.0082155
+        },
+        {
+          "family": "kv_span_update",
+          "kernel_share": 9.927571485101846e-06,
+          "microseconds_per_useful_token": 0.014653125,
+          "milliseconds_per_unit": 0.004689
+        }
+      ],
+      "host_gap_fraction": 0.012243869140316497,
+      "host_gap_seconds_per_unit": 0.005854720339846131,
+      "kernel_launches_per_unit": 730.0,
+      "kernel_seconds_per_unit": 0.4723209505,
+      "measured_units": 1,
+      "median_wall_seconds_per_unit": 0.47817567083984613,
+      "phase": "prefill320",
+      "top_family": "expert_gate_up",
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::maple_selected_ternary_dual_grouped_kernel<128, 1>(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, long const*, long const*, unsigned short*, unsigned short*, long, long, long, long, long)",
+          "milliseconds_per_unit": 155.166913
+        },
+        {
+          "kernel": "void (anonymous namespace)::maple_selected_ternary_grouped_kernel<32, 1>(unsigned short const*, unsigned int const*, unsigned short const*, long const*, long const*, unsigned short*, long, long, long, long, long)",
+          "milliseconds_per_unit": 98.9596875
+        },
+        {
+          "kernel": "void maple_ternary_qkv_gemm_kernel<8>(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long, long, long)",
+          "milliseconds_per_unit": 75.396513
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_attention_prefill_ring_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long, long, long, long, float, long, long)",
+          "milliseconds_per_unit": 63.992774
+        },
+        {
+          "kernel": "void maple_ternary_gemm_bf16_kernel<8>(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long, long)",
+          "milliseconds_per_unit": 48.9827895
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_router_logits_batched_kernel(unsigned short const*, unsigned short const*, float*, long, long)",
+          "milliseconds_per_unit": 21.982729
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_router_softmax_topk_batched_kernel(float const*, int*, float*, long, long)",
+          "milliseconds_per_unit": 2.6245445
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_affine4_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short const*, float*, long, long)",
+          "milliseconds_per_unit": 1.4744265
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_weighted_residual_batched_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "milliseconds_per_unit": 1.283263
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_clamped_swiglu_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "milliseconds_per_unit": 0.781006
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_qknorm_rope_kv_write_batched_kernel(unsigned short*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long, long, long, long, float, float, long, long)",
+          "milliseconds_per_unit": 0.768341
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, float, long, long)",
+          "milliseconds_per_unit": 0.2459625
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_moe_group_scatter_active_parallel_kernel<int>(int const*, float const*, long const*, long*, long*, long*, float*, long, long, long)",
+          "milliseconds_per_unit": 0.184627
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, float, long, long)",
+          "milliseconds_per_unit": 0.1838845
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_moe_group_count_active_parallel_kernel<int>(int const*, long*, long, long)",
+          "milliseconds_per_unit": 0.1517635
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_moe_group_prefix_active_parallel_kernel(long*, long*, long*, long)",
+          "milliseconds_per_unit": 0.114114
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_affine4_embed_batched_kernel(unsigned int const*, unsigned short const*, unsigned short const*, long const*, unsigned short*, long, long)",
+          "milliseconds_per_unit": 0.0147075
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "milliseconds_per_unit": 0.0065725
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_kv_span_update_batched_kernel(long*, long*, unsigned char*, long*, long, long, long)",
+          "milliseconds_per_unit": 0.004689
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "milliseconds_per_unit": 0.001643
+        }
+      ],
+      "traced_units": 2,
+      "useful_tokens_per_second": 669.2101240491104,
+      "useful_tokens_per_unit": 320,
+      "wall_samples_seconds": [
+        0.47817567083984613
+      ]
+    },
+    {
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-maple-phase-profile/decode_c1 -- /home/lhl/miniforge3/envs/therock/bin/python /tmp/hipengine-maple-phase-profile/decode_c1_child.py decode_c1 deepgrove/maple-preview-2bit-mlx hip_gfx1151",
+      "families": [
+        {
+          "family": "lm_head",
+          "kernel_share": 0.2927424010007022,
+          "microseconds_per_useful_token": 1490.092388888889,
+          "milliseconds_per_unit": 1.4900923888888888
+        },
+        {
+          "family": "router_topk",
+          "kernel_share": 0.14210580324844024,
+          "microseconds_per_useful_token": 723.3348333333333,
+          "milliseconds_per_unit": 0.7233348333333334
+        },
+        {
+          "family": "expert_gate_up",
+          "kernel_share": 0.12029781931129602,
+          "microseconds_per_useful_token": 612.3296944444444,
+          "milliseconds_per_unit": 0.6123296944444445
+        },
+        {
+          "family": "expert_down",
+          "kernel_share": 0.10352652064245137,
+          "microseconds_per_useful_token": 526.9618611111111,
+          "milliseconds_per_unit": 0.5269618611111111
+        },
+        {
+          "family": "attention",
+          "kernel_share": 0.10351521332241544,
+          "microseconds_per_useful_token": 526.9043055555555,
+          "milliseconds_per_unit": 0.5269043055555556
+        },
+        {
+          "family": "router_logits",
+          "kernel_share": 0.07590511167703011,
+          "microseconds_per_useful_token": 386.3657222222222,
+          "milliseconds_per_unit": 0.38636572222222226
+        },
+        {
+          "family": "qkv_proj",
+          "kernel_share": 0.06595858831558303,
+          "microseconds_per_useful_token": 335.7367777777778,
+          "milliseconds_per_unit": 0.3357367777777778
+        },
+        {
+          "family": "o_proj",
+          "kernel_share": 0.045202234256586926,
+          "microseconds_per_useful_token": 230.08455555555554,
+          "milliseconds_per_unit": 0.23008455555555557
+        },
+        {
+          "family": "qknorm_kvwrite",
+          "kernel_share": 0.012684755715610162,
+          "microseconds_per_useful_token": 64.56686111111111,
+          "milliseconds_per_unit": 0.06456686111111111
+        },
+        {
+          "family": "add_rmsnorm",
+          "kernel_share": 0.011019245320646782,
+          "microseconds_per_useful_token": 56.08922222222222,
+          "milliseconds_per_unit": 0.05608922222222222
+        },
+        {
+          "family": "rmsnorm",
+          "kernel_share": 0.010381620523196246,
+          "microseconds_per_useful_token": 52.84363888888889,
+          "milliseconds_per_unit": 0.05284363888888889
+        },
+        {
+          "family": "weighted_residual",
+          "kernel_share": 0.008262660400228487,
+          "microseconds_per_useful_token": 42.05788888888889,
+          "milliseconds_per_unit": 0.04205788888888889
+        },
+        {
+          "family": "swiglu",
+          "kernel_share": 0.005521704902871431,
+          "microseconds_per_useful_token": 28.10611111111111,
+          "milliseconds_per_unit": 0.02810611111111111
+        },
+        {
+          "family": "argmax",
+          "kernel_share": 0.0015733219020256954,
+          "microseconds_per_useful_token": 8.00838888888889,
+          "milliseconds_per_unit": 0.00800838888888889
+        },
+        {
+          "family": "embed",
+          "kernel_share": 0.0007632495596257251,
+          "microseconds_per_useful_token": 3.8850277777777773,
+          "milliseconds_per_unit": 0.003885027777777778
+        },
+        {
+          "family": "kv_span_update",
+          "kernel_share": 0.0005397499012901522,
+          "microseconds_per_useful_token": 2.747388888888889,
+          "milliseconds_per_unit": 0.0027473888888888886
+        }
+      ],
+      "host_gap_fraction": 0.17553645584021668,
+      "host_gap_seconds_per_unit": 0.001083735836152156,
+      "kernel_launches_per_unit": 295.0,
+      "kernel_seconds_per_unit": 0.005090114666666667,
+      "measured_units": 32,
+      "median_wall_seconds_per_unit": 0.006173850502818823,
+      "phase": "decode_c1",
+      "top_family": "lm_head",
+      "top_kernels": [
+        {
+          "kernel": "(anonymous namespace)::maple_affine4_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short const*, float*, long, long)",
+          "milliseconds_per_unit": 1.4900923888888888
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_router_softmax_topk_kernel(float const*, int*, float*, long, long)",
+          "milliseconds_per_unit": 0.7233348333333334
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_selected_ternary_dual_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, unsigned short*, long, long, long, long)",
+          "milliseconds_per_unit": 0.6123296944444445
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_selected_ternary_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, long, long, long, long)",
+          "milliseconds_per_unit": 0.5269618611111111
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_attention_decode_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, float, long)",
+          "milliseconds_per_unit": 0.5269043055555556
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_router_logits_kernel(unsigned short const*, unsigned short const*, float*, long, long)",
+          "milliseconds_per_unit": 0.38636572222222226
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_ternary_qkv_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long, long)",
+          "milliseconds_per_unit": 0.3357367777777778
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_ternary_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long)",
+          "milliseconds_per_unit": 0.23008455555555557
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_qknorm_rope_kv_write_kernel(unsigned short*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, float, float, long)",
+          "milliseconds_per_unit": 0.06456686111111111
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, float, long, long)",
+          "milliseconds_per_unit": 0.05608922222222222
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, float, long, long)",
+          "milliseconds_per_unit": 0.05284363888888889
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_weighted_residual_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)",
+          "milliseconds_per_unit": 0.04205788888888889
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_clamped_swiglu_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "milliseconds_per_unit": 0.02810611111111111
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "milliseconds_per_unit": 0.006478833333333333
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_affine4_embed_kernel(unsigned int const*, unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          "milliseconds_per_unit": 0.003885027777777778
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_kv_span_update_kernel(long*, long*, unsigned char*, long*, long, long)",
+          "milliseconds_per_unit": 0.0027473888888888886
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "milliseconds_per_unit": 0.0015295555555555557
+        }
+      ],
+      "traced_units": 36,
+      "useful_tokens_per_second": 161.97347174885843,
+      "useful_tokens_per_unit": 1,
+      "wall_samples_seconds": [
+        0.005766923073679209,
+        0.005740331951528788,
+        0.005886407103389502,
+        0.0060166409239172935,
+        0.006008796161040664,
+        0.006048860959708691,
+        0.005909760016947985,
+        0.006002634996548295,
+        0.005903539014980197,
+        0.005931772058829665,
+        0.0058492368552833796,
+        0.006107582012191415,
+        0.006097692996263504,
+        0.00617828406393528,
+        0.006268132943660021,
+        0.006272742059081793,
+        0.006104836007580161,
+        0.006217949092388153,
+        0.006078256061300635,
+        0.006169416941702366,
+        0.0062334779649972916,
+        0.006364343920722604,
+        0.00639654416590929,
+        0.006571552017703652,
+        0.006433031987398863,
+        0.006487733917310834,
+        0.006428363034501672,
+        0.006464059930294752,
+        0.006477636052295566,
+        0.006584455957636237,
+        0.006536335917189717,
+        0.006664567161351442
+      ]
+    },
+    {
+      "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/hipengine-maple-phase-profile/decode_c8 -- /home/lhl/miniforge3/envs/therock/bin/python /tmp/hipengine-maple-phase-profile/decode_c8_child.py decode_c8 deepgrove/maple-preview-2bit-mlx hip_gfx1151",
+      "families": [
+        {
+          "family": "lm_head",
+          "kernel_share": 0.46472280409356137,
+          "microseconds_per_useful_token": 1470.182496875,
+          "milliseconds_per_unit": 11.761459975
+        },
+        {
+          "family": "expert_gate_up",
+          "kernel_share": 0.16363561119569112,
+          "microseconds_per_useful_token": 517.6724906249999,
+          "milliseconds_per_unit": 4.141379925
+        },
+        {
+          "family": "expert_down",
+          "kernel_share": 0.13405051555849254,
+          "microseconds_per_useful_token": 424.07800937499997,
+          "milliseconds_per_unit": 3.3926240749999996
+        },
+        {
+          "family": "qkv_proj",
+          "kernel_share": 0.08144572925293218,
+          "microseconds_per_useful_token": 257.65915624999997,
+          "milliseconds_per_unit": 2.06127325
+        },
+        {
+          "family": "o_proj",
+          "kernel_share": 0.05649549232854586,
+          "microseconds_per_useful_token": 178.72736875,
+          "milliseconds_per_unit": 1.42981895
+        },
+        {
+          "family": "router_logits",
+          "kernel_share": 0.031331077777996305,
+          "microseconds_per_useful_token": 99.118015625,
+          "milliseconds_per_unit": 0.792944125
+        },
+        {
+          "family": "router_topk",
+          "kernel_share": 0.02861320073492557,
+          "microseconds_per_useful_token": 90.519825,
+          "milliseconds_per_unit": 0.7241586
+        },
+        {
+          "family": "attention",
+          "kernel_share": 0.026612721588535938,
+          "microseconds_per_useful_token": 84.191171875,
+          "milliseconds_per_unit": 0.673529375
+        },
+        {
+          "family": "qknorm_kvwrite",
+          "kernel_share": 0.0031890330497707214,
+          "microseconds_per_useful_token": 10.088725,
+          "milliseconds_per_unit": 0.0807098
+        },
+        {
+          "family": "weighted_residual",
+          "kernel_share": 0.002510424417156191,
+          "microseconds_per_useful_token": 7.9418999999999995,
+          "milliseconds_per_unit": 0.0635352
+        },
+        {
+          "family": "add_rmsnorm",
+          "kernel_share": 0.002213273840656829,
+          "microseconds_per_useful_token": 7.001843750000001,
+          "milliseconds_per_unit": 0.05601475
+        },
+        {
+          "family": "rmsnorm",
+          "kernel_share": 0.0020095067282451997,
+          "microseconds_per_useful_token": 6.3572125,
+          "milliseconds_per_unit": 0.05085769999999999
+        },
+        {
+          "family": "argmax",
+          "kernel_share": 0.0015001719231298885,
+          "microseconds_per_useful_token": 4.745896875,
+          "milliseconds_per_unit": 0.037967175
+        },
+        {
+          "family": "swiglu",
+          "kernel_share": 0.0014922990894075052,
+          "microseconds_per_useful_token": 4.720990625000001,
+          "milliseconds_per_unit": 0.037767925
+        },
+        {
+          "family": "embed",
+          "kernel_share": 0.00017813842095275374,
+          "microseconds_per_useful_token": 0.563553125,
+          "milliseconds_per_unit": 0.004508425
+        }
+      ],
+      "host_gap_fraction": 0.07248997069380131,
+      "host_gap_seconds_per_unit": 0.0019780012457735544,
+      "kernel_launches_per_unit": 293.0,
+      "kernel_seconds_per_unit": 0.02530854925,
+      "measured_units": 32,
+      "median_wall_seconds_per_unit": 0.027286550495773554,
+      "phase": "decode_c8",
+      "top_family": "lm_head",
+      "top_kernels": [
+        {
+          "kernel": "(anonymous namespace)::maple_affine4_gemv_batched_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short const*, float*, long, long, long)",
+          "milliseconds_per_unit": 11.761459975
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_selected_ternary_dual_gemv_batched_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, unsigned short*, long, long, long, long, long)",
+          "milliseconds_per_unit": 4.141379925
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_selected_ternary_gemv_batched_kernel(unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, long, long, long, long, long)",
+          "milliseconds_per_unit": 3.3926240749999996
+        },
+        {
+          "kernel": "void maple_ternary_qkv_gemm_kernel<8>(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long, long, long)",
+          "milliseconds_per_unit": 2.06127325
+        },
+        {
+          "kernel": "void maple_ternary_gemm_bf16_kernel<8>(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long, long)",
+          "milliseconds_per_unit": 1.42981895
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_router_logits_batched_kernel(unsigned short const*, unsigned short const*, float*, long, long)",
+          "milliseconds_per_unit": 0.792944125
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_router_softmax_topk_batched_kernel(float const*, int*, float*, long, long)",
+          "milliseconds_per_unit": 0.7241586
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_attention_decode_batched_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long const*, long, long, long, long, float, long)",
+          "milliseconds_per_unit": 0.673529375
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_qknorm_rope_kv_write_batched_decode_kernel(unsigned short*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long const*, long, long, long, long, float, float, long, long)",
+          "milliseconds_per_unit": 0.0807098
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_weighted_residual_batched_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "milliseconds_per_unit": 0.0635352
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, float, long, long)",
+          "milliseconds_per_unit": 0.05601475
+        },
+        {
+          "kernel": "void (anonymous namespace)::paro_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, float, long, long)",
+          "milliseconds_per_unit": 0.05085769999999999
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_clamped_swiglu_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "milliseconds_per_unit": 0.037767925
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "milliseconds_per_unit": 0.036424374999999995
+        },
+        {
+          "kernel": "(anonymous namespace)::maple_affine4_embed_batched_kernel(unsigned int const*, unsigned short const*, unsigned short const*, long const*, unsigned short*, long, long)",
+          "milliseconds_per_unit": 0.004508425
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "milliseconds_per_unit": 0.0015428
+        }
+      ],
+      "traced_units": 40,
+      "useful_tokens_per_second": 293.18473220860693,
+      "useful_tokens_per_unit": 8,
+      "wall_samples_seconds": [
+        0.027462707133963704,
+        0.026410041144117713,
+        0.027285212883725762,
+        0.02643951610662043,
+        0.027287888107821345,
+        0.026462269015610218,
+        0.02741230116225779,
+        0.026545495027676225,
+        0.027525393990799785,
+        0.026644611032679677,
+        0.02755531994625926,
+        0.026761048939079046,
+        0.027644036104902625,
+        0.026919547002762556,
+        0.027675756020471454,
+        0.02684241207316518,
+        0.028014311101287603,
+        0.026875735027715564,
+        0.027887674048542976,
+        0.02706619305536151,
+        0.027901720022782683,
+        0.026982936076819897,
+        0.028013590024784207,
+        0.027153006056323647,
+        0.02801258792169392,
+        0.027204741956666112,
+        0.028172107180580497,
+        0.027199952863156796,
+        0.0282168120611459,
+        0.027246701065450907,
+        0.028166908072307706,
+        0.027402413077652454
+      ]
+    }
+  ],
+  "protocol": {
+    "command": "/home/lhl/miniforge3/envs/therock/bin/python scripts/maple_phase_profile.py --backend hip_gfx1151 --out benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json",
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-maple-hipcc-version.txt",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    },
+    "profiles": [
+      "prefill320",
+      "decode_c1",
+      "decode_c8"
+    ],
+    "raw_root": "/tmp/hipengine-maple-phase-profile"
+  },
+  "schema_version": 1,
+  "software": {
+    "cached_libraries": [
+      "/home/lhl/.cache/hipengine/build/maple_ternary-d714a05cd42dac13/maple_ternary.so",
+      "/home/lhl/.cache/hipengine/build/maple_attention-989b6c1dfde56584/maple_attention.so",
+      "/home/lhl/.cache/hipengine/build/maple_moe-14ef23f16a81c8cc/maple_moe.so",
+      "/home/lhl/.cache/hipengine/build/qwen35_moe_group_scatter-a47b198164ed6a2e/qwen35_moe_group_scatter.so",
+      "/home/lhl/.cache/hipengine/build/qwen35_rmsnorm-ec052163238fb54f/qwen35_rmsnorm.so",
+      "/home/lhl/.cache/hipengine/build/lm_head-5598740af38ee370/lm_head.so"
+    ],
+    "compiler_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "git": {
+      "head": "ed25308eb1f12658f81d5c38102c82f42110446c",
+      "tracked_clean": true,
+      "tracked_status": ""
+    },
+    "python": "3.12.13"
+  },
+  "status": "accepted_diagnostic",
+  "timestamp_utc": "2026-08-07T15:21:46.313877+00:00"
+}

@@ -27,21 +27,22 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 
 **Current conclusion (P0+P1 retained).** Final-row-only sampling nearly doubles
 qualified native prefill, and exact expert-major MoE adds another 3.68-5.83%.
-The clean cached-only retained-P0 trace below is the immutable P1 baseline; a
-clean post-P1 trace follows the throughput publication. The c1/c8 rows remain
-the corrected decode baselines because P0/P1 do not alter those paths:
+The clean retained-P0 trace remains the immutable P1 baseline; the clean
+retained-P1 trace now freezes P2. The c1/c8 rows remain the corrected decode
+baselines because P0/P1 do not alter those paths; the post-P1 diagnostic
+remeasures them within ordinary run variance:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| public native prefill320, post-P0 | 498.442 ms/request | 492.866 ms | 5.576 ms (1.12%) | 586 | 642.000 tok/s |
+| public native prefill320, post-P1 | **478.176 ms/request** | **472.321 ms** | **5.855 ms (1.22%)** | **730** | **669.210 tok/s** |
 | autoregressive c1 decode | 6.118 ms/token | 5.035 ms | 1.082 ms (17.69%) | 295 | 163.459 tok/s |
 | fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
 
-After P0, the exact affine4 head owns only **0.30%** of prefill320 kernel time,
-while gate/up + down owns **56.03%**. The unchanged corrected decode baseline
-still attributes **28.75%/46.52%** of c1/c8 to the head and
-**22.55%/29.67%** to selected experts. The paths therefore have different
-actions:
+After P1, the exact affine4 head owns only **0.31%** of prefill320 kernel time,
+while grouped gate/up + down owns **53.80%**. Attention is the next bounded
+owner at **63.993 ms / 13.55%**. The unchanged corrected decode baseline still
+attributes **28.75%/46.52%** of c1/c8 to the head and **22.55%/29.67%** to
+selected experts. The paths therefore have different actions:
 
 - **Prefill:** P0 samples only the final prompt row; P1 groups routed rows by
   expert. Qualified 128/320/512 throughput is now
@@ -77,6 +78,7 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json`,
 `benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json`,
 `benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`,
 `benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json`,
@@ -365,20 +367,29 @@ family improves only **1.086x** versus the required 2.826x; exact wider-lane
 schedules regress. P1 therefore closes with a measured scalar-compute blocker,
 and future work must use a different matrix/SIMD ternary contraction.
 
-### P2 — GQA/query-row prefill attention — BRING-UP LANDED; TUNING OPEN
+### P2 — GQA/query-row prefill attention — ACTIVE
 
 The batched Q/K/V projection, head RMSNorm+RoPE, KV append, and causal ring
-attention are correct through 512. The 62.995-ms attention family currently
-uses one block per `(query head,row)`, rereads each KV stream for all four query
-heads in a GQA group, and barriers once per key. Transfer the exact qrow/GQA
-reuse pattern or evaluate AOTriton from the clean post-P1 profile. Extending native
-prefill beyond 512 separately requires append/attend orchestration that cannot
-overwrite a still-visible SWA prefix.
+attention are correct through 512. The clean post-P1 profile measures attention
+at **63.993 ms/request (13.55% of kernel time)** across 48 chunk/layer calls.
+The current local128 body assigns one block per `(query head,row)`, scans each
+KV stream four times for the four query heads in its GQA group, and executes a
+full workgroup reduction with barriers for every key.
+
+The exact first implementation maps the same 128 products onto one wave32:
+each lane forms `(x[lane]+x[lane+64])+(x[lane+32]+x[lane+96])`, then applies
+the existing 16/8/4/2/1 tree. This preserves every FP32 association and the
+online-softmax/PV order while enabling adjacent-query or GQA-group K/V reuse.
+It must consume complete `KVLiveSpans`, retain the local128 kernel as rollback,
+and pass the 18-prompt state/lifecycle gate. The stretch target is **<=31.996
+ms (2.0x)**; any exact same-suite non-regressive gain is retained. Extending
+native prefill beyond 512 separately requires append/attend orchestration that
+cannot overwrite a still-visible SWA prefix.
 
 ### P3 — Dense ternary row-tile sweep — BRING-UP LANDED; TUNING OPEN
 
 Dense QKV/O kernels already reuse one packed weight row across a fixed
-eight-row tile and consume 122.555 ms at prefill320. Sweep exact 8/16/32 tiles
+eight-row tile and consume **124.379 ms** at post-P1 prefill320. Sweep exact 8/16/32 tiles
 while preserving each output's reduction order. Consider INT4/BF16 WMMA only
 after that sweep; a different contraction order cannot replace the byte-exact
 state contract merely to hit a throughput target.

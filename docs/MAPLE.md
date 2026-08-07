@@ -242,14 +242,14 @@ Primary evidence:
 
 ## Optimization review and next work
 
-The clean cached-only retained-P0 profile is the immutable baseline for P1; a
-clean post-P1 profile follows the retained throughput publication. The c1 and
+Clean cached-only profiles freeze both completed phases: retained P0 is the
+immutable P1 baseline, and retained P1 is the immutable P2 baseline. The c1 and
 c8 rows remain the corrected decode baselines because P0/P1 do not alter those
-paths:
+paths (the post-P1 diagnostic remeasures them within ordinary run variance):
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
-| native prefill320, post-P0 | 498.442 ms/request | 492.866 ms | 1.12% | **0.30%** |
+| native prefill320, post-P1 | **478.176 ms/request** | **472.321 ms** | **1.22%** | **0.31%** |
 | c1 decode | 6.118 ms/token | 5.035 ms | 17.69% | **28.75%** |
 | c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
 
@@ -292,8 +292,8 @@ consumer rather than more sorting or grouped-lane geometry.
 | ---: | --- | --- |
 | **P0 — DONE** | Sample only the final prompt row | Retained at 700.643/649.280/614.874 tok/s, 18/18 byte-exact state hashes, and 148.813 MiB lower residency. |
 | **P1 — DONE / SCALAR BLOCKER** | True expert-major compact MoE | Retained at 726.421/679.632/650.745 tok/s and byte-exact; expert family improves 1.086x but misses the 2.826x ceiling, selecting a future matrix/SIMD ternary consumer rather than more grouping geometry. |
-| **P2 — NEXT** | GQA/query-row prefill attention | The current 62.995-ms prefill320 kernel assigns one block per `(query head,row)`, rereads each KV stream for all four GQA heads, and barriers once per key. Transfer the exact qrow/GQA-reuse pattern or evaluate AOTriton from the clean post-P1 profile. |
-| **P3** | Retune dense ternary row tiles | QKV+O consume 122.555 ms. Their exact kernel reuses a weight row across a fixed tile of eight prompt rows; sweep 8/16/32 and only then consider a new WMMA layout. |
+| **P2 — NEXT** | GQA/query-row prefill attention | The clean post-P1 profile measures **63.993 ms (13.55% of kernel time)**. Replace one local128 block per `(query head,row)` with an exact wave32 qrow/GQA consumer that preserves the current 128-term tree and online-softmax order while loading each K/V row once per grouped query set. Stretch gate: **<=31.996 ms (2.0x)**; retain any exact same-suite non-regressive win. |
+| **P3** | Retune dense ternary row tiles | Post-P1 QKV+O consume **124.379 ms**. Their exact kernel reuses a weight row across a fixed tile of eight prompt rows; sweep 8/16/32 and only then consider a new WMMA layout. |
 | **D0** | Exact c1 kernel work, not graph promotion | A controlled 3+3-process review measured current graph replay at only **1.0047x** (0.033 ms saved), exact and leak-free. The corrected kernel-only roof is 198.591 tok/s, so exact 200+ needs at least one kernel win: first test DeepGrove's one-dispatch router pattern and then affine4-head bandwidth/layout changes. |
 | **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
 
@@ -308,6 +308,7 @@ The 200+ decode target is therefore realistic in two distinct forms:
   so router/head kernel work is mandatory.
 
 Evidence:
+[`post-P1 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json),
 [`P1 expert-major prefill`](../benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json),
 [`P0 final-row prefill`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json),
 [`post-P0 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json),

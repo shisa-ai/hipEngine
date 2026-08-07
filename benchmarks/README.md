@@ -25,8 +25,11 @@ is the immutable P1 baseline: **498.442 ms / 642.000 tok/s**, with row/route
 experts at **276.150 ms**. P1's final diagnostic reaches only **254.179 ms
 (1.086x)** rather than the **<=97.708-ms (2.826x)** target; metadata is 0.444 ms
 and wider exact lane schedules regress, so scalar ternary compute is the
-recorded blocker. P2 prefill attention is next; c2/c4/c8 still need affine4 row
-reuse. A counterbalanced exact/leak-free
+recorded blocker. The clean
+[`post-P1 phase profile`](results/2026-08-07-gfx1151-maple-p1-phase-profile.json)
+freezes P2 at **478.176 ms / 669.210 tok/s** with attention at **63.993 ms
+(13.55% of kernel time)** and a **<=31.996-ms (2.0x)** stretch target for exact
+wave32 qrow/GQA reuse. c2/c4/c8 still need affine4 row reuse. A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
 measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
 the rejected c1 head tile remains closed.
