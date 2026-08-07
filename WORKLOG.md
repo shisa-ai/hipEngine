@@ -208674,3 +208674,51 @@ Vulkan local sizes verbatim will close the measured gap.
   exhausted. Reopen only for a materially different producer-fused Q8_1 path
   below the measured break-even with full-category quality, a new primitive,
   or changed source/compiler/model. D27-R2 advances to root projection.
+
+## 2026-08-07 — Review and reject Vulkan-source Q6 root geometry
+
+- Review the uncommitted root/lm-head work against clean llama.cpp Vulkan
+  `c8e03ce81`, the four-axis dispatch contract, CPU-reference policy, exact
+  transaction semantics, actual-weight leaves, natural25, and a fresh cached
+  W7900 profile. The source mechanism was genuinely missing: one local32 wave
+  computes two adjacent Q6_K outputs with two half-wave QK-block partitions and
+  Vulkan's nested four-segment scaled-sum association over every activation row.
+- Repair two completeness defects before deciding the route. Remove a losing
+  local64/col4 old-association diagnostic that was still compiled/registered,
+  and add temporary CPU-reference, source-batch-versus-repeated-c1 bit identity,
+  shape/registry fail-closed, and rollback tests. The focused HIP/dispatch/lm-
+  head bundle passes on RX 7900 XTX; cached `rocprofv3` confirms the row4 leaf at
+  local32, VGPR104/SGPR128, LDS0/scratch0, and a plausible 6,599-ns synthetic
+  fixture duration. `scripts/check_lineage.py --kind kernel --diff stat` reports
+  only known unrelated nano-vllm-amd drift.
+- Actual W7900 K5,120/N248,320 local32/col2 rows1/2/3/4 move
+  **1493.577/2327.534/2470.719/2507.544 ->
+  1533.753/1944.428/2237.430/2391.231 us**. Maximum KL is **1.873e-15**, top-1
+  is 100%, and every source-batched row is FP32-bit equal to repeated source c1.
+  Routing only batched target rows initially fails exact scalar-logit comparison
+  by up to **2.86e-6**; routing the same association for c1 restores the complete
+  W7900 B1-B3 logits/accept/state/rollback/reuse/provider/lifecycle transaction.
+- The full category packet is nominally favorable: true AR/B1/B2/B3 moves
+  **22.926/44.730/56.194/61.147 -> 23.616/44.823/56.452/61.429 tok/s** with
+  identical IDs and acceptance; B1/B2/B3 prompt wins are 6/10, 10/10, 10/10.
+  Do not retain from that one run: the exact family trace and counterbalanced c1
+  leaf agree that the package regresses the module it is intended to optimize.
+- In the call-normalized profile, 41 MTP scalar roots regress
+  **60.695327 -> 62.733971 ms** while seven row4 roots improve only
+  **11.915263 -> 11.365432 ms**. MTP root total regresses
+  **72.610590 -> 74.099403 ms (+2.050%)**; including 24 AR roots, all root work
+  regresses **108.110536 -> 110.818849 ms (+2.505%)**. The positive natural row
+  is therefore whole-run clock/queue variance, not a physical root win.
+- Close the optimization gap exposed by review before rejection. An exact old-
+  association local64/col4 body loses **5-11%**; two/four independent source
+  waves are mixed below 1%; source local32/col4 improves rows2-4 but worsens c1
+  on W7900/XTX (**0.961x/0.933x**); col8 loses decisively. Even the favorable
+  W7900 col4 row4 saving is consumed by the mandatory source-c1 penalty.
+- Reject and remove every temporary HIP body, wrapper, registry key, runtime
+  selector, environment flag, and test. Production returns exactly to
+  `a934a65af` before publication; no refactor debt remains. Publish
+  `benchmarks/results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json`
+  and update the campaign/kernel catalog/README/changelog. Root remains
+  **11.762 vs 10.693 ms** in the frozen matched ledger, but the current
+  source-faithful mechanism ladder is exhausted; canonical B3 remains
+  **61.394 tok/s**, **12.040% below** selected Vulkan B4 **69.798 tok/s**.

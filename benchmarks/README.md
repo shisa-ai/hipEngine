@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-06**
+Last updated: **2026-08-07**
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
@@ -5721,8 +5721,39 @@ B1 aggregate acceptance improves **115/127 -> 115/126**; B2/B3 aggregates stay
 candidate B3 remains **0.260%** below the cleaner canonical **61.394 tok/s**,
 the topline does not change. The inferred combined K/V bucket falls **4.050 ->
 3.762 ms** but remains **1.723 ms / 1.845x** above Vulkan's **2.040 ms**; the
-remaining exact K/V source/dispatch audit is still open before root. Artifact:
+subsequent Q6/Q4 source audits close that residual without another retained
+route before advancing to root. Artifact:
 [`2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`](results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json).
+
+#### Qwen3.6-27B Vulkan-source Q6 root geometry, runtime rejected
+
+The sequential root review reproduces latest clean Vulkan `c8e03ce81` rather
+than inferring from prior exact and integer-dot screens. Its AMD Q6 shader uses
+one local32 wave for two adjacent outputs, two half-wave QK-block partitions,
+and four nested scaled segment sums. A temporary byte-neutral planar-qmicro
+leaf passes CPU-reference and actual-root quality (max KL **1.873e-15**, top-1
+**100%**) and improves W7900 verifier rows 2/3/4 by
+**1.197x/1.104x/1.049x**. Scalar c1 instead regresses **2.69%**.
+
+The c1 cost is required, not optional. Routing only verifier rows changes
+logits versus scalar AR by up to **2.86e-6**; routing the same association for
+c1 restores an exact B1-B3 transaction and source-batched/repeated-c1 FP32
+identity. In the call-normalized W7900 profile, 41 MTP scalar roots regress
+**60.695327 -> 62.733971 ms**, outweighing seven row-4 roots improving
+**11.915263 -> 11.365432 ms**. MTP root total regresses **72.610590 ->
+74.099403 ms (+2.050%)**; all AR+MTP root work regresses **108.110536 ->
+110.818849 ms (+2.505%)**.
+
+The complete natural packet is nominally positive at B1/B2/B3
+**44.730/56.194/61.147 -> 44.823/56.452/61.429 tok/s**, with identical IDs and
+acceptance, but conflicts with both the counterbalanced leaves and exact family
+trace and is treated as one-run clock/queue variance. Completion screens reject
+old-association local64 (**0.894-0.950x**), independent wave packing (mixed
+below 1%), source col4 because c1 loses on W7900/XTX (**0.961x/0.933x**), and
+col8. All temporary code and flags are removed; canonical hipEngine B3 remains
+**61.394 tok/s**, **12.040% below** selected Vulkan B4 **69.798 tok/s**.
+Artifact:
+[`2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json`](results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json).
 
 #### Qwen3.6-27B exact populated pack8 prefill tile8x8, W7900/gfx1100
 
@@ -5907,6 +5938,8 @@ Artifacts: [Qwen3.6-27B llama.cpp Vulkan campaign floor](results/2026-08-04-qwen
 [Qwen3.6-27B exact native submission graphs](results/2026-08-06-qwen36-27b-native-submission-graphs-retained.json),
 [Qwen3.6-27B exact direct proposal-to-target handoff](results/2026-08-06-qwen36-27b-direct-proposal-target-handoff-retained.json),
 [Qwen3.6-27B exact full-attention K compact-sidecar owner](results/2026-08-06-qwen36-27b-full-attention-k-sidecar-retained.json),
+[Qwen3.6-27B exact full-attention V planar-Q6 sole owner](results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json),
+[Qwen3.6-27B Vulkan-source Q6 root geometry rejection](results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json),
 [Qwen3.6-27B exact producer-folded rollback snapshot](results/2026-08-05-qwen36-27b-producer-folded-rollback-snapshot-retained.json),
 [Qwen3.6-27B selective FFN-down residual fusion](results/2026-08-05-qwen36-27b-ffn-down-residual-fusion-retained.json),
 [Qwen3.6-27B rounded residual plus next-RMSNorm](results/2026-08-05-qwen36-27b-rounded-next-rmsnorm-retained.json),

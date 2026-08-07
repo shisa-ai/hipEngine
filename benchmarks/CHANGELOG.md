@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-07
+
+- [rejected Vulkan-source Q6 root geometry; canonical topline unchanged] Qwen3.6-27B Q4_K_M / natural25 B3 target / W7900: local32/col2 improves seven row-4 roots **11.915 -> 11.365 ms (-4.61%)**, but exact transaction consistency requires the matching c1 association and 41 MTP scalar roots regress **60.695 -> 62.734 ms**, making total MTP root **72.611 -> 74.099 ms (+2.05%)**; exact old-tree, source-wave-pack, col4/col8, and RX 7900 XTX transfer screens do not rescue the package, all temporary code is removed, and canonical B3 remains **61.394 tok/s**; `benchmarks/results/2026-08-07-qwen36-27b-vulkan-source-root-geometry-rejected.json`.
+
 ## 2026-08-06
 
 - [retained exact full-attention V planar-Q6 sole owner; recovered publication, canonical topline unchanged] Qwen3.6-27B Q4_K_M / natural25 B1-B3 target / W7900: replace eight 10-MiB dense-BF16 Q6 V residents with 4,300,800-byte planar-qmicro owners, saving **47.1875 MiB**, and replace **56 dense V / 1.760127 ms -> 56 qmicro V / 1.472815 ms (-16.323%, 1.195x)**; the exact ten-prompt packet moves true AR/B1/B2/B3 **24.249/44.319/56.261/61.122 -> 24.247/44.635/56.290/61.235 tok/s (-0.006%/+0.714%/+0.052%/+0.185%)**, below canonical B3 **61.394**, while combined K/V falls **4.050 -> 3.762 ms** and remains **1.723 ms** behind Vulkan; `benchmarks/results/2026-08-06-qwen36-27b-full-attention-v-planar-qmicro-retained.json`.
