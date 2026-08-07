@@ -205,6 +205,51 @@ def test_maple_affine4_embed_batched_matches_oracle(maple_ternary_lib) -> None:
     assert np.array_equal(out, expected)
 
 
+def test_maple_affine4_gemv_batched_matches_oracle(maple_ternary_lib) -> None:
+    """Batched affine4 lm_head GEMM over T rows matches per-row oracle (P4)."""
+
+    from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
+        maple_affine4_gemv_batched_f32,
+    )
+
+    rng = np.random.default_rng(99)
+    rows, hidden, out = 5, 64, 11
+    x_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    codes = rng.integers(0, 16, size=(out, hidden), dtype=np.uint8)
+    packed = pack4(codes)
+    scales = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.2, size=(out, 1)).astype(np.float32)
+    )
+    biases = f32_to_bf16_bits(
+        rng.uniform(-0.5, 0.5, size=(out, 1)).astype(np.float32)
+    )
+    expected = np.stack(
+        [affine4_gemv_f32(bf16_round(row), packed, scales, biases) for row in x_f32]
+    )
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        packed_d = dev.put(packed)
+        scales_d, biases_d = dev.put(scales), dev.put(biases)
+        out_arr, out_d = dev.empty((rows, out), np.dtype(np.float32))
+        maple_affine4_gemv_batched_f32(
+            x_d.ptr,
+            packed_d.ptr,
+            scales_d.ptr,
+            biases_d.ptr,
+            out_d.ptr,
+            rows,
+            hidden,
+            out,
+            library=maple_ternary_lib,
+        )
+        dev.get(out_arr, out_d)
+
+    np.testing.assert_allclose(out_arr, expected, atol=2e-4, rtol=2e-4)
+
+
+
 
 def test_maple_generic_and_fused_qkv_ternary_gemv_match_oracle(maple_ternary_lib) -> None:
     rng = np.random.default_rng(22)

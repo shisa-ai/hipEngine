@@ -203205,3 +203205,19 @@ Vulkan local sizes verbatim will close the measured gap.
   gate/up -> swiglu -> batched down -> batched weighted residual. Remaining:
   batched rmsnorm/add_rmsnorm, batched final norm+lm_head, and prefill_native
   wiring + measured artifact.
+
+## 2026-08-07 — M5/P4: batched affine4 lm_head GEMM primitive
+
+- Add `maple_affine4_gemv_batched_kernel` (P4): out[T, out] = x[T, in] x
+  affine4 W. Grid (out_features, T); block (row_idx, t) projects input row t
+  with output row row_idx's affine4 weights.
+- Wrapper `maple_affine4_gemv_batched_f32` + registry key
+  `("maple_affine4_gemv", "group64_batched")`. Row-wise argmax over
+  [T, vocab] is already covered by `argmax_f32_rows_i32`.
+- Correctness: new `test_maple_affine4_gemv_batched_matches_oracle` matches
+  per-row `affine4_gemv_f32` oracle over 5 rows. 10/10 ternary tests pass;
+  ruff clean.
+- This completes the full prefill primitive set (embed, QKV GEMM, qknorm ring
+  write, ring attention, o_proj GEMM, router, dual/down/weighted-residual MoE,
+  lm_head GEMM, row argmax). Remaining: `prefill_native` wiring + measured
+  prefill tok/s artifact.
