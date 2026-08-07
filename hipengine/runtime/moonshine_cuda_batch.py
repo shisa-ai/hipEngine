@@ -452,6 +452,130 @@ class MoonshineCudaBatchRuntime:
         self.encoder_state_valid = True
         self.reset_generation(clear_cross_cache=False)
 
+    def load_cross_cache_row(
+        self,
+        row: int,
+        keys: Sequence[np.ndarray],
+        values: Sequence[np.ndarray],
+        *,
+        mask: np.ndarray,
+    ) -> None:
+        """Install one request's cross K/V and mask without resetting peers.
+
+        This is the continuous-admission counterpart of
+        :meth:`load_cross_cache_batch`.  ``keys``/``values`` contain one
+        head-major ``[kv_heads, encoder_frames, head_dim]`` FP16 array per
+        decoder layer and ``mask`` is one ``[encoder_frames]`` int32 row.  The
+        destination row may be inactive or freshly reclaimed; no other row and
+        no self-cache state is changed.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine batch runtime is closed")
+        if isinstance(row, bool) or not isinstance(row, int) or not 0 <= row < self.max_batch:
+            raise ValueError("cross-cache row is outside the batch")
+        spec = self.spec
+        if len(keys) != spec.decoder_layers or len(values) != spec.decoder_layers:
+            raise ValueError(
+                f"cross cache needs {spec.decoder_layers} layers, "
+                f"got {len(keys)} keys / {len(values)} values"
+            )
+        expected = (spec.decoder_kv_heads, self.encoder_frames, spec.head_dim)
+        self.runtime.stream_synchronize(self.stream)
+        for layer in range(spec.decoder_layers):
+            key = np.ascontiguousarray(keys[layer], dtype=np.float16)
+            value = np.ascontiguousarray(values[layer], dtype=np.float16)
+            if key.shape != expected or value.shape != expected:
+                raise ValueError(
+                    f"layer {layer} cross-cache row shape {key.shape}/{value.shape} "
+                    f"!= {expected}"
+                )
+            view = self.cross_cache(layer)
+            row_nbytes = key.nbytes
+            row_offset = row * row_nbytes
+            self.runtime.memcpy(
+                view.key.ptr + row_offset,
+                host_array_ptr(key),
+                row_nbytes,
+                MemcpyKind.HOST_TO_DEVICE,
+            )
+            self.runtime.memcpy(
+                view.value.ptr + row_offset,
+                host_array_ptr(value),
+                row_nbytes,
+                MemcpyKind.HOST_TO_DEVICE,
+            )
+        mask_row = np.ascontiguousarray(mask, dtype=np.int32).reshape(-1)
+        if mask_row.shape != (self.encoder_frames,):
+            raise ValueError(
+                f"cross-cache mask row shape {mask_row.shape} != "
+                f"{(self.encoder_frames,)}"
+            )
+        if not bool(((mask_row == 0) | (mask_row == 1)).all()):
+            raise ValueError("cross-cache mask must be binary")
+        mask_offset = row * mask_row.nbytes
+        self.runtime.memcpy(
+            self.workspace.allocation("encoder_attention_mask").buffer.ptr
+            + mask_offset,
+            host_array_ptr(mask_row),
+            mask_row.nbytes,
+            MemcpyKind.HOST_TO_DEVICE,
+        )
+        self.cross_cache_valid = True
+        self.encoder_state_valid = True
+
+    def move_batch_row(self, source: int, destination: int) -> None:
+        """Compact one live request row, preserving only next-step state.
+
+        Self/cross caches, encoder mask, token, and position are copied D2D.
+        Decoder scratch is intentionally not copied because every active row is
+        fully overwritten by the next token DAG.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine batch runtime is closed")
+        for name, value in (("source", source), ("destination", destination)):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 0 <= value < self.max_batch
+            ):
+                raise ValueError(f"{name} row is outside the batch")
+        if source == destination:
+            return
+        spec = self.spec
+        self.runtime.stream_synchronize(self.stream)
+        for layer in range(spec.decoder_layers):
+            for cache in (self.self_cache(layer), self.cross_cache(layer)):
+                for tensor in (cache.key, cache.value):
+                    row_nbytes = int(np.prod(tensor.shape[1:])) * tensor.dtype.itemsize
+                    self.runtime.memcpy_async(
+                        tensor.ptr + destination * row_nbytes,
+                        tensor.ptr + source * row_nbytes,
+                        row_nbytes,
+                        MemcpyKind.DEVICE_TO_DEVICE,
+                        self.stream,
+                    )
+        mask_row_nbytes = self.encoder_frames * DType.INT32.itemsize
+        mask_ptr = self.workspace.allocation("encoder_attention_mask").buffer.ptr
+        self.runtime.memcpy_async(
+            mask_ptr + destination * mask_row_nbytes,
+            mask_ptr + source * mask_row_nbytes,
+            mask_row_nbytes,
+            MemcpyKind.DEVICE_TO_DEVICE,
+            self.stream,
+        )
+        for name in ("token", "position"):
+            tensor = self.tensor(name)
+            self.runtime.memcpy_async(
+                tensor.ptr + destination * tensor.dtype.itemsize,
+                tensor.ptr + source * tensor.dtype.itemsize,
+                tensor.dtype.itemsize,
+                MemcpyKind.DEVICE_TO_DEVICE,
+                self.stream,
+            )
+        self.runtime.stream_synchronize(self.stream)
+
     def set_encoder_state_from_batch_encoder(
         self,
         encoder_hidden_ptr: int,
@@ -679,6 +803,67 @@ class MoonshineCudaBatchRuntime:
         )
         self.decode_position = position
 
+    def set_mixed_batch_decode_state(
+        self,
+        *,
+        tokens: Sequence[int],
+        positions: Sequence[int],
+        active_batch: int,
+    ) -> None:
+        """Set prefix-row token/position state for mixed-position decoding.
+
+        This advanced host-owned state path is intentionally separate from the
+        lockstep ``self_cache_length`` contract.  A continuous scheduler packs
+        live requests into rows ``[0, active_batch)`` and supplies each row's
+        own position before replaying a uniform-schedule graph.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine batch runtime is closed")
+        if self.decoder_libraries is None:
+            raise RuntimeError("Moonshine batch decoder kernels are not prepared")
+        if not self.cross_cache_valid or not self.encoder_state_valid:
+            raise RuntimeError("Moonshine batch cross cache is not ready")
+        if (
+            isinstance(active_batch, bool)
+            or not isinstance(active_batch, int)
+            or not 1 <= active_batch <= self.max_batch
+        ):
+            raise ValueError("active_batch must be in 1..max_batch")
+        token_list = list(tokens)
+        position_list = list(positions)
+        if len(token_list) != active_batch or len(position_list) != active_batch:
+            raise ValueError("mixed token/position rows must equal active_batch")
+        for token_id in token_list:
+            if (
+                isinstance(token_id, bool)
+                or not isinstance(token_id, int)
+                or not 0 <= token_id < self.spec.vocab_size
+            ):
+                raise ValueError("token_id is outside the Moonshine vocabulary")
+        for position in position_list:
+            if (
+                isinstance(position, bool)
+                or not isinstance(position, int)
+                or not 0 <= position < self.spec.self_cache_capacity
+            ):
+                raise ValueError("decode position is outside self-cache capacity")
+        token_array = np.asarray(token_list, dtype=np.int64)
+        position_array = np.asarray(position_list, dtype=np.int64)
+        self.runtime.stream_synchronize(self.stream)
+        self.runtime.memcpy(
+            self.workspace.allocation("token").buffer.ptr,
+            host_array_ptr(token_array),
+            token_array.nbytes,
+            MemcpyKind.HOST_TO_DEVICE,
+        )
+        self.runtime.memcpy(
+            self.workspace.allocation("position").buffer.ptr,
+            host_array_ptr(position_array),
+            position_array.nbytes,
+            MemcpyKind.HOST_TO_DEVICE,
+        )
+
     def set_batch_device_owned_decode(self, enabled: bool = True) -> None:
         """Enable device-owned decode state for all rows (token/position on device)."""
 
@@ -768,6 +953,7 @@ class MoonshineCudaBatchRuntime:
         route_position: int,
         threads: int,
         stream: int,
+        active_batch: int | None = None,
         boundary_callback: Callable[[str, Tensor], None] | None = None,
     ) -> None:
         """Enqueue the fixed-address batch token DAG without host-owned state change."""
@@ -804,7 +990,13 @@ class MoonshineCudaBatchRuntime:
         )
 
         spec = self.spec
-        batch = self.max_batch
+        batch = self.max_batch if active_batch is None else active_batch
+        if (
+            isinstance(batch, bool)
+            or not isinstance(batch, int)
+            or not 1 <= batch <= self.max_batch
+        ):
+            raise ValueError("active_batch must be in 1..max_batch")
         hidden = self.tensor("hidden")
         normalized = self.tensor("normalized")
         query = self.tensor("query")
@@ -1184,18 +1376,33 @@ class MoonshineCudaBatchRuntime:
             capture.close()
         self._token_graphs.clear()
 
-    def read_tokens(self) -> np.ndarray:
-        """Synchronize the resident stream and read the per-row int64 tokens."""
+    def read_tokens(self, *, active_batch: int | None = None) -> np.ndarray:
+        """Synchronize and read all rows or only the packed active prefix."""
 
         if self.closed or self.spec is None:
             raise RuntimeError("Moonshine batch runtime is closed")
+        count = self.max_batch if active_batch is None else active_batch
+        if (
+            isinstance(count, bool)
+            or not isinstance(count, int)
+            or not 1 <= count <= self.max_batch
+        ):
+            raise ValueError("active_batch must be in 1..max_batch")
         self.runtime.stream_synchronize(self.stream)
-        host = np.empty(self.max_batch, dtype=np.int64)
-        copy_device_to_host(
-            host_array_ptr(host),
-            self.workspace.allocation("token").buffer,
-            runtime=self.runtime,
-        )
+        host = np.empty(count, dtype=np.int64)
+        if count == self.max_batch:
+            copy_device_to_host(
+                host_array_ptr(host),
+                self.workspace.allocation("token").buffer,
+                runtime=self.runtime,
+            )
+        else:
+            self.runtime.memcpy(
+                host_array_ptr(host),
+                self.workspace.allocation("token").buffer.ptr,
+                host.nbytes,
+                MemcpyKind.DEVICE_TO_HOST,
+            )
         for token_id in host:
             if token_id < 0 or token_id >= self.spec.vocab_size:
                 raise RuntimeError(
