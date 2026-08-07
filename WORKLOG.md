@@ -207048,3 +207048,7 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   tests/test_maple_runtime.py -q --tb=short` -> **16 passed**. This includes
   c1 native prefill, multichunk continuation, c2/c4/c8 decode, 514-step SWA
   wrap, sparse reclaim, and lifecycle coverage.
+- Before the clean recertification, extend the M5 artifact environment capture
+  to include `HIPENGINE_COMPILER_VERSION_FILE` and
+  `HIPENGINE_REQUIRE_CACHED_BUILD`; the exact benchmark can therefore prove it
+  used the prebuilt compiler identity and cached-only kernel libraries.

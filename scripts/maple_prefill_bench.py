@@ -548,6 +548,12 @@ def main() -> int:
             "environment": {
                 "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
                 "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+                "HIPENGINE_COMPILER_VERSION_FILE": os.environ.get(
+                    "HIPENGINE_COMPILER_VERSION_FILE"
+                ),
+                "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get(
+                    "HIPENGINE_REQUIRE_CACHED_BUILD"
+                ),
             },
             "backend": args.backend,
             "suite": str(args.suite),
