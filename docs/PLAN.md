@@ -365,7 +365,7 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 | **Multi-backend from day one** | The kernel tree is parameterized by target (`hip_gfx1100`, `hip_gfx1151`, `cuda_sm86`, `cpu_reference`). Adding a backend adds a sibling directory and registry entries — no engine rewrites. CUDA, Strix Halo, and future hardware are peers of gfx1100, not ports. |
 | **Clean host, proven kernels** | The Python host is ~700 lines of purpose-built scheduling and dispatch. The kernel layer is ~18,600 lines of proven, profiled HIP + C++ bindings (120 `__global__` kernels) from the nano-vllm-amd research lineage. Kernel bodies take raw device pointers — torch-independent — so only the host-side launch wrappers change when retargeting to a new backend. |
 | **Torch-free at runtime** | hipEngine does not import `torch` at inference time. We own a thin `hipengine.Tensor` over HIP/CUDA device pointers, call `hipblasLt` / `hipGraph` / loading libs via `ctypes`, and JIT kernels with `hipcc` + `ctypes.CDLL` (no `torch.utils.cpp_extension`). This removes a 1.7 GiB dependency. Optional `hipengine[torch]` extra exposes dlpack interop for users who want to hand in torch tensors. |
-| **Fast dispatch, no Python in the hot path** | Decode forward is captured into a `hipGraph` at warmup and replayed with zero Python overhead per subsequent step. Python runs only once per token for sampling. |
+| **Fast dispatch, no Python in the hot path** | Decode forward is captured at warmup and replayed with zero Python kernel-dispatch overhead per subsequent step. Native `hipGraph` remains the default; an explicit, architecture-gated in-tree retained-PM4 transport may lower admitted kernel-only graphs to one ROCr submission. Python runs only once per token for sampling. |
 | **Fused + unfused kernels coexist** | Every fused composite (`rmsnorm_rotate`, `gate_combine_residual`, etc.) has an unfused chain equivalent. The dispatcher prefers fused when a registered composite matches the upcoming op chain and falls back to unfused primitives when not. Unfused kernels also serve as the correctness baseline. |
 | **Library-first, server-included** | `pip install hipengine` gives you `from hipengine import LLM` plus the `hipengine serve` OpenAI-compatible server CLI. The torch-free inference hot path still does not import FastAPI/Uvicorn. |
 | **Extensible by design** | Four orthogonal plugin axes — **backend**, **model**, **quant**, **layer** — not hardcoded branches. See Extensibility Design. |
@@ -400,7 +400,8 @@ The kernel layer sees `hipengine.Tensor` (raw device ptr + metadata) on the acti
 │  • hipengine.Tensor  — device ptr + shape/stride/dtype + dlpack  │
 │  • device.py         — HIP/CUDA enumeration, multi-GPU context   │
 │  • memory.py         — mmap + hipMemcpyAsync, pinned host mem    │
-│  • graph.py          — hipGraph capture + replay via ctypes      │
+│  • hip.py            — hipGraph capture + replay via ctypes      │
+│  • pm4/ (planned)    — exact graph inspection + retained ROCr IB │
 │  • blas.py           — hipblasLt / cublasLt bindings (ctypes)    │
 │  • build.py          — hipcc/nvcc subprocess + .so cache         │
 ├─────────────────────────────────────────────────────────────────┤
@@ -679,6 +680,16 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 | 5 | **GIL-release on kernel submit + overlap scheduling** | Hides remaining Python overhead behind GPU work. | Phase 5, research. |
 
 **Phase-0 commitment:** lever #1 only. The nano-vllm-amd code already demonstrates it works on ROCm via PyTorch's `torch.cuda.CUDAGraph` wrapper; hipEngine's torch-free port calls `hipGraphCreate` / `hipGraphInstantiate` / `hipGraphLaunch` directly through `ctypes` on `libamdhip64.so` (~300 lines).
+
+**In-tree retained-PM4 program:** native HIP graph replay remains the package
+baseline and default. For explicit gfx1100 experiments, hipEngine will inspect
+its already captured kernel-only graph through public HIP APIs, extract the
+exact JIT-embedded HSACO, and lower it to one retained PM4 indirect buffer
+submitted through a persistent public-ROCr queue. This removes the Redline
+runtime/interposer dependency while providing a smaller lifecycle reproducer
+for ROCm/ROCm#6529. Architecture admission, exact ABI checks, conservative
+ordering, no post-submit fallback, and promotion gates are specified in
+[`PM4.md`](PM4.md).
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 

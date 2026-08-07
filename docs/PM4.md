@@ -1,0 +1,941 @@
+# In-Tree Retained-PM4 Submission
+
+> **Status (2026-08-07):** approved implementation plan; native HIP graphs remain
+> the package default. The first admitted target is gfx1100. Explicit PM4
+> selection must fail closed, and reset-prone recreate stress requires a
+> separate warning and approval before it is run.
+
+This document defines hipEngine's plan for a small, torch-free, in-tree
+retained-PM4 transport. The transport is intended to preserve the useful launch
+amortization demonstrated by Redline while removing Redline as a runtime and
+build dependency. It also provides a much smaller reproducer for the gfx1100
+address-zero VM-fault lifecycle reported as
+[ROCm/ROCm#6529](https://github.com/ROCm/ROCm/issues/6529).
+
+This is not a promise that arbitrary PM4 is a stable ROCm API. AMD exposes the
+public HSA/ROCr queue and executable APIs and publishes the vendor-AQL PM4-IB
+packet layout in `aqlprofile`, but the compute register stream inside that IB is
+architecture-specific. Admission is therefore per architecture, conservative,
+and fail closed.
+
+## Decision
+
+Build the transport in-tree.
+
+- Keep `hipgraph` as the default and correctness baseline.
+- Add explicit `aql` and `pm4` transports behind a backend registration.
+- Implement gfx1100 first; do not infer gfx1151 or gfx12 safety from gfx1100.
+- Inspect already captured native HIP graphs rather than interposing HIP module
+  registration or rewriting kernel launch wrappers.
+- Load the exact embedded HSACO through public HSA executable APIs.
+- Own one persistent ROCr queue and retained resources per process/GPU transport
+  context rather than recreating them per replay.
+- Reject any graph, kernel ABI, architecture, or lifecycle state that the first
+  implementation cannot prove.
+- Never fall back to HIP after an explicit PM4 submission has begun.
+
+The intended production surface is about 2–3k lines of native/Python runtime
+code plus tests and the lifecycle reproducer. It is deliberately not a generic
+graph framework, compiler, profiler, or HIP interposer.
+
+## Goals and non-goals
+
+### Goals
+
+1. Replace hundreds of AQL kernel packets in a captured decode graph with one
+   vendor-AQL packet pointing to one retained PM4 indirect buffer (IB).
+2. Reuse hipEngine's existing native HIP graph capture as the graph-description
+   frontend.
+3. Remove runtime dependencies on Redline, Rust/Cargo, PyO3, mold, Radiowave,
+   and `LD_PRELOAD` interposition.
+4. Preserve the exact JIT-built device code, launch geometry, kernargs, and DAG
+   ordering used by the native graph.
+5. Make transport choice explicit, inspectable, architecture-keyed, and easy to
+   switch for A/B and issue isolation.
+6. Produce a compact same-HSACO HIP/direct-AQL/PM4 lifecycle reproducer with a
+   complete resource-generation ledger.
+7. Retain the existing torch-free runtime invariant.
+
+### Non-goals for the first implementation
+
+- Replacing HIP allocation, streams, events, BLAS, or kernel compilation.
+- Supporting arbitrary HIP graph node types.
+- Supporting scratch/private segments, dynamic call stacks, every implicit
+  user-SGPR layout, partial workgroups, cooperative launch, or device enqueue.
+- Providing multi-queue overlap, CU partitioning, GPU timestamps, or a generic
+  PM4 optimizer in the first correctness milestone.
+- Claiming gfx1151, gfx12, APU, or non-AMD portability.
+- Treating process isolation, retry, or native shadow execution as a production
+  recovery mechanism for a GPU VM fault.
+- Copying Redline wholesale into this repository.
+
+## Why retained PM4 is worth owning
+
+hipEngine's decode paths are graph-heavy. A current production-sized Qwen3.6
+GGUF graph contains hundreds of kernel nodes. Native HIP graph replay removes
+Python launch overhead but still leaves runtime/driver graph traversal and
+packet construction. A retained PM4 IB materializes the register and dispatch
+stream once, then each replay publishes one small vendor packet and rings one
+HSA doorbell.
+
+The prior narrow W7900 Redline experiment established feasibility, not a
+package-default claim:
+
+| Property | Observed result |
+| --- | --- |
+| Workload | Qwen3.6-35B-A3B UD-Q4_K_M, p512/d128, c=1, one repeated-token graph workload |
+| Captured topology | 627 kernel nodes |
+| Correctness | Bit-identical final logits and token IDs; KL 0.0; top-1 1.0 |
+| Native HIP graph | 92.812 tok/s median decode |
+| Retained PM4 | 100.357 tok/s median decode |
+| Narrow delta | +8.129% decode; +6.747% steady post-load wall |
+| Persistent control | 512 PM4 launches, exact output, 0.095% range/median |
+| Promotion status | Blocked by a separate recreate-heavy address-zero GPU fault and missing broad gates |
+
+The evidence says that submission work is material enough to pursue and that a
+large real graph can be lowered exactly. It does **not** prove natural-prompt,
+long-context, concurrent, cancellation, shutdown, cross-architecture, or broad
+model performance.
+
+## What the in-tree path removes
+
+The Redline integration proved useful ideas but carried a much larger product
+surface than hipEngine needs:
+
+| Redline surface | Needed in hipEngine? | In-tree replacement |
+| --- | --- | --- |
+| Rust workspace and Cargo build | No | Existing Python build cache compiles one small C++ C-ABI DSO |
+| PyO3 control module | No | `ctypes` over the native C ABI |
+| `mold` build assumption/workaround | No | Existing compiler/build planning |
+| `LD_PRELOAD` HIP interposer | No | Public HIP graph inspection after capture |
+| `__hipRegisterFunction` interception | No | `hipKernelNameRefByPtr` plus `dladdr` |
+| Generic graph IR/planner/partitioner | No | A strict kernel-only DAG compiler |
+| Radiowave recipe/tuning framework | No | Conservative barriers first; measured in-tree tuning later |
+| Multi-backend benchmark framework | No | hipEngine tests and benchmark protocols |
+| Multi-queue/CU-mask machinery | Not initially | One persistent queue per selected GPU |
+| Generic ROCr wrapper | Partly | Only the public HSA calls and ownership types required here |
+| PM4/AQL packet knowledge | Yes | Minimal architecture-keyed encoder with provenance and goldens |
+
+Redline remains a read-only behavioral and provenance reference at commit
+`33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e`. Its relevant PM4/ROCr sources are
+Apache-2.0. AMD's vendor packet reference is the `aqlprofile` source named below.
+No external checkout is modified by this work.
+
+## Feasibility result: no interposer is required
+
+A live W7900 spike inspected hipEngine's existing `smoke_add` native HIP graph
+using public APIs:
+
+- `hipGraphGetNodes` enumerated the graph.
+- `hipGraphNodeGetType` identified a kernel node.
+- `hipGraphKernelNodeGetParams` returned grid, block, function, dynamic shared
+  memory, and stable argument-value pointers.
+- `hipKernelNameRefByPtr` returned
+  `hipengine_smoke_add_f32_kernel`.
+- `dladdr` mapped the host function pointer to the exact JIT DSO:
+  `/home/lhl/.cache/hipengine/build/.../smoke_add.so`.
+- The DSO's `.hip_fatbin` section began with
+  `__CLANG_OFFLOAD_BUNDLE__` and contained the exact AMDGPU code object and
+  complete `amdhsa.kernels` metadata.
+
+The observed graph contained one node with grid `(1,1,1)`, block `(256,1,1)`,
+and four argument values. The three device pointers and scalar token count
+matched the original launch exactly. The DSO symbol and embedded HSACO also
+matched the captured function.
+
+That gives a simpler frontend than Redline's interposer:
+
+```text
+existing hipEngine eager launches
+        |
+        v
+hipStreamBeginCapture ... hipStreamEndCapture
+        |
+        +--> native hipGraph (still available as baseline)
+        |
+        v
+public HIP graph inspector
+        |
+        +--> node DAG, host function, geometry, argument values
+        +--> dladdr -> exact JIT DSO -> .hip_fatbin -> exact gfx1100 HSACO
+        v
+strict PM4 graph compiler
+```
+
+No existing `hipLaunchKernelGGL` wrapper needs to change merely to discover a
+captured graph.
+
+## Architectural invariants
+
+The PM4 work must preserve all repository-wide invariants and adds these:
+
+1. **Native HIP remains the oracle.** PM4 output is compared with the same
+   graph's native HIP execution before any performance result is retained.
+2. **Exact code object.** HIP and HSA consume bytes extracted from the same JIT
+   DSO. Recompiling a nominally equivalent kernel is not sufficient.
+3. **Exact graph generation.** A PM4 executable is bound to one graph topology,
+   DSO fingerprint set, kernel metadata set, launch geometry set, kernarg bytes,
+   and device identity. Any change rebuilds it.
+4. **Persistent ownership.** Queue, completion signal, executable, reader,
+   HSACO storage, kernargs, IB, and every encoded pointee outlive all submissions
+   that can reference them.
+5. **One architecture, one registration.** gfx1100 admission does not imply
+   gfx1151 or gfx12 admission.
+6. **Fail closed before submit.** Unsupported nodes, metadata, hidden args,
+   scratch, symbols, register state, target IDs, or pointers reject PM4
+   instantiation.
+7. **Fail stop after submit.** Timeout, queue error, or transport-state
+   corruption marks the transport unusable. It does not execute a native shadow
+   graph and does not free packet pointees without proven retirement.
+8. **No backend branch in model code.** Submission selection occurs through a
+   transport registry/capability boundary.
+9. **No performance shortcut around synchronization.** The first path uses
+   conservative ordering. Barriers can only be relaxed after exact dependency
+   and profiler evidence.
+10. **No benchmark gaming.** Promotion uses the full relevant prompt/category
+    suite and heldouts, not the repeated-token feasibility row.
+
+## High-level design
+
+```text
+Python, torch-free
+
+  HipRuntime capture
+       |
+       v
+  GraphInspector -------------------> HipGraphManifest
+       |                                - topological kernel nodes
+       |                                - DSO + HSACO hashes
+       |                                - symbols and kernarg layouts
+       |                                - launch geometry/dependencies
+       v
+  KernargPacker --------------------> exact per-node bytes
+       |
+       v
+  SubmissionRegistry
+       |             |              |
+       | hipgraph    | aql          | pm4
+       v             v              v
+  hipGraphExec   architected    native C ABI
+                 AQL packets         |
+                                     v
+                              ROCrContext (one GPU)
+                                - exact HSA agent
+                                - persistent queue
+                                - executables/readers
+                                - kernarg allocations
+                                - completion signal
+                                - retained gfx1100 IB
+```
+
+The frontend stays in Python because graph and JIT metadata are already exposed
+there and it keeps the native ABI small. Queue ownership, atomics, HSA callbacks,
+packet publication, waits, and PM4 encoding live in C++.
+
+## Planned source layout
+
+```text
+hipengine/core/pm4/
+  __init__.py          public errors, manifests, and factory
+  graph.py             public HIP graph inspection/topological validation
+  elf.py               bounded ELF64, clang bundle, note, and symbol parsing
+  msgpack.py           bounded subset needed by AMDGPU metadata
+  kernarg.py           exact explicit/hidden kernarg packing
+  transport.py         registry adapter and Python/native ownership
+  native.cpp           public HSA/ROCr ownership and C ABI
+  pm4_gfx1100.cpp      gfx1100 packet/register lowering
+  build.py             deterministic native DSO build/cache plan
+
+scripts/pm4_lifecycle_repro.py
+
+tests/
+  test_pm4_elf.py
+  test_pm4_kernarg.py
+  test_pm4_graph.py
+  test_pm4_packets.py
+  test_pm4_transport.py
+  test_pm4_gpu.py       explicit HIP-availability skip
+```
+
+Names may be collapsed if a smaller implementation is clearer, but boundaries
+between parsing, graph compilation, native ownership, and architecture encoding
+must remain visible.
+
+## Graph extraction and validation
+
+### HIP APIs
+
+`HipRuntime` gains lazy typed bindings for:
+
+- `hipGraphGetNodes`
+- `hipGraphGetEdges`
+- `hipGraphNodeGetType`
+- `hipGraphKernelNodeGetParams`
+- `hipKernelNameRefByPtr`
+- `hipGetDevice`
+- `hipDeviceGetPCIBusId` (or an equivalent exact PCI identity API)
+
+The inspector performs two-call count/fill enumeration where required, verifies
+that counts remain stable, owns copies of all returned values, and includes the
+node handle only for diagnostics. It never treats node enumeration order as
+execution order.
+
+### Supported graph shape
+
+The first compiler accepts only a non-empty DAG of kernel nodes. It constructs a
+deterministic topological order from `hipGraphGetEdges`, rejecting:
+
+- cycles;
+- edges containing unknown handles;
+- duplicate/ambiguous nodes;
+- memcpy, memset, host, event, child-graph, empty, external semaphore, or other
+  node types;
+- graph mutation during inspection;
+- disconnected nodes unless a deterministic topological order remains valid
+  and conservative serialization is explicitly recorded.
+
+Independent native graph nodes are serialized in stable topological order in
+the first one-queue PM4 tape. This may give up overlap but cannot invent a data
+race. Multi-queue lowering is a later, separate gate.
+
+### DSO and code-object identity
+
+For every kernel node:
+
+1. Resolve the kernel name with `hipKernelNameRefByPtr`.
+2. Resolve the containing JIT DSO with `dladdr`.
+3. Parse the little-endian ELF64 section table with strict bounds.
+4. Extract exactly one applicable `.hip_fatbin` image.
+5. Parse the classic clang offload bundle and select exactly one AMDGPU target
+   whose `gfx...` architecture matches the selected device.
+6. Require an ELF64 AMDGPU code object and hash both the DSO and selected HSACO.
+7. Deduplicate executable loads by selected-HSACO SHA-256.
+
+Host entries and nonmatching device entries are ignored. Zero matches, multiple
+matching device images, CCOB/compressed formats not yet implemented, malformed
+ranges, files changed during read, or a DSO outside the known JIT artifact set
+all fail closed.
+
+### AMDGPU metadata
+
+The selected HSACO's `NT_AMDGPU_METADATA` ELF note (type 32, name `AMDGPU`) is a
+MessagePack map. The parser needs only a bounded, defensive subset sufficient
+to read:
+
+- `amdhsa.kernels`
+- `.name` and `.symbol`
+- `.kernarg_segment_size` and `.kernarg_segment_align`
+- `.group_segment_fixed_size`
+- `.private_segment_fixed_size`
+- `.args[].offset`
+- `.args[].size`
+- `.args[].value_kind`
+
+The parser enforces byte, nesting, entry-count, integer, range, overlap, and
+segment-size limits. It requires one exact kernel match, normally the `.kd`
+loader symbol. There is no guessed sequential-pointer fallback in the
+production PM4 path.
+
+### Kernarg packing
+
+`hipGraphKernelNodeGetParams` supplies either:
+
+- `kernelParams`: pointers to explicit argument values; or
+- HIP's bounded `extra` key/value protocol containing a prepacked launch buffer
+  and size.
+
+For `kernelParams`, metadata offsets and sizes determine each copy. Hidden
+fields are synthesized only from a strict allowlist:
+
+- `hidden_block_count_{x,y,z}`
+- `hidden_group_size_{x,y,z}`
+- `hidden_dynamic_lds_size`
+- `hidden_grid_dims`
+- zero-valued global offsets/service pointers whose zero contract is explicitly
+  admitted for a dedicated queue
+
+Unknown hidden fields reject the node rather than defaulting silently to zero.
+The packed segment size must agree with both metadata and the public HSA loader
+query. Explicit argument count, non-null source pointers, field bounds,
+non-overlap, alignment, and maximum segment size are validated.
+
+Kernargs are copied once at PM4 instantiation. Graphs whose pointer/scalar values
+are intentionally updated after instantiation need an explicit update/rebuild
+API and are not silently treated as static.
+
+## Native ROCr core
+
+### Why C++ with a C ABI
+
+Queue publication requires exact C layouts and acquire/release atomics. A small
+native DSO gives those semantics without introducing a package dependency or
+placing low-level pointer lifetime in Python. The exported API uses only fixed
+width integers, byte spans, opaque handles, status codes, and caller-provided
+error buffers; Python uses `ctypes`.
+
+The DSO is built lazily through hipEngine's deterministic build cache, with the
+active ROCm headers/compiler and `libhsa-runtime64`. Importing hipEngine or the
+PM4 module does not initialize HSA or touch a GPU.
+
+### Process/GPU ownership
+
+One `RocrContext` owns one selected GPU:
+
+```text
+RocrContext
+  RuntimeLease
+  exact HSA agent (matched to HIP PCI domain:bus:device.function)
+  queue + error callback state
+  completion signal
+  kernarg/executable-memory pool selection
+  Executable[]
+    owned HSACO bytes
+    hsa_code_object_reader
+    hsa_executable
+    resolved Kernel[]
+  GraphExec[]
+    kernarg allocations
+    indirect-buffer allocation
+    encoded PM4 words
+    generation/telemetry state
+```
+
+`hsa_init`/`hsa_shut_down` are process-refcounted inside the native DSO. Agent
+selection rejects ordinal-only ambiguity and verifies profile, queue type/range,
+wavefront, name, and PCI identity. The HIP and HSA visibility maps are recorded
+because `ROCR_VISIBLE_DEVICES` may remap physical devices.
+
+### Exact executable loading
+
+For each unique HSACO:
+
+1. `hsa_code_object_reader_create_from_memory`
+2. `hsa_executable_create_alt`
+3. `hsa_executable_load_agent_code_object`
+4. `hsa_executable_freeze`
+5. `hsa_executable_get_symbol_by_name`
+6. `hsa_executable_symbol_get_info` for kernel object, kernarg size/alignment,
+   group segment, private segment, and dynamic call stack
+
+The owned HSACO bytes and reader outlive the executable. The executable and
+resolved kernel metadata outlive every graph using them.
+
+The HSA kernel object is a loaded descriptor address, not directly the code
+entry used by `COMPUTE_PGM_LO`. The encoder locates the `.kd` descriptor in the
+HSACO ELF symbol table, reads its 64-byte descriptor, and computes the loaded
+code entry from the descriptor's signed entry offset. It preserves
+`compute_pgm_rsrc1`, `compute_pgm_rsrc2`, `compute_pgm_rsrc3`, and kernel code
+properties from that descriptor, cross-checking public loader metadata.
+
+### Allocations
+
+Kernarg and IB memory come from a fine-grained/global HSA pool admitted for the
+selected agent, with explicit alignment and access checks. The IB allocation is
+GPU executable-command-visible and 4-byte aligned. Every allocation has a type,
+address, size, generation, owner, creation status, last-submit generation, and
+retirement status in the diagnostic ledger.
+
+The first production context retains its queue, completion signal, executable
+set, kernargs, and IB for its complete lifetime. A failed retirement does not
+free pointees that hardware may still reference; it reports and quarantines
+(or intentionally leaks on process exit) rather than creating a use-after-free.
+
+## gfx1100 PM4 lowering
+
+The initial encoder is registered only for exact `gfx1100`. gfx1100 uses the
+legacy gfx10/gfx11 compute register map, but this fact does not authorize a
+broad `gfx11*` registration.
+
+The minimum command vocabulary is:
+
+- `PACKET3_ACQUIRE_MEM`
+- `PACKET3_SET_SH_REG`
+- `PACKET3_DISPATCH_DIRECT`
+- `PACKET3_EVENT_WRITE` with `CS_PARTIAL_FLUSH`
+
+Optional timestamp commands (`COPY_DATA`/`RELEASE_MEM`) are reserved for a
+separate diagnostic gate and are disabled initially because timestamp-resource
+lifecycle is one suspect in #6529.
+
+### Dispatch state
+
+For each kernel the tape programs, at minimum:
+
+- `COMPUTE_PGM_LO/HI`
+- `COMPUTE_PGM_RSRC1/2`
+- `COMPUTE_PGM_RSRC3`
+- `COMPUTE_TMPRING_SIZE`
+- `COMPUTE_NUM_THREAD_X/Y/Z`
+- `COMPUTE_RESOURCE_LIMITS`
+- `COMPUTE_USER_DATA_0...` for the admitted HSA user-SGPR layout
+- `DISPATCH_DIRECT` workgroup counts and initiator
+
+Static plus dynamic LDS is rounded to gfx1100's 512-byte allocation granule and
+inserted into `PGM_RSRC2`. Grid work-items must be exactly divisible by each
+workgroup dimension. Code entry must be nonzero and 256-byte aligned.
+
+The initial supported kernel descriptor has:
+
+- zero private-segment bytes;
+- no dynamic call stack;
+- wave32;
+- only optional private-segment-buffer and required kernarg-segment-pointer
+  implicit user SGPRs;
+- at most 16 user-SGPR dwords.
+
+A requested private-segment buffer is initialized conservatively to zero only
+when the descriptor contract and zero-scratch restriction permit it. Every
+other implicit SGPR property rejects instantiation.
+
+### Register-state elision
+
+A correctness-first encoder emits all required state. A second pure encoder
+tracks register values inside one tape and elides only byte-identical writes to
+the same register. The packet golden tests cover both modes. Stateful elision is
+not enabled in production until it is bit-exact on the GPU smoke and real graph.
+
+### Memory ordering
+
+The first tape uses conservative boundaries:
+
+1. System acquire at the HIP-to-HSA ownership boundary.
+2. For every producer/consumer edge, wait for compute idle and perform the
+   conservative same-agent global acquire/writeback/invalidate sequence.
+3. End the entire IB with `CS_PARTIAL_FLUSH` before the vendor packet may signal
+   completion.
+
+This intentionally leaves performance available. Later tuning may classify an
+edge as VMEM-only and use a narrower acquire, or prove that an adjacent dispatch
+needs only the compute-idle boundary. Such changes are math/runtime changes and
+require packet goldens, native parity, profiler proof, and full graph gates.
+
+### Vendor AQL PM4-IB packet
+
+One 64-byte vendor-specific AQL packet contains one `INDIRECT_BUFFER` packet
+pointing at the retained PM4 words and one HSA completion signal. The layout and
+constants must match AMD's
+`aqlprofile/src/core/amd_aql_pm4_ib_packet.h`:
+
+- type-zero vendor packet with barrier publication semantics;
+- PM4 `PACKET3_INDIRECT_BUFFER` header;
+- low/high IB address;
+- bounded dword count plus valid/temporal bits;
+- completion signal in bytes 56–63.
+
+Queue code reserves an absolute packet ID, writes bytes 4–63 first, then
+release-publishes the 32-bit header word, and finally writes the absolute final
+packet ID to the doorbell. The queue read index is loaded with acquire semantics
+when proving capacity. These are native atomic operations, not Python memory
+writes.
+
+## Submission transports
+
+A backend-keyed transport registry exposes one common lifecycle:
+
+```python
+capture(stream) -> graph
+instantiate(graph) -> executable
+launch(executable, stream) -> None
+destroy(executable, graph) -> None
+provenance(executable) -> dict
+```
+
+Initial registrations:
+
+| Key | Meaning |
+| --- | --- |
+| `hipgraph` | Existing native HIP graph instantiate/launch; default everywhere |
+| `aql` | One architected AQL kernel-dispatch packet per node; diagnostic oracle |
+| `pm4` | One retained architecture-specific PM4 IB; explicit only |
+
+Selection is exposed consistently through a CLI option and environment value:
+
+```text
+--submission-transport hipgraph|aql|pm4
+HIPENGINE_SUBMISSION_TRANSPORT=hipgraph|aql|pm4
+```
+
+The environment value is parsed once at owner construction, not read inside a
+per-token hot loop. Production/model code asks the registry for the configured
+backend and transport capability; it does not branch on `backend == ...` or
+`quant == ...`.
+
+### Interoperation with HIP streams
+
+The public HSA queue is not the caller's HIP stream. The first safe integration
+therefore uses an explicit boundary:
+
+1. synchronize the capture/replay HIP stream before direct-AQL/PM4 submission;
+2. publish the vendor packet;
+3. wait with a finite timeout for completion;
+4. only then return to work that may run on HIP.
+
+This makes initial `aql`/`pm4` launch synchronous and preserves correctness at
+the cost of overlap. It is admitted only in graph paths that already synchronize
+at the replay boundary. External semaphores or asynchronous cross-queue
+integration are a later project, not assumed.
+
+### Fallback policy
+
+- Default/automatic selection may stay on `hipgraph` when PM4 capability checks
+  fail **before** any PM4 packet is submitted.
+- Explicit `pm4` selection reports the rejection and does not silently choose
+  HIP.
+- Once a PM4 executable has submitted, any timeout, queue error, generation
+  mismatch, or unusable state is fail stop for that executable/context.
+- Native shadow launch, retry, subprocess restart, and graph-family process
+  splitting are diagnostics only and can never be called recovery.
+
+## Lifecycle and error handling
+
+Each replay follows:
+
+1. Verify context, queue, graph, executable, pointer, and generation state.
+2. Reset the completion signal only after the preceding submission completed.
+3. Wait for ring capacity with a finite host deadline.
+4. Copy/publish the vendor packet and ring the doorbell.
+5. Wait for completion with a finite deadline while polling callback fault
+   state.
+6. Record queue read/write indices and completion status.
+7. Mark the generation retired only after completion is proven.
+
+On timeout or HSA callback error:
+
+- mark the graph and context unusable;
+- record operation and teardown errors independently;
+- attempt queue inactivation;
+- do not free signal/kernarg/IB/executable storage without proof that pending
+  access stopped;
+- expose a machine-readable ledger suitable for issue reports;
+- never perform an unbounded wait in a destructor.
+
+Normal destruction order is:
+
+1. prove no graph is in flight;
+2. inactivate and destroy the queue;
+3. destroy completion signals;
+4. free IB and kernarg allocations;
+5. destroy executables;
+6. destroy readers;
+7. release owned HSACO bytes;
+8. release the HSA runtime lease.
+
+Every non-success status is retained. Destructors do not erase the first error.
+
+## Standalone lifecycle reproducer
+
+`scripts/pm4_lifecycle_repro.py` uses one tiny HSACO and the same input/output
+buffers across three transports:
+
+- HIP launch/native graph;
+- direct architected AQL kernel dispatch;
+- vendor-AQL retained PM4 IB.
+
+The default command runs safe correctness/reuse controls. Reset-prone recreate
+stress is a separate explicit mode with a warning; it is not run merely because
+the script exists.
+
+### Controls
+
+| Axis | Arms |
+| --- | --- |
+| Transport | HIP, direct AQL, retained PM4 |
+| Queue | persistent reuse, recreate per cycle, create/drop without submit |
+| Packet resources | reuse or recreate signal/kernarg/IB |
+| Profiling | no timestamps first; optional timestamp resource arm later |
+| Allocation | HSA-only; mixed HIP buffers with HSA dispatch |
+| Ownership | one dispatch queue; separate ownership/dispatch queue diagnostic later |
+| Retirement | immediate release; bounded generation quarantine |
+| Workload | one known-good kernel; controlled kernel-family changes only later |
+
+### Required ledger
+
+For every process and cycle record:
+
+- process, physical PCI BDF, HIP ordinal, HSA agent handle/name, gfx target;
+- ROCm/HIP/HSA versions and source commit;
+- queue generation/id/type/size/base, doorbell handle/value, read/write indices;
+- completion handle, initial/final value, wait status, timeout;
+- executable, reader, symbol, kernel object, code entry, HSACO hash;
+- kernarg/IB/buffer/timestamp addresses, sizes, and generation numbers;
+- packet ID, header, IB address/dword count, submit and retirement status;
+- create, inactivate, destroy, signal-destroy, and free statuses;
+- exact first failing cycle and last known-good cycle;
+- output hash/value versus CPU and HIP oracles.
+
+Sensitive model/process memory and raw coredumps are not committed or published.
+
+### Interpretation matrix
+
+| Result | Strongest supported inference |
+| --- | --- |
+| Direct AQL passes, PM4 fails | PM4 encoding, IB visibility, fence, or vendor packet path |
+| Both AQL and PM4 fail only on recreation | Queue/signal/allocation/executable generation lifecycle |
+| Persistent reuse passes; recreate fails | Retirement/reuse mechanism, not dispatch count alone |
+| Create/drop without submit fails | Queue lifecycle is sufficient; kernel execution is not required |
+| Unprofiled passes; timestamp arm fails | Timestamp commands/buffer lifetime becomes the leading differentiator |
+| HSA-only passes; mixed HIP allocation fails | HIP/ROCr interoperation is required |
+| Quarantine changes failure threshold | Delayed reference/address reuse is strongly implicated |
+| In-tree PM4 reproduces #6529 | Redline's generic framework/interposer is eliminated; focus moves to PM4/ROCr/amdgpu |
+| In-tree PM4 does not reproduce | Implementation differences become bisection leads; it does not prove the defect fixed |
+
+This reproducer targets #6529's gfx1100 address-zero SQC-data VM fault and MES
+reset chain. It must not be presented as a reproducer for #6437's distinct
+repeated-128K gfx1151 queue no-progress stall.
+
+## C ABI sketch
+
+The exact names may change, but the ownership contract should remain this
+small:
+
+```c
+typedef struct hipengine_pm4_context hipengine_pm4_context;
+typedef struct hipengine_pm4_executable hipengine_pm4_executable;
+
+typedef struct {
+    const void *hsaco;
+    size_t hsaco_size;
+    const char *symbol;
+    const void *kernarg;
+    uint32_t kernarg_size;
+    uint32_t grid[3];        /* work-items */
+    uint16_t block[3];
+    uint32_t dynamic_lds;
+} hipengine_pm4_node;
+
+int hipengine_pm4_context_create(const char *pci_bdf,
+                                 const char *gfx_target,
+                                 hipengine_pm4_context **out,
+                                 char *error, size_t error_size);
+int hipengine_pm4_instantiate(hipengine_pm4_context *context,
+                              const hipengine_pm4_node *nodes,
+                              size_t node_count,
+                              hipengine_pm4_executable **out,
+                              char *error, size_t error_size);
+int hipengine_pm4_launch_and_wait(hipengine_pm4_executable *executable,
+                                  uint64_t timeout_ns,
+                                  char *error, size_t error_size);
+int hipengine_pm4_executable_destroy(hipengine_pm4_executable *executable,
+                                     char *error, size_t error_size);
+int hipengine_pm4_context_destroy(hipengine_pm4_context *context,
+                                  char *error, size_t error_size);
+```
+
+Diagnostic query functions expose copied JSON/records rather than native
+pointers. Every destroy operation returns a status; Python context managers call
+explicit close and make close idempotent.
+
+## Implementation phases and acceptance gates
+
+### P0 — Documentation and frozen contract
+
+- This document and PLAN cross-link land first.
+- Freeze default-off/fail-closed policy, architecture admission, and lifecycle
+  safety rules.
+- Record source/provenance references.
+
+**Gate:** document reread; no GPU run.
+
+### P1 — Exact graph/HSACO/kernarg inspection
+
+- Add HIP graph APIs and pure bounded ELF/bundle/MessagePack parsers.
+- Produce an immutable manifest from `smoke_add` and a multi-node graph.
+- Add malformed-input, unsupported-node, topology, hidden-arg, and DSO identity
+  tests.
+
+**Gate:** deterministic CPU tests plus a guarded live inspection smoke. The
+manifest must reconcile every node, edge, symbol, geometry, and explicit value.
+
+### P2 — Public-HSA direct AQL smoke
+
+- Build the native DSO and exact HSA agent matcher.
+- Load selected HSACO, resolve symbols, allocate/copy kernargs, publish standard
+  kernel-dispatch packets, and wait safely.
+- Compare HIP and direct-AQL outputs for fresh and reused inputs.
+
+**Gate:** CPU packet goldens, guarded W7900 smoke, exact output, finite timeout,
+clean normal teardown, and kernel-trace proof of the expected kernel.
+
+### P3 — gfx1100 retained PM4 smoke
+
+- Add descriptor parsing, strict ABI admission, conservative PM4 lowering,
+  vendor packet publication, persistent queue/IB/signal ownership, and
+  diagnostics.
+- Keep timestamps and stateful register elision off.
+
+**Gate:** PM4 dword goldens, architecture-negative tests, exact HIP/AQL/PM4
+output over repeated fresh inputs, expected kernel trace, no native fallback,
+and clean resource recovery.
+
+### P4 — Lifecycle reproducer
+
+- Add safe reuse/create-drop controls and complete generation ledger.
+- Implement recreate, mixed-allocation, timestamp, and quarantine arms.
+
+**Gate:** safe controls pass. Any reset-prone recreate run requires a separate
+warning/approval and kernel-journal collection plan. A VM fault is reported as a
+fault, never retried into a passing aggregate.
+
+### P5 — One production graph integration
+
+- Integrate one kernel-only GGUF decode graph whose caller already synchronizes
+  after replay.
+- Keep transport explicit and default `hipgraph`.
+- Rebuild on pointer/topology generation changes.
+
+**Gate:** exact native-HIP/PM4 final logits, token IDs, state/KV checks, graph
+reuse, cancellation/close, memory recovery, and transport provenance. No broad
+performance claim yet.
+
+### P6 — Performance and conservative optimization
+
+Measure native HIP graph, direct AQL, conservative PM4, and state-elided PM4 in
+counterbalanced order on the same loaded model and graph. Attribute:
+
+- host launch call wall;
+- synchronized replay wall;
+- GPU kernel-family total;
+- PM4 dword/register-write count;
+- HSA queue submissions and waits;
+- end-to-end p512/d128 throughput.
+
+Only then consider register-write elision and narrower dependency boundaries.
+
+**Gate:** bit-exact or repository correctness thresholds, all required prompt
+categories/heldouts for a retained claim, every named lifecycle gate, exact
+benchmark command/hardware/source evidence, compact artifact, rollup, and
+changelog update.
+
+### P7 — Broader graph admission
+
+Apply separately to proposal graphs, target/verifier graphs, and eventually a
+combined speculative tape only where pointer and transaction ownership are
+stable. Admit gfx1151 only with a peer encoder registration, its own packet
+proof, and its own lifecycle/correctness/performance gates.
+
+## Test matrix
+
+### CPU deterministic tests
+
+- ELF64 section/symbol/note bounds and malformed corpus.
+- Classic clang bundle target selection and ambiguity rejection.
+- Bounded MessagePack decoding and AMDGPU kernel matching.
+- Explicit and hidden kernarg field packing, overlap, alignment, size, null,
+  unknown-kind, and `extra` protocol cases.
+- DAG topological order, cycles, independent nodes, unsupported node types, and
+  graph mutation.
+- gfx1100 kernel descriptor parsing and code-entry relocation.
+- PM4 `PACKET3` headers, register offsets, LDS rounding, workgroup counts,
+  initiator, acquire/flush, and stateful elision goldens.
+- Vendor AQL packet bytes and publication header.
+- Architecture, scratch, dynamic-callstack, user-SGPR, wave-size, partial-grid,
+  and null-address rejection.
+- Ownership state machine, timeout, double-close, operation-plus-teardown error,
+  quarantine, and no-fallback tests using a fake native ABI.
+- Registry selection/default/explicit rejection tests.
+
+### Guarded GPU tests
+
+Every test that loads HIP/HSA or runs a kernel first probes
+`libamdhip64.so`/`libhsa-runtime64.so` and skips cleanly without ROCm.
+
+1. HIP graph inspection reconciliation.
+2. HIP versus direct AQL smoke output.
+3. HIP versus PM4 smoke output with fresh inputs each replay.
+4. Same graph reuse, signal reset, and teardown.
+5. Kernel trace showing the expected symbol.
+6. Architecture-negative selection.
+7. Targeted real decode graph native/PM4 equality.
+8. Lifecycle close/cancellation/recovery.
+
+A new/ported compute kernel correctness threshold remains KL <= 0.05 and top-1
+>= 90%; transport parity should normally be bit exact because device code and
+kernargs are identical.
+
+## Promotion policy
+
+`pm4` remains explicit and default-off until all are true:
+
+1. The minimal safe reproducer and retained-queue controls are stable.
+2. #6529's recreate/lifecycle risk has an owned root cause or the required
+   recreate stress passes on both gfx1100 discrete cards under the declared
+   protocol.
+3. Strict proof records one PM4 submission and zero native fallback for every
+   claimed launch.
+4. Natural prompt/category and heldout correctness passes.
+5. 512 and 4K contexts, graph rebuild/regrow, repeated reuse, cancellation,
+   server shutdown, and memory recovery pass.
+6. The measured end-to-end workload improves without a correctness or lifecycle
+   regression.
+7. The package can report architecture, transport, source, HSACO hashes, graph
+   fingerprint, and lifecycle status.
+
+Even after gfx1100 promotion, other architectures retain `hipgraph` until their
+independent encoder and gates pass.
+
+## Refactor/removal triggers
+
+During development, `HIPENGINE_SUBMISSION_TRANSPORT`, the direct-AQL diagnostic,
+conservative/stateful PM4 comparison, and lifecycle controls are intentional.
+After promotion:
+
+- remove comparison-only environment aliases once the canonical CLI/config path
+  is stable;
+- retain `hipgraph` as the required portable fallback and correctness oracle;
+- retain direct AQL while it remains useful for PM4 versus ROCr isolation;
+- remove timestamp/quarantine experiments if they neither reproduce nor
+  differentiate #6529;
+- collapse packet/state diagnostics only after the lifecycle issue is closed and
+  an equivalent machine-readable ledger remains.
+
+These triggers must be mirrored in `docs/REFACTOR.md` when temporary flags or
+paths are actually introduced.
+
+## Risks and mitigations
+
+| Risk | Mitigation |
+| --- | --- |
+| PM4 is architecture-specific and not a stable HSA contract | Exact gfx target registration, packet goldens, default-off, fail closed |
+| Wrong graph order | Use edges/topological sort; conservative serialization; reject ambiguity |
+| Wrong kernarg layout/hidden fields | Require AMDGPU metadata and loader agreement; no guessed production fallback |
+| Stale graph pointers | Fingerprint values/generations; explicit rebuild/update contract |
+| HIP/HSA device mismatch | Match physical PCI BDF and record visibility remapping |
+| Missing cache/fence operation | Conservative per-edge idle/acquire first; relax only with proof |
+| Queue timeout followed by unsafe free | Mark unusable, inactivate, quarantine/leak unretired pointees, report both errors |
+| Recreating #6529 resets the GPU | Safe modes by default; separate approval and journal plan for destructive stress |
+| Narrow benchmark overfit | Full categories/heldouts and exact native baseline before promotion |
+| New hard dependency | Native DSO uses existing ROCm installation and stdlib `ctypes`; no new Python/Rust package |
+| Redline code/license confusion | Clean small implementation with explicit provenance; preserve notices for any adapted code |
+
+## Provenance and primary references
+
+Implementation must cite exact source/commit in file headers or comments where
+packet/register/lifecycle logic is adapted.
+
+- Redline read-only reference:
+  `warpfront/redline@33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e`
+  - `crates/redline-rocr/src/pm4_gfx10.rs`
+  - `crates/redline-rocr/src/packet.rs`
+  - `crates/redline-rocr/src/runtime.rs`
+  - `crates/redline-hipgraph/src/metadata.rs`
+  - `crates/redline-dispatch/src/aql/replay.rs`
+- AMD vendor AQL packet reference:
+  `rocm-systems/projects/aqlprofile/src/core/amd_aql_pm4_ib_packet.h`
+  (pin the exact upstream commit used during implementation).
+- Public ROCr/HSA headers from the active ROCm installation.
+- AMDGPU code object ABI and kernel descriptor documentation corresponding to
+  the active compiler/code-object version.
+- gfx10/gfx11 packet/register definitions corresponding to the admitted target.
+- Functional issue:
+  [ROCm/ROCm#6529](https://github.com/ROCm/ROCm/issues/6529).
+- Distinct long-context progress issue, not this reproducer:
+  [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437).
+
+## Final success criterion
+
+The project succeeds when hipEngine can, without Redline or interposition,
+inspect one of its own captured kernel-only graphs, load the exact same gfx1100
+HSACO through public HSA, replay the exact graph through one retained PM4 IB,
+match native HIP output, survive the declared lifecycle gates, expose complete
+transport proof, and deliver a measured non-regressive end-to-end improvement.
+Until then, native HIP graph replay remains the default.

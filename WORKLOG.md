@@ -208826,3 +208826,35 @@ Vulkan local sizes verbatim will close the measured gap.
   `1bf069ff...85b`; Vulkan B3/B4 per-graph logs `6de3d941...0f5e` /
   `2d9a95f8...f56c`. Raw traces remain under
   `/tmp/hipengine-qwen36-27b/deep-mtp-20260807/`.
+
+## 2026-08-07 — Approve a minimal in-tree retained-PM4 transport
+
+- Decide to replace the optional Redline runtime/interposer dependency with a
+  small torch-free in-tree graph submission path while preserving native HIP
+  graph replay as the package default and correctness oracle. The planned
+  transport uses public HIP graph inspection, exact JIT DSO/HSACO extraction,
+  public HSA executable loading, one persistent ROCr queue, and an exact
+  gfx1100-only retained PM4 IB. Direct AQL remains an isolation oracle.
+- Record the live W7900 feasibility result: `hipGraphGetNodes`,
+  `hipGraphKernelNodeGetParams`, `hipKernelNameRefByPtr`, and `dladdr` reconcile
+  the `smoke_add` node, symbol, launch geometry, stable argument-value pointers,
+  exact JIT `.so`, `.hip_fatbin`, clang bundle, and embedded HSACO. This removes
+  the need for `LD_PRELOAD`, `__hipRegisterFunction` interception, or edits to
+  existing HIP kernel launch wrappers.
+- Freeze the safety contract in `docs/PM4.md`: exact physical-device matching,
+  exact metadata-based kernarg packing, kernel-only DAGs, conservative
+  dependencies, zero-scratch/admitted implicit-SGPR kernels, architecture-keyed
+  registration, finite waits, loud teardown, no post-submit fallback, and
+  quarantine rather than freeing unretired pointees. gfx1151/gfx12 require
+  separate encoders and gates.
+- Define a standalone same-HSACO HIP/direct-AQL/PM4 lifecycle reproducer for
+  ROCm/ROCm#6529 with reuse/recreate/create-drop/profile/mixed-allocation/
+  quarantine controls and a full queue/resource-generation ledger. This does
+  not target the distinct gfx1151 repeated-128K no-progress issue #6437.
+  Reset-prone recreate stress will be implemented but not run without a
+  separate warning and approval.
+- Pin the read-only behavioral reference to
+  `warpfront/redline@33683f3d4f302a6c56bcc7a4c33ab8be3262dd2e` and require
+  source/commit notices where packet/register/lifecycle logic is adapted.
+  Update `docs/PLAN.md` to link the implementation program and preserve native
+  HIP as the baseline/default.
