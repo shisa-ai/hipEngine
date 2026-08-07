@@ -24,6 +24,7 @@ from hipengine.kernels.backends import (
 from hipengine.kernels.cpu_reference.maple import (
     attention_decode,
     bf16_round,
+    bf16_to_f32,
     f32_to_bf16_bits,
     qk_norm_rope,
     rmsnorm,
@@ -668,3 +669,156 @@ def test_maple_fused_qknorm_attention_decode_matches_unfused_chain(
     assert np.array_equal(out_f, out_u), "fused vs unfused attention output mismatch"
     assert np.array_equal(key_res_f, key_res_u), "fused vs unfused K-cache mismatch"
     assert np.array_equal(value_res_f, value_res_u), "fused vs unfused V-cache mismatch"
+
+
+def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
+    maple_attention_lib,
+) -> None:
+    """M6 batched per-request QK-norm+KV write + attention decode (D5).
+
+    Each request row owns a disjoint position range in the shared identity
+    arena; the batched kernels must be bit-exact with running the c1 kernels
+    per row.
+    """
+
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_attention_decode_batched_bf16,
+        maple_qknorm_rope_kv_write_batched_decode_bf16,
+    )
+
+    rng = np.random.default_rng(77)
+    rows, q_heads, kv_heads, head_dim = 3, 4, 2, 8
+    rope_dim = 8
+    eps = 1e-6
+    rope_theta = 10000.0
+    capacity = 64  # large enough that requests occupy disjoint position ranges
+    q_size, kv_size = q_heads * head_dim, kv_heads * head_dim
+    qkv_stride = q_size + 2 * kv_size
+
+    # Identity position-offset arena: physical slot == absolute position.
+    base = np.arange(capacity, dtype=np.int32)
+    token_positions = np.full(capacity, -1, dtype=np.int64)
+    evict_mask = np.zeros(capacity, dtype=np.bool_)
+
+    row_positions = np.asarray([11, 22, 33], dtype=np.int64)
+    live_counts = np.asarray([4, 3, 5], dtype=np.int64)
+    q_norm_weight = f32_to_bf16_bits(
+        rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32)
+    )
+    k_norm_weight = f32_to_bf16_bits(
+        rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32)
+    )
+
+    qkv = np.zeros((rows, qkv_stride), dtype=np.uint16)
+    key_cache_f = np.zeros((capacity, kv_heads, head_dim), dtype=np.float32)
+    value_cache_f = np.zeros_like(key_cache_f)
+    expected_kv = []
+    for row in range(rows):
+        pos = int(row_positions[row])
+        q_raw = rng.normal(size=(q_heads, head_dim)).astype(np.float32)
+        k_raw = rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
+        v_raw = rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
+        qkv[row, :q_size] = f32_to_bf16_bits(q_raw.reshape(-1))
+        qkv[row, q_size : q_size + kv_size] = f32_to_bf16_bits(k_raw.reshape(-1))
+        qkv[row, q_size + kv_size :] = f32_to_bf16_bits(v_raw.reshape(-1))
+
+        live = int(live_counts[row])
+        hist_keys = rng.normal(size=(live, kv_heads, head_dim)).astype(np.float32)
+        hist_vals = rng.normal(size=(live, kv_heads, head_dim)).astype(np.float32)
+        for t in range(live):
+            hpos = pos - live + 1 + t
+            token_positions[hpos] = hpos
+            key_cache_f[hpos] = hist_keys[t]
+            value_cache_f[hpos] = hist_vals[t]
+
+        qn_ref, kn_ref = qk_norm_rope(
+            bf16_round(q_raw),
+            bf16_round(k_raw),
+            bf16_to_f32(q_norm_weight),
+            bf16_to_f32(k_norm_weight),
+            pos=pos,
+            rope_theta=rope_theta,
+            rope_dim=rope_dim,
+            eps=eps,
+        )
+        expected_kv.append((qn_ref, kn_ref, v_raw))
+
+    with DeviceArrays() as dev:
+        spans = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=live_counts,
+            token_positions=token_positions,
+            evict_mask=evict_mask,
+            row_positions=row_positions,
+        )
+        qkv_d = dev.put(qkv)
+        key_d = dev.put(f32_to_bf16_bits(key_cache_f))
+        value_d = dev.put(f32_to_bf16_bits(value_cache_f))
+        qn_d = dev.put(q_norm_weight)
+        kn_d = dev.put(k_norm_weight)
+
+        maple_qknorm_rope_kv_write_batched_decode_bf16(
+            qkv_d.ptr,
+            qn_d.ptr,
+            kn_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            spans,
+            rows=rows,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            rope_dim=rope_dim,
+            eps=eps,
+            rope_theta=rope_theta,
+            library=maple_attention_lib,
+        )
+        qkv_res, _ = dev.empty((rows, qkv_stride), np.dtype(np.uint16))
+        dev.get(qkv_res, qkv_d)
+        key_res_bits, _ = dev.empty(
+            (capacity, kv_heads, head_dim), np.uint16
+        )
+        dev.get(key_res_bits, key_d)
+
+        out, out_d = dev.empty((rows, q_size), np.dtype(np.uint16))
+        maple_attention_decode_batched_bf16(
+            qkv_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            out_d.ptr,
+            spans,
+            rows=rows,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim**-0.5,
+            library=maple_attention_lib,
+        )
+        dev.get(out, out_d)
+
+    for row in range(rows):
+        pos = int(row_positions[row])
+        live = int(live_counts[row])
+        qn_ref, kn_ref, v_raw = expected_kv[row]
+        assert np.array_equal(
+            np.array(qkv_res[row, :q_size], dtype=np.uint16),
+            f32_to_bf16_bits(qn_ref.reshape(-1)),
+        ), f"row {row} normalized Q mismatch"
+        assert np.array_equal(
+            np.array(key_res_bits[pos], dtype=np.uint16).reshape(-1),
+            f32_to_bf16_bits(kn_ref.reshape(-1)),
+        ), f"row {row} K-cache write mismatch"
+
+        # Attention oracle over [pos-live+1, pos] with the just-written K/V.
+        # History K/V are stored bf16 on device, so round the oracle inputs.
+        hist_k = bf16_round(key_cache_f[pos - live + 1 : pos + 1])
+        hist_k[-1] = bf16_round(kn_ref)
+        hist_v = bf16_round(value_cache_f[pos - live + 1 : pos + 1])
+        hist_v[-1] = bf16_round(v_raw)
+        expected = f32_to_bf16_bits(
+            attention_decode(qn_ref, hist_k, hist_v, scale=head_dim**-0.5).reshape(-1)
+        )
+        got = np.array(out[row, :q_size], dtype=np.uint16)
+        assert np.array_equal(got, expected), f"row {row} attention decode mismatch"
+
