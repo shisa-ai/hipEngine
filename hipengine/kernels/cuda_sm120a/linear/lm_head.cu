@@ -126,6 +126,94 @@ __global__ void moonshine_lm_head_argmax_final_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// C8 phase-1 static-batch variants (grid-Y == batch row).  Stage 1 processes
+// ``rows_per_block`` vocab rows per block for one batch row; stage 2 reduces
+// that row's ``num_blocks`` partials.  Every accumulation, block sum, and
+// tie-break is byte-identical to the single-row kernel, so the batch result is
+// bit-exact vs B sequential single-row calls.
+// ---------------------------------------------------------------------------
+
+__global__ void moonshine_lm_head_argmax_batch_stage1_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight,
+    float* __restrict__ block_values,
+    int64_t* __restrict__ block_indices,
+    int64_t in_features,
+    int64_t vocab_size,
+    int64_t rows_per_block,
+    int64_t num_blocks) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t input_offset = row * in_features;
+  const int64_t scratch_offset = row * num_blocks;
+  const int64_t block_begin = static_cast<int64_t>(blockIdx.x) * rows_per_block;
+  const int64_t block_end = min(block_begin + rows_per_block, vocab_size);
+  float best_value = -FLT_MAX;
+  int64_t best_index = INT64_MAX;
+  for (int64_t column = block_begin; column < block_end; ++column) {
+    float accumulator = 0.0f;
+    for (int64_t feature = threadIdx.x; feature < in_features;
+         feature += blockDim.x) {
+      accumulator += static_cast<float>(input[input_offset + feature]) *
+          static_cast<float>(weight[column * in_features + feature]);
+    }
+    const float total = moonshine_block_sum(accumulator);
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      const float logit = __half2float(__float2half_rn(total));
+      if (better_pair(logit, column, best_value, best_index)) {
+        best_value = logit;
+        best_index = column;
+      }
+    }
+  }
+  if (threadIdx.x == 0) {
+    block_values[scratch_offset + blockIdx.x] = best_value;
+    block_indices[scratch_offset + blockIdx.x] = best_index;
+  }
+}
+
+__global__ void moonshine_lm_head_argmax_batch_final_kernel(
+    const float* __restrict__ block_values,
+    const int64_t* __restrict__ block_indices,
+    int64_t num_blocks,
+    int64_t* __restrict__ out_index,
+    float* __restrict__ out_value) {
+  __shared__ float values[256];
+  __shared__ int64_t indices[256];
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t scratch_offset = row * num_blocks;
+  float best_value = -FLT_MAX;
+  int64_t best_index = INT64_MAX;
+  for (int64_t i = threadIdx.x; i < num_blocks; i += blockDim.x) {
+    const float value = block_values[scratch_offset + i];
+    const int64_t index = block_indices[scratch_offset + i];
+    if (better_pair(value, index, best_value, best_index)) {
+      best_value = value;
+      best_index = index;
+    }
+  }
+  values[threadIdx.x] = best_value;
+  indices[threadIdx.x] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      const float other_value = values[threadIdx.x + stride];
+      const int64_t other_index = indices[threadIdx.x + stride];
+      if (better_pair(other_value, other_index, values[threadIdx.x],
+                      indices[threadIdx.x])) {
+        values[threadIdx.x] = other_value;
+        indices[threadIdx.x] = other_index;
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    out_index[row] = indices[0];
+    out_value[row] = values[0];
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_cuda_sm120a_moonshine_lm_head_argmax_fp16(
@@ -152,6 +240,39 @@ extern "C" int hipengine_cuda_sm120a_moonshine_lm_head_argmax_fp16(
     return static_cast<int>(err);
   }
   moonshine_lm_head_argmax_final_kernel<<<1u, 256u, 0, stream>>>(
+      block_values, block_indices, num_blocks, out_index, out_value);
+  return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_lm_head_argmax_batch_fp16(
+    const half_t* input,
+    const half_t* weight,
+    float* block_values,
+    int64_t* block_indices,
+    int64_t* out_index,
+    float* out_value,
+    int64_t in_features,
+    int64_t vocab_size,
+    int64_t rows_per_block,
+    int64_t batch,
+    cudaStream_t stream) {
+  if (in_features <= 0 || vocab_size <= 0 || rows_per_block <= 0 ||
+      batch <= 0) {
+    return static_cast<int>(cudaErrorInvalidValue);
+  }
+  const int64_t num_blocks = (vocab_size + rows_per_block - 1) / rows_per_block;
+  moonshine_lm_head_argmax_batch_stage1_kernel<<<
+      dim3(static_cast<unsigned int>(num_blocks),
+           static_cast<unsigned int>(batch)),
+      256u, 0, stream>>>(
+      input, weight, block_values, block_indices, in_features, vocab_size,
+      rows_per_block, num_blocks);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    return static_cast<int>(err);
+  }
+  moonshine_lm_head_argmax_batch_final_kernel<<<
+      dim3(1u, static_cast<unsigned int>(batch)), 256u, 0, stream>>>(
       block_values, block_indices, num_blocks, out_index, out_value);
   return static_cast<int>(cudaGetLastError());
 }

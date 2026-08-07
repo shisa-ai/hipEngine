@@ -346,6 +346,145 @@ def test_moonshine_cuda_cross_attention_matches_cpu_oracle() -> None:
             free(allocation, runtime=runtime)
 
 
+@pytest.mark.skipif(not _cuda_sm120a_enabled(), reason="CUDA sm_120a gate is not enabled")
+def test_moonshine_cuda_batch_attention_bit_exact_vs_single_row() -> None:
+    """Static-B batched self/cross attention equals B sequential c=1 calls.
+
+    Each (row, head) block of the batch kernels runs the identical FP32
+    arithmetic of the single-row kernels (only row base offsets differ), so
+    the outputs must be bit-identical to calling the single-row kernel once
+    per row on the same cache contents.  This is the exact-equality contract
+    the C8 batch runtime is required to preserve.
+    """
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.attention.moonshine_attention import (
+        build_moonshine_attention,
+        moonshine_cross_attention_batch_fp16,
+        moonshine_cross_attention_fp16,
+        moonshine_cross_attention_parallel_batch_fp16,
+        moonshine_cross_attention_parallel_fp16,
+        moonshine_self_attention_batch_fp16,
+        moonshine_self_attention_fp16,
+        moonshine_self_attention_parallel_batch_fp16,
+        moonshine_self_attention_parallel_fp16,
+    )
+
+    rng = np.random.default_rng(0xB8A7C8)
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library = build_moonshine_attention(load=True)
+    batch = 4
+    capacity = 194
+    scale = HEAD_DIM**-0.5
+    allocations: list[object] = []
+    try:
+        # ---- self attention: per-row positions across the short/long boundary
+        positions = np.array([1, 5, 9, 40], dtype=np.int64)
+        key_b = rng.normal(0.0, 0.4, size=(batch, HEADS, capacity, HEAD_DIM)).astype(np.float16)
+        value_b = rng.normal(0.0, 0.4, size=(batch, HEADS, capacity, HEAD_DIM)).astype(np.float16)
+        query_b = rng.normal(0.0, 0.4, size=(batch, HEADS * HEAD_DIM)).astype(np.float16)
+
+        d_key = _upload(key_b.reshape(batch, HEADS * capacity * HEAD_DIM), runtime, allocations)
+        d_value = _upload(value_b.reshape(batch, HEADS * capacity * HEAD_DIM), runtime, allocations)
+        d_query = _upload(query_b, runtime, allocations)
+        d_pos = _upload(positions, runtime, allocations)
+        d_out = _alloc((batch, HEADS * HEAD_DIM), runtime, allocations)
+
+        for threads in (32, 256):
+            if threads == 32:
+                moonshine_self_attention_batch_fp16(
+                    d_query.ptr, d_key.ptr, d_value.ptr, d_pos.ptr, d_out.ptr,
+                    HEADS, HEAD_DIM, capacity, scale=scale, threads=32, batch=batch,
+                    library=library, runtime=runtime,
+                )
+            else:
+                moonshine_self_attention_parallel_batch_fp16(
+                    d_query.ptr, d_key.ptr, d_value.ptr, d_pos.ptr, d_out.ptr,
+                    HEADS, HEAD_DIM, capacity, scale=scale, threads=threads, batch=batch,
+                    library=library, runtime=runtime,
+                )
+            runtime.device_synchronize()
+            batched = _download(d_out, (batch, HEADS * HEAD_DIM), runtime).reshape(batch, HEADS, HEAD_DIM)
+
+            single_row = _alloc((1, HEADS * HEAD_DIM), runtime, allocations)
+            for row in range(batch):
+                d_key1 = _upload(key_b[row].reshape(HEADS * capacity * HEAD_DIM), runtime, allocations)
+                d_value1 = _upload(value_b[row].reshape(HEADS * capacity * HEAD_DIM), runtime, allocations)
+                d_query1 = _upload(query_b[row], runtime, allocations)
+                d_pos1 = _upload(positions[row : row + 1], runtime, allocations)
+                if threads == 32:
+                    moonshine_self_attention_fp16(
+                        d_query1.ptr, d_key1.ptr, d_value1.ptr, d_pos1.ptr, single_row.ptr,
+                        HEADS, HEAD_DIM, capacity, scale=scale, threads=32,
+                        library=library, runtime=runtime,
+                    )
+                else:
+                    moonshine_self_attention_parallel_fp16(
+                        d_query1.ptr, d_key1.ptr, d_value1.ptr, d_pos1.ptr, single_row.ptr,
+                        HEADS, HEAD_DIM, capacity, scale=scale, threads=threads,
+                        library=library, runtime=runtime,
+                    )
+                runtime.device_synchronize()
+                expected = _download(single_row, (1, HEADS * HEAD_DIM), runtime).reshape(HEADS, HEAD_DIM)
+                assert np.array_equal(batched[row], expected), (
+                    f"self attention t{threads} row {row} pos {positions[row]} diverged"
+                )
+
+        # ---- cross attention: per-row masks, short encoder length
+        encoder_length = 40
+        mask = np.ones((batch, encoder_length), dtype=np.int32)
+        mask[1, 10:] = 0
+        mask[3, 5:] = 0
+        key_c = rng.normal(0.0, 0.4, size=(batch, HEADS, encoder_length, HEAD_DIM)).astype(np.float16)
+        value_c = rng.normal(0.0, 0.4, size=(batch, HEADS, encoder_length, HEAD_DIM)).astype(np.float16)
+        query_c = rng.normal(0.0, 0.4, size=(batch, HEADS * HEAD_DIM)).astype(np.float16)
+
+        d_key = _upload(key_c.reshape(batch, HEADS * encoder_length * HEAD_DIM), runtime, allocations)
+        d_value = _upload(value_c.reshape(batch, HEADS * encoder_length * HEAD_DIM), runtime, allocations)
+        d_query = _upload(query_c, runtime, allocations)
+        d_mask = _upload(mask.astype(np.int32), runtime, allocations)
+        for threads in (32, 256):
+            if threads == 32:
+                moonshine_cross_attention_batch_fp16(
+                    d_query.ptr, d_key.ptr, d_value.ptr, d_mask.ptr, d_out.ptr,
+                    HEADS, HEAD_DIM, encoder_length, scale=scale, threads=32, batch=batch,
+                    library=library, runtime=runtime,
+                )
+            else:
+                moonshine_cross_attention_parallel_batch_fp16(
+                    d_query.ptr, d_key.ptr, d_value.ptr, d_mask.ptr, d_out.ptr,
+                    HEADS, HEAD_DIM, encoder_length, scale=scale, threads=threads, batch=batch,
+                    library=library, runtime=runtime,
+                )
+            runtime.device_synchronize()
+            batched = _download(d_out, (batch, HEADS * HEAD_DIM), runtime).reshape(batch, HEADS, HEAD_DIM)
+            for row in range(batch):
+                d_key1 = _upload(key_c[row].reshape(HEADS * encoder_length * HEAD_DIM), runtime, allocations)
+                d_value1 = _upload(value_c[row].reshape(HEADS * encoder_length * HEAD_DIM), runtime, allocations)
+                d_query1 = _upload(query_c[row], runtime, allocations)
+                d_mask1 = _upload(mask[row].astype(np.int32), runtime, allocations)
+                if threads == 32:
+                    moonshine_cross_attention_fp16(
+                        d_query1.ptr, d_key1.ptr, d_value1.ptr, d_mask1.ptr, single_row.ptr,
+                        HEADS, HEAD_DIM, encoder_length, scale=scale, threads=32,
+                        library=library, runtime=runtime,
+                    )
+                else:
+                    moonshine_cross_attention_parallel_fp16(
+                        d_query1.ptr, d_key1.ptr, d_value1.ptr, d_mask1.ptr, single_row.ptr,
+                        HEADS, HEAD_DIM, encoder_length, scale=scale, threads=threads,
+                        library=library, runtime=runtime,
+                    )
+                runtime.device_synchronize()
+                expected = _download(single_row, (1, HEADS * HEAD_DIM), runtime).reshape(HEADS, HEAD_DIM)
+                assert np.array_equal(batched[row], expected), (
+                    f"cross attention t{threads} row {row} diverged"
+                )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
 def _upload(array: np.ndarray, runtime, allocations):
     host = np.ascontiguousarray(array)
     device = malloc(host.nbytes, runtime=runtime)

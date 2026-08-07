@@ -42,6 +42,15 @@ _LM_HEAD_ARGMAX_ARGS = (
     ctypes.c_int64,  # rows_per_block
     ctypes.c_void_p,  # stream
 )
+# Static-B batch variant: same layout, plus an int64 ``batch`` before the stream.
+_LM_HEAD_ARGMAX_BATCH_ARGS = (
+    *(ctypes.c_void_p for _ in range(6)),
+    ctypes.c_int64,  # in_features
+    ctypes.c_int64,  # vocab_size
+    ctypes.c_int64,  # rows_per_block
+    ctypes.c_int64,  # batch
+    ctypes.c_void_p,  # stream
+)
 
 
 def plan_moonshine_lm_head_build(
@@ -124,6 +133,7 @@ def moonshine_lm_head_argmax_fp16(
     _launch(
         library,
         "hipengine_cuda_sm120a_moonshine_lm_head_argmax_fp16",
+        _LM_HEAD_ARGMAX_ARGS,
         (
             input_ptr,
             weight_ptr,
@@ -140,13 +150,70 @@ def moonshine_lm_head_argmax_fp16(
     )
 
 
+def moonshine_lm_head_argmax_batch_fp16(
+    input_ptr: int,
+    weight_ptr: int,
+    block_values_ptr: int,
+    block_indices_ptr: int,
+    out_index_ptr: int,
+    out_value_ptr: int,
+    in_features: int,
+    vocab_size: int,
+    batch: int,
+    *,
+    rows_per_block: int = _DEFAULT_ROWS_PER_BLOCK,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Fused FP16 tied LM-head projection + stable argmax for ``batch`` rows.
+
+    ``input`` is ``[batch, in_features]`` FP16; ``out_index``/``out_value`` are
+    ``[batch]`` (int64 / float).  Scratch ``block_values``/``block_indices`` is
+    ``[batch, num_blocks]``.  Stage 1 runs the identical ordered FP32
+    accumulation per row (256 threads) and stage 2 reduces per row, so the
+    output tokens are bit-exact vs B sequential single-row calls.
+    """
+
+    if in_features <= 0:
+        raise ValueError("in_features must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    if rows_per_block <= 0:
+        raise ValueError("rows_per_block must be positive")
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    library = library or build_moonshine_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_lm_head_argmax_batch_fp16",
+        _LM_HEAD_ARGMAX_BATCH_ARGS,
+        (
+            input_ptr,
+            weight_ptr,
+            block_values_ptr,
+            block_indices_ptr,
+            out_index_ptr,
+            out_value_ptr,
+            in_features,
+            vocab_size,
+            rows_per_block,
+            batch,
+            stream,
+        ),
+        runtime,
+    )
+
+
 def _launch(
     library: ctypes.CDLL,
     symbol: str,
+    argtypes,
     arguments: tuple[object, ...],
     runtime: CudaRuntime,
 ) -> None:
-    function = signed_kernel_fn(library, symbol, _LM_HEAD_ARGMAX_ARGS, ctypes.c_int)
+    function = signed_kernel_fn(library, symbol, argtypes, ctypes.c_int)
     error = function(*arguments)
     if int(error) != CUDA_SUCCESS:
         runtime.check(int(error))
@@ -157,6 +224,15 @@ def register_moonshine_lm_head_kernels(*, replace: bool = True) -> None:
         (
             KernelKey(_BACKEND, "moonshine_lm_head", "fp16", "fused_argmax_fp32_accum"),
             moonshine_lm_head_argmax_fp16,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_lm_head",
+                "fp16",
+                "fused_argmax_fp32_accum_batch",
+            ),
+            moonshine_lm_head_argmax_batch_fp16,
         ),
     )
     for key, kernel in registrations:
@@ -169,6 +245,7 @@ __all__ = [
     "build_moonshine_lm_head",
     "lm_head_argmax_scratch_elements",
     "moonshine_lm_head_argmax_fp16",
+    "moonshine_lm_head_argmax_batch_fp16",
     "plan_moonshine_lm_head_build",
     "register_moonshine_lm_head_kernels",
 ]
