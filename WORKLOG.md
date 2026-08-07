@@ -206791,7 +206791,9 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - GREEN gates: six public-generation/bounds tests, the corrected prefix-aware
   attention primitive, the 12-token real-checkpoint seed+continuation gate, and
   the 260-token multi-chunk plus three-decode-step continuation gate all pass;
-  the focused Maple generation/attention/prefill bundle is **19 passed**.
+  the focused Maple generation/attention/prefill bundle is **19 passed**. A
+  separate three-prompt English/math/Japanese gate preserves each native-vs-
+  serial seed and two subsequent decode tokens.
 - Public `LLM.generate_detailed()` on the canonical 18-token formatted Maple
   prompt still emits the same coherent 37-token text and real EOS 151645 after
   native-prefill promotion. Tracked ownership is **5,555,965,800 bytes** while
