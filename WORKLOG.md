@@ -207095,3 +207095,12 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `rocprofv3` child now forces and records
   `HIPENGINE_REQUIRE_CACHED_BUILD=1` in addition to the precomputed compiler
   version file, so profiling cannot silently invoke `hipcc`.
+- Clean committed post-P0 profile at `ddc9874d7` measures prefill320 at
+  **498.442 ms/request / 492.866 ms kernel / 642.000 tok/s**, with **586**
+  launches and a **1.12%** host gap. The unchanged row/route-gather gate/up and
+  down kernels consume **152.842 + 123.309 = 276.150 ms**, or **56.03%** of
+  kernel time. Holding other work fixed, the 1000-tok/s target therefore
+  requires this family to reach **<=97.708 ms (2.826x)**. Publish the accepted
+  diagnostic as
+  `benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json`; no
+  production throughput row changes. P1 now has a frozen implementation gate.

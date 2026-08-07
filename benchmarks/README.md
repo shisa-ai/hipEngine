@@ -19,11 +19,13 @@ not yet public server throughput. The former 223.2/275.6/321.1 rows are invalid
 (wrong hardware label and c=1-only gate). Evidence:
 [`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json).
 
-The corrected cached-only
-[`phase profile`](results/2026-08-07-gfx1151-maple-corrected-phase-profile.json)
-predates P0 for prefill. It attributed row/route-gather expert work at 274.073
-ms for prefill320; a clean P0 reprofile now precedes P1 true expert-major compact
-MoE. c2/c4/c8 still need affine4 row reuse. A counterbalanced exact/leak-free
+The clean cached-only
+[`post-P0 phase profile`](results/2026-08-07-gfx1151-maple-p0-phase-profile.json)
+measures prefill320 at **498.442 ms / 642.000 tok/s** and the unchanged
+row/route-gather expert family at **276.150 ms (56.03% of kernel time)**. P1
+true expert-major compact MoE must reach **<=97.708 ms (2.826x)** for the
+profile-based 1000-tok/s target. c2/c4/c8 still need affine4 row reuse. A
+counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
 measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
 the rejected c1 head tile remains closed.

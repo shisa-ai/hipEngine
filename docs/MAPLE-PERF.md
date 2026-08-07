@@ -26,20 +26,22 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
 
 **Current conclusion (P0 retained).** Final-row-only sampling nearly doubles
-qualified native prefill and makes true expert-major MoE the next owner. The
-cached-only `rocprofv3` trace at clean `4ca05d8db` predates P0 for prefill but
-still attributes the unchanged layer families:
+qualified native prefill and makes true expert-major MoE the next owner. A
+clean cached-only `rocprofv3` trace at retained P0 now supplies the active
+prefill attribution. The c1/c8 rows remain the corrected decode baselines
+because P0 does not alter those paths:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| public native prefill320, pre-P0 | 982.015 ms/request | 975.347 ms | 6.668 ms (0.68%) | 590 | 325.861 tok/s |
+| public native prefill320, post-P0 | 498.442 ms/request | 492.866 ms | 5.576 ms (1.12%) | 586 | 642.000 tok/s |
 | autoregressive c1 decode | 6.118 ms/token | 5.035 ms | 1.082 ms (17.69%) | 295 | 163.459 tok/s |
 | fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
 
-The exact affine4 head owns **49.90%** of prefill320 kernel time, **28.75%** of
-c1, and **46.52%** of c8. Gate/up + down adds
-**28.10%/22.55%/29.67%** respectively. The same profile has different actions
-for each path:
+After P0, the exact affine4 head owns only **0.30%** of prefill320 kernel time,
+while gate/up + down owns **56.03%**. The unchanged corrected decode baseline
+still attributes **28.75%/46.52%** of c1/c8 to the head and
+**22.55%/29.67%** to selected experts. The paths therefore have different
+actions:
 
 - **Prefill:** P0 now samples only the final prompt row. Qualified
   128/320/512 throughput is **700.643/649.280/614.874 tok/s**, versus
@@ -56,9 +58,9 @@ The remaining prefill correction is that
 `maple_selected_ternary_*_batched` is a row/route gather grid, **not grouped
 MoE**: expert weights are reread for every assignment. True device
 count/prefix/scatter plus expert-major ternary kernels is now the active owner.
-The pre-P0 profile measured this unchanged family at 274.073 ms and projected a
-98.572-ms (2.780x) requirement for 1000 tok/s; reprofile P0 before freezing the
-implementation gate.
+The post-P0 profile measures this family at **276.150 ms**, or **56.03%** of
+kernel time. With every other measured bucket fixed, 1000 tok/s requires
+**<=97.708 ms (2.826x)**; that is the frozen P1 implementation gate.
 
 Current exact priority:
 
@@ -75,6 +77,7 @@ not a cross-device benchmark.
 
 Evidence:
 `benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`,
+`benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json`,
 `benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json`, and
 `benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json`.
 
@@ -355,8 +358,8 @@ Evidence:
   do not add runtime quant/backend branches.
 - Preserve every per-row BF16 projection, clamp/SwiGLU, and weighted-sum
   boundary. Keep the current row/route gather chain as the oracle/fallback.
-- Gate: freeze the expert-family speed target from the clean post-P0 reprofile;
-  the provisional pre-P0 target is <=98.572 ms (2.780x). Also pass the P0
+- Gate: reduce the expert family from **276.150 ms to <=97.708 ms (2.826x)**
+  in the clean post-P0 prefill320 profile. Also pass the P0
   18-prompt/continuation/state/lifecycle gate.
 
 ### P2 — GQA/query-row prefill attention — BRING-UP LANDED; TUNING OPEN
@@ -401,10 +404,10 @@ scheduler helper. Serial remains the correctness fallback above 512.
 ### Prefill target
 
 P0 delivers 649.280 tok/s at 320, close to its 645.811 tok/s projection.
-Crossing 1,000 now requires P1 plus later layer work. The pre-P0 profile-based
-P1 target is expert-family <=98.572 ms (2.780x), but a clean P0 reprofile must
-replace that estimate before implementation acceptance. DeepGrove's 1075 tok/s
-M4 row avoids discarded heads and sorts routed rows by expert, independently
+Crossing 1,000 now requires P1 plus later layer work. The clean post-P0 profile
+freezes the P1 target at expert-family **<=97.708 ms (2.826x)** versus the
+current **276.150 ms**. DeepGrove's 1075 tok/s M4 row avoids discarded heads
+and sorts routed rows by expert, independently
 showing that 1,000+ is credible. The near-term exact target remains
 **>=1,000 tok/s at qualified 128/320/512 shapes**; 2,000 is a later
 dense/attention target.
