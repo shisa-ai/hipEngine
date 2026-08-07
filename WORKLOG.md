@@ -203656,3 +203656,6 @@ identity for retained evidence. Two new CPU regressions cover successful
 same-bucket replacement and fail-fast cross-capacity rejection; complete driver
 CPU tests pass **7/7**, focused Ruff/diff checks pass. Clean GPU pool campaign
 (40/207 real files plus two 1,248 synthetic fixtures) follows after commit.
+The first clean campaign attempt correctly exposed the decoder's live-position
+guard on replacement; rebinding now resets generation before the new encoder
+D2D/cross-KV handoff and again after installation.
