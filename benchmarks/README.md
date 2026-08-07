@@ -1,11 +1,26 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-07**
+Last updated: **2026-08-08**
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
 records the campaign/current/matched-llama.cpp table, retained gains, closed
 H8C-H8Q ladder, and high-leverage-only resumption policy.
+
+## Current gfx1100 retained-PM4 transport diagnostics
+
+These rows are focused repeated-token transport diagnostics, not package-default
+or natural-prompt performance claims. Native HIP graph remains the default.
+
+| Transport / encoder | Qwen3.6 Q4_K_M p512/d128 replay | Retained tape | Status |
+| --- | ---: | ---: | --- |
+| HIP graph | **10.788071 ms/token / 92.695 tok/s** | Native runtime graph | Portable oracle/default |
+| In-tree conservative PM4 | **10.044991 / 99.552** | 25,666 dwords | Explicit diagnostic |
+| In-tree stateful-register PM4 | **9.989421 / 100.106** | 18,079 dwords (**-29.560%**) | Exact opt-in candidate; **-0.553%** replay wall, **5/5** paired wins vs conservative |
+
+Tracked-clean W7900 evidence, exact state/logit hashes, command, lifecycle proof,
+and non-promotion decision:
+[`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).
 
 The retained source-selected H7H exact full-group Q5 production owner is
 summarized below in
