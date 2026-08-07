@@ -85,3 +85,67 @@ def test_maple_prefill_native_matches_serial_step_gate(hip_test_target_arch) -> 
         runner2.close()
 
     assert native.token_id == serial_token
+
+
+def test_maple_batch_decode_matches_serial_steps(hip_test_target_arch) -> None:
+    """MapleBatchRunner.batch_step (c>1) must equal c independent serial decodes.
+
+    GPU + real checkpoint guarded: skipped when no supported HIP target or when
+    the Maple checkpoint cannot be resolved locally. Each request gets a
+    distinct prompt; batch request r must produce the same argmax tokens as the
+    serial runner stepping the same prompt from position 0.
+    """
+    del hip_test_target_arch
+    try:
+        from hipengine.loading.maple import load_maple_checkpoint
+    except Exception as exc:  # noqa: BLE001 - import guard
+        pytest.skip(f"maple loading unavailable: {exc}")
+
+    from hipengine.runtime.maple import MapleBatchRunner
+
+    model = "deepgrove/maple-preview-2bit-mlx"
+    backend = "hip_gfx1151"
+    prompts = [
+        (9707, 13, 358, 1093),
+        (220, 3100, 1066, 13),
+    ]
+    c = len(prompts)
+    steps = len(prompts[0])
+    try:
+        checkpoint = load_maple_checkpoint(model)
+    except Exception as exc:  # noqa: BLE001 - checkpoint missing
+        pytest.skip(f"maple checkpoint unavailable: {exc}")
+
+    serial_tokens = []
+    runners = []
+    try:
+        for r in range(c):
+            runner = MapleRunner.load(checkpoint, backend=backend, max_context=64)
+            runners.append(runner)
+            got = []
+            for tok in prompts[r]:
+                got.append(runner.step(tok).token_id)
+            serial_tokens.append(got)
+    finally:
+        for runner in runners:
+            runner.close()
+
+    batch_tokens = []
+    batch = MapleBatchRunner.load(
+        checkpoint, backend=backend, batch_size=c, per_capacity=64
+    )
+    try:
+        for step in range(steps):
+            batch_tokens.append(
+                batch.batch_step([prompts[r][step] for r in range(c)])
+            )
+    finally:
+        batch.close()
+
+    # batch_tokens[step][r] must equal serial_tokens[r][step].
+    for step in range(steps):
+        for r in range(c):
+            assert batch_tokens[step][r] == serial_tokens[r][step], (
+                f"request {r} step {step}: batch={batch_tokens[step][r]} "
+                f"serial={serial_tokens[r][step]}"
+            )
