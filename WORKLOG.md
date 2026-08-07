@@ -208722,3 +208722,42 @@ Vulkan local sizes verbatim will close the measured gap.
   **11.762 vs 10.693 ms** in the frozen matched ledger, but the current
   source-faithful mechanism ladder is exhausted; canonical B3 remains
   **61.394 tok/s**, **12.040% below** selected Vulkan B4 **69.798 tok/s**.
+
+## 2026-08-07 — Close latest-Vulkan review by measured exhaustion
+
+- Finish the end-to-end D27-R3 gate on clean `d1f26fb5c` without repeating the
+  equivalent full natural25 control. The final resident 512/128 control measures
+  **235.434 prefill / 23.296 graph-AR tok/s**; 4096/128 measures **216.784 /
+  21.897 tok/s**. Each has one discarded warmup reset and three measured resets,
+  reused graph capture, finite logits, three final token IDs `9707`, timing
+  stdev at most 1.20% of median, exact tracked peaks 29.786/32.611 GiB, and zero
+  tracked bytes after close. Raw SHA-256 values are `e2bee7c4...03c7e` and
+  `70173f98...fad7` under
+  `/tmp/hipengine-qwen36-27b/final-parity-d1f26fb5c/`.
+- The already completed post-module natural control is exact at true
+  AR/B1/B2/B3 **22.926/44.730/56.194/61.147 tok/s**. It covers all ten
+  code/general_en/general_ja/mixed_ja_en prompts and the fixed train/heldout
+  split; all greedy IDs, GPU/CPU acceptance, stage ledgers, memory lifecycle,
+  and teardown pass. It was measured with the temporary root route explicitly
+  disabled; production source was subsequently byte-restored. Do not spend
+  another >5-minute suite only to replace its disclosed dirty provenance.
+- Against latest selected Vulkan B4 **69.798 tok/s**, post-module production B3
+  remains **12.394% short** and needs **+14.148%**. The cleaner retained direct-
+  handoff canonical B3 **61.394 tok/s** remains **12.040% short** and needs
+  **+13.688%**. Populated prefill beats latest stateful Vulkan by
+  **196.70%/168.89%**, populated AR by **85.85%/75.76%**, and natural true AR by
+  **83.00%**.
+- Review verdict: correctness and cleanup are complete; selected Vulkan parity
+  is not achieved. Current-source/current-algorithm optimization is exhausted.
+  Submission, Q5, wide Q6, K/V, Q4 MMVQ, and root are each retained-improved or
+  source-audited/rejected. The review recovered the omitted V promotion packet,
+  corrected Q4 source `K_PER_ITER=16`, and repaired root CPU-oracle,
+  fail-closed, rollback, stale-diagnostic, and scalar-association gaps before
+  rejecting/removing the net-slower route. No rejected body, wrapper, key,
+  selector, flag, sidecar, or test remains.
+- Publish compact final authority
+  `benchmarks/results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json`
+  and synchronize `docs/QWEN36-27B-GGUF-CAMPAIGN.md`, benchmark README/changelog,
+  and the root topline export. Reopen only for a materially new speculative or
+  proposer schedule, association-preserving/producer-fused primitive, changed
+  model/source/compiler/driver, or a newly profiled >=5%-wall mechanism.
