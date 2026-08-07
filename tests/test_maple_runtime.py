@@ -111,6 +111,51 @@ def test_maple_prefill_native_matches_serial_step_gate(hip_test_target_arch) -> 
     assert native_continuation.token_id == serial_continuation.token_id
 
 
+def test_maple_prefill_native_natural_prompt_continuations(hip_test_target_arch) -> None:
+    """Natural English/Japanese prompts preserve seed and decode continuation."""
+    del hip_test_target_arch
+    from hipengine.loading.maple import load_maple_checkpoint
+    from hipengine.tokenization.maple import MapleTokenizer
+
+    try:
+        checkpoint = load_maple_checkpoint("deepgrove/maple-preview-2bit-mlx")
+    except Exception as exc:  # noqa: BLE001 - checkpoint missing
+        pytest.skip(f"maple checkpoint unavailable: {exc}")
+    spec = checkpoint.spec
+    tokenizer = MapleTokenizer.from_model_path(
+        checkpoint.index.model_path,
+        model_vocab_size=spec.vocab_size,
+        eos_token_id=spec.eos_token_id,
+        bos_token_id=spec.bos_token_id,
+    )
+    prompts = tuple(
+        tokenizer.encode_chat(text)
+        for text in (
+            "Write one short sentence about maple trees.",
+            "What is 2 + 2? Answer briefly.",
+            "日本語で短く挨拶してください。",
+        )
+    )
+    serial = MapleRunner.load(checkpoint, backend="hip_gfx1151", max_context=512)
+    native = MapleRunner.load(checkpoint, backend="hip_gfx1151", max_context=512)
+    try:
+        for prompt in prompts:
+            serial.reset()
+            native.reset()
+            serial_token = serial.prefill(prompt).token_id
+            native_token = native.prefill_native(prompt).token_id
+            assert native_token == serial_token
+            for _ in range(2):
+                serial_step = serial.step(serial_token)
+                native_step = native.step(native_token)
+                assert native_step.token_id == serial_step.token_id
+                serial_token = serial_step.token_id
+                native_token = native_step.token_id
+    finally:
+        native.close()
+        serial.close()
+
+
 def test_maple_prefill_native_multichunk_continuation_gate(hip_test_target_arch) -> None:
     """A prompt crossing the 256-row chunk boundary keeps decode state aligned."""
     del hip_test_target_arch
