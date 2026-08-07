@@ -207659,3 +207659,24 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   explicit row-reuse-selector provenance so D1 can trace only c8 without
   rerunning unaffected prefill/c1 phases. The script still prebuilds every
   library outside `rocprofv3` and requires cached builds in the profiled child.
+- The explicit real-checkpoint reclaimed-slot node is GREEN with the candidate:
+  slot 0 completes and resets, slot 1 advances through a sparse round, then a
+  third request reuses slot 0; all generated trajectories equal serial and
+  ownership closes exactly.
+- From clean profiler-harness commit `5634e8073`, prebuild in the parent and run
+  only `decode_c8` in the cached-only `rocprofv3` child. The trace names
+  `maple_affine4_gemv_batched_rowreuse_exact_kernel<8>` at local128/VGPR96/
+  SGPR128/scratch0. Against the latest unchanged-batch P2 trace, the head falls
+  **10.490 -> 3.734 ms (2.809x)**, kernel sum **24.046 -> 17.305 ms**, and wall
+  **25.925 -> 19.296 ms**, raising this separate diagnostic **308.579 ->
+  414.602 aggregate tok/s** with the same **293 launches/batch**. The host gap
+  is **1.991 ms**. Generated profile SHA-256 is
+  `75eb865e272226c619d7de6b37e5ed92e241c895b617dd697a5d2a1f112606fe`;
+  raw kernel CSV SHA-256 is
+  `a06e9e9a447031944c1e1fb1b2aa8e8aa1d3fd26a8719485bfc5460703329f7a`.
+- Every D1 gate now passes. Promote selector-unset c2/c4/c8 to exact row reuse;
+  preserve `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=0` and the registered
+  original all-row kernel as rollback through the final roadmap audit. Run the
+  unchanged complete M6 protocol once more from the clean promotion commit to
+  publish selector-unset production; do not substitute the trace wall for that
+  retained aggregate-throughput row.

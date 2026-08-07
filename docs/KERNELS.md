@@ -112,6 +112,22 @@ kernels / 0.468-ms host gap = 199.293 tok/s**. Selector-unset production uses
 wave32; `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` retains the original group64
 rollback.
 
+The retained/default D1 batched head registers
+`maple_affine4_gemv/group64_batched_rowreuse_exact` for c2/c4/c8. One local128
+block owns one vocabulary row across all request rows, loads each packed
+word/scale/bias once, and replays the original 128-thread FP32 tree independently
+for every request. Production-shape c2/c4/c8 logits are bit-exact to the original
+all-row kernel. The clean fixed-helper gate improves aggregate throughput
+**218.818/261.099/299.181 -> 250.037/347.511/427.929 tok/s**; all nine timing
+samples, **18/18** natural/category-heldout trajectories, sparse and reclaimed
+slots, and lifecycle are exact. Cached c8 tracing names
+`maple_affine4_gemv_batched_rowreuse_exact_kernel<8>` at local128/VGPR96/
+SGPR128/scratch0, measures the head **10.490 -> 3.734 ms (2.809x)**, and reduces
+wall **25.925 -> 19.296 ms** with the same 293 launches/batch. Selector-unset
+uses row reuse at supported widths;
+`HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=0` keeps the registered original
+all-row exact rollback.
+
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard
 QK-RMSNorm plus rotate-half partial RoPE, BF16 K/V append, and online-softmax

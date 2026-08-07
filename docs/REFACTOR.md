@@ -16,19 +16,23 @@ should be removed or collapsed.
 
 ## Maple D1 exact batched affine4 row-reuse head
 
-- Added 2026-08-08 as default-off
-  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1`. The c2/c4/c8 leaf assigns
-  one block to one vocabulary row across all request rows, loading each packed
-  word/scale/bias once while replaying the production per-request 128-thread
-  FP32 reduction tree exactly. The real 151,936x2,048 screen is bit-exact and
-  improves c2/c4/c8 head latency **2.763 -> 1.532 ms (1.803x)**,
+- Added and promoted 2026-08-08. The c2/c4/c8 leaf assigns one block to one
+  vocabulary row across all request rows, loading each packed word/scale/bias
+  once while replaying the production per-request 128-thread FP32 reduction
+  tree exactly. The real 151,936x2,048 screen is bit-exact and improves
+  c2/c4/c8 head latency **2.763 -> 1.532 ms (1.803x)**,
   **5.281 -> 2.023 ms (2.611x)**, and **10.554 -> 3.763 ms (2.804x)** with
   **96/96** paired wins and exact teardown.
-- Promote only after clean same-protocol c2/c4/c8 aggregate throughput, complete
-  natural/category-heldout trajectories, sparse/reclaimed slots, lifecycle,
-  and cached kernel trace all pass. If retained, keep `=0` as the original
-  all-row exact rollback through the final Maple roadmap audit, then remove the
-  environment seam while preserving the registered fallback primitive.
+- The clean helper gate improves c2/c4/c8 aggregate throughput
+  **218.818/261.099/299.181 -> 250.037/347.511/427.929 tok/s**. All widths,
+  **18/18** natural/category-heldout trajectories, sparse and reclaimed slots,
+  and lifecycle are exact. Cached c8 tracing measures the head **10.490 ->
+  3.734 ms (2.809x)** and total wall **25.925 -> 19.296 ms** at the unchanged
+  293 launches/batch.
+- Selector-unset now uses row reuse for c2/c4/c8. Keep
+  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=0` as the original all-row exact
+  rollback through the final Maple roadmap audit, then remove the environment
+  seam while preserving the registered fallback primitive.
 
 ## Maple D0 exact wave32 affine4 c1 head
 
