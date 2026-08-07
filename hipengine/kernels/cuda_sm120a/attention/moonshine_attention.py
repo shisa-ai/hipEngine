@@ -53,6 +53,20 @@ _ATTENTION_ARGS = (
     ctypes.c_void_p,
 )
 
+# Batched (static B) variants add an int64 ``batch`` between threads and stream:
+# (query, key, value, pos_or_mask, output, heads, head_dim, length, scale,
+#  threads, batch, stream).
+_BATCH_ATTENTION_ARGS = (
+    *(ctypes.c_void_p for _ in range(5)),
+    ctypes.c_int64,  # heads
+    ctypes.c_int64,  # head_dim
+    ctypes.c_int64,  # length (capacity or encoder_length)
+    ctypes.c_float,  # scale
+    ctypes.c_int64,  # threads
+    ctypes.c_int64,  # batch
+    ctypes.c_void_p,  # stream
+)
+
 
 def plan_moonshine_attention_build(
     *,
@@ -119,6 +133,18 @@ def _launch(
     runtime: CudaRuntime,
 ) -> None:
     function = signed_kernel_fn(library, symbol, _ATTENTION_ARGS, ctypes.c_int)
+    error = function(*arguments)
+    if int(error) != CUDA_SUCCESS:
+        runtime.check(int(error))
+
+
+def _launch_batch(
+    library: ctypes.CDLL,
+    symbol: str,
+    arguments: tuple[object, ...],
+    runtime: CudaRuntime,
+) -> None:
+    function = signed_kernel_fn(library, symbol, _BATCH_ATTENTION_ARGS, ctypes.c_int)
     error = function(*arguments)
     if int(error) != CUDA_SUCCESS:
         runtime.check(int(error))
@@ -351,6 +377,210 @@ def moonshine_cross_attention_parallel_fp16(
     )
 
 
+def moonshine_cross_attention_parallel_batch_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    mask_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    encoder_length: int,
+    *,
+    scale: float | None = None,
+    threads: int = 256,
+    batch: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batched masked cross attention: one launch for ``batch`` rows.
+
+    Layouts: query/output ``[B, heads, head_dim]``, cache
+    ``[B, heads, encoder_length, head_dim]``, mask ``[B, encoder_length]``.
+    Each (row, head) block runs the identical FP32 arithmetic of the
+    single-row parallel kernel, so outputs are bit-exact vs B sequential calls.
+    """
+
+    _validate_shape(heads, head_dim, encoder_length)
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if threads not in _PARALLEL_THREADS:
+        raise ValueError(f"threads must be one of {_PARALLEL_THREADS}")
+    scale_value = _scale(head_dim, scale)
+    library = library or build_moonshine_attention(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch_batch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_cross_attention_parallel_batch_fp16",
+        (
+            query_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            mask_ptr,
+            output_ptr,
+            heads,
+            head_dim,
+            encoder_length,
+            scale_value,
+            threads,
+            batch,
+            stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_cross_attention_batch_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    mask_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    encoder_length: int,
+    *,
+    scale: float | None = None,
+    threads: int = 32,
+    batch: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batched one-wave-per-head masked cross attention (``threads`` must be 32)."""
+
+    _validate_shape(heads, head_dim, encoder_length)
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if threads != _WAVE_THREADS:
+        raise ValueError(f"threads must be {_WAVE_THREADS} for one-wave-per-head")
+    scale_value = _scale(head_dim, scale)
+    library = library or build_moonshine_attention(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch_batch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_cross_attention_batch_fp16",
+        (
+            query_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            mask_ptr,
+            output_ptr,
+            heads,
+            head_dim,
+            encoder_length,
+            scale_value,
+            threads,
+            batch,
+            stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_self_attention_parallel_batch_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    position_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    capacity: int,
+    *,
+    scale: float | None = None,
+    threads: int = 256,
+    batch: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batched self attention over per-row positions (parallel variant).
+
+    Layouts: query/output ``[B, heads, head_dim]``, cache
+    ``[B, heads, capacity, head_dim]``, position ``[B]`` int64.  Each (row,
+    head) block reproduces the single-row parallel kernel arithmetic, so the
+    output is bit-exact vs B sequential single-row calls.
+    """
+
+    _validate_shape(heads, head_dim, capacity)
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if threads not in _PARALLEL_THREADS:
+        raise ValueError(f"threads must be one of {_PARALLEL_THREADS}")
+    scale_value = _scale(head_dim, scale)
+    library = library or build_moonshine_attention(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch_batch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_self_attention_parallel_batch_fp16",
+        (
+            query_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            position_ptr,
+            output_ptr,
+            heads,
+            head_dim,
+            capacity,
+            scale_value,
+            threads,
+            batch,
+            stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_self_attention_batch_fp16(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    position_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    capacity: int,
+    *,
+    scale: float | None = None,
+    threads: int = 32,
+    batch: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batched one-wave-per-head self attention (``threads`` must be 32)."""
+
+    _validate_shape(heads, head_dim, capacity)
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if threads != _WAVE_THREADS:
+        raise ValueError(f"threads must be {_WAVE_THREADS} for one-wave-per-head")
+    scale_value = _scale(head_dim, scale)
+    library = library or build_moonshine_attention(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch_batch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_self_attention_batch_fp16",
+        (
+            query_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            position_ptr,
+            output_ptr,
+            heads,
+            head_dim,
+            capacity,
+            scale_value,
+            threads,
+            batch,
+            stream,
+        ),
+        runtime,
+    )
+
+
 def register_moonshine_attention_kernels(*, replace: bool = True) -> None:
     registrations = (
         (
@@ -398,6 +628,42 @@ def register_moonshine_attention_kernels(*, replace: bool = True) -> None:
             ),
             moonshine_cross_attention_parallel_fp16,
         ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_self_attention",
+                "fp16",
+                "batch_fixed_cache_logical_dim",
+            ),
+            moonshine_self_attention_batch_fp16,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_self_attention",
+                "fp16",
+                "batch_parallel_tokens",
+            ),
+            moonshine_self_attention_parallel_batch_fp16,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_cross_attention",
+                "fp16",
+                "batch_masked_logical_dim",
+            ),
+            moonshine_cross_attention_batch_fp16,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_cross_attention",
+                "fp16",
+                "batch_masked_parallel_tokens",
+            ),
+            moonshine_cross_attention_parallel_batch_fp16,
+        ),
     )
     for key, kernel in registrations:
         register(key, kernel, replace=replace)
@@ -407,10 +673,14 @@ register_moonshine_attention_kernels()
 
 __all__ = [
     "build_moonshine_attention",
+    "moonshine_cross_attention_batch_fp16",
     "moonshine_cross_attention_fp16",
     "moonshine_cross_attention_grouped_fp16",
+    "moonshine_cross_attention_parallel_batch_fp16",
     "moonshine_cross_attention_parallel_fp16",
+    "moonshine_self_attention_batch_fp16",
     "moonshine_self_attention_fp16",
+    "moonshine_self_attention_parallel_batch_fp16",
     "moonshine_self_attention_parallel_fp16",
     "plan_moonshine_attention_build",
     "register_moonshine_attention_kernels",

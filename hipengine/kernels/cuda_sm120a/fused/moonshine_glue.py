@@ -72,6 +72,35 @@ _ADVANCE_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+# Static-B batch variants: same single-row layouts, plus an int64 ``batch``
+# between the shape scalars and the stream (row == grid Y).
+_EMBEDDING_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_FUSED_BATCH_ARGS = (
+    *(ctypes.c_void_p for _ in range(10)),
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ADVANCE_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 
 
 def plan_moonshine_glue_build(
@@ -410,6 +439,157 @@ def moonshine_advance_position_fp16(
     )
 
 
+def moonshine_embedding_lookup_batch_fp16(
+    embedding_ptr: int,
+    token_ptr: int,
+    output_ptr: int,
+    hidden_size: int,
+    vocab_size: int,
+    batch: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batched embedding lookup for ``batch`` rows.
+
+    ``token`` is ``[batch]`` int64; ``output`` is ``[batch, hidden_size]`` FP16.
+    Each grid-Y row performs the identical gather of the single-row kernel, so
+    the result is bit-exact vs B sequential single-row calls.
+    """
+
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    _validate_threads(threads)
+    library = library or build_moonshine_glue(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_embedding_lookup_batch_fp16",
+        _EMBEDDING_BATCH_ARGS,
+        (
+            embedding_ptr,
+            token_ptr,
+            output_ptr,
+            hidden_size,
+            vocab_size,
+            batch,
+            threads,
+            stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_partial_rope_cache_append_batch_fp16(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    position_ptr: int,
+    query_output_ptr: int,
+    key_output_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    capacity: int,
+    max_positions: int,
+    batch: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batched fused partial-RoPE + self-cache append for ``batch`` rows.
+
+    Per-row ``[heads, head_dim]`` query/key/value and ``[heads, capacity,
+    head_dim]`` caches; ``position`` is ``[batch]`` int64.  Each grid-Y row
+    runs the exact single-row FP32 rotate arithmetic (bit-exact vs B sequential
+    calls), bounded by both capacity and max_positions.
+    """
+
+    _validate_rope(heads, head_dim, rotary_dim, max_positions, threads)
+    if capacity <= 0:
+        raise ValueError("capacity must be positive")
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    library = library or build_moonshine_glue(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_partial_rope_cache_append_batch_fp16",
+        _FUSED_BATCH_ARGS,
+        (
+            query_ptr,
+            key_ptr,
+            value_ptr,
+            cos_ptr,
+            sin_ptr,
+            position_ptr,
+            query_output_ptr,
+            key_output_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            heads,
+            head_dim,
+            rotary_dim,
+            capacity,
+            max_positions,
+            batch,
+            threads,
+            stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_advance_position_batch_fp16(
+    position_ptr: int,
+    capacity: int,
+    batch: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Advance per-row device-owned int64 position scalars by one (graph tail).
+
+    Each row is bounded by ``capacity`` (self-cache capacity) so an overlong
+    run cannot overrun the cache; the host loop stops at EOS or max positions.
+    """
+
+    if isinstance(position_ptr, bool) or not isinstance(position_ptr, int):
+        raise ValueError("position_ptr must be a positive device pointer")
+    if position_ptr <= 0:
+        raise ValueError("position_ptr must be a positive device pointer")
+    if isinstance(capacity, bool) or not isinstance(capacity, int):
+        raise ValueError("capacity must be a positive integer")
+    if capacity <= 0:
+        raise ValueError("capacity must be a positive integer")
+    if isinstance(batch, bool) or not isinstance(batch, int):
+        raise ValueError("batch must be a positive integer")
+    if batch <= 0:
+        raise ValueError("batch must be a positive integer")
+    library = library or build_moonshine_glue(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_advance_position_batch_fp16",
+        _ADVANCE_BATCH_ARGS,
+        (position_ptr, capacity, batch, stream),
+        runtime,
+    )
+
+
 def register_moonshine_glue_kernels(*, replace: bool = True) -> None:
     registrations = (
         (
@@ -455,6 +635,28 @@ def register_moonshine_glue_kernels(*, replace: bool = True) -> None:
             ),
             moonshine_advance_position_fp16,
         ),
+        (
+            KernelKey(_BACKEND, "moonshine_embedding", "fp16", "batch_lookup_i64"),
+            moonshine_embedding_lookup_batch_fp16,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_partial_rope+moonshine_self_cache",
+                "fp16",
+                "interleaved_fixed_append_batch",
+            ),
+            moonshine_partial_rope_cache_append_batch_fp16,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_advance_position",
+                "fp16",
+                "device_owned_state_batch",
+            ),
+            moonshine_advance_position_batch_fp16,
+        ),
     )
     for key, kernel in registrations:
         register(key, kernel, replace=replace)
@@ -466,8 +668,11 @@ __all__ = [
     "build_moonshine_glue",
     "moonshine_argmax_fp16",
     "moonshine_advance_position_fp16",
+    "moonshine_advance_position_batch_fp16",
     "moonshine_embedding_lookup_fp16",
+    "moonshine_embedding_lookup_batch_fp16",
     "moonshine_partial_rope_cache_append_fp16",
+    "moonshine_partial_rope_cache_append_batch_fp16",
     "moonshine_partial_rope_fp16",
     "moonshine_residual_fp16",
     "moonshine_self_cache_append_fp16",

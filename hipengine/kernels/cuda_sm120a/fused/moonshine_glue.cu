@@ -180,6 +180,81 @@ __global__ void moonshine_partial_rope_cache_append_fp16_kernel(
   value_cache[cache_offset] = value[index];
 }
 
+// -------------------------------------------------------------------------
+// C8 phase-1 static-batch variants (grid row == batch row).  Each row runs
+// the identical FP32 arithmetic of the single-row kernel, so results are
+// bit-exact vs B sequential single-row calls.
+// -------------------------------------------------------------------------
+
+__global__ void moonshine_embedding_lookup_batch_fp16_kernel(
+    const half_t* __restrict__ embedding,
+    const int64_t* __restrict__ token,
+    half_t* __restrict__ output,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    int64_t batch) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t index =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row >= batch || index >= hidden_size) return;
+  const int64_t token_id = token[row];
+  if (token_id < 0 || token_id >= vocab_size) return;
+  output[row * hidden_size + index] =
+      embedding[token_id * hidden_size + index];
+}
+
+__global__ void moonshine_partial_rope_cache_append_batch_fp16_kernel(
+    const half_t* __restrict__ query,
+    const half_t* __restrict__ key,
+    const half_t* __restrict__ value,
+    const half_t* __restrict__ cos,
+    const half_t* __restrict__ sin,
+    const int64_t* __restrict__ position_ptr,
+    half_t* __restrict__ query_output,
+    half_t* __restrict__ key_output,
+    half_t* __restrict__ key_cache,
+    half_t* __restrict__ value_cache,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t capacity,
+    int64_t max_positions,
+    int64_t batch) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t index =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t elements = heads * head_dim;
+  if (row >= batch || index >= elements) return;
+  const int64_t position = position_ptr[row];
+  if (position < 0 || position >= capacity || position >= max_positions) return;
+  const int64_t head = index / head_dim;
+  const int64_t dimension = index - head * head_dim;
+  const int64_t head_offset = head * head_dim;
+  const int64_t row_query = row * elements;
+  const int64_t row_cache = row * (heads * capacity * head_dim);
+  const half_t rotated_query = moonshine_rotate_value(
+      query + row_query, head_offset, dimension, rotary_dim, cos, sin, position);
+  const half_t rotated_key = moonshine_rotate_value(
+      key + row_query, head_offset, dimension, rotary_dim, cos, sin, position);
+  query_output[row_query + index] = rotated_query;
+  key_output[row_query + index] = rotated_key;
+  const int64_t cache_offset =
+      row_cache + (head * capacity + position) * head_dim + dimension;
+  key_cache[cache_offset] = rotated_key;
+  value_cache[cache_offset] = value[row_query + index];
+}
+
+__global__ void moonshine_advance_position_batch_fp16_kernel(
+    int64_t* __restrict__ position,
+    int64_t capacity,
+    int64_t batch) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= batch) return;
+  if (position[row] < capacity) {
+    position[row] += 1;
+  }
+}
+
 bool valid_reduction_threads(int64_t threads) {
   return threads == 32 || threads == 64 || threads == 128 || threads == 256;
 }
@@ -337,5 +412,72 @@ extern "C" int hipengine_cuda_sm120a_moonshine_partial_rope_cache_append_fp16(
       query, key, value, cos, sin, position, query_output, key_output,
       key_cache, value_cache, heads, head_dim, rotary_dim, capacity,
       max_positions);
+  return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_embedding_lookup_batch_fp16(
+    const half_t* embedding,
+    const int64_t* token,
+    half_t* output,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    int64_t batch,
+    int64_t threads,
+    cudaStream_t stream) {
+  if (hidden_size <= 0 || vocab_size <= 0 || batch <= 0 ||
+      !valid_threads(threads)) {
+    return cudaErrorInvalidValue;
+  }
+  const int64_t blocks = (hidden_size + threads - 1) / threads;
+  moonshine_embedding_lookup_batch_fp16_kernel<<<
+      dim3(blocks, (unsigned)batch), dim3(threads), 0, stream>>>(
+      embedding, token, output, hidden_size, vocab_size, batch);
+  return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_partial_rope_cache_append_batch_fp16(
+    const half_t* query,
+    const half_t* key,
+    const half_t* value,
+    const half_t* cos,
+    const half_t* sin,
+    const int64_t* position,
+    half_t* query_output,
+    half_t* key_output,
+    half_t* key_cache,
+    half_t* value_cache,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    int64_t capacity,
+    int64_t max_positions,
+    int64_t batch,
+    int64_t threads,
+    cudaStream_t stream) {
+  if (!valid_rope_shape(heads, head_dim, rotary_dim, max_positions, threads) ||
+      capacity <= 0 || batch <= 0) {
+    return cudaErrorInvalidValue;
+  }
+  const int64_t elements = heads * head_dim;
+  const int64_t blocks = (elements + threads - 1) / threads;
+  moonshine_partial_rope_cache_append_batch_fp16_kernel<<<
+      dim3(blocks, (unsigned)batch), dim3(threads), 0, stream>>>(
+      query, key, value, cos, sin, position, query_output, key_output,
+      key_cache, value_cache, heads, head_dim, rotary_dim, capacity,
+      max_positions, batch);
+  return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_advance_position_batch_fp16(
+    int64_t* position,
+    int64_t capacity,
+    int64_t batch,
+    cudaStream_t stream) {
+  if (position == nullptr || capacity <= 0 || batch <= 0) {
+    return cudaErrorInvalidValue;
+  }
+  moonshine_advance_position_batch_fp16_kernel<<<
+      dim3(1, (unsigned)batch), dim3(1), 0, stream>>>(
+      position, capacity, batch);
   return cudaGetLastError();
 }
