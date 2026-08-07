@@ -456,6 +456,50 @@ __global__ void maple_affine4_gemv_kernel(
   }
 }
 
+// Batched affine4 lm_head GEMM (P4 prefill): out[T, out] = x[T, in] x affine4 W.
+// Grid (out_features, T); block (row_idx, t) projects input row t with output
+// row row_idx's affine4 weights, writing out[t*out + row_idx].
+__global__ void maple_affine4_gemv_batched_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ weight,
+    const uint16_t* __restrict__ scales,
+    const uint16_t* __restrict__ biases,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t row_idx = blockIdx.x;
+  const int64_t t = blockIdx.y;
+  if (row_idx >= out_features || t >= rows) {
+    return;
+  }
+  const int64_t words = in_features / 8;
+  const int64_t groups = in_features / 64;
+  const uint32_t* wrow = weight + row_idx * words;
+  const uint16_t* row_scales = scales + row_idx * groups;
+  const uint16_t* row_biases = biases + row_idx * groups;
+  const uint16_t* xrow = x + t * in_features;
+  float partial = 0.0f;
+  for (int64_t word_idx = threadIdx.x; word_idx < words; word_idx += blockDim.x) {
+    const uint32_t word = wrow[word_idx];
+    const int64_t base = word_idx * 8;
+#pragma unroll
+    for (int lane = 0; lane < 8; ++lane) {
+      const int64_t idx = base + lane;
+      const int code = static_cast<int>((word >> (4 * lane)) & 0xFU);
+      const int64_t group = idx / 64;
+      const float w = static_cast<float>(code) * bf16_to_float(row_scales[group])
+          + bf16_to_float(row_biases[group]);
+      partial += bf16_to_float(xrow[idx]) * w;
+    }
+  }
+  extern __shared__ float scratch[];
+  const float total = reduce_sum(partial, scratch);
+  if (threadIdx.x == 0) {
+    out[t * out_features + row_idx] = total;
+  }
+}
+
 inline int launch_threads_for_words(int64_t words) {
   if (words >= 128) {
     return 128;
@@ -1010,6 +1054,38 @@ extern "C" int hipengine_maple_affine4_gemv_f32(
       scales,
       biases,
       out,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_affine4_gemv_batched_f32(
+    const uint16_t* x,
+    const uint32_t* weight,
+    const uint16_t* scales,
+    const uint16_t* biases,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || in_features % 64 != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_words(in_features / 8);
+  hipLaunchKernelGGL(
+      maple_affine4_gemv_batched_kernel,
+      dim3(static_cast<unsigned int>(out_features),
+           static_cast<unsigned int>(rows)),
+      dim3(threads),
+      threads * sizeof(float),
+      stream,
+      x,
+      weight,
+      scales,
+      biases,
+      out,
+      rows,
       in_features,
       out_features);
   return static_cast<int>(hipGetLastError());
