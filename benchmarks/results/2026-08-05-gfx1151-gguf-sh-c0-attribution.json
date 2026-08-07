@@ -1,0 +1,2811 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-05",
+  "kind": "hipengine_gguf_sh_c0_attribution",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "summary": "SH-C0 freezes current exact c1 decode role ownership and same-scope whole-GTT peaks before SH-D1/SH-M1. Profiled rates are diagnostics; non-profiled rates are the baseline.",
+  "platform": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "pci_id": "0000:c1:00.0",
+    "kernel": "7.1.3-2-cachyos",
+    "amd_iommu": "off"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "implementations": {
+    "hipengine_production_commit": "a2541162d",
+    "role_tooling_commits": [
+      "359b967fd",
+      "133239a4d"
+    ],
+    "fork": {
+      "repository": "https://github.com/Nathanw1014/llama.cpp",
+      "source_commit": "b7b85da9c4a9fdeb3cab51030a40d1552270f272",
+      "build_commit_reported": "b7b85da9",
+      "build_number": 10283,
+      "release": "https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/dev-20260803-b7b85da",
+      "archive_sha256": "1449e4f66c7cd47516c9a9e64c1afda90515e74c2ef26a9807d34c61598cd66d",
+      "llama_bench_sha256": "a5923323bdd57cfac646216d4ce32e9df4d4e2bc04ae21c4572b2e52550877c4",
+      "backend": "Vulkan",
+      "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "mesa_commit": "d18d598e2",
+      "libdrm": "2.4.133",
+      "shaderc": "v2026.3-dev 49a8724d561c13db22b52f99f2a0e2707a9a9e3c"
+    }
+  },
+  "protocol": {
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "backend": "hip_gfx1151",
+    "prompt_source": "repeated_token_id",
+    "prompt_token_id": 9707,
+    "prompt_lengths": [
+      512,
+      4096,
+      32768,
+      65536
+    ],
+    "baseline_decode_tokens": 128,
+    "profile_decode_tokens": 8,
+    "baseline_protocol": "one discarded full run plus repeated non-profiled eager runs",
+    "profile_protocol": "cached-only rocprof kernel+HIP API+ROCTX role trace",
+    "gtt_sampling_interval_ms": 10.0
+  },
+  "rows": {
+    "512": {
+      "hipengine_non_profiled": {
+        "decode_tok_s_median": 52.85718111193776,
+        "decode_tok_s_samples": [
+          52.916212753564054,
+          52.85718111193776,
+          52.828996126956056
+        ],
+        "decode_ms_per_token_median": 18.9189052265625,
+        "all_tokens_exact": true,
+        "whole_gtt_peak_gib": 21.916000366210938,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_samples": 5768,
+        "tracked_peak_gib": 21.479979306459427,
+        "owned_session_gib": 21.479979306459427,
+        "owned_families_gib": {
+          "weights": 21.061182498931885,
+          "decode_scratch": 0.07973908632993698,
+          "session_buffers": 0.33905772119760513
+        },
+        "decode_scratch_components_bytes": {
+          "full_attention_kv_cache": 15728640,
+          "full_attention_kv_scales": 0,
+          "full_attention_bf16_mirrors": 0,
+          "linear_attention_state": 66846720,
+          "metadata_tables": 393244,
+          "decode_workspace_other": 2650588
+        },
+        "session_buffer_components_bytes": {
+          "decode_logits_and_lm_head": 1007312,
+          "prefill_token_buffer": 6144,
+          "prefill_full_sequence_hidden": 6291456,
+          "bulk_prefill_scratch": 355182664,
+          "aotriton_head_major_kv_scratch": 1572864,
+          "session_buffer_other": 16
+        },
+        "bulk_prefill_scratch": {
+          "physical_owner_gib": 0.33078963309526443,
+          "logical_field_gib": 0.33078963309526443,
+          "rows": 768,
+          "max_positions": 768,
+          "allocation_mode": "dedicated",
+          "largest_fields_bytes": {
+            "moe_down_out_f32": 50331648,
+            "conv_out": 25165824,
+            "linear_qkv_f32": 25165824,
+            "moe_down_out": 25165824,
+            "ffn_gate_up": 12582912,
+            "ffn_intermediate_f32": 12582912,
+            "full_q": 12582912,
+            "full_query": 12582912,
+            "full_query_raw": 12582912,
+            "linear_qkv": 12582912,
+            "linear_z_f32": 12582912,
+            "prefill_key": 12582912,
+            "prefill_query": 12582912,
+            "prefill_value": 12582912,
+            "recurrent_out": 12582912,
+            "ffn_intermediate": 6291456,
+            "full_attn_bf16": 6291456,
+            "full_gate": 6291456,
+            "full_gated": 6291456,
+            "full_query_bf16": 6291456
+          }
+        }
+      },
+      "hipengine_profiled": {
+        "gpu_ms_per_token": 17.595796,
+        "dispatches_per_token": 628.0,
+        "attributed_dispatches": 4664,
+        "selected_dispatches": 5024,
+        "roles": [
+          {
+            "name": "gdn_input_projections",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 32904.954,
+            "gpu_us_per_token": 4113.11925,
+            "share_pct": 23.375579314513534,
+            "us_per_call": 137.10397500000002,
+            "kernel_families": [
+              "q8_0_t16_dual_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.132346247612827,
+            "amdahl_speedup_if_4x": 1.2125869114288446,
+            "amdahl_speedup_if_infinite": 1.305066963056872
+          },
+          {
+            "name": "selected_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 18535.49,
+            "gpu_us_per_token": 2316.93625,
+            "share_pct": 13.167555761614876,
+            "us_per_call": 57.92340625,
+            "kernel_families": [
+              "q4_k_t16_selected_dual_silu_direct_gemv"
+            ],
+            "vgpr_counts": [
+              200
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.070477886296954,
+            "amdahl_speedup_if_4x": 1.1095782512101342,
+            "amdahl_speedup_if_infinite": 1.151643269714548
+          },
+          {
+            "name": "lm_head",
+            "calls": 24,
+            "calls_per_token": 3.0,
+            "total_us": 14648.947,
+            "gpu_us_per_token": 1831.118375,
+            "share_pct": 10.406567426673963,
+            "us_per_call": 610.3727916666667,
+            "kernel_families": [
+              "argmax_stage1",
+              "argmax_stage2",
+              "q6_k_t16_gemv"
+            ],
+            "vgpr_counts": [
+              16,
+              72
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.054888860259699,
+            "amdahl_speedup_if_4x": 1.0846566437335208,
+            "amdahl_speedup_if_infinite": 1.1161532394481806
+          },
+          {
+            "name": "selected_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 12822.431,
+            "gpu_us_per_token": 1602.803875,
+            "share_pct": 9.10901601155185,
+            "us_per_call": 40.070096875000004,
+            "kernel_families": [
+              "qk_t16_selected_direct_gemv"
+            ],
+            "vgpr_counts": [
+              96,
+              128
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.047718419284292,
+            "amdahl_speedup_if_4x": 1.0733271569362424,
+            "amdahl_speedup_if_infinite": 1.1002191373867134
+          },
+          {
+            "name": "full_attention_core",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 12631.735,
+            "gpu_us_per_token": 1578.966875,
+            "share_pct": 8.973546152728753,
+            "us_per_call": 26.31611458333333,
+            "kernel_families": [
+              "bf16_to_f32",
+              "gguf_head_rmsnorm_partial_rotary_position_f32_weight",
+              "qwen35_full_attn_gate_mul_bf16",
+              "qwen35_paged_full_attn_decode_context_tensor",
+              "qwen35_split_qgate_bf16",
+              "qwen35_write_paged_kv_mixed_value_position_tensor"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24,
+              40
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0469754108501812,
+            "amdahl_speedup_if_4x": 1.0721579407312485,
+            "amdahl_speedup_if_infinite": 1.0985817394115454
+          },
+          {
+            "name": "gdn_output_projection",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 11572.286,
+            "gpu_us_per_token": 1446.53575,
+            "share_pct": 8.220916803081826,
+            "us_per_call": 48.21785833333333,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              48
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0428665976812528,
+            "amdahl_speedup_if_4x": 1.0657082408850607,
+            "amdahl_speedup_if_infinite": 1.0895728799713906
+          },
+          {
+            "name": "full_attention_qkv",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 8701.101,
+            "gpu_us_per_token": 1087.637625,
+            "share_pct": 6.181235705392356,
+            "us_per_call": 108.7637625,
+            "kernel_families": [
+              "q8_0_t16_triple_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0318918332179476,
+            "amdahl_speedup_if_4x": 1.048612927515197,
+            "amdahl_speedup_if_infinite": 1.065884855251154
+          },
+          {
+            "name": "moe_router_combine",
+            "calls": 1272,
+            "calls_per_token": 159.0,
+            "total_us": 7843.288,
+            "gpu_us_per_token": 980.411,
+            "share_pct": 5.571847957318896,
+            "us_per_call": 6.166106918238993,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_router_topk_split_shared_coop_out_f32w",
+              "silu_mul_dual_out",
+              "weighted_sum_shared_gate_combine_residual_out"
+            ],
+            "vgpr_counts": [
+              16,
+              32
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.028657619273652,
+            "amdahl_speedup_if_4x": 1.0436113273176217,
+            "amdahl_speedup_if_infinite": 1.059006216226708
+          },
+          {
+            "name": "shared_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 5578.42,
+            "gpu_us_per_token": 697.3025,
+            "share_pct": 3.9628926136674916,
+            "us_per_call": 17.4325625,
+            "kernel_families": [
+              "q8_0_t16_dual_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0202150126907237,
+            "amdahl_speedup_if_4x": 1.030632133520011,
+            "amdahl_speedup_if_infinite": 1.0412641813307204
+          },
+          {
+            "name": "gdn_attention_core",
+            "calls": 488,
+            "calls_per_token": 61.0,
+            "total_us": 5167.147,
+            "gpu_us_per_token": 645.893375,
+            "share_pct": 3.6707255244377692,
+            "us_per_call": 10.588415983606557,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+              "qwen35_linear_attn_conv_decode_lowp"
+            ],
+            "vgpr_counts": [
+              16,
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0186967813854713,
+            "amdahl_speedup_if_4x": 1.0283098233674883,
+            "amdahl_speedup_if_infinite": 1.0381060227477266
+          },
+          {
+            "name": "full_attention_output",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 4010.328,
+            "gpu_us_per_token": 501.291,
+            "share_pct": 2.8489248227247006,
+            "us_per_call": 50.1291,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0144504655638473,
+            "amdahl_speedup_if_4x": 1.0218334501052138,
+            "amdahl_speedup_if_infinite": 1.0293246865001355
+          },
+          {
+            "name": "shared_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 2960.597,
+            "gpu_us_per_token": 370.074625,
+            "share_pct": 2.103199110742134,
+            "us_per_call": 9.251865625,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0106277569990587,
+            "amdahl_speedup_if_4x": 1.0160267999663455,
+            "amdahl_speedup_if_infinite": 1.021483839018614
+          },
+          {
+            "name": "unattributed",
+            "calls": 360,
+            "calls_per_token": 45.0,
+            "total_us": 2041.793,
+            "gpu_us_per_token": 255.224125,
+            "share_pct": 1.4504835416368773,
+            "us_per_call": 5.671647222222222,
+            "kernel_families": [
+              "__amd_rocclr_copyBuffer",
+              "gguf_add_rmsnorm_bf16_f32_weight",
+              "gguf_q8_0_embedding_bf16_out",
+              "gguf_rmsnorm_bf16_f32_weight",
+              "set_decode_position_i64",
+              "set_i64_scalar"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.007305399517007,
+            "amdahl_speedup_if_4x": 1.0109982726634121,
+            "amdahl_speedup_if_infinite": 1.014718322258331
+          },
+          {
+            "name": "gdn_decay_projections",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 1347.851,
+            "gpu_us_per_token": 168.481375,
+            "share_pct": 0.9575092539149692,
+            "us_per_call": 2.808022916666667,
+            "kernel_families": [
+              "dense_gemv_bf16_f32w_bf16_out"
+            ],
+            "vgpr_counts": [
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0048105771301687,
+            "amdahl_speedup_if_4x": 1.0072332637819161,
+            "amdahl_speedup_if_infinite": 1.0096676612906448
+          }
+        ],
+        "raw_trace": {
+          "kernel_csv": "/tmp/hipengine-sh-c0-20260805/512/trace/sh-c0-512_kernel_trace.csv",
+          "kernel_csv_sha256": "6f6eae1aa9a225dad8d649df5fd8728008ae63c5e9556c2678ab3586bddc9923",
+          "marker_csv": "/tmp/hipengine-sh-c0-20260805/512/trace/sh-c0-512_marker_api_trace.csv",
+          "marker_csv_sha256": "bef2ef9dd82aac4834053d662d037afc14f3495c0f5bc505ae56af9cf2713fe5",
+          "hip_api_csv": "/tmp/hipengine-sh-c0-20260805/512/trace/sh-c0-512_hip_api_trace.csv",
+          "hip_api_csv_sha256": "2ea9702e161be9c7d4d7ef0fe679b8a9ebf391274e82fbcea056d9c8d5208ceb"
+        },
+        "profiled_host": {
+          "profiled_host": {
+            "repetitions": 1,
+            "all_tokens_exact": true,
+            "expected_token_id": 9707,
+            "samples_ms_per_token": [
+              22.254126875
+            ],
+            "samples_tok_s": [
+              44.93548570190759
+            ],
+            "median_ms_per_token": 22.254126875,
+            "median_tok_s": 44.93548570190759,
+            "mean_ms_per_token": 22.254126875,
+            "stdev_ms_per_token": 0.0,
+            "min_ms_per_token": 22.254126875,
+            "max_ms_per_token": 22.254126875
+          },
+          "gpu_kernel_us_per_token": 17595.796,
+          "profiled_host_minus_gpu_us_per_token": 4658.330875000003,
+          "gpu_kernel_share_of_profiled_host_wall_pct": 79.06756395716828,
+          "qualification": "Profiler overhead and trace collection perturb host wall; use the non-profiled baseline for throughput."
+        }
+      },
+      "fork_profiled": {
+        "f16": {
+          "profiled_tg128_tok_s": 57.754149,
+          "logged_gpu_ms_per_token": 16.440339062499998,
+          "dispatches_per_token": 1483.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 967.9683800000007,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.249011875000022,
+              "share_of_total": 0.4599815697231765
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 241.86833000000007,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.619954101562506,
+              "share_of_total": 0.11493657891978167
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 228.0375899999999,
+              "dispatches": 128,
+              "avg_dispatch_us": 1781.5436718749993,
+              "share_of_total": 0.10836416847014158
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 145.88315999999986,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.424919547872338,
+              "share_of_total": 0.06932412909291231
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 138.96240999999998,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.341725084459455,
+              "share_of_total": 0.066035367275443
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 90.45904200000001,
+              "dispatches": 17920,
+              "avg_dispatch_us": 5.047937611607144,
+              "share_of_total": 0.04298641669970121
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 81.88279600000007,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.333755878712877,
+              "share_of_total": 0.03891095805981043
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 70.43213900000002,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.880895737892671,
+              "share_of_total": 0.03346957041735284
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 52.96755599999994,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.448408593749996,
+              "share_of_total": 0.025170346528551078
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 30.576973000000002,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.962753385416667,
+              "share_of_total": 0.014530272195382225
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 23.864634,
+              "dispatches": 1280,
+              "avg_dispatch_us": 18.644245312499997,
+              "share_of_total": 0.011340547930077096
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.621926999999992,
+              "dispatches": 384,
+              "avg_dispatch_us": 35.473768229166645,
+              "share_of_total": 0.0064731818658317255
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 11.708530999999997,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.0490966145833327,
+              "share_of_total": 0.005563930165293693
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.1303180000000035,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.3946554687500017,
+              "share_of_total": 0.002913146084939514
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "f16",
+            "type_v": "f16",
+            "n_depth": 512,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/f16-512.summary.json",
+            "summary_sha256": "cce68cd9e38be5b705f770c9b66f2233267a7bb78b9d0fa36ba42735d21690d0",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/f16-512.stdout.json",
+            "stdout_sha256": "251f946c641ccf9a22967907246893ce8fc6a885cba46a80283b7d81b290703d",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/f16-512.stderr.log",
+            "stderr_sha256": "a587197c6f6dfba3a4d1e40f88349019629e151aa8a1abbad4ed9e70c343ab75"
+          }
+        },
+        "q8_0": {
+          "profiled_tg128_tok_s": 57.440466,
+          "logged_gpu_ms_per_token": 16.532728125000002,
+          "dispatches_per_token": 1523.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 967.5733939999989,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.236668562499965,
+              "share_of_total": 0.4572244268140102
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 241.55948000000004,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.589792968750004,
+              "share_of_total": 0.11414833796524433
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 228.52334,
+              "dispatches": 128,
+              "avg_dispatch_us": 1785.33859375,
+              "share_of_total": 0.10798814208105777
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 147.6199979999999,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.4537898603723387,
+              "share_of_total": 0.06975746686543902
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 138.81487999999996,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.310574324324314,
+              "share_of_total": 0.06559663001776965
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 103.51196099999997,
+              "dispatches": 23040,
+              "avg_dispatch_us": 4.4927066406249985,
+              "share_of_total": 0.048914322500086455
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 83.11211699999998,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.428845683787127,
+              "share_of_total": 0.039274426407619877
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 71.072534,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.907089905104712,
+              "share_of_total": 0.0335851510819543
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 52.888139999999936,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.4432382812499958,
+              "share_of_total": 0.02499216043631634
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 30.661213000000018,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.984690885416671,
+              "share_of_total": 0.014488880767371847
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 19.171105999999988,
+              "dispatches": 1280,
+              "avg_dispatch_us": 14.977426562499991,
+              "share_of_total": 0.009059258973630519
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.481809999999994,
+              "dispatches": 384,
+              "avg_dispatch_us": 35.10888020833332,
+              "share_of_total": 0.006370796146204693
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 12.112999999999998,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.1544270833333328,
+              "share_of_total": 0.005723968348387751
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.086199999999998,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.377421874999999,
+              "share_of_total": 0.002876018836122969
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "q8_0",
+            "type_v": "q8_0",
+            "n_depth": 512,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-512.summary.json",
+            "summary_sha256": "4a53001fd30343c7238203f6f0e53326a464131d68bc457eefe603b792ebe7df",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-512.stdout.json",
+            "stdout_sha256": "9b913e200488f9949a506a2a1046e5af0de8ca9047a73cccd5b0b691429eff6a",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-512.stderr.log",
+            "stderr_sha256": "96db6717e43227eb62a4130102d3ba2501fba78e39a3bfdd44126b5d5d231613"
+          }
+        }
+      },
+      "same_scope_memory_comparison": {
+        "hipengine_whole_gtt_peak_gib": 21.916000366210938,
+        "fork_f16_whole_gtt_peak_gib": 20.830669403076172,
+        "fork_q8_whole_gtt_peak_gib": 20.832103729248047,
+        "hip_minus_fork_f16_gib": 1.0853309631347656,
+        "hip_minus_fork_q8_gib": 1.0838966369628906
+      }
+    },
+    "4096": {
+      "hipengine_non_profiled": {
+        "decode_tok_s_median": 55.388627646262975,
+        "decode_tok_s_samples": [
+          55.388627646262975,
+          55.40442589235708,
+          55.2425558138836
+        ],
+        "decode_ms_per_token_median": 18.054247640625,
+        "all_tokens_exact": true,
+        "whole_gtt_peak_gib": 23.552017211914062,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_samples": 6745,
+        "tracked_peak_gib": 23.00736578553915,
+        "owned_session_gib": 23.00736578553915,
+        "owned_families_gib": {
+          "weights": 21.061182498931885,
+          "decode_scratch": 0.15002278983592987,
+          "session_buffers": 1.7961604967713356
+        },
+        "decode_scratch_components_bytes": {
+          "full_attention_kv_cache": 89128960,
+          "full_attention_kv_scales": 0,
+          "full_attention_bf16_mirrors": 0,
+          "linear_attention_state": 66846720,
+          "metadata_tables": 2228308,
+          "decode_workspace_other": 2881756
+        },
+        "session_buffer_components_bytes": {
+          "decode_logits_and_lm_head": 1007312,
+          "prefill_token_buffer": 32768,
+          "prefill_full_sequence_hidden": 33554432,
+          "bulk_prefill_scratch": 1885105224,
+          "aotriton_head_major_kv_scratch": 8912896,
+          "session_buffer_other": 16
+        },
+        "bulk_prefill_scratch": {
+          "physical_owner_gib": 1.7556410506367683,
+          "logical_field_gib": 1.7556410506367683,
+          "rows": 4096,
+          "max_positions": 4352,
+          "allocation_mode": "dedicated",
+          "largest_fields_bytes": {
+            "moe_down_out_f32": 268435456,
+            "conv_out": 134217728,
+            "linear_qkv_f32": 134217728,
+            "moe_down_out": 134217728,
+            "ffn_gate_up": 67108864,
+            "ffn_intermediate_f32": 67108864,
+            "full_q": 67108864,
+            "full_query": 67108864,
+            "full_query_raw": 67108864,
+            "linear_qkv": 67108864,
+            "linear_z_f32": 67108864,
+            "prefill_key": 67108864,
+            "prefill_query": 67108864,
+            "prefill_value": 67108864,
+            "recurrent_out": 67108864,
+            "ffn_intermediate": 33554432,
+            "full_attn_bf16": 33554432,
+            "full_gate": 33554432,
+            "full_gated": 33554432,
+            "full_query_bf16": 33554432
+          }
+        }
+      },
+      "hipengine_profiled": {
+        "gpu_ms_per_token": 16.94992225,
+        "dispatches_per_token": 628.0,
+        "attributed_dispatches": 4664,
+        "selected_dispatches": 5024,
+        "roles": [
+          {
+            "name": "gdn_input_projections",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 33146.884,
+            "gpu_us_per_token": 4143.3605,
+            "share_pct": 24.444716848184953,
+            "us_per_call": 138.11201666666668,
+            "kernel_families": [
+              "q8_0_t16_dual_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.1392422740536148,
+            "amdahl_speedup_if_4x": 1.2244928591917508,
+            "amdahl_speedup_if_infinite": 1.3235341835602363
+          },
+          {
+            "name": "selected_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 18471.948,
+            "gpu_us_per_token": 2308.9935,
+            "share_pct": 13.622443017400862,
+            "us_per_call": 57.7248375,
+            "kernel_families": [
+              "q4_k_t16_selected_dual_silu_direct_gemv"
+            ],
+            "vgpr_counts": [
+              200
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0730905761291458,
+            "amdahl_speedup_if_4x": 1.1137945176203223,
+            "amdahl_speedup_if_infinite": 1.157708130367071
+          },
+          {
+            "name": "lm_head",
+            "calls": 24,
+            "calls_per_token": 3.0,
+            "total_us": 14695.832,
+            "gpu_us_per_token": 1836.979,
+            "share_pct": 10.837683930969064,
+            "us_per_call": 612.3263333333334,
+            "kernel_families": [
+              "argmax_stage1",
+              "argmax_stage2",
+              "q6_k_t16_gemv"
+            ],
+            "vgpr_counts": [
+              16,
+              72
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0572930388894903,
+            "amdahl_speedup_if_4x": 1.088474031394946,
+            "amdahl_speedup_if_infinite": 1.1215500494915178
+          },
+          {
+            "name": "selected_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 12826.605,
+            "gpu_us_per_token": 1603.325625,
+            "share_pct": 9.459191619595778,
+            "us_per_call": 40.083140625,
+            "kernel_families": [
+              "qk_t16_selected_direct_gemv"
+            ],
+            "vgpr_counts": [
+              96,
+              128
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.049643914602855,
+            "amdahl_speedup_if_4x": 1.0763613090571813,
+            "amdahl_speedup_if_infinite": 1.1044743446496887
+          },
+          {
+            "name": "gdn_output_projection",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 11550.963,
+            "gpu_us_per_token": 1443.870375,
+            "share_pct": 8.518448366333951,
+            "us_per_call": 48.129012499999995,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              48
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.044487044802264,
+            "amdahl_speedup_if_4x": 1.068248657750926,
+            "amdahl_speedup_if_infinite": 1.0931165706550947
+          },
+          {
+            "name": "full_attention_qkv",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 8707.429,
+            "gpu_us_per_token": 1088.428625,
+            "share_pct": 6.421437272374508,
+            "us_per_call": 108.84286250000001,
+            "kernel_families": [
+              "q8_0_t16_triple_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0331722541065138,
+            "amdahl_speedup_if_4x": 1.0505975993715368,
+            "amdahl_speedup_if_infinite": 1.0686208153363614
+          },
+          {
+            "name": "moe_router_combine",
+            "calls": 1272,
+            "calls_per_token": 159.0,
+            "total_us": 7829.966,
+            "gpu_us_per_token": 978.74575,
+            "share_pct": 5.774337696445776,
+            "us_per_call": 6.155633647798743,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_router_topk_split_shared_coop_out_f32w",
+              "silu_mul_dual_out",
+              "weighted_sum_shared_gate_combine_residual_out"
+            ],
+            "vgpr_counts": [
+              16,
+              32
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.029730045082411,
+            "amdahl_speedup_if_4x": 1.0452679771239588,
+            "amdahl_speedup_if_infinite": 1.0612820069955398
+          },
+          {
+            "name": "full_attention_core",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 7294.418,
+            "gpu_us_per_token": 911.80225,
+            "share_pct": 5.379388982153001,
+            "us_per_call": 15.196704166666667,
+            "kernel_families": [
+              "bf16_to_f32",
+              "gguf_head_rmsnorm_partial_rotary_position_f32_weight",
+              "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa",
+              "qwen35_paged_full_attn_decode_split_k_reduce_gate",
+              "qwen35_split_qgate_bf16",
+              "qwen35_write_paged_kv_mixed_value_position_tensor"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24,
+              72
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0276403868738224,
+            "amdahl_speedup_if_4x": 1.0420416034021494,
+            "amdahl_speedup_if_infinite": 1.056852190281654
+          },
+          {
+            "name": "shared_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 5584.131,
+            "gpu_us_per_token": 698.016375,
+            "share_pct": 4.1181095978183615,
+            "us_per_call": 17.450409375,
+            "kernel_families": [
+              "q8_0_t16_dual_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.021023431974049,
+            "amdahl_speedup_if_4x": 1.0318701580105418,
+            "amdahl_speedup_if_infinite": 1.0429498164934456
+          },
+          {
+            "name": "gdn_attention_core",
+            "calls": 488,
+            "calls_per_token": 61.0,
+            "total_us": 5150.027,
+            "gpu_us_per_token": 643.753375,
+            "share_pct": 3.7979724361272513,
+            "us_per_call": 10.553334016393443,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+              "qwen35_linear_attn_conv_decode_lowp"
+            ],
+            "vgpr_counts": [
+              16,
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0193574576332594,
+            "amdahl_speedup_if_4x": 1.029319966454111,
+            "amdahl_speedup_if_infinite": 1.0394791308697273
+          },
+          {
+            "name": "full_attention_output",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 3957.95,
+            "gpu_us_per_token": 494.74375,
+            "share_pct": 2.9188555717416342,
+            "us_per_call": 49.474375,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0148104253210493,
+            "amdahl_speedup_if_4x": 1.0223813768366847,
+            "amdahl_speedup_if_infinite": 1.0300661430078075
+          },
+          {
+            "name": "shared_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 2950.339,
+            "gpu_us_per_token": 368.792375,
+            "share_pct": 2.175776204519168,
+            "us_per_call": 9.219809375,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.010998532751826,
+            "amdahl_speedup_if_4x": 1.0165890266039512,
+            "amdahl_speedup_if_infinite": 1.0222416914758048
+          },
+          {
+            "name": "unattributed",
+            "calls": 360,
+            "calls_per_token": 45.0,
+            "total_us": 2087.19,
+            "gpu_us_per_token": 260.89875,
+            "share_pct": 1.5392327242091037,
+            "us_per_call": 5.79775,
+            "kernel_families": [
+              "__amd_rocclr_copyBuffer",
+              "gguf_add_rmsnorm_bf16_f32_weight",
+              "gguf_q8_0_embedding_bf16_out",
+              "gguf_rmsnorm_bf16_f32_weight",
+              "set_decode_position_i64",
+              "set_i64_scalar"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0077558539420042,
+            "amdahl_speedup_if_4x": 1.0116790714993698,
+            "amdahl_speedup_if_infinite": 1.0156329547981042
+          },
+          {
+            "name": "gdn_decay_projections",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 1345.696,
+            "gpu_us_per_token": 168.212,
+            "share_pct": 0.9924057321265883,
+            "us_per_call": 2.803533333333333,
+            "kernel_families": [
+              "dense_gemv_bf16_f32w_bf16_out"
+            ],
+            "vgpr_counts": [
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0049867731720368,
+            "amdahl_speedup_if_4x": 1.007498857308278,
+            "amdahl_speedup_if_infinite": 1.010023531421656
+          }
+        ],
+        "raw_trace": {
+          "kernel_csv": "/tmp/hipengine-sh-c0-20260805/4096/trace/sh-c0-4096_kernel_trace.csv",
+          "kernel_csv_sha256": "b99b39e2ff15e89e17276ca2f0dcbe94793e32097b8a10030a1575679ac481d1",
+          "marker_csv": "/tmp/hipengine-sh-c0-20260805/4096/trace/sh-c0-4096_marker_api_trace.csv",
+          "marker_csv_sha256": "fb591d2085c9aa8e327fd0ad34eef06068285ced60284d041680bcbd46df3c4a",
+          "hip_api_csv": "/tmp/hipengine-sh-c0-20260805/4096/trace/sh-c0-4096_hip_api_trace.csv",
+          "hip_api_csv_sha256": "a4e4c3b4683fb5f3cc8f9331acf5955c66e3c0dce943b45063ee27f8f41758ca"
+        },
+        "profiled_host": {
+          "profiled_host": {
+            "repetitions": 1,
+            "all_tokens_exact": true,
+            "expected_token_id": 9707,
+            "samples_ms_per_token": [
+              20.93469975
+            ],
+            "samples_tok_s": [
+              47.76758262319955
+            ],
+            "median_ms_per_token": 20.93469975,
+            "median_tok_s": 47.76758262319955,
+            "mean_ms_per_token": 20.93469975,
+            "stdev_ms_per_token": 0.0,
+            "min_ms_per_token": 20.93469975,
+            "max_ms_per_token": 20.93469975
+          },
+          "gpu_kernel_us_per_token": 16949.92225,
+          "profiled_host_minus_gpu_us_per_token": 3984.7775,
+          "gpu_kernel_share_of_profiled_host_wall_pct": 80.96568115336834,
+          "qualification": "Profiler overhead and trace collection perturb host wall; use the non-profiled baseline for throughput."
+        }
+      },
+      "fork_profiled": {
+        "f16": {
+          "profiled_tg128_tok_s": 56.347522,
+          "logged_gpu_ms_per_token": 16.8812546875,
+          "dispatches_per_token": 1483.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 960.8932160000002,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.027913000000005,
+              "share_of_total": 0.44469314567943014
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 242.09172999999996,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.641770507812495,
+              "share_of_total": 0.11203797796057625
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 228.3657700000001,
+              "dispatches": 128,
+              "avg_dispatch_us": 1784.1075781250008,
+              "share_of_total": 0.10568572130163241
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 145.9444989999999,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.4259391456117005,
+              "share_of_total": 0.06754186341858656
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 139.1477,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.380848817567564,
+              "share_of_total": 0.06439636308875515
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 90.24782200000008,
+              "dispatches": 17920,
+              "avg_dispatch_us": 5.036150781250005,
+              "share_of_total": 0.04176591861368424
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 84.51152799999997,
+              "dispatches": 1280,
+              "avg_dispatch_us": 66.02463124999998,
+              "share_of_total": 0.03911121090951195
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 83.62127499999998,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.468229811262375,
+              "share_of_total": 0.038699209450423135
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 70.92000499999999,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.9008509898560204,
+              "share_of_total": 0.03282117054206667
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 53.05863999999996,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.4543385416666643,
+              "share_of_total": 0.024555083888814156
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 30.712050000000005,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.997929687500002,
+              "share_of_total": 0.014213273543148778
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.528385000000002,
+              "dispatches": 384,
+              "avg_dispatch_us": 35.230169270833336,
+              "share_of_total": 0.006260820642126812
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 11.616318999999999,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.0250830729166664,
+              "share_of_total": 0.005375932883395163
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.141650000000006,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.3990820312500025,
+              "share_of_total": 0.0028423029871428238
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "f16",
+            "type_v": "f16",
+            "n_depth": 4096,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/f16-4096.summary.json",
+            "summary_sha256": "41568c4570eb15f103cb3c2bd9688a6833758c9731d2700099bbbd2909b684cd",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/f16-4096.stdout.json",
+            "stdout_sha256": "2cced8f95fb540ec9caa945c3b51ba85a26a5827e61d946b72b7bceecda69784",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/f16-4096.stderr.log",
+            "stderr_sha256": "7ae61fbf159b81128ab15415c59554dfcb1dc6b845143c82edf2be73e24b3420"
+          }
+        },
+        "q8_0": {
+          "profiled_tg128_tok_s": 56.526524,
+          "logged_gpu_ms_per_token": 16.76544609375,
+          "dispatches_per_token": 1523.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 965.4944869999991,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.171702718749973,
+              "share_of_total": 0.4499090353760062
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 242.03398000000007,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.636130859375008,
+              "share_of_total": 0.1127849779944064
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 229.09257000000005,
+              "dispatches": 128,
+              "avg_dispatch_us": 1789.7857031250005,
+              "share_of_total": 0.10675443367965112
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 145.22304599999987,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.4139469082446783,
+              "share_of_total": 0.06767222539327183
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 138.46973999999994,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.237698479729715,
+              "share_of_total": 0.06452526450538541
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 103.78159299999996,
+              "dispatches": 23040,
+              "avg_dispatch_us": 4.504409418402776,
+              "share_of_total": 0.04836099742164069
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 83.14968200000003,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.431751392326735,
+              "share_of_total": 0.03874677041055099
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 70.54767299999996,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.8856214414267,
+              "share_of_total": 0.03287438295590384
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 53.17051600000002,
+              "dispatches": 1280,
+              "avg_dispatch_us": 41.53946562500001,
+              "share_of_total": 0.024776832893510382
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 52.76234899999997,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.4350487630208315,
+              "share_of_total": 0.02458663188903552
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 30.55121599999999,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.956045833333331,
+              "share_of_total": 0.01423650606523247
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.615995999999999,
+              "dispatches": 384,
+              "avg_dispatch_us": 35.45832291666667,
+              "share_of_total": 0.0063448934287323
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 11.999244000000001,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.124803125,
+              "share_of_total": 0.005591506078979128
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.084253,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.3766613281250004,
+              "share_of_total": 0.0028351900866043726
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "q8_0",
+            "type_v": "q8_0",
+            "n_depth": 4096,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-4096.summary.json",
+            "summary_sha256": "48a1d5209853ba5d88850dd6b6babea6c6d5d895dba51d9a94ae56bea9d0a94a",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-4096.stdout.json",
+            "stdout_sha256": "8c29b9eedc57940f836d8bd2b72c59774bc4de00a6afcc5bb179e7445035ed33",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-4096.stderr.log",
+            "stderr_sha256": "2f1bd23bced1f3bd4cc6710992134a34ee4557516e65ab1c85caba8eee057a8d"
+          }
+        }
+      },
+      "same_scope_memory_comparison": {
+        "hipengine_whole_gtt_peak_gib": 23.552017211914062,
+        "fork_f16_whole_gtt_peak_gib": 21.160736083984375,
+        "fork_q8_whole_gtt_peak_gib": 21.25318145751953,
+        "hip_minus_fork_f16_gib": 2.3912811279296875,
+        "hip_minus_fork_q8_gib": 2.2988357543945312
+      }
+    },
+    "32768": {
+      "hipengine_non_profiled": {
+        "decode_tok_s_median": 46.00423122622834,
+        "decode_tok_s_samples": [
+          46.00423122622834,
+          45.98617002653535,
+          46.029162982315356
+        ],
+        "decode_ms_per_token_median": 21.737130984375,
+        "all_tokens_exact": true,
+        "whole_gtt_peak_gib": 24.20443344116211,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_samples": 17140,
+        "tracked_peak_gib": 23.65358927100897,
+        "owned_session_gib": 23.65358927100897,
+        "owned_families_gib": {
+          "weights": 21.061182498931885,
+          "decode_scratch": 0.712292417883873,
+          "session_buffers": 1.8801143541932106
+        },
+        "decode_scratch_components_bytes": {
+          "full_attention_kv_cache": 676331520,
+          "full_attention_kv_scales": 0,
+          "full_attention_bf16_mirrors": 0,
+          "linear_attention_state": 66846720,
+          "metadata_tables": 16908820,
+          "decode_workspace_other": 4731100
+        },
+        "session_buffer_components_bytes": {
+          "decode_logits_and_lm_head": 1007312,
+          "prefill_token_buffer": 32768,
+          "prefill_full_sequence_hidden": 33554432,
+          "bulk_prefill_scratch": 1916529736,
+          "aotriton_head_major_kv_scratch": 67633152,
+          "session_buffer_other": 16
+        },
+        "bulk_prefill_scratch": {
+          "physical_owner_gib": 1.7849074080586433,
+          "logical_field_gib": 1.7849074080586433,
+          "rows": 4096,
+          "max_positions": 33024,
+          "allocation_mode": "dedicated",
+          "largest_fields_bytes": {
+            "moe_down_out_f32": 268435456,
+            "conv_out": 134217728,
+            "linear_qkv_f32": 134217728,
+            "moe_down_out": 134217728,
+            "ffn_gate_up": 67108864,
+            "ffn_intermediate_f32": 67108864,
+            "full_q": 67108864,
+            "full_query": 67108864,
+            "full_query_raw": 67108864,
+            "linear_qkv": 67108864,
+            "linear_z_f32": 67108864,
+            "prefill_key": 67108864,
+            "prefill_query": 67108864,
+            "prefill_value": 67108864,
+            "recurrent_out": 67108864,
+            "full_attn_split_partial": 33816576,
+            "ffn_intermediate": 33554432,
+            "full_attn_bf16": 33554432,
+            "full_gate": 33554432,
+            "full_gated": 33554432
+          }
+        }
+      },
+      "hipengine_profiled": {
+        "gpu_ms_per_token": 20.613485,
+        "dispatches_per_token": 628.0,
+        "attributed_dispatches": 4664,
+        "selected_dispatches": 5024,
+        "roles": [
+          {
+            "name": "full_attention_core",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 36260.517,
+            "gpu_us_per_token": 4532.564625,
+            "share_pct": 21.988347069891383,
+            "us_per_call": 75.54274375,
+            "kernel_families": [
+              "bf16_to_f32",
+              "gguf_head_rmsnorm_partial_rotary_position_f32_weight",
+              "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa",
+              "qwen35_paged_full_attn_decode_split_k_reduce_gate",
+              "qwen35_split_qgate_bf16",
+              "qwen35_write_paged_kv_mixed_value_position_tensor"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24,
+              72
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.1235219532427156,
+            "amdahl_speedup_if_4x": 1.19747945379298,
+            "amdahl_speedup_if_infinite": 1.2818597766360746
+          },
+          {
+            "name": "gdn_input_projections",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 33254.521,
+            "gpu_us_per_token": 4156.815125,
+            "share_pct": 20.165513618876187,
+            "us_per_call": 138.56050416666668,
+            "kernel_families": [
+              "q8_0_t16_dual_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.1121337404447518,
+            "amdahl_speedup_if_4x": 1.1781912355452056,
+            "amdahl_speedup_if_infinite": 1.2525915119264066
+          },
+          {
+            "name": "selected_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 18554.007,
+            "gpu_us_per_token": 2319.250875,
+            "share_pct": 11.251134269629807,
+            "us_per_call": 57.981271875,
+            "kernel_families": [
+              "q4_k_t16_selected_dual_silu_direct_gemv"
+            ],
+            "vgpr_counts": [
+              200
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.05960901659511,
+            "amdahl_speedup_if_4x": 1.0921603178507528,
+            "amdahl_speedup_if_infinite": 1.1267749641309457
+          },
+          {
+            "name": "lm_head",
+            "calls": 24,
+            "calls_per_token": 3.0,
+            "total_us": 14684.208,
+            "gpu_us_per_token": 1835.526,
+            "share_pct": 8.90449140453446,
+            "us_per_call": 611.842,
+            "kernel_families": [
+              "argmax_stage1",
+              "argmax_stage2",
+              "q6_k_t16_gemv"
+            ],
+            "vgpr_counts": [
+              16,
+              72
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0465970732121423,
+            "amdahl_speedup_if_4x": 1.0715629211564135,
+            "amdahl_speedup_if_infinite": 1.0977489619612015
+          },
+          {
+            "name": "selected_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 12845.634,
+            "gpu_us_per_token": 1605.70425,
+            "share_pct": 7.789581674326297,
+            "us_per_call": 40.14260625,
+            "kernel_families": [
+              "qk_t16_selected_direct_gemv"
+            ],
+            "vgpr_counts": [
+              96,
+              128
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0405263239224,
+            "amdahl_speedup_if_4x": 1.06204674921205,
+            "amdahl_speedup_if_infinite": 1.0844761559026295
+          },
+          {
+            "name": "gdn_output_projection",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 11591.489,
+            "gpu_us_per_token": 1448.936125,
+            "share_pct": 7.029069199118926,
+            "us_per_call": 48.297870833333334,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              48
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0364255339907746,
+            "amdahl_speedup_if_4x": 1.055651875629865,
+            "amdahl_speedup_if_infinite": 1.0756050212530766
+          },
+          {
+            "name": "full_attention_qkv",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 8689.279,
+            "gpu_us_per_token": 1086.159875,
+            "share_pct": 5.269171491380521,
+            "us_per_call": 108.6159875,
+            "kernel_families": [
+              "q8_0_t16_triple_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0270587432495173,
+            "amdahl_speedup_if_4x": 1.0411447778644218,
+            "amdahl_speedup_if_infinite": 1.055622563154307
+          },
+          {
+            "name": "moe_router_combine",
+            "calls": 1272,
+            "calls_per_token": 159.0,
+            "total_us": 7888.646,
+            "gpu_us_per_token": 986.08075,
+            "share_pct": 4.783668312272282,
+            "us_per_call": 6.201765723270441,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_router_topk_split_shared_coop_out_f32w",
+              "silu_mul_dual_out",
+              "weighted_sum_shared_gate_combine_residual_out"
+            ],
+            "vgpr_counts": [
+              16,
+              32
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0245044473016958,
+            "amdahl_speedup_if_4x": 1.0372126081502315,
+            "amdahl_speedup_if_infinite": 1.0502399979864887
+          },
+          {
+            "name": "shared_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 5608.812,
+            "gpu_us_per_token": 701.1015,
+            "share_pct": 3.401178888480041,
+            "us_per_call": 17.527537499999998,
+            "kernel_families": [
+              "q8_0_t16_dual_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0173000980842644,
+            "amdahl_speedup_if_4x": 1.0261765757907415,
+            "amdahl_speedup_if_infinite": 1.035209320873114
+          },
+          {
+            "name": "gdn_attention_core",
+            "calls": 488,
+            "calls_per_token": 61.0,
+            "total_us": 5205.877,
+            "gpu_us_per_token": 650.734625,
+            "share_pct": 3.156839442724023,
+            "us_per_call": 10.667780737704918,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+              "qwen35_linear_attn_conv_decode_lowp"
+            ],
+            "vgpr_counts": [
+              16,
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.016037333650744,
+            "amdahl_speedup_if_4x": 1.0242504568096358,
+            "amdahl_speedup_if_infinite": 1.0325974433770877
+          },
+          {
+            "name": "full_attention_output",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 3890.302,
+            "gpu_us_per_token": 486.28775,
+            "share_pct": 2.3590758670840954,
+            "us_per_call": 48.628775000000005,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.01193617100018,
+            "amdahl_speedup_if_4x": 1.0180117521772705,
+            "amdahl_speedup_if_infinite": 1.0241607285882788
+          },
+          {
+            "name": "shared_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 2954.857,
+            "gpu_us_per_token": 369.357125,
+            "share_pct": 1.7918228043438555,
+            "us_per_call": 9.233928125,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0090401053563756,
+            "amdahl_speedup_if_4x": 1.0136217289670622,
+            "amdahl_speedup_if_infinite": 1.0182451487799644
+          },
+          {
+            "name": "unattributed",
+            "calls": 360,
+            "calls_per_token": 45.0,
+            "total_us": 2105.395,
+            "gpu_us_per_token": 263.174375,
+            "share_pct": 1.276709760625144,
+            "us_per_call": 5.848319444444444,
+            "kernel_families": [
+              "__amd_rocclr_copyBuffer",
+              "gguf_add_rmsnorm_bf16_f32_weight",
+              "gguf_q8_0_embedding_bf16_out",
+              "gguf_rmsnorm_bf16_f32_weight",
+              "set_decode_position_i64",
+              "set_i64_scalar"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0064245602973223,
+            "amdahl_speedup_if_4x": 1.0096678964377899,
+            "amdahl_speedup_if_infinite": 1.0129322043210827
+          },
+          {
+            "name": "gdn_decay_projections",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 1374.336,
+            "gpu_us_per_token": 171.792,
+            "share_pct": 0.8333961967129769,
+            "us_per_call": 2.8632,
+            "kernel_families": [
+              "dense_gemv_bf16_f32w_bf16_out"
+            ],
+            "vgpr_counts": [
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0041844173711778,
+            "amdahl_speedup_if_4x": 1.0062897856008313,
+            "amdahl_speedup_if_infinite": 1.0084040005884052
+          }
+        ],
+        "raw_trace": {
+          "kernel_csv": "/tmp/hipengine-sh-c0-20260805/32768/trace/sh-c0-32768_kernel_trace.csv",
+          "kernel_csv_sha256": "a1c987bbb96890ef927a8eaf98236f3c3fa580893da517eba906351da7e562a9",
+          "marker_csv": "/tmp/hipengine-sh-c0-20260805/32768/trace/sh-c0-32768_marker_api_trace.csv",
+          "marker_csv_sha256": "ff508cbfad7e5371831e49552647b8db3acea678cb1a75788f8f063dfd7d3335",
+          "hip_api_csv": "/tmp/hipengine-sh-c0-20260805/32768/trace/sh-c0-32768_hip_api_trace.csv",
+          "hip_api_csv_sha256": "dbe2284e64c87dd918c6747791c763681f20518ce1f2ca9464bf3b1d9db7f8e5"
+        },
+        "profiled_host": {
+          "profiled_host": {
+            "repetitions": 1,
+            "all_tokens_exact": true,
+            "expected_token_id": 9707,
+            "samples_ms_per_token": [
+              22.774936625
+            ],
+            "samples_tok_s": [
+              43.90791581401382
+            ],
+            "median_ms_per_token": 22.774936625,
+            "median_tok_s": 43.90791581401382,
+            "mean_ms_per_token": 22.774936625,
+            "stdev_ms_per_token": 0.0,
+            "min_ms_per_token": 22.774936625,
+            "max_ms_per_token": 22.774936625
+          },
+          "gpu_kernel_us_per_token": 20613.485,
+          "profiled_host_minus_gpu_us_per_token": 2161.451624999998,
+          "gpu_kernel_share_of_profiled_host_wall_pct": 90.50951640134367,
+          "qualification": "Profiler overhead and trace collection perturb host wall; use the non-profiled baseline for throughput."
+        }
+      },
+      "fork_profiled": {
+        "f16": {
+          "profiled_tg128_tok_s": 48.389742,
+          "logged_gpu_ms_per_token": 19.621791406249997,
+          "dispatches_per_token": 1483.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 963.1102020000002,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.097193812500006,
+              "share_of_total": 0.38346643776512357
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 435.33799999999997,
+              "dispatches": 1280,
+              "avg_dispatch_us": 340.10781249999997,
+              "share_of_total": 0.17333168285117315
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 240.45421999999994,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.481857421874995,
+              "share_of_total": 0.09573787402263577
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 228.69293999999985,
+              "dispatches": 128,
+              "avg_dispatch_us": 1786.6635937499989,
+              "share_of_total": 0.09105507019001867
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 147.78883500000012,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.4565963264627677,
+              "share_of_total": 0.05884275546165136
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 139.12838,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.376769425675676,
+              "share_of_total": 0.055394558338021274
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 89.351715,
+              "dispatches": 17920,
+              "avg_dispatch_us": 4.986144810267857,
+              "share_of_total": 0.03557576670676213
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 82.35125599999994,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.369991955445539,
+              "share_of_total": 0.032788504075885315
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 71.67948000000001,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.9319159031413617,
+              "share_of_total": 0.02853949091119317
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 52.420560000000016,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.412796875000001,
+              "share_of_total": 0.020871469710433955
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 30.21527999999999,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.868562499999997,
+              "share_of_total": 0.012030342699739958
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.376631000000003,
+              "dispatches": 384,
+              "avg_dispatch_us": 34.83497656250001,
+              "share_of_total": 0.0053259627280622685
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 11.578659999999994,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.0152760416666653,
+              "share_of_total": 0.004610092900140957
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.1032240000000035,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.3840718750000014,
+              "share_of_total": 0.0024300246859627903
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "f16",
+            "type_v": "f16",
+            "n_depth": 32768,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/f16-32768.summary.json",
+            "summary_sha256": "ec97d625164df8ac342394ccb9679c56ff2e3ff7a9afda24e05677e31c831bc7",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/f16-32768.stdout.json",
+            "stdout_sha256": "a61bacaad7847dc9fce016b26ffc2231220af57851c900679253733e7fd8a4ce",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/f16-32768.stderr.log",
+            "stderr_sha256": "d8a4ff81ca73e51459a50f5780a802841780061ad464f4ea080e09b2a6d877c6"
+          }
+        },
+        "q8_0": {
+          "profiled_tg128_tok_s": 51.96106,
+          "logged_gpu_ms_per_token": 18.2606875,
+          "dispatches_per_token": 1523.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 962.5371470000005,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.079285843750014,
+              "share_of_total": 0.4118038524528446
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 247.04341999999988,
+              "dispatches": 1280,
+              "avg_dispatch_us": 193.00267187499992,
+              "share_of_total": 0.10569299314442565
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 241.69967999999997,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.603484374999997,
+              "share_of_total": 0.10340677206156668
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 228.88382999999996,
+              "dispatches": 128,
+              "avg_dispatch_us": 1788.1549218749997,
+              "share_of_total": 0.09792374585431132
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 146.17299200000025,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.4297372340425576,
+              "share_of_total": 0.06253743184641881
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 139.46114,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.447031250000002,
+              "share_of_total": 0.05966588915395437
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 101.42725199999985,
+              "dispatches": 23040,
+              "avg_dispatch_us": 4.4022244791666605,
+              "share_of_total": 0.04339378822675755
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 83.35773700000001,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.4478447555693075,
+              "share_of_total": 0.035663077872204976
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 71.22853199999999,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.913470713350785,
+              "share_of_total": 0.03047382012588518
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 53.74308599999999,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.4988988281249993,
+              "share_of_total": 0.022992992973293033
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 30.519177000000003,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.9477023437500005,
+              "share_of_total": 0.013057069746826347
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.614952,
+              "dispatches": 384,
+              "avg_dispatch_us": 35.45560416666667,
+              "share_of_total": 0.005824907331665361
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 11.621632,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.0264666666666664,
+              "share_of_total": 0.004972101953992696
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.057629999999994,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.366261718749998,
+              "share_of_total": 0.0025916458170044234
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "q8_0",
+            "type_v": "q8_0",
+            "n_depth": 32768,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-32768.summary.json",
+            "summary_sha256": "7df48c341ae9c3fde81e99135d382503c99aa4fb2399001a7f0bf2a1c7b1c625",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-32768.stdout.json",
+            "stdout_sha256": "39c5fab9b639600c037063119c45fb10ec620d59577b3ad8c346ecbeb095da5a",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-32768.stderr.log",
+            "stderr_sha256": "508e43bdafc7a5c72253dae19b45a24ff1f2290e6bd84fede26199bf6da472fa"
+          }
+        }
+      },
+      "same_scope_memory_comparison": {
+        "hipengine_whole_gtt_peak_gib": 24.20443344116211,
+        "fork_f16_whole_gtt_peak_gib": 21.99907684326172,
+        "fork_q8_whole_gtt_peak_gib": 21.6297607421875,
+        "hip_minus_fork_f16_gib": 2.2053565979003906,
+        "hip_minus_fork_q8_gib": 2.5746726989746094
+      }
+    },
+    "65536": {
+      "hipengine_non_profiled": {
+        "decode_tok_s_median": 39.41868611939572,
+        "decode_tok_s_samples": [
+          39.42317216889228,
+          39.39449831271055,
+          39.41868611939572
+        ],
+        "decode_ms_per_token_median": 25.3686791328125,
+        "all_tokens_exact": true,
+        "whole_gtt_peak_gib": 24.94271469116211,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_samples": 33859,
+        "tracked_peak_gib": 24.39213039726019,
+        "owned_session_gib": 24.39213039726019,
+        "owned_families_gib": {
+          "weights": 21.061182498931885,
+          "decode_scratch": 1.3548862785100937,
+          "session_buffers": 1.9760616198182106
+        },
+        "decode_scratch_components_bytes": {
+          "full_attention_kv_cache": 1347420160,
+          "full_attention_kv_scales": 0,
+          "full_attention_bf16_mirrors": 0,
+          "linear_attention_state": 66846720,
+          "metadata_tables": 33686548,
+          "decode_workspace_other": 6844636
+        },
+        "session_buffer_components_bytes": {
+          "decode_logits_and_lm_head": 1007312,
+          "prefill_token_buffer": 32768,
+          "prefill_full_sequence_hidden": 33554432,
+          "bulk_prefill_scratch": 1952443464,
+          "aotriton_head_major_kv_scratch": 134742016,
+          "session_buffer_other": 16
+        },
+        "bulk_prefill_scratch": {
+          "physical_owner_gib": 1.8183546736836433,
+          "logical_field_gib": 1.8183546736836433,
+          "rows": 4096,
+          "max_positions": 65792,
+          "allocation_mode": "dedicated",
+          "largest_fields_bytes": {
+            "moe_down_out_f32": 268435456,
+            "conv_out": 134217728,
+            "linear_qkv_f32": 134217728,
+            "moe_down_out": 134217728,
+            "full_attn_split_partial": 67371008,
+            "ffn_gate_up": 67108864,
+            "ffn_intermediate_f32": 67108864,
+            "full_q": 67108864,
+            "full_query": 67108864,
+            "full_query_raw": 67108864,
+            "linear_qkv": 67108864,
+            "linear_z_f32": 67108864,
+            "prefill_key": 67108864,
+            "prefill_query": 67108864,
+            "prefill_value": 67108864,
+            "recurrent_out": 67108864,
+            "ffn_intermediate": 33554432,
+            "full_attn_bf16": 33554432,
+            "full_gate": 33554432,
+            "full_gated": 33554432
+          }
+        }
+      },
+      "hipengine_profiled": {
+        "gpu_ms_per_token": 24.105577625000002,
+        "dispatches_per_token": 628.0,
+        "attributed_dispatches": 4664,
+        "selected_dispatches": 5024,
+        "roles": [
+          {
+            "name": "full_attention_core",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 64330.599,
+            "gpu_us_per_token": 8041.324875,
+            "share_pct": 33.35877281223208,
+            "us_per_call": 134.02208124999999,
+            "kernel_families": [
+              "bf16_to_f32",
+              "gguf_head_rmsnorm_partial_rotary_position_f32_weight",
+              "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa",
+              "qwen35_paged_full_attn_decode_split_k_reduce_gate",
+              "qwen35_split_qgate_bf16",
+              "qwen35_write_paged_kv_mixed_value_position_tensor"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24,
+              72
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.200183192209957,
+            "amdahl_speedup_if_4x": 1.3336726126962184,
+            "amdahl_speedup_if_infinite": 1.5005726067774923
+          },
+          {
+            "name": "gdn_input_projections",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 33328.203,
+            "gpu_us_per_token": 4166.025375,
+            "share_pct": 17.282412559487465,
+            "us_per_call": 138.8675125,
+            "kernel_families": [
+              "q8_0_t16_dual_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0945853806498738,
+            "amdahl_speedup_if_4x": 1.148920943015752,
+            "amdahl_speedup_if_infinite": 1.2089327444652123
+          },
+          {
+            "name": "selected_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 18487.015,
+            "gpu_us_per_token": 2310.876875,
+            "share_pct": 9.586482062157181,
+            "us_per_call": 57.771921875,
+            "kernel_families": [
+              "q4_k_t16_selected_dual_silu_direct_gemv"
+            ],
+            "vgpr_counts": [
+              200
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.050345596079405,
+            "amdahl_speedup_if_4x": 1.0774684928439073,
+            "amdahl_speedup_if_infinite": 1.1060293004940662
+          },
+          {
+            "name": "lm_head",
+            "calls": 24,
+            "calls_per_token": 3.0,
+            "total_us": 14662.165,
+            "gpu_us_per_token": 1832.770625,
+            "share_pct": 7.603097729129815,
+            "us_per_call": 610.9235416666667,
+            "kernel_families": [
+              "argmax_stage1",
+              "argmax_stage2",
+              "q6_k_t16_gemv"
+            ],
+            "vgpr_counts": [
+              16,
+              72
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.039517776218796,
+            "amdahl_speedup_if_4x": 1.060471514211301,
+            "amdahl_speedup_if_infinite": 1.0822873661591015
+          },
+          {
+            "name": "selected_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 12826.948,
+            "gpu_us_per_token": 1603.3685,
+            "share_pct": 6.651441939881746,
+            "us_per_call": 40.0842125,
+            "kernel_families": [
+              "qk_t16_selected_direct_gemv"
+            ],
+            "vgpr_counts": [
+              96,
+              128
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0344013009800341,
+            "amdahl_speedup_if_4x": 1.0525050728775711,
+            "amdahl_speedup_if_infinite": 1.0712538262840448
+          },
+          {
+            "name": "gdn_output_projection",
+            "calls": 240,
+            "calls_per_token": 30.0,
+            "total_us": 11637.85,
+            "gpu_us_per_token": 1454.73125,
+            "share_pct": 6.034832571243975,
+            "us_per_call": 48.49104166666667,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              48
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0311129707010955,
+            "amdahl_speedup_if_4x": 1.0474069414416953,
+            "amdahl_speedup_if_infinite": 1.0642241453549217
+          },
+          {
+            "name": "full_attention_qkv",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 8676.327,
+            "gpu_us_per_token": 1084.540875,
+            "share_pct": 4.499128342293768,
+            "us_per_call": 108.4540875,
+            "kernel_families": [
+              "q8_0_t16_triple_split_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0230133415986558,
+            "amdahl_speedup_if_4x": 1.0349218465904042,
+            "amdahl_speedup_if_infinite": 1.047110861547102
+          },
+          {
+            "name": "moe_router_combine",
+            "calls": 1272,
+            "calls_per_token": 159.0,
+            "total_us": 7852.326,
+            "gpu_us_per_token": 981.54075,
+            "share_pct": 4.07184082152854,
+            "us_per_call": 6.173212264150943,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_router_topk_split_shared_coop_out_f32w",
+              "silu_mul_dual_out",
+              "weighted_sum_shared_gate_combine_residual_out"
+            ],
+            "vgpr_counts": [
+              16,
+              32
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0207823155109597,
+            "amdahl_speedup_if_4x": 1.0315008030806752,
+            "amdahl_speedup_if_infinite": 1.042446773256151
+          },
+          {
+            "name": "shared_expert_gate_up",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 5591.525,
+            "gpu_us_per_token": 698.940625,
+            "share_pct": 2.8994975182636806,
+            "us_per_call": 17.473515625,
+            "kernel_families": [
+              "q8_0_t16_dual_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0147107566026239,
+            "amdahl_speedup_if_4x": 1.0222296423327963,
+            "amdahl_speedup_if_infinite": 1.0298607879893211
+          },
+          {
+            "name": "gdn_attention_core",
+            "calls": 488,
+            "calls_per_token": 61.0,
+            "total_us": 5155.583,
+            "gpu_us_per_token": 644.447875,
+            "share_pct": 2.673438840692373,
+            "us_per_call": 10.564719262295082,
+            "kernel_families": [
+              "gguf_rmsnorm_bf16_f32_weight",
+              "qwen35_gdn_recurrent_rmsnorm_gate_lowp",
+              "qwen35_linear_attn_conv_decode_lowp"
+            ],
+            "vgpr_counts": [
+              16,
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.013548296919511,
+            "amdahl_speedup_if_4x": 1.0204610515803145,
+            "amdahl_speedup_if_infinite": 1.0274687486010772
+          },
+          {
+            "name": "full_attention_output",
+            "calls": 80,
+            "calls_per_token": 10.0,
+            "total_us": 3900.276,
+            "gpu_us_per_token": 487.5345,
+            "share_pct": 2.022496650295473,
+            "us_per_call": 48.753449999999994,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0102157902593758,
+            "amdahl_speedup_if_4x": 1.0154023590237067,
+            "amdahl_speedup_if_infinite": 1.0206424595560137
+          },
+          {
+            "name": "shared_expert_down",
+            "calls": 320,
+            "calls_per_token": 40.0,
+            "total_us": 2945.849,
+            "gpu_us_per_token": 368.231125,
+            "share_pct": 1.527576441968791,
+            "us_per_call": 9.205778125,
+            "kernel_families": [
+              "q8_0_t16_gemv"
+            ],
+            "vgpr_counts": [
+              56
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0076966684569262,
+            "amdahl_speedup_if_4x": 1.0115896033526657,
+            "amdahl_speedup_if_infinite": 1.0155127332787597
+          },
+          {
+            "name": "unattributed",
+            "calls": 360,
+            "calls_per_token": 45.0,
+            "total_us": 2101.225,
+            "gpu_us_per_token": 262.653125,
+            "share_pct": 1.0895948194479326,
+            "us_per_call": 5.836736111111112,
+            "kernel_families": [
+              "__amd_rocclr_copyBuffer",
+              "gguf_add_rmsnorm_bf16_f32_weight",
+              "gguf_q8_0_embedding_bf16_out",
+              "gguf_rmsnorm_bf16_f32_weight",
+              "set_decode_position_i64",
+              "set_i64_scalar"
+            ],
+            "vgpr_counts": [
+              8,
+              16,
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.005477817102926,
+            "amdahl_speedup_if_4x": 1.0082392923225891,
+            "amdahl_speedup_if_infinite": 1.0110159777169954
+          },
+          {
+            "name": "gdn_decay_projections",
+            "calls": 480,
+            "calls_per_token": 60.0,
+            "total_us": 1348.73,
+            "gpu_us_per_token": 168.59125,
+            "share_pct": 0.6993868913771777,
+            "us_per_call": 2.8098541666666663,
+            "kernel_families": [
+              "dense_gemv_bf16_f32w_bf16_out"
+            ],
+            "vgpr_counts": [
+              24
+            ],
+            "scratch_sizes": [
+              0
+            ],
+            "amdahl_speedup_if_2x": 1.0035092059199837,
+            "amdahl_speedup_if_4x": 1.0052730610084293,
+            "amdahl_speedup_if_infinite": 1.0070431276251248
+          }
+        ],
+        "raw_trace": {
+          "kernel_csv": "/tmp/hipengine-sh-c0-20260805/65536/trace/sh-c0-65536_kernel_trace.csv",
+          "kernel_csv_sha256": "cf6ed33940be2c87756f66ccd777918b1c5bcba8f08ad4fcd4c1ec07439da962",
+          "marker_csv": "/tmp/hipengine-sh-c0-20260805/65536/trace/sh-c0-65536_marker_api_trace.csv",
+          "marker_csv_sha256": "42ab4a46560a982986c546039b5b66ccf5237db045ccf3639c7bb25e883e835c",
+          "hip_api_csv": "/tmp/hipengine-sh-c0-20260805/65536/trace/sh-c0-65536_hip_api_trace.csv",
+          "hip_api_csv_sha256": "1de6d846194a9c8fdd74dfe5bcee1c76354a848946a6eb780c7bda585f1fece4"
+        },
+        "profiled_host": {
+          "profiled_host": {
+            "repetitions": 1,
+            "all_tokens_exact": true,
+            "expected_token_id": 9707,
+            "samples_ms_per_token": [
+              26.1473555
+            ],
+            "samples_tok_s": [
+              38.24478540478023
+            ],
+            "median_ms_per_token": 26.1473555,
+            "median_tok_s": 38.24478540478023,
+            "mean_ms_per_token": 26.1473555,
+            "stdev_ms_per_token": 0.0,
+            "min_ms_per_token": 26.1473555,
+            "max_ms_per_token": 26.1473555
+          },
+          "gpu_kernel_us_per_token": 24105.577625,
+          "profiled_host_minus_gpu_us_per_token": 2041.7778749999998,
+          "gpu_kernel_share_of_profiled_host_wall_pct": 92.19126433263968,
+          "qualification": "Profiler overhead and trace collection perturb host wall; use the non-profiled baseline for throughput."
+        }
+      },
+      "fork_profiled": {
+        "f16": {
+          "profiled_tg128_tok_s": 42.064817,
+          "logged_gpu_ms_per_token": 22.608471875,
+          "dispatches_per_token": 1483.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 961.9781670000009,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.061817718750028,
+              "share_of_total": 0.33241762075914333
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 817.8579700000001,
+              "dispatches": 1280,
+              "avg_dispatch_us": 638.9515390625,
+              "share_of_total": 0.2826159780259364
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 240.5975300000002,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.49585253906252,
+              "share_of_total": 0.08313999342890138
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 228.82953000000006,
+              "dispatches": 128,
+              "avg_dispatch_us": 1787.7307031250004,
+              "share_of_total": 0.07907348683312991
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 147.13546100000005,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.445735721409575,
+              "share_of_total": 0.05084358621926987
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 139.04973000000004,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.360162584459466,
+              "share_of_total": 0.04804951089269497
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 89.51869299999993,
+              "dispatches": 17920,
+              "avg_dispatch_us": 4.995462779017853,
+              "share_of_total": 0.030933748770337863
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 83.64096699999999,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.46975301670792,
+              "share_of_total": 0.028902663492708966
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 71.89599500000004,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.9407720467931955,
+              "share_of_total": 0.024844114367526236
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 52.075945999999995,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.390361067708333,
+              "share_of_total": 0.017995171472640716
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 30.015951,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.81665390625,
+              "share_of_total": 0.010372201114875218
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.583889000000001,
+              "dispatches": 384,
+              "avg_dispatch_us": 35.374710937500005,
+              "share_of_total": 0.004693998488674946
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 11.564523,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.0115945312499997,
+              "share_of_total": 0.003996193835524321
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.139472000000006,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.3982312500000025,
+              "share_of_total": 0.0021215332582047875
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "f16",
+            "type_v": "f16",
+            "n_depth": 65536,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/f16-65536.summary.json",
+            "summary_sha256": "f9498b5348212fcce45728586e8570b34f4ba645545dbe239c131ab19bb3dce0",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/f16-65536.stdout.json",
+            "stdout_sha256": "de6b7740a6903a0b939ac79e87189729de72783b792b4492c43b7b04a2b444a0",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/f16-65536.stderr.log",
+            "stderr_sha256": "5458f339b69284ac5854cca10eb4b75de6fe54fa812c819f36e35f29f92940e7"
+          }
+        },
+        "q8_0": {
+          "profiled_tg128_tok_s": 47.589362,
+          "logged_gpu_ms_per_token": 19.870984375,
+          "dispatches_per_token": 1523.0,
+          "families": [
+            {
+              "family": "llama_dense_q8",
+              "total_ms": 961.8169139999999,
+              "dispatches": 32000,
+              "avg_dispatch_us": 30.056778562499996,
+              "share_of_total": 0.3781490890848229
+            },
+            {
+              "family": "llama_flash_attn",
+              "total_ms": 460.09686000000005,
+              "dispatches": 1280,
+              "avg_dispatch_us": 359.450671875,
+              "share_of_total": 0.18089223215696884
+            },
+            {
+              "family": "llama_selected_q4",
+              "total_ms": 240.78331000000003,
+              "dispatches": 10240,
+              "avg_dispatch_us": 23.513995117187502,
+              "share_of_total": 0.09466665434761584
+            },
+            {
+              "family": "llama_lm_head",
+              "total_ms": 228.90113999999986,
+              "dispatches": 128,
+              "avg_dispatch_us": 1788.290156249999,
+              "share_of_total": 0.0899950461689193
+            },
+            {
+              "family": "llama_elementwise",
+              "total_ms": 145.29643999999996,
+              "dispatches": 60160,
+              "avg_dispatch_us": 2.415166888297872,
+              "share_of_total": 0.057124922252373304
+            },
+            {
+              "family": "llama_selected_q5",
+              "total_ms": 138.28578000000005,
+              "dispatches": 4736,
+              "avg_dispatch_us": 29.198855574324337,
+              "share_of_total": 0.05436860277587534
+            },
+            {
+              "family": "llama_f32_matmul",
+              "total_ms": 100.52951799999998,
+              "dispatches": 23040,
+              "avg_dispatch_us": 4.36326032986111,
+              "share_of_total": 0.03952430561835213
+            },
+            {
+              "family": "llama_router_topk",
+              "total_ms": 83.23389199999998,
+              "dispatches": 12928,
+              "avg_dispatch_us": 6.4382651608910875,
+              "share_of_total": 0.032724336599454444
+            },
+            {
+              "family": "llama_norm",
+              "total_ms": 70.92775199999997,
+              "dispatches": 24448,
+              "avg_dispatch_us": 2.901167866492145,
+              "share_of_total": 0.027886039868117996
+            },
+            {
+              "family": "llama_copy_layout",
+              "total_ms": 52.797932999999944,
+              "dispatches": 15360,
+              "avg_dispatch_us": 3.4373654296874965,
+              "share_of_total": 0.02075809853091385
+            },
+            {
+              "family": "llama_gdn",
+              "total_ms": 29.780924000000002,
+              "dispatches": 3840,
+              "avg_dispatch_us": 7.755448958333334,
+              "share_of_total": 0.011708703723944225
+            },
+            {
+              "family": "llama_selected_q6",
+              "total_ms": 13.498535999999998,
+              "dispatches": 384,
+              "avg_dispatch_us": 35.1524375,
+              "share_of_total": 0.005307100569847838
+            },
+            {
+              "family": "llama_linear_attn_conv",
+              "total_ms": 11.530807999999999,
+              "dispatches": 3840,
+              "avg_dispatch_us": 3.002814583333333,
+              "share_of_total": 0.004533466274239371
+            },
+            {
+              "family": "llama_rope",
+              "total_ms": 6.005956000000004,
+              "dispatches": 2560,
+              "avg_dispatch_us": 2.3460765625000013,
+              "share_of_total": 0.002361308849350853
+            }
+          ],
+          "identity": {
+            "build_commit": "b7b85da9",
+            "build_number": 10283,
+            "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+            "backends": "Vulkan",
+            "type_k": "q8_0",
+            "type_v": "q8_0",
+            "n_depth": 65536,
+            "n_gen": 128
+          },
+          "raw": {
+            "summary": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-65536.summary.json",
+            "summary_sha256": "45d9c825178dc8c5fdb2b4a04d1953fcea834b087f6ffd70e00e89d9bada8315",
+            "stdout": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-65536.stdout.json",
+            "stdout_sha256": "f5561aa3aee14c4b0074f5c518626b92709b33d8c675e219aeab572ca6123f2e",
+            "stderr": "/tmp/hipengine-nathan-sh-c0-perf/q8_0-65536.stderr.log",
+            "stderr_sha256": "1b0b57148a06c227d285f29eb1bc032362a762ae1794d3e17590f8243e15925f"
+          }
+        }
+      },
+      "same_scope_memory_comparison": {
+        "hipengine_whole_gtt_peak_gib": 24.94271469116211,
+        "fork_f16_whole_gtt_peak_gib": 22.871307373046875,
+        "fork_q8_whole_gtt_peak_gib": 22.239112854003906,
+        "hip_minus_fork_f16_gib": 2.0714073181152344,
+        "hip_minus_fork_q8_gib": 2.703601837158203
+      }
+    }
+  },
+  "decisions": {
+    "sh_d1_first_leaf": "gdn_input_projections: 4.11-4.17 ms/token and 17.28%-24.44% of hipEngine profiled GPU wall; active Q8T16 paired input projection is the largest exact short/mid weight role.",
+    "sh_d1_second_leaf": "selected expert gate/up plus down: about 3.91-3.93 ms/token; fork selected Q4+Q5 is about 2.96-2.98 ms/token.",
+    "sh_a1_attention": "full attention core grows from 1.58/0.91 to 4.53/8.04 ms/token; fork F16 FlashAttention is 0.19/0.66/3.40/6.39 ms/token and Q8 is 0.15/0.42/1.93/3.60 ms/token. Keep A1 gated behind D1, but the long-context residual is material.",
+    "sh_m1_first_screen": "The physically-owned bulk-prefill scratch is 1.756-1.818 GiB at 4K-64K with 4096 rows. Screen 1024 rows first: a linear-size estimate saves about 1.32-1.36 GiB and clears the >=1.0 GiB campaign gate if prefill stays within 1%.",
+    "memory_scope": "hipEngine whole-GTT now exceeds fork F16 by 1.085/2.391/2.205/2.071 GiB and fork Q8 by 1.084/2.299/2.575/2.704 GiB at 512/4K/32K/64K. This replaces the prior tracked-vs-GTT descriptive delta with same-scope sampling."
+  },
+  "sources": {
+    "hipengine_parent": "/tmp/hipengine-sh-c0-20260805.json",
+    "hipengine_parent_sha256": "edebb633b00ddf5e016fa6ce4a2e1a200cf0dbcc10492e48641699f5e4ad893c",
+    "fork_comparator": "benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json",
+    "fork_comparator_sha256": "676134e4bd961b0666d262dfa643a4178539292ca059f97726a3ed6b66937457"
+  },
+  "qualifications": [
+    "Repeated-token development attribution only; retain changes only after natural category/heldout gates.",
+    "hipEngine rocprof and Vulkan perf logger perturb execution differently; compare role ownership/direction, not profiled throughput as a topline.",
+    "llama-bench does not establish cross-engine token/logit equality."
+  ],
+  "commands": {
+    "hipengine_matrix": "PYTHONPATH=. python3 scripts/gguf_sh_c0_profile.py --workloads 512 4K 32K 64K --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-sh-c0-20260805 --out /tmp/hipengine-sh-c0-20260805.json",
+    "fork_profile_template": "GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1 /tmp/hipengine-nathan-fork-compare/vulkan/llama-bench -m /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf -ngl 99 -fa 1 -ctk <f16|q8_0> -ctv <f16|q8_0> -b 1024 -ub 1024 -p 0 -n 128 -d <512|4096|32768|65536> -r 1 -o json -dev Vulkan0",
+    "fork_summary_template": "PYTHONPATH=. python3 scripts/llamacpp_vulkan_perf_summary.py --log <stderr> --json <summary> --label <dtype-depth> --select-last-sections 128"
+  }
+}

@@ -1,0 +1,235 @@
+{
+  "schema_version": "hipengine.gguf.sh19_c0_post_b7b85da_upstream_refresh.v1",
+  "date": "2026-08-07",
+  "kind": "read_only_external_source_refresh",
+  "status": "no_candidate_admitted",
+  "performance_claim": false,
+  "summary": "Authoritative Nathan-fork history after the pinned b7b85da9 payload contains new source, but no new exact-Qwen3.6 c1 decode or 4K whole-GTT mechanism clears the frozen admission threshold. The three fork-local commits on strix-halo-vulkan are prefill work plus correctness/tests. The additional HIP fullstack branch contains multi-token prefill tuning, future-model attention, or raw-GGML/Q8_1 MMVQ mechanisms already incompatible with or closed by hipEngine's exact T16/qmicro evidence. No GPU A/B or implementation is admitted.",
+  "platform_target": {
+    "system": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "note": "No hardware run was performed because source compatibility/scope gates fail before implementation admission."
+  },
+  "frozen_production": {
+    "source_commit": "35a0b18b6",
+    "decode_tok_s": {
+      "512": 55.23,
+      "4096": 55.829,
+      "32768": 46.809,
+      "65536": 40.43
+    },
+    "whole_gtt_gib": {
+      "512": 20.814583,
+      "4096": 21.292397,
+      "32768": 21.946766,
+      "65536": 22.685047
+    },
+    "fork_f16_whole_gtt_gap_mib": {
+      "512": -16.473,
+      "4096": 134.82,
+      "32768": -50.629,
+      "65536": -154.73
+    },
+    "admission_thresholds": {
+      "decode_projected_saving_ms_per_token": 0.5,
+      "memory_4096_mib": 134.82,
+      "prefill_max_loss_pct": 1.0,
+      "state": "byte exact",
+      "lifecycle": "tracked and whole-GTT ownership return to baseline",
+      "quality": "natural plus category-heldout gates"
+    }
+  },
+  "authoritative_refresh": {
+    "source_repository": "https://github.com/Nathanw1014/llama.cpp",
+    "pinned_source": "b7b85da9c4a9fdeb3cab51030a40d1552270f272",
+    "latest_strix_halo_vulkan": "6e7b355cb50cca840b127c97d17f512da238a5c7",
+    "compare_url": "https://github.com/Nathanw1014/llama.cpp/compare/b7b85da9c4a9fdeb3cab51030a40d1552270f272...6e7b355cb50cca840b127c97d17f512da238a5c7",
+    "range_counts": {
+      "all_commits": 50,
+      "merge_commits": 1,
+      "non_merge_commits": 49,
+      "fork_local_non_merge_commits": 3,
+      "generic_upstream_non_merge_commits": 46,
+      "interpretation": "One upstream integration merge plus 46 upstream commits and three fork-local commits."
+    },
+    "evidence_repository": "https://github.com/Nathanw1014/strix-halo-llamacpp",
+    "prior_evidence_tip": "b166a56e58ab0f27fd03f60fff060eebdf5f64b5",
+    "latest_evidence_tip": "b6ab6842b592d6981915290042ea538a1c68aac9",
+    "latest_validated_release": {
+      "tag": "v0.5",
+      "source": "7a57bedaaed78d1fa4047eb6e7011b0a80f302d5",
+      "scope": "Upstream merge and DeepSeek V4 DSpark load repair; publisher reports Vulkan backend tests and gpt-oss-20B parity, not a Qwen3.6 decode or memory improvement."
+    },
+    "latest_dev_release": {
+      "tag": "dev-20260806-6e7b355",
+      "url": "https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/dev-20260806-6e7b355",
+      "publisher_qualification": "Compile-tested and container-smoke-tested only; CI has no gfx1151, so no benchmark or correctness validation ran."
+    }
+  },
+  "fork_local_delta": [
+    {
+      "commit": "30d8bb02bf83b35664c96c40792801c82d33891d",
+      "subject": "vulkan: four env-gated Strix Halo prefill fixes for delta-net MoE",
+      "mechanisms": [
+        "32x32 tiled transpose for a transposed dim-0 CONCAT",
+        "MUL_MAT_ID per-(expert,token) scale epilogue",
+        "silu(x)*y routing through the existing swiglu-split pipeline",
+        "MUL_MAT_ID 256-thread configuration"
+      ],
+      "published_scope": "Qwen3.6 pp2048/ub2048 prefill; commit reports 1223.75 to 1733.64 tok/s cumulatively. The evidence pack explicitly says decode is unchanged within +/-0.6% for the new prefill stack.",
+      "hipengine_mapping": "No c1 decode or persistent-allocation effect. hipEngine does not materialize the generic delta-net CONCAT graph, already uses fused/architecture-local prefill routes, and treats current prefill as a <=1% guard rather than the campaign owner.",
+      "decision": "No decode/memory test."
+    },
+    {
+      "commit": "624217d62f059950c2c2b80de6948d1e5f8c1047",
+      "subject": "vulkan: reject ne[3] > 1 in the mul_mat_id scale epilogue",
+      "scope": "Correctness admission hardening for the new Vulkan prefill fusion; no performance or memory mechanism.",
+      "decision": "Record the fourth-dimension gate as a correctness lesson; no port."
+    },
+    {
+      "commit": "6e7b355cb50cca840b127c97d17f512da238a5c7",
+      "subject": "tests: cover MMQ tile boundaries in MUL_MAT and MUL_MAT_ID",
+      "scope": "255/256/257 and 511/512/513 boundary tests; no production body change.",
+      "decision": "No benchmark."
+    }
+  ],
+  "hip_fullstack_refresh": {
+    "branch": "strix-halo-fullstack",
+    "tip": "b6c5f8f642f7b7feefe72139aeaf4cea97d15924",
+    "relationship": "16 non-merge commits are reachable from fullstack and not the latest strix-halo-vulkan tip. Eleven are the imported ROCm stack or its tests/instrumentation; the remainder are the Vulkan prefill commit and integration correctness/tests.",
+    "findings": [
+      {
+        "family": "Gated Delta Net",
+        "commits": [
+          "ec5c4a2e309c36ce002457ebb604f9afcb29fc1b",
+          "30e88afbc081698cb4a999378abbaed85f70826c"
+        ],
+        "source_gate": "The final gfx1151 specializations require S_v == 128 and n_tokens >= 2048; H == 32 selects eight waves and H >= 64 selects sixteen waves with input caching.",
+        "scope": "Multi-token prefill only. Canonical exact AR has n_tokens == 1.",
+        "decision": "No decode credit or A/B."
+      },
+      {
+        "family": "Expert MMQ",
+        "commits": [
+          "282d373bfb78534f1006320ebfabe8aff495f966",
+          "2fd9f9c07499271f2cf0cacac2636f463e8dd82e"
+        ],
+        "source_gate": "Tile selection is under ids_dst and derives J from average expert columns; it is the multi-row MUL_MAT_ID path.",
+        "scope": "MoE prefill, not c1 decode. The 512-thread J128 result later proved incorrect and, after b6c5f8f wave partitioning, measured 1654 tok/s versus 1664 for 256 threads.",
+        "decision": "Do not transfer the invalid speed signal or rerun closed c1 tile ladders."
+      },
+      {
+        "family": "MMVQ two-wave and Q8_1 activation cache",
+        "commits": [
+          "ec5c4a2e309c36ce002457ebb604f9afcb29fc1b",
+          "e50922d2bc9b4c92c3de8de5946e4081e95b41b6"
+        ],
+        "source_gate": "gfx1151 raw GGML Q4_K/Q5_K/Q6_K/Q8_0 c1 MMVQ selects two wave32 waves; graph evaluation can cache lossy Q8_1 activation records and clear them after the graph.",
+        "compatibility": "hipEngine production consumes expanded T16/qmicro weights with BF16 activation and requires byte-exact hidden/state. The external body consumes raw GGML rows and Q8_1 activation arithmetic.",
+        "prior_local_evidence": [
+          "benchmarks/results/2026-07-01-q8-t16-pair-q8-1-dp4a-micro.json: prequantized Q8_1+dp4a is 1.67x to 2.40x slower than exact T16 over rows 2-4",
+          "benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json: raw c1 layout is decode-positive but changed hidden/logit/recurrent state and loses 13.457% prefill",
+          "benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json: exact bridge still loses 3.720% prefill",
+          "benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json: 64/256-thread dense-Q8 and Q8T16 Q8_1/dp4a retries are closed"
+        ],
+        "decision": "No exact candidate with >=0.5 ms/token evidence; no repeat."
+      },
+      {
+        "family": "Flash Attention",
+        "commits": [
+          "6a93956ff611e50ae8ba4da82afa6f29ef397771",
+          "3aa455f9cc0ecfb8508a4842e0c4c2d0a762f3f3",
+          "a95aee926ef2b1f7b29d3d1242cb8bad800b611e"
+        ],
+        "scope": "Quantized-KV tile dequantization already reviewed; the new BF16 stream-K route requires at least 1024 query rows, while compact-mask/DK512 work is DeepSeek V4 sparse attention. a95aee9 is a NaN and wave64 ballot correctness fix.",
+        "hipengine_mapping": "Production exact AR uses BF16 KV and KVLiveSpans; grouped INT8 decode already shares K/V across GQA heads. SH7 retains the exact long-context reducer and SH8/SH-A1 reject the remaining grouped/page-layout substitutions.",
+        "decision": "No new exact c1 owner."
+      },
+      {
+        "family": "MMQ wave partition correctness",
+        "commit": "b6c5f8f642f7b7feefe72139aeaf4cea97d15924",
+        "finding": "The apparent 512-thread gain came from waves addressing rows and sum[] out of bounds. Correct partitioning makes 512 threads no faster than 256 on the reported Qwen3.6 pp2048 workload.",
+        "decision": "Correctness lesson only; reject benchmark inheritance."
+      },
+      {
+        "family": "DeepSeek V4 lightning indexer and profiling/tests",
+        "commits": [
+          "a585490858d5ff7aa7d263cff85e0feb3bbc4d38",
+          "c9023589607758e9c793a3d16eccc0a268cbcee0",
+          "9a4b9c73a0611b0ceedf30a6ec5e67e23dc42664",
+          "5d1acfb6007e3bb56777f4a635284acd2ac093e5"
+        ],
+        "scope": "Future-model plugin work or instrumentation/tests, not the Qwen3.6 exact-model route.",
+        "decision": "No campaign test."
+      }
+    ]
+  },
+  "generic_upstream_integration": {
+    "reviewed_non_merge_commits": 46,
+    "potentially_relevant_but_non_admissible": [
+      {
+        "commit": "dbadb68eecdfb3ab0e86872d011738fc937f0364",
+        "subject": "ggml: use dynamic allocation for split graph inputs",
+        "reason": "Replaces fixed host scheduler arrays to prevent wide-MoE multi-backend crashes; removes no model, device, GTT, or c1 decode allocation."
+      },
+      {
+        "commit": "39eab74a05d3e68ac822b6dc6cd78c90cb985c19",
+        "subject": "opencl: route large q6_K lm_head to the flat GEMV",
+        "reason": "OpenCL-only size gate. hipEngine's Q6 lm-head has a different T16 layout and its exact tile8/shape ladders are already measured and closed."
+      },
+      {
+        "commit": "563dec81c1c538aac0fad465ea933eb2a621a183",
+        "subject": "llama: allocate indexer cache only in full indexer layers",
+        "reason": "DeepSeek V4 DSA cache scope, absent from the Qwen3.6 model."
+      },
+      {
+        "commit": "9a688e51e601199ad530115b9ce0bf6a7e71d75f",
+        "subject": "fit: Fix memory allocation for MTP layers",
+        "reason": "Capacity estimator fix, not runtime exact-AR allocation."
+      },
+      {
+        "commit": "f26efa02a77dc3660f94ac90efee59394f3bc74d",
+        "subject": "vulkan backend ops: implemented GATED_LINEAR_ATTN",
+        "reason": "Backend/model operation support with no demonstrated Qwen exact-AR decode or memory improvement."
+      },
+      {
+        "commit": "9bd4c09ea571a9020f30eeef169b552625b5b5a4",
+        "subject": "CUDA: Fix data-races when reusing SMEM in block_reduce",
+        "reason": "Correctness fix for llama.cpp common reductions; hipEngine does not consume that helper, and changing production reduction association is outside the exact campaign contract."
+      }
+    ],
+    "remaining_scope": "Model support, conversion, UI/server, vendor, tests, SYCL/OpenCL/CUDA-backend-specific work, or correctness/packaging changes with no transferable Qwen3.6 gfx1151 exact decode/GTT mechanism."
+  },
+  "admission_result": {
+    "new_decode_candidate_ge_0_5_ms_per_token": false,
+    "new_memory_candidate_ge_134_82_mib_at_4096": false,
+    "new_exact_route": false,
+    "gpu_run_admitted": false,
+    "implementation_admitted": false,
+    "production_change": false,
+    "reason": "Every newly observed Qwen-relevant performance body is prefill-only, future-model-only, raw-format/Q8_1-incompatible with exact production, already covered by a closed local ladder, or invalidated by a correctness repair. No source delta removes persistent bytes from the Qwen3.6 private-c1 process.",
+    "next": "Keep SH16 production. Reopen only for a later source delta with exact c1 evidence, a separately demonstrated >=134.820-MiB 4K owner, or an explicitly approved system/runtime-memory investigation."
+  },
+  "mechanical_verification": {
+    "commands": [
+      "git ls-remote https://github.com/Nathanw1014/llama.cpp.git 'refs/heads/*'",
+      "git -C /tmp/pi-github-repos/Nathanw1014/llama.cpp rev-list --count b7b85da9c4a9fdeb3cab51030a40d1552270f272..origin/strix-halo-vulkan",
+      "git -C /tmp/pi-github-repos/Nathanw1014/llama.cpp rev-list --no-merges --count b7b85da9c4a9fdeb3cab51030a40d1552270f272..origin/strix-halo-vulkan",
+      "git -C /tmp/pi-github-repos/Nathanw1014/llama.cpp log --no-merges b7b85da9c4a9fdeb3cab51030a40d1552270f272..origin/strix-halo-fullstack",
+      "git ls-remote https://github.com/Nathanw1014/strix-halo-llamacpp.git 'refs/heads/*' 'refs/tags/*'",
+      "GitHub releases API read for publisher qualifications"
+    ],
+    "result": "Source tips, 50-commit range, 46+3 non-merge split, release qualifications, and fullstack source gates were checked against fetched authoritative refs.",
+    "gpu_tests": "Not run; compatibility/scope admission failed before a hardware experiment."
+  },
+  "qualifications": [
+    "The external pp2048 figures are publisher measurements, not hipEngine measurements.",
+    "The newest dev release is not correctness- or benchmark-validated by its publisher.",
+    "This audit does not claim that the external prefill fixes are ineffective; it finds that they do not target this campaign's remaining exact c1 decode or 4K GTT owners.",
+    "No closed SH10-SH18 benchmark was repeated."
+  ]
+}

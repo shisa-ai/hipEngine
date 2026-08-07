@@ -592,6 +592,48 @@ def test_physical_c8_t16_pairreuse_uses_backend_scope_and_env_rollback(
     assert calls == ["pairreuse", "baseline"]
 
 
+def test_qwen_q5_t16_tile8_uses_gfx1151_capability_and_peer_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    down = _FakeWeight(
+        "ffn_down_exps",
+        "gguf_q5_k_t16_v1",
+        14,
+        experts=256,
+        out_features=2048,
+        in_features=512,
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("tile8"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("baseline"),
+    )
+    kwargs = dict(
+        x_rows=8,
+        rows=8,
+        num_experts=256,
+        in_features=512,
+        out_features=2048,
+        stream=7,
+        runtime=object(),
+    )
+
+    qgr._launch_selected_raw_gguf_moe_linear(
+        down, 100, 130, 150, backend="hip_gfx1151", **kwargs
+    )
+    qgr._launch_selected_raw_gguf_moe_linear(
+        down, 100, 130, 150, backend="hip_gfx1100", **kwargs
+    )
+
+    assert calls == ["tile8", "baseline"]
+
+
 def test_physical_c8_t16_selected_down_pairreuse_env_routes_and_rolls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

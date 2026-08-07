@@ -1,0 +1,192 @@
+{
+  "schema_version": "hipengine.gguf.sh_d1_gdn_samelayout_rejected.v1",
+  "date": "2026-08-06",
+  "kind": "diagnostic_kernel_rejection",
+  "status": "rejected_leaf_gate",
+  "performance_claim": false,
+  "summary": "Cache-bypassing the three vectorized Q8T16 weight reads improves the cycling GDN-input leaf, and stacking the exact DPP tree reaches 1.0396x, but the best same-layout result projects only 0.1545 ms/token and remains 9.80% slower than the frozen continuation target. Both transient siblings are removed.",
+  "platform": {
+    "system": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "compiler": "HIP 7.15.0 / AMD clang 23.0.0git aa451e1f",
+    "hardware_queues": 1
+  },
+  "model_role": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "role": "linear-attention attn_qkv[2048->8192] + attn_gate[2048->4096]",
+    "calls_per_token": 30,
+    "sh_c0_gpu_ms_per_token_range": [4.11311925, 4.166025375],
+    "source_audit": "benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json",
+    "prior_dpp_decision": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json"
+  },
+  "candidates": {
+    "nontemporal": {
+      "change": "Explicitly retain three 16-byte vector loads for each Q8T16 scale/weight payload and apply the gfx1151 slc+dlc cache-bypass policy; keep the production bpermute tree.",
+      "registered_variant": "linear/gguf_q8_0_t16_v1/t16_dual_gemv_decode_nontemporal_bf16_bf16_out",
+      "code_bytes": 3356,
+      "metadata": {
+        "max_flat_workgroup_size": 128,
+        "vgpr_count": 51,
+        "sgpr_count": 31,
+        "group_segment_fixed_size": 256,
+        "private_segment_fixed_size": 0,
+        "vgpr_spill_count": 0,
+        "sgpr_spill_count": 0
+      },
+      "static_instruction_facts": {
+        "global_load_b128_slc_dlc": 3,
+        "v_permlanex16_b32": 0,
+        "v_add_f32_dpp": 0,
+        "ds_bpermute_b32": 80,
+        "v_fma_mix_f32": 16,
+        "v_fmac_f32": 16,
+        "s_waitcnt": 62,
+        "s_barrier": 1
+      },
+      "symbol_slice_sha256": "b2e15ef335acece3c9b395d91822ece6a7b31a1fc56605c408151966e0441be1"
+    },
+    "nontemporal_dpp": {
+      "change": "Stack the same three cache-bypassing vector loads with the previously exact 16-permlanex16/64-direct-DPP peer tree.",
+      "registered_variant": "linear/gguf_q8_0_t16_v1/t16_dual_gemv_decode_nontemporal_dpp_bf16_bf16_out",
+      "code_bytes": 2992,
+      "metadata": {
+        "max_flat_workgroup_size": 128,
+        "vgpr_count": 51,
+        "sgpr_count": 31,
+        "group_segment_fixed_size": 256,
+        "private_segment_fixed_size": 0,
+        "vgpr_spill_count": 0,
+        "sgpr_spill_count": 0
+      },
+      "static_instruction_facts": {
+        "global_load_b128_slc_dlc": 3,
+        "v_permlanex16_b32": 16,
+        "v_add_f32_dpp": 64,
+        "ds_bpermute_b32": 0,
+        "v_fma_mix_f32": 16,
+        "v_fmac_f32": 16,
+        "s_waitcnt": 20,
+        "s_barrier": 1
+      },
+      "symbol_slice_sha256": "f6162b2225cc2e7594d8faac6384f29e2436619cae289e25564938a6b1b1568e"
+    },
+    "scope": "transient separately registered BF16 row-1 siblings; never production-dispatched",
+    "parent_commit": "9906836ff",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
+    "transient_source_sha256": "5389efeac79dd4c756433d0f3debaab91f9258dedbec04064d5c1af705bdbab3",
+    "transient_wrapper_sha256": "428a0e67bf87313d660d9bbca8394d495b1ecb68cf90ee6473f71de6ae1e430a",
+    "transient_test_sha256": "fcb9b25ef0054d050221ddd476bf13f58cc6f86d58ebbd3166a990ad7b07dd87",
+    "build_artifact": "/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-c984a44fe054f341/gguf_q8_0_t16_gemv.so",
+    "build_artifact_sha256": "f59847bc453102687dc5ba9039a37da8714b1375c9193b67feb665c0728e494d",
+    "code_object": "/tmp/sh-d1-q8t16-nontemporal-stack-isa/q8t16-nontemporal-stack-gfx1151.co",
+    "code_object_sha256": "a56bc5b1b1e5ce8564fcf20a45df5f37af248c875483a9c90d218bd08d5de05b",
+    "disposition": "both siblings removed after the frozen leaf gate failed; no env flag, registry variant, wrapper, test, microbench mode, or device body retained"
+  },
+  "correctness": {
+    "red": "Focused test collection failed because the non-temporal wrapper did not exist.",
+    "green_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest -q tests/test_gguf_q8_0_t16_nontemporal_gemv_decode.py",
+    "green_result": "7 passed",
+    "shapes": [
+      "32 -> 16+32",
+      "256 -> 64+128",
+      "2048 -> 8192+4096"
+    ],
+    "requirements": {
+      "both_candidates_production_bf16_byte_identity": true,
+      "both_candidates_cpu_gguf_q8_0_oracle": true,
+      "both_registry_resolutions": true
+    },
+    "full_model_gate": "not run because both primitives failed the earlier frozen leaf continuation gate"
+  },
+  "named_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/sh-d1-q8t16-nontemporal-stack-trace -- python3 scripts/gguf_q8_0_t16_pair_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 1 --threads 128 --modes nontemporal,nontemporal_dpp --iters 1 --warmup 1 --mall-bytes 33554432 --peak-gbs 256 --json /tmp/sh-d1-q8t16-nontemporal-stack-trace.json",
+    "csv": "/tmp/sh-d1-q8t16-nontemporal-stack-trace/gfx1151/3688052_kernel_trace.csv",
+    "csv_sha256": "0213ba70306b36a0817a2269cc64ed776d192de9364f1b58be85a7b0cd01a599",
+    "dispatches_per_candidate": 2,
+    "workgroup_size": 128,
+    "grid_size_x_threads": 98304,
+    "scratch_size": 0,
+    "nontemporal_duration_ns": [129962, 127918],
+    "nontemporal_dpp_duration_ns": [128519, 126676],
+    "note": "Trace is launch/name/resource proof only; profiler timings are excluded from the cycling-leaf decision."
+  },
+  "cycling_leaf": {
+    "shape": {
+      "rows": 1,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096
+    },
+    "matrix_mb": 26.739,
+    "pool_copies": 3,
+    "pool_mb": 80.2,
+    "warmup_launches_per_variant": 80,
+    "measured_launches_per_variant": 400,
+    "raw_runs": [
+      {
+        "path": "/tmp/sh-d1-q8t16-nontemporal-stack-screen-1.json",
+        "sha256": "d099411d0eafb882598a57008764b7d60bd875b0f2c79e67f8693cd2f6ad4bea",
+        "order": ["exact", "nontemporal", "nontemporal_dpp"],
+        "exact_us": 135.44,
+        "nontemporal_us": 130.82,
+        "nontemporal_dpp_us": 130.11
+      },
+      {
+        "path": "/tmp/sh-d1-q8t16-nontemporal-stack-screen-2.json",
+        "sha256": "8f2aa956836d87bae01d7b431115cf074a67646070cddd27a395f8d9aa8c5edc",
+        "order": ["nontemporal_dpp", "nontemporal", "exact"],
+        "exact_us": 135.26,
+        "nontemporal_us": 131.56,
+        "nontemporal_dpp_us": 130.83
+      },
+      {
+        "path": "/tmp/sh-d1-q8t16-nontemporal-stack-screen-3.json",
+        "sha256": "4090cfdfab6af1a6a3fcb860df25141e24af3c39a5716dc0e8511241f3056e6f",
+        "order": ["nontemporal", "exact", "nontemporal_dpp"],
+        "exact_us": 135.23,
+        "nontemporal_us": 131.64,
+        "nontemporal_dpp_us": 129.85
+      }
+    ],
+    "medians": {
+      "production_us": 135.26,
+      "nontemporal_us": 131.56,
+      "nontemporal_speedup": 1.0281240499,
+      "nontemporal_projected_saving_ms_per_token": 0.111,
+      "nontemporal_dpp_us": 130.11,
+      "nontemporal_dpp_speedup": 1.0395818922,
+      "nontemporal_dpp_latency_reduction_pct": 3.8074818867,
+      "nontemporal_dpp_saving_us_per_call": 5.15,
+      "nontemporal_dpp_projected_saving_ms_per_token": 0.1545,
+      "nontemporal_dpp_effective_matrix_read_gb_s": 205.5
+    },
+    "frozen_gates": {
+      "projected_half_ms_target_us": 118.493333,
+      "independent_1_15x_target_us": 117.530435,
+      "best_candidate_miss_vs_half_ms_target_us": 11.616667,
+      "best_candidate_slower_than_half_ms_target_pct": 9.8036460836,
+      "passed_projected_half_ms_gate": false,
+      "passed_1_15x_gate": false
+    },
+    "commands": [
+      "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_q8_0_t16_pair_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 1 --threads 128 --modes exact,nontemporal,nontemporal_dpp --iters 400 --warmup 80 --mall-bytes 33554432 --peak-gbs 256 --json /tmp/sh-d1-q8t16-nontemporal-stack-screen-1.json",
+      "Same command with --modes nontemporal_dpp,nontemporal,exact and output /tmp/sh-d1-q8t16-nontemporal-stack-screen-2.json",
+      "Same command with --modes nontemporal,exact,nontemporal_dpp and output /tmp/sh-d1-q8t16-nontemporal-stack-screen-3.json"
+    ]
+  },
+  "decision": {
+    "result": "reject",
+    "reason": "Both candidates pass byte exactness, CPU-oracle, ISA, resource, and named-launch gates, but the best stacked median misses the earlier continuation threshold by 9.80%; 5.15 us/call projects only 0.1545 ms/token over 30 calls.",
+    "production_change": false,
+    "next": "Same-layout communication and cache-policy headroom is exhausted. Proceed to a bounded byte-neutral paired-Q8T32 first-object screen before selected-expert work; continue the overall campaign through SH-D1, SH-M2, SH-K1, SH-A1, and SH-G."
+  },
+  "provenance": {
+    "tracked_state_during_measurement": "candidate-only modifications to the Q8T16 HIP source/wrapper and microbench plus one new focused test",
+    "unrelated_untracked_paths": 258,
+    "qualification": "Diagnostic rejection only. No retained performance/topline claim and no production source change."
+  }
+}

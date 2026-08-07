@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -502,6 +503,35 @@ def test_qwen35_decode_order_prefill_uses_query_batch_gqa_crossover(
     gqa_args = calls[0][1]
     assert gqa_args[8].base_offsets.shape == (4, 17)
     assert gqa_args[9:12] == (4, 256, 17)
+
+
+def test_int8_gqa_splitk_producer_grid_is_owned_by_kv_head() -> None:
+    """Freeze the grouped-GQA load-sharing geometry, not only its output math."""
+
+    source = Path(paged_attn_decode.__file__).with_suffix(".hip").read_text()
+    producer = source.split(
+        "__global__ void "
+        "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel(",
+        1,
+    )[1].split("\ntemplate <", 1)[0]
+    launcher = source.split(
+        "int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8(",
+        1,
+    )[1].split("\ntemplate <typename scale_t>", 1)[0]
+
+    assert "const int64_t kv_head = blockIdx.x;" in producer
+    assert "const int64_t q_base = kv_head * q_per_kv;" in producer
+    assert "token_offset * num_kv_heads + kv_head" in producer
+    assert producer.count("h < q_per_kv") >= 10
+    assert "const int64_t q_head = blockIdx.x;" not in producer
+
+    assert "const int64_t q_per_kv = 8;" in launcher
+    assert "<scale_t, 8, 16, 2>" in launcher
+    assert (
+        "dim3(static_cast<unsigned int>(num_kv_heads), "
+        "static_cast<unsigned int>(num_splits))"
+    ) in launcher
+    assert "dim3(static_cast<unsigned int>(num_q_heads)" not in launcher
 
 
 def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:

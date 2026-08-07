@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh2_m4_compact_selected_t16_metadata",
+  "date": "2026-08-06",
+  "status": "q5_partial_retained_default_q4_rejected_fallback",
+  "performance_claim": false,
+  "implementation_parent_revision": "70b338a0e8b729a2873428bc83777fc6ab1ed398",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "memory_domain": "GTT/UMA",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "selected_tensors": {
+      "q4_gate_up": 80,
+      "q5_down": 37,
+      "q6_down_unchanged": 3
+    }
+  },
+  "representation": {
+    "contract": "preserve FP16 d/dmin and quant planes; replace expanded 8-bit scale/min planes with exact four-column 24-bit records",
+    "q4_tile_bytes": {
+      "legacy_t16": 2368,
+      "compact": 2304,
+      "raw_q4_k_equivalent": 2304
+    },
+    "q5_tile_bytes": {
+      "legacy_t16": 2880,
+      "compact": 2816,
+      "raw_q5_k_equivalent": 2816
+    },
+    "full_owner": {
+      "bytes": 490733568,
+      "gib": 0.45703125
+    },
+    "retained_q5_owner": {
+      "bytes": 155189248,
+      "gib": 0.14453125
+    },
+    "rejected_q4_owner": {
+      "bytes": 335544320,
+      "gib": 0.3125
+    },
+    "fallback": "legacy gguf_q4_k_t16_v1 and gguf_q5_k_t16_v1 remain registered; Q4 production remains legacy T16"
+  },
+  "correctness": {
+    "host_red": "tests/test_gguf_t16_repack.py failed collection on absent Q5 compact constants/materializer",
+    "host_green": "34/34 focused Q4/Q5 pack/unpack, raw-byte, dequant, byte-neutral, and registry checks passed before device work",
+    "device_green": "18/18 focused direct/WMMA BF16/FP16 compact kernel checks passed after restoring the best per-block LDS decoder",
+    "dispatch_materializer_green": "15/15 focused materializer/resolver checks and 76/76 affected CPU dispatch/materializer checks passed",
+    "actual_weight_leaf": {
+      "selected_experts": 256,
+      "routing_groups": 32,
+      "top_k": 8,
+      "q4_bf16_mismatches": 0,
+      "q5_bf16_mismatches": 0,
+      "raw_sha256": "7dd2f5fddf887d9b3b84bd553c73e94435c2cc2bcc74507d4927db474af46440"
+    },
+    "four_depth_state": {
+      "parent_revision": "70b338a0e8b729a2873428bc83777fc6ab1ed398",
+      "contexts": [512, 4096, 32768, 65536],
+      "decode_transitions": 4,
+      "prefill_logits_exact": true,
+      "prefill_state_exact": true,
+      "trajectory_exact": true,
+      "final_state_exact": true,
+      "finite": true,
+      "coverage": "FP32 logits plus hidden/layer/Conv/GDN/live-BF16-KV fingerprints",
+      "baseline_sha256": "3e4abeca18f498fc9ccabf99ae7aab482fdfcbcf9c84fbdfa97acb98bffeebeb",
+      "candidate_sha256": "5e859e173c0e990a6dcc58dc0beb485a6383e0856dbdce0be0d17895ea1f77dd"
+    },
+    "lifecycle": {
+      "tracked_bytes_before_close": 22623371008,
+      "tracked_bytes_after_close": 0,
+      "all_measured_token_ids_exact": true,
+      "stable_final_token_id": 9707
+    }
+  },
+  "admission": {
+    "full_q4_q5_leaf": {
+      "q4": {
+        "control_us": 36.73982620239258,
+        "candidate_us": 42.54269897937775,
+        "delta_us_per_call": 5.8028727769851685,
+        "calls_per_token": 40
+      },
+      "q5": {
+        "control_us": 25.850486755371094,
+        "candidate_us": 27.67641246318817,
+        "delta_us_per_call": 1.8259257078170776,
+        "calls_per_token": 37
+      },
+      "projected_delta_ms_per_token": 0.29967416226863863,
+      "projected_regression_percent": 1.5982275918112847,
+      "gate_percent": 1.0,
+      "passed": false
+    },
+    "bounded_rejected_unpack_schedules": [
+      {
+        "name": "preload_all_metadata_blocks",
+        "projected_regression_percent": 2.493927979423618,
+        "exact": true,
+        "raw_sha256": "d0217d1ad4a8c4f3aeed883daf6074045063918a0ceadf928d41c6cc9bb951c6"
+      },
+      {
+        "name": "wave_broadcast_packed_records",
+        "projected_regression_percent": 3.23907263086893,
+        "exact": true,
+        "raw_sha256": "294c7863991093e884f6928d433d3cacebab6a6656b74c62f49e2962e1bfc989"
+      }
+    ],
+    "q5_only_projection": {
+      "delta_ms_per_token": 0.06755925118923188,
+      "regression_percent": 0.360307
+    },
+    "q5_only_same_protocol_wall": {
+      "baseline_prefill_tok_s": 1372.3471801994835,
+      "candidate_prefill_tok_s": 1366.4973633603463,
+      "prefill_delta_percent": -0.42626362508989546,
+      "baseline_decode_tok_s": 53.38331135019682,
+      "candidate_decode_tok_s": 53.138243403326975,
+      "decode_delta_percent": -0.4590722094067745,
+      "gate_percent": 1.0,
+      "passed": true,
+      "raw_sha256": "33bdf2170d006cfdebce3a75f74d8f4c3ddefd24db64d33dcb9fab54fe94a709"
+    },
+    "fresh_full_state_512": {
+      "baseline_tok_s": 53.332177,
+      "candidate_tok_s": 52.98323545649872,
+      "decode_delta_percent": -0.654279579664041,
+      "baseline_gpu_us_per_token": 17421.773,
+      "candidate_gpu_us_per_token": 17447.772125,
+      "baseline_tracked_gib": 21.214187383651733,
+      "candidate_tracked_gib": 21.069656133651733,
+      "tracked_saving_bytes": 155189248,
+      "baseline_whole_gtt_gib": 21.648426055908203,
+      "candidate_whole_gtt_gib": 21.50406265258789,
+      "whole_gtt_saving_bytes": 155009024,
+      "all_tokens_exact": true,
+      "raw_sha256": "b97d32bad6b1f6f03c368545c7ba348c3eeb0db16d27f14401f2453092e7b810"
+    }
+  },
+  "trace": {
+    "csv_sha256": "66a91c5d5fa7c5130f26919b201260600ed6a9bfc971af94c37b8895d83c1b15",
+    "compiler_spawned_under_profiler": false,
+    "decode": {
+      "kernel": "q5_k_qmicro_t16_selected_gemv_kernel<unsigned short,8>",
+      "count": 333,
+      "median_ns": 35427,
+      "min_ns": 33823,
+      "max_ns": 37150,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "workgroup_threads": 128
+    },
+    "prefill": {
+      "kernel": "gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short,5,true>",
+      "count": 37,
+      "median_ns": 1489917,
+      "min_ns": 1212916,
+      "max_ns": 1646050,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "workgroup_threads": 32
+    }
+  },
+  "commands": {
+    "leaf": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt uv run python scripts/gguf_sh2_m4_compact_t16_leaf.py --allow-dirty --require-cached-build --warmups 16 --samples 7 --burst 80",
+    "fresh_512": "PYTHONPATH=. python3 scripts/gguf_sh_c0_profile.py --workloads 512 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --raw-root /tmp/hipengine-sh2-m4-q5-20260806/raw --out /tmp/hipengine-sh2-m4-q5-20260806/current-512.json",
+    "prefill_decode": "PYTHONPATH=. python3 scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/128 --token-id 9707 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill --bulk-prefill-attention-mode bulk --prefill-linear-chunk-size 4096 --prefill-moe-chunk-size 4096 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 4096 --prefill-full-attn-rope-chunk-size 4096 --prefill-chunk-autotune --no-graph-replay-decode --use-wmma-prefill --use-gemv-decode --kv-storage bf16 --prefill-queue-drain none --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "four_depth_state": "scripts/gguf_sh_m1_screen.py state-child --contexts 512 4096 32768 65536 --query-rows 4096 --decode-steps 4 --max-sequence-length 65669 --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build"
+  },
+  "source_sha256": {
+    "decode_hip": "6b7296bb04adf14801c8678e08947bdfcf7aefb3e811090ec63456d7e948a9e8",
+    "prefill_hip": "94c66d1411f1a83e1e6d231c926c1e8dbf6c8f775cf1e5c57adb6c2a248f165c",
+    "materializer": "2c02a365cd33c5562b92616a1a3c8b53b45989b04cf00e2d801b00064d57d49a",
+    "runner": "3514ce41a4c4f4bb10e2e25844ad7d64b628e31b0879f86515b4ee3126c6f47b",
+    "leaf_harness": "ebb7766cada20e131da813a91eb87053da9f613a44ba2d936fbe0f920c4666b6"
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "result": "blocked before diff because optional /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "external_kernel_body_copied": false
+  },
+  "decision": {
+    "q5_retain": true,
+    "q5_default": true,
+    "q4_retain_as_production": false,
+    "q4_production_layout": "gguf_q4_k_t16_v1",
+    "reason": "The separable Q5 owner removes exactly 0.14453125 GiB and passes exactness, <=1% prefill/decode, named zero-scratch trace, four-depth state, whole-GTT, and teardown gates. Q4 causes the combined layout to miss the frozen 1% gate, so it remains legacy T16.",
+    "next_package": "SH2-C2 cumulative re-attribution"
+  }
+}

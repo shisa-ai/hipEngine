@@ -1,0 +1,199 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh9_c1_scope_correct_completion_audit",
+  "date": "2026-08-06",
+  "status": "mandatory_gate_complete_policy_failed_sh10_a1_selected",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "5ba0b5248",
+    "tracked_source_clean": true,
+    "qualification": "No GPU row is rerun for this scope audit. SH9-D1 is mechanically prefill-only, SH7-A1 is the only post-SH6 retained decode change, and neither unit changes tracked or whole-GTT ownership. The audit therefore carries immutable measured rows and hashes rather than manufacturing duplicate benchmark activity.",
+    "artifacts": {
+      "sh6_c1": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json",
+        "sha256": "8e0a0aa6427a1bdbebf3c21c46391730fead947562c9c0cef38a45a010ad7797"
+      },
+      "sh7_a1": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json",
+        "sha256": "5ccd245328c6b3aebc4349c741f5921ca13f7b69c0b242692ed55024e40ae9fc"
+      },
+      "sh9_d1": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json",
+        "sha256": "8cfc967bcc4a86a1cf0bcfa0883b0b55a7cce341c466c8df05874ced55d2e630"
+      }
+    }
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "canonical_decode_queue_scope": "SH6 traces used queue 1/stream 0 despite an inherited two-queue cap; SH7 binding rows use the package-default one queue"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "scope_correction": {
+    "sh9_decode_effect": "none: rows==1 decode enters _run_post_attention_moe_c1 before the compact-WMMA multi-row helper",
+    "sh9_prefill_effect": "pp512 has 4096 selected rows and 40 MoE-layer scalar reads per request; the retained package bound removes those 40 reads/dispatches",
+    "sh9_memory_effect": "none",
+    "carry_rule": "512/4K decode and all four memory rows carry from SH6-C1; 32K/64K decode carries SH7-A1's retained one-queue candidate",
+    "no_duplicate_run_reason": "The carried metrics are unaffected by SH9 and already satisfy exactness, lifecycle, trace, and measurement provenance requirements."
+  },
+  "rows": {
+    "512/128": {
+      "decode_source": "SH6-C1 canonical production",
+      "prefill_tok_s": 1373.5582658422513,
+      "decode_tok_s": 53.153283893634296,
+      "decode_ms_per_token": 18.813513046552544,
+      "whole_gtt_peak_gib": 21.00012969970703,
+      "c1_target_tok_s": 58.165,
+      "c1_time_gap_ms_per_token": 1.6210433482803879,
+      "c2_target_tok_s": 64.658,
+      "c2_time_gap_ms_per_token": 3.347522759194444,
+      "fork_f16_decode_tok_s": 64.411182,
+      "fork_f16_decode_time_gap_ms_per_token": 3.2882584409159,
+      "fork_f16_whole_gtt_peak_gib": 20.830669403076172,
+      "fork_f16_whole_gtt_gap_gib": 0.16946029663085938,
+      "passes": {
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      }
+    },
+    "4K/128": {
+      "decode_source": "SH6-C1 canonical production",
+      "prefill_tok_s": 1446.8621198378146,
+      "decode_tok_s": 55.83168314062388,
+      "decode_ms_per_token": 17.91097713248746,
+      "whole_gtt_peak_gib": 21.499427795410156,
+      "c1_target_tok_s": 58.795,
+      "c1_time_gap_ms_per_token": 0.902728131722089,
+      "c2_target_tok_s": 62.648,
+      "c2_time_gap_ms_per_token": 1.9487756256556388,
+      "fork_f16_decode_tok_s": 62.59014,
+      "fork_f16_decode_time_gap_ms_per_token": 1.9340197395178969,
+      "fork_f16_whole_gtt_peak_gib": 21.160736083984375,
+      "fork_f16_whole_gtt_gap_gib": 0.33869171142578125,
+      "passes": {
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      }
+    },
+    "32K/128": {
+      "decode_source": "SH7-A1 retained parallel-reducer one-queue candidate",
+      "prefill_tok_s": 1149.7184744440187,
+      "decode_tok_s": 46.784576555694215,
+      "decode_ms_per_token": 21.3745655859375,
+      "whole_gtt_peak_gib": 22.151844024658203,
+      "c1_target_tok_s": 49.35,
+      "c1_time_gap_ms_per_token": 1.1111410671938344,
+      "c2_target_tok_s": 53.22,
+      "c2_time_gap_ms_per_token": 2.5846369876661726,
+      "fork_f16_decode_tok_s": 53.042021,
+      "fork_f16_decode_time_gap_ms_per_token": 2.5215886226351394,
+      "fork_f16_whole_gtt_peak_gib": 21.99620819091797,
+      "fork_f16_whole_gtt_gap_gib": 0.15563583374023438,
+      "passes": {
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      }
+    },
+    "64K/128": {
+      "decode_source": "SH7-A1 retained parallel-reducer one-queue candidate",
+      "prefill_tok_s": 938.3634852917187,
+      "decode_tok_s": 40.38550576427356,
+      "decode_ms_per_token": 24.7613588359375,
+      "whole_gtt_peak_gib": 22.890125274658203,
+      "c1_target_tok_s": 42.419,
+      "c1_time_gap_ms_per_token": 1.1870171494290958,
+      "c2_target_tok_s": 45.913,
+      "c2_time_gap_ms_per_token": 2.981035180327975,
+      "fork_f16_decode_tok_s": 45.817862,
+      "fork_f16_decode_time_gap_ms_per_token": 2.9358096647430862,
+      "fork_f16_whole_gtt_peak_gib": 22.836151123046875,
+      "fork_f16_whole_gtt_gap_gib": 0.053974151611328125,
+      "passes": {
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      }
+    }
+  },
+  "policy_summary": {
+    "c1_rows_passed": 0,
+    "c2_rows_passed": 0,
+    "fork_f16_decode_rows_passed": 0,
+    "fork_f16_whole_gtt_rows_passed": 0,
+    "objective_complete": false
+  },
+  "review_triage": {
+    "admitted": [
+      {
+        "id": "SH10-A1",
+        "priority": 1,
+        "owner": "private-c1 eager short-context full-attention context kernel",
+        "correction": "Production c1 uses qwen35_paged_full_attn_decode_context_tensor_kernel, not context_tensor_batch_kernel<true,2>. The scalar route is fixed at 256 threads/16 q-head blocks and has no gfx1151 exact address-hoist or packed-load leaf; only an old 128-thread arithmetic-changing rejection exists.",
+        "gate": "Cached actual-shape trace first, then only exact FMA/reduction-order-preserving leaf work with full state, lifecycle, 512 wall, prefill, and 1024-boundary guards."
+      },
+      {
+        "id": "SH11-A1",
+        "priority": 2,
+        "owner": "4K split-vs-direct full-attention algorithm",
+        "correction": "June G-D4 measured a material direct-path gain on gfx1100/Q4_K_S but changed the final token. Re-measure only as a default-off current gfx1151/Q4_K_M diagnostic; arithmetic drift remains a hard promotion blocker."
+      },
+      {
+        "id": "SH12-C0",
+        "priority": 3,
+        "owner": "private-c1 eager host synchronization and D2H boundaries",
+        "correction": "Census decode independently of SH9. Do not infer 40 removed boundaries/token and do not reopen approximately 1% graph replay without the project-wide greater-than-3% dispatch-wall trigger."
+      },
+      {
+        "id": "SH13-M1",
+        "priority": 4,
+        "owner": "4K-plus phase-exclusive code/library GTT",
+        "correction": "Re-scope SH2-M2 as a phase-resolved precondition audit only because post-SH3 gaps are smaller. No lazy loader or dlclose work is admitted until peak phase and reclaimable subset exceed the actual gap."
+      },
+      {
+        "id": "SH14-C1",
+        "priority": 5,
+        "owner": "final cumulative campaign gate",
+        "gate": "Recompute all four parity classes after SH10-SH13; do not stop after one leaf."
+      }
+    ],
+    "not_admitted": [
+      {
+        "lead": "raw local64 lm-head",
+        "reason": "Withdrawn by the follow-up review and consistent with the measured bandwidth floor plus SH-D1 tile8 rejection."
+      },
+      {
+        "lead": "SH3-M1 plus SH-K1 plus SH-M2 stacking rerun",
+        "reason": "SH-K1 already fits but loses decode and raises candidate whole-GTT peak by 0.0703/0.1328 GiB at 32K/64K. Removing the embedding table shifts control and candidate equally; it does not convert a positive candidate-control peak delta into a saving."
+      },
+      {
+        "lead": "post-SH9 graph replay",
+        "reason": "SH9 changes prefill only and therefore removes no decode graph break. Existing graph evidence remains about 1%, below the declared host/C++ trigger."
+      },
+      {
+        "lead": "full-table mapped host embedding under raised memlock",
+        "reason": "SH3-M1 already removes the complete 0.503-GiB device table for private c1. Raising a system limit may alter graph/embedding execution but is not an additional memory saving and requires a separate explicit human/system decision."
+      },
+      {
+        "lead": "V-major or value-vector long-attention retry",
+        "reason": "The review supplies no exact production seam or current actual-shape evidence beyond already screened value-vector and grouped-GQA families. Keep closed unless SH10/SH11 traces expose a new bounded owner."
+      }
+    ]
+  },
+  "decision": "SH9-C1 is complete but the campaign objective is not. Start SH10-A1 on the actual short-context c1 attention kernel, then execute SH11-A1, SH12-C0, SH13-M1, and the cumulative SH14-C1 gate."
+}

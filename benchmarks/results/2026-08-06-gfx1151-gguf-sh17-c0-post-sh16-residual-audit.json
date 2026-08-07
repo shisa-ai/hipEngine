@@ -1,0 +1,301 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh17_c0_post_sh16_residual_audit",
+  "date": "2026-08-06",
+  "created_at": "2026-08-06T14:55:32.210294+00:00",
+  "status": "closed_no_structurally_new_owner_admitted",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "35a0b18b6",
+    "tracked_source_clean": true,
+    "method": "Read-only reconciliation of retained SH16 wall/GTT, immutable role traces, exact allocation censuses, and closed package evidence; no new benchmark or profiler run.",
+    "artifacts": {
+      "sh14": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json",
+        "sha256": "c0d7182405fd9d58e0b6debf736f3d21d806d97652df1fb2f00c138d601c654b"
+      },
+      "sh15_m1": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json",
+        "sha256": "25c65a15ffa1e122cf3c654a7ece4729c543c1d12c081e3584a52bf3adcbde8c"
+      },
+      "sh15_m2": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json",
+        "sha256": "206205ace4a8cdc5ba763e7184e74287e1d3b01e1494c669b5c23fe90f1e0f36"
+      },
+      "sh16_m1": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json",
+        "sha256": "21f23f2b28499dfe3e2fd02e412ffaa1015793c93ab669a9ca4844d906fe1428"
+      },
+      "sh16_m2": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json",
+        "sha256": "f3a5b544eb99b1d24a66f97b11571ac6d4b32a68b94662e7efb79f8857511aae"
+      },
+      "sh_d1_checkpoint": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json",
+        "sha256": "a01640abf05f9f2c8eb37abde37c3555ed4c0aff662d09e8ebb9e4a8d97386e7"
+      },
+      "sh2_d1": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json",
+        "sha256": "c18e743ab34426147c543406e5bb0c6466600cbe597822897eb7a81ffb820916"
+      },
+      "sh3_d1": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json",
+        "sha256": "84ffd3b6a8dc906d30132ec82ab4989118faf1b66975ec53bfbaa7383ace74d9"
+      },
+      "sh7": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json",
+        "sha256": "5ccd245328c6b3aebc4349c741f5921ca13f7b69c0b242692ed55024e40ae9fc"
+      },
+      "sh8": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json",
+        "sha256": "605b2d2b914cb28f4e73d23440e7801403d194c3951dcb9675e23fa85d5b3ee9"
+      },
+      "sh10": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json",
+        "sha256": "0cf6724ef5b5166b52c7483100e5209d1418c1230c6ed87e70238b5bffe8f710"
+      },
+      "sh11": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json",
+        "sha256": "4ce96103d2ece834788ae6e9d59283a7f5f6d0d8f96c1f2252e0b3f6e0aea4b8"
+      },
+      "sh12": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json",
+        "sha256": "a2c8a0b3e460c87517c8527ad036d7f850a78479f12755bc0f2c20766ce2a417"
+      },
+      "sh13": {
+        "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json",
+        "sha256": "481f53ba67f66773c6e421c095b5757b0a1276f522d1ac897a44ff36ebe31090"
+      }
+    }
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-device amdgpu GTT",
+    "gtt_poll_ms": 10
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "admission": "Admit Task #66 only for a genuinely new exact owner with evidence-backed >=0.5 ms/token opportunity or >=134.820 MiB reclaimable 4K whole-GTT headroom.",
+    "anti_retry": "Do not rerun completed four-depth/category gates, global/state arenas, compact-Q4 stacking, graph/direct attention, long-context producer ladders, or closed Q8/selected/shared/lm-head schedules without new evidence.",
+    "fresh_trace_rule": "A fresh trace is warranted only if SH16 changed a kernel body/route or introduced an unattributed owner. SH16 changes pointers only; launch bodies/routes are identical, all moved families map to existing named roles, and the complete wall already measures their net address effect."
+  },
+  "current_rows": {
+    "512/128": {
+      "decode_tok_s": 55.22981468632807,
+      "decode_ms_per_token": 18.10616250804742,
+      "c1_target_tok_s": 58.165,
+      "c1_time_gap_ms_per_token": 0.913692809775263,
+      "fork_f16_tok_s": 64.411182,
+      "fork_f16_time_gap_ms_per_token": 2.5809079024107753,
+      "whole_gtt_gib": 20.81458282470703,
+      "fork_f16_whole_gtt_gib": 20.830669403076172,
+      "candidate_minus_fork_whole_gtt_mib": -16.47265625,
+      "decode_change_percent_vs_sh14": 1.6565907610313069
+    },
+    "4K/128": {
+      "decode_tok_s": 55.82936383811474,
+      "decode_ms_per_token": 17.911721202835906,
+      "c1_target_tok_s": 58.795,
+      "c1_time_gap_ms_per_token": 0.9034722020705352,
+      "fork_f16_tok_s": 62.59014,
+      "fork_f16_time_gap_ms_per_token": 1.934763809866343,
+      "whole_gtt_gib": 21.292396545410156,
+      "fork_f16_whole_gtt_gib": 21.160736083984375,
+      "candidate_minus_fork_whole_gtt_mib": 134.8203125,
+      "decode_change_percent_vs_sh14": 1.882923326408359
+    },
+    "32K/128": {
+      "decode_tok_s": 46.8086625677846,
+      "decode_ms_per_token": 21.363567022490315,
+      "c1_target_tok_s": 49.35,
+      "c1_time_gap_ms_per_token": 1.1001425037466497,
+      "fork_f16_tok_s": 53.042021,
+      "fork_f16_time_gap_ms_per_token": 2.5105900591879546,
+      "whole_gtt_gib": 21.946765899658203,
+      "fork_f16_whole_gtt_gib": 21.99620819091797,
+      "candidate_minus_fork_whole_gtt_mib": -50.62890625,
+      "decode_change_percent_vs_sh14": 0.8695605776845028
+    },
+    "64K/128": {
+      "decode_tok_s": 40.43025306660197,
+      "decode_ms_per_token": 24.733953516260954,
+      "c1_target_tok_s": 42.419,
+      "c1_time_gap_ms_per_token": 1.1596118297525493,
+      "fork_f16_tok_s": 45.817862,
+      "fork_f16_time_gap_ms_per_token": 2.9084043450665398,
+      "whole_gtt_gib": 22.685047149658203,
+      "fork_f16_whole_gtt_gib": 22.836151123046875,
+      "candidate_minus_fork_whole_gtt_mib": -154.73046875,
+      "decode_change_percent_vs_sh14": 0.6223457871957772
+    }
+  },
+  "decode_audit": {
+    "largest_immutable_roles_ms_per_token": {
+      "512/128": {
+        "gdn_input_projections": 4.1355975,
+        "selected_expert_gate_up": 2.3260843749999998,
+        "lm_head": 1.83413725,
+        "gdn_output_projection": 1.4533981249999999,
+        "selected_expert_down": 1.44364075,
+        "full_attention_qkv": 1.087320625,
+        "moe_router_combine": 0.986472,
+        "shared_expert_gate_up": 0.700058375,
+        "gdn_attention_core": 0.645917625,
+        "full_attention_output": 0.504432125,
+        "shared_expert_down": 0.36968049999999997,
+        "unattributed": 0.254237625,
+        "gdn_decay_projections": 0.16960862499999999
+      },
+      "4K/128": {
+        "gdn_input_projections": 4.140605375,
+        "selected_expert_gate_up": 2.3146992500000003,
+        "lm_head": 1.83344575,
+        "gdn_output_projection": 1.444416375,
+        "selected_expert_down": 1.438385625,
+        "full_attention_qkv": 1.0868496250000002,
+        "moe_router_combine": 0.98220975,
+        "shared_expert_gate_up": 0.702091625,
+        "gdn_attention_core": 0.6462821249999999,
+        "full_attention_output": 0.49255937499999997,
+        "shared_expert_down": 0.371964,
+        "unattributed": 0.260078625,
+        "gdn_decay_projections": 0.168745125
+      },
+      "32K/128": {
+        "gdn_input_projections": 4.180987624999999,
+        "selected_expert_gate_up": 2.33102025,
+        "lm_head": 1.838395125,
+        "selected_expert_down": 1.4517705,
+        "gdn_output_projection": 1.4514639999999999,
+        "full_attention_qkv": 1.094062875,
+        "moe_router_combine": 0.9899836249999999,
+        "shared_expert_gate_up": 0.70651575,
+        "gdn_attention_core": 0.653664,
+        "full_attention_output": 0.487659125,
+        "shared_expert_down": 0.374744375,
+        "unattributed": 0.26215675,
+        "gdn_decay_projections": 0.169104375
+      },
+      "64K/128": {
+        "gdn_input_projections": 4.191976875,
+        "selected_expert_gate_up": 2.324822,
+        "lm_head": 1.839682125,
+        "gdn_output_projection": 1.4559881250000002,
+        "selected_expert_down": 1.455851375,
+        "full_attention_qkv": 1.088868375,
+        "moe_router_combine": 0.995084,
+        "shared_expert_gate_up": 0.707577625,
+        "gdn_attention_core": 0.6539661250000001,
+        "full_attention_output": 0.491106625,
+        "shared_expert_down": 0.37227350000000003,
+        "unattributed": 0.265359375,
+        "gdn_decay_projections": 0.17020587499999998
+      }
+    },
+    "sh16_moved_weight_families": [
+      "ssm_a",
+      "ssm_dt.bias",
+      "ssm_norm.weight",
+      "attn_k_norm.weight",
+      "attn_q_norm.weight",
+      "attn_norm.weight",
+      "ffn_gate_inp_shexp.weight",
+      "output_norm.weight",
+      "post_attention_norm.weight",
+      "ssm_conv1d.weight",
+      "ssm_alpha.weight",
+      "ssm_beta.weight",
+      "attn_k.weight.t16.tiles",
+      "attn_v.weight.t16.tiles",
+      "ffn_down_shexp.weight.t16.tiles",
+      "ffn_gate_shexp.weight.t16.tiles",
+      "ffn_up_shexp.weight.t16.tiles",
+      "ffn_gate_inp.weight",
+      "attn_gate.weight.t16.tiles",
+      "attn_output.weight.t16.tiles",
+      "ssm_out.weight.t16.tiles"
+    ],
+    "moved_family_role_map": {
+      "gdn_input_projections": [
+        "attn_gate.weight.t16.tiles"
+      ],
+      "gdn_output_projection": [
+        "ssm_out.weight.t16.tiles"
+      ],
+      "full_attention_qkv": [
+        "attn_k.weight.t16.tiles",
+        "attn_v.weight.t16.tiles"
+      ],
+      "full_attention_output": [
+        "attn_output.weight.t16.tiles"
+      ],
+      "shared_expert_gate_up": [
+        "ffn_gate_shexp.weight.t16.tiles",
+        "ffn_up_shexp.weight.t16.tiles"
+      ],
+      "shared_expert_down": [
+        "ffn_down_shexp.weight.t16.tiles"
+      ],
+      "small_control_and_norm": [
+        "norms",
+        "SSM coefficients",
+        "router/shared-gate weights"
+      ]
+    },
+    "closure": {
+      "dense_q8_t16": "Exact same-layout/DPP/non-temporal and paired-Q8T32 ladders plus prior col8 schedule evidence are closed below admission.",
+      "selected_experts": "Large selected-expert payloads did not move; retained Q5 tile8 is already default and Q4/Q6/lm-head siblings are closed.",
+      "shared_experts": "SH3-D1 exact composite regressed and SH2-D1 mixed-T16 producer/consumer composite missed admission; no unscreened composite remains.",
+      "attention": "SH10 short leaf is retained; SH11 direct 4K is divergent and 14.080x slower; SH7 reducer is retained and SH8 producer occupancy is rejected.",
+      "host_boundary": "SH12 removed the only exact redundant device drain; no per-layer D2H/scalar boundary remains."
+    },
+    "fresh_profile_admitted": false,
+    "reason": "Pointer packing changes no device code, dispatch selector, launch count, arithmetic, or role ownership. A trace could remeasure cache-color redistribution but cannot establish a new algorithmic owner, and current wall gains are only 0.154-0.337 ms/token versus SH14 outside the same-source 512 +0.436% result.",
+    "new_owner_above_threshold": null
+  },
+  "memory_audit": {
+    "current_4k_gap_mib": 134.8203125,
+    "screens": {
+      "extend_threshold_16_to_32_mib": {
+        "additional_projected_saving_mib": 40.0,
+        "remaining_gap_mib_if_projection_transfers": 94.8203125,
+        "qualification": "SH16-M1 projection only; adds hot Q/QKV input payloads and is below the 134.820-MiB admission floor."
+      },
+      "replace_selective_with_rejected_global_weight_plus_state_arena": {
+        "additional_measured_saving_mib": 80.0,
+        "remaining_gap_mib": 54.8203125,
+        "qualification": "SH15-M2 measured 292 MiB versus SH16-M2 212 MiB at 4K, but prefill regressed 1.809%; still insufficient alone."
+      },
+      "stack_compact_q4_on_selective": {
+        "additional_exact_bytes_mib": 80.0,
+        "remaining_gap_mib": 54.8203125,
+        "qualification": "Would still miss fork F16 by 54.820 MiB and adds a projected decode cost; explicitly excluded by SH16."
+      },
+      "post_prefill_code_unload": {
+        "maximum_measured_peak_reduction_mib": 0.71875,
+        "remaining_gap_mib": 134.1015625,
+        "qualification": "SH13 exact phase census; cannot affect the already-reached prefill peak materially."
+      }
+    },
+    "single_owner_closes_gap": false,
+    "reason": "Every evidence-backed single extension leaves at least 54.820 MiB. Closing 4K would require stacking rejected/explicitly excluded components, not a new admitted owner."
+  },
+  "decision": {
+    "admit_task_66": false,
+    "reason": "No structurally new decode candidate with >=0.5 ms/token evidence and no single exact 4K memory owner large enough to close 134.820 MiB remains after SH16.",
+    "conditional_task_66": "Close without implementation; do not create transient code.",
+    "objective_complete": false,
+    "next": "Preserve SH16 production. Resume only with new external/source evidence, new hardware/runtime evidence, or a separately approved system-memory scope; fork decode remains 0/4 and 4K memory remains open."
+  }
+}

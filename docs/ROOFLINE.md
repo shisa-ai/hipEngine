@@ -1281,6 +1281,45 @@ Known gotchas for anyone experimenting with multi-stream HIP:
 - `rocprofv3` kernel-trace CSVs separate kernels by queue ID, so you can
   verify pipe spread directly.
 
+### 9.9 Retained-PM4 / Redline Boundary
+
+Hipfire's Redline work, designed and implemented by Kaden Schutt, is useful
+evidence that retained command buffers can beat HipGraph after ordinary HIP
+launches have already been removed from the steady-state host path.  The
+[graft contract](https://github.com/warpfront/hipfire/blob/redline/crates/redline-dispatch/HIPFIRE-GRAFT.md)
+keeps ROCr/HSA resource ownership, records the exact HIP-loaded artifact and
+kernargs, validates a shadow execution, and publishes one vendor AQL packet
+pointing at a retained PM4 indirect buffer.  Its reported gfx1201 Qwen rows are
+`+7.855%` for 0.8B, `+1.073%` for 9B, and `+7.526%` for A3B.  Per-dispatch AQL
+publication was neutral, so the transferable idea is the retained PM4 tape,
+not merely replacing `hipLaunchKernel` with public AQL packets.
+
+That result is not yet a gfx1151 admission result.  Redline's automatic model
+predicate remains deliberately limited to single-GPU gfx12 A3B `.mq4r`, while
+the [gfx1151 experiment branch](https://github.com/warpfront/hipfire/tree/codex/gfx1151-redline-mq4r)
+adds kernel/replay ABI experiments without a published certified PM4 product
+A/B.  Its smallest apparent dispatch-selection change, Q8 attention tile32,
+is an exact-shape experiment behind the Radiowave-fusion gate rather than a
+general Redline transport improvement.
+
+hipEngine therefore does not port or enable retained PM4 on gfx1151 now:
+
+- Current production graph replay improves the matched gfx1151 Q4_K_M wall by
+  only `+1.00%` at 512, `+0.86%` at 4K, and `+0.36%` in the bounded 128K
+  confirmation.  This does not establish the `>~3%` dispatch budget required
+  by `docs/PLAN.md` for another hot-path dispatch lever.
+- The open gfx1151 long-prefill failure is an active, non-retiring AQL queue.
+  Upstream removed the incomplete `enable_lr_compute_wa` workaround, and the
+  captured kernel already runs its replacement gfx1151 VGPR-size correction.
+  Until a later named stack fix or equivalent root-cause result closes that
+  risk, adding another low-level queue/command-buffer path would make diagnosis
+  and fallback less reliable.
+- A future experiment must begin shadow-only: single queue, no production
+  routing, exact artifact/kernarg identity, byte-exact logits/state/KV over at
+  least 15 positions, explicit timeout/fault fallback, and two independent
+  speed samples above `1.03x` versus the existing HipGraph path.  Only then may
+  the four-axis backend registry admit a gfx1151 retained-command transport.
+
 ---
 
 ## 10. Optimization Decision Tree

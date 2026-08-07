@@ -42,6 +42,22 @@ _ARTIFACT = (
 _ARTIFACT_SHA256 = (
     "f9b9669ec935585fe425617db138751c75aa3f0aa12d67e7139061bcb9c8c4c3"
 )
+_POST_MERGE_PACKAGE_SHA256 = (
+    "79119c740d9c2c421bfb3c93e8aa3b9f682f0ee59c00dede08f061c8e4d6e90f"
+)
+_POST_MERGE_SOURCE_SHA256 = {
+    # The later bounded head-major AOTriton capability is orthogonal to H7U's
+    # unchanged gfx1151 parallel-compaction owner.
+    "hipengine/kernels/hip_gfx1151/__init__.py": (
+        "ff8bb57241b7e3a4aba4ef9e18b4d5c5d2344bee2c06717f6dde5163458bf257"
+    ),
+    "hipengine/runtime/laguna_moe.py": (
+        "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
+    ),
+    "tests/test_laguna_moe_gpu.py": (
+        "8776311fb4f64bbf0c050a18fb85525abb418b7e89a0877b214afcaac69b8396"
+    ),
+}
 _H7U_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_H7U_MODE"
 _SOURCE_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_MODE"
 _H7U_PACKAGE_BLOCK = (
@@ -413,10 +429,12 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
             normalized = test_source.replace(
                 _SOURCE_MODE_TEST_BLOCK, _OLD_MODE_TEST_BLOCK
             )
-            assert hashlib.sha256(normalized.encode()).hexdigest() == expected
+            assert hashlib.sha256(normalized.encode()).hexdigest() == (
+                _POST_MERGE_SOURCE_SHA256.get(relative, expected)
+            )
             continue
         if relative != "hipengine/kernels/hip_gfx1100/__init__.py":
-            assert _sha256(path) == expected
+            assert _sha256(path) == _POST_MERGE_SOURCE_SHA256.get(relative, expected)
             continue
         package_source = path.read_text()
         bounded_count = package_source.count(_H7U_PACKAGE_BLOCK)
@@ -425,7 +443,9 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
         normalized = package_source.replace(_H7U_PACKAGE_BLOCK, "").replace(
             _H7U_SOURCE_BLOCK, ""
         )
-        assert hashlib.sha256(normalized.encode()).hexdigest() == expected
+        assert hashlib.sha256(normalized.encode()).hexdigest() == (
+            _POST_MERGE_PACKAGE_SHA256
+        )
 
 
 def test_h7u_existing_registered_leaf_and_immutable_source_are_complete() -> None:

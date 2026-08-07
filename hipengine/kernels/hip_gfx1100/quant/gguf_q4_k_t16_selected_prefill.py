@@ -20,6 +20,12 @@ _SOURCE = Path(__file__).with_name("gguf_q4_k_t16_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_t16_selected_prefill.so"
 _SYMBOL_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"
 _SYMBOL_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out"
+_SYMBOL_QMICRO_BF16 = (
+    "hipengine_gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"
+)
+_SYMBOL_QMICRO_FP16 = (
+    "hipengine_gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out"
+)
 _SYMBOL_SHARED_X_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out"
 )
@@ -78,6 +84,59 @@ def build_gguf_q4_k_t16_selected_prefill(
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
+    )
+
+
+def gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch compact-metadata BF16 selected Q4 gate/up WMMA prefill."""
+
+    _launch(
+        _SYMBOL_QMICRO_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_bf16_bf16_out(
+    *args,
+    **kwargs,
+) -> None:
+    """Registry-spelling alias for compact Q4 qmicro WMMA prefill."""
+
+    gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
+        *args, **kwargs
     )
 
 
@@ -204,6 +263,59 @@ def gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out(
         stream=stream,
         library=library,
         runtime=runtime,
+    )
+
+
+def gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch compact-metadata FP16 selected Q4 gate/up WMMA prefill."""
+
+    _launch(
+        _SYMBOL_QMICRO_FP16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_fp16_fp16_out(
+    *args,
+    **kwargs,
+) -> None:
+    """Registry-spelling alias for compact Q4 qmicro FP16 WMMA prefill."""
+
+    gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out(
+        *args, **kwargs
     )
 
 
@@ -391,6 +503,35 @@ def _check_positive(value: int, name: str) -> None:
 def register_gguf_q4_k_t16_selected_prefill_kernels(*, replace: bool = True) -> None:
     """Register P9.C14 compact selected Q4T16 WMMA prototype kernels."""
 
+    for variant, fn in (
+        (
+            "selected_dual_wmma_prefill_compact32_bf16_bf16_out",
+            gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+        ),
+        (
+            "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+            gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+        ),
+        (
+            "selected_dual_wmma_prefill_compact32_fp16_fp16_out",
+            gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out,
+        ),
+        (
+            "selected_dual_wmma_prefill_compact_fp16_fp16_out",
+            gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_fp16_fp16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                "gguf_q4_k_qmicro_t16_v1",
+                variant,
+            ),
+            fn,
+            replace=replace,
+        )
+
     register(
         KernelKey(
             "hip_gfx1100",
@@ -470,6 +611,10 @@ register_gguf_q4_k_t16_selected_prefill_kernels()
 
 __all__ = [
     "build_gguf_q4_k_t16_selected_prefill",
+    "gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
+    "gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out",
+    "gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_bf16_bf16_out",
+    "gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out",

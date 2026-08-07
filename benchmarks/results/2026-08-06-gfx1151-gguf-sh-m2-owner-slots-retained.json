@@ -1,0 +1,219 @@
+{
+  "kind": "hipengine_gfx1151_gguf_sh_m2_owner_slots_retained",
+  "schema_version": 1,
+  "created_at": "2026-08-05T20:07:05.572962+00:00",
+  "status": "retained_default",
+  "performance_claim": true,
+  "performance_claim_scope": "Independent one-warmup/three-run 512/4K/32K/64K eager A/B with tracked ownership and simultaneous 10-ms whole-GTT. Decode gains are directional; the retained claim is exact >=1 GiB memory saving with <=1% prefill/decode loss.",
+  "correctness_claim": true,
+  "source": {
+    "measured_parent_commit": "d9c66bd4febca97bb86a2d4429c44b3acf3feebf",
+    "branch": "main",
+    "dirty": true,
+    "qualification": "The candidate implementation, tests, harness, and docs were unstaged during the first full matrix. The committed 7b675670a checkpoint below reproduces the exact state, memory, and wall direction; its sole tracked difference is unrelated docs/ROCM-AI.md. Pre-existing untracked benchmark files remain excluded."
+  },
+  "committed_checkpoint": {
+    "commit": "7b675670af1473ead4420cc41a14764ad9f5c024",
+    "prompt_length": 4096,
+    "dedicated_prefill_tok_s": 1409.0349258771405,
+    "owner_slots_prefill_tok_s": 1417.1856702792513,
+    "prefill_delta_pct": 0.5784629076555288,
+    "dedicated_decode_tok_s": 55.87105403692415,
+    "owner_slots_decode_tok_s": 56.022695866111704,
+    "decode_delta_pct": 0.27141394019045456,
+    "tracked_savings_gib": 1.408568412065506,
+    "whole_gtt_savings_gib": 1.404296875,
+    "state_exact": true,
+    "lifecycle_exact": true,
+    "raw_aggregate_sha256": "5345980c1918416fa3f4386848834b3197dd17a3c08caa5b8767811e9dd2ef20",
+    "child_json_sha256": {
+      "dedicated": "9c52d8ff62d0f46b2760d26244b0e8bb785f96687eb837d3c098fd8cf1aa1b7c",
+      "owner_slots": "8baf943d612ddb58226e1cb5bcdd498621933ea05b652923d89f01a59e8fc5fb"
+    },
+    "state_json_sha256": {
+      "dedicated": "4d62279fa78347f373af103cf032ab78fe90459d341570b3e6d478ef7bbf9df9",
+      "owner_slots": "ae0e56a7ca7ac0251e2f2f057befdb425cd914dffcc273138bbc7475c4956e30"
+    }
+  },
+  "hardware": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "software": {
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_first_line": "HIP version: 7.15.0-0000000"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424
+  },
+  "candidate": {
+    "name": "gfx1151 exact route/stage owner-slot scratch coloring",
+    "fixed_rows_minimum": 4096,
+    "owner_slot_count_at_4096_rows": 21,
+    "logical_execution_shapes_changed": false,
+    "admission": "gfx1151 package capability plus exact compact GDN route; diagnostics and rows below 4096 retain dedicated owners",
+    "same_revision_disable_control_at_measurement": "HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS=0",
+    "comparison_seam_removed_after_committed_checkpoint": true
+  },
+  "protocol": {
+    "benchmark": "Independent persistent session per context/mode; one discarded run plus three measured runs.",
+    "whole_gtt": "Whole-device amdgpu GTT sampled every 10 ms.",
+    "correctness": "Byte-exact FP32 logits plus hidden/layer/Conv/GDN/live-BF16-KV fingerprints after prefill and a fixed-input four-transition decode trajectory.",
+    "promotion_rule": "Keep 4096 query rows fixed; require exact state/logits/trajectory and tracked close, <=1% prefill/decode loss, >=1.0 GiB tracked-peak saving, and positive whole-GTT saving at every 4K+ context."
+  },
+  "rows": [
+    {
+      "prompt_length": 512,
+      "dedicated": {
+        "prefill_tok_s": 1363.9846142301815,
+        "decode_tok_s": 53.50008937004181,
+        "tracked_peak_gib": 21.479979306459427,
+        "whole_gtt_peak_gib": 21.916004180908203,
+        "scratch_owner_bytes": 355182664
+      },
+      "owner_slots": {
+        "prefill_tok_s": 1364.4564063549599,
+        "decode_tok_s": 53.48674081176308,
+        "tracked_peak_gib": 21.479979306459427,
+        "whole_gtt_peak_gib": 21.916004180908203,
+        "scratch_owner_bytes": 355182664,
+        "allocation_mode": "dedicated"
+      },
+      "prefill_delta_pct": 0.03458925561595707,
+      "decode_delta_pct": -0.0249505345428648,
+      "tracked_savings_gib": 0.0,
+      "whole_gtt_savings_gib": 0.0,
+      "tracked_close_delta_bytes": 0
+    },
+    {
+      "prompt_length": 4096,
+      "dedicated": {
+        "prefill_tok_s": 1438.4781870068541,
+        "decode_tok_s": 56.09434465714173,
+        "tracked_peak_gib": 23.00736578553915,
+        "whole_gtt_peak_gib": 23.552021026611328,
+        "scratch_owner_bytes": 1885105224
+      },
+      "owner_slots": {
+        "prefill_tok_s": 1445.1846859447055,
+        "decode_tok_s": 56.07078574393061,
+        "tracked_peak_gib": 21.598797373473644,
+        "whole_gtt_peak_gib": 22.147724151611328,
+        "scratch_owner_bytes": 372666408,
+        "allocation_mode": "liveness_aliased"
+      },
+      "prefill_delta_pct": 0.46622180290450504,
+      "decode_delta_pct": -0.04199873152119331,
+      "tracked_savings_gib": 1.408568412065506,
+      "whole_gtt_savings_gib": 1.404296875,
+      "tracked_close_delta_bytes": 0
+    },
+    {
+      "prompt_length": 32768,
+      "dedicated": {
+        "prefill_tok_s": 1150.3153335642758,
+        "decode_tok_s": 46.49003245881811,
+        "tracked_peak_gib": 23.65358927100897,
+        "whole_gtt_peak_gib": 24.204437255859375,
+        "scratch_owner_bytes": 1916529736
+      },
+      "owner_slots": {
+        "prefill_tok_s": 1149.8833089520194,
+        "decode_tok_s": 46.43468666179726,
+        "tracked_peak_gib": 22.245020858943462,
+        "whole_gtt_peak_gib": 22.800140380859375,
+        "scratch_owner_bytes": 404090920,
+        "allocation_mode": "liveness_aliased"
+      },
+      "prefill_delta_pct": -0.03755705932543648,
+      "decode_delta_pct": -0.11904873817819342,
+      "tracked_savings_gib": 1.408568412065506,
+      "whole_gtt_savings_gib": 1.404296875,
+      "tracked_close_delta_bytes": 0
+    },
+    {
+      "prompt_length": 65536,
+      "dedicated": {
+        "prefill_tok_s": 932.9017937468961,
+        "decode_tok_s": 38.99912794225613,
+        "tracked_peak_gib": 24.39213039726019,
+        "whole_gtt_peak_gib": 24.942718505859375,
+        "scratch_owner_bytes": 1952443464
+      },
+      "owner_slots": {
+        "prefill_tok_s": 939.2335771263719,
+        "decode_tok_s": 39.749966426257224,
+        "tracked_peak_gib": 22.983561985194683,
+        "whole_gtt_peak_gib": 23.538421630859375,
+        "scratch_owner_bytes": 440004648,
+        "allocation_mode": "liveness_aliased"
+      },
+      "prefill_delta_pct": 0.678719177293552,
+      "decode_delta_pct": 1.9252699319657063,
+      "tracked_savings_gib": 1.408568412065506,
+      "whole_gtt_savings_gib": 1.404296875,
+      "tracked_close_delta_bytes": 0
+    }
+  ],
+  "order_balanced_4096_confirmation": {
+    "order": ["dedicated", "owner_slots", "owner_slots", "dedicated"],
+    "dedicated_prefill_tok_s": [1434.2167687640074, 1395.5680884747214],
+    "owner_slots_prefill_tok_s": [1445.9562260460748, 1447.5443200769141],
+    "dedicated_prefill_median_tok_s": 1414.8924286193644,
+    "owner_slots_prefill_median_tok_s": 1446.7502730614945,
+    "prefill_delta_pct": 2.251608941975647,
+    "decode_delta_pct": 0.043413515919144,
+    "tracked_savings_gib": 1.408568412065506
+  },
+  "state_comparison": {
+    "passed": true,
+    "contexts": [
+      {"prompt_length": 512, "prefill_logits_exact": true, "prefill_state_exact": true, "trajectory_exact": true, "final_state_exact": true},
+      {"prompt_length": 4096, "prefill_logits_exact": true, "prefill_state_exact": true, "trajectory_exact": true, "final_state_exact": true},
+      {"prompt_length": 32768, "prefill_logits_exact": true, "prefill_state_exact": true, "trajectory_exact": true, "final_state_exact": true},
+      {"prompt_length": 65536, "prefill_logits_exact": true, "prefill_state_exact": true, "trajectory_exact": true, "final_state_exact": true}
+    ]
+  },
+  "decision": {
+    "promotion_passed": true,
+    "selected_default": "owner_slots",
+    "state_exact": true,
+    "lifecycle_exact": true,
+    "execution_shape_fixed": true,
+    "prefill_within_threshold": true,
+    "decode_within_threshold": true,
+    "tracked_memory_gate_passed": true,
+    "whole_gtt_direction_passed": true,
+    "conclusion": "The exact fixed-shape owner slots pass state, lifecycle, wall, tracked-memory, and same-direction whole-GTT gates."
+  },
+  "rejected_topologies": [
+    {"name": "single contiguous arena, 64 KiB initial color", "tracked_savings_gib": 1.4513, "prefill_delta_pct": -1.221, "decision": "rejected_wall"},
+    {"name": "single contiguous arena, 16 KiB color, both orders", "tracked_savings_gib": 1.4513, "prefill_delta_pct": -1.25, "candidate_first_delta_pct": -2.064, "decision": "rejected_wall"},
+    {"name": "attention/common split arenas, D-L-L-D", "tracked_savings_gib": 1.199950248003006, "prefill_delta_pct": -1.0557152706753947, "decode_delta_pct": 0.2083033330406936, "decision": "rejected_wall"}
+  ],
+  "validation": {
+    "focused_tests": "35 passed: scratch liveness, SH-M2 screen, gfx1151 backend, and scratch-census telemetry node",
+    "py_compile": true,
+    "diff_check": true
+  },
+  "raw": {
+    "aggregate_json": "/tmp/hipengine-sh-m2-owner-slots-full-artifact.json",
+    "aggregate_sha256": "193ed1301ee3f843d1008b30b16afa42592c3a1ea7a54d531332f1a564923c4d",
+    "child_json_sha256": {
+      "512": {"dedicated": "a371889808cadbbc95fe462ed3fc2ee898d9d24b8aa5e3fcd14d2365ab76704e", "owner_slots": "8125bda1b495020a9b1413b31a4c3226da687f160e211c6929dd4ab477fa9aa7"},
+      "4096": {"dedicated": "09442334ed00116fe417466bde07861dbff87c7e7535d9441201b5db291a6b0b", "owner_slots": "7645000777100fa33820f8ada565b39e92974c1974b41a7b63d297a728d3705f"},
+      "32768": {"dedicated": "3cd1b755b7989befdb28776e5ee3682f0eaa6da9cb42a73e7a46b12feaefaee8", "owner_slots": "744ce2fbcb83c35ef33a215c8665c8570d4bdb4c56bfb24eb8c40b06af04db51"},
+      "65536": {"dedicated": "3c97f57bd82281622cd442f4ecfe73cb3a774f379c7b23d8324d1a0b5ac363ad", "owner_slots": "23cf75d46452c5a5039b8ff86d683f8e942e9aa41225964fc8b12753ab2d2dee"}
+    },
+    "state_json_sha256": {
+      "dedicated": "1eee7961656900a3f21a8f5549d32acab4a5a14a68e9d26342670541f225a794",
+      "owner_slots": "f7cbdf0b889a9d623446b39750d3bb0592a3456a976cfffbd5329b6a9927ec46"
+    }
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. /home/lhl/miniforge3/envs/therock/bin/python3 -u scripts/gguf_sh_m2_screen.py --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --workloads 512 4096 32768 65536 --expected-token-id 9707 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --state-decode-steps 4 --gtt-interval-ms 10 --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-sh-m2-owner-slots-full --out /tmp/hipengine-sh-m2-owner-slots-full-artifact.json"
+}

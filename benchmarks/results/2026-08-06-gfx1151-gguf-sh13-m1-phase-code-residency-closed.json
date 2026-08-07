@@ -1,0 +1,264 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh13_m1_phase_code_residency_closed",
+  "date": "2026-08-06",
+  "status": "closed_4k_precondition_failed",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "b9d38e088d938eac535d01d0cd8726521309a002",
+    "tracked_clean": true,
+    "untracked_artifacts_ignored": true,
+    "prior_sh2_m2_artifact": {
+      "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json",
+      "sha256": "9604f2abe034967a213e3e7ee2677a1020d40f4efac9034ce96ba8d5d2848e29"
+    },
+    "current_memory_artifact": {
+      "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json",
+      "sha256": "8e0a0aa6427a1bdbebf3c21c46391730fead947562c9c0cef38a45a010ad7797"
+    },
+    "pinned_fork_artifact": {
+      "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json",
+      "sha256": "9b33a8c96313e5fd77e79e4cd1180dbd0375e055cc945943e6fa580b4f5536e1"
+    },
+    "sh12_artifact": {
+      "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json",
+      "sha256": "a2c8a0b3e460c87517c8527ad036d7f850a78479f12755bc0f2c20766ce2a417"
+    }
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-device amdgpu GTT",
+    "gtt_poll_ms": 1.0,
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "question": "At 4K first, can safely deferred or unloaded phase-exclusive code objects/libraries close the current 0.338692-GiB fork-F16 whole-GTT gap, and does peak timing permit that reclamation?",
+  "method": {
+    "protocol": "One right-sized cached-only private-c1 eager 4K/128 process, no graph, host embedding retained, one measured run, one warmup decode token, 1-ms whole-device GTT polling across load/prefill/warmup/decode/close.",
+    "code_residency": "At every phase boundary, hsa_ven_amd_loader_query_segment_descriptors enumerates the complete self-consistent loaded HSA segment set with executable, agent, source mapping, and exact loaded segment bytes.",
+    "library_inventory": "The same boundaries inventory every /proc/self/maps shared-object virtual span, every hipEngine JIT mapping, and AOTriton. Virtual mapped bytes are not claimed as GTT; their complete-set sum is used only as an intentionally impossible upper bound.",
+    "no_unload_probe": "No dlclose, executable destruction, lazy loader, compiler child, or production source change is allowed unless the safe 4K precondition passes.",
+    "collector_correction": "The first completed process captured the exact total-code bound but one parent alias omitted inner prefill/decode markers. The corrected process reran the same sub-five-minute diagnostic with both aliases instrumented; both processes report the same 3.496853-MiB total code bound and 21.499428-GiB peak."
+  },
+  "workload": {
+    "prompt_tokens": 4096,
+    "decode_tokens": 128,
+    "max_sequence_length": 4352,
+    "prefill_tok_s_diagnostic": 1408.5885048156608,
+    "decode_tok_s_diagnostic": 55.479476726512345,
+    "final_token_id": 9707,
+    "finite_final_logits": true,
+    "tracked_peak_gib": 20.951031260192394,
+    "tracked_after_close_bytes": 0,
+    "qualification": "Timing proves the process is healthy but is not a performance claim or topline replacement."
+  },
+  "fork_gap": {
+    "hipengine_whole_gtt_peak_gib": 21.499427795410156,
+    "pinned_fork_f16_whole_gtt_peak_gib": 21.160736083984375,
+    "gap_bytes": 363667456,
+    "gap_mib": 346.8203125,
+    "gap_gib": 0.33869171142578125,
+    "qualification": "SH7-SH12 do not change 4K memory ownership; the current phase run exactly reproduces the SH6 4K whole-GTT peak."
+  },
+  "phase_gtt": {
+    "baseline_before_hip": {
+      "start_bytes": 18677760,
+      "peak_bytes": 22913024,
+      "peak_gib": 0.02133941650390625,
+      "seconds": 0.022761134
+    },
+    "load": {
+      "start_bytes": 22913024,
+      "end_and_peak_bytes": 22976331776,
+      "peak_gib": 21.39837646484375,
+      "seconds": 48.789705251,
+      "samples": 47418
+    },
+    "prefill": {
+      "start_bytes": 22976331776,
+      "end_and_peak_bytes": 23084081152,
+      "peak_gib": 21.49872589111328,
+      "seconds": 2.910832977,
+      "samples": 2851
+    },
+    "warmup_decode": {
+      "start_bytes": 23084081152,
+      "end_and_peak_bytes": 23084834816,
+      "peak_gib": 21.499427795410156,
+      "seconds": 0.026348245,
+      "samples": 24
+    },
+    "measured_decode": {
+      "start_bytes": 23084834816,
+      "end_and_peak_bytes": 23084834816,
+      "peak_gib": 21.499427795410156,
+      "seconds": 2.310702424,
+      "samples": 2229
+    },
+    "after_close": {
+      "bytes": 282501120,
+      "gib": 0.26309967041015625,
+      "delta_from_pre_hip_baseline_gib": 0.24570465087890625
+    },
+    "peak_timing_conclusion": "Prefill reaches within 0.71875 MiB of the request peak. The final 0.71875 MiB arrives with naturally lazy warmup-decode code and measured decode adds no GTT. Unloading prefill-only state after prefill therefore cannot lower the request high-water by more than 0.71875 MiB even under an unlimited-reclamation assumption."
+  },
+  "hsa_loader_snapshots": {
+    "before_load": {
+      "code_objects": 0,
+      "loaded_segment_bytes": 0
+    },
+    "after_load": {
+      "code_objects": 1,
+      "loaded_segment_bytes": 53248,
+      "loaded_segment_mib": 0.05078125
+    },
+    "after_prefill": {
+      "code_objects": 20,
+      "loaded_segment_bytes": 2915426,
+      "loaded_segment_mib": 2.780366897583008
+    },
+    "after_warmup_decode": {
+      "code_objects": 22,
+      "loaded_segment_bytes": 3666716,
+      "loaded_segment_mib": 3.4968528747558594
+    },
+    "after_measured_decode": {
+      "code_objects": 22,
+      "loaded_segment_bytes": 3666716,
+      "loaded_segment_mib": 3.4968528747558594
+    },
+    "after_session_close": {
+      "code_objects": 22,
+      "loaded_segment_bytes": 3666716,
+      "loaded_segment_mib": 3.4968528747558594
+    }
+  },
+  "hsa_first_use": {
+    "load_bytes": 53248,
+    "load_mib": 0.05078125,
+    "prefill_bytes": 2862178,
+    "prefill_mib": 2.729585647583008,
+    "warmup_decode_bytes": 751290,
+    "warmup_decode_mib": 0.7164859771728516,
+    "measured_decode_bytes": 0,
+    "measured_decode_mib": 0.0,
+    "interpretation": "Decode-only Q8T16 GEMV objects are already naturally deferred until warmup. Measured decode loads nothing. Most prefill-first objects are also active decode primitives; even all code objects together miss the gap by two orders of magnitude."
+  },
+  "hsa_loaded_segments_by_family_bytes": {
+    "anonymous_heap": 131072,
+    "cast": 36641,
+    "dense_gemv": 56993,
+    "gguf_k_t16_selected_prefill": 297185,
+    "gguf_ops": 79121,
+    "gguf_q4_k_t16_selected_prefill": 279441,
+    "gguf_q6_k_t16_gemv": 208465,
+    "gguf_q8_0_t16_gemv": 162481,
+    "gguf_q8_0_t16_prefill": 390449,
+    "gguf_t16_selected_gemv": 588809,
+    "lm_head": 51009,
+    "paro_combine": 129905,
+    "paro_silu": 42001,
+    "qwen35_linear_attn_conv": 79297,
+    "qwen35_linear_attn_gdn": 363089,
+    "qwen35_moe_group_scatter": 51097,
+    "qwen35_paged_attn_decode": 395817,
+    "qwen35_paged_kv_write": 96209,
+    "qwen35_rotary": 48529,
+    "qwen35_router": 125961,
+    "runtime_state": 53145
+  },
+  "mapped_library_inventory": {
+    "before_load": {
+      "all_shared_objects": 61,
+      "all_virtual_mapped_bytes": 324431872,
+      "hipengine_jit_objects": 0,
+      "hipengine_jit_virtual_mapped_bytes": 0
+    },
+    "after_load": {
+      "all_shared_objects": 63,
+      "all_virtual_mapped_bytes": 324595712,
+      "hipengine_jit_objects": 2,
+      "hipengine_jit_virtual_mapped_bytes": 163840
+    },
+    "after_prefill": {
+      "all_shared_objects": 81,
+      "all_virtual_mapped_bytes": 345743360,
+      "hipengine_jit_objects": 19,
+      "hipengine_jit_virtual_mapped_bytes": 3567616,
+      "aotriton_mapped_bytes": 17784832
+    },
+    "after_warmup_and_decode": {
+      "all_shared_objects": 83,
+      "all_virtual_mapped_bytes": 346624000,
+      "all_virtual_mapped_mib": 330.56640625,
+      "hipengine_jit_objects": 21,
+      "hipengine_jit_virtual_mapped_bytes": 4448256,
+      "aotriton_mapped_bytes": 17784832
+    },
+    "after_session_close": {
+      "all_shared_objects": 83,
+      "all_virtual_mapped_bytes": 346624000,
+      "hipengine_jit_objects": 21
+    },
+    "qualification": "These are host virtual spans, not resident GTT and not safely unloadable bytes. Counting every span plus every HSA segment deliberately double-counts source/code and includes active Python/ROCm libraries; it is only an impossible complete code-and-file-map bound. Any dynamically allocated state created by prefill/decode is separately contained by the measured 103.476563-MiB post-load GTT growth."
+  },
+  "bounds": {
+    "all_untracked_peak_residual_bytes": 570158536,
+    "all_untracked_peak_residual_gib": 0.531001515686512,
+    "non_hsa_code_peak_residual_bytes": 566491820,
+    "non_hsa_code_peak_residual_gib": 0.5275866203010082,
+    "postclose_gtt_delta_bytes": 263823360,
+    "postclose_gtt_delta_gib": 0.24570465087890625,
+    "all_hsa_code_bytes": 3666716,
+    "all_hsa_code_mib": 3.4968528747558594,
+    "hsa_code_shortfall_to_gap_bytes": 360000740,
+    "hsa_code_shortfall_to_gap_mib": 343.32345962524414,
+    "all_shared_object_virtual_spans_plus_all_hsa_code_impossible_upper_bound_bytes": 350290716,
+    "all_shared_object_virtual_spans_plus_all_hsa_code_impossible_upper_bound_mib": 334.06325912475586,
+    "impossible_upper_bound_shortfall_to_gap_bytes": 13376740,
+    "impossible_upper_bound_shortfall_to_gap_mib": 12.75705337524414,
+    "load_stage_new_jit_virtual_mappings_plus_hsa_code_bytes": 217088,
+    "load_stage_new_jit_virtual_mappings_plus_hsa_code_mib": 0.20703125,
+    "postload_gtt_growth_through_request_peak_bytes": 108503040,
+    "postload_gtt_growth_through_request_peak_mib": 103.4765625,
+    "postload_gtt_growth_shortfall_to_gap_bytes": 255164416,
+    "postload_gtt_growth_shortfall_to_gap_mib": 243.34375,
+    "conclusion": "The 0.531-GiB untracked residual is dominated by active runtime, allocator/page-table, and model-mapping state rather than code. Load introduces only two still-active JIT mappings plus 0.051 MiB of HSA code. All later first-use code, AOTriton/cache state, and other dynamic library growth is contained by the 103.477-MiB post-load GTT rise, itself 243.344 MiB below the gap. All code is only 3.497 MiB."
+  },
+  "acceptance": {
+    "four_k_first": true,
+    "phase_resolved_gtt": true,
+    "exact_hsa_code_segment_inventory": true,
+    "loaded_library_inventory": true,
+    "current_peak_reproduced": true,
+    "healthy_token_and_lifecycle": true,
+    "eligible_subset_exceeds_gap": false,
+    "peak_timing_permits_gap_closure": false,
+    "implementation_admitted": false,
+    "continue_32k_64k": false
+  },
+  "raw": {
+    "instrument_wrapper_path": "/tmp/sh13_phase_wrapper.py",
+    "instrument_wrapper_sha256": "2fbb6ab7f0cb5309029d8ed8adcf5e1329f49ed87e7e24f1a15c33b36674bd53",
+    "corrected_phase_path": "/tmp/hipengine-sh13-m1/phase-raw.json",
+    "corrected_phase_sha256": "ae28759d0a93f17db8975eb8e011d79db0aad21b1f85ad46634c86d9edcb63ac",
+    "corrected_run_path": "/tmp/hipengine-sh13-m1/run.json",
+    "corrected_run_sha256": "7008c3b9d26c2a4a1c28d07d0f6a22ecfc3c5b3feb340fbdf4b8424ee1d4ac6a",
+    "summary_path": "/tmp/hipengine-sh13-m1/summary.json",
+    "summary_sha256": "45e0ebaa343c326aebc1dd934df2362d9a56ee9043f862ccd4d69091a091530d",
+    "first_total_bound_phase_sha256": "49ad7cf14c48deafea7ea82515df76b28a896e3ba574d824d0c27d2fc9d86031",
+    "first_total_bound_run_sha256": "3f0930960533bf10cd103c96da6b88fc6ba530f259f7d31b12c25daba662dfd2"
+  },
+  "decision": "Close SH13-M1 at the 4K precondition with no production change, no dlclose/lazy-loader experiment, and no 32K/64K continuation. Execute mandatory SH14-C1; load adds only active lm-head/runtime-state mappings, and all post-load code/cache/dynamic GTT growth is 103.477 MiB versus a 346.820-MiB gap. Treat the remaining residual as runtime/page-table/active-mapping overhead, not an evidence-backed code-unload target."
+}

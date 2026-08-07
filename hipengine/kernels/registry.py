@@ -6,7 +6,7 @@ through this registry instead of branching on backend or quant names.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -182,5 +182,22 @@ def clear_registry_for_tests() -> None:
 
     global _GENERATION
     _KERNELS.clear()
+    _RESOLVE_CACHE.clear()
+    _GENERATION += 1
+
+
+def restore_registry_for_tests(kernels: Mapping[KernelKey, Kernel]) -> None:
+    """Replace the registry and invalidate every derived lookup.
+
+    Pytest snapshots import-time registrations and restores them after tests
+    that deliberately clear the process-global table.  Restoring only
+    ``_KERNELS`` leaves cached fallback resolutions valid even when a more
+    specific kernel has reappeared, so the test-only restore must have the
+    same cache/generation semantics as every other registry mutation.
+    """
+
+    global _GENERATION
+    _KERNELS.clear()
+    _KERNELS.update(kernels)
     _RESOLVE_CACHE.clear()
     _GENERATION += 1

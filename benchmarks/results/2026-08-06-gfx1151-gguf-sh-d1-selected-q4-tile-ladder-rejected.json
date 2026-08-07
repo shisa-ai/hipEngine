@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh_d1_selected_q4_tile_ladder_rejected",
+  "created_at": "2026-08-06T02:36:00+09:00",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject exact Qwen c1/top8 selected-Q4 tile8 and tile4 ownership; remove both candidates and retain the production local128/16-column fused-SiLU Q4T16 owner.",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1",
+    "memory_domain": "GTT/UMA"
+  },
+  "software": {
+    "parent_commit": "05b2c08a362d307fc4a92682754f21d6678ddd93",
+    "hip": "7.15.0-0000000",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "candidate_provenance": "dirty tracked candidate over a clean committed parent; all candidate source is removed before publication"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "target": {
+    "role": "selected expert Q4_K gate/up plus fused SiLU",
+    "measured_role_ms_per_token": [
+      2.317,
+      2.309,
+      2.319,
+      2.311
+    ],
+    "calls_per_token": 40,
+    "shape": {
+      "x_rows": 1,
+      "selected_rows": 8,
+      "experts_in_leaf": 8,
+      "in_features": 2048,
+      "out_features": 512
+    },
+    "control": "local128, resident Q4T16, 16 gate plus 16 up accumulators, BF16 round-trip, fused SiLU",
+    "candidates": [
+      "local128 tile8 with adjacent packed-Q and coefficient loads",
+      "local128 tile4 with adjacent packed-Q and coefficient loads"
+    ],
+    "format_or_residency_change": false
+  },
+  "correctness": {
+    "red": "Targeted collection failed because the Qwen tile wrapper did not exist.",
+    "green": "Both candidates resolved through four-axis keys, matched production BF16 bytes, and passed the CPU Q4_K oracle at the full Qwen c1/top8/K2048/N512 shape.",
+    "control_sha256": "509b52b3a3eb06407fcf6e18fb8d6554fea69ee28fcd491d14bab65f8bef1b25",
+    "tile8_sha256": "509b52b3a3eb06407fcf6e18fb8d6554fea69ee28fcd491d14bab65f8bef1b25",
+    "tile4_sha256": "509b52b3a3eb06407fcf6e18fb8d6554fea69ee28fcd491d14bab65f8bef1b25",
+    "bf16_mismatches": 0
+  },
+  "protocol": {
+    "timing": "counterbalanced HIP events",
+    "warmups_per_variant": 80,
+    "samples_per_variant": 3,
+    "launches_per_sample": 400,
+    "orders": [
+      "control,candidate",
+      "candidate,control",
+      "control,candidate"
+    ],
+    "selected_matrix_bytes": 9699328,
+    "pool_copies": 7,
+    "pool_bytes": 67895296,
+    "mall_assumption_bytes": 33554432,
+    "command_template": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 scripts/gguf_q4_k_t16_selected_tile8_microbench.py --candidate <tile8|tile4> --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --warmups 80 --samples 3 --burst 400 --output <raw.json>",
+    "gate": "Continue only at >=1.15x leaf speedup or >=0.5 ms/token projected saving, with exact output and zero scratch/spill."
+  },
+  "results": {
+    "tile8": {
+      "control_us": [
+        57.824110984802246,
+        57.77125835418701,
+        58.23516845703125
+      ],
+      "candidate_us": [
+        50.406551361083984,
+        50.71155071258545,
+        50.42924880981445
+      ],
+      "control_median_us": 57.824110984802246,
+      "candidate_median_us": 50.42924880981445,
+      "speedup": 1.1466383566980403,
+      "saving_us_per_call": 7.394862174987793,
+      "projected_saving_ms_per_token": 0.2957944869995117,
+      "gate_pass": false,
+      "raw_sha256": "1e5181fa1b9ceab5b3ceb4a1af23588991345b2afc73c76c6fa93104b74a01d7"
+    },
+    "tile4": {
+      "control_us": [
+        57.715277671813965,
+        57.75390625,
+        57.79900074005127
+      ],
+      "candidate_us": [
+        52.9299259185791,
+        52.91464805603027,
+        52.752747535705566
+      ],
+      "control_median_us": 57.75390625,
+      "candidate_median_us": 52.91464805603027,
+      "speedup": 1.0914540372421173,
+      "saving_us_per_call": 4.839258193969727,
+      "projected_saving_ms_per_token": 0.19357032775878907,
+      "gate_pass": false,
+      "raw_sha256": "50358be6871ec76ab689f97173de57673d533c086f73f0538b38d14efbce37fb"
+    }
+  },
+  "cache_only_trace": {
+    "compiler_spawned_under_profiler": false,
+    "control": {
+      "kernel": "q4_k_t16_selected_dual_silu_direct_gemv_kernel<unsigned short>",
+      "local_size_x": 128,
+      "grid_size_x": 4096,
+      "grid_size_y": 8,
+      "vgpr": 200,
+      "sgpr": 128,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0
+    },
+    "tile8": {
+      "kernel": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short,true,true,true,true,8,2048,512,8>",
+      "local_size_x": 128,
+      "grid_size_x": 8192,
+      "grid_size_y": 8,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "trace_sha256": "4de73137ac5a064d23f9edb2091eab36c11edf5bc39555b490697dc8c3aed4e1"
+    },
+    "tile4": {
+      "kernel": "q4_k_t16_selected_dual_natural_tile8_gemv_kernel<unsigned short,true,true,true,true,8,2048,512,4>",
+      "local_size_x": 128,
+      "grid_size_x": 16384,
+      "grid_size_y": 8,
+      "vgpr": 40,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "trace_sha256": "71645b5c77ed7eb750df8d9dff6ff955b58a4b258837a7ff37218dce77ef8847"
+    }
+  },
+  "lineage": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "status": "blocked_before_diff",
+    "reason": "missing optional external checkout /home/lhl/amd-gpu-tuning/reference/atlas",
+    "candidate_source": "in-tree design; no external device body copied"
+  },
+  "limitations": [
+    "Synthetic values are used for the immutable leaf, but it charges the exact full selected-matrix byte count and the full production shape; CPU and production-byte oracles are independent of values.",
+    "No full-model run is permitted because both candidates miss the predeclared continuation gate.",
+    "The candidate code, wrappers, registry keys, tests, and microbench are removed before publication."
+  ],
+  "next": "Keep production selected Q4T16 unchanged and continue SH-D1 at the measured Q5/Q6 selected-down role; do not stop the overall SH campaign."
+}
