@@ -92,6 +92,8 @@ class MoonshineCudaBatchEncoderRuntime:
         device: Device | None = None,
         runtime: CudaRuntime | None = None,
         owns_weights: bool = True,
+        projection_route: str = "custom",
+        long_bucket_gemm_rows: int = 768,
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -99,6 +101,12 @@ class MoonshineCudaBatchEncoderRuntime:
             raise ValueError("max_batch must be a positive integer")
         if max_batch <= 0:
             raise ValueError("max_batch must be a positive integer")
+        if projection_route not in ("custom", "cublaslt"):
+            raise ValueError("projection_route must be 'custom' or 'cublaslt'")
+        if isinstance(long_bucket_gemm_rows, bool) or not isinstance(long_bucket_gemm_rows, int):
+            raise ValueError("long_bucket_gemm_rows must be a positive integer")
+        if long_bucket_gemm_rows <= 0:
+            raise ValueError("long_bucket_gemm_rows must be a positive integer")
         self.runtime = runtime or get_cuda_runtime()
         self.device = device or Device("cuda", 0)
         self.loaded_model = loaded_model
@@ -107,10 +115,15 @@ class MoonshineCudaBatchEncoderRuntime:
         self.owns_weights = bool(owns_weights)
         self.max_batch = int(max_batch)
         self.audio_samples = int(audio_samples)
+        self.projection_route = str(projection_route)
+        self.long_bucket_gemm_rows = int(long_bucket_gemm_rows)
         self.encoder_frames = moonshine_encoder_frames_from_audio(self.audio_samples)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
         self.stream = 0
         self.encoder_libraries: MoonshineCudaEncoderLibraries | None = None
+        self.cublaslt: object | None = None
+        self._lt_problems: dict | None = None
+        self._lt_epilogue_library: object | None = None
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
         self._input_uploaded = False
@@ -167,6 +180,9 @@ class MoonshineCudaBatchEncoderRuntime:
         reserve("mlp_gelu", (batch, frames, intermediate), DType.FP16)
         reserve("encoder_output", (batch, frames, hidden), DType.FP16)
         reserve("encoder_attention_mask", (batch, frames), DType.INT32)
+        if self.projection_route == "cublaslt":
+            # FP32 GEMM boundary for the fc1/fc2 bias/residual epilogues.
+            reserve("gemm_f32", (batch, frames, intermediate), DType.FP32)
 
     def _initialize_workspace(self) -> None:
         assert self.spec is not None
@@ -225,7 +241,144 @@ class MoonshineCudaBatchEncoderRuntime:
                 projection=build_moonshine_projection(**arguments),
             )
         self.encoder_libraries = libraries
+        self._prepare_long_bucket_gemm()
+        if self._use_cublaslt():
+            from hipengine.kernels.cuda_sm120a.encoder.moonshine_encoder_lt import (
+                build_moonshine_encoder_lt,
+            )
+
+            self._lt_epilogue_library = build_moonshine_encoder_lt(load=True)
         return libraries
+
+    def _use_cublaslt(self) -> bool:
+        """True when the long-bucket cuBLASLt route is armed for this batch."""
+
+        return (
+            self.projection_route == "cublaslt"
+            and self.cublaslt is not None
+            and self.max_batch * self.encoder_frames >= self.long_bucket_gemm_rows
+        )
+
+    def _prepare_long_bucket_gemm(self) -> None:
+        """Create the per-shape cuBLASLt problems (outside any timed region)."""
+
+        if self.projection_route != "cublaslt":
+            return
+        if self.spec is None or self.weights is None:
+            return
+        rows = self.max_batch * self.encoder_frames
+        if rows < self.long_bucket_gemm_rows:
+            return
+        from hipengine.core.cublaslt import CUDA_R_16F, CUDA_R_32F, CublasLt
+
+        owner = CublasLt(runtime=self.runtime)
+        hidden = self.spec.hidden_size
+        intermediate = self.spec.intermediate_size
+        try:
+            problems = {
+                "qkv": [
+                    owner.problem(rows, hidden, hidden, output_dtype=CUDA_R_16F)
+                    for _ in range(3)
+                ],
+                "output": owner.problem(
+                    rows, hidden, hidden, output_dtype=CUDA_R_16F
+                ),
+                "fc1": owner.problem(
+                    rows, hidden, intermediate, output_dtype=CUDA_R_32F
+                ),
+                "fc2": owner.problem(
+                    rows, intermediate, hidden, output_dtype=CUDA_R_32F
+                ),
+            }
+        except Exception:
+            owner.close()
+            raise
+        self.cublaslt = owner
+        self._lt_problems = problems
+
+    def _enqueue_lt_qkv(self, *, layer: int, stream: int) -> None:
+        """Enqueue the QKV projections as three FP16 cuBLASLt GEMMs."""
+
+        if self.spec is None or self.weights is None or self.cublaslt is None:
+            raise RuntimeError("Moonshine batch encoder runtime is closed")
+        problems = self._lt_problems["qkv"]
+        weight = self.weights
+        prefix = f"model.encoder.layers.{layer}"
+        for index, name in enumerate(("q_proj", "k_proj", "v_proj")):
+            problems[index].launch(
+                self.tensor("normalized").ptr,
+                weight[f"{prefix}.self_attn.{name}.weight"].ptr,
+                self.tensor(("query_row", "key_row", "value_row")[index]).ptr,
+                stream=stream,
+            )
+
+    def _enqueue_lt_output(self, *, layer: int, stream: int) -> None:
+        """Enqueue the output projection as one FP16 cuBLASLt GEMM."""
+
+        if self.spec is None or self.weights is None or self.cublaslt is None:
+            raise RuntimeError("Moonshine batch encoder runtime is closed")
+        prefix = f"model.encoder.layers.{layer}"
+        self._lt_problems["output"].launch(
+            self.tensor("attention").ptr,
+            self.weights[f"{prefix}.self_attn.o_proj.weight"].ptr,
+            self.tensor("projection").ptr,
+            stream=stream,
+        )
+
+    def _enqueue_lt_fc1(self, *, layer: int, stream: int, rows: int) -> None:
+        """Enqueue fc1 as an FP32 GEMM + the retained FP16 bias epilogue."""
+
+        if self.spec is None or self.weights is None or self.cublaslt is None:
+            raise RuntimeError("Moonshine batch encoder runtime is closed")
+        from hipengine.kernels.cuda_sm120a.encoder.moonshine_encoder_lt import (
+            moonshine_f16_bias_round_fp32,
+        )
+
+        prefix = f"model.encoder.layers.{layer}"
+        intermediate = self.spec.intermediate_size
+        self._lt_problems["fc1"].launch(
+            self.tensor("normalized").ptr,
+            self.weights[f"{prefix}.mlp.fc1.weight"].ptr,
+            self.tensor("gemm_f32").ptr,
+            stream=stream,
+        )
+        moonshine_f16_bias_round_fp32(
+            self.tensor("gemm_f32").ptr,
+            self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
+            self.tensor("mlp_fc1").ptr,
+            rows,
+            intermediate,
+            library=self._lt_epilogue_library,
+            stream=stream,
+        )
+
+    def _enqueue_lt_fc2(self, *, layer: int, stream: int, rows: int) -> None:
+        """Enqueue fc2 as an FP32 GEMM + the retained FP16 bias/residual epilogue."""
+
+        if self.spec is None or self.weights is None or self.cublaslt is None:
+            raise RuntimeError("Moonshine batch encoder runtime is closed")
+        from hipengine.kernels.cuda_sm120a.encoder.moonshine_encoder_lt import (
+            moonshine_f16_bias_residual_round_fp32,
+        )
+
+        prefix = f"model.encoder.layers.{layer}"
+        hidden = self.spec.hidden_size
+        self._lt_problems["fc2"].launch(
+            self.tensor("mlp_gelu").ptr,
+            self.weights[f"{prefix}.mlp.fc2.weight"].ptr,
+            self.tensor("gemm_f32").ptr,
+            stream=stream,
+        )
+        moonshine_f16_bias_residual_round_fp32(
+            self.tensor("gemm_f32").ptr,
+            self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
+            self.tensor("hidden").ptr,
+            self.tensor("hidden").ptr,
+            rows,
+            hidden,
+            library=self._lt_epilogue_library,
+            stream=stream,
+        )
 
     def tensor(self, name: str) -> Tensor:
         return self.workspace.allocation(name).tensor
@@ -458,6 +611,7 @@ class MoonshineCudaBatchEncoderRuntime:
         sin = self.tensor("rope_sin").ptr
         scale = head_dim**-0.5
         total_rows = batch * frames
+        use_long_bucket_gemm = self._use_cublaslt()
         for layer in range(spec.encoder_layers):
             prefix = f"model.encoder.layers.{layer}"
             moonshine_layernorm_fp16(
@@ -470,22 +624,25 @@ class MoonshineCudaBatchEncoderRuntime:
                 library=libraries.layernorm,
                 **common,
             )
-            moonshine_f16_projection_triple(
-                self.tensor("normalized").ptr,
-                self.weights[f"{prefix}.self_attn.q_proj.weight"].ptr,
-                self.weights[f"{prefix}.self_attn.k_proj.weight"].ptr,
-                self.weights[f"{prefix}.self_attn.v_proj.weight"].ptr,
-                self.tensor("query_row").ptr,
-                self.tensor("key_row").ptr,
-                self.tensor("value_row").ptr,
-                total_rows,
-                hidden,
-                hidden,
-                hidden,
-                hidden,
-                library=libraries.projection,
-                **common,
-            )
+            if use_long_bucket_gemm:
+                self._enqueue_lt_qkv(layer=layer, stream=stream)
+            else:
+                moonshine_f16_projection_triple(
+                    self.tensor("normalized").ptr,
+                    self.weights[f"{prefix}.self_attn.q_proj.weight"].ptr,
+                    self.weights[f"{prefix}.self_attn.k_proj.weight"].ptr,
+                    self.weights[f"{prefix}.self_attn.v_proj.weight"].ptr,
+                    self.tensor("query_row").ptr,
+                    self.tensor("key_row").ptr,
+                    self.tensor("value_row").ptr,
+                    total_rows,
+                    hidden,
+                    hidden,
+                    hidden,
+                    hidden,
+                    library=libraries.projection,
+                    **common,
+                )
             for row_name, head_name in (
                 ("query_row", "query"),
                 ("key_row", "key"),
@@ -531,16 +688,19 @@ class MoonshineCudaBatchEncoderRuntime:
                 library=libraries.encoder,
                 **common,
             )
-            moonshine_f16_projection(
-                self.tensor("attention").ptr,
-                self.weights[f"{prefix}.self_attn.o_proj.weight"].ptr,
-                self.tensor("projection").ptr,
-                total_rows,
-                hidden,
-                hidden,
-                library=libraries.projection,
-                **common,
-            )
+            if use_long_bucket_gemm:
+                self._enqueue_lt_output(layer=layer, stream=stream)
+            else:
+                moonshine_f16_projection(
+                    self.tensor("attention").ptr,
+                    self.weights[f"{prefix}.self_attn.o_proj.weight"].ptr,
+                    self.tensor("projection").ptr,
+                    total_rows,
+                    hidden,
+                    hidden,
+                    library=libraries.projection,
+                    **common,
+                )
             moonshine_residual_layernorm_fp16(
                 self.tensor("hidden").ptr,
                 self.tensor("projection").ptr,
@@ -553,17 +713,20 @@ class MoonshineCudaBatchEncoderRuntime:
                 library=libraries.layernorm,
                 **common,
             )
-            moonshine_f16_projection_bias(
-                self.tensor("normalized").ptr,
-                self.weights[f"{prefix}.mlp.fc1.weight"].ptr,
-                self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
-                self.tensor("mlp_fc1").ptr,
-                total_rows,
-                hidden,
-                intermediate,
-                library=libraries.projection,
-                **common,
-            )
+            if use_long_bucket_gemm:
+                self._enqueue_lt_fc1(layer=layer, stream=stream, rows=total_rows)
+            else:
+                moonshine_f16_projection_bias(
+                    self.tensor("normalized").ptr,
+                    self.weights[f"{prefix}.mlp.fc1.weight"].ptr,
+                    self.weights[f"{prefix}.mlp.fc1.bias"].ptr,
+                    self.tensor("mlp_fc1").ptr,
+                    total_rows,
+                    hidden,
+                    intermediate,
+                    library=libraries.projection,
+                    **common,
+                )
             moonshine_gelu_fp16(
                 self.tensor("mlp_fc1").ptr,
                 self.tensor("mlp_gelu").ptr,
@@ -571,18 +734,21 @@ class MoonshineCudaBatchEncoderRuntime:
                 library=libraries.encoder,
                 **common,
             )
-            moonshine_f16_projection_bias_residual(
-                self.tensor("mlp_gelu").ptr,
-                self.weights[f"{prefix}.mlp.fc2.weight"].ptr,
-                self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
-                self.tensor("hidden").ptr,
-                self.tensor("hidden").ptr,
-                total_rows,
-                intermediate,
-                hidden,
-                library=libraries.projection,
-                **common,
-            )
+            if use_long_bucket_gemm:
+                self._enqueue_lt_fc2(layer=layer, stream=stream, rows=total_rows)
+            else:
+                moonshine_f16_projection_bias_residual(
+                    self.tensor("mlp_gelu").ptr,
+                    self.weights[f"{prefix}.mlp.fc2.weight"].ptr,
+                    self.weights[f"{prefix}.mlp.fc2.bias"].ptr,
+                    self.tensor("hidden").ptr,
+                    self.tensor("hidden").ptr,
+                    total_rows,
+                    intermediate,
+                    hidden,
+                    library=libraries.projection,
+                    **common,
+                )
         moonshine_layernorm_fp16(
             self.tensor("hidden").ptr,
             self.weights["model.encoder.layer_norm.weight"].ptr,
@@ -616,12 +782,15 @@ class MoonshineCudaBatchEncoderRuntime:
         )
 
     def close(self) -> None:
-        """Free workspace, weights, and stream, and report teardown parity."""
+        """Free workspace, weights, cuBLASLt, and stream, and report teardown parity."""
 
         if self.closed:
             return
         self.closed = True
         try:
+            if self.cublaslt is not None:
+                self.cublaslt.close()
+                self.cublaslt = None
             if self.workspace is not None:
                 self.workspace.free()
             if self.owns_weights and self.loaded_model is not None and self.weights is not None:
