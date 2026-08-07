@@ -207402,3 +207402,36 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   claim floor. Python compile, `--help`, diff, HIP availability, and narrow
   lineage checks pass. Commit the harness, then run its clean default
   32-step/4-warmup/2-repeat qualification without changing the protocol.
+- Commit the harness at `79a20012c`, then run the binding clean protocol with
+  `GPU_MAX_HW_QUEUES=1`, gfx1151, cached-only JIT, all 18 natural+heldout
+  prompts, two repetitions, 4 warmup steps, and 32 measured continuation steps.
+  The selector-unset one-dispatch default improves exact rollback **139.538 ->
+  145.321 tok/s (+4.144%)**; mean/median step wall is **6.881/6.849 ms** versus
+  **7.167/7.142 ms**, paired median saving is **0.301 ms**, and the candidate
+  wins **1,127/1,152** timed pairs. Call order is exactly balanced
+  **648/648** including warmups.
+- The binding gate is exact: **18/18** prompts, **36/36** native-prefill and
+  final state pairs, **1,296/1,296** token/top-logit positions, and
+  **2,592/2,592** zero-counter checks. Two-runner tracked residency is
+  **10,672,716,372 bytes** and close returns **0 bytes / 0 allocations**.
+  Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json`,
+  compact SHA-256
+  `ac453aa9ba2f0e7862983fb9c770154204731629f0fb2b64dd1030647bc0aa8a`.
+  The full raw-array source artifact SHA-256 is
+  `e4f959c5fea32399759ed56775ea3ab77b6d41fb549ff7df9ea0b3315b862adc`.
+- Refresh the separate fixed-token diagnostic without confusing workloads.
+  Cached-only `maple_profile.py` at selector-unset `79a20012c` measures
+  **5.527-ms wall / 4.859-ms kernels / 0.668-ms host gap / 271 launches =
+  180.935 tok/s**. The exact affine4 head is **1.278 ms / 26.30%**, router
+  compute **1.094 ms / 22.51%**, selected experts **1.136 ms / 23.37%**, and
+  the kernel-only roof is **205.804 tok/s**. Named raw trace SHA-256 is
+  `4e6bb86e6cac141674e48065c513fba5aac9963a9af80d27d8462b6e3290d8cc`.
+  Publish diagnostic
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json`, SHA-256
+  `6c17b87dea6d810108613a6140ff538c1db5db987a6c2de7da08982dc8afa1d1`.
+- D0 router is retained/default and complete; exact affine4-head work remains
+  active. The short fixed-token path now needs **0.527 ms** to reach exact 200
+  tok/s. Update MAPLE overview/performance/kernel/refactor docs plus benchmark
+  rollup/changelog without replacing the natural-context 145.321 row with the
+  incomparable short diagnostic.
