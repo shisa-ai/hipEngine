@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 
@@ -38,7 +37,6 @@ from hipengine.runtime.moonshine_encoder_cuda import (
     _CONV3_KERNEL,
     _CONV3_STRIDE,
     _DOWNSAMPLE_STRIDE,
-    _ENCODER_HEAD_DIM,
     _ENCODER_HEADS,
     _GROUPNORM_EPS,
     MoonshineCudaEncoderLibraries,
@@ -131,6 +129,7 @@ class MoonshineCudaBatchEncoderRuntime:
         long_bucket_gemm_rows: int = 768,
         conv_route: str = "custom",
         long_bucket_conv_frames: int = 768,
+        attention_route: str = "custom",
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -142,6 +141,8 @@ class MoonshineCudaBatchEncoderRuntime:
             raise ValueError("projection_route must be 'custom' or 'cublaslt'")
         if conv_route not in ("custom", "cudnn"):
             raise ValueError("conv_route must be 'custom' or 'cudnn'")
+        if attention_route not in ("custom", "cutlass"):
+            raise ValueError("attention_route must be 'custom' or 'cutlass'")
         if isinstance(long_bucket_gemm_rows, bool) or not isinstance(long_bucket_gemm_rows, int):
             raise ValueError("long_bucket_gemm_rows must be a positive integer")
         if long_bucket_gemm_rows <= 0:
@@ -162,6 +163,7 @@ class MoonshineCudaBatchEncoderRuntime:
         self.long_bucket_gemm_rows = int(long_bucket_gemm_rows)
         self.conv_route = str(conv_route)
         self.long_bucket_conv_frames = int(long_bucket_conv_frames)
+        self.attention_route = str(attention_route)
         self.encoder_frames = moonshine_encoder_frames_from_audio(self.audio_samples)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
         self.stream = 0
@@ -293,6 +295,21 @@ class MoonshineCudaBatchEncoderRuntime:
                 encoder=build_moonshine_encoder(**arguments),
                 layernorm=build_moonshine_layernorm(**arguments),
                 projection=build_moonshine_projection(**arguments),
+            )
+        if self.attention_route == "cutlass" and libraries.attention_cutlass is None:
+            from hipengine.kernels.cuda_sm120a.attention.moonshine_attention_cutlass import (
+                build_moonshine_attention_cutlass,
+            )
+
+            libraries = MoonshineCudaEncoderLibraries(
+                encoder=libraries.encoder,
+                layernorm=libraries.layernorm,
+                projection=libraries.projection,
+                attention_cutlass=build_moonshine_attention_cutlass(
+                    compiler_version=compiler_version,
+                    load=True,
+                    require_cached=require_cached,
+                ),
             )
         self.encoder_libraries = libraries
         self._prepare_long_bucket_gemm()
@@ -757,6 +774,19 @@ class MoonshineCudaBatchEncoderRuntime:
             moonshine_residual_layernorm_fp16,
         )
 
+        attention_fn = moonshine_encoder_attention_batch_fp16
+        attention_library = libraries.encoder
+        if self.attention_route == "cutlass":
+            from hipengine.kernels.cuda_sm120a.attention.moonshine_attention_cutlass import (
+                moonshine_encoder_attention_cutlass_batch_fp16 as attention_fn,
+            )
+
+            if libraries.attention_cutlass is None:
+                raise RuntimeError(
+                    "attention_route='cutlass' requires prepared AOT attention"
+                )
+            attention_library = libraries.attention_cutlass
+
         spec = self.spec
         batch = self.max_batch
         real_samples = self._last_real_samples
@@ -899,7 +929,7 @@ class MoonshineCudaBatchEncoderRuntime:
                 library=libraries.encoder,
                 **common,
             )
-            moonshine_encoder_attention_batch_fp16(
+            attention_fn(
                 self.tensor("query").ptr,
                 self.tensor("key").ptr,
                 self.tensor("value").ptr,
@@ -910,7 +940,7 @@ class MoonshineCudaBatchEncoderRuntime:
                 head_dim,
                 frames,
                 scale=scale,
-                library=libraries.encoder,
+                library=attention_library,
                 **common,
             )
             if use_long_bucket_gemm:

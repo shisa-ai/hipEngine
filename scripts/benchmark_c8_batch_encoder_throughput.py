@@ -88,12 +88,17 @@ def _load_long_fixture(batch: int) -> tuple[np.ndarray, np.ndarray]:
     return audio, mask
 
 
-def _c1_encoder_route(runtime, loaded, audio, mask) -> float:
+def _c1_encoder_route(
+    runtime, loaded, audio, mask, *, attention_route: str = "custom"
+) -> float:
     """B sequential c=1 encoder ``encode()`` routes; return median wall seconds."""
     batch = audio.shape[0]
     encoders = [
         MoonshineCudaEncoderRuntime(
-            audio_samples=audio.shape[1], loaded_model=loaded, owns_weights=False
+            audio_samples=audio.shape[1],
+            loaded_model=loaded,
+            owns_weights=False,
+            attention_route=attention_route,
         )
         for _ in range(batch)
     ]
@@ -202,7 +207,15 @@ def _print_graph_row(batch: int, label: str, eager_ms: float, graph_ms: float,
     return row
 
 
-def _c1_full_route(runtime, loaded, audio, mask, seeds) -> tuple[float, list[list[int]]]:
+def _c1_full_route(
+    runtime,
+    loaded,
+    audio,
+    mask,
+    seeds,
+    *,
+    attention_route: str = "custom",
+) -> tuple[float, list[list[int]]]:
     """B sequential c=1 encoder+decoder sessions to EOS; return (wall_s, transcripts).
 
     The B encoders/decoders are created and prepared once (outside the timed
@@ -216,7 +229,10 @@ def _c1_full_route(runtime, loaded, audio, mask, seeds) -> tuple[float, list[lis
     frames = moonshine_encoder_frames_from_audio(audio.shape[1])
     encoders = [
         MoonshineCudaEncoderRuntime(
-            audio_samples=audio.shape[1], loaded_model=loaded, owns_weights=False
+            audio_samples=audio.shape[1],
+            loaded_model=loaded,
+            owns_weights=False,
+            attention_route=attention_route,
         )
         for _ in range(batch)
     ]
@@ -315,6 +331,12 @@ def main() -> None:
                         help="capture the batch encoder-chain (encoder+handoff+cross-KV) "
                              "as one fixed-address graph and time eager vs graph replay "
                              "(Table C, long-bucket 1,248-frame cuBLASLt route)")
+    parser.add_argument(
+        "--attention-route",
+        choices=("custom", "cutlass"),
+        default="custom",
+        help="batch encoder self-attention implementation (default: custom)",
+    )
     args = parser.parse_args()
 
     runtime = get_cuda_runtime()
@@ -332,10 +354,19 @@ def main() -> None:
             seeds = [1] * batch
 
             # encoder-only
-            c1_enc = _c1_encoder_route(runtime, loaded, audio, mask)
+            c1_enc = _c1_encoder_route(
+                runtime,
+                loaded,
+                audio,
+                mask,
+                attention_route=args.attention_route,
+            )
             benc = MoonshineCudaBatchEncoderRuntime(
-                max_batch=batch, audio_samples=_LONG_SAMPLES,
-                loaded_model=loaded, owns_weights=False,
+                max_batch=batch,
+                audio_samples=_LONG_SAMPLES,
+                loaded_model=loaded,
+                owns_weights=False,
+                attention_route=args.attention_route,
             )
             benc.prepare_encoder_kernels()
             try:
@@ -345,10 +376,20 @@ def main() -> None:
                 benc.close()
 
             # full route (encode + handoff + decode to EOS)
-            c1_full, c1_transcripts = _c1_full_route(runtime, loaded, audio, mask, seeds)
+            c1_full, c1_transcripts = _c1_full_route(
+                runtime,
+                loaded,
+                audio,
+                mask,
+                seeds,
+                attention_route=args.attention_route,
+            )
             benc = MoonshineCudaBatchEncoderRuntime(
-                max_batch=batch, audio_samples=_LONG_SAMPLES,
-                loaded_model=loaded, owns_weights=False,
+                max_batch=batch,
+                audio_samples=_LONG_SAMPLES,
+                loaded_model=loaded,
+                owns_weights=False,
+                attention_route=args.attention_route,
             )
             benc.prepare_encoder_kernels()
             bdec = MoonshineCudaBatchRuntime(
@@ -386,10 +427,19 @@ def main() -> None:
                   f"{'P95(ms)':>8} {'vs c1-seq':>9}")
             for batch in _BATCH_SIZES:
                 audio, mask = _synthesize_1248(batch)
-                c1_enc = _c1_encoder_route(runtime, loaded, audio, mask)
+                c1_enc = _c1_encoder_route(
+                    runtime,
+                    loaded,
+                    audio,
+                    mask,
+                    attention_route=args.attention_route,
+                )
                 benc = MoonshineCudaBatchEncoderRuntime(
-                    max_batch=batch, audio_samples=_ENC_SAMPLES,
-                    loaded_model=loaded, owns_weights=False,
+                    max_batch=batch,
+                    audio_samples=_ENC_SAMPLES,
+                    loaded_model=loaded,
+                    owns_weights=False,
+                    attention_route=args.attention_route,
                 )
                 benc.prepare_encoder_kernels()
                 try:
@@ -409,8 +459,10 @@ def main() -> None:
                 audio, mask = _synthesize_1248(batch)
                 benc = MoonshineCudaBatchEncoderRuntime(
                     max_batch=batch, audio_samples=_ENC_SAMPLES,
-                    loaded_model=loaded, owns_weights=False,
+                    loaded_model=loaded,
+                    owns_weights=False,
                     projection_route="cublaslt",
+                    attention_route=args.attention_route,
                 )
                 benc.prepare_encoder_kernels()
                 bdec = MoonshineCudaBatchRuntime(
@@ -445,6 +497,7 @@ def main() -> None:
         "baseline": "B independent warm eager c=1 sessions, run sequentially on the same audio; c1 full-route runtimes prepared once outside the timed wall",
         "warmup_routes": _WARMUP,
         "timed_routes": _ROUTES,
+        "attention_route": args.attention_route,
     }
     # RR-6: fold the encoder-chain graph table (when measured) into the
     # retained report so the graph evidence survives into the JSON (raw

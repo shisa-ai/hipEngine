@@ -283,6 +283,16 @@ _ATTENTION_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ATTENTION_BATCH_ARGS = (
+    *(ctypes.c_void_p for _ in range(5)),
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 
 
 def _launch(
@@ -341,6 +351,68 @@ def moonshine_encoder_attention_cutlass_fp16(
         ),
         runtime,
     )
+
+
+def moonshine_encoder_attention_cutlass_batch_fp16(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    mask_ptr: int,
+    output_ptr: int,
+    batch: int,
+    heads: int,
+    head_dim: int,
+    sequence: int,
+    *,
+    scale: float | None = None,
+    threads: int = _AOT_THREADS,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+    prebuilt_path: str | Path | None = None,
+) -> None:
+    """Batch-aware AOT CuTe encoder attention launch (no fallback)."""
+
+    if isinstance(batch, bool) or not isinstance(batch, int) or batch <= 0:
+        raise ValueError("batch must be a positive integer")
+    if heads != _HEADS:
+        raise ValueError(f"heads must be the Moonshine contract value {_HEADS}")
+    if head_dim != _HEAD_DIM:
+        raise ValueError(f"head_dim must be the Moonshine logical dimension {_HEAD_DIM}")
+    if sequence <= 0:
+        raise ValueError("sequence must be positive")
+    if threads != _AOT_THREADS:
+        raise ValueError(f"threads must be {_AOT_THREADS} for the AOT route")
+    scale_value = float(head_dim**-0.5) if scale is None else float(scale)
+    if not math.isfinite(scale_value) or scale_value <= 0.0:
+        raise ValueError("scale must be positive and finite")
+    library = library or build_moonshine_attention_cutlass(
+        load=True,
+        prebuilt_path=prebuilt_path,
+    )
+    runtime = runtime or get_cuda_runtime()
+    function = signed_kernel_fn(
+        library,
+        "hipengine_cuda_sm120a_moonshine_encoder_attention_cutlass_batch_fp16",
+        _ATTENTION_BATCH_ARGS,
+        ctypes.c_int,
+    )
+    error = function(
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        mask_ptr,
+        output_ptr,
+        batch,
+        heads,
+        head_dim,
+        sequence,
+        scale_value,
+        threads,
+        stream,
+    )
+    if int(error) != CUDA_SUCCESS:
+        runtime.check(int(error))
 
 
 def moonshine_encoder_attention_fp16(
@@ -412,6 +484,10 @@ def register_moonshine_attention_cutlass_kernels(*, replace: bool = True) -> Non
             moonshine_encoder_attention_cutlass_fp16,
         ),
         (
+            KernelKey(_BACKEND, "moonshine_self_attention", "fp16", "aot_cutlass_batch"),
+            moonshine_encoder_attention_cutlass_batch_fp16,
+        ),
+        (
             KernelKey(_BACKEND, "moonshine_self_attention", "fp16", "aot_cutlass_gated"),
             moonshine_encoder_attention_fp16,
         ),
@@ -428,6 +504,7 @@ __all__ = [
     "build_moonshine_attention_cutlass",
     "cutlass_include_dir",
     "cutlass_source_identity",
+    "moonshine_encoder_attention_cutlass_batch_fp16",
     "moonshine_encoder_attention_cutlass_fp16",
     "moonshine_encoder_attention_fp16",
     "plan_moonshine_attention_cutlass_build",

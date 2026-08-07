@@ -203616,3 +203616,27 @@ loading. Focused CPU **4 passed / 1 skipped**; exclusive GPU0 with the opt-in
 gate **5/5 passed**; Ruff and diff checks pass. Docs-side clean gate rerun will
 retain the exact generated `.so` hash/toolchain/source identity after this
 implementation commit.
+
+## 2026-08-08 — PRR-1 batch-aware AOT CuTe attention integration
+
+Extended the AOT kernel ABI from c=1 to static homogeneous B without duplicating
+or serially relaunching the kernel: grid.z selects the batch plane and applies
+batch-strided Q/K/V, mask, and row-major output offsets. The original c=1 ABI
+launches the same kernel with grid.z=1; a new raw-pointer batch ABI is registered
+as `aot_cutlass_batch`.
+
+`MoonshineCudaBatchEncoderRuntime(attention_route="custom"|"cutlass")` now
+prepares and dispatches the AOT library while preserving the custom default and
+fallback. Encoder-chain graph capture includes the AOT launches. The C8 encoder
+benchmark accepts `--attention-route`, applies it to matched c=1/batch baselines,
+and records the route in report method metadata.
+
+Expanded the committed AOT tests to cover ABI/validation, batch leaf parity at
+B=1/2/4/8 x 40/207/1,248 with per-row masks, and a B=2 full runtime gate for
+eager-vs-graph hidden/cross identity plus custom-vs-AOT hidden/cross/24-token
+parity. The eight-layer cross-KV reduction-order envelope is 0.0625 (measured
+max 0.05176); hidden max remains <=0.01 and complete tokens are exact.
+Exclusive-GPU0 focused regression across c=1 attention, AOT, and batch encoder:
+**31 passed, 2 skipped**. Source tests are **6 passed, 2 GPU skips**; focused
+Ruff/compileall/diff checks pass. Clean all-B/all-bucket retained performance
+and complete-route evidence follows after this implementation commit.

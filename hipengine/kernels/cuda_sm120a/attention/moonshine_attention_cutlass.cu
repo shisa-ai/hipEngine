@@ -37,6 +37,7 @@
 using namespace cute;
 
 // file-scope constants (internal linkage)
+constexpr int kHeads     = 8;
 constexpr int kHeadDim   = 52;   // logical
 constexpr int kHeadDimP  = 64;   // padded
 constexpr int kHidden    = 416;  // heads * head_dim
@@ -51,18 +52,22 @@ using R2SCopyAtom = Copy_Atom<UniversalCopy<float>, float>;
 
 __global__ __launch_bounds__(kThreads)
 void moonshine_encoder_attention_cutlass_fp16_kernel(
-    const __half* __restrict__ query,   // [heads, seq, 52] head-major
-    const __half* __restrict__ key,     // [heads, seq, 52] head-major
-    const __half* __restrict__ value,   // [heads, seq, 52] head-major
-    const int32_t* __restrict__ mask,   // [seq] or null (visible where != 0)
-    __half* __restrict__ output,        // [seq, 416] row-major
+    const __half* __restrict__ query,   // [batch, heads, seq, 52] head-major
+    const __half* __restrict__ key,     // [batch, heads, seq, 52] head-major
+    const __half* __restrict__ value,   // [batch, heads, seq, 52] head-major
+    const int32_t* __restrict__ mask,   // [batch, seq] or null
+    __half* __restrict__ output,        // [batch, seq, 416] row-major
     int64_t seq, float scale)
 {
   const int tid = (int)threadIdx.x;
   const int head = (int)blockIdx.y;
+  const int batch = (int)blockIdx.z;
   const int m0 = (int)blockIdx.x * kBM;
   if (m0 >= seq) return;
-  const int64_t head_off = (int64_t)head * seq * kHeadDim;
+  const int64_t head_off =
+      ((int64_t)batch * kHeads + head) * seq * kHeadDim;
+  const int64_t mask_off = (int64_t)batch * seq;
+  const int64_t output_off = (int64_t)batch * seq * kHidden;
 
   // ---------------- shared memory ----------------
   __shared__ __half q_smem[kBM * kHeadDimP];     // (32,64)
@@ -168,7 +173,7 @@ void moonshine_encoder_attention_cutlass_fp16_kernel(
 #pragma unroll
     for (int c = sub; c < kBN; c += 16) {
       int gn = n0 + c;
-      bool vis = gn < seq && (mask == nullptr || mask[gn] != 0);
+      bool vis = gn < seq && (mask == nullptr || mask[mask_off + gn] != 0);
       if (vis) tmax = fmaxf(tmax, scale * s_smem[row * kBN + c]);
     }
 #pragma unroll
@@ -187,7 +192,7 @@ void moonshine_encoder_attention_cutlass_fp16_kernel(
 #pragma unroll
     for (int c = sub; c < kBN; c += 16) {
       int gn = n0 + c;
-      bool vis = gn < seq && (mask == nullptr || mask[gn] != 0);
+      bool vis = gn < seq && (mask == nullptr || mask[mask_off + gn] != 0);
       float newm = row_m[row];
       float pv = 0.f;
       if (vis) { pv = expf(scale * s_smem[row * kBN + c] - newm); tsum += pv; }
@@ -225,7 +230,8 @@ void moonshine_encoder_attention_cutlass_fp16_kernel(
     if (gr < seq && d < kHeadDim) {
       float l = row_l[r];
       float o = (l > 0.f) ? o_smem[idx] / l : 0.f;
-      output[(int64_t)gr * kHidden + head * kHeadDim + d] = __float2half(o);
+      output[output_off + (int64_t)gr * kHidden + head * kHeadDim + d] =
+          __float2half(o);
     }
   }
 }
@@ -237,8 +243,24 @@ extern "C" int hipengine_cuda_sm120a_moonshine_encoder_attention_cutlass_fp16(
     int64_t heads, int64_t head_dim, int64_t seq,
     float scale, int64_t threads, cudaStream_t stream)
 {
-  if (seq <= 0) return 0;
-  dim3 grid((unsigned)((seq + kBM - 1) / kBM), (unsigned)heads);
+  if (heads != kHeads || head_dim != kHeadDim || seq <= 0 ||
+      threads != kThreads) return 1;
+  dim3 grid((unsigned)((seq + kBM - 1) / kBM), (unsigned)heads, 1);
+  moonshine_encoder_attention_cutlass_fp16_kernel<<<grid, kThreads, 0, stream>>>(
+      query, key, value, mask, output, seq, scale);
+  return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_encoder_attention_cutlass_batch_fp16(
+    const __half* query, const __half* key, const __half* value,
+    const int32_t* mask, __half* output,
+    int64_t batch, int64_t heads, int64_t head_dim, int64_t seq,
+    float scale, int64_t threads, cudaStream_t stream)
+{
+  if (batch <= 0 || heads != kHeads || head_dim != kHeadDim || seq <= 0 ||
+      threads != kThreads) return 1;
+  dim3 grid((unsigned)((seq + kBM - 1) / kBM), (unsigned)heads,
+            (unsigned)batch);
   moonshine_encoder_attention_cutlass_fp16_kernel<<<grid, kThreads, 0, stream>>>(
       query, key, value, mask, output, seq, scale);
   return cudaGetLastError();
