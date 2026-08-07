@@ -103,22 +103,27 @@ def _packed_artifact_info(snapshot_dir: Path) -> dict[str, Any]:
 def _implementation_files(repo_root: Path) -> dict[str, Path]:
     """Every implementation/driver source that this report depends on.
 
-    C5-R4 closure: the driver itself plus the resident decoder runtime, the
-    encoder runtime, and the sm_120a kernel wrappers/headers used by the
-    standalone/torch-encoder/decoder-only routes are all hashed so a raw
-    report is reproducible only from the exact sources that produced it.
+    RR-3 closure: the complete transitive runtime manifest.  Beyond the driver,
+    the decoder/encoder runtimes, and the sm_120a kernel wrappers, this now
+    hashes the entire ``hipengine`` package (runtime, loading incl. the packed
+    loader, core CUDA/memory/workspace, models/spec, dispatch, kernels) plus
+    every CUDA/CuTe kernel source (.cu/.cuh/.h).  Hashing the full package is a
+    superset of the true import closure, so no runtime-critical module can be
+    silently omitted from provenance.
     """
 
-    files = {
+    files: dict[str, Path] = {
         "driver": repo_root / "scripts" / "benchmark_moonshine_cuda_complete.py",
-        "runtime/decoder": repo_root / "hipengine/runtime/moonshine_cuda.py",
-        "runtime/encoder": repo_root / "hipengine/runtime/moonshine_encoder_cuda.py",
     }
-    kernel_dir = repo_root / "hipengine/kernels/cuda_sm120a"
-    if kernel_dir.is_dir():
-        for path in sorted(kernel_dir.rglob("*.py")):
+    package = repo_root / "hipengine"
+    if package.is_dir():
+        for path in sorted(package.rglob("*.py")):
             files[str(path.relative_to(repo_root))] = path
-        for path in sorted(kernel_dir.rglob("*.cu")):
+        for path in sorted(package.rglob("*.cu")):
+            files[str(path.relative_to(repo_root))] = path
+        for path in sorted(package.rglob("*.cuh")):
+            files[str(path.relative_to(repo_root))] = path
+        for path in sorted(package.rglob("*.h")):
             files[str(path.relative_to(repo_root))] = path
     return files
 
@@ -191,6 +196,7 @@ class Route:
         async_chain: bool = False,
         device_owned: bool = False,
         encoder_graph: bool = False,
+        bucket_frames: str | None = None,
     ) -> None:
         self.mode = mode
         self.fixture = fixture
@@ -198,6 +204,25 @@ class Route:
         self.cuda_runtime = cuda_runtime
         self.snapshot = snapshot
         self.packed = packed
+        # RR-2: optional capacity-selected fixed-bucket arena.  "auto" picks
+        # the smallest certified encoder frame bucket that fits each fixture
+        # (40/207/1,248); an explicit bucket forces that capacity for all six.
+        self.bucket_frames = bucket_frames
+        self.exact_frames = self.fixture.frames
+        if bucket_frames is not None:
+            if self.mode != "standalone":
+                raise ValueError("--bucket requires --mode standalone")
+            from hipengine.runtime.moonshine_encoder_cuda import (
+                moonshine_encoder_bucket_for_frames,
+            )
+
+            if bucket_frames == "auto":
+                self.bucket_frames = moonshine_encoder_bucket_for_frames(
+                    self.fixture.frames
+                )
+            else:
+                self.bucket_frames = int(bucket_frames)
+        self.encoder_capacity = self.bucket_frames or self.exact_frames
         # C5/§7.3: async encoder->handoff->cross-KV chain (no terminal sync
         # until the decode boundary), device-owned token/position state, and
         # one captured encoder+handoff+cross-KV graph per bucket.
@@ -234,7 +259,7 @@ class Route:
         prepare: dict[str, Any] = {}
 
         self.dec = MoonshineCudaResidentRuntime(
-            encoder_frames=self.fixture.frames,
+            encoder_frames=self.encoder_capacity,
             loaded_model=loaded,
             owns_weights=False,
         )
@@ -245,10 +270,15 @@ class Route:
         if self.mode == "standalone":
             from hipengine.runtime.moonshine_encoder_cuda import (
                 MoonshineCudaEncoderRuntime,
+                moonshine_encoder_bucket_audio_samples,
             )
 
             self.enc = MoonshineCudaEncoderRuntime(
-                audio_samples=self.fixture.sample_count,
+                audio_samples=(
+                    moonshine_encoder_bucket_audio_samples(self.encoder_capacity)
+                    if self.bucket_frames is not None
+                    else self.fixture.sample_count
+                ),
                 loaded_model=loaded,
                 owns_weights=False,
             )
@@ -283,6 +313,13 @@ class Route:
         # token graphs can be captured before the timed iterations.
         self._enqueue_encoder(self.fixture)
         self._set_encoder_state(self.dec, source_frames=self.fixture.frames)
+        # RR-1 regression: read back the decoder's installed encoder mask and
+        # assert it equals the model's downsampled int32 mask (this catches
+        # any future pointer/type mix-up in the D2D handoff, including the
+        # historical int64-audio-mask-as-int32 bug).
+        prepare["encoder_mask_readback"] = self._verify_installed_encoder_mask(
+            source_frames=self.fixture.frames
+        )
         self.dec.reset_generation(clear_cross_cache=False)
 
         # Device-owned decode must be enabled before graph capture so the
@@ -377,6 +414,14 @@ class Route:
             "cuda", dtype=torch.float16
         )
         self._torch_mask = torch.from_numpy(self.fixture.audio_mask).to("cuda")
+        # RR-1: the D2D handoff consumes the downsampled encoder mask (int32,
+        # one value per encoder frame), NOT the raw int64 audio mask.  The
+        # fixture captures the model's exact downsampled encoder mask (from
+        # ``encoder_outputs.attention_mask`` or its all-ones equivalent), so
+        # materialize that contiguous int32 tensor as the handoff source.
+        self._torch_enc_mask = torch.from_numpy(
+            np.ascontiguousarray(self.fixture.encoder_mask, dtype=np.int32)
+        ).to("cuda")
 
     # -- per-iteration route -------------------------------------------------
 
@@ -433,7 +478,8 @@ class Route:
         # handoff copies the hidden/mask on its own stream.
         torch.cuda.synchronize()
         self._torch_hidden_ptr = hidden.data_ptr()
-        self._torch_mask_ptr = self._torch_mask.data_ptr()
+        # RR-1: hand the downsampled int32 encoder mask (not the audio mask).
+        self._torch_mask_ptr = self._torch_enc_mask.data_ptr()
 
     def run_once(self) -> tuple[list[int], int]:
         """Run the complete route to EOS and return (tokens, steps)."""
@@ -492,6 +538,35 @@ class Route:
         return elapsed_ms, tokens, steps
 
     # -- footprint -----------------------------------------------------------
+
+    def _verify_installed_encoder_mask(self, source_frames: int) -> dict[str, Any]:
+        """Read back the decoder's resident encoder mask and compare to the fixture.
+
+        D2D handoff regression (RR-1): confirms the int32 encoder mask actually
+        installed in the decoder bucket matches the model's downsampled mask, so
+        a raw-int64-audio-mask-as-int32 mix-up can never silently re-occur.
+        """
+
+        from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+        allocation = self.dec.workspace.allocation("encoder_attention_mask")
+        expected = np.ascontiguousarray(
+            self.fixture.encoder_mask.reshape(-1)[:source_frames], dtype=np.int32
+        )
+        host = np.empty(int(source_frames), dtype=np.int32)
+        copy_device_to_host(
+            host_array_ptr(host),
+            allocation.buffer,
+            int(source_frames) * np.dtype(np.int32).itemsize,
+            runtime=self.cuda_runtime,
+        )
+        matches = bool(np.array_equal(host, expected))
+        return {
+            "source_frames": int(source_frames),
+            "readback_matches": matches,
+            "readback": [int(value) for value in host.tolist()],
+            "expected": [int(value) for value in expected.tolist()],
+        }
 
     def footprint(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -565,6 +640,14 @@ def main() -> int:
     parser.add_argument("--async-chain", action="store_true", help="enqueue encoder->handoff->cross-KV on the decoder stream without terminal syncs (C5/§7.3 async chain)")
     parser.add_argument("--device-owned", action="store_true", help="device-owned token/position decode state (graph-tail position advance, C5/§7.3)")
     parser.add_argument("--encoder-graph", action="store_true", help="capture encoder+handoff+cross-KV as one fixed-address graph per bucket (standalone only, C5/§7.3)")
+    parser.add_argument(
+        "--bucket",
+        choices=("auto", "40", "207", "1248"),
+        default=None,
+        help="RR-2: run capacity-selected encoder+decoder runtimes (smallest certified"
+        " bucket that fits each fixture, or a fixed certified bucket for all six);"
+        " omitted = legacy exact-shape per-file runtimes",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -620,6 +703,7 @@ def main() -> int:
             "async_chain": bool(args.async_chain),
             "device_owned": bool(args.device_owned),
             "encoder_graph": bool(args.encoder_graph),
+            "bucket_capacity": args.bucket,
             "preprocessing_timed": False,
             "initial_h2d_timed": False,
             "encoder_and_generation_timed": True,
@@ -651,7 +735,18 @@ def main() -> int:
     route_results: dict[str, Any] = {}
     try:
         for fixture in fixtures:
-            route = Route(args.mode, fixture, loaded, cuda_runtime, str(args.snapshot_dir), packed=args.packed, async_chain=args.async_chain, device_owned=args.device_owned, encoder_graph=args.encoder_graph)
+            route = Route(
+                args.mode,
+                fixture,
+                loaded,
+                cuda_runtime,
+                str(args.snapshot_dir),
+                packed=args.packed,
+                async_chain=args.async_chain,
+                device_owned=args.device_owned,
+                encoder_graph=args.encoder_graph,
+                bucket_frames=args.bucket,
+            )
             try:
                 prepare = route.prepare()
                 report["preparation"].update(prepare)
@@ -689,6 +784,12 @@ def main() -> int:
                             "audio-", ""
                         )
                         .replace("-fp16", "") + ".wav",
+                        "real_frames": fixture.frames,
+                        "bucket_frames": (
+                            route.encoder_capacity
+                            if route.bucket_frames is not None
+                            else None
+                        ),
                         "encoder_frames": fixture.frames,
                         "sample_count": fixture.sample_count,
                         "eos_decode_steps": expected_steps,
