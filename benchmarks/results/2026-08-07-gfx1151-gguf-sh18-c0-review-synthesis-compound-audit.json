@@ -1,0 +1,204 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh18_c0_review_synthesis_compound_audit",
+  "date": "2026-08-07",
+  "created_at": "2026-08-07T10:11:03+09:00",
+  "status": "closed_compound_not_current_layout_compatible",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source_revision": "ead2df2f93ccae9bb3f71f35f34d4b9e3227cfd4",
+  "method": "Read-only reconciliation of the user-provided review synthesis against retained SH9-SH17 artifacts, the live post-SH16 registry/materializer, and the preserved SH2-D1 prototype patch. No completed benchmark, primitive microbench, profiler run, or category oracle was repeated.",
+  "hardware_scope": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "architecture": "gfx1151",
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "synthesis_reconciliation": {
+    "ground_truth": {
+      "sh9_d1_scope": {
+        "verdict": "confirmed",
+        "detail": "SH9-D1 is multi-row prefill-only: 40 synchronous copies and 40 copy-kernel dispatches are removed per pp512 request, with no c1 decode or memory credit.",
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json",
+          "sha256": "d2b5a81de21cfb65b8a5a8c168fea4a108661e7bf28289351ff18b32cfc82c17"
+        }
+      },
+      "production_snapshot": {
+        "verdict": "superseded",
+        "synthesis_decode_tok_s": [53.153, 55.832, 46.785, 40.386],
+        "synthesis_whole_gtt_gib": [21.0, 21.499, 22.152, 22.89],
+        "current_sh16_decode_tok_s": [55.22981468632807, 55.82936383811474, 46.8086625677846, 40.43025306660197],
+        "current_sh16_whole_gtt_gib": [20.81458282470703, 21.292396545410156, 21.946765899658203, 22.685047149658203],
+        "current_fork_f16_whole_gtt_margins_mib": [-16.47265625, 134.8203125, -50.62890625, -154.73046875],
+        "qualification": "The synthesis snapshot is pre-SH16. The current production default has fork-F16 whole-GTT parity at 512/32K/64K, still misses 4K by 134.820 MiB, and misses fork-F16 decode at all four depths.",
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json",
+          "sha256": "f3a5b544eb99b1d24a66f97b11571ac6d4b32a68b94662e7efb79f8857511aae"
+        }
+      },
+      "exact_and_lifecycle_gates": {
+        "verdict": "confirmed_current",
+        "detail": "The promoted SH16 default passes 18/18 primary+heldout prompts, 1,350/1,350 token and 54,000/54,000 hidden comparisons, exact initial/final state, deterministic repeats, and zero tracked ownership after close. No gate was repeated for this read-only audit."
+      }
+    },
+    "numbered_items": {
+      "SH10-A1": {
+        "verdict": "already_completed_retained",
+        "detail": "The actual 512 private-c1 context owner was attributed and the already-registered fixed256 exact leaf was promoted through active context 1023. It reduces the complete attention role by 0.572 ms/token and passes byte/state/prefill/memory/lifecycle/resource gates.",
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json",
+          "sha256": "0cf6724ef5b5166b52c7483100e5209d1418c1230c6ed87e70238b5bffe8f710"
+        }
+      },
+      "SH11-A1": {
+        "verdict": "already_completed_rejected",
+        "detail": "The current forced-direct 4K route diverges in all four teacher-forced decode transitions and is 37.788% slower; no exact-emulation package was admitted.",
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json",
+          "sha256": "4ce96103d2ece834788ae6e9d59283a7f5f6d0d8f96c1f2252e0b3f6e0aea4b8"
+        }
+      },
+      "SH12-C0": {
+        "verdict": "already_completed_retained",
+        "detail": "The complete eager c1 sync/copy census classified the boundaries and removed only the redundant default-stream sample drain; cached tracing changes 20 to 10 device synchronizations with unchanged copies and launches.",
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json",
+          "sha256": "a2c8a0b3e460c87517c8527ad036d7f850a78479f12755bc0f2c20766ce2a417"
+        }
+      },
+      "SH13-M1": {
+        "verdict": "already_completed_closed_precondition",
+        "detail": "The 4K phase census found only 3.497 MiB of HSA code objects and at most 0.719 MiB eligible before the already-reached prefill peak, far below the then-current 346.820-MiB gap; no dlclose/lazy loader was added.",
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json",
+          "sha256": "481f53ba67f66773c6e421c095b5757b0a1276f522d1ac897a44ff36ebe31090"
+        }
+      },
+      "SH14-C1": {
+        "verdict": "already_completed",
+        "detail": "The four-depth cumulative wall/GTT, complete 18-prompt exact oracle, lifecycle, and named-resource gate was run. Its production snapshot was later superseded by retained SH16 allocation ownership.",
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json",
+          "sha256": "c0d7182405fd9d58e0b6debf736f3d21d806d97652df1fb2f00c138d601c654b"
+        }
+      }
+    }
+  },
+  "post_sh14_compound": {
+    "novelty": "The proposed cross-leaf composition was not previously run as one full-model A/B. Its three primitive projections came from separate exact screens that were removed below their individual gates.",
+    "proposed_leaves": {
+      "gdn_q8t16_nontemporal_dpp": {
+        "role": "30 row-1 linear-attention Q8T16 dual projections",
+        "projected_saving_ms_per_token": 0.1545,
+        "exact": true,
+        "production_change": false,
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json",
+          "sha256": "a6822c0bf2d1f80dd34120a0e407bfd612758c1d0883853c90b7de134ec5bf65"
+        }
+      },
+      "selected_q4_tile8": {
+        "role": "40 row-1/top8 selected Q4 gate/up+SiLU calls",
+        "projected_saving_ms_per_token": 0.2957944869995117,
+        "exact": true,
+        "production_change": false,
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-q4-tile-ladder-rejected.json",
+          "sha256": "37aa956aefe8eca82043ae5c0aee52bbbb8fdc527629f804e37b772c3da9273e"
+        }
+      },
+      "selected_down_output_tiled_tail": {
+        "role": "37 Q5 plus 3 Q6 selected-down layers and exact ordered route/shared-gate/residual tail",
+        "projected_saving_ms_per_token": 0.08019339740276336,
+        "q5_projected_saving_ms_per_token": 0.05543896853923798,
+        "q6_projected_saving_ms_per_token": 0.024754428863525392,
+        "exact_on_legacy_t16": true,
+        "production_change": false,
+        "artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json",
+          "sha256": "c18e743ab34426147c543406e5bb0c6466600cbe597822897eb7a81ffb820916"
+        },
+        "preserved_prototype_patch": {
+          "path": "/tmp/hipengine-sh2-d1-prototypes.patch",
+          "sha256": "ecb640b8c7f65f996e9cea56ab9e708b145c4a29a6d244b7f6bd61ed33eadab4",
+          "qualification": "Transient local evidence only; not committed and not a production source dependency."
+        }
+      }
+    },
+    "arithmetic": {
+      "proposed_total_ms_per_token": 0.530487884402275,
+      "admission_floor_ms_per_token": 0.5,
+      "proposed_margin_ms_per_token": 0.030487884402275,
+      "roles_overlap": false,
+      "all_routes_c1_decode_only": true
+    },
+    "compatibility_audit": {
+      "gdn_q8t16_layout": "Compatible with the current unchanged gguf_q8_0_t16_v1 weight layout, but its candidate kernel/wrapper/registry entry was intentionally removed.",
+      "selected_q4_layout": "Compatible with the current unchanged legacy gguf_q4_k_t16_v1 gate/up bytes, but the Qwen-shaped candidate kernel/wrapper/registry entry was intentionally removed.",
+      "q6_down_layout": "Compatible for the model's 3 legacy gguf_q6_k_t16_v1 down tensors.",
+      "q5_down_layout": {
+        "compatible": false,
+        "model_tensor_count": 37,
+        "prototype_quant_key": "gguf_q5_k_t16_v1",
+        "production_quant_key": "gguf_q5_k_qmicro_t16_v1",
+        "prototype_tile_bytes": 2880,
+        "production_tile_bytes": 2816,
+        "prototype_access": "Q5_T16_BLOCK_BYTES with expanded Q5_T16_SCALE_OFFSET/Q5_T16_MIN_OFFSET byte planes",
+        "production_access": "Q5_QMICRO_T16_BLOCK_BYTES with 24-bit metadata records unpacked through qmicro_unpack_record before arithmetic",
+        "source_evidence": [
+          "hipengine/loading/qwen35_gguf_materialize.py:843-845 selects gguf_q5_k_qmicro_t16_v1",
+          "hipengine/loading/qwen35_gguf_materialize.py:1131-1132 calls repack_gguf_q5_k_qmicro_tile16",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip:66-80 defines distinct 2880/2816-byte layouts",
+          "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip:2890-2940 implements the current qmicro metadata unpack and tile8 arithmetic",
+          "/tmp/hipengine-sh2-d1-prototypes.patch uses Q5_T16_BLOCK_BYTES and expanded scale/min offsets for the old tail"
+        ],
+        "retained_layout_artifact": {
+          "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json",
+          "sha256": "765414f86b1566afb68117ac45b86def672aceee5050a7fbd61d5c553549ab50"
+        }
+      }
+    },
+    "compatible_subset": {
+      "included": [
+        "gdn_q8t16_nontemporal_dpp",
+        "selected_q4_tile8",
+        "selected_down_output_tiled_tail_q6_only"
+      ],
+      "projected_saving_ms_per_token": 0.4750489158630371,
+      "shortfall_to_admission_floor_ms_per_token": 0.02495108413696289,
+      "gate_pass": false
+    },
+    "decision": {
+      "run_full_model_ab": false,
+      "reason": "The only projection that puts the proposed sum above 0.5 ms/token is the 37-layer Q5 legacy-T16 tail, but production no longer has that representation. A qmicro-aware tail would be a new kernel with different metadata transport/resources and cannot inherit the legacy 0.055439-ms projection. The directly compatible subset projects only 0.475049 ms/token. Under the synthesis's explicit compatibility-first rule, no compound full-model A/B is admitted.",
+      "new_qmicro_tail_task_admitted": false,
+      "new_qmicro_tail_reason": "Its entire inherited upside is only 0.055439 ms/token and no current-layout leaf measurement establishes it; inventing it solely to rescue a summed projection would violate the new-evidence and no-retry rules.",
+      "production_change": false
+    }
+  },
+  "explicit_exclusions": {
+    "raw_lm_head_local64": "Already closed; no new memory-bandwidth premise supplied.",
+    "host_embedding_plus_compact_kv": "Already measured as independent owners; compact KV loses decode and raises peak, so no stack is reopened.",
+    "memlock": "Already closed as a system setting, not a new owner; private-c1 host embedding already removes its device allocation where eligible.",
+    "post_sh9_graph_replay": "Confirmed excluded because SH9 removes prefill copies only and no eager decode graph break.",
+    "generic_v_major_preload": "Already closed; no new producer stall evidence supplied.",
+    "closed_q8_attention_compact_kv_and_composite_ladders": "No new mechanism evidence supplied; SH17 anti-retry remains in force.",
+    "mtp": "Correctly excluded from matched exact-AR fork parity."
+  },
+  "lineage": {
+    "commands": [
+      "python3 scripts/check_lineage.py --kind kernel --file '*gguf_q8_0_t16_gemv*' --diff stat",
+      "python3 scripts/check_lineage.py --kind kernel --file '*gguf_t16_selected_gemv*' --diff stat"
+    ],
+    "result": "No tracked external sources selected for either in-tree family; no external kernel body is being ported. The broad command remains blocked by the absent optional /home/lhl/amd-gpu-tuning/reference/atlas checkout."
+  },
+  "final": {
+    "task_68": "close_without_implementation",
+    "objective_complete": false,
+    "next": "Resume the read-only Nathan-fork upstream refresh in Task #67. Preserve SH16 production; implementation still requires genuinely new >=0.5-ms/token or >=134.820-MiB 4K evidence."
+  }
+}
