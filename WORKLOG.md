@@ -207388,3 +207388,17 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   passes **16/16** exact steps; Python compilation, narrow lineage, diff, and
   WORKLOG checks pass. The dedicated graph file reports **3 skips** from its
   stale cache-location guard, not execution failures.
+- Add reusable `scripts/maple_c1_bench.py` before clean publication. It runs
+  selector-unset production versus `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0`
+  in two simultaneous resident runners, starts every pair from independently
+  computed native-prefill state, alternates execution order, and records exact
+  token/top-logit parity, meaningful byte-state hashes, counter reset, paired
+  wall timing, and tracked lifecycle over all 18 natural+heldout prompts.
+- Unqualified one-step real-checkpoint smoke passes **18/18 prompts**, **18/18**
+  native-start and final state hashes, **18/18** token/top-logit positions,
+  **0/36** counter violations, and exact close. Its timing is diagnostic only
+  (`157.267` versus `153.698 tok/s`, **17/18** candidate wins) because the
+  harness is uncommitted and the 1-step/0-warmup/1-repeat protocol is below the
+  claim floor. Python compile, `--help`, diff, HIP availability, and narrow
+  lineage checks pass. Commit the harness, then run its clean default
+  32-step/4-warmup/2-repeat qualification without changing the protocol.
