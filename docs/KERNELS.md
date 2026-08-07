@@ -154,11 +154,14 @@ local128 as rollback. The production-shape primitive is BF16-bit exact at the
 positions, KL 0, and exact lifecycle. Clean cached tracing names
 `maple_attention_prefill_ring_gqa4_wave32_kernel` at local32/VGPR64,
 dynamic-LDS512 (static trace field LDS0), scratch0 and measures **63.993 ->
-21.916 ms (2.920x)** at unchanged launch count. Qualified 128/320/512 throughput
-is **749.175/741.368/754.000 tok/s**, up **3.13%/9.08%/15.87%** over P1 with
-unchanged 5,355,881,848-byte residency. Batched decode uses disjoint per-request
-rings and separate SWA/global capacity owners; wrapped positions remain inside their
-request arena after position 512. The wrapped c=3 primitive is BF16-bit exact;
+21.916 ms (2.920x)** at unchanged launch count. P2 qualified 128/320/512 at
+**749.175/741.368/754.000 tok/s**, up **3.13%/9.08%/15.87%** over P1. P4's
+unchanged arithmetic recertifies **750.854/741.890/754.458 tok/s** with
+5,355,881,852-byte residency and carries native prefill safely through the
+retained 520/770-token physical-state gates. Batched decode uses disjoint
+per-request rings and separate SWA/global capacity owners; wrapped positions
+remain inside their request arena after position 512. The wrapped c=3 primitive
+is BF16-bit exact;
 cached tracing reports batched QK/RoPE/KV write at **3,967 ns** (VGPR24) and
 batched attention at **20,197 ns** (VGPR16), both LDS0/scratch0.
 
@@ -186,13 +189,21 @@ existing direct-weight PARO RMSNorm and two-stage FP32 argmax into a resident
 global metadata reset without clearing stale cache bytes because absolute
 `token_positions` gate every read. Both span-owner identities are published even
 when their capacities are equal; the earlier top-ID-1112 diagnostic preceded
-that correctness fix and is not retained evidence. Public prompts through the
-512-token SWA capacity use bounded native prefill; longer prompts remain on the
-serial correctness fallback until append-all ring prefill can preserve the live
-window while writing later chunks. `MapleBatchRunner` provides c=2/4/8 fixed-
-capacity decode and `MapleContinuousBatcher` adds sparse active masks plus slot
-reclamation; this is a validated runtime helper, not yet an integration with the
-public generation scheduler/server admission path.
+that correctness fix and is not retained evidence. P4 keeps global layers
+chunk-batched beyond SWA-512 while each sliding layer restores pre-chunk span
+metadata, batches the safe prefix, and serializes post-wrap attention rows. The
+520/770-token gates preserve physical K/V, spans, final state, and continuation.
+
+`MapleBatchRunner.from_runner()` now shares the c1 checkpoint owner and exposes
+request-local span/cache views for native prompt admission. Public
+`MapleResidentModelRunner` uses fixed sparse slots, D0 c1 for one active row,
+and D1 c2/c4/c8 otherwise; completion/rollback resets only that slot. The clean
+public protocol reaches **122.564/165.385/201.203/214.378 aggregate tok/s** at
+c1/c2/c4/c8, with all 15 repeated natural/heldout trajectory sets,
+physical-c8 singleton preservation, staggered slot reuse, and lifecycle exact.
+`MapleContinuousBatcher` remains the low-level helper/benchmark owner, not a
+second public dispatch route. Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
 
 The corrected 18-position packed-formula gate passes at max KL **0.013508** and
 18/18 top-1; the pinned Transformers `trust_remote_code` same-weight gate passes

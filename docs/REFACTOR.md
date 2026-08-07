@@ -14,6 +14,22 @@ should be removed or collapsed.
 - Do not remove unfused numerical fallbacks required by `AGENTS.md`; remove dead
   runtime dispatch branches and stale experiment toggles first.
 
+## Maple P4 public fixed-slot admission
+
+- Added and retained 2026-08-08. `MapleResidentModelRunner` is now the sole
+  public submit/poll owner: it shares one c1 checkpoint, prefills request-local
+  fixed K/V slots, uses D0 for one active row, and uses D1 for c2/c4/c8. The
+  complete public gate is **122.564/165.385/201.203/214.378 aggregate tok/s**
+  with 15/15 repeated 18-prompt trajectory sets, sparse/staggered reclaim,
+  physical-c8 singleton preservation, and lifecycle exact. Evidence:
+  `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
+- `MapleContinuousBatcher` remains only as a low-level D1 benchmark/correctness
+  harness. At the final Maple roadmap audit, either migrate remaining helper
+  benchmarks to the public owner and remove this duplicate orchestration class,
+  or record the concrete low-level coverage that still requires it. Do not add
+  a second public dispatch route. Fixed sparse K/V slots and the registered
+  unfused/kernel fallbacks are intentional and are not removal candidates.
+
 ## Maple D1 exact batched affine4 row-reuse head
 
 - Added and promoted 2026-08-08. The c2/c4/c8 leaf assigns one block to one

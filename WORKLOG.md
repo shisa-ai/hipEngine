@@ -207833,3 +207833,13 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   final c4/c8 groups. A deliberately unqualified dirty-tree c1/c4/c8 smoke
   passes all three new scheduler checks and exits rejected as designed; commit
   the gate before one final clean public rerun.
+- Publish the already-valid clean `5f43dcc70` P4 evidence as compact artifact
+  `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`
+  (SHA-256 `3a1ac67f...a236`). Its raw groups all satisfy the newly hardened
+  checks; the harness change only makes those facts acceptance-critical.
+  Update `docs/MAPLE.md` with the model summary, exact-vs-FlashHead Apple
+  context, long-prompt/public execution paths, current throughput/memory, and
+  correctness; close P4 in `docs/MAPLE-PERF.md`; refresh the kernel map,
+  refactor ledger, benchmark topline, and changelog. Benchmark rollup tests are
+  GREEN **20/20** and compact JSON/source/link/metric/diff checks pass. Commit
+  this valid evidence to obtain a clean tree for the stricter final rerun.

@@ -17,19 +17,20 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 
 | Quantity | Value | Source |
 | --- | ---: | --- |
-| Public native prefill 128/320/512 | 749.175 / 741.368 / 754.000 tok/s | retained P2/M5 recertification |
+| Public native prefill 128/320/512 | 750.854 / 741.890 / 754.458 tok/s | retained P4 recertification; <=0.224% from P2 |
 | Current c1 fixed-token A/B candidate | 202.580 tok/s (4.936-ms process mean) | four-process alternating selector-snapshot gate |
 | Current c1 trace companion | 199.293 tok/s (5.018 ms/token) | separate clean cached trace; 4.550-ms kernels |
 | Current c1 natural-context | 153.201 tok/s | repeated complete category/state gate; -0.14% vs prior 153.409 |
 | Qualified wave32-head A/B | 143.679 -> 153.409 tok/s (+6.77%) | retained D0 head qualification |
 | Prior pre-head c1 short profile | 180.935 tok/s (5.527 ms/token) | post-router cached trace |
-| Fixed-helper c8 decode64 | 428.063 aggregate tok/s median | retained D1 exact row reuse |
+| Fixed-helper c8 decode64 | 428.063 aggregate tok/s median | retained D1 exact row reuse; excludes prompt/public scheduler |
+| Public c1/c2/c4/c8 generation64 | 122.564 / 165.385 / 201.203 / 214.378 aggregate tok/s | retained P4, prompt admission + reclaim included |
 | HIP kernels per c1 decode token | 271 | post-D0 cached trace |
 | Exact affine4 lm-head payload | 166.922 MiB | packed weight + BF16 scale/bias |
-| Public tracked residency (max context 512) | 4.988 GiB (5,355,881,848 bytes) | retained P2/M5 recertification |
-| Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
+| Public tracked residency (max context 512) | 4.988 GiB (5,355,881,852 bytes) | retained P4 recertification |
+| Native-prefill qualification | performance: 128/320/512; exact state: 520/770 | public path continues to configured context |
 
-**Current conclusion (P0+P1+P2, D0, and D1 retained; P3 rejected).**
+**Current conclusion (P0+P1+P2+P4, D0, and D1 retained; P3 rejected).**
 Final-row-only sampling nearly doubles qualified native prefill, expert-major
 MoE adds 3.68-5.83%, and exact GQA4 adds another 3.13-15.87%. The clean
 retained-P0/P1/P2 traces remain immutable phase baselines. Exact dense tile 16
@@ -37,13 +38,16 @@ and 32 regress tile 8 on every paired sample. D0's exact one-dispatch router and
 one-wave affine4 head both pass the complete clean category gate and are now
 default. A final behavior-neutral selector snapshot improves fixed-token A/B
 **200.279 -> 202.580 tok/s (+1.15%)**; D0 is closed. D1's exact affine4
-row-reuse head is also retained and supersedes the corrected c8 baseline:
+row-reuse head is also retained and supersedes the corrected c8 helper baseline.
+P4 now carries native prefill safely across SWA wrap and exposes fixed-slot
+c1/c2/c4/c8 through the public submit/poll scheduler:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | public native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **7.813 ms (1.78%)** | **730** | **728.135 tok/s** |
 | autoregressive c1 decode, post-D0 selector snapshot (trace process) | **5.018 ms/token** | **4.550 ms** | **0.468 ms (9.32%)** | **271** | **199.293 tok/s** |
 | fixed-helper c8 decode, post-D1 | **19.296 ms/batch** | **17.305 ms** | **1.991 ms (10.32%)** | **293** | **414.602 aggregate tok/s** |
+| public c8 generation64, post-P4 | end-to-end scheduler wall | included in wall | included in wall | c-aware | **214.378 aggregate tok/s (1.749x public c1)** |
 
 After P2, the exact affine4 head owns only **0.31%** of prefill320 kernel time,
 while grouped gate/up + down owns **59.08%**. Attention is down to **21.916 ms /
@@ -54,10 +58,11 @@ experts, and **24.04%** to router compute; the post-D1 c8 trace attributes
 actions:
 
 - **Prefill:** P0 samples only the final prompt row, P1 groups routed rows by
-  expert, and P2 shares each K/V stream across four GQA heads. Qualified
-  128/320/512 throughput is now **749.175/741.368/754.000 tok/s**, versus
-  **726.421/679.632/650.745** at P1. P2 adds no persistent allocation;
-  max-context-512 residency remains **4.988 GiB**.
+  expert, P2 shares each K/V stream across four GQA heads, and P4 safely carries
+  the same arithmetic across SWA wrap. Current qualified 128/320/512 throughput
+  is **750.854/741.890/754.458 tok/s**, within 0.224% of P2 and versus
+  **726.421/679.632/650.745** at P1. Max-context-512 residency remains
+  **4.988 GiB**.
 - **c8:** D1 now streams each 166.922-MiB affine4 payload once across request
   rows while preserving every result. Qualified c2/c4/c8 reaches
   **250.481/346.365/428.063 aggregate tok/s**.
@@ -83,9 +88,11 @@ compaction—is the blocker.
 
 Current exact priority:
 
-1. P4 safe long-prompt/public scheduler admission.
-2. Future P1b exact non-WMMA SIMD ternary consumers; do not repeat grouped-lane,
+1. Future P1b exact non-WMMA SIMD ternary consumers; do not repeat grouped-lane,
    dense token-tile, or direct native-BF16-WMMA schedules.
+2. Optional ragged multi-request prefill compute and HTTP serving may build on
+   P4's fixed slots, but neither is required for the retained public in-process
+   path.
 
 DeepGrove's published M4 table supports this split: **169 tok/s exact**, **218
 tok/s with approximate FlashHead**, and **1075 tok/s prefill**. Its generation
@@ -94,6 +101,7 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json`,
@@ -197,7 +205,7 @@ Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 | **M3c c1 eight-route grouping** | Rejected at 0.69x | This tested activation reuse within one token, not expert-major reuse across prompt rows. |
 | **M4/M5 batched prefill** | P2 retained at 741-754 tok/s | Exact through 512; dense ternary QKV/O is next while scalar expert compute blocks the original P1 ceiling. |
 | **M1 c1 hipGraph** | Exact but only 1.0047x in the current review | Keep opt-in; do not use the historical host-gap estimate as a speed claim. |
-| **M6+D1 batch decode** | c2/c4/c8 exact row-reuse helper at 250.481/346.365/428.063 aggregate tok/s | Retained helper; public scheduler/server integration remains open. |
+| **M6+D1 batch decode** | c2/c4/c8 exact row-reuse helper at 250.481/346.365/428.063 aggregate tok/s | Retained helper; P4 now exposes it through public fixed-slot submit/poll generation at 165.385/201.203/214.378 tok/s including prompt admission/reclaim. |
 | **M2 fusion** | Exact composites regressed kernel efficiency | Keep opt-in/fallbacks; no default promotion. |
 
 M3a evidence:
@@ -362,33 +370,34 @@ not part of the exact 200+ target.
 ### D5 — Batch decode (c>1) and continuous batching
 
 Multi-request decode is independent of the c1 graph. M6 provides batched GQA
-attention/KV append and fixed-slot reclaim; D1 now reuses affine4 head weights
-across c2/c4/c8. The remaining owner is a public continuous-batching admission
-loop with packed prompt prefill, decode, sampling, and reclaim, following the
-GGUF/PARO server patterns.
+attention/KV append and fixed-slot reclaim; D1 reuses affine4 head weights
+across c2/c4/c8; P4 completes public fixed-slot admission, prompt prefill,
+decode, sampling, and reclaim following the GGUF/PARO scheduler patterns.
 
-**M6+D1 fixed-capacity runtime helper: DONE; public server integration: OPEN.**
-Batch decode is implemented with separate request-local SWA/global rings,
-sparse active masks, offset-correct reclaim, and c-specific real-checkpoint
-trajectory gates. `MapleBatchRunner.batch_step` runs c requests through the full
-batched ternary chain; `MapleContinuousBatcher` owns fixed slots and reclaim,
-but is not wired into the public generation scheduler or a server endpoint.
+**M6+D1 helper and P4 public in-process integration: DONE.** Batch decode keeps
+separate request-local SWA/global rings, sparse active masks, offset-correct
+reclaim, and c-specific real-checkpoint gates. P4's
+`MapleResidentModelRunner` now shares one c1 checkpoint owner, prefills prompts
+directly into fixed physical slots, uses D0 for one active row, and uses D1 for
+c2/c4/c8 through the public `SubmitPollTextGenerator` scheduler.
 
-The retained Radeon 8060S/gfx1151 c2/c4/c8 medians are
-**250.481/346.365/428.063 aggregate tok/s** at 64 tokens/request, improvements
-of **14.47%/32.66%/43.08%** over the corrected pre-D1 rows. Every repeated
-measured trajectory matches c1, the 18-prompt natural/category-heldout seed gate
-passes (including a sparse final c8 group), explicit reclaimed-slot reuse is
-exact, tracked residency is **4.951/4.958/4.973 GiB**, and close returns zero.
-The helper remains outside public scheduler/server admission. Evidence:
-`benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`.
+The low-level D1 helper remains **250.481/346.365/428.063 aggregate tok/s** and
+excludes prompt/public scheduling. The stricter public protocol includes prompt
+admission, native prefill, exact decode/sampling, output collection, and reclaim:
+c1/c2/c4/c8 is **122.564/165.385/201.203/214.378 aggregate tok/s**, making
+c2/c4/c8 **1.349x/1.642x/1.749x** public c1. All 15 repeated 18-prompt
+trajectory sets match serial, sparse and staggered reuse are exact, and all
+owners close to zero. One row inside a physical-c8 owner retains **99.683%** of
+public c1 throughput. HTTP serving and ragged multi-request prompt compute remain
+separate work. Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
 
 ## 4. Prefill plan (current 741-754 tok/s -> exact 1,000+)
 
-The public path is already a correct `[T, hidden]` bring-up through 512 tokens,
-with 256-row chunks and `KVLiveSpans` append-position `start + r`. The remaining
-work is ordered by the corrected profile rather than by the historical landing
-sequence.
+The public path is a correct `[T, hidden]` implementation with 256-row chunks
+and `KVLiveSpans` append-position `start + r`. P4 now carries it beyond SWA-512;
+the remaining compute work is ordered by the corrected profile rather than by
+the historical landing sequence.
 
 ### P0 — Final-row-only sampling tail — DONE, RETAINED
 
@@ -444,9 +453,9 @@ The clean retained trace reaches **21.916 ms (2.920x)**, beating the
 and unchanged launch count. Qualified 128/320/512 throughput is
 **749.175/741.368/754.000 tok/s**, up **3.13%/9.08%/15.87%** over P1. The full
 M5 gate passes **18/18** byte-state hashes, **90/90** positions, KL 0, exact
-lifecycle, and unchanged **5,355,881,848-byte** residency. Extending native
-prefill beyond 512 separately requires append/attend orchestration that cannot
-overwrite a still-visible SWA prefix.
+lifecycle, and unchanged **5,355,881,848-byte** residency. P4 subsequently adds
+the required append/attend orchestration beyond 512 without changing P2's
+kernel arithmetic.
 
 ### P3 — Dense ternary row-tile + native-WMMA sweep — DONE / REJECTED
 
@@ -493,15 +502,27 @@ cannot substitute a different internal association.
 RMSNorm/add-RMSNorm already accept rows, and
 `maple_affine4_embed_batched_kernel` (`66c5a7a11`) provides batched embedding.
 
-### P4 — Chunked admission and long prompts — PARTIAL
+### P4 — Chunked admission and long prompts — DONE, RETAINED
 
-`prefill_native(...)` is public and correct through 512 tokens. Open work is
-safe SWA orchestration beyond 512 and public packed prompt admission for the M6
-scheduler helper. Serial remains the correctness fallback above 512.
+`prefill_native(...)` now remains exact across SWA wrap. Global layers stay
+chunk-batched; each sliding layer restores the pre-chunk logical ring, batches
+the safe pre-wrap segment, and append/attends post-wrap rows serially. Retained
+520/770 gates match serial at FP32 top-logit bits, final hidden/norm, every live
+physical K/V byte, both complete span owners, and three continuations.
+
+Public fixed-slot admission shares the c1 weight owner and writes request-local
+native prefill directly into the batch K/V arena. The clean 128/320/512 protocol
+is **750.854/741.890/754.458 tok/s**, only
+**+0.224%/+0.070%/+0.061%** from P2 and exact at all 18 state hashes / 90
+positions. The symmetric public c1/c2/c4/c8 gate reaches
+**122.564/165.385/201.203/214.378 aggregate tok/s**, with sparse/staggered
+reclaim, singleton-c8 preservation, and lifecycle exact. Prompt storage is
+packed; prompt compute remains per request rather than a ragged multi-request
+GEMM.
 
 ### Prefill target
 
-P0+P1+P2 deliver **741.368 tok/s** at 320. P2 exceeds its attention gate at
+P0+P1+P2+P4 deliver **741.890 tok/s** at 320. P2 exceeds its attention gate at
 **21.916 ms / 2.920x**, but P1's expert family still reaches only **255.050 ms /
 1.083x** versus its original **<=97.708-ms / 2.826x** ceiling. P3 proves that
 larger scalar dense token tiles do not close the gap, while direct BF16 WMMA
@@ -521,13 +542,14 @@ dense/attention target.
 | M3b | lm_head affine4 | exact; dead-end (tiled 0.96×, weight-bandwidth bound) | `WORKLOG.md` |
 | M3c | c1 eight-route grouping | exact; dead-end (0.69x, shared activation already L2-cached); does not close row-bulk grouped MoE | `WORKLOG.md` |
 | M4 | batched ternary prefill primitives | exact vs packed oracle; prefill tok/s up | GEMM + QKV GEMM primitives in (done) |
-| M5/P0+P1+P2 | final-row + expert-major + exact GQA4 native prefill | exact through native 512-token limit; serial fallback above it; scalar ternary ceiling recorded | 749.175/741.368/754.000 tok/s; 18/18 byte-exact states and 90/90 positions |
+| M5/P0+P1+P2 | final-row + expert-major + exact GQA4 native prefill | fixed performance gate through 512; scalar ternary ceiling recorded | 749.175/741.368/754.000 tok/s; 18/18 byte-exact states and 90/90 positions |
 | P3 | dense ternary tile + native-BF16-WMMA sweep | tile 16/32 regress; WMMA fails byte exactness | 744.116/731.182/571.923 tok/s; WMMA 106/256 FP32 partial and 43/655,360 BF16 output mismatches; production unchanged |
 | D0 router | one-dispatch exact c1 routing | complete category/state/counter gate; default retained | 139.538 -> 145.321 tok/s (+4.14%); 1,127/1,152 wins; pre-head short profile 180.935 tok/s / 271 launches |
 | D0 head+host | one-wave exact affine4 plus once-per-step selector snapshot | complete category/state/counter gate; default retained | Head: 143.679 -> 153.409 tok/s (+6.77%); host A/B: 200.279 -> 202.580 tok/s (+1.15%); trace companion 199.293 tok/s / 271 launches |
 | D1 head | exact c2/c4/c8 affine4 row reuse | full-logit bits, all widths, category/sparse/reclaim/lifecycle, and trace; default retained | 218.818/261.099/299.181 -> 250.481/346.365/428.063 aggregate tok/s; c8 head 10.490 -> 3.734 ms |
 | M1 | graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
-| M6+D1 | D5 batch decode helper plus exact row-reuse head | exact c2/c4/c8; helper rows only | 250.481/346.365/428.063 aggregate tok/s; public scheduler/server integration remains open |
+| M6+D1 | D5 batch decode helper plus exact row-reuse head | exact c2/c4/c8 helper | 250.481/346.365/428.063 aggregate tok/s; P4 consumes it publicly |
+| P4 | safe SWA-wrap prefill + public fixed-slot admission | 520/770 physical state; same-protocol public c1/c2/c4/c8; sparse/staggered/singleton/lifecycle | prefill 750.854/741.890/754.458 tok/s; public 122.564/165.385/201.203/214.378 tok/s |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):
