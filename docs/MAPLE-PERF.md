@@ -17,21 +17,22 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 
 | Quantity | Value | Source |
 | --- | ---: | --- |
-| Public native prefill 128/320/512 | 339.890 / 326.573 / 317.488 tok/s | M5 recertification |
+| Public native prefill 128/320/512 | 700.643 / 649.280 / 614.874 tok/s | retained P0/M5 recertification |
 | Current c1 decode profile | 163.459 tok/s (6.118 ms/token) | corrected cached trace |
 | Fixed-helper c8 decode64 | 299.181 aggregate tok/s median | M6 recertification |
 | HIP kernels per c1 decode token | 295 | corrected cached trace |
 | Exact affine4 lm-head payload | 166.922 MiB | packed weight + BF16 scale/bias |
-| Public tracked residency (max context 512) | 5.133 GiB | M5 recertification |
+| Public tracked residency (max context 512) | 4.988 GiB | retained P0/M5 recertification |
 | Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
 
-**Current conclusion (post-review).** The public <=512 prefill and fixed c8
-helper are overwhelmingly kernel-bound. Cached-only `rocprofv3` at clean
-`4ca05d8db` measures:
+**Current conclusion (P0 retained).** Final-row-only sampling nearly doubles
+qualified native prefill and makes true expert-major MoE the next owner. The
+cached-only `rocprofv3` trace at clean `4ca05d8db` predates P0 for prefill but
+still attributes the unchanged layer families:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| public native prefill320 | 982.015 ms/request | 975.347 ms | 6.668 ms (0.68%) | 590 | 325.861 tok/s |
+| public native prefill320, pre-P0 | 982.015 ms/request | 975.347 ms | 6.668 ms (0.68%) | 590 | 325.861 tok/s |
 | autoregressive c1 decode | 6.118 ms/token | 5.035 ms | 1.082 ms (17.69%) | 295 | 163.459 tok/s |
 | fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
 
@@ -40,12 +41,10 @@ c1, and **46.52%** of c8. Gate/up + down adds
 **28.10%/22.55%/29.67%** respectively. The same profile has different actions
 for each path:
 
-- **Prefill:** only the final prompt row is sampled, but the runtime executes
-  final norm + full head + argmax for every row after every chunk. Delete that
-  work rather than tile it. Substituting the measured c1 tail projects
-  **495.501 ms / 645.811 tok/s** at 320 and removes about 148.8 MiB of
-  all-row logit/argmax scratch. This projection is not yet a retained
-  benchmark.
+- **Prefill:** P0 now samples only the final prompt row. Qualified
+  128/320/512 throughput is **700.643/649.280/614.874 tok/s**, versus
+  339.890/326.573/317.488 before P0. Max-context-512 residency falls exactly
+  **148.813 MiB** to **4.988 GiB**.
 - **c8:** all request rows require logits. A rows>1 affine4 tile that streams
   each 166.922-MiB payload once across request rows remains the correct owner.
 - **c1:** preserve the proven head kernel until a new layout wins. A controlled
@@ -53,20 +52,20 @@ for each path:
   graph stays opt-in. The 5.035-ms kernel-only roof is 198.591 tok/s; exact
   200+ requires router/head kernel work.
 
-The second prefill correction is that `maple_selected_ternary_*_batched` is a
-row/route gather grid, **not grouped MoE**: expert weights are reread for every
-assignment. True device count/prefix/scatter plus expert-major ternary kernels
-is the next owner after final-row tail selection. The measured 274.073-ms
-expert family must reach about 98.572 ms (2.780x) for the profile-based 1000
-tok/s target with other buckets fixed.
+The remaining prefill correction is that
+`maple_selected_ternary_*_batched` is a row/route gather grid, **not grouped
+MoE**: expert weights are reread for every assignment. True device
+count/prefix/scatter plus expert-major ternary kernels is now the active owner.
+The pre-P0 profile measured this unchanged family at 274.073 ms and projected a
+98.572-ms (2.780x) requirement for 1000 tok/s; reprofile P0 before freezing the
+implementation gate.
 
 Current exact priority:
 
-1. P0 final-row-only prefill tail.
-2. P1 true expert-major compact ternary MoE.
-3. P2 exact qrow/GQA-reuse attention; P3 dense ternary tile sweep.
-4. D0 one-dispatch c1 router then affine4-head bandwidth work.
-5. D1 c2/c4/c8 affine4 row reuse.
+1. P1 true expert-major compact ternary MoE.
+2. P2 exact qrow/GQA-reuse attention; P3 dense ternary tile sweep.
+3. D0 one-dispatch c1 router then affine4-head bandwidth work.
+4. D1 c2/c4/c8 affine4 row reuse.
 
 DeepGrove's published M4 table supports this split: **169 tok/s exact**, **218
 tok/s with approximate FlashHead**, and **1075 tok/s prefill**. Its generation
@@ -75,7 +74,8 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
-`benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json` and
+`benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`,
+`benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json`, and
 `benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json`.
 
 ## 2. Phase 0 — Profile before optimizing (gate: no math changes) — DONE
@@ -162,7 +162,7 @@ Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 | **M3a parallel router** | Done; router 7,807 -> 1,104 us/step and decode 12,758 -> 6,038 us in the post-M3a trace | Retained. The two-dispatch router is still the first exact c1 kernel target. |
 | **M3b c1 affine4 tile** | Rejected at 0.96x | Do not revive the same tile; use a materially different layout/bandwidth schedule. |
 | **M3c c1 eight-route grouping** | Rejected at 0.69x | This tested activation reuse within one token, not expert-major reuse across prompt rows. |
-| **M4/M5 batched prefill** | Correct bring-up at 317-340 tok/s | Retained through 512; P0 final-row tail and P1 grouped MoE remain open. |
+| **M4/M5 batched prefill** | P0 retained at 615-701 tok/s | Exact through 512; P1 grouped MoE remains open. |
 | **M1 c1 hipGraph** | Exact but only 1.0047x in the current review | Keep opt-in; do not use the historical host-gap estimate as a speed claim. |
 | **M6 batch decode** | c2/c4/c8 helper at 218.818/261.099/299.181 aggregate tok/s | Retained helper; public scheduler/server integration remains open. |
 | **M2 fusion** | Exact composites regressed kernel efficiency | Keep opt-in/fallbacks; no default promotion. |
@@ -320,26 +320,30 @@ measured trajectory matches c1, the 18-prompt natural-derived seed gate passes
 as W7900/gfx1151 and gated c=1 rather than the measured widths. Evidence:
 `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
 
-## 4. Prefill plan (current 317-340 tok/s -> exact 1,000+)
+## 4. Prefill plan (current 615-701 tok/s -> exact 1,000+)
 
 The public path is already a correct `[T, hidden]` bring-up through 512 tokens,
 with 256-row chunks and `KVLiveSpans` append-position `start + r`. The remaining
 work is ordered by the corrected profile rather than by the historical landing
 sequence.
 
-### P0 — Final-row-only sampling tail — OPEN, IMMEDIATE
+### P0 — Final-row-only sampling tail — DONE, RETAINED
 
-After every chunk, preserve the full hidden/KV update but run final RMSNorm,
-exact LM head, and argmax only for the final row of the final chunk. Reuse the
-proven c1 logits/argmax buffers; keep the all-row affine4 path for c>1 batch
-decode and as a debug oracle. This deletes 487.969 ms of measured all-row
-head/argmax work, adds back about 1.455 ms for one row, and projects 320-token
-prefill from 325.861 to 645.811 tok/s. It also removes about 148.8 MiB of
-public-runner all-row logit/argmax scratch.
+After every chunk, the runtime preserves the complete hidden/KV update and runs
+final RMSNorm, exact LM head, and argmax only for the final row of the final
+chunk. Public prefill reuses the proven c1 logits/argmax buffers; the all-row
+path and buffers remain batch-only.
 
-Gate: all 18 natural+heldout prompts at 128/320/512 must preserve byte-exact
-hidden/KV state, top logit, seed token, and continuation; serial fallback above
-512 and close ownership must remain unchanged.
+The clean qualified result is **700.643/649.280/614.874 tok/s** at
+128/320/512, improvements of **106.14%/98.82%/93.67%** over the corrected
+bring-up baseline. All **18/18** natural+heldout prompt states match serial
+byte-for-byte across final hidden/normalized values, all live K/V bytes, and
+both `KVLiveSpans` metadata sets; all **90/90** seed/continuation logits and
+tokens match with KL 0. Tracked max-context-512 residency falls
+**5.133 -> 4.988 GiB (-148.813 MiB)** and close returns zero ownership.
+
+Evidence:
+`benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`.
 
 ### P1 — True expert-major compact ternary MoE — OPEN, NEXT
 
@@ -351,8 +355,9 @@ hidden/KV state, top logit, seed token, and continuation; serial fallback above
   do not add runtime quant/backend branches.
 - Preserve every per-row BF16 projection, clamp/SwiGLU, and weighted-sum
   boundary. Keep the current row/route gather chain as the oracle/fallback.
-- Gate: at least 2.780x on the measured 274.073-ms prefill320 expert family,
-  plus the P0 18-prompt/continuation/state/lifecycle gate.
+- Gate: freeze the expert-family speed target from the clean post-P0 reprofile;
+  the provisional pre-P0 target is <=98.572 ms (2.780x). Also pass the P0
+  18-prompt/continuation/state/lifecycle gate.
 
 ### P2 — GQA/query-row prefill attention — BRING-UP LANDED; TUNING OPEN
 
@@ -395,13 +400,14 @@ scheduler helper. Serial remains the correctness fallback above 512.
 
 ### Prefill target
 
-Final-row tail selection projects 645.811 tok/s at 320. Crossing 1,000 then
-requires the 274.073-ms expert family to reach <=98.572 ms (2.780x), with the
-other measured buckets fixed. DeepGrove's 1075 tok/s M4 row avoids discarded
-heads and sorts routed rows by expert, independently showing that 1,000+ is
-credible. The near-term exact target is **>=1,000 tok/s at qualified
-128/320/512 shapes**; 2,000 is a later dense/attention target, not the P0/P1
-acceptance bar.
+P0 delivers 649.280 tok/s at 320, close to its 645.811 tok/s projection.
+Crossing 1,000 now requires P1 plus later layer work. The pre-P0 profile-based
+P1 target is expert-family <=98.572 ms (2.780x), but a clean P0 reprofile must
+replace that estimate before implementation acceptance. DeepGrove's 1075 tok/s
+M4 row avoids discarded heads and sorts routed rows by expert, independently
+showing that 1,000+ is credible. The near-term exact target remains
+**>=1,000 tok/s at qualified 128/320/512 shapes**; 2,000 is a later
+dense/attention target.
 
 ## 5. Milestones and evidence policy
 
@@ -412,7 +418,7 @@ acceptance bar.
 | M3b | lm_head affine4 | exact; dead-end (tiled 0.96×, weight-bandwidth bound) | `WORKLOG.md` |
 | M3c | c1 eight-route grouping | exact; dead-end (0.69x, shared activation already L2-cached); does not close row-bulk grouped MoE | `WORKLOG.md` |
 | M4 | batched ternary prefill primitives | exact vs packed oracle; prefill tok/s up | GEMM + QKV GEMM primitives in (done) |
-| M5 | correct batched prefill bring-up | exact through native 512-token limit; serial fallback above it; row/route-gather MoE remains to replace | public path recertified at 128/320/512 = 339.890/326.573/317.488 tok/s; 18 prompts / 90 positions exact |
+| M5/P0 | final-row native prefill | exact through native 512-token limit; serial fallback above it; row/route-gather MoE remains to replace | 700.643/649.280/614.874 tok/s; 18/18 byte-exact states and 90/90 positions |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
 | M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |

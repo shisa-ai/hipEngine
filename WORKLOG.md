@@ -207052,3 +207052,33 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   to include `HIPENGINE_COMPILER_VERSION_FILE` and
   `HIPENGINE_REQUIRE_CACHED_BUILD`; the exact benchmark can therefore prove it
   used the prebuilt compiler identity and cached-only kernel libraries.
+- Clean committed recertification at `364d7183e81d117e32b56bb58b44bc250be7df98`:
+  `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. ... python3
+  scripts/maple_prefill_bench.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --suite
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout
+  benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --lengths 128,320,512
+  --repetitions 3 --warmups 1 --continuation-steps 4 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`
+  -> **accepted**. Aggregate 128/320/512 prefill is
+  **700.643/649.280/614.874 tok/s**, versus corrected prior
+  **339.890/326.573/317.488** (**+106.14%/+98.82%/+93.67%**) and same-run serial
+  **147.082/105.871/82.608** (**4.764x/6.133x/7.443x**). Each shape has 24
+  samples; ranges are **690.952-707.692 / 644.680-653.821 /
+  610.327-620.205 tok/s**.
+- Binding correctness/lifecycle passes: **18/18** natural+heldout state hashes
+  match across 60 components/prompt (final hidden/normalized, 24 layer K/V
+  pairs, and both five-buffer span sets); max/mean KL **0/0**, top-1/token
+  **90/90**, tracked close **0 bytes / 0 allocations**. Max-context-512 tracked
+  residency falls exactly **5,511,879,016 -> 5,355,836,776 bytes
+  (-156,042,240 bytes / -148.813 MiB)**. Artifact SHA-256:
+  `e8a96b69c040ef16649e223d950b9100323228942064c3d108a8a727b4f60b1e`.
+- P0 is retained/default. Update `docs/MAPLE.md`, `docs/MAPLE-PERF.md`, and the
+  benchmark rollups; next action is a clean post-P0 prefill320 profile before
+  implementing P1 expert-major compact ternary MoE.
+- Publication validation: artifact JSON/status/protocol/state/lifecycle
+  assertions pass, all changed relative Markdown links resolve,
+  `tests/test_benchmark_readme_sync.py -q --tb=short` passes **6/6**, and
+  diff/WORKLOG checks are clean.

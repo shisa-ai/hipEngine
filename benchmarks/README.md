@@ -2,27 +2,28 @@
 
 Last updated: **2026-08-07**
 
-**Maple M5/M6 recertified on Radeon 8060S/gfx1151:** public native prefill at
-128/320/512 tokens is **339.890/326.573/317.488 tok/s**, versus serial
-**148.180/106.639/83.257 tok/s** (**2.29x/3.06x/3.81x**), with **5.133 GiB**
-tracked resident ownership. All 18 code/general-English/general-Japanese/mixed
-natural+heldout prompts and 90 seed/continuation positions are logit- and
-token-exact; public prompts above the current 512-token native limit use serial
-prefill. The fixed-capacity M6 runtime helper reaches c=2/4/8 median aggregate
+**Maple P0/M5 retained on Radeon 8060S/gfx1151:** final-row-only public native
+prefill at 128/320/512 is **700.643/649.280/614.874 tok/s**, up
+**106.14%/98.82%/93.67%** from the corrected bring-up rows and
+**4.764x/6.133x/7.443x** serial. All 18 code/general-English/general-Japanese/
+mixed natural+heldout prompts have byte-exact final hidden/normalized, live K/V,
+and `KVLiveSpans` state; all 90 seed/continuation positions are logit/token
+exact with KL 0. Max-context-512 tracked residency is **4.988 GiB**, down
+**148.813 MiB**, and close returns zero ownership. Evidence:
+[`P0/M5`](results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json).
+
+The fixed-capacity M6 runtime helper remains c=2/4/8 median aggregate
 **218.818/261.099/299.181 tok/s** at 64 tokens/request with every measured
-trajectory exact and **4.951/4.958/4.973 GiB** tracked resident ownership. M6
-is not yet public server throughput. The former 223.2/275.6/321.1 rows are
-invalid (wrong hardware label and c=1-only gate). Evidence:
-[`M5`](results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json),
-[`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json), and
-`docs/MAPLE-PERF.md`. The corrected cached-only
+trajectory exact and **4.951/4.958/4.973 GiB** tracked resident ownership; it is
+not yet public server throughput. The former 223.2/275.6/321.1 rows are invalid
+(wrong hardware label and c=1-only gate). Evidence:
+[`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json).
+
+The corrected cached-only
 [`phase profile`](results/2026-08-07-gfx1151-maple-corrected-phase-profile.json)
-attributes the exact affine4 lm-head as **49.90%/28.75%/46.52%** of kernel time
-for prefill320/c1/c8. Source review corrects the actions by path: public prefill
-must delete discarded non-final heads first (measured-bucket projection
-**325.861 -> 645.811 tok/s**, not a retained row), then replace row/route-gather
-MoE with true expert-major compact execution; c2/c4/c8 still need affine4 row
-reuse. A counterbalanced exact/leak-free
+predates P0 for prefill. It attributed row/route-gather expert work at 274.073
+ms for prefill320; a clean P0 reprofile now precedes P1 true expert-major compact
+MoE. c2/c4/c8 still need affine4 row reuse. A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
 measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
 the rejected c1 head tile remains closed.
