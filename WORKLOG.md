@@ -203055,3 +203055,21 @@ Vulkan local sizes verbatim will close the measured gap.
   per-GEMV shaping (tiled/grouped) does not help. The lever is weight reuse
   across a batch: M4/M5 batched prefill and M6 batch decode. Router kernel B
   (softmax/topk, 722 µs) is the one remaining c1 kernel-shape target.
+
+## 2026-08-07 — M4/P1: batched ternary GEMM primitive (groundwork)
+
+- Add `maple_ternary_gemm_bf16` kernel (P1): computes `out[t, r] = x[t,:] ·
+  ternary(W[r,:]) * alpha[r]` for t in [0, rows), r in [0, out_features). One
+  block owns one output row and an 8-row token tile; loads that weight row into
+  LDS once and reuses it across the tile (the core prefill weight-reuse win vs
+  the c1 GEMV, which re-reads the weight row per token). Same word-strided
+  thread + lane-loop + tree-reduce accumulation order as
+  `maple_ternary_gemv_kernel`.
+- Correctness: bit-exact vs the per-row GEMV and the CPU `ternary_gemv` oracle
+  (new `test_maple_ternary_gemm_batched_matches_cpu_oracle`, 13 rows spanning
+  two 8-token tiles). 5/5 ternary kernel tests + focused bundle pass; ruff clean.
+- Microbench (in=2048, out=4096, 32 rows): batched GEMM 0.447 ms vs 32× GEMV
+  0.515 ms (**1.15×** in isolation). This is a PRIMITIVE-level result, not a
+  model-level prefill claim — the full batched prefill path (batched QKV /
+  attention / o_proj / grouped-MoE / chunked wiring) is not yet built, so M4
+  stays open. The kernel is retained as tested groundwork for P1.

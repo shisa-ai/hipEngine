@@ -327,6 +327,111 @@ extern "C" int hipengine_maple_ternary_gemv_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+// Batched ternary GEMM (prefill P1): computes
+//   out[t, r] = sum_k x[t, k] * ternary(W[r, k]) * alpha[r]
+// for t in [0, rows), r in [0, out_features).  One block owns one output row
+// and a tile of TOKENS_PER_BLOCK prompt rows, loads that weight row into LDS
+// ONCE, and reuses it across the token tile — the core prefill weight-reuse
+// win (the c1 GEMV re-reads the full weight row per token).  Accumulation
+// order per (token,row) is word-strided threads + lane loop + tree reduce,
+// identical to maple_ternary_gemv_kernel, so bf16 outputs match within the
+// gate.
+template <int TOKENS_PER_BLOCK>
+__global__ void maple_ternary_gemm_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ weight,
+    const uint16_t* __restrict__ row_alpha,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t r = blockIdx.x;
+  const int64_t tile = blockIdx.y;
+  const int64_t t0 = tile * TOKENS_PER_BLOCK;
+  if (r >= out_features) {
+    return;
+  }
+  const int64_t words = in_features / 16;
+  const int tid = static_cast<int>(threadIdx.x);
+  extern __shared__ float xs[];
+  // Load this output row's weights into LDS once (packed ternary codes).
+  __shared__ uint32_t wrow[128];
+  const uint32_t* wbase = weight + r * words;
+  for (int64_t w = tid; w < words; w += blockDim.x) {
+    wrow[w] = wbase[w];
+  }
+  __syncthreads();  // publish wrow before the token loop reads it
+  // Scratch for tree reductions: [blockDim.x] floats per token slice.
+  float* scratch = xs;
+  const float alpha = bf16_to_float(row_alpha[r]);
+  for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+    const int64_t tok = t0 + t;
+    if (tok >= rows) {
+      break;
+    }
+    const uint16_t* xrow = x + tok * in_features;
+    float partial = 0.0f;
+    for (int64_t w = tid; w < words; w += blockDim.x) {
+      const uint32_t word = wrow[w];
+      const int64_t base = w * 16;
+#pragma unroll
+      for (int lane = 0; lane < 16; ++lane) {
+        const int code = static_cast<int>((word >> (2 * lane)) & 0x3U) - 1;
+        partial += bf16_to_float(xrow[base + lane]) * static_cast<float>(code);
+      }
+    }
+    float* slice = scratch + t * blockDim.x;
+    slice[tid] = partial;
+    __syncthreads();
+    for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        slice[tid] += slice[tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid == 0) {
+      out[tok * out_features + r] = float_to_bf16(slice[0] * alpha);
+    }
+    __syncthreads();  // protect scratch reuse across tokens in the tile
+  }
+}
+
+extern "C" int hipengine_maple_ternary_gemm_bf16(
+    const uint16_t* x,
+    const uint32_t* weight,
+    const uint16_t* row_alpha,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || in_features % 16 != 0
+      || in_features / 16 > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_words(in_features / 16);
+  const int64_t words = in_features / 16;
+  const int toks_per_block = 8;
+  const int64_t blocks_x = out_features;
+  const int64_t blocks_y = (rows + toks_per_block - 1) / toks_per_block;
+  const int64_t shared = toks_per_block * threads * sizeof(float);
+  hipLaunchKernelGGL(
+      (maple_ternary_gemm_bf16_kernel<8>),
+      dim3(static_cast<unsigned int>(blocks_x),
+           static_cast<unsigned int>(blocks_y)),
+      dim3(threads),
+      static_cast<unsigned int>(shared),
+      stream,
+      x,
+      weight,
+      row_alpha,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_maple_ternary_qkv_gemv_bf16(
     const uint16_t* x,
     const uint32_t* q_weight,
