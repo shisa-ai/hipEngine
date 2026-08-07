@@ -123,6 +123,58 @@ def maple_qknorm_rope_kv_write_bf16(
     )
 
 
+def maple_qknorm_rope_kv_write_batched_bf16(
+    qkv_ptr: int,
+    q_norm_weight_ptr: int,
+    k_norm_weight_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    q_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    rope_dim: int,
+    eps: float,
+    rope_theta: float,
+    start: int,
+    rows: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Batched qknorm+RoPE+KV write for T prompt rows into the shared ring (P2)."""
+
+    base, live, token_positions, evict_mask, _row_positions, capacity = _span_pointers(spans)
+    _launch(
+        "hipengine_maple_qknorm_rope_kv_write_batched_bf16",
+        (_PTR,) * 9 + (_I64, _I64, _I64, _I64, _F32, _F32, _I64, _I64, _I64, _PTR),
+        (
+            qkv_ptr,
+            q_norm_weight_ptr,
+            k_norm_weight_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            base,
+            live,
+            token_positions,
+            evict_mask,
+            q_heads,
+            kv_heads,
+            head_dim,
+            rope_dim,
+            eps,
+            rope_theta,
+            start,
+            rows,
+            capacity,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_attention_decode_bf16(
     qkv_ptr: int,
     key_cache_ptr: int,
@@ -212,6 +264,10 @@ def register_maple_attention_kernels(
             "maple_qknorm_rope_kv_write",
             "partial_rotate_half_bf16",
         ): maple_qknorm_rope_kv_write_bf16,
+        (
+            "maple_qknorm_rope_kv_write",
+            "partial_rotate_half_batched_bf16",
+        ): maple_qknorm_rope_kv_write_batched_bf16,
         ("maple_attention_decode", "gqa_spans_bf16"): maple_attention_decode_bf16,
         ("maple_attention_prefill", "gqa_causal_bf16"): maple_attention_prefill_bf16,
     }
@@ -261,6 +317,7 @@ __all__ = [
     "maple_attention_decode_bf16",
     "maple_attention_prefill_bf16",
     "maple_kv_span_update",
+    "maple_qknorm_rope_kv_write_batched_bf16",
     "maple_qknorm_rope_kv_write_bf16",
     "plan_maple_attention_build",
     "register_maple_attention_kernels",

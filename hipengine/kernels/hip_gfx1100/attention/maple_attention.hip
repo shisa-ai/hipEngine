@@ -136,6 +136,102 @@ __global__ void maple_qknorm_rope_kv_write_kernel(
   }
 }
 
+// Batched qknorm+RoPE+KV write (P2 prefill): processes T prompt rows at
+// absolute positions [start, start+T).  Grid is (total_heads x T); block
+// (head, row) qknorm-normalizes that head's vector for row, applies RoPE at
+// position = start+row, writes the normalized q back into the q-region of
+// qkv[row], and writes k/v into the shared KVLiveSpans ring physical slots
+// (same ABI as the decode qknorm write, so prefill and decode share one
+// cache).  qkv layout is [T, q_size + 2*kv_size].
+__global__ void maple_qknorm_rope_kv_write_batched_kernel(
+    uint16_t* __restrict__ qkv,
+    const uint16_t* __restrict__ q_norm_weight,
+    const uint16_t* __restrict__ k_norm_weight,
+    uint16_t* __restrict__ key_cache,
+    uint16_t* __restrict__ value_cache,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t rope_dim,
+    float eps,
+    float rope_theta,
+    int64_t start,
+    int64_t capacity) {
+  const int64_t head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t total_heads = q_heads + kv_heads;
+  if (head >= total_heads) {
+    return;
+  }
+  const bool is_q = head < q_heads;
+  const int64_t local_head = is_q ? head : head - q_heads;
+  const int64_t q_size = q_heads * head_dim;
+  const int64_t kv_size = kv_heads * head_dim;
+  const int64_t row_base = row * (q_size + 2 * kv_size);
+  const int64_t source_base = is_q ? head * head_dim : q_size + local_head * head_dim;
+  const uint16_t* norm_weight = is_q ? q_norm_weight : k_norm_weight;
+  const int64_t tid = threadIdx.x;
+  const int64_t position = start + row;
+
+  extern __shared__ uint8_t shared_raw[];
+  float* sums = reinterpret_cast<float*>(shared_raw);
+  uint16_t* normalized = reinterpret_cast<uint16_t*>(sums + blockDim.x);
+  float value = 0.0f;
+  if (tid < head_dim) {
+    value = bf16_to_float(qkv[row_base + source_base + tid]);
+  }
+  sums[tid] = value * value;
+  __syncthreads();
+  for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      sums[tid] += sums[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid < head_dim) {
+    const float inv_rms = rsqrtf(sums[0] / static_cast<float>(head_dim) + eps);
+    normalized[tid] = float_to_bf16(
+        value * inv_rms * bf16_to_float(norm_weight[tid]));
+  }
+  __syncthreads();
+
+  if (tid < head_dim) {
+    float out_value = bf16_to_float(normalized[tid]);
+    if (rope_dim > 0 && tid < rope_dim) {
+      const int64_t half = rope_dim / 2;
+      const int64_t pair = tid < half ? tid + half : tid - half;
+      const int64_t frequency = tid < half ? tid : tid - half;
+      const float exponent = -static_cast<float>(frequency) / static_cast<float>(half);
+      const float theta = static_cast<float>(position) * powf(rope_theta, exponent);
+      const float paired = bf16_to_float(normalized[pair]);
+      const float cosine = cosf(theta);
+      const float sine = sinf(theta);
+      out_value = tid < half
+          ? out_value * cosine - paired * sine
+          : out_value * cosine + paired * sine;
+    }
+    const uint16_t out_bits = float_to_bf16(out_value);
+    qkv[row_base + source_base + tid] = out_bits;
+
+    if (!is_q) {
+      const int64_t logical_slot = positive_mod(position, capacity);
+      const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+      const bool valid = live_counts[0] > 0
+          && token_positions[logical_slot] == position
+          && evict_mask[logical_slot] == 0;
+      if (valid && physical_slot >= 0 && physical_slot < capacity) {
+        const int64_t cache_offset = physical_slot * kv_size + local_head * head_dim + tid;
+        key_cache[cache_offset] = out_bits;
+        value_cache[cache_offset] = qkv[row_base + q_size + kv_size + local_head * head_dim + tid];
+      }
+    }
+  }
+}
+
 __global__ void maple_attention_decode_kernel(
     const uint16_t* __restrict__ qkv,
     const uint16_t* __restrict__ key_cache,
@@ -365,6 +461,61 @@ extern "C" int hipengine_maple_qknorm_rope_kv_write_bf16(
       rope_dim,
       eps,
       rope_theta,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_qknorm_rope_kv_write_batched_bf16(
+    uint16_t* qkv,
+    const uint16_t* q_norm_weight,
+    const uint16_t* k_norm_weight,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t rope_dim,
+    float eps,
+    float rope_theta,
+    int64_t start,
+    int64_t rows,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
+      || head_dim <= 0 || head_dim > 128 || rope_dim < 0 || rope_dim > head_dim
+      || rope_dim % 2 != 0 || rows <= 0 || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_dim(head_dim);
+  const int64_t blocks = q_heads + kv_heads;
+  const int64_t shared_bytes = threads * sizeof(float) + head_dim * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      maple_qknorm_rope_kv_write_batched_kernel,
+      dim3(static_cast<unsigned int>(blocks),
+           static_cast<unsigned int>(rows)),
+      dim3(threads),
+      static_cast<unsigned int>(shared_bytes),
+      stream,
+      qkv,
+      q_norm_weight,
+      k_norm_weight,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      q_heads,
+      kv_heads,
+      head_dim,
+      rope_dim,
+      eps,
+      rope_theta,
+      start,
       capacity);
   return static_cast<int>(hipGetLastError());
 }

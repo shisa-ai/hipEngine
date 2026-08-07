@@ -257,6 +257,87 @@ def test_maple_qknorm_partial_rope_and_kv_write_match_oracle(maple_attention_lib
     assert np.array_equal(value_cache[physical_slot], expected_v)
 
 
+def test_maple_qknorm_rope_kv_write_batched_matches_oracle(maple_attention_lib) -> None:
+    """Batched qknorm+RoPE+KV write over T rows is bit-exact vs per-row oracle (P2)."""
+
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_qknorm_rope_kv_write_batched_bf16,
+    )
+
+    rng = np.random.default_rng(88)
+    q_heads, kv_heads, head_dim, rope_dim = 4, 2, 4, 2
+    q_size, kv_size = q_heads * head_dim, kv_heads * head_dim
+    rows, start, capacity = 5, 2, 8
+    qkv_f32 = rng.normal(size=(rows, q_size + 2 * kv_size)).astype(np.float32)
+    qkv = f32_to_bf16_bits(qkv_f32)
+    qw_f32 = bf16_round(rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32))
+    kw_f32 = bf16_round(rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32))
+    q_weight = f32_to_bf16_bits(qw_f32)
+    k_weight = f32_to_bf16_bits(kw_f32)
+    base = np.asarray([0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int32)
+    token_positions = np.full(capacity, -1, dtype=np.int64)
+    for r in range(rows):
+        token_positions[(start + r) % capacity] = start + r
+    expected_q = np.zeros((rows, q_size), dtype=np.uint16)
+    expected_key = np.zeros((rows, kv_size), dtype=np.uint16)
+    expected_val = np.zeros((rows, kv_size), dtype=np.float32)
+    for r in range(rows):
+        eq, ek = qk_norm_rope(
+            bf16_round(qkv_f32[r, :q_size]).reshape(q_heads, head_dim),
+            bf16_round(qkv_f32[r, q_size : q_size + kv_size]).reshape(kv_heads, head_dim),
+            qw_f32,
+            kw_f32,
+            pos=start + r,
+            rope_theta=10000.0,
+            rope_dim=rope_dim,
+        )
+        expected_q[r] = f32_to_bf16_bits(eq.reshape(-1))
+        expected_key[r] = f32_to_bf16_bits(ek.reshape(-1))
+        expected_val[r] = qkv_f32[r, q_size + kv_size :]
+
+    with DeviceArrays() as dev:
+        spans = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=np.asarray([rows], dtype=np.int64),
+            token_positions=token_positions,
+            evict_mask=np.zeros(capacity, dtype=np.bool_),
+            row_positions=np.asarray([start + rows - 1], dtype=np.int64),
+        )
+        qkv_d = dev.put(qkv)
+        qw_d, kw_d = dev.put(q_weight), dev.put(k_weight)
+        key_cache, key_d = dev.empty((capacity, kv_size), np.dtype(np.uint16))
+        value_cache, value_d = dev.empty((capacity, kv_size), np.dtype(np.uint16))
+        maple_qknorm_rope_kv_write_batched_bf16(
+            qkv_d.ptr,
+            qw_d.ptr,
+            kw_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            spans,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            rope_dim=rope_dim,
+            eps=1e-6,
+            rope_theta=10000.0,
+            start=start,
+            rows=rows,
+            library=maple_attention_lib,
+        )
+        qkv_out = np.empty_like(qkv)
+        dev.get(qkv_out, qkv_d)
+        dev.get(key_cache, key_d)
+        dev.get(value_cache, value_d)
+
+    assert np.array_equal(qkv_out[:, :q_size], expected_q)
+    for r in range(rows):
+        physical = int(base[(start + r) % capacity])
+        assert np.array_equal(key_cache[physical], expected_key[r])
+        assert np.array_equal(value_cache[physical], f32_to_bf16_bits(expected_val[r]))
+
+
+
 def test_maple_gqa_attention_reads_wrapped_kv_live_spans(maple_attention_lib) -> None:
     rng = np.random.default_rng(55)
     q_heads, kv_heads, head_dim, capacity = 4, 2, 4, 4
