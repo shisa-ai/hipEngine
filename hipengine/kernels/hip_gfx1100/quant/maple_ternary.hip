@@ -191,6 +191,83 @@ __global__ void maple_selected_ternary_dual_gemv_kernel(
   }
 }
 
+// Batched selected-expert dual GEMV (P3 prefill, gather-based grouped MoE):
+// computes gate/up for all (row, slot) entries over T rows.  Grid is
+// (out_features, top_k, T); block (outrow, slot, row) reads
+// expert = selected_ids[row, slot] and projects x[row] with that expert's
+// gate/up weight rows, writing to a_out/b_out as [T, top_k, out_features].
+__global__ void maple_selected_ternary_dual_gemv_batched_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ a_weight,
+    const uint16_t* __restrict__ a_alpha,
+    const uint32_t* __restrict__ b_weight,
+    const uint16_t* __restrict__ b_alpha,
+    const int32_t* __restrict__ selected_experts,
+    uint16_t* __restrict__ a_out,
+    uint16_t* __restrict__ b_out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t row = blockIdx.z;
+  const int64_t route = blockIdx.y;
+  const int64_t outrow = blockIdx.x;
+  if (row >= rows || route >= top_k) {
+    return;
+  }
+  const int64_t entry = row * top_k + route;
+  const int32_t expert = selected_experts[entry];
+  const int64_t entry_out = entry * out_features + outrow;
+  if (expert < 0 || expert >= num_experts) {
+    if (threadIdx.x == 0) {
+      a_out[entry_out] = float_to_bf16(0.0f);
+      b_out[entry_out] = float_to_bf16(0.0f);
+    }
+    return;
+  }
+  const int64_t words = in_features / 16;
+  const int64_t matrix_row = static_cast<int64_t>(expert) * out_features + outrow;
+  float a_partial = 0.0f;
+  float b_partial = 0.0f;
+  const uint32_t* a_row = a_weight + matrix_row * words;
+  const uint32_t* b_row = b_weight + matrix_row * words;
+  const uint16_t* xrow = x + row * in_features;
+  for (int64_t word_idx = threadIdx.x; word_idx < words; word_idx += blockDim.x) {
+    const uint32_t a_word = a_row[word_idx];
+    const uint32_t b_word = b_row[word_idx];
+    const int64_t base = word_idx * 16;
+#pragma unroll
+    for (int lane = 0; lane < 16; ++lane) {
+      const float xv = bf16_to_float(xrow[base + lane]);
+      const int a_code = static_cast<int>((a_word >> (2 * lane)) & 0x3U) - 1;
+      const int b_code = static_cast<int>((b_word >> (2 * lane)) & 0x3U) - 1;
+      a_partial += xv * static_cast<float>(a_code);
+      b_partial += xv * static_cast<float>(b_code);
+    }
+  }
+  extern __shared__ float scratch[];
+  float* a_scratch = scratch;
+  float* b_scratch = scratch + blockDim.x;
+  const int tid = static_cast<int>(threadIdx.x);
+  a_scratch[tid] = a_partial;
+  b_scratch[tid] = b_partial;
+  __syncthreads();
+  for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      a_scratch[tid] += a_scratch[tid + stride];
+      b_scratch[tid] += b_scratch[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    a_out[entry_out] = float_to_bf16(
+        a_scratch[0] * bf16_to_float(a_alpha[matrix_row]));
+    b_out[entry_out] = float_to_bf16(
+        b_scratch[0] * bf16_to_float(b_alpha[matrix_row]));
+  }
+}
+
 __global__ void maple_selected_ternary_gemv_kernel(
     const uint16_t* __restrict__ x,
     const uint32_t* __restrict__ weight,
@@ -671,6 +748,50 @@ extern "C" int hipengine_maple_selected_ternary_dual_gemv_bf16(
       selected_experts,
       a_out,
       b_out,
+      num_experts,
+      top_k,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_selected_ternary_dual_gemv_batched_bf16(
+    const uint16_t* x,
+    const uint32_t* a_weight,
+    const uint16_t* a_alpha,
+    const uint32_t* b_weight,
+    const uint16_t* b_alpha,
+    const int32_t* selected_experts,
+    uint16_t* a_out,
+    uint16_t* b_out,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t top_k,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (rows <= 0 || num_experts <= 0 || top_k <= 0 || in_features <= 0
+      || out_features <= 0 || in_features % 16 != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_words(in_features / 16);
+  hipLaunchKernelGGL(
+      maple_selected_ternary_dual_gemv_batched_kernel,
+      dim3(static_cast<unsigned int>(out_features),
+           static_cast<unsigned int>(top_k),
+           static_cast<unsigned int>(rows)),
+      dim3(threads),
+      2 * threads * sizeof(float),
+      stream,
+      x,
+      a_weight,
+      a_alpha,
+      b_weight,
+      b_alpha,
+      selected_experts,
+      a_out,
+      b_out,
+      rows,
       num_experts,
       top_k,
       in_features,

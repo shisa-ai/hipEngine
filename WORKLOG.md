@@ -203175,3 +203175,16 @@ Vulkan local sizes verbatim will close the measured gap.
 - Correctness: new `test_maple_affine4_embed_batched_matches_oracle` is
   bit-exact vs `dequantize_affine4` for 6 token IDs. 7/7 ternary tests pass;
   ruff clean.
+
+## 2026-08-07 — M5/P3: batched selected-expert dual GEMV primitive
+
+- Add `maple_selected_ternary_dual_gemv_batched_kernel` (P3, gather-based
+  grouped MoE): grid (out_features, top_k, T), block (outrow, slot, row)
+  projects x[row] with expert = selected_ids[row, slot]'s gate/up weight rows,
+  writing a_out/b_out as [T, top_k, out_features].
+- Wrapper `maple_selected_ternary_dual_gemv_batched_bf16` + registry key
+  `("maple_selected_ternary_dual", "row_alpha_batched")`.
+- Correctness: new
+  `test_maple_selected_ternary_dual_gemv_batched_matches_oracle` is bit-exact
+  vs per-(row,slot) `ternary_gemv` for 5 rows x top-2. 8/8 ternary tests pass;
+  ruff clean.

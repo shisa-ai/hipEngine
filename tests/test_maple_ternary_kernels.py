@@ -450,3 +450,68 @@ def test_maple_selected_dual_and_down_ternary_gemv_match_oracle(maple_ternary_li
     assert np.array_equal(gate_out, gate_expected)
     assert np.array_equal(up_out, up_expected)
     assert np.array_equal(down_out, down_expected)
+
+
+def test_maple_selected_ternary_dual_gemv_batched_matches_oracle(maple_ternary_lib) -> None:
+    """Batched selected-expert dual GEMV over (T, top_k) entries is bit-exact (P3)."""
+
+    from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
+        maple_selected_ternary_dual_gemv_batched_bf16,
+    )
+
+    rng = np.random.default_rng(44)
+    rows, experts, top_k, hidden, intermediate = 5, 4, 2, 32, 16
+    x_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    selected = rng.integers(0, experts, size=(rows, top_k)).astype(np.int32)
+    gate_values = rng.integers(-1, 2, size=(experts, intermediate, hidden), dtype=np.int8)
+    up_values = rng.integers(-1, 2, size=(experts, intermediate, hidden), dtype=np.int8)
+    gate = pack2(gate_values)
+    up = pack2(up_values)
+    gate_alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, intermediate)).astype(np.float32)
+    )
+    up_alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, intermediate)).astype(np.float32)
+    )
+    gate_expected = np.zeros((rows, top_k, intermediate), dtype=np.uint16)
+    up_expected = np.zeros_like(gate_expected)
+    for r in range(rows):
+        for s in range(top_k):
+            e = int(selected[r, s])
+            gate_expected[r, s] = f32_to_bf16_bits(
+                ternary_gemv(bf16_round(x_f32[r]), gate[e], gate_alpha[e])
+            )
+            up_expected[r, s] = f32_to_bf16_bits(
+                ternary_gemv(bf16_round(x_f32[r]), up[e], up_alpha[e])
+            )
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        selected_d = dev.put(selected)
+        gate_d, up_d = dev.put(gate), dev.put(up)
+        gate_alpha_d, up_alpha_d = dev.put(gate_alpha), dev.put(up_alpha)
+        gate_out, gate_out_d = dev.empty(gate_expected.shape, np.dtype(np.uint16))
+        up_out, up_out_d = dev.empty(up_expected.shape, np.dtype(np.uint16))
+        maple_selected_ternary_dual_gemv_batched_bf16(
+            x_d.ptr,
+            gate_d.ptr,
+            gate_alpha_d.ptr,
+            up_d.ptr,
+            up_alpha_d.ptr,
+            selected_d.ptr,
+            gate_out_d.ptr,
+            up_out_d.ptr,
+            rows,
+            experts,
+            top_k,
+            hidden,
+            intermediate,
+            library=maple_ternary_lib,
+        )
+        dev.get(gate_out, gate_out_d)
+        dev.get(up_out, up_out_d)
+
+    assert np.array_equal(gate_out, gate_expected)
+    assert np.array_equal(up_out, up_expected)
+
