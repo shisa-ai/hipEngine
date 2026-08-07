@@ -576,6 +576,96 @@ class MoonshineCudaBatchRuntime:
             )
         self.runtime.stream_synchronize(self.stream)
 
+    def copy_batch_row_to(
+        self,
+        destination_runtime: "MoonshineCudaBatchRuntime",
+        source: int,
+        destination: int,
+    ) -> None:
+        """Copy one request's persistent state into a peer batch runtime.
+
+        Used once per request by the exact two-region continuous scheduler when
+        a row crosses from the t32 positions-0-6 region into the t256
+        positions-7-193 region. Both runtimes must share model geometry and
+        encoder capacity; scratch is omitted because the next token DAG fully
+        overwrites it.
+        """
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine source batch runtime is closed")
+        if destination_runtime.closed or destination_runtime.spec is None:
+            raise RuntimeError("Moonshine destination batch runtime is closed")
+        if not isinstance(destination_runtime, MoonshineCudaBatchRuntime):
+            raise TypeError("destination_runtime must be a Moonshine CUDA batch runtime")
+        if (
+            self.spec != destination_runtime.spec
+            or self.encoder_frames != destination_runtime.encoder_frames
+        ):
+            raise ValueError("batch runtimes have incompatible Moonshine geometry")
+        for name, value, bound in (
+            ("source", source, self.max_batch),
+            ("destination", destination, destination_runtime.max_batch),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 0 <= value < bound
+            ):
+                raise ValueError(f"{name} row is outside the batch")
+        self.runtime.stream_synchronize(self.stream)
+        destination_runtime.runtime.stream_synchronize(destination_runtime.stream)
+        for layer in range(self.spec.decoder_layers):
+            source_caches = (self.self_cache(layer), self.cross_cache(layer))
+            destination_caches = (
+                destination_runtime.self_cache(layer),
+                destination_runtime.cross_cache(layer),
+            )
+            for source_cache, destination_cache in zip(
+                source_caches, destination_caches, strict=True
+            ):
+                for source_tensor, destination_tensor in zip(
+                    (source_cache.key, source_cache.value),
+                    (destination_cache.key, destination_cache.value),
+                    strict=True,
+                ):
+                    row_nbytes = (
+                        int(np.prod(source_tensor.shape[1:]))
+                        * source_tensor.dtype.itemsize
+                    )
+                    destination_runtime.runtime.memcpy_async(
+                        destination_tensor.ptr + destination * row_nbytes,
+                        source_tensor.ptr + source * row_nbytes,
+                        row_nbytes,
+                        MemcpyKind.DEVICE_TO_DEVICE,
+                        destination_runtime.stream,
+                    )
+        mask_row_nbytes = self.encoder_frames * DType.INT32.itemsize
+        source_mask = self.workspace.allocation("encoder_attention_mask").buffer.ptr
+        destination_mask = destination_runtime.workspace.allocation(
+            "encoder_attention_mask"
+        ).buffer.ptr
+        destination_runtime.runtime.memcpy_async(
+            destination_mask + destination * mask_row_nbytes,
+            source_mask + source * mask_row_nbytes,
+            mask_row_nbytes,
+            MemcpyKind.DEVICE_TO_DEVICE,
+            destination_runtime.stream,
+        )
+        for name in ("token", "position"):
+            source_tensor = self.tensor(name)
+            destination_tensor = destination_runtime.tensor(name)
+            destination_runtime.runtime.memcpy_async(
+                destination_tensor.ptr
+                + destination * destination_tensor.dtype.itemsize,
+                source_tensor.ptr + source * source_tensor.dtype.itemsize,
+                source_tensor.dtype.itemsize,
+                MemcpyKind.DEVICE_TO_DEVICE,
+                destination_runtime.stream,
+            )
+        destination_runtime.runtime.stream_synchronize(destination_runtime.stream)
+        destination_runtime.cross_cache_valid = True
+        destination_runtime.encoder_state_valid = True
+
     def set_encoder_state_from_batch_encoder(
         self,
         encoder_hidden_ptr: int,

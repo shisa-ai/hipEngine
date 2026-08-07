@@ -203707,3 +203707,27 @@ would incorrectly reject an idle GPU0 whenever unrelated GPU1/2 workers run.
 It now resolves the selected index's UUID and filters compute processes to that
 UUID; a focused mocked regression proves GPU1/2 work does not contaminate the
 GPU0 verdict. No benchmark protocol or timing path changed.
+
+## 2026-08-08 — Continuous Design-B rejection and exact two-region pivot
+
+The clean full 266-case Japanese FLEURS gate rejected the uniform-t256 scheduler:
+all 532 decodes were deterministic and reached EOS, but one transcript changed
+and total errors regressed **1,062 -> 1,064** (+0.000156 micro-CER). Per the
+predeclared zero-regression policy, the earlier six-fixture exact result was not
+sufficient and Design B is not promotable.
+
+Implemented exact Design A without the wide kernel-ABI rewrite by owning two
+shared-weight batch workspaces. Requests run packed t32 at positions 0-6, copy
+self/cross caches + mask/token/position D2D exactly once, then run packed t256
+at positions 7-193. Total live requests remains bounded by max_batch; each
+region has its own effective-B graph keys under one global LRU. The original
+uniform class is retained only as an explicit rejected diagnostic with a removal
+trigger in `docs/REFACTOR.md`.
+
+CPU scheduler coverage now proves one-time region transfer, mixed arrivals,
+compaction, cancellation/backpressure, and graph eviction. Exclusive GPU0
+staggered six-fixture execution passes **5/5** continuous tests with every exact
+scheduler output identical to reference through EOS. A dirty 12-request timing
+smoke is honest about the extra exactness cost: vs lockstep, B2/B4 are
+**0.885x/0.932x**, while B8 is **1.274x** (two samples, diagnostic). The frozen
+48-request clean benchmark and full exact FLEURS rerun follow after commit.
