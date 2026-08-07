@@ -148,6 +148,7 @@ def _setup_breakdown(capture_ms: float, provenance: dict[str, Any]) -> dict[str,
     for key in (
         "module_load_ns",
         "kernel_resolve_ns",
+        "kernarg_stage_ns",
         "kernarg_allocate_ns",
         "aql_packet_build_ns",
         "pm4_encode_ns",
