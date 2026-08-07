@@ -30,6 +30,7 @@ from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
     maple_clamped_swiglu_bf16,
     maple_router_topk_bf16,
     maple_router_topk_parallel_bf16,
+    maple_router_topk_single_dispatch_bf16,
     maple_weighted_residual_bf16,
     plan_maple_moe_build,
 )
@@ -81,6 +82,12 @@ def test_maple_moe_build_plan_and_gfx1151_registry_alias() -> None:
         quant="maple_ternary2",
         variant="bf16_fp32_softmax_renorm",
     ) is maple_router_topk_bf16
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="maple_router_topk",
+        quant="maple_ternary2",
+        variant="bf16_fp32_single_dispatch",
+    ) is maple_router_topk_single_dispatch_bf16
 
 
 @pytest.fixture(scope="module")
@@ -165,6 +172,99 @@ def test_maple_router_topk_parallel_matches_ids_and_renorm(
     assert np.array_equal(ids, expected_ids.astype(np.int32))
     np.testing.assert_allclose(weights, expected_weights, rtol=1e-2, atol=1e-4)
     assert float(weights.sum()) == pytest.approx(1.0, abs=2e-6)
+
+
+def test_maple_router_single_dispatch_matches_parallel_production_shape(
+    maple_moe_lib,
+) -> None:
+    """D0 composite must match both parallel kernels bit-for-bit and reset."""
+
+    rng = np.random.default_rng(910)
+    experts, hidden, top_k = 256, 2048, 8
+    x = f32_to_bf16_bits(rng.normal(size=hidden).astype(np.float32))
+    weight = f32_to_bf16_bits(
+        rng.normal(size=(experts, hidden)).astype(np.float32)
+    )
+
+    with DeviceArrays() as dev:
+        x_d, weight_d = dev.put(x), dev.put(weight)
+        baseline_scratch, baseline_scratch_d = dev.empty(
+            (experts,), np.dtype(np.float32)
+        )
+        baseline_ids, baseline_ids_d = dev.empty((top_k,), np.dtype(np.int32))
+        baseline_weights, baseline_weights_d = dev.empty(
+            (top_k,), np.dtype(np.float32)
+        )
+        candidate_scratch, candidate_scratch_d = dev.empty(
+            (experts,), np.dtype(np.float32)
+        )
+        candidate_ids, candidate_ids_d = dev.empty((top_k,), np.dtype(np.int32))
+        candidate_weights, candidate_weights_d = dev.empty(
+            (top_k,), np.dtype(np.float32)
+        )
+        counter_d = dev.put(np.zeros(1, dtype=np.uint32))
+
+        maple_router_topk_parallel_bf16(
+            x_d.ptr,
+            weight_d.ptr,
+            baseline_ids_d.ptr,
+            baseline_weights_d.ptr,
+            baseline_scratch_d.ptr,
+            hidden,
+            experts,
+            top_k,
+            library=maple_moe_lib,
+        )
+        maple_router_topk_single_dispatch_bf16(
+            x_d.ptr,
+            weight_d.ptr,
+            candidate_ids_d.ptr,
+            candidate_weights_d.ptr,
+            candidate_scratch_d.ptr,
+            counter_d.ptr,
+            hidden,
+            experts,
+            top_k,
+            library=maple_moe_lib,
+        )
+        dev.get(baseline_scratch, baseline_scratch_d)
+        dev.get(baseline_ids, baseline_ids_d)
+        dev.get(baseline_weights, baseline_weights_d)
+        dev.get(candidate_scratch, candidate_scratch_d)
+        dev.get(candidate_ids, candidate_ids_d)
+        dev.get(candidate_weights, candidate_weights_d)
+        first_ids = candidate_ids.copy()
+        first_weights = candidate_weights.copy()
+
+        maple_router_topk_single_dispatch_bf16(
+            x_d.ptr,
+            weight_d.ptr,
+            candidate_ids_d.ptr,
+            candidate_weights_d.ptr,
+            candidate_scratch_d.ptr,
+            counter_d.ptr,
+            hidden,
+            experts,
+            top_k,
+            library=maple_moe_lib,
+        )
+        counter = np.empty(1, dtype=np.uint32)
+        dev.get(candidate_ids, candidate_ids_d)
+        dev.get(candidate_weights, candidate_weights_d)
+        dev.get(counter, counter_d)
+
+    assert np.array_equal(
+        candidate_scratch.view(np.uint32), baseline_scratch.view(np.uint32)
+    )
+    assert np.array_equal(first_ids, baseline_ids)
+    assert np.array_equal(
+        first_weights.view(np.uint32), baseline_weights.view(np.uint32)
+    )
+    assert np.array_equal(candidate_ids, first_ids)
+    assert np.array_equal(
+        candidate_weights.view(np.uint32), first_weights.view(np.uint32)
+    )
+    assert int(counter[0]) == 0
 
 
 def test_maple_router_topk_parallel_batched_matches_ids_and_renorm(
