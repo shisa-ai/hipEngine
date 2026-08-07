@@ -125,6 +125,22 @@ _PAIR_HEAD_MAJOR_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_PAIR_HEAD_MAJOR_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _TRIPLE_ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -503,6 +519,67 @@ def moonshine_f16_projection_pair_head_major(
     )
 
 
+def moonshine_f16_projection_pair_head_major_batch(
+    input_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    output_a_ptr: int,
+    output_b_ptr: int,
+    batch: int,
+    rows: int,
+    output_frames: int,
+    in_features: int,
+    out_a_features: int,
+    out_b_features: int,
+    head_dim: int,
+    *,
+    threads: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batch pair/head-major projection over ``[batch, rows, in_features]``.
+
+    Writes batch head-major ``[B, heads, output_frames, head_dim]`` K/V
+    directly into the decoder's batch-strided cross cache (C8 phase 2).
+    ``rows`` is the per-plane computed frame count; ``output_frames`` is the
+    decoder bucket capacity (``output_frames >= rows``, tail pre-zeroed).
+    """
+
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    threads = _default_pair_threads() if threads is None else threads
+    _validate(rows, in_features, (out_a_features, out_b_features), threads)
+    if output_frames < rows:
+        raise ValueError("output_frames must be >= rows")
+    if head_dim <= 0 or out_a_features % head_dim or out_b_features % head_dim:
+        raise ValueError("head_dim must positively divide both output widths")
+    library = library or build_moonshine_projection(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major_batch",
+        _PAIR_HEAD_MAJOR_BATCH_ARGS,
+        (
+            input_ptr,
+            weight_a_ptr,
+            weight_b_ptr,
+            output_a_ptr,
+            output_b_ptr,
+            batch,
+            rows,
+            output_frames,
+            in_features,
+            out_a_features,
+            out_b_features,
+            head_dim,
+            threads,
+            stream,
+        ),
+        runtime,
+    )
+
+
 def moonshine_f16_projection_triple(
     input_ptr: int,
     weight_a_ptr: int,
@@ -640,6 +717,15 @@ def register_moonshine_projection_kernels(*, replace: bool = True) -> None:
         (
             KernelKey(
                 _BACKEND,
+                "moonshine_cross_kv_precompute",
+                "fp16",
+                "pair_head_major_batch_fp32_accum",
+            ),
+            moonshine_f16_projection_pair_head_major_batch,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
                 "moonshine_qkv_proj",
                 "fp16",
                 "triple_fp32_accum",
@@ -663,6 +749,7 @@ __all__ = [
     "moonshine_f16_projection_bias_residual",
     "moonshine_f16_projection_pair",
     "moonshine_f16_projection_pair_head_major",
+    "moonshine_f16_projection_pair_head_major_batch",
     "moonshine_f16_projection_triple",
     "plan_moonshine_projection_build",
     "register_moonshine_projection_kernels",

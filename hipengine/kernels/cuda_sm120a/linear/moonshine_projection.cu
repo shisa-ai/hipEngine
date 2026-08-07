@@ -188,6 +188,50 @@ __global__ void moonshine_f16_projection_pair_head_major_kernel(
   }
 }
 
+// Batch-plane variant (C8 phase 2): grid (columns, rows, batch).  The output
+// is written batch head-major ``[B, heads, output_frames, head_dim]`` so B
+// encoder rows project directly into the decoder's batch-strided cross cache;
+// ``output_frames`` may exceed ``rows`` (decoder bucket capacity) with the
+// tail already zeroed by the caller.
+__global__ void moonshine_f16_projection_pair_head_major_batch_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight_a,
+    const half_t* __restrict__ weight_b,
+    half_t* __restrict__ output_a,
+    half_t* __restrict__ output_b,
+    int64_t batch,
+    int64_t rows,
+    int64_t output_frames,
+    int64_t in_features,
+    int64_t out_a_features,
+    int64_t out_b_features,
+    int64_t head_dim) {
+  const int64_t column = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t plane = blockIdx.z;
+  if (row >= rows || column >= out_a_features + out_b_features) return;
+  const bool first = column < out_a_features;
+  const int64_t local_column = first ? column : column - out_a_features;
+  const half_t* weight = first ? weight_a : weight_b;
+  half_t* output = first ? output_a : output_b;
+  const int64_t plane_input = plane * rows * in_features;
+  const int64_t plane_output = plane * (out_a_features * output_frames);
+  float accumulator = 0.0f;
+  for (int64_t feature = threadIdx.x; feature < in_features;
+       feature += blockDim.x) {
+    accumulator +=
+        static_cast<float>(input[plane_input + row * in_features + feature]) *
+        static_cast<float>(weight[local_column * in_features + feature]);
+  }
+  const float total = moonshine_block_sum(accumulator);
+  if (threadIdx.x == 0) {
+    const int64_t head = local_column / head_dim;
+    const int64_t dimension = local_column - head * head_dim;
+    output[plane_output + (head * output_frames + row) * head_dim + dimension] =
+        static_cast<half_t>(total);
+  }
+}
+
 __global__ void moonshine_f16_projection_triple_kernel(
     const half_t* __restrict__ input,
     const half_t* __restrict__ weight_a,
@@ -468,6 +512,34 @@ extern "C" int hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major(
       dim3(out_a_features + out_b_features, rows), dim3(threads), 0, stream>>>(
       input, weight_a, weight_b, output_a, output_b, rows, in_features,
       out_a_features, out_b_features, head_dim);
+  return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major_batch(
+    const half_t* input,
+    const half_t* weight_a,
+    const half_t* weight_b,
+    half_t* output_a,
+    half_t* output_b,
+    int64_t batch,
+    int64_t rows,
+    int64_t output_frames,
+    int64_t in_features,
+    int64_t out_a_features,
+    int64_t out_b_features,
+    int64_t head_dim,
+    int64_t threads,
+    cudaStream_t stream) {
+  if (batch <= 0 || !valid_shape(rows, in_features, threads) ||
+      output_frames < rows || output_frames <= 0 ||
+      out_a_features <= 0 || out_b_features <= 0 || head_dim <= 0 ||
+      (out_a_features % head_dim) != 0 || (out_b_features % head_dim) != 0) {
+    return cudaErrorInvalidValue;
+  }
+  moonshine_f16_projection_pair_head_major_batch_kernel<<<
+      dim3(out_a_features + out_b_features, rows, batch), dim3(threads), 0, stream>>>(
+      input, weight_a, weight_b, output_a, output_b, batch, rows, output_frames,
+      in_features, out_a_features, out_b_features, head_dim);
   return cudaGetLastError();
 }
 
