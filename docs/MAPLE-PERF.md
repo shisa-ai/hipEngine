@@ -264,6 +264,16 @@ reused across requests:
 - Then a continuous-batching owner loop (admission, chunked prefill, decode
   steps, sampler routing, reclaim) reusing the GGUF/PARO server patterns.
 
+**M6 status: OPEN (not started).** The M4/M5 batched kernels implement
+single-sequence causal processing (row `r` attends a shared `[start, start+r]`
+prefix), not independent per-request KV spans, so they do not directly give
+correct c>1 decode of independent requests. Batch decode needs (a) multi-row
+ternary decode GEMMs reusing weights per group (the batched GEMM primitives
+cover the linear/FFN side), (b) a batched GQA attention + KV append kernel that
+reads per-row `KVLiveSpans`, and (c) a continuous-batching owner loop. Each is a
+focused follow-up; the batched prefill primitive set (M4/M5) is the shared
+building block.
+
 ## 4. Prefill plan (serial → batched, compute-bound)
 
 The serial `prefill()` must become a true `[T, hidden]` bulk path. Follow
@@ -355,10 +365,10 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M3a | Parallelize router topk | exact one-ULP; decode wall ↓ 61% | `WORKLOG.md` + artifact |
 | M3b | lm_head affine4 | exact; dead-end (tiled 0.96×, weight-bandwidth bound) | `WORKLOG.md` |
 | M3c | selected-expert grouping | exact; dead-end (grouped 0.69×, x is L2-cached) | `WORKLOG.md` |
-| M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | GEMM+QKV GEMM primitives in; full path open |
-| M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | attn+qknorm+ring-attn+router primitives in; grouped MoE+wiring open |
+| M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | GEMM + QKV GEMM primitives in (done) |
+| M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `prefill_native` wired + validated (ac118f0b7): 12-tok ~64 ms, 320-tok ~347 tok/s, matches serial next-token |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
-| M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | `benchmarks/README.md` |
+| M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | OPEN: batched prefill kernels implement single-sequence causal, not independent per-request KV spans; needs multi-request kernels + continuous-batching loop |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu opt-in `HIPENGINE_MAPLE_FUSE_MOE=1`; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):

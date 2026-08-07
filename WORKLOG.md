@@ -203262,3 +203262,14 @@ Vulkan local sizes verbatim will close the measured gap.
   eager mode the launch savings offset it (step wall neutral), but in the hipGraph path
   (M1/M6) launches are already amortized so the fusion would regress ~1.4%. Kept opt-in via
   `HIPENGINE_MAPLE_FUSE_MOE=1` (default 0); blocker recorded in `docs/REFACTOR.md`.
+
+## 2026-08-07 — M6/D5 batch decode scoping (OPEN)
+
+- MAPLE-PERF.md D5 milestone table updated: M0-M5 done; M6 marked OPEN.
+- Finding: the M4/M5 batched kernels implement single-sequence causal
+  processing (row r attends a shared [start, start+r] prefix), not independent
+  per-request KV spans, so they do not directly give correct c>1 decode of
+  independent requests. Batch decode needs (a) multi-row ternary decode GEMMs
+  (batched GEMM primitives cover the linear/FFN side), (b) a batched GQA
+  attention + KV append kernel reading per-row KVLiveSpans, and (c) a
+  continuous-batching owner loop. Each is a focused follow-up.
