@@ -485,6 +485,10 @@ class Route:
                 f"fixture requires bucket {selected}, prepared pool is "
                 f"{self.encoder_capacity}"
             )
+        # Replacing encoder state is forbidden while decode position is live.
+        # Reset before the new D2D/cross-KV handoff; the post-handoff reset below
+        # establishes the same fresh state as initial preparation.
+        self.dec.reset_generation(clear_cross_cache=False)
         self.fixture = fixture
         self.exact_frames = fixture.frames
         self.enc.upload_input(fixture.audio, fixture.audio_mask)

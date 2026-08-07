@@ -187,6 +187,7 @@ def test_standalone_bucket_rebind_preserves_runtime_identity() -> None:
     assert report["fixture"] == "short"
     assert report["bucket_frames"] == 40
     assert trace == [
+        ("reset", False),
         ("upload", (1, 10_000), (1, 10_000)),
         ("encode", "short"),
         ("handoff", 0xD000, 24),
