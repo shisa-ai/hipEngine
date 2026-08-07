@@ -207820,3 +207820,8 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   K/V, complete span metadata, final hidden/norm, FP32 top-logit bits, three
   continuations, and teardown. This test-only change cannot affect the clean
   performance rows.
+- Promote the real staggered submit/poll scenario from transient evidence into
+  `tests/test_maple_generation.py`: two independent submissions occupy slots
+  0/1, the short slot-0 request completes while slot 1 stays live, and a third
+  request is then admitted into slot 0. The real-checkpoint node is GREEN; all
+  three trajectories equal serial and close returns **0 bytes / 0 allocations**.
