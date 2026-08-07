@@ -207791,3 +207791,10 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   covers both c2 decode and transition to the lone-active c1 path; Python
   compilation and `git diff --check` pass. Freeze this admission implementation
   before the clean retained P4 rerun and documentation/benchmark rollup.
+- The first clean post-commit P2 protocol passes at
+  **750.445/741.916/753.288 tok/s**, changes of
+  **+0.170%/+0.074%/-0.095%** from retained P2, with **18/18** byte-state and
+  **90/90** token/logit positions exact and lifecycle zero. Do not publish this
+  file: its recorder still labels >512 as a serial fallback even though P4
+  removed that route. Correct only the protocol metadata, commit it, and repeat
+  once from clean source so the retained artifact cannot contradict runtime.
