@@ -34,9 +34,14 @@ framework-independent storage contract published in
 LSB-first 2-bit codes per U32 word with `value = row_alpha * (code - 1)`, while
 embeddings and the exact lm-head use LSB-first affine 4-bit/group-64 storage.
 The family exposes generic BF16 ternary GEMV, split-weight fused Q/K/V GEMV,
-selected-expert dual gate/up and single down GEMV, affine4 embedding lookup,
-and affine4→FP32 lm-head GEMV. It registers under both `hip_gfx1100` and the
-peer `hip_gfx1151` alias for quant key `maple_ternary2`.
+selected-expert dual gate/up and single down GEMV, exact expert-major batched
+gate/up/down, affine4 embedding lookup, and affine4→FP32 lm-head GEMV. The
+expert-major consumers take generic stable-compaction `expert_start` and
+`sorted_lanes` metadata and write directly back to original row/route order.
+The generic group-scatter family now also registers an int32 selected-ID
+parallel count/prefix/stable-scatter variant for Maple's router ABI. These
+kernels register under both `hip_gfx1100` and the peer `hip_gfx1151` alias for
+quant key `maple_ternary2`.
 
 Independent NumPy fixtures cover pack/dequant order and BF16 boundaries. The
 gfx1151 gate is BF16-bit exact for embedding, generic/fused QKV, and selected
@@ -44,6 +49,20 @@ expert outputs; affine4 FP32 logits pass at `atol=rtol=2e-4`. A cache-only
 `rocprofv3 --kernel-trace` smoke observes
 `maple_ternary_gemv_kernel` at grid 128/local32, VGPR32, SGPR128, LDS0,
 scratch0, and **3,527 ns** duration on Radeon 8060S/gfx1151.
+
+The P1 expert-major prefill path is BF16-bit exact to the row/route NumPy oracle
+and passes all 18 natural+heldout final hidden/KV/span-state hashes with KL 0
+and 90/90 token/top-1 agreement. A cached dirty-tree gfx1151 trace confirms the
+final kernels ran as `maple_selected_ternary_dual_grouped_kernel<128, 1>`
+(local128, VGPR72, LDS1024, scratch0) and
+`maple_selected_ternary_grouped_kernel<32, 1>` (local32, VGPR48, LDS512,
+scratch0). Stable metadata costs 0.444 ms/request. The expert family changes
+**276.150 -> 254.179 ms (1.086x)** and traced prefill320 changes **498.442 ->
+476.730 ms (1.046x)**; these are diagnostic candidate measurements pending the
+clean qualified row, not retained performance claims. Exact 2-/4-lane
+cooperative schedules regress, leaving gate/up scalar unpack/reduction as the
+measured blocker to the 97.708-ms P1 target. The row/route gather remains an
+environment-controlled rollback.
 
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard

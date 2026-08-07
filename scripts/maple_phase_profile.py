@@ -35,6 +35,11 @@ DEFAULT_RAW_ROOT = Path("/tmp/hipengine-maple-phase-profile")
 PINNED_REVISION = "361db5da5e74ff6fcdd852d478e1f266ce11013a"
 
 FAMILY_RULES = (
+    ("maple_selected_ternary_dual_grouped", "expert_gate_up"),
+    ("maple_selected_ternary_grouped", "expert_down"),
+    ("qwen35_moe_group_count_active_parallel", "moe_compaction"),
+    ("qwen35_moe_group_prefix_active_parallel", "moe_compaction"),
+    ("qwen35_moe_group_scatter_active_parallel", "moe_compaction"),
     ("maple_selected_ternary_dual_gemv_batched", "expert_gate_up"),
     ("maple_selected_ternary_dual_gemv", "expert_gate_up"),
     ("maple_selected_ternary_gemv_batched", "expert_down"),
@@ -187,6 +192,9 @@ def prebuild(*, backend: str, version_file: Path) -> list[str]:
     )
     from hipengine.kernels.hip_gfx1100.attention.maple_attention import build_maple_attention
     from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+        build_qwen35_moe_group_scatter,
+    )
     from hipengine.kernels.hip_gfx1100.moe.maple_moe import build_maple_moe
     from hipengine.kernels.hip_gfx1100.norm.rmsnorm import build_qwen35_rmsnorm
     from hipengine.kernels.hip_gfx1100.quant.maple_ternary import build_maple_ternary
@@ -200,6 +208,7 @@ def prebuild(*, backend: str, version_file: Path) -> list[str]:
             build_maple_ternary,
             build_maple_attention,
             build_maple_moe,
+            build_qwen35_moe_group_scatter,
             build_qwen35_rmsnorm,
             build_lm_head,
         ):

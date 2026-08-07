@@ -35,7 +35,9 @@ from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     maple_affine4_gemv_f32,
     maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_bf16,
+    maple_selected_ternary_dual_grouped_bf16,
     maple_selected_ternary_gemv_bf16,
+    maple_selected_ternary_grouped_bf16,
     maple_ternary_gemv_bf16,
     maple_ternary_qkv_gemv_bf16,
     plan_maple_ternary_build,
@@ -106,6 +108,18 @@ def test_maple_ternary_build_plan_and_gfx1151_registry_alias() -> None:
         quant="maple_ternary2",
         variant="row_alpha",
     ) is maple_ternary_gemv_bf16
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="maple_selected_ternary_dual",
+        quant="maple_ternary2",
+        variant="row_alpha_grouped",
+    ) is maple_selected_ternary_dual_grouped_bf16
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="maple_selected_ternary",
+        quant="maple_ternary2",
+        variant="row_alpha_grouped",
+    ) is maple_selected_ternary_grouped_bf16
 
 
 @pytest.fixture(scope="module")
@@ -613,6 +627,184 @@ def test_maple_selected_ternary_gemv_batched_matches_oracle(maple_ternary_lib) -
 
     assert np.array_equal(out, expected)
 
+
+def test_maple_i32_stable_compaction_matches_cpu_expert_order(
+    maple_ternary_lib, hip_test_target_arch
+) -> None:
+    """Maple's int32 routes reuse the generic stable expert compactor."""
+    del maple_ternary_lib
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+        build_qwen35_moe_group_scatter,
+        qwen35_moe_group_compact_active_i32_parallel,
+    )
+
+    selected = np.asarray(
+        [[3, 1], [0, 3], [1, 1], [3, 0], [2, 3]], dtype=np.int32
+    )
+    routing = np.arange(selected.size, dtype=np.float32).reshape(selected.shape) / 17.0
+    flat = selected.reshape(-1)
+    expected_lanes = np.argsort(flat, kind="stable").astype(np.int64)
+    expected_experts = flat[expected_lanes].astype(np.int64)
+    counts = np.bincount(flat, minlength=4).astype(np.int64)
+    expected_starts = np.zeros(5, dtype=np.int64)
+    expected_starts[1:] = np.cumsum(counts, dtype=np.int64)
+    expected_active = np.flatnonzero(counts).astype(np.int64)
+
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_group_compact",
+        quant="generic",
+        variant="active_experts_i32_parallel",
+    ) is qwen35_moe_group_compact_active_i32_parallel
+    with hip_target_arch_environment(hip_test_target_arch):
+        group_lib = build_qwen35_moe_group_scatter(load=True)
+    with DeviceArrays() as dev:
+        selected_d = dev.put(selected)
+        routing_d = dev.put(routing)
+        starts, starts_d = dev.empty((5,), np.dtype(np.int64))
+        active, active_d = dev.empty((4,), np.dtype(np.int64))
+        active_count, active_count_d = dev.empty((1,), np.dtype(np.int64))
+        lanes, lanes_d = dev.empty(flat.shape, np.dtype(np.int64))
+        experts, experts_d = dev.empty(flat.shape, np.dtype(np.int64))
+        weights, weights_d = dev.empty(flat.shape, np.dtype(np.float32))
+        qwen35_moe_group_compact_active_i32_parallel(
+            selected_d.ptr,
+            routing_d.ptr,
+            starts_d.ptr,
+            active_d.ptr,
+            active_count_d.ptr,
+            lanes_d.ptr,
+            experts_d.ptr,
+            weights_d.ptr,
+            flat.size,
+            4,
+            library=group_lib,
+        )
+        for host, device in (
+            (starts, starts_d),
+            (active, active_d),
+            (active_count, active_count_d),
+            (lanes, lanes_d),
+            (experts, experts_d),
+            (weights, weights_d),
+        ):
+            dev.get(host, device)
+
+    assert int(active_count[0]) == expected_active.size
+    np.testing.assert_array_equal(starts, expected_starts)
+    np.testing.assert_array_equal(active[: expected_active.size], expected_active)
+    np.testing.assert_array_equal(lanes, expected_lanes)
+    np.testing.assert_array_equal(experts, expected_experts)
+    np.testing.assert_array_equal(weights, routing.reshape(-1)[expected_lanes])
+
+
+def test_maple_selected_ternary_grouped_matches_row_route_oracle(
+    maple_ternary_lib,
+) -> None:
+    """Expert-major gate/up/down preserves every row/route BF16 boundary."""
+    rng = np.random.default_rng(407)
+    rows, experts, top_k, hidden, intermediate = 7, 5, 3, 32, 16
+    selected = np.asarray(
+        [[4, 1, 4], [0, 4, 1], [3, 1, 0], [4, 2, 1], [0, 3, 4], [2, 1, 2], [4, 0, 3]],
+        dtype=np.int32,
+    )
+    flat = selected.reshape(-1)
+    sorted_lanes = np.argsort(flat, kind="stable").astype(np.int64)
+    counts = np.bincount(flat, minlength=experts).astype(np.int64)
+    starts = np.zeros(experts + 1, dtype=np.int64)
+    starts[1:] = np.cumsum(counts, dtype=np.int64)
+
+    x_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    gate = pack2(rng.integers(-1, 2, size=(experts, intermediate, hidden), dtype=np.int8))
+    up = pack2(rng.integers(-1, 2, size=(experts, intermediate, hidden), dtype=np.int8))
+    gate_alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, intermediate)).astype(np.float32)
+    )
+    up_alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, intermediate)).astype(np.float32)
+    )
+    gate_expected = np.empty((rows, top_k, intermediate), dtype=np.uint16)
+    up_expected = np.empty_like(gate_expected)
+    for row in range(rows):
+        for route in range(top_k):
+            expert = int(selected[row, route])
+            gate_expected[row, route] = f32_to_bf16_bits(
+                ternary_gemv(bf16_round(x_f32[row]), gate[expert], gate_alpha[expert])
+            )
+            up_expected[row, route] = f32_to_bf16_bits(
+                ternary_gemv(bf16_round(x_f32[row]), up[expert], up_alpha[expert])
+            )
+
+    down_x_f32 = rng.normal(size=(rows, top_k, intermediate)).astype(np.float32)
+    down_x = f32_to_bf16_bits(down_x_f32)
+    down = pack2(rng.integers(-1, 2, size=(experts, hidden, intermediate), dtype=np.int8))
+    down_alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, hidden)).astype(np.float32)
+    )
+    down_expected = np.empty((rows, top_k, hidden), dtype=np.uint16)
+    for row in range(rows):
+        for route in range(top_k):
+            expert = int(selected[row, route])
+            down_expected[row, route] = f32_to_bf16_bits(
+                ternary_gemv(
+                    bf16_round(down_x_f32[row, route]),
+                    down[expert],
+                    down_alpha[expert],
+                )
+            )
+
+    with DeviceArrays() as dev:
+        starts_d = dev.put(starts)
+        lanes_d = dev.put(sorted_lanes)
+        x_d, gate_d, gate_alpha_d = dev.put(x), dev.put(gate), dev.put(gate_alpha)
+        up_d, up_alpha_d = dev.put(up), dev.put(up_alpha)
+        gate_out, gate_out_d = dev.empty(gate_expected.shape, np.dtype(np.uint16))
+        up_out, up_out_d = dev.empty(up_expected.shape, np.dtype(np.uint16))
+        maple_selected_ternary_dual_grouped_bf16(
+            x_d.ptr,
+            gate_d.ptr,
+            gate_alpha_d.ptr,
+            up_d.ptr,
+            up_alpha_d.ptr,
+            starts_d.ptr,
+            lanes_d.ptr,
+            gate_out_d.ptr,
+            up_out_d.ptr,
+            rows,
+            experts,
+            top_k,
+            hidden,
+            intermediate,
+            library=maple_ternary_lib,
+        )
+        down_x_d, down_d, down_alpha_d = (
+            dev.put(down_x),
+            dev.put(down),
+            dev.put(down_alpha),
+        )
+        down_out, down_out_d = dev.empty(down_expected.shape, np.dtype(np.uint16))
+        maple_selected_ternary_grouped_bf16(
+            down_x_d.ptr,
+            down_d.ptr,
+            down_alpha_d.ptr,
+            starts_d.ptr,
+            lanes_d.ptr,
+            down_out_d.ptr,
+            rows,
+            experts,
+            top_k,
+            intermediate,
+            hidden,
+            library=maple_ternary_lib,
+        )
+        dev.get(gate_out, gate_out_d)
+        dev.get(up_out, up_out_d)
+        dev.get(down_out, down_out_d)
+
+    np.testing.assert_array_equal(gate_out, gate_expected)
+    np.testing.assert_array_equal(up_out, up_expected)
+    np.testing.assert_array_equal(down_out, down_expected)
 
 
 def test_maple_moe_fused_dual_swiglu_matches_unfused_chain(
