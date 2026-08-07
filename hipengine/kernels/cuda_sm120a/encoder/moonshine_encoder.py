@@ -92,6 +92,82 @@ _TRANSPOSE_ARGS = (
     ctypes.c_void_p,
 )
 
+_CONV1_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_CONV_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_GROUPNORM_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ROPE_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ATTENTION_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_TRANSPOSE_BATCH_ARGS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
 
 def plan_moonshine_encoder_build(
     *,
@@ -434,6 +510,294 @@ def moonshine_encoder_transpose_head_major_fp16(
     )
 
 
+# ---------------------------------------------------------------------------
+# Batch-plane variants (C8 phase 2)
+# ---------------------------------------------------------------------------
+
+def moonshine_conv1_tanh_batch_fp16(
+    input_ptr: int,
+    weight_ptr: int,
+    output_ptr: int,
+    batch: int,
+    length: int,
+    out_length: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batch conv1 (1->416, k127/s64, +tanh) over ``[batch, length]`` audio."""
+
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if length <= 0:
+        raise ValueError("length must be positive")
+    if out_length <= 0:
+        raise ValueError("out_length must be positive")
+    if threads != 256:
+        raise ValueError("threads must be 256")
+    library = library or build_moonshine_encoder(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_conv1_tanh_batch_fp16",
+        _CONV1_BATCH_ARGS,
+        (input_ptr, weight_ptr, output_ptr, batch, length, out_length, threads, stream),
+        runtime,
+    )
+
+
+def _conv_gelu_batch(
+    library: ctypes.CDLL,
+    runtime: CudaRuntime,
+    symbol: str,
+    input_ptr: int,
+    weight_ptr: int,
+    bias_ptr: int,
+    output_ptr: int,
+    batch: int,
+    in_length: int,
+    out_length: int,
+    threads: int,
+    stream: int,
+) -> None:
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if in_length <= 0:
+        raise ValueError("in_length must be positive")
+    if out_length <= 0:
+        raise ValueError("out_length must be positive")
+    _launch(
+        library,
+        symbol,
+        _CONV_BATCH_ARGS,
+        (
+            input_ptr, weight_ptr, bias_ptr, output_ptr, batch, in_length,
+            out_length, threads, stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_conv2_gelu_batch_fp16(
+    input_ptr: int,
+    weight_ptr: int,
+    bias_ptr: int,
+    output_ptr: int,
+    batch: int,
+    in_length: int,
+    out_length: int,
+    *,
+    threads: int = 832,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    if threads != 832:
+        raise ValueError("threads must be 832 for conv2")
+    library = library or build_moonshine_encoder(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _conv_gelu_batch(
+        library, runtime, "hipengine_cuda_sm120a_moonshine_conv2_gelu_batch_fp16",
+        input_ptr, weight_ptr, bias_ptr, output_ptr, batch, in_length, out_length,
+        threads, stream,
+    )
+
+
+def moonshine_conv3_gelu_batch_fp16(
+    input_ptr: int,
+    weight_ptr: int,
+    bias_ptr: int,
+    output_ptr: int,
+    batch: int,
+    in_length: int,
+    out_length: int,
+    *,
+    threads: int = 416,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    if threads != 416:
+        raise ValueError("threads must be 416 for conv3")
+    library = library or build_moonshine_encoder(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _conv_gelu_batch(
+        library, runtime, "hipengine_cuda_sm120a_moonshine_conv3_gelu_batch_fp16",
+        input_ptr, weight_ptr, bias_ptr, output_ptr, batch, in_length, out_length,
+        threads, stream,
+    )
+
+
+def moonshine_groupnorm_batch_fp16(
+    input_ptr: int,
+    weight_ptr: int,
+    bias_ptr: int,
+    output_ptr: int,
+    partial_ptr: int,
+    mean_rstd_ptr: int,
+    batch: int,
+    channels: int,
+    length: int,
+    *,
+    eps: float = 1.0e-5,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batch GroupNorm(1) with per-plane statistics over ``[batch, channels, length]``."""
+
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if channels <= 0:
+        raise ValueError("channels must be positive")
+    if length <= 0:
+        raise ValueError("length must be positive")
+    if threads != 256:
+        raise ValueError("threads must be 256")
+    library = library or build_moonshine_encoder(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_groupnorm_batch_fp16",
+        _GROUPNORM_BATCH_ARGS,
+        (
+            input_ptr, weight_ptr, bias_ptr, output_ptr, partial_ptr, mean_rstd_ptr,
+            batch, channels, length, eps, threads, stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_encoder_transpose_head_major_batch_fp16(
+    input_ptr: int,
+    output_ptr: int,
+    batch: int,
+    sequence: int,
+    heads: int,
+    head_dim: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Batch row-major ``[B, seq, hidden]`` -> head-major ``[B, heads, seq, dim]``."""
+
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if sequence <= 0:
+        raise ValueError("sequence must be positive")
+    if heads <= 0:
+        raise ValueError("heads must be positive")
+    if head_dim <= 0:
+        raise ValueError("head_dim must be positive")
+    if threads != 256:
+        raise ValueError("threads must be 256")
+    library = library or build_moonshine_encoder(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_encoder_transpose_head_major_batch_fp16",
+        _TRANSPOSE_BATCH_ARGS,
+        (input_ptr, output_ptr, batch, sequence, heads, head_dim, threads, stream),
+        runtime,
+    )
+
+
+def moonshine_encoder_rope_batch_fp16(
+    query_ptr: int,
+    key_ptr: int,
+    cos_ptr: int,
+    sin_ptr: int,
+    query_output_ptr: int,
+    key_output_ptr: int,
+    batch: int,
+    heads: int,
+    sequence: int,
+    head_dim: int,
+    rotary_dim: int,
+    max_positions: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if heads <= 0:
+        raise ValueError("heads must be positive")
+    if sequence <= 0:
+        raise ValueError("sequence must be positive")
+    if head_dim <= 0:
+        raise ValueError("head_dim must be positive")
+    if rotary_dim <= 0 or rotary_dim > head_dim:
+        raise ValueError("rotary_dim must be in (0, head_dim]")
+    if sequence > max_positions:
+        raise ValueError("sequence must not exceed max_positions")
+    if threads != 256:
+        raise ValueError("threads must be 256")
+    library = library or build_moonshine_encoder(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_encoder_rope_batch_fp16",
+        _ROPE_BATCH_ARGS,
+        (
+            query_ptr, key_ptr, cos_ptr, sin_ptr, query_output_ptr, key_output_ptr,
+            batch, heads, sequence, head_dim, rotary_dim, max_positions, threads, stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_encoder_attention_batch_fp16(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    mask_ptr: int,
+    output_ptr: int,
+    batch: int,
+    heads: int,
+    head_dim: int,
+    sequence: int,
+    *,
+    scale: float | None = None,
+    threads: int = 32,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    if heads != 8:
+        raise ValueError("heads must be 8")
+    if head_dim != 52:
+        raise ValueError("head_dim must be 52")
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    if sequence <= 0:
+        raise ValueError("sequence must be positive")
+    if threads != 32:
+        raise ValueError("threads must be 32")
+    scale_value = float(head_dim**-0.5) if scale is None else float(scale)
+    if not scale_value > 0:
+        raise ValueError("scale must be positive")
+    library = library or build_moonshine_encoder(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_encoder_attention_batch_fp16",
+        _ATTENTION_BATCH_ARGS,
+        (
+            query_ptr, key_ptr, value_ptr, mask_ptr, output_ptr, batch, heads,
+            head_dim, sequence, scale_value, threads, stream,
+        ),
+        runtime,
+    )
+
+
 def register_moonshine_encoder_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(_BACKEND, "moonshine_conv1_tanh", "fp16", "strided_valid"),
@@ -485,6 +849,52 @@ def register_moonshine_encoder_kernels(*, replace: bool = True) -> None:
         moonshine_encoder_transpose_head_major_fp16,
         replace=replace,
     )
+    # Batch-plane variants (C8 phase 2).
+    register(
+        KernelKey(_BACKEND, "moonshine_conv1_tanh", "fp16", "strided_valid_batch"),
+        moonshine_conv1_tanh_batch_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "moonshine_conv2_gelu", "fp16", "strided_valid_batch"),
+        moonshine_conv2_gelu_batch_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "moonshine_conv3_gelu", "fp16", "strided_valid_batch"),
+        moonshine_conv3_gelu_batch_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "moonshine_groupnorm", "fp16", "batch_planes"),
+        moonshine_groupnorm_batch_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "moonshine_encoder_rope", "fp16", "full_sequence_batch"),
+        moonshine_encoder_rope_batch_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            _BACKEND,
+            "moonshine_encoder_attention",
+            "fp16",
+            "full_sequence_non_causal_batch",
+        ),
+        moonshine_encoder_attention_batch_fp16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            _BACKEND,
+            "moonshine_encoder_transpose_head_major",
+            "fp16",
+            "row_to_head_major_batch",
+        ),
+        moonshine_encoder_transpose_head_major_batch_fp16,
+        replace=replace,
+    )
 
 
 register_moonshine_encoder_kernels()
@@ -494,11 +904,18 @@ __all__ = [
     "moonshine_conv1_tanh_fp16",
     "moonshine_conv2_gelu_fp16",
     "moonshine_conv3_gelu_fp16",
+    "moonshine_conv1_tanh_batch_fp16",
+    "moonshine_conv2_gelu_batch_fp16",
+    "moonshine_conv3_gelu_batch_fp16",
     "moonshine_encoder_attention_fp16",
+    "moonshine_encoder_attention_batch_fp16",
     "moonshine_encoder_rope_fp16",
+    "moonshine_encoder_rope_batch_fp16",
     "moonshine_encoder_transpose_head_major_fp16",
+    "moonshine_encoder_transpose_head_major_batch_fp16",
     "moonshine_gelu_fp16",
     "moonshine_groupnorm_fp16",
+    "moonshine_groupnorm_batch_fp16",
     "plan_moonshine_encoder_build",
     "register_moonshine_encoder_kernels",
 ]

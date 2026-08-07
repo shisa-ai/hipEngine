@@ -444,6 +444,90 @@ class MoonshineCudaBatchRuntime:
         self.encoder_state_valid = True
         self.reset_generation(clear_cross_cache=False)
 
+    def set_encoder_state_from_batch_encoder(
+        self,
+        encoder_hidden_ptr: int,
+        attention_mask_ptr: int,
+        *,
+        source_frames: int,
+        synchronize: bool = True,
+    ) -> None:
+        """Project B encoder rows into the batch cross cache on device (C8 phase 2).
+
+        The caller (a ``MoonshineCudaBatchEncoderRuntime``) supplies the
+        device pointer to its ``[B, source_frames, hidden]`` FP16 encoder
+        output and its ``[B, source_frames]`` int32 downsampled mask.  This
+        zeroes the cross cache and mask (so the decoder bucket tail is masked),
+        projects every row's K/V into the batch-strided head-major cross
+        caches on device, and copies the per-row masks, leaving the batch
+        decoder ready to decode all rows from position 0 without any host-side
+        cross-cache round trip.  ``source_frames`` must be in
+        ``1..encoder_frames`` (the decoder's padded bucket capacity).
+        """
+
+        from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+            moonshine_f16_projection_pair_head_major_batch,
+        )
+
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine batch runtime is closed")
+        libraries = self.decoder_libraries
+        if libraries is None:
+            raise RuntimeError("Moonshine batch decoder kernels are not prepared")
+        if (
+            isinstance(encoder_hidden_ptr, bool)
+            or not isinstance(encoder_hidden_ptr, int)
+            or isinstance(attention_mask_ptr, bool)
+            or not isinstance(attention_mask_ptr, int)
+            or encoder_hidden_ptr <= 0
+            or attention_mask_ptr <= 0
+        ):
+            raise ValueError("device encoder pointers must be positive integers")
+        if (
+            isinstance(source_frames, bool)
+            or not isinstance(source_frames, int)
+            or source_frames <= 0
+            or source_frames > self.encoder_frames
+        ):
+            raise ValueError(
+                f"source_frames must be in 1..{self.encoder_frames} for the resident bucket"
+            )
+        self.reset_generation(clear_cross_cache=True)
+        spec = self.spec
+        kv_features = spec.decoder_kv_heads * spec.head_dim
+        for layer in range(spec.decoder_layers):
+            prefix = f"model.decoder.layers.{layer}.encoder_attn"
+            cache = self.cross_cache(layer)
+            moonshine_f16_projection_pair_head_major_batch(
+                encoder_hidden_ptr,
+                self.weights[f"{prefix}.k_proj.weight"].ptr,
+                self.weights[f"{prefix}.v_proj.weight"].ptr,
+                cache.key.ptr,
+                cache.value.ptr,
+                self.max_batch,
+                source_frames,
+                self.encoder_frames,
+                spec.hidden_size,
+                kv_features,
+                kv_features,
+                spec.head_dim,
+                stream=self.stream,
+                library=libraries.projection,
+                runtime=self.runtime,
+            )
+        mask = self.workspace.allocation("encoder_attention_mask").buffer
+        self.runtime.memcpy_async(
+            mask.ptr,
+            attention_mask_ptr,
+            self.max_batch * source_frames * DType.INT32.itemsize,
+            MemcpyKind.DEVICE_TO_DEVICE,
+            self.stream,
+        )
+        if synchronize:
+            self.runtime.stream_synchronize(self.stream)
+        self.cross_cache_valid = True
+        self.encoder_state_valid = True
+
     def reset_generation(self, *, clear_cross_cache: bool = False) -> None:
         """Reset generation state without changing any allocation or address."""
 
