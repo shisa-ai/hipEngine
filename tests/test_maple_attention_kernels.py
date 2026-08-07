@@ -314,3 +314,53 @@ def test_maple_gqa_attention_reads_wrapped_kv_live_spans(maple_attention_lib) ->
         dev.get(out, out_d)
 
     assert np.array_equal(out, expected)
+
+
+def test_maple_prefill_attention_matches_causal_oracle(maple_attention_lib) -> None:
+    """Batched causal prefill attention is bit-exact vs the CPU oracle (P2)."""
+
+    from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
+        maple_attention_prefill_bf16,
+    )
+
+    rng = np.random.default_rng(66)
+    rows, q_heads, kv_heads, head_dim = 5, 4, 2, 4
+    q_size = q_heads * head_dim
+    q = bf16_round(rng.normal(size=(rows, q_heads, head_dim)).astype(np.float32))
+    keys = bf16_round(
+        rng.normal(size=(rows, kv_heads, head_dim)).astype(np.float32)
+    )
+    values = bf16_round(
+        rng.normal(size=(rows, kv_heads, head_dim)).astype(np.float32)
+    )
+    # Causal: row r attends to keys/values rows [0, r].
+    expected = np.stack(
+        [
+            attention_decode(q[r], keys[: r + 1], values[: r + 1], scale=head_dim**-0.5)
+            for r in range(rows)
+        ]
+    ).reshape(-1)
+    expected = f32_to_bf16_bits(expected)
+    qkv = np.zeros((rows, q_size), dtype=np.uint16)
+    qkv[:, :q_size] = f32_to_bf16_bits(q.reshape(rows, -1))
+
+    with DeviceArrays() as dev:
+        qkv_d = dev.put(qkv)
+        key_d = dev.put(f32_to_bf16_bits(keys))
+        value_d = dev.put(f32_to_bf16_bits(values))
+        out, out_d = dev.empty((rows, q_size), np.dtype(np.uint16))
+        maple_attention_prefill_bf16(
+            qkv_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            out_d.ptr,
+            rows=rows,
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim**-0.5,
+            library=maple_attention_lib,
+        )
+        dev.get(out, out_d)
+
+    assert np.array_equal(out.reshape(-1), expected)

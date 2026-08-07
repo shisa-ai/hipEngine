@@ -203073,3 +203073,22 @@ Vulkan local sizes verbatim will close the measured gap.
   model-level prefill claim — the full batched prefill path (batched QKV /
   attention / o_proj / grouped-MoE / chunked wiring) is not yet built, so M4
   stays open. The kernel is retained as tested groundwork for P1.
+
+## 2026-08-07 — M5/P2: batched causal prefill attention primitive
+
+- Add `maple_attention_prefill_kernel` (P2): grid `(q_heads x T)`, one block
+  per (head, row); each block runs the same online-softmax scan as the decode
+  kernel over the causal prefix `[0, row]` against a dense `[seq, kv_heads,
+  head_dim]` key/value cache (positions already qknorm+RoPE'd). Reads a
+  q-only `[T, q_heads*head_dim]` buffer.
+- Wrapper `maple_attention_prefill_bf16` + registry key
+  `("maple_attention_prefill", "gqa_causal_bf16")`.
+- Correctness: new `test_maple_prefill_attention_matches_causal_oracle` is
+  bit-exact vs the `attention_decode` CPU oracle across all 5 causal rows
+  (GQA grouping head//group matches). 6/6 attention + 16/16 maple kernel tests
+  pass; ruff clean.
+- Debug note: the kernel's q buffer is indexed with row stride
+  `q_heads*head_dim` (dense q-only); the test must supply a q-only buffer, not
+  the padded `q_size+2*kv_size` decode-style layout (which shifts row 1+ reads
+  into kv-padding). The test assertion also needed `out.reshape(-1)` because
+  `np.array_equal` is shape-strict and `out` is `[T, q_heads*head_dim]`.

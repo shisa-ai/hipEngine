@@ -164,6 +164,43 @@ def maple_attention_decode_bf16(
     )
 
 
+def maple_attention_prefill_bf16(
+    qkv_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    *,
+    rows: int,
+    q_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    scale: float,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Batched causal prefill attention over a dense prefix KV cache (P2)."""
+
+    _launch(
+        "hipengine_maple_attention_prefill_bf16",
+        (_PTR,) * 4 + (_I64, _I64, _I64, _I64, _F32, _PTR),
+        (
+            qkv_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            out_ptr,
+            rows,
+            q_heads,
+            kv_heads,
+            head_dim,
+            scale,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_maple_attention_kernels(
     *,
     backend: str = "hip_gfx1100",
@@ -176,6 +213,7 @@ def register_maple_attention_kernels(
             "partial_rotate_half_bf16",
         ): maple_qknorm_rope_kv_write_bf16,
         ("maple_attention_decode", "gqa_spans_bf16"): maple_attention_decode_bf16,
+        ("maple_attention_prefill", "gqa_causal_bf16"): maple_attention_prefill_bf16,
     }
     for (layer, variant), kernel in kernels.items():
         register(
@@ -221,6 +259,7 @@ register_maple_attention_kernels()
 __all__ = [
     "build_maple_attention",
     "maple_attention_decode_bf16",
+    "maple_attention_prefill_bf16",
     "maple_kv_span_update",
     "maple_qknorm_rope_kv_write_bf16",
     "plan_maple_attention_build",
