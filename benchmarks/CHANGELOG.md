@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-08
+
+- [retained/default Maple P2 exact GQA4 native prefill] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / public 128/320/512 on Radeon 8060S/gfx1151: **726.421/679.632/650.745 -> 749.175/741.368/754.000 tok/s (+3.13%/+9.08%/+15.87%)** by mapping each four-head GQA group to one exact wave32 consumer while preserving the local128 LDS/FMA order; clean tracing cuts attention **63.993 -> 21.916 ms (2.920x)** at unchanged 730 launches, all **18/18** state hashes and **90/90** positions remain byte/exact with KL 0, residency remains **5,355,881,848 bytes**, and close returns zero ownership; `benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json` and `benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json`.
+
 ## 2026-08-07
 
 - [Maple post-P1 profile diagnostic; no production-row change] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / public prefill320 on Radeon 8060S/gfx1151: clean cached-only attribution is **478.176 ms / 669.210 tok/s**, with attention at **63.993 ms (13.55% of kernel time)** across 48 chunk/layer calls; freeze a **<=31.996-ms (2.0x)** P2 stretch target for exact wave32 qrow/GQA reuse while retaining any exact same-suite non-regressive win; `benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json`.

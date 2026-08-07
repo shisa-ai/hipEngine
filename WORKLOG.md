@@ -207236,3 +207236,25 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   added; extending that fixture with its omitted head geometry repairs the node
   focused. No previously passing production behavior was implicated, so the
   already-complete GPU gates are not repeated.
+- Freeze implementation commit `9ccc60541`, push it, and run the binding clean
+  selector-unset M5 protocol. The artifact is **accepted**: qualified
+  128/320/512 throughput is **749.175/741.368/754.000 tok/s**, versus retained
+  P1 **726.421/679.632/650.745** (**+3.132%/+9.084%/+15.867%**), and same-run
+  serial **151.037/107.795/83.856 tok/s** (**4.960x/6.878x/8.992x**). Sample
+  ranges are **734.961-760.750 / 732.261-751.835 / 750.604-758.157 tok/s**.
+- Binding correctness remains **18/18** natural+heldout state hashes, **90/90**
+  tokens/top-1, and max/mean KL **0/0**. P2 adds no persistent allocation:
+  max-context-512 ownership remains exactly **5,355,881,848 bytes (4.988 GiB)**;
+  close is **0 bytes / 0 allocations**. Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json`,
+  SHA-256 `368f726a1ded56ae7ca247ef5a35d6e734c622348ebc81f22e036433e82f5fec`.
+- The clean committed selector-unset trace measures prefill320 at **439.479
+  ms/request / 431.666 ms kernel / 728.135 tok/s**, with attention **21.916 ms
+  (5.08% of kernel time)** versus the frozen P1 **63.993 ms (2.920x)** and the
+  same **730 launches**. It observes 48 request-local calls to the GQA4 kernel at
+  local32/VGPR64/dynamic-LDS512/static-LDS0/scratch0. Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json`, SHA-256
+  `5b89c00e9fbfc9cc7e19469e0c3c2a6b8f9ae643d5bc048956ac490f493da410`.
+- P2 is retained/default and done. Keep `HIPENGINE_MAPLE_PREFILL_GQA4=0` only
+  through final roadmap audit; make P3 dense ternary QKV/O tiling active. The
+  clean P3 baseline is **75.213 + 49.557 = 124.770 ms (28.90% of kernel time)**.
