@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import platform
 import shlex
 import statistics
@@ -392,6 +393,7 @@ def main() -> int:
     )
     rocminfo = _capture(["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"])
     rocm_smi = _capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"])
+    hipcc = _capture(["hipcc", "--version"])
     status = "accepted" if quality["passed"] and lifecycle_passed and git["tracked_clean"] else "rejected"
     resolved_path = str(Path(checkpoint.index.model_path).resolve())
     artifact = {
@@ -414,10 +416,15 @@ def main() -> int:
             "host": platform.node(),
             "rocminfo": rocminfo,
             "rocm_smi": rocm_smi,
+            "hipcc": hipcc,
         },
         "software": {"python": platform.python_version(), "git": git},
         "protocol": {
             "command": shlex.join([sys.executable, *sys.argv]),
+            "environment": {
+                "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
+                "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
+            },
             "backend": args.backend,
             "suite": str(args.suite),
             "heldout": str(args.heldout),
