@@ -213,6 +213,19 @@ step).
 Each fused composite must keep a numerically-equivalent unfused fallback
 (architecture invariant).
 
+**M2 status: investigated, not promoted.** Built `maple_moe_dual_swiglu_bf16`
+(one kernel replaces `maple_selected_ternary_dual_gemv_bf16` + `maple_clamped_swiglu_bf16`),
+bit-exact with the unfused chain (identical packed-oracle max/mean KL and top-1 on the model;
+GPU test asserts the fused intermediate matches bit-for-bit) and cuts decode launches 295→271/step.
+But the fused kernel is ~9% slower per MoE layer than the unfused dual+swiglu pair (interleaved
+micro-benchmark 229.7 vs 210.7 us), so it is **opt-in via `HIPENGINE_MAPLE_FUSE_MOE=1` (default
+`0`, unfused is the fast path)**. In eager mode the launch savings offset the kernel regression
+(step wall neutral); in the hipGraph path (M1/M6), where launch overhead is already amortized, the
+kernel-efficiency regression would be a real ~1.4% step loss, so promotion is blocked until the
+fused kernel's efficiency is understood. The fused down+weighted-residual composite was also built,
+verified bit-exact, but regresses ~3.5% (serial-expert grid) and was reverted. See `docs/REFACTOR.md`.
+Remaining D2 items: layer-boundary norm fusions and the qknorm+RoPE+KV-write → attention chain.
+
 ### D3 — MoE routing and grouped selected-expert (highest leverage — M0)
 
 - **Router is the #1 bottleneck (7.8 ms/step, 61%).** It is a single 256-thread
@@ -346,7 +359,7 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | attn+qknorm+ring-attn+router primitives in; grouped MoE+wiring open |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
 | M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | `benchmarks/README.md` |
-| M2 | D2 fusion | exact, non-regressive | `WORKLOG.md` |
+| M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu opt-in `HIPENGINE_MAPLE_FUSE_MOE=1`; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):
 

@@ -345,6 +345,51 @@ def maple_selected_ternary_gemv_batched_bf16(
     )
 
 
+def maple_moe_dual_swiglu_bf16(
+    x_ptr: int,
+    a_weight_ptr: int,
+    a_alpha_ptr: int,
+    b_weight_ptr: int,
+    b_alpha_ptr: int,
+    selected_experts_ptr: int,
+    out_ptr: int,
+    num_experts: int,
+    top_k: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Fused MoE gate/up dual GEMV + clamped SiLU (D2 fusion).
+
+    Replaces the unfused dual gemv + clamped_swiglu chain; writes a single
+    [top_k, out_features] intermediate buffer. Bit-exact with the unfused chain.
+    """
+
+    _launch(
+        "hipengine_maple_moe_dual_swiglu_bf16",
+        (_PTR,) * 7 + (_I64, _I64, _I64, _I64, _PTR),
+        (
+            x_ptr,
+            a_weight_ptr,
+            a_alpha_ptr,
+            b_weight_ptr,
+            b_alpha_ptr,
+            selected_experts_ptr,
+            out_ptr,
+            num_experts,
+            top_k,
+            in_features,
+            out_features,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_affine4_embed_bf16(
     weight_ptr: int,
     scales_ptr: int,
