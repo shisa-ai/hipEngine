@@ -432,6 +432,142 @@ extern "C" int hipengine_maple_ternary_gemm_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+// Batched QKV ternary GEMM (P1 prefill): computes the full [rows, q_features +
+// 2*kv_features] qkv buffer from the q/k/v ternary projections of a [rows, in]
+// input. Grid is (total_output_rows x token-tiles); each block owns one output
+// row and an 8-token tile, loading that output row's packed weight codes into
+// LDS once and reusing them across the tile (the prefill weight-reuse win).
+// Output column layout matches the single-row qkv GEMV: [q | k | v].
+template <int TOKENS_PER_BLOCK>
+__global__ void maple_ternary_qkv_gemm_kernel(
+    const uint16_t* __restrict__ x,
+    const uint32_t* __restrict__ q_weight,
+    const uint16_t* __restrict__ q_alpha,
+    const uint32_t* __restrict__ k_weight,
+    const uint16_t* __restrict__ k_alpha,
+    const uint32_t* __restrict__ v_weight,
+    const uint16_t* __restrict__ v_alpha,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q_features,
+    int64_t kv_features) {
+  const int64_t total_rows = q_features + 2 * kv_features;
+  const int64_t r = blockIdx.x;
+  const int64_t tile = blockIdx.y;
+  const int64_t t0 = tile * TOKENS_PER_BLOCK;
+  if (r >= total_rows) {
+    return;
+  }
+  const uint32_t* selected_weight;
+  const uint16_t* selected_alpha;
+  int64_t matrix_row;
+  int64_t col;
+  if (r < q_features) {
+    selected_weight = q_weight;
+    selected_alpha = q_alpha;
+    matrix_row = r;
+    col = r;
+  } else if (r < q_features + kv_features) {
+    selected_weight = k_weight;
+    selected_alpha = k_alpha;
+    matrix_row = r - q_features;
+    col = q_features + matrix_row;
+  } else {
+    selected_weight = v_weight;
+    selected_alpha = v_alpha;
+    matrix_row = r - q_features - kv_features;
+    col = q_features + kv_features + matrix_row;
+  }
+  const int64_t words = in_features / 16;
+  const int tid = static_cast<int>(threadIdx.x);
+  extern __shared__ float xs[];
+  __shared__ uint32_t wrow[128];
+  const uint32_t* wbase = selected_weight + matrix_row * words;
+  for (int64_t w = tid; w < words; w += blockDim.x) {
+    wrow[w] = wbase[w];
+  }
+  __syncthreads();
+  float* scratch = xs;
+  const float alpha = bf16_to_float(selected_alpha[matrix_row]);
+  for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+    const int64_t tok = t0 + t;
+    if (tok >= rows) {
+      break;
+    }
+    const uint16_t* xrow = x + tok * in_features;
+    float partial = 0.0f;
+    for (int64_t w = tid; w < words; w += blockDim.x) {
+      const uint32_t word = wrow[w];
+      const int64_t base = w * 16;
+#pragma unroll
+      for (int lane = 0; lane < 16; ++lane) {
+        const int code = static_cast<int>((word >> (2 * lane)) & 0x3U) - 1;
+        partial += bf16_to_float(xrow[base + lane]) * static_cast<float>(code);
+      }
+    }
+    float* slice = scratch + t * blockDim.x;
+    slice[tid] = partial;
+    __syncthreads();
+    for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        slice[tid] += slice[tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid == 0) {
+      out[tok * total_rows + col] = float_to_bf16(slice[0] * alpha);
+    }
+    __syncthreads();
+  }
+}
+
+extern "C" int hipengine_maple_ternary_qkv_gemm_bf16(
+    const uint16_t* x,
+    const uint32_t* q_weight,
+    const uint16_t* q_alpha,
+    const uint32_t* k_weight,
+    const uint16_t* k_alpha,
+    const uint32_t* v_weight,
+    const uint16_t* v_alpha,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t q_features,
+    int64_t kv_features,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || q_features <= 0 || kv_features <= 0
+      || in_features % 16 != 0 || in_features / 16 > 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_words(in_features / 16);
+  const int toks_per_block = 8;
+  const int64_t total_rows = q_features + 2 * kv_features;
+  const int64_t blocks_x = total_rows;
+  const int64_t blocks_y = (rows + toks_per_block - 1) / toks_per_block;
+  const int64_t shared = toks_per_block * threads * sizeof(float);
+  hipLaunchKernelGGL(
+      (maple_ternary_qkv_gemm_kernel<8>),
+      dim3(static_cast<unsigned int>(blocks_x),
+           static_cast<unsigned int>(blocks_y)),
+      dim3(threads),
+      static_cast<unsigned int>(shared),
+      stream,
+      x,
+      q_weight,
+      q_alpha,
+      k_weight,
+      k_alpha,
+      v_weight,
+      v_alpha,
+      out,
+      rows,
+      in_features,
+      q_features,
+      kv_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_maple_ternary_qkv_gemv_bf16(
     const uint16_t* x,
     const uint32_t* q_weight,

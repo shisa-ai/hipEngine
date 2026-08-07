@@ -260,6 +260,59 @@ def test_maple_ternary_gemm_batched_matches_cpu_oracle(maple_ternary_lib) -> Non
     assert np.array_equal(out, expected)
 
 
+def test_maple_ternary_qkv_gemm_batched_matches_oracle(maple_ternary_lib) -> None:
+    """Batched QKV ternary GEMM is bit-exact vs 3x CPU ternary_gemv per row (P1)."""
+
+    from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
+        maple_ternary_qkv_gemm_bf16,
+    )
+
+    rng = np.random.default_rng(77)
+    rows, hidden, q_rows, kv_rows = 13, 64, 5, 3
+    x_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    matrices = [
+        rng.integers(-1, 2, size=(n, hidden), dtype=np.int8)
+        for n in (q_rows, kv_rows, kv_rows)
+    ]
+    packed = [pack2(m) for m in matrices]
+    alpha = [
+        f32_to_bf16_bits(rng.uniform(0.01, 0.5, size=(m.shape[0],)).astype(np.float32))
+        for m in matrices
+    ]
+    parts = [
+        f32_to_bf16_bits(ternary_gemv(bf16_round(row), packed[i], alpha[i]))
+        for row in x_f32
+        for i in range(3)
+    ]
+    expected = np.concatenate(parts).reshape(rows, q_rows + 2 * kv_rows)
+    total = q_rows + 2 * kv_rows
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        packed_d = [dev.put(p) for p in packed]
+        alpha_d = [dev.put(a) for a in alpha]
+        qkv, qkv_d = dev.empty((rows, total), np.dtype(np.uint16))
+        maple_ternary_qkv_gemm_bf16(
+            x_d.ptr,
+            packed_d[0].ptr,
+            alpha_d[0].ptr,
+            packed_d[1].ptr,
+            alpha_d[1].ptr,
+            packed_d[2].ptr,
+            alpha_d[2].ptr,
+            qkv_d.ptr,
+            rows,
+            hidden,
+            q_rows,
+            kv_rows,
+            library=maple_ternary_lib,
+        )
+        dev.get(qkv, qkv_d)
+
+    assert np.array_equal(qkv, expected)
+
+
 def test_maple_selected_dual_and_down_ternary_gemv_match_oracle(maple_ternary_lib) -> None:
     rng = np.random.default_rng(33)
     experts, top_k, hidden, intermediate, out_rows = 4, 2, 32, 16, 7
