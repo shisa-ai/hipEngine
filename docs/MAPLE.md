@@ -240,12 +240,13 @@ Primary evidence:
 
 ## Optimization review and next work
 
-The corrected cached-only phase profile predates P0 for prefill but remains the
-attribution baseline for unchanged layer work:
+A clean cached-only profile at retained P0 updates prefill attribution; the c1
+and c8 rows remain the corrected decode baselines because P0 does not alter
+those paths:
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
-| native prefill320, pre-P0 | 982.015 ms/request | 975.347 ms | 0.68% | **49.90%** |
+| native prefill320, post-P0 | 498.442 ms/request | 492.866 ms | 1.12% | **0.30%** |
 | c1 decode | 6.118 ms/token | 5.035 ms | 17.69% | **28.75%** |
 | c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
 
@@ -271,10 +272,10 @@ incorrect. It is a correct row/route gather bring-up path, while the retained
 hipEngine prefill contract and DeepGrove's MLX path both group routed rows by
 expert.
 
-At 320 rows, gate/up plus down consume **274.073 ms**. After final-row tail
-selection, a 1000 tok/s target requires this family to fall to about
-**98.572 ms** (2.780x), assuming other measured buckets stay fixed. That is an
-aggressive but credible target because 2,560 routed assignments currently
+At retained P0 and 320 rows, gate/up plus down consume **276.150 ms**, or
+**56.0%** of all kernel time. A 1000 tok/s target requires this family to fall
+to **<=97.708 ms** (**2.826x**), assuming other measured buckets stay fixed.
+That is an aggressive but credible target because 2,560 routed assignments currently
 average ten rows per expert, and hipEngine already has device-side
 count/prefix/scatter machinery in its GGUF/PARO paths.
 
@@ -301,6 +302,7 @@ The 200+ decode target is therefore realistic in two distinct forms:
 
 Evidence:
 [`P0 final-row prefill`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json),
+[`post-P0 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json),
 [`corrected pre-P0 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json),
 [`c1 graph review`](../benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json),
 and [`MAPLE-PERF.md`](MAPLE-PERF.md). Kernel names and trace resources are in
