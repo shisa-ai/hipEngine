@@ -51,6 +51,21 @@ _LM_HEAD_ARGMAX_BATCH_ARGS = (
     ctypes.c_int64,  # batch
     ctypes.c_void_p,  # stream
 )
+# Fused wave8 + stable top-1 (C6/RR-8): 8 columns per block, one per warp, so
+# there is no rows-per-block knob; scratch is ceil(vocab/8) partials.
+_LM_HEAD_ARGMAX_WAVE8_ARGS = (
+    *(ctypes.c_void_p for _ in range(6)),
+    ctypes.c_int64,  # in_features
+    ctypes.c_int64,  # vocab_size
+    ctypes.c_void_p,  # stream
+)
+_LM_HEAD_ARGMAX_WAVE8_BATCH_ARGS = (
+    *(ctypes.c_void_p for _ in range(6)),
+    ctypes.c_int64,  # in_features
+    ctypes.c_int64,  # vocab_size
+    ctypes.c_int64,  # batch
+    ctypes.c_void_p,  # stream
+)
 
 
 def plan_moonshine_lm_head_build(
@@ -206,6 +221,118 @@ def moonshine_lm_head_argmax_batch_fp16(
     )
 
 
+def lm_head_argmax_wave8_scratch_elements(vocab_size: int) -> int:
+    """(value, index) partial pairs for the fused wave8 stage-1 grid.
+
+    One warp per vocab column, 8 warps per block -> ``ceil(vocab_size/8)``
+    blocks, each writing one partial pair.
+    """
+    return (vocab_size + 7) // 8
+
+
+def moonshine_lm_head_argmax_wave8_fp16(
+    input_ptr: int,
+    weight_ptr: int,
+    block_values_ptr: int,
+    block_indices_ptr: int,
+    out_index_ptr: int,
+    out_value_ptr: int,
+    in_features: int,
+    vocab_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Fused wave8 + stable top-1 LM head for one hidden row (C6/RR-8).
+
+    Same signature and bounded scratch contract as
+    ``moonshine_lm_head_argmax_fp16`` (scratch size from
+    ``lm_head_argmax_wave8_scratch_elements``), but stage 1 uses the wave8
+    arithmetic: 8 columns progress in parallel per 256-thread block (one warp
+    per column, lane-stride-32 FP32 accumulation + warp butterfly, no per-column
+    barrier or cross-warp serial sum), so logits differ from the exact fused
+    stage at FP32-reassociation level.  The stable lowest-index tie break and
+    the stage-2 reduction are identical.  This is the fused form of the
+    C6-screened ``moonshine_f16_lm_head_projection_wave8`` projection.
+    """
+
+    if in_features <= 0:
+        raise ValueError("in_features must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    library = library or build_moonshine_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_lm_head_argmax_wave8_fp16",
+        _LM_HEAD_ARGMAX_WAVE8_ARGS,
+        (
+            input_ptr,
+            weight_ptr,
+            block_values_ptr,
+            block_indices_ptr,
+            out_index_ptr,
+            out_value_ptr,
+            in_features,
+            vocab_size,
+            stream,
+        ),
+        runtime,
+    )
+
+
+def moonshine_lm_head_argmax_wave8_batch_fp16(
+    input_ptr: int,
+    weight_ptr: int,
+    block_values_ptr: int,
+    block_indices_ptr: int,
+    out_index_ptr: int,
+    out_value_ptr: int,
+    in_features: int,
+    vocab_size: int,
+    batch: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Fused wave8 + stable top-1 LM head for ``batch`` rows (C6/RR-8).
+
+    ``input`` is ``[batch, in_features]`` FP16; ``out_index``/``out_value`` are
+    ``[batch]``.  Scratch is ``[batch, ceil(vocab/8)]``.  Grid-Y is the batch
+    row; each row's wave8 arithmetic, tie break, and reduction are identical to
+    the single-row variant.
+    """
+
+    if in_features <= 0:
+        raise ValueError("in_features must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    if batch <= 0:
+        raise ValueError("batch must be positive")
+    library = library or build_moonshine_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_lm_head_argmax_wave8_batch_fp16",
+        _LM_HEAD_ARGMAX_WAVE8_BATCH_ARGS,
+        (
+            input_ptr,
+            weight_ptr,
+            block_values_ptr,
+            block_indices_ptr,
+            out_index_ptr,
+            out_value_ptr,
+            in_features,
+            vocab_size,
+            batch,
+            stream,
+        ),
+        runtime,
+    )
+
+
 def _launch(
     library: ctypes.CDLL,
     symbol: str,
@@ -234,6 +361,24 @@ def register_moonshine_lm_head_kernels(*, replace: bool = True) -> None:
             ),
             moonshine_lm_head_argmax_batch_fp16,
         ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_lm_head",
+                "fp16",
+                "fused_argmax_wave8",
+            ),
+            moonshine_lm_head_argmax_wave8_fp16,
+        ),
+        (
+            KernelKey(
+                _BACKEND,
+                "moonshine_lm_head",
+                "fp16",
+                "fused_argmax_wave8_batch",
+            ),
+            moonshine_lm_head_argmax_wave8_batch_fp16,
+        ),
     )
     for key, kernel in registrations:
         register(key, kernel, replace=replace)
@@ -244,8 +389,11 @@ register_moonshine_lm_head_kernels()
 __all__ = [
     "build_moonshine_lm_head",
     "lm_head_argmax_scratch_elements",
+    "lm_head_argmax_wave8_scratch_elements",
     "moonshine_lm_head_argmax_fp16",
     "moonshine_lm_head_argmax_batch_fp16",
+    "moonshine_lm_head_argmax_wave8_fp16",
+    "moonshine_lm_head_argmax_wave8_batch_fp16",
     "plan_moonshine_lm_head_build",
     "register_moonshine_lm_head_kernels",
 ]

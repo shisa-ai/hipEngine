@@ -169,6 +169,7 @@ class MoonshineCudaResidentRuntime:
         device: Device | None = None,
         runtime: CudaRuntime | None = None,
         owns_weights: bool = True,
+        lm_head_route: str = "fused",
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -190,6 +191,17 @@ class MoonshineCudaResidentRuntime:
         # per-step H2D re-upload.  Off by default (the exact eager/upload path
         # remains the contract).
         self._device_owned_decode = False
+        # LM-head route (C6/RR-8): "fused" is the exact C1f fused stage + stable
+        # top-1 (byte-exact, unchanged default); "wave8" selects the fused wave8
+        # + stable top-1 candidate (8 columns in parallel per block, FP32-
+        # reassociation-level logit deltas).  The wave8 route is opt-in and must
+        # pass complete-token + logit-margin gates plus a measured per-token win
+        # before promotion (review §7.3); it is not the default.
+        self.lm_head_route = lm_head_route
+        if lm_head_route not in ("fused", "wave8"):
+            raise ValueError(
+                f"lm_head_route must be 'fused' or 'wave8', got {lm_head_route!r}"
+            )
         self.decoder_libraries: MoonshineCudaDecoderLibraries | None = None
         self._token_graphs: dict[str, MoonshineCudaTokenGraph] = {}
         self.closed = False
@@ -803,6 +815,7 @@ class MoonshineCudaResidentRuntime:
         )
         from hipengine.kernels.cuda_sm120a.linear.lm_head import (
             moonshine_lm_head_argmax_fp16,
+            moonshine_lm_head_argmax_wave8_fp16,
         )
         from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
             moonshine_f16_lm_head_projection_wave8,
@@ -1025,8 +1038,11 @@ class MoonshineCudaResidentRuntime:
             boundary_callback("final_hidden", normalized)
         # Bounded C1f fused LM head + stable argmax (rows_per_block=8, byte-exact
         # with the two-step projection+argmax path). Writes the token into the
-        # fixed token tensor so read_token()/next-step embedding reuse it.
-        moonshine_lm_head_argmax_fp16(
+        # fixed token tensor so read_token()/next-step embedding reuse it.  The
+        # opt-in ``lm_head_route="wave8"`` (C6/RR-8 candidate) uses the fused
+        # wave8 + stable top-1 stage instead; same bounded scratch contract and
+        # lowest-index tie break, FP32-reassociation-level logit deltas.
+        lm_head_args = (
             normalized.ptr,
             self.weights[spec.lm_head_alias_name].ptr,
             self.tensor("lm_head_values").ptr,
@@ -1035,10 +1051,18 @@ class MoonshineCudaResidentRuntime:
             self.tensor("lm_head_out_value").ptr,
             spec.hidden_size,
             spec.vocab_size,
-            rows_per_block=_LM_HEAD_ROWS_PER_BLOCK,
-            library=libraries.lm_head,
-            **common,
         )
+        if self.lm_head_route == "wave8":
+            moonshine_lm_head_argmax_wave8_fp16(
+                *lm_head_args, library=libraries.lm_head, **common
+            )
+        else:
+            moonshine_lm_head_argmax_fp16(
+                *lm_head_args,
+                rows_per_block=_LM_HEAD_ROWS_PER_BLOCK,
+                library=libraries.lm_head,
+                **common,
+            )
         if self._device_owned_decode:
             # Graph-tail state kernel: advance the device position scalar so the
             # next replay consumes device-owned state (C5/§7.3).  Bounded by the

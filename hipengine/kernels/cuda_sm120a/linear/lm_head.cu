@@ -214,6 +214,124 @@ __global__ void moonshine_lm_head_argmax_batch_final_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// C6/RR-8 fused wave8 + stable top-1 candidate.  Each 256-thread block is 8
+// warps; warp ``wave`` computes exactly ONE vocab column (``blockIdx.x*8 +
+// wave``) with the ``moonshine_f16_lm_head_projection_wave8_kernel`` arithmetic
+// (lane-stride 32 FP32 accumulation + warp butterfly, NO cross-warp serial
+// ``partial[8]`` sum and NO per-column ``__syncthreads``), then the block does a
+// single cross-warp reduction over its 8 columns.  This is the fused form of
+// the C6-screened wave8 projection: 8 columns progress in parallel per block
+// instead of serially, at the cost of FP32-reassociation-level logit deltas vs
+// the exact C1f fused stage (the review requires complete-token + logit-margin
+// gates plus a measured per-token win before admission).  The stable
+// lowest-index tie break and bounded ``num_blocks`` partial scratch are
+// identical to the exact fused path.
+// ---------------------------------------------------------------------------
+
+__global__ void moonshine_lm_head_argmax_wave8_stage1_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight,
+    float* __restrict__ block_values,
+    int64_t* __restrict__ block_indices,
+    int64_t in_features,
+    int64_t vocab_size) {
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  const int64_t column = static_cast<int64_t>(blockIdx.x) * 8 + wave;
+  float best_value = -FLT_MAX;
+  int64_t best_index = INT64_MAX;
+  if (column < vocab_size) {
+    float accumulator = 0.0f;
+    // Same lane-stride 32 FP32 accumulation as the wave8 projection kernel.
+    for (int64_t feature = lane; feature < in_features; feature += 32) {
+      accumulator += static_cast<float>(input[feature]) *
+          static_cast<float>(weight[column * in_features + feature]);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      accumulator += __shfl_down_sync(0xffffffffu, accumulator, offset);
+    }
+    if (lane == 0) {
+      const float logit = __half2float(__float2half_rn(accumulator));
+      best_value = logit;
+      best_index = column;
+    }
+  }
+  __shared__ float s_values[8];
+  __shared__ int64_t s_indices[8];
+  if (lane == 0) {
+    s_values[wave] = best_value;
+    s_indices[wave] = best_index;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float block_best_value = -FLT_MAX;
+    int64_t block_best_index = INT64_MAX;
+    for (int w = 0; w < 8; ++w) {
+      if (better_pair(s_values[w], s_indices[w], block_best_value,
+                      block_best_index)) {
+        block_best_value = s_values[w];
+        block_best_index = s_indices[w];
+      }
+    }
+    block_values[blockIdx.x] = block_best_value;
+    block_indices[blockIdx.x] = block_best_index;
+  }
+}
+
+__global__ void moonshine_lm_head_argmax_wave8_batch_stage1_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight,
+    float* __restrict__ block_values,
+    int64_t* __restrict__ block_indices,
+    int64_t in_features,
+    int64_t vocab_size,
+    int64_t num_blocks) {
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t input_offset = row * in_features;
+  const int64_t scratch_offset = row * num_blocks;
+  const int64_t column = static_cast<int64_t>(blockIdx.x) * 8 + wave;
+  float best_value = -FLT_MAX;
+  int64_t best_index = INT64_MAX;
+  if (column < vocab_size) {
+    float accumulator = 0.0f;
+    for (int64_t feature = lane; feature < in_features; feature += 32) {
+      accumulator += static_cast<float>(input[input_offset + feature]) *
+          static_cast<float>(weight[column * in_features + feature]);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      accumulator += __shfl_down_sync(0xffffffffu, accumulator, offset);
+    }
+    if (lane == 0) {
+      const float logit = __half2float(__float2half_rn(accumulator));
+      best_value = logit;
+      best_index = column;
+    }
+  }
+  __shared__ float s_values[8];
+  __shared__ int64_t s_indices[8];
+  if (lane == 0) {
+    s_values[wave] = best_value;
+    s_indices[wave] = best_index;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float block_best_value = -FLT_MAX;
+    int64_t block_best_index = INT64_MAX;
+    for (int w = 0; w < 8; ++w) {
+      if (better_pair(s_values[w], s_indices[w], block_best_value,
+                      block_best_index)) {
+        block_best_value = s_values[w];
+        block_best_index = s_indices[w];
+      }
+    }
+    block_values[scratch_offset + blockIdx.x] = block_best_value;
+    block_indices[scratch_offset + blockIdx.x] = block_best_index;
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_cuda_sm120a_moonshine_lm_head_argmax_fp16(
@@ -267,6 +385,67 @@ extern "C" int hipengine_cuda_sm120a_moonshine_lm_head_argmax_batch_fp16(
       256u, 0, stream>>>(
       input, weight, block_values, block_indices, in_features, vocab_size,
       rows_per_block, num_blocks);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    return static_cast<int>(err);
+  }
+  moonshine_lm_head_argmax_batch_final_kernel<<<
+      dim3(1u, static_cast<unsigned int>(batch)), 256u, 0, stream>>>(
+      block_values, block_indices, num_blocks, out_index, out_value);
+  return static_cast<int>(cudaGetLastError());
+}
+
+// Fused wave8 + stable top-1 (C6/RR-8 candidate).  ``num_blocks`` is fixed at
+// ``ceil(vocab_size / 8)`` because each block's 8 warps each own one column
+// (no rows-per-block knob).  The caller supplies that many (value, index)
+// scratch pairs, i.e. ``lm_head_argmax_wave8_scratch_elements``.
+extern "C" int hipengine_cuda_sm120a_moonshine_lm_head_argmax_wave8_fp16(
+    const half_t* input,
+    const half_t* weight,
+    float* block_values,
+    int64_t* block_indices,
+    int64_t* out_index,
+    float* out_value,
+    int64_t in_features,
+    int64_t vocab_size,
+    cudaStream_t stream) {
+  if (in_features <= 0 || vocab_size <= 0) {
+    return static_cast<int>(cudaErrorInvalidValue);
+  }
+  const int64_t num_blocks = (vocab_size + 7) / 8;
+  moonshine_lm_head_argmax_wave8_stage1_kernel<<<
+      static_cast<unsigned int>(num_blocks), 256u, 0, stream>>>(
+      input, weight, block_values, block_indices, in_features, vocab_size);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    return static_cast<int>(err);
+  }
+  moonshine_lm_head_argmax_final_kernel<<<1u, 256u, 0, stream>>>(
+      block_values, block_indices, num_blocks, out_index, out_value);
+  return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_lm_head_argmax_wave8_batch_fp16(
+    const half_t* input,
+    const half_t* weight,
+    float* block_values,
+    int64_t* block_indices,
+    int64_t* out_index,
+    float* out_value,
+    int64_t in_features,
+    int64_t vocab_size,
+    int64_t batch,
+    cudaStream_t stream) {
+  if (in_features <= 0 || vocab_size <= 0 || batch <= 0) {
+    return static_cast<int>(cudaErrorInvalidValue);
+  }
+  const int64_t num_blocks = (vocab_size + 7) / 8;
+  moonshine_lm_head_argmax_wave8_batch_stage1_kernel<<<
+      dim3(static_cast<unsigned int>(num_blocks),
+           static_cast<unsigned int>(batch)),
+      256u, 0, stream>>>(
+      input, weight, block_values, block_indices, in_features, vocab_size,
+      num_blocks);
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
     return static_cast<int>(err);

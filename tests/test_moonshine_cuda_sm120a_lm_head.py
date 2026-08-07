@@ -357,6 +357,236 @@ def test_moonshine_cuda_lm_head_argmax_deterministic_ties() -> None:
             free(allocation, runtime=runtime)
 
 
+@pytest.mark.skipif(not _cuda_sm120a_enabled(), reason="CUDA sm_120a gate is not enabled")
+def test_moonshine_cuda_lm_head_argmax_wave8_matches_two_step_wave8_path() -> None:
+    """The fused wave8 kernel equals wave8 projection -> stable argmax (C6/RR-8)."""
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
+        build_moonshine_glue,
+        moonshine_argmax_fp16,
+    )
+    from hipengine.kernels.cuda_sm120a.linear.lm_head import (
+        build_moonshine_lm_head,
+        lm_head_argmax_wave8_scratch_elements,
+        moonshine_lm_head_argmax_wave8_fp16,
+    )
+    from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+        build_moonshine_projection,
+        moonshine_f16_lm_head_projection_wave8,
+    )
+
+    rng = np.random.default_rng(0xC6BEA7)
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library_lm = build_moonshine_lm_head(load=True)
+    library_proj = build_moonshine_projection(load=True)
+    library_glue = build_moonshine_glue(load=True)
+    allocations = []
+    try:
+        for _ in range(4):
+            hidden = rng.normal(0.0, 0.05, size=(_HIDDEN,)).astype(np.float16)
+            weight = rng.normal(0.0, 0.03, size=(_VOCAB, _HIDDEN)).astype(np.float16)
+
+            d_input = _upload(hidden, runtime, allocations)
+            d_weight = _upload(weight, runtime, allocations)
+            d_logits = _alloc_f16((_VOCAB,), runtime, allocations)
+            d_argmax = _alloc_i64(1, runtime, allocations)
+            moonshine_f16_lm_head_projection_wave8(
+                d_input.ptr,
+                d_weight.ptr,
+                d_logits.ptr,
+                1,
+                _HIDDEN,
+                _VOCAB,
+                library=library_proj,
+                runtime=runtime,
+            )
+            moonshine_argmax_fp16(
+                d_logits.ptr, d_argmax.ptr, _VOCAB, library=library_glue, runtime=runtime
+            )
+            runtime.device_synchronize()
+            two_step_index = int(_download_i64(d_argmax, 1, runtime)[0])
+            logits = _download_f16(d_logits, (_VOCAB,), runtime)
+            two_step_value = float(logits[two_step_index])
+
+            num_blocks = lm_head_argmax_wave8_scratch_elements(_VOCAB)
+            d_values = _alloc_f32(num_blocks, runtime, allocations)
+            d_indices = _alloc_i64(num_blocks, runtime, allocations)
+            d_out_index = _alloc_i64(1, runtime, allocations)
+            d_out_value = _alloc_f32(1, runtime, allocations)
+            moonshine_lm_head_argmax_wave8_fp16(
+                d_input.ptr,
+                d_weight.ptr,
+                d_values.ptr,
+                d_indices.ptr,
+                d_out_index.ptr,
+                d_out_value.ptr,
+                _HIDDEN,
+                _VOCAB,
+                library=library_lm,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            fused_index = int(_download_i64(d_out_index, 1, runtime)[0])
+            fused_value = float(_download_f32(d_out_value, 1, runtime)[0])
+
+            assert fused_index == two_step_index, (
+                f"wave8 fused {fused_index} != two-step wave8 {two_step_index}"
+            )
+            np.testing.assert_allclose(fused_value, two_step_value, rtol=1e-6, atol=1e-6)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.skipif(not _cuda_sm120a_enabled(), reason="CUDA sm_120a gate is not enabled")
+@pytest.mark.skipif(not _cuda_sm120a_enabled(), reason="CUDA sm_120a gate is not enabled")
+def test_moonshine_cuda_lm_head_argmax_wave8_matches_exact_fused_within_reassociation() -> None:
+    """Fused wave8 vs exact fused: token flips only inside the reassociation delta.
+
+    The wave8 and exact 256-thread fused stages differ only in FP32 accumulation
+    order, so their FP16 logits differ by at most a few ULP.  The logit-margin
+    gate (review §7.3) holds: when the selected token differs, the exact
+    top1-top2 margin must be smaller than the observed max logit delta.  We also
+    assert the max logit delta at the argmax stays within a few FP16 ULP.
+    """
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.linear.lm_head import (
+        build_moonshine_lm_head,
+        lm_head_argmax_scratch_elements,
+        lm_head_argmax_wave8_scratch_elements,
+        moonshine_lm_head_argmax_fp16,
+        moonshine_lm_head_argmax_wave8_fp16,
+    )
+    from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+        build_moonshine_projection,
+        moonshine_f16_lm_head_projection,
+    )
+
+    rng = np.random.default_rng(0xC6BEAD)
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library = build_moonshine_lm_head(load=True)
+    library_proj = build_moonshine_projection(load=True)
+    allocations = []
+    max_delta = 0.0
+    flips = 0
+    draws = 12
+    try:
+        for _ in range(draws):
+            hidden = rng.normal(0.0, 0.05, size=(_HIDDEN,)).astype(np.float16)
+            weight = rng.normal(0.0, 0.03, size=(_VOCAB, _HIDDEN)).astype(np.float16)
+
+            d_input = _upload(hidden, runtime, allocations)
+            d_weight = _upload(weight, runtime, allocations)
+
+            nb_exact = lm_head_argmax_scratch_elements(_VOCAB, 8)
+            nb_wave8 = lm_head_argmax_wave8_scratch_elements(_VOCAB)
+            ev = _alloc_f32(nb_exact, runtime, allocations)
+            ei = _alloc_i64(nb_exact, runtime, allocations)
+            wv = _alloc_f32(nb_wave8, runtime, allocations)
+            wi = _alloc_i64(nb_wave8, runtime, allocations)
+            d_exact_i = _alloc_i64(1, runtime, allocations)
+            d_exact_v = _alloc_f32(1, runtime, allocations)
+            d_wave8_i = _alloc_i64(1, runtime, allocations)
+            d_wave8_v = _alloc_f32(1, runtime, allocations)
+            d_logits = _alloc_f16((_VOCAB,), runtime, allocations)
+
+            moonshine_lm_head_argmax_fp16(
+                d_input.ptr, d_weight.ptr, ev.ptr, ei.ptr, d_exact_i.ptr, d_exact_v.ptr,
+                _HIDDEN, _VOCAB, rows_per_block=8, library=library, runtime=runtime,
+            )
+            moonshine_lm_head_argmax_wave8_fp16(
+                d_input.ptr, d_weight.ptr, wv.ptr, wi.ptr, d_wave8_i.ptr, d_wave8_v.ptr,
+                _HIDDEN, _VOCAB, library=library, runtime=runtime,
+            )
+            moonshine_f16_lm_head_projection(
+                d_input.ptr, d_weight.ptr, d_logits.ptr, 1, _HIDDEN, _VOCAB,
+                library=library_proj, runtime=runtime,
+            )
+            runtime.device_synchronize()
+            exact_i = int(_download_i64(d_exact_i, 1, runtime)[0])
+            wave8_i = int(_download_i64(d_wave8_i, 1, runtime)[0])
+            exact_v = float(_download_f32(d_exact_v, 1, runtime)[0])
+            wave8_v = float(_download_f32(d_wave8_v, 1, runtime)[0])
+            logits = _download_f16(d_logits, (_VOCAB,), runtime)
+            # Exact path's own top-1 must equal the exact fused selection.
+            assert int(np.argmax(logits)) == exact_i
+            top2 = np.partition(logits.astype(np.float32), -2)[-2:]
+            top1, top2v = float(top2[1]), float(top2[0])
+            margin = top1 - top2v
+            max_delta = max(max_delta, abs(exact_v - wave8_v))
+            if exact_i != wave8_i:
+                flips += 1
+                assert margin < max(0.01, max_delta), (
+                    f"token flip outside reassociation delta: margin={margin} "
+                    f"exact={exact_i} wave8={wave8_i}"
+                )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    # The reassociation delta must stay within a few FP16 ULP of the logit
+    # magnitude (FP16 ULP at |logit|~1 is 2^-10..2^-9).
+    assert max_delta <= 0.02, f"wave8-vs-exact logit delta {max_delta} too large"
+
+
+@pytest.mark.skipif(not _cuda_sm120a_enabled(), reason="CUDA sm_120a gate is not enabled")
+def test_moonshine_cuda_lm_head_argmax_wave8_batch_matches_single_row() -> None:
+    """Static-B wave8 fused equals B sequential single-row wave8 calls (C6/RR-8)."""
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.linear.lm_head import (
+        build_moonshine_lm_head,
+        lm_head_argmax_wave8_scratch_elements,
+        moonshine_lm_head_argmax_wave8_batch_fp16,
+        moonshine_lm_head_argmax_wave8_fp16,
+    )
+
+    rng = np.random.default_rng(0xC6BEEF)
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library = build_moonshine_lm_head(load=True)
+    allocations = []
+    batch = 4
+    try:
+        hidden = rng.normal(0.0, 0.05, size=(batch, _HIDDEN)).astype(np.float16)
+        weight = rng.normal(0.0, 0.03, size=(_VOCAB, _HIDDEN)).astype(np.float16)
+        d_weight = _upload(weight, runtime, allocations)
+
+        num_blocks = lm_head_argmax_wave8_scratch_elements(_VOCAB)
+        bv = _alloc_f32(batch * num_blocks, runtime, allocations)
+        bi = _alloc_i64(batch * num_blocks, runtime, allocations)
+        d_batch_i = _alloc_i64(batch, runtime, allocations)
+        d_batch_v = _alloc_f32(batch, runtime, allocations)
+        d_batch = _upload(hidden, runtime, allocations)
+        moonshine_lm_head_argmax_wave8_batch_fp16(
+            d_batch.ptr, d_weight.ptr, bv.ptr, bi.ptr, d_batch_i.ptr, d_batch_v.ptr,
+            _HIDDEN, _VOCAB, batch, library=library, runtime=runtime,
+        )
+
+        expected_i = np.empty(batch, dtype=np.int64)
+        expected_v = np.empty(batch, dtype=np.float32)
+        for row in range(batch):
+            d_input = _upload(hidden[row : row + 1], runtime, allocations)
+            wv = _alloc_f32(num_blocks, runtime, allocations)
+            wi = _alloc_i64(num_blocks, runtime, allocations)
+            d_i = _alloc_i64(1, runtime, allocations)
+            d_v = _alloc_f32(1, runtime, allocations)
+            moonshine_lm_head_argmax_wave8_fp16(
+                d_input.ptr, d_weight.ptr, wv.ptr, wi.ptr, d_i.ptr, d_v.ptr,
+                _HIDDEN, _VOCAB, library=library, runtime=runtime,
+            )
+            expected_i[row] = int(_download_i64(d_i, 1, runtime)[0])
+            expected_v[row] = float(_download_f32(d_v, 1, runtime)[0])
+        runtime.device_synchronize()
+        actual_i = _download_i64(d_batch_i, batch, runtime)
+        actual_v = _download_f32(d_batch_v, batch, runtime)
+        np.testing.assert_array_equal(actual_i, expected_i)
+        np.testing.assert_allclose(actual_v, expected_v, rtol=1e-6, atol=1e-6)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
 def _upload(array: np.ndarray, runtime, allocations):
     host = np.ascontiguousarray(array)
     device = malloc(host.nbytes, runtime=runtime)
