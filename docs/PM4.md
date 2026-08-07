@@ -897,6 +897,16 @@ same-process directional run, inspection is **91.699 -> 30.448 ms** and capture
 **55.061 -> 63.072 ms** and was removed. Slab/cache publication and a
 same-session p512/d128 end-to-end comparison remain pending.
 
+A wait-only dependency experiment retained each compute-idle `EVENT_WRITE` but
+removed the following `ACQUIRE_MEM`. It reduced the 626-node stateful tape
+**18,079 -> 13,079 dwords (-27.656%)** and diagnostic replay
+**9.948 -> 9.809 ms/token (-1.392%)**, but is **rejected**: recurrent/KV state
+and final logits diverged after three steps even though token IDs coincidentally
+matched. Every submission retired and teardown stayed clean, so this is direct
+evidence that a cache acquire/invalidation is semantically mandatory, not a
+lifecycle artifact. The flag and implementation were removed. Evidence:
+`benchmarks/results/2026-08-08-gfx1100-pm4-wait-only-dependency-rejected.json`.
+
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact
 benchmark command/hardware/source evidence, compact artifact, rollup, and

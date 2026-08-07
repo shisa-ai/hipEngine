@@ -209258,3 +209258,22 @@ Vulkan local sizes verbatim will close the measured gap.
   inspection/transport bundle passes (14), the guarded live HIP graph
   inspection test passes, Ruff/format/diff checks pass. No destructive
   lifecycle arm ran.
+
+## 2026-08-08 — Reject wait-only PM4 dependency boundaries
+
+- Test a default-off dependency candidate that retains the gfx1100
+  `CS_PARTIAL_FLUSH`/compute-idle event before every dependent dispatch but
+  removes the following global `ACQUIRE_MEM`. Python packet goldens prove eight
+  removed dwords per boundary; guarded one-node native/transport smoke passes.
+- The 626-node p512/d3 model gate retires all submissions with zero fallback,
+  callback faults, or teardown leaks and reduces the tape **18,079 -> 13,079
+  dwords (-27.656%)**. Its diagnostic replay is **9.947796 -> 9.809274 ms/token
+  (-1.392%)**.
+- Reject on correctness. Token IDs happen to remain `[9707]`, but recurrent/KV
+  state changes from `3fa40af8...853c658` to `e35b11f3...053d10` and final
+  logits from `7d887b40...e357` to `8c405c69...d76e`. A cache acquire/
+  invalidation is mandatory between these dispatches. Remove the flag,
+  benchmark mode, native branch, packet candidate, and tests completely before
+  proceeding. Compact rejection evidence:
+  `benchmarks/results/2026-08-08-gfx1100-pm4-wait-only-dependency-rejected.json`.
+  No destructive lifecycle arm ran.
