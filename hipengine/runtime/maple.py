@@ -117,10 +117,10 @@ def _maple_router_single_dispatch() -> bool:
 
 
 def _maple_affine4_wave32_exact() -> bool:
-    # D0 exact one-wave head candidate. Default off until the complete
-    # category/state and same-resident wall gates qualify it; group64 remains
-    # the rollback.
-    return os.environ.get("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "0") != "0"
+    # D0 exact one-wave head is the c1/final-row default after the complete
+    # category/state and same-resident wall gates. Preserve =0 as the exact
+    # group64 rollback.
+    return os.environ.get("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "1") != "0"
 
 
 def _maple_prefill_grouped_moe() -> bool:
