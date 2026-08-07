@@ -39,6 +39,36 @@ weight reuse. Every optimization must pass the repo's correctness gate (KL ≤
 
 `scripts/maple_profile.py` (prebuild then cached-only `rocprofv3 --kernel-trace`
 of a warm decode step) produced `benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json`.
+
+### Post-M3a profile (current default path, 2026-08-07)
+
+Re-profiled after the parallel router (M3a) so the roadmap reflects the current
+kernel-time split. One token = 9707, 4 warmup + 32 measured steps.
+
+| Family | µs/step | Share | Note |
+| --- | ---: | ---: | --- |
+| affine4 lm_head | 1,236 | 22.5% | grid 19.4M/wg 128; weight-bandwidth bound (M3b tiled = dead end) |
+| selected dual gate/up | 848 | 15.4% | grid 524K/wg 128 |
+| selected down | 745 | 13.6% | grid 524K/wg 128 |
+| router softmax_topk | 722 | 13.2% | parallel router kernel B |
+| router logits | 382 | 7.0% | parallel router kernel A |
+| attention decode | 563 | 10.2% | — |
+| QKV ternary | 407 | 7.4% | — |
+| o_proj ternary | 284 | 5.2% | — |
+| qknorm+RoPE+KVwrite | 89 | 1.6% | — |
+| norms / swiglu / residual / embed / argmax | ~211 | ~3.8% | — |
+| **host gap** | 545 | 9.0% of wall | 6,038 µs wall, 5,492 µs kernel (90.1% kernel) |
+
+M3a (parallel router) cut the step from 12,758 → 6,038 µs (2.11×) and the
+router from 7,807 → 1,104 µs (7.1×). **Remaining top targets: affine4 lm_head
+(22.5%), selected-expert gate/up + down (29%), router kernel B softmax/topk
+(13.2%).** lm_head and selected-expert are weight-bandwidth bound: their tiled /
+grouped variants measured bit-exact but NOT faster (M3b, M3c), so the lever is
+weight reuse across a batch (M4/M5 prefill, M6 batch decode) rather than
+per-c1 GEMV shaping. hipGraph (M1, opt-in) recovers only the ~9% host gap.
+
+### Original M0 profile (pre-M3a, superseded)
+
 Per-step kernel breakdown (24 layers/token, one token = 9707):
 
 | Family | µs/step | Share | Grid/WG (per call) |
@@ -109,8 +139,8 @@ coalesced dot + parallel softmax/top-k) cuts the router from 277 → 48 µs/call
 packed correctness gate passing (max_kl 0.0139, top-1 18/18) and router IDs
 exact. Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`.
 Next: lm_head affine4 (M3b), then selected-expert (M3c).
-| 2 | M3b lm_head affine4 | 1.23 ms → ~0.3 ms | 9.7%; grid-19.4M shape |
-| 3 | M3c selected-expert grouping | 1.57 ms → ~0.6 ms | 12%; under-occupied small tiles |
+| 2 | M3b lm_head affine4 | dead end | 9.7%→22.5% now; tiled bit-exact but 0.96× (weight-bandwidth bound) |
+| 3 | M3c selected-expert grouping | dead end | gate/up+down 29%; grouped bit-exact but 0.69× (x is L2-cached) |
 | 4 | M4/M5 batched prefill | serial → ≥1k tok/s | prefill is the other big axis |
 | 5 | M1 hipGraph decode | ~0.55 ms | host gap is only 4.3% |
 | 6 | M6 batch decode / server | width reuse | after c1 is fast |
@@ -275,8 +305,8 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | --- | --- | --- | --- |
 | M0 | Decode profile (host-gap + per-kernel) | profile artifact, no math change | `...-maple-decode-profile.json` (done) |
 | M3a | Parallelize router topk | exact one-ULP; decode wall ↓ 61% | `WORKLOG.md` + artifact |
-| M3b | lm_head affine4 | exact; decode wall ↓ | `WORKLOG.md` |
-| M3c | selected-expert grouping | exact; decode wall ↓ | `WORKLOG.md` |
+| M3b | lm_head affine4 | exact; dead-end (tiled 0.96×, weight-bandwidth bound) | `WORKLOG.md` |
+| M3c | selected-expert grouping | exact; dead-end (grouped 0.69×, x is L2-cached) | `WORKLOG.md` |
 | M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | `...-maple-prefill.json` |
 | M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `benchmarks/README.md` |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
