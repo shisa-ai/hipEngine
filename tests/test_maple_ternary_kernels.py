@@ -515,3 +515,51 @@ def test_maple_selected_ternary_dual_gemv_batched_matches_oracle(maple_ternary_l
     assert np.array_equal(gate_out, gate_expected)
     assert np.array_equal(up_out, up_expected)
 
+
+def test_maple_selected_ternary_gemv_batched_matches_oracle(maple_ternary_lib) -> None:
+    """Batched selected-expert down GEMV over (T, top_k) entries is bit-exact (P3)."""
+
+    from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
+        maple_selected_ternary_gemv_batched_bf16,
+    )
+
+    rng = np.random.default_rng(66)
+    rows, experts, top_k, in_f, out_f = 5, 4, 2, 16, 7
+    x_f32 = rng.normal(size=(rows, top_k, in_f)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    selected = rng.integers(0, experts, size=(rows, top_k)).astype(np.int32)
+    values = rng.integers(-1, 2, size=(experts, out_f, in_f), dtype=np.int8)
+    packed = pack2(values)
+    alpha = f32_to_bf16_bits(
+        rng.uniform(0.01, 0.5, size=(experts, out_f)).astype(np.float32)
+    )
+    expected = np.zeros((rows, top_k, out_f), dtype=np.uint16)
+    for r in range(rows):
+        for s in range(top_k):
+            e = int(selected[r, s])
+            expected[r, s] = f32_to_bf16_bits(
+                ternary_gemv(bf16_round(x_f32[r, s]), packed[e], alpha[e])
+            )
+
+    with DeviceArrays() as dev:
+        x_d = dev.put(x)
+        selected_d = dev.put(selected)
+        packed_d, alpha_d = dev.put(packed), dev.put(alpha)
+        out, out_d = dev.empty(expected.shape, np.dtype(np.uint16))
+        maple_selected_ternary_gemv_batched_bf16(
+            x_d.ptr,
+            packed_d.ptr,
+            alpha_d.ptr,
+            selected_d.ptr,
+            out_d.ptr,
+            rows,
+            experts,
+            top_k,
+            in_f,
+            out_f,
+            library=maple_ternary_lib,
+        )
+        dev.get(out, out_d)
+
+    assert np.array_equal(out, expected)
+

@@ -203188,3 +203188,20 @@ Vulkan local sizes verbatim will close the measured gap.
   `test_maple_selected_ternary_dual_gemv_batched_matches_oracle` is bit-exact
   vs per-(row,slot) `ternary_gemv` for 5 rows x top-2. 8/8 ternary tests pass;
   ruff clean.
+
+## 2026-08-07 — M5/P3: batched selected-expert down GEMV + weighted residual
+
+- Add `maple_selected_ternary_gemv_batched_kernel` (P3): single-projection
+  gather over (T, top_k) entries, grid (out, top_k, T), x is the swiglu output
+  [T, top_k, in]. Wrapper `maple_selected_ternary_gemv_batched_bf16` +
+  `("maple_selected_ternary", "row_alpha_batched")`.
+- Add `maple_weighted_residual_batched_kernel` (P3): combines T rows' top-k
+  expert outputs into the residual, same two-bf16-boundary rounding order as
+  the c1 kernel. Wrapper `maple_weighted_residual_batched_bf16` +
+  `("maple_weighted_residual", "two_bf16_boundaries_batched")`.
+- Correctness: both bit-exact vs their CPU oracles over 5 rows (per-entry
+  `ternary_gemv`, per-row `weighted_residual`). 16/16 maple kernel tests pass.
+- This completes the MoE-half prefill chain: batched router -> batched dual
+  gate/up -> swiglu -> batched down -> batched weighted residual. Remaining:
+  batched rmsnorm/add_rmsnorm, batched final norm+lm_head, and prefill_native
+  wiring + measured artifact.

@@ -276,3 +276,52 @@ def test_maple_weighted_residual_matches_two_bf16_boundaries(maple_moe_lib) -> N
         dev.get(out, out_d)
 
     assert np.array_equal(out, expected)
+
+
+def test_maple_weighted_residual_batched_matches_oracle(maple_moe_lib) -> None:
+    """Batched weighted residual over T rows matches per-row oracle (P3)."""
+
+    from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
+        maple_weighted_residual_batched_bf16,
+    )
+
+    rng = np.random.default_rng(88)
+    rows, top_k, hidden = 5, 3, 17
+    residual_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    experts_f32 = rng.normal(size=(rows, top_k, hidden)).astype(np.float32)
+    weights_f32 = rng.uniform(0.0, 1.0, size=(rows, top_k)).astype(np.float32)
+    weights_f32 /= weights_f32.sum(axis=1, keepdims=True)
+    residual = f32_to_bf16_bits(residual_f32)
+    experts = f32_to_bf16_bits(experts_f32)
+    expected = f32_to_bf16_bits(
+        np.stack(
+            [
+                weighted_residual(
+                    bf16_round(residual_f32[r]),
+                    bf16_round(experts_f32[r]),
+                    weights_f32[r],
+                )
+                for r in range(rows)
+            ]
+        )
+    )
+
+    with DeviceArrays() as dev:
+        residual_d = dev.put(residual)
+        experts_d = dev.put(experts)
+        weights_d = dev.put(weights_f32)
+        out, out_d = dev.empty((rows, hidden), np.dtype(np.uint16))
+        maple_weighted_residual_batched_bf16(
+            residual_d.ptr,
+            experts_d.ptr,
+            weights_d.ptr,
+            out_d.ptr,
+            rows,
+            top_k,
+            hidden,
+            library=maple_moe_lib,
+        )
+        dev.get(out, out_d)
+
+    assert np.array_equal(out, expected)
+

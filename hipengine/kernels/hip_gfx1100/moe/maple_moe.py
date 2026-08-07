@@ -136,6 +136,39 @@ def maple_weighted_residual_bf16(
     )
 
 
+def maple_weighted_residual_batched_bf16(
+    residual_ptr: int,
+    expert_outputs_ptr: int,
+    routing_weights_ptr: int,
+    out_ptr: int,
+    rows: int,
+    top_k: int,
+    hidden_size: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Batched weighted residual over T rows (P3 prefill)."""
+
+    _launch(
+        "hipengine_maple_weighted_residual_batched_bf16",
+        (_PTR, _PTR, _PTR, _PTR, _I64, _I64, _I64, _PTR),
+        (
+            residual_ptr,
+            expert_outputs_ptr,
+            routing_weights_ptr,
+            out_ptr,
+            rows,
+            top_k,
+            hidden_size,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_router_topk_parallel_bf16(
     x_ptr: int,
     weight_ptr: int,
@@ -231,6 +264,10 @@ def register_maple_moe_kernels(
             "maple_weighted_residual",
             "two_bf16_boundaries",
         ): maple_weighted_residual_bf16,
+        (
+            "maple_weighted_residual",
+            "two_bf16_boundaries_batched",
+        ): maple_weighted_residual_batched_bf16,
     }
     for (layer, variant), kernel in kernels.items():
         register(
@@ -266,6 +303,7 @@ __all__ = [
     "maple_router_topk_bf16",
     "maple_router_topk_parallel_batched_bf16",
     "maple_router_topk_parallel_bf16",
+    "maple_weighted_residual_batched_bf16",
     "maple_weighted_residual_bf16",
     "plan_maple_moe_build",
     "register_maple_moe_kernels",
