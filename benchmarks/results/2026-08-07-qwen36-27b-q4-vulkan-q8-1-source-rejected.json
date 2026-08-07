@@ -1,0 +1,226 @@
+{
+  "date": "2026-08-07",
+  "status": "rejected",
+  "kind": "qwen36_27b_full_attention_qkv_q4_vulkan_q8_1_source",
+  "source": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "commit": "c8e03ce8122b7af76f836d53efde6df1ce5ec437",
+    "selector": "ggml_vk_should_use_mmvq",
+    "shader": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq.comp",
+    "dot_helpers": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vecq_funcs.glsl",
+    "quantizer": "ggml/src/ggml-vulkan/vulkan-shaders/quantize_q8_1.comp",
+    "finding": "AMD selects Q4_K MMVQ for batch n>1. The Q4_K shader uses local32, one output row, K_PER_ITER=16, four packed integer dots per lane iteration, and one cached Q8_1 quantization for repeated use of the same activation tensor."
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "selector": "ROCR_VISIBLE_DEVICES=1 HIP_VISIBLE_DEVICES=0",
+    "arch": "gfx1100",
+    "role": "micro-screen only; W7900 promotion gate not reached"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "Q4_K",
+    "tensors": [
+      {
+        "role": "Q",
+        "name": "blk.3.attn_q.weight",
+        "shape": [12288, 5120]
+      },
+      {
+        "role": "K",
+        "name": "blk.3.attn_k.weight",
+        "shape": [1024, 5120]
+      },
+      {
+        "role": "Q4_V",
+        "name": "blk.11.attn_v.weight",
+        "shape": [1024, 5120]
+      }
+    ]
+  },
+  "protocol": {
+    "warmup_pairs": 100,
+    "samples": 15,
+    "burst": 100,
+    "counterbalanced": true,
+    "timing": "HIP events",
+    "control": "current exact compact-Q4T16 owner: c1 local32, rows2-4 col8 except narrow K/V col4",
+    "candidate": "raw source-layout local32/col1 Q8_1+sudot4 leaf with K_PER_ITER=16",
+    "quantization": "one existing 36-byte Q8_1 block per 32 BF16 activations; inclusive quantize+dot is reported"
+  },
+  "rows": {
+    "Q": [
+      {
+        "activation_rows": 1,
+        "control_us": 29.15687084197998,
+        "quantize_us": 3.4216099977493286,
+        "prequantized_dot_us": 40.78021049499512,
+        "inclusive_us": 43.7086296081543,
+        "inclusive_speedup": 0.6670735528285807,
+        "max_kl": 6.71335413339143e-7,
+        "top1_agreement": 1.0
+      },
+      {
+        "activation_rows": 2,
+        "control_us": 36.18863105773926,
+        "quantize_us": 3.5276201367378235,
+        "prequantized_dot_us": 45.041871070861816,
+        "inclusive_us": 48.77631187438965,
+        "inclusive_speedup": 0.7419304508084458,
+        "max_kl": 6.809126429965406e-7,
+        "top1_agreement": 1.0
+      },
+      {
+        "activation_rows": 3,
+        "control_us": 43.63390922546387,
+        "quantize_us": 3.773620128631592,
+        "prequantized_dot_us": 50.554752349853516,
+        "inclusive_us": 53.99477958679199,
+        "inclusive_speedup": 0.8081134798471783,
+        "max_kl": 7.566420286688402e-7,
+        "top1_agreement": 1.0
+      },
+      {
+        "activation_rows": 4,
+        "control_us": 54.7075891494751,
+        "quantize_us": 3.781229853630066,
+        "prequantized_dot_us": 54.84999179840088,
+        "inclusive_us": 58.77521991729736,
+        "inclusive_speedup": 0.9307934402704774,
+        "max_kl": 6.988531725198429e-7,
+        "top1_agreement": 1.0
+      }
+    ],
+    "K": [
+      {
+        "activation_rows": 1,
+        "control_us": 9.482470154762268,
+        "quantize_us": 3.428420126438141,
+        "prequantized_dot_us": 6.482440233230591,
+        "inclusive_us": 9.71805989742279,
+        "inclusive_speedup": 0.9757575333814313,
+        "max_kl": 6.04923962290148e-7,
+        "top1_agreement": 1.0
+      },
+      {
+        "activation_rows": 2,
+        "control_us": 7.265250086784363,
+        "quantize_us": 3.4508299827575684,
+        "prequantized_dot_us": 7.302449941635132,
+        "inclusive_us": 10.568079948425293,
+        "inclusive_speedup": 0.6874711510738456,
+        "max_kl": 6.042339624279831e-7,
+        "top1_agreement": 1.0
+      },
+      {
+        "activation_rows": 3,
+        "control_us": 8.288469910621643,
+        "quantize_us": 3.3900299668312073,
+        "prequantized_dot_us": 7.84807026386261,
+        "inclusive_us": 11.109700202941895,
+        "inclusive_speedup": 0.7460570275718891,
+        "max_kl": 6.36672049768285e-7,
+        "top1_agreement": 1.0
+      },
+      {
+        "activation_rows": 4,
+        "control_us": 9.200069904327393,
+        "quantize_us": 3.412419855594635,
+        "prequantized_dot_us": 8.236870169639587,
+        "inclusive_us": 11.543300151824951,
+        "inclusive_speedup": 0.7970051703864685,
+        "max_kl": 6.310578683845646e-7,
+        "top1_agreement": 1.0
+      }
+    ],
+    "Q4_V": [
+      {
+        "activation_rows": 1,
+        "control_us": 9.455230236053467,
+        "quantize_us": 3.3976098895072937,
+        "prequantized_dot_us": 6.475610136985779,
+        "inclusive_us": 9.715629816055298,
+        "inclusive_speedup": 0.9731978693165609,
+        "max_kl": 5.730911487419349e-7,
+        "top1_agreement": 1.0
+      },
+      {
+        "activation_rows": 4,
+        "control_us": 9.237639904022217,
+        "quantize_us": 3.4216099977493286,
+        "prequantized_dot_us": 8.292840123176575,
+        "inclusive_us": 11.637639999389648,
+        "inclusive_speedup": 0.7937726123601261,
+        "max_kl": 6.707899895126815e-7,
+        "top1_agreement": 1.0
+      }
+    ]
+  },
+  "amortized_module": {
+    "method": "Use one shared Q8_1 quantization and the most favorable rows4 quantization median (3.412419855594635 us). This gives the candidate a favorable bound.",
+    "rows4_q4_v_layer": {
+      "control_q_plus_k_plus_v_us": 73.1452989578247,
+      "candidate_shared_quant_plus_q_plus_k_plus_v_us": 74.79212194681168,
+      "candidate_delta_percent": 2.251440642735658,
+      "candidate_speedup": 0.977981330839121
+    },
+    "rows4_q6_v_layer": {
+      "control_q_plus_k_us": 63.90765905380249,
+      "candidate_shared_quant_plus_q_plus_k_us": 66.4992818236351,
+      "candidate_delta_percent": 4.055261619973871,
+      "candidate_speedup": 0.9610278081392527
+    },
+    "rows1_q4_v_layer": {
+      "control_q_plus_k_plus_v_us": 48.094571232795715,
+      "candidate_shared_quant_plus_q_plus_k_plus_v_us": 57.16668099164963,
+      "candidate_delta_percent": 18.86306401390192,
+      "candidate_speedup": 0.8413042422354539
+    },
+    "finding": "The narrow K/V dots improve after prequantization, but Q regresses and the shared quantizer costs more than the combined dot savings. Both true AR and binding B3 lose even under favorable one-quantization amortization."
+  },
+  "upper_bound": {
+    "compact_t16_col2_rows4_k_prequantized_us": 9.112,
+    "compact_t16_col2_rows4_k_inclusive_us": 12.406,
+    "raw_source_col1_rows4_k_prequantized_us": 8.236870169639587,
+    "control_rows4_k_us": 9.200069904327393,
+    "finding": "A byte-neutral compact-T16 col2 variant was also tested and was slower than the exact raw-source col1 leaf, so packed residency does not rescue the inclusive route."
+  },
+  "decision": {
+    "keep_code": false,
+    "promote_runtime": false,
+    "reason": "At binding rows4 the favorable shared-quant module bound regresses 2.25% in Q4-V layers and 4.06% in Q6-V layers; true AR regresses still more. The current exact compact owners remain faster and preserve exact activations.",
+    "reopen_only_if": "A materially different producer-fused Q8_1 path reduces effective quantization below the approximately 1.29-us mixed-layer break-even while passing the full category quality gate, or the Vulkan/compiler/model baseline changes."
+  },
+  "cleanup": {
+    "production_code_changed": false,
+    "diagnostic_code_retained": false,
+    "working_tree_returned_to": "9d8dfc564 production code before documentation/artifact publication"
+  },
+  "raw_evidence": {
+    "q_screen": {
+      "path": "/tmp/qwen36-attn-q-q4-raw-q8-source-local32-col1-gpu1.json",
+      "sha256": "6d0262e8eaf5b01b13c0c4d6f9b0095378de55196904f07bfc17e271eba19e07"
+    },
+    "k_screen": {
+      "path": "/tmp/qwen36-attn-k-q4-raw-q8-source-local32-col1-gpu1.json",
+      "sha256": "e6f195a143df2e29eba0c14119653ef053426f0b4015a28c58dc9eb3c1e2410d"
+    },
+    "v_screen": {
+      "path": "/tmp/qwen36-attn-v-q4-raw-q8-source-local32-col1-gpu1.json",
+      "sha256": "a80650de7e268fe73cb4e1eb605bafdba81727c03bce091a9d5e486c48da3201"
+    },
+    "harness": {
+      "path": "/tmp/screen_qwen36_q4_raw_q8_source_local32.py",
+      "sha256": "5cd95710bba786f5c5cd2fe19602881ef92c0954c66f6a70b8ebd3c0658b0feb"
+    },
+    "kernel": {
+      "path": "/tmp/qwen36_q4_raw_q8_source_local32.hip",
+      "sha256": "5800344ff3852aaeb138b363fe02e06b43c48e6b786f99d80b39fae0a05900d3"
+    },
+    "removed_compact_diagnostic_patch": {
+      "path": "/tmp/q4-q8-diagnostic.patch",
+      "sha256": "c4cfe156b9fc50bf6316de24dcd16b80a01d09494410373a0695155fbafe6763"
+    }
+  }
+}
