@@ -336,6 +336,192 @@ __global__ void maple_attention_decode_kernel(
   }
 }
 
+// Fused QK-norm+RoPE+KV-write + online-softmax attention decode (D2).
+// One kernel per q-head block: (1) QK-norm+RoPE the current token's Q, (2)
+// QK-norm+RoPE+KV-write the current token's K/V for this head's kv_head (done
+// redundantly by every q-head in the group so each block is self-contained with
+// no cross-block race), (3) run the same online-softmax scan as
+// maple_attention_decode_kernel over the live history (including the just-
+// written current slot). Bit-exact with the unfused qknorm_rope_kv_write +
+// attention_decode chain (same reduction/rounding order). Grid is (q_heads).
+__global__ void maple_attention_fused_qknorm_decode_kernel(
+    uint16_t* __restrict__ qkv,
+    const uint16_t* __restrict__ q_norm_weight,
+    const uint16_t* __restrict__ k_norm_weight,
+    uint16_t* __restrict__ key_cache,
+    uint16_t* __restrict__ value_cache,
+    uint16_t* __restrict__ out,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t rope_dim,
+    float eps,
+    float rope_theta,
+    float scale,
+    int64_t capacity) {
+  const int64_t q_head = blockIdx.x;
+  if (q_head >= q_heads) {
+    return;
+  }
+  const int64_t group_size = q_heads / kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t kv_stride = kv_heads * head_dim;
+  const int64_t q_size = q_heads * head_dim;
+  const int64_t kv_size = kv_heads * head_dim;
+  const int64_t tid = threadIdx.x;
+  const int64_t live = live_counts[0] < capacity ? live_counts[0] : capacity;
+  const int64_t query_position = row_positions[0];
+  const int64_t start_position = query_position - live + 1;
+
+  extern __shared__ uint8_t shared_raw[];
+  float* sums = reinterpret_cast<float*>(shared_raw);
+  uint16_t* normalized = reinterpret_cast<uint16_t*>(sums + blockDim.x);
+  float* dot_scratch =
+      reinterpret_cast<float*>(reinterpret_cast<uint16_t*>(normalized + head_dim));
+
+  // (1) Q norm + RoPE.
+  const uint16_t* qsrc = qkv + q_head * head_dim;
+  float q = tid < head_dim ? bf16_to_float(qsrc[tid]) : 0.0f;
+  sums[tid] = q * q;
+  __syncthreads();
+  for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      sums[tid] += sums[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid < head_dim) {
+    const float inv_rms = rsqrtf(sums[0] / static_cast<float>(head_dim) + eps);
+    normalized[tid] = float_to_bf16(
+        q * inv_rms * bf16_to_float(q_norm_weight[tid]));
+  }
+  __syncthreads();
+  if (tid < head_dim) {
+    float qv = bf16_to_float(normalized[tid]);
+    if (rope_dim > 0 && tid < rope_dim) {
+      const int64_t half = rope_dim / 2;
+      const int64_t pair = tid < half ? tid + half : tid - half;
+      const int64_t frequency = tid < half ? tid : tid - half;
+      const float exponent =
+          -static_cast<float>(frequency) / static_cast<float>(half);
+      const float theta = static_cast<float>(query_position)
+          * powf(rope_theta, exponent);
+      const float paired = bf16_to_float(normalized[pair]);
+      const float cosine = cosf(theta);
+      const float sine = sinf(theta);
+      qv = tid < half ? qv * cosine - paired * sine
+                      : qv * cosine + paired * sine;
+    }
+    // q must match the bf16-rounded Q that the unfused path stores in qkv
+    // and the attention kernel reads back.
+    q = tid < head_dim ? bf16_to_float(float_to_bf16(qv)) : 0.0f;
+  }
+  __syncthreads();
+
+  // (2) K norm + RoPE + V write for this head's kv_head (redundant in-group).
+  {
+    const uint16_t* ksrc = qkv + q_size + kv_head * head_dim;
+    const uint16_t* vsrc = qkv + q_size + kv_size + kv_head * head_dim;
+    float k = tid < head_dim ? bf16_to_float(ksrc[tid]) : 0.0f;
+    sums[tid] = k * k;
+    __syncthreads();
+    for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        sums[tid] += sums[tid + stride];
+      }
+      __syncthreads();
+    }
+    if (tid < head_dim) {
+      const float inv_rms = rsqrtf(sums[0] / static_cast<float>(head_dim) + eps);
+      normalized[tid] = float_to_bf16(
+          k * inv_rms * bf16_to_float(k_norm_weight[tid]));
+    }
+    __syncthreads();
+    const int64_t logical_slot = positive_mod(query_position, capacity);
+    const int64_t physical_slot =
+        static_cast<int64_t>(base_offsets[logical_slot]);
+    const bool valid = live > 0
+        && token_positions[logical_slot] == query_position
+        && evict_mask[logical_slot] == 0;
+    if (tid < head_dim && valid && physical_slot >= 0 && physical_slot < capacity) {
+      float kv = bf16_to_float(normalized[tid]);
+      if (rope_dim > 0 && tid < rope_dim) {
+        const int64_t half = rope_dim / 2;
+        const int64_t pair = tid < half ? tid + half : tid - half;
+        const int64_t frequency = tid < half ? tid : tid - half;
+        const float exponent =
+            -static_cast<float>(frequency) / static_cast<float>(half);
+        const float theta = static_cast<float>(query_position)
+            * powf(rope_theta, exponent);
+        const float paired = bf16_to_float(normalized[pair]);
+        const float cosine = cosf(theta);
+        const float sine = sinf(theta);
+        kv = tid < half ? kv * cosine - paired * sine
+                        : kv * cosine + paired * sine;
+      }
+      const uint16_t k_bits = float_to_bf16(kv);
+      const int64_t cache_offset =
+          physical_slot * kv_stride + kv_head * head_dim + tid;
+      key_cache[cache_offset] = k_bits;
+      value_cache[cache_offset] = vsrc[tid];
+    }
+  }
+  __syncthreads();
+
+  // (3) Online-softmax attention over the live history.
+  float accumulator = 0.0f;
+  float running_max = -INFINITY;
+  float running_sum = 0.0f;
+  for (int64_t token = 0; token < live; ++token) {
+    const int64_t absolute_position = start_position + token;
+    const int64_t logical_slot = positive_mod(absolute_position, capacity);
+    const int64_t physical_slot =
+        static_cast<int64_t>(base_offsets[logical_slot]);
+    const bool valid = physical_slot >= 0 && physical_slot < capacity
+        && token_positions[logical_slot] == absolute_position
+        && evict_mask[logical_slot] == 0;
+    if (!valid) {
+      continue;
+    }
+    float dot = 0.0f;
+    if (tid < head_dim) {
+      const int64_t cache_offset =
+          physical_slot * kv_stride + kv_head * head_dim + tid;
+      dot = q * bf16_to_float(key_cache[cache_offset]);
+    }
+    dot_scratch[tid] = dot;
+    __syncthreads();
+    for (int stride = static_cast<int>(blockDim.x) / 2; stride > 0; stride >>= 1) {
+      if (tid < stride) {
+        dot_scratch[tid] += dot_scratch[tid + stride];
+      }
+      __syncthreads();
+    }
+    const float score = dot_scratch[0] * scale;
+    const float next_max = fmaxf(running_max, score);
+    const float old_scale = isinf(running_max) ? 0.0f : expf(running_max - next_max);
+    const float new_scale = expf(score - next_max);
+    if (tid < head_dim) {
+      const int64_t cache_offset =
+          physical_slot * kv_stride + kv_head * head_dim + tid;
+      accumulator = accumulator * old_scale
+          + bf16_to_float(value_cache[cache_offset]) * new_scale;
+    }
+    running_sum = running_sum * old_scale + new_scale;
+    running_max = next_max;
+    __syncthreads();
+  }
+  if (tid < head_dim) {
+    out[q_head * head_dim + tid] = float_to_bf16(
+        running_sum > 0.0f ? accumulator / running_sum : 0.0f);
+  }
+}
+
 // Batched prefill attention (P2): processes T query rows causally against a
 // dense prefix KV cache.  Grid is (q_heads x T) blocks, one block per
 // (head, row); each block runs the same online-softmax scan as the decode
@@ -691,6 +877,63 @@ extern "C" int hipengine_maple_attention_decode_bf16(
       q_heads,
       kv_heads,
       head_dim,
+      scale,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_attention_fused_qknorm_decode_bf16(
+    uint16_t* qkv,
+    const uint16_t* q_norm_weight,
+    const uint16_t* k_norm_weight,
+    uint16_t* key_cache,
+    uint16_t* value_cache,
+    uint16_t* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t rope_dim,
+    float eps,
+    float rope_theta,
+    float scale,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
+      || head_dim <= 0 || head_dim > 128 || rope_dim < 0 || rope_dim > head_dim
+      || rope_dim % 2 != 0 || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = launch_threads_for_dim(head_dim);
+  const int64_t shared_bytes =
+      2 * threads * sizeof(float) + head_dim * sizeof(uint16_t);
+  hipLaunchKernelGGL(
+      maple_attention_fused_qknorm_decode_kernel,
+      dim3(static_cast<unsigned int>(q_heads)),
+      dim3(threads),
+      static_cast<unsigned int>(shared_bytes),
+      stream,
+      qkv,
+      q_norm_weight,
+      k_norm_weight,
+      key_cache,
+      value_cache,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      q_heads,
+      kv_heads,
+      head_dim,
+      rope_dim,
+      eps,
+      rope_theta,
       scale,
       capacity);
   return static_cast<int>(hipGetLastError());

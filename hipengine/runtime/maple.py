@@ -29,6 +29,7 @@ from hipengine.kernels.backends import (
 from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
     build_maple_attention,
     maple_attention_decode_bf16,
+    maple_attention_fused_qknorm_decode_bf16,
     maple_attention_prefill_ring_bf16,
     maple_kv_span_update,
     maple_kv_span_update_batched,
@@ -88,6 +89,13 @@ def _maple_fuse_moe() -> bool:
     # default and the fusion is opt-in via HIPENGINE_MAPLE_FUSE_MOE=1 pending an
     # efficiency fix. See docs/REFACTOR.md.
     return os.environ.get("HIPENGINE_MAPLE_FUSE_MOE", "0") != "0"
+
+
+def _maple_fuse_qkattn() -> bool:
+    # Opt-in: fuse the per-layer qknorm_rope_kv_write + attention_decode pair
+    # into one kernel (maple_attention_fused_qknorm_decode_bf16). Default off;
+    # see docs/REFACTOR.md.
+    return os.environ.get("HIPENGINE_MAPLE_FUSE_QKATTN", "0") != "0"
 
 
 def _maple_graph_enabled() -> bool:
@@ -496,35 +504,55 @@ class MapleRunner:
                     runtime=self.runtime, stream=stream,
                 )
                 rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
-                maple_qknorm_rope_kv_write_bf16(
-                    b.qkv.ptr,
-                    layer_weights.q_norm.ptr,
-                    layer_weights.k_norm.ptr,
-                    kv_layer.key_cache.ptr,
-                    kv_layer.value_cache.ptr,
-                    kv_layer.spans,
-                    q_heads=spec.num_attention_heads,
-                    kv_heads=spec.num_key_value_heads,
-                    head_dim=spec.head_dim,
-                    rope_dim=rope_dim,
-                    eps=spec.rms_norm_eps,
-                    rope_theta=spec.rope_theta,
-                    library=libs.attention,
-                    runtime=self.runtime, stream=stream,
-                )
-                maple_attention_decode_bf16(
-                    b.qkv.ptr,
-                    kv_layer.key_cache.ptr,
-                    kv_layer.value_cache.ptr,
-                    b.attention.ptr,
-                    kv_layer.spans,
-                    q_heads=spec.num_attention_heads,
-                    kv_heads=spec.num_key_value_heads,
-                    head_dim=spec.head_dim,
-                    scale=spec.head_dim**-0.5,
-                    library=libs.attention,
-                    runtime=self.runtime, stream=stream,
-                )
+                if _maple_fuse_qkattn():
+                    maple_attention_fused_qknorm_decode_bf16(
+                        b.qkv.ptr,
+                        layer_weights.q_norm.ptr,
+                        layer_weights.k_norm.ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        b.attention.ptr,
+                        kv_layer.spans,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        rope_dim=rope_dim,
+                        eps=spec.rms_norm_eps,
+                        rope_theta=spec.rope_theta,
+                        scale=spec.head_dim**-0.5,
+                        library=libs.attention,
+                        runtime=self.runtime, stream=stream,
+                    )
+                else:
+                    maple_qknorm_rope_kv_write_bf16(
+                        b.qkv.ptr,
+                        layer_weights.q_norm.ptr,
+                        layer_weights.k_norm.ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        kv_layer.spans,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        rope_dim=rope_dim,
+                        eps=spec.rms_norm_eps,
+                        rope_theta=spec.rope_theta,
+                        library=libs.attention,
+                        runtime=self.runtime, stream=stream,
+                    )
+                    maple_attention_decode_bf16(
+                        b.qkv.ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        b.attention.ptr,
+                        kv_layer.spans,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        scale=spec.head_dim**-0.5,
+                        library=libs.attention,
+                        runtime=self.runtime, stream=stream,
+                    )
                 maple_ternary_gemv_bf16(
                     b.attention.ptr,
                     layer_weights.o_proj.weight.ptr,

@@ -3148,3 +3148,14 @@ should be boring.
   vs the unfused pair (likely swiglu `expf` tail in tid 0 and/or register/
   occupancy change). Once the fused kernel is ≤ the unfused pair, flip the
   default to 1 and remove the flag + unfused dual+swiglu branch.
+
+## Maple M2 qknorm+attention fusion — opt-in, ~1% regression
+
+- `HIPENGINE_MAPLE_FUSE_QKATTN` default `0` (unfused is the fast path). `=1` uses
+  `maple_attention_fused_qknorm_decode_bf16` (fuses per-layer
+  `qknorm_rope_kv_write` + `attention_decode`). Bit-exact (attention output + K/V
+  cache match bit-for-bit, GPU test) but ~1% slower per decode step (interleaved
+  eager 6442 vs 6377 us): the in-group redundant K/V write (each of the 4 q-head
+  blocks writes the same K/V) plus the folded 88 us qknorm work offset the single
+  launch saved. Remove the flag + fused branch once the fused kernel's efficiency
+  gap is eliminated (e.g. leader-only K/V write + cooperative grid sync).

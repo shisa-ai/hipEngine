@@ -31,6 +31,7 @@ from hipengine.kernels.cpu_reference.maple import (
 from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
     build_maple_attention,
     maple_attention_decode_bf16,
+    maple_attention_fused_qknorm_decode_bf16,
     maple_kv_span_update,
     maple_qknorm_rope_kv_write_bf16,
     plan_maple_attention_build,
@@ -554,3 +555,116 @@ def test_maple_prefill_attention_matches_causal_oracle(maple_attention_lib) -> N
         dev.get(out, out_d)
 
     assert np.array_equal(out.reshape(-1), expected)
+
+
+def test_maple_fused_qknorm_attention_decode_matches_unfused_chain(
+    maple_attention_lib,
+) -> None:
+    """M2 fused QK-norm+RoPE+KV-write + attention is bit-exact with unfused.
+
+    Compares maple_attention_fused_qknorm_decode against the standalone
+    qknorm_rope_kv_write + attention_decode chain. The attention output AND the
+    KV cache (current-token K/V writes) must match bit-for-bit.
+    """
+    rng = np.random.default_rng(66)
+    q_heads, kv_heads, head_dim, capacity = 4, 2, 8, 6
+    rope_dim = 8
+    eps = 1e-5
+    rope_theta = 10000.0
+    q_size, kv_size = q_heads * head_dim, kv_heads * head_dim
+    current_position = 5
+    live = 4
+
+    # Raw current-token Q/K/V (pre-norm), in the shared qkv buffer.
+    qkv = np.zeros(q_size + 2 * kv_size, dtype=np.uint16)
+    qkv[:q_size] = f32_to_bf16_bits(
+        rng.normal(size=(q_heads, head_dim)).astype(np.float32).reshape(-1)
+    )
+    qkv[q_size : q_size + kv_size] = f32_to_bf16_bits(
+        rng.normal(size=(kv_heads, head_dim)).astype(np.float32).reshape(-1)
+    )
+    qkv[q_size + kv_size :] = f32_to_bf16_bits(
+        rng.normal(size=(kv_heads, head_dim)).astype(np.float32).reshape(-1)
+    )
+    q_norm_weight = f32_to_bf16_bits(rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32))
+    k_norm_weight = f32_to_bf16_bits(rng.uniform(0.5, 1.5, size=head_dim).astype(np.float32))
+
+    # Prior history positions 2,3,4 written to the ring (physical slots).
+    base = np.asarray([5, 2, 0, 3, 1, 4], dtype=np.int32)
+    token_positions = np.full(capacity, -1, dtype=np.int64)
+    key_cache_f = np.zeros((capacity, kv_heads, head_dim), dtype=np.float32)
+    value_cache_f = np.zeros_like(key_cache_f)
+    for idx, pos in enumerate([2, 3, 4]):
+        logical = int(pos % capacity)
+        physical = int(base[logical])
+        token_positions[logical] = pos
+        key_cache_f[physical] = rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
+        value_cache_f[physical] = rng.normal(size=(kv_heads, head_dim)).astype(np.float32)
+
+    key_cache_bits = f32_to_bf16_bits(key_cache_f)
+    value_cache_bits = f32_to_bf16_bits(value_cache_f)
+
+    with DeviceArrays() as dev:
+        # ---- Unfused chain. ----
+        spans_u = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=np.asarray([live], dtype=np.int64),
+            token_positions=token_positions.copy(),
+            evict_mask=np.zeros(capacity, dtype=np.bool_),
+            row_positions=np.asarray([current_position], dtype=np.int64),
+        )
+        qkv_u = dev.put(qkv.copy())
+        key_u = dev.put(key_cache_bits.copy())
+        value_u = dev.put(value_cache_bits.copy())
+        qn_u = dev.put(q_norm_weight)
+        kn_u = dev.put(k_norm_weight)
+        out_u, out_u_d = dev.empty((q_size,), np.dtype(np.uint16))
+        maple_qknorm_rope_kv_write_bf16(
+            qkv_u.ptr, qn_u.ptr, kn_u.ptr, key_u.ptr, value_u.ptr, spans_u,
+            q_heads=q_heads, kv_heads=kv_heads, head_dim=head_dim,
+            rope_dim=rope_dim, eps=eps, rope_theta=rope_theta,
+            library=maple_attention_lib,
+        )
+        maple_attention_decode_bf16(
+            qkv_u.ptr, key_u.ptr, value_u.ptr, out_u_d.ptr, spans_u,
+            q_heads=q_heads, kv_heads=kv_heads, head_dim=head_dim,
+            scale=head_dim**-0.5, library=maple_attention_lib,
+        )
+        dev.get(out_u, out_u_d)
+        key_res_u, _ = dev.empty((capacity, kv_heads, head_dim), np.uint16)
+        value_res_u, _ = dev.empty((capacity, kv_heads, head_dim), np.uint16)
+        dev.get(key_res_u, key_u)
+        dev.get(value_res_u, value_u)
+
+        # ---- Fused kernel on fresh caches. ----
+        spans_f = make_spans(
+            dev,
+            base_offsets=base,
+            live_counts=np.asarray([live], dtype=np.int64),
+            token_positions=token_positions.copy(),
+            evict_mask=np.zeros(capacity, dtype=np.bool_),
+            row_positions=np.asarray([current_position], dtype=np.int64),
+        )
+        qkv_f = dev.put(qkv.copy())
+        key_f = dev.put(key_cache_bits.copy())
+        value_f = dev.put(value_cache_bits.copy())
+        qn_f = dev.put(q_norm_weight)
+        kn_f = dev.put(k_norm_weight)
+        out_f, out_f_d = dev.empty((q_size,), np.dtype(np.uint16))
+        maple_attention_fused_qknorm_decode_bf16(
+            qkv_f.ptr, qn_f.ptr, kn_f.ptr, key_f.ptr, value_f.ptr, out_f_d.ptr,
+            spans_f,
+            q_heads=q_heads, kv_heads=kv_heads, head_dim=head_dim,
+            rope_dim=rope_dim, eps=eps, rope_theta=rope_theta,
+            scale=head_dim**-0.5, library=maple_attention_lib,
+        )
+        dev.get(out_f, out_f_d)
+        key_res_f, _ = dev.empty((capacity, kv_heads, head_dim), np.uint16)
+        value_res_f, _ = dev.empty((capacity, kv_heads, head_dim), np.uint16)
+        dev.get(key_res_f, key_f)
+        dev.get(value_res_f, value_f)
+
+    assert np.array_equal(out_f, out_u), "fused vs unfused attention output mismatch"
+    assert np.array_equal(key_res_f, key_res_u), "fused vs unfused K-cache mismatch"
+    assert np.array_equal(value_res_f, value_res_u), "fused vs unfused V-cache mismatch"
