@@ -32,8 +32,8 @@ used** by the exact production path.
   `hip_gfx1151`/Radeon 8060S and the peer `hip_gfx1100` registry key.
 - Public prompts of **up to 512 tokens** use exact batched native prefill;
   longer prompts use the token-serial correctness fallback.
-- c1 decode is resident and exact. Sampling remains greedy-only
-  (`temperature=0`).
+- c1 decode is resident and exact. The qualified one-dispatch router is the
+  default; sampling remains greedy-only (`temperature=0`).
 - c=2/4/8 batch decode and sparse slot reclaim are validated as a
   **fixed-capacity runtime helper**, not yet as public server throughput.
 - All tracked allocations return to zero on close.
@@ -146,12 +146,14 @@ Two upstream implementation details explain the prefill gap more directly:
 The upstream table does not publish prompt/generation lengths, repetitions,
 software versions, or a correctness protocol, and Apple M4 and Radeon 8060S
 are different systems. It is directional evidence, not an apples-to-apples
-benchmark. The useful comparison is nevertheless clear: hipEngine's
-**163.459 tok/s exact c1** is only 3.3% below the published M4 exact rate, not
-25% below the approximate 218 headline. After P0+P1+P2, hipEngine's **741.368
-tok/s** at 320 tokens is about 1.45x below the published M4 prefill rate, down
-from a 3.3x gap. Decode is competitive; prefill remains materially
-underoptimized.
+benchmark. hipEngine's current short fixed-token exact c1 diagnostic is
+**180.935 tok/s**, while its category-qualified natural-context row is
+**145.321 tok/s**; those distinct workloads must not be collapsed into one
+number or compared directly with Apple's unspecified protocol. Both are exact
+full-head paths, unlike the approximate 218 headline. After P0+P1+P2,
+hipEngine's **741.368 tok/s** at 320 tokens is about 1.45x below the published
+M4 prefill rate, down from a 3.3x gap. Decode is competitive; prefill remains
+materially underoptimized.
 
 ## Current Radeon 8060S / gfx1151 performance
 
@@ -184,10 +186,19 @@ Evidence:
 
 | Path / workload | Current rate | Scope |
 | --- | ---: | --- |
-| c1 autoregressive decode | **163.459 tok/s** (6.118 ms/token) | clean cached-profile diagnostic, 4 warmup + 32 measured steps |
+| c1 natural+heldout contexts | **145.321 tok/s** (6.881-ms mean, 6.849-ms median) | clean paired 18-prompt qualification; model load, native prefill, and warmup excluded |
+| c1 short fixed-token diagnostic | **180.935 tok/s** (5.527-ms median) | clean cached-only trace, 4 warmup + 32 measured steps; 271 launches/token |
 | c=2, 64 tokens/request | **218.818 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
 | c=4, 64 tokens/request | **261.099 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
 | c=8, 64 tokens/request | **299.181 aggregate tok/s** | fixed-capacity helper median, 3 repeats |
+
+The D0 one-dispatch router is retained/default. On all natural and heldout
+contexts it improves its exact two-dispatch rollback **139.538 -> 145.321
+tok/s (+4.14%)**, saves **0.301 ms** at the paired median, and wins
+**1,127/1,152** timed pairs. Every **1,296/1,296** continuation token and top
+logit is exact; all **36/36** native-start and final state pairs match, the
+four-byte counter passes **2,592/2,592** zero checks, and close returns tracked
+ownership to zero.
 
 Every measured c=2/4/8 trajectory matches an independent c1 trajectory. The
 18-prompt category/heldout seed gate also passes, including a sparse final c=8
@@ -195,7 +206,9 @@ group. These batch rows exclude model load and prompt prefill and must not be
 reported as public server throughput.
 
 Evidence:
-[`2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json).
+[D0 c1 router qualification](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
+[D0 short profile](../benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json),
+and [M6 helper recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json).
 
 ### Tracked memory
 
@@ -221,6 +234,7 @@ text as proof of numerical correctness.
 | Packed NumPy/Torch formula vs hipEngine, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
 | Pinned HF `trust_remote_code` oracle with matched affine4 endpoints | max KL **0.004719**, mean KL 0.000723, top-1 **18/18** |
 | P2/M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | **18/18** byte-exact final-hidden/normalized/live-KV/span state hashes; max/mean KL **0/0**; top-1/token equality **90/90** |
+| D0 one- vs two-dispatch router, 18 natural+heldout prompts / 36 repeated trajectories | **36/36** native-start and final state hashes; **1,296/1,296** tokens/top logits; **2,592/2,592** zero-counter checks |
 | M5 260-token cross-chunk continuation | seed plus three subsequent decode tokens exact |
 | M6 c=2/4/8 and 514-step SWA-wrap tests | all generated trajectories exact |
 | Public canonical prompt | coherent 37-token answer, real EOS 151645, deterministic resident repeat |
@@ -235,6 +249,8 @@ Primary evidence:
 
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
+- [D0 one-dispatch c1 router](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json)
+- [D0 current decode profile](../benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json)
 - [P3 dense token-tile rejection](../benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json)
 - [P2/M5 GQA4 recertification](../benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json)
 - [P1/M5 expert-major recertification](../benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json)
@@ -246,14 +262,13 @@ Primary evidence:
 Clean cached-only profiles freeze every retained phase: P0 is the immutable P1
 baseline, P1 is the immutable P2 baseline, and P2 remains the current prefill
 production row after P3's exact tile-16/32 screen regressed and direct BF16
-WMMA failed byte exactness. The c1 and c8 rows
-remain the corrected decode baselines because P0-P3 do not alter those paths
-(later diagnostics remeasure them within ordinary run variance):
+WMMA failed byte exactness. D0 supersedes the old c1 diagnostic with a clean
+selector-unset profile; c8 remains the corrected helper baseline:
 
 | Phase | Wall | Kernel | Host gap | Exact LM-head share |
 | --- | ---: | ---: | ---: | ---: |
 | native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **1.78%** | **0.31%** |
-| c1 decode | 6.118 ms/token | 5.035 ms | 17.69% | **28.75%** |
+| c1 decode, post-D0 router | **5.527 ms/token** | **4.859 ms** | **12.08%** | **26.30%** |
 | c8 helper decode | 27.256 ms/batch | 25.337 ms | 7.04% | **46.52%** |
 
 ### P0 retained: sample only the final prefill row
@@ -307,20 +322,22 @@ exact and no additional persistent memory. Local128 remains the rollback.
 | **P1 — DONE / SCALAR BLOCKER** | True expert-major compact MoE | Retained at 726.421/679.632/650.745 tok/s and byte-exact; expert family improves 1.086x but misses the 2.826x ceiling, selecting a future exact non-WMMA SIMD ternary consumer rather than more grouping geometry. |
 | **P2 — DONE** | GQA/query-row prefill attention | Retained at 749.175/741.368/754.000 tok/s and byte-exact; attention falls **63.993 -> 21.916 ms (2.920x)** with no memory or launch increase. |
 | **P3 — DONE / REJECTED** | Retune dense ternary row tiles and test native BF16 WMMA | Tile 8/16/32 are bit-exact, but a counterbalanced natural+heldout screen measures **744.116/731.182/571.923 tok/s** and tile 16/32 lose all 16 pairs. Direct WMMA then changes **106/256 FP32** K16 partials and **43/655,360 BF16** production-shape outputs. All candidate surfaces are removed; tile 8 remains production. |
-| **D0 — ACTIVE** | Exact c1 kernel work, not graph promotion | The one-dispatch router candidate is byte-exact and improves same-resident c1 **165.791 -> 170.279 tok/s (+2.71%)**, cutting 24 launches; clean qualification is pending. The corrected 198.591-tok/s kernel-only roof and graph's measured **1.0047x** still require a materially different exact affine4-head bandwidth/layout win to cross 200. |
+| **D0 — ROUTER DONE / HEAD ACTIVE** | Exact c1 kernel work, not graph promotion | The default one-dispatch router passes the clean 18-prompt gate and improves rollback **139.538 -> 145.321 tok/s (+4.14%, 1,127/1,152 wins)** while cutting 24 launches. The refreshed short trace is **180.935 tok/s**, with a **205.804-tok/s** kernel roof; a materially different exact affine4-head bandwidth/layout win is still required to cross 200. |
 | **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
 
 The 200+ decode target is therefore realistic in two distinct forms:
 
 - **Approximate:** a properly quality-gated FlashHead path should directly
-  attack the 1.448-ms c1 exact-head bucket and is the mechanism behind
+  attack the current 1.278-ms c1 exact-head bucket and is the mechanism behind
   DeepGrove's 218 tok/s M4 headline. It must remain opt-in and pass the full
   category/heldout agreement suite.
-- **Exact:** 200 tok/s requires 1.118 ms off the current 6.118-ms trace wall;
-  exact 218 requires 1.531 ms. Current graph replay does not supply that saving,
-  so router/head kernel work is mandatory.
+- **Exact:** 200 tok/s now requires **0.527 ms** off the current 5.527-ms short
+  trace wall; exact 218 requires **0.940 ms**. Current graph replay does not
+  supply that saving, so exact affine4-head kernel work remains mandatory.
 
 Evidence:
+[`D0 c1 router`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
+[`D0 decode profile`](../benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json),
 [`P2 GQA4 prefill`](../benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json),
 [`post-P2 phase profile`](../benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json),
 [`post-P1 phase profile`](../benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json),
@@ -356,6 +373,16 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_prefill_bench.py \
   --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
   --lengths 128,320,512 --repetitions 3 --warmups 1 \
   --continuation-steps 4 --out /tmp/maple-m5.json
+
+# D0 exact c1 production-vs-rollback qualification
+GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_c1_bench.py \
+  --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 \
+  --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
+  --steps 32 --warmup-steps 4 --repetitions 2 \
+  --out /tmp/maple-d0-c1.json
 
 # M6 fixed-capacity helper recertification
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \

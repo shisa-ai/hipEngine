@@ -18,13 +18,15 @@ should be removed or collapsed.
 
 - Added and promoted 2026-08-08. One grid-over-experts launch uses a four-byte
   resettable completion counter; the last expert block executes the unchanged
-  FP32 softmax/stable-top-k body. Production-shape outputs are bit-identical,
-  the full dirty gate passes **18/18** states and **90/90** positions with KL 0,
-  and same-resident c1 improves **165.791 -> 170.279 tok/s (+2.71%)** with
-  **58/64** paired wins.
+  FP32 softmax/stable-top-k body. The clean 18-prompt natural+heldout gate
+  improves the exact rollback **139.538 -> 145.321 tok/s (+4.14%)** with
+  **1,127/1,152** paired wins; all **1,296/1,296** token/top-logit positions,
+  **36/36** native-start/final states, **2,592/2,592** zero-counter checks, and
+  lifecycle are exact. The current short profile is **180.935 tok/s** at 271
+  launches/token.
 - Keep `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0` as the exact two-dispatch
-  rollback through clean qualified c1 publication and the final Maple roadmap
-  audit, then remove the environment seam. Preserve the separately registered
+  rollback through the active affine4-head work and final Maple roadmap audit,
+  then remove the environment seam. Preserve the separately registered
   two-dispatch kernels as the required numerical fallback.
 
 ## Maple P2 exact wave32 GQA4 prefill attention

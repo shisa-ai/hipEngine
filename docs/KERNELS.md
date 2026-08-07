@@ -77,16 +77,19 @@ scratch0, and extracted ISA confirms `v_wmma_f32_16x16x16_bf16`. All temporary
 selectors, alternate exports, and WMMA probes were removed; do not repeat these
 scalar-tile or direct-WMMA schedules.
 
-The D0 c1 router now also registers a one-dispatch last-block composite. Its
+The D0 c1 router registers a retained one-dispatch last-block composite. Its
 256 expert blocks preserve the existing logit tree; a four-byte owned atomic
 counter identifies the final block, which executes the unchanged FP32
-softmax/stable-top-8 body and wraps the counter to zero. Production-shape
-logits/IDs/weights are bit-identical across repeated calls, the dirty complete
-state gate passes **18/18** hashes and **90/90** positions at KL 0, and
-same-resident c1 improves **165.791 -> 170.279 tok/s (+2.71%)**. Cached tracing
-names `maple_router_topk_single_dispatch_kernel` at local256/VGPR16/SGPR128/
-LDS3584/scratch0 and cuts **24 launches/token**. The two-dispatch route remains
-registered as the exact rollback; clean qualification is pending.
+softmax/stable-top-8 body and wraps the counter to zero. The clean two-resident
+18-prompt natural+heldout qualification improves the exact two-dispatch
+rollback **139.538 -> 145.321 tok/s (+4.14%)**, saves **0.301 ms** at the paired
+median, and wins **1,127/1,152** timed pairs. All **1,296/1,296** tokens/top
+logits, **36/36** native-start/final state pairs, and **2,592/2,592** counter
+checks are exact; close returns zero ownership. Cached tracing names
+`maple_router_topk_single_dispatch_kernel` at local256/VGPR16/SGPR128/LDS3584/
+scratch0, cuts **24 launches/token**, and measures the refreshed short profile
+at **5.527-ms wall / 4.859-ms kernels / 271 launches / 180.935 tok/s**. The
+two-dispatch route remains registered as the exact rollback.
 
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard
@@ -133,11 +136,12 @@ reports router local256/VGPR8/LDS3584/scratch0 at **19,156 ns**, clamp-7
 local256/VGPR32/scratch0 at **2,605 ns**, and weighted residual
 local256/VGPR16/scratch0 at **2,885 ns**.
 
-The router also has a parallel variant `maple_router_topk_parallel_bf16`
-(grid-over-experts coalesced dot + parallel softmax/stable-top-k) that is the
-gfx1151 decode default: it cuts the router from 277 → 48 µs/call and the decode
-step from 12,758 → 6,132 µs (2.08×) with the packed gate at max_kl 0.0139,
-top-1 18/18, and exact router IDs (`benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`).
+The router also retains the two-dispatch parallel variant
+`maple_router_topk_parallel_bf16` (grid-over-experts coalesced dot followed by
+parallel softmax/stable-top-k). It first cut the serial router from 277 -> 48
+us/call and decode from 12,758 -> 6,132 us (2.08x), with the packed gate at max
+KL 0.0139, top-1 18/18, and exact router IDs. It is now the explicit D0 rollback
+rather than the default (`benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`).
 
 `hipengine/runtime/maple.py` composes those registered/unfused families with the
 existing direct-weight PARO RMSNorm and two-stage FP32 argmax into a resident

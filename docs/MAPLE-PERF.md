@@ -18,34 +18,35 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Quantity | Value | Source |
 | --- | ---: | --- |
 | Public native prefill 128/320/512 | 749.175 / 741.368 / 754.000 tok/s | retained P2/M5 recertification |
-| Current c1 decode profile | 163.459 tok/s (6.118 ms/token) | corrected cached trace |
+| Current c1 short profile | 180.935 tok/s (5.527 ms/token) | post-D0 cached trace |
+| Qualified c1 natural-context A/B | 139.538 -> 145.321 tok/s (+4.14%) | retained D0 router qualification |
 | Fixed-helper c8 decode64 | 299.181 aggregate tok/s median | M6 recertification |
-| HIP kernels per c1 decode token | 295 | corrected cached trace |
+| HIP kernels per c1 decode token | 271 | post-D0 cached trace |
 | Exact affine4 lm-head payload | 166.922 MiB | packed weight + BF16 scale/bias |
 | Public tracked residency (max context 512) | 4.988 GiB (5,355,881,848 bytes) | retained P2/M5 recertification |
 | Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
 
-**Current conclusion (P0+P1+P2 retained; P3 tile sweep rejected).**
+**Current conclusion (P0+P1+P2 and D0 router retained; P3 rejected).**
 Final-row-only sampling nearly doubles qualified native prefill, expert-major
 MoE adds 3.68-5.83%, and exact GQA4 adds another 3.13-15.87%. The clean
 retained-P0/P1/P2 traces remain immutable phase baselines. Exact dense tile 16
-and 32 regress tile 8 on every paired sample, so production remains unchanged
-and D0 c1 router work is next. The c1/c8 rows remain the corrected decode
-baselines because P0-P3 do not alter those paths; later diagnostics remeasure
-them within ordinary run variance:
+and 32 regress tile 8 on every paired sample. D0's exact one-dispatch router is
+now retained after the clean complete category gate; the exact affine4 head is
+the active c1 owner. The c8 row remains the corrected helper baseline:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | public native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **7.813 ms (1.78%)** | **730** | **728.135 tok/s** |
-| autoregressive c1 decode | 6.118 ms/token | 5.035 ms | 1.082 ms (17.69%) | 295 | 163.459 tok/s |
+| autoregressive c1 decode, post-D0 router | **5.527 ms/token** | **4.859 ms** | **0.668 ms (12.08%)** | **271** | **180.935 tok/s** |
 | fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
 
 After P2, the exact affine4 head owns only **0.31%** of prefill320 kernel time,
 while grouped gate/up + down owns **59.08%**. Attention is down to **21.916 ms /
 5.08%**; dense QKV+O is the next bounded owner at **124.770 ms / 28.90%**. The
-unchanged corrected decode baseline still attributes **28.75%/46.52%** of
-c1/c8 to the head and **22.55%/29.67%** to selected experts. The paths therefore
-have different actions:
+post-D0 c1 profile attributes **26.30%** to the head, **23.37%** to selected
+experts, and **22.51%** to router compute; the corrected c8 baseline attributes
+**46.52%/29.67%** to head/selected experts. The paths therefore have different
+actions:
 
 - **Prefill:** P0 samples only the final prompt row, P1 groups routed rows by
   expert, and P2 shares each K/V stream across four GQA heads. Qualified
@@ -54,10 +55,11 @@ have different actions:
   max-context-512 residency remains **4.988 GiB**.
 - **c8:** all request rows require logits. A rows>1 affine4 tile that streams
   each 166.922-MiB payload once across request rows remains the correct owner.
-- **c1:** preserve the proven head kernel until a new layout wins. A controlled
+- **c1:** the exact one-dispatch router is retained/default. A controlled
   3+3-process review measures graph at only **1.0047x** (+0.47%, 0.033 ms), so
-  graph stays opt-in. The 5.035-ms kernel-only roof is 198.591 tok/s; exact
-  200+ requires router/head kernel work.
+  graph stays opt-in. The refreshed **4.859-ms** kernel-only roof is **205.804
+  tok/s**; exact 200 now requires **0.527 ms** from a materially different
+  affine4-head bandwidth/layout path.
 
 P1 now uses registered stable int32 count/prefix/scatter metadata and
 expert-major ternary consumers with direct original-lane output. The qualified
@@ -69,7 +71,7 @@ compaction—is the blocker.
 
 Current exact priority:
 
-1. D0 one-dispatch c1 router then affine4-head bandwidth work.
+1. D0 affine4-head bandwidth work; the one-dispatch c1 router is done.
 2. D1 c2/c4/c8 affine4 row reuse.
 3. P4 safe long-prompt/public scheduler admission.
 4. Future P1b exact non-WMMA SIMD ternary consumers; do not repeat grouped-lane,
@@ -82,6 +84,8 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json`,
+`benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json`,
@@ -95,7 +99,8 @@ Evidence:
 ## 2. Phase 0 — Profile before optimizing (gate: no math changes) — DONE
 
 `scripts/maple_profile.py` (prebuild then cached-only `rocprofv3 --kernel-trace`
-of a warm decode step) produced `benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json`.
+of a warm decode step) produced the historical M0 artifact and the current
+`benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json` refresh.
 
 ### Post-M3a c1 profile (historical; superseded above, 2026-08-07)
 
@@ -173,7 +178,7 @@ Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 
 | Milestone | Result | Current interpretation |
 | --- | --- | --- |
-| **M3a parallel router** | Done; router 7,807 -> 1,104 us/step and decode 12,758 -> 6,038 us in the post-M3a trace | Retained. The two-dispatch router is still the first exact c1 kernel target. |
+| **M3a parallel router** | Done; router 7,807 -> 1,104 us/step and decode 12,758 -> 6,038 us in the post-M3a trace | Retained as D0's exact two-dispatch rollback; the one-dispatch composite is now default. |
 | **M3b c1 affine4 tile** | Rejected at 0.96x | Do not revive the same tile; use a materially different layout/bandwidth schedule. |
 | **M3c c1 eight-route grouping** | Rejected at 0.69x | This tested activation reuse within one token, not expert-major reuse across prompt rows. |
 | **M4/M5 batched prefill** | P2 retained at 741-754 tok/s | Exact through 512; dense ternary QKV/O is next while scalar expert compute blocks the original P1 ceiling. |
@@ -243,10 +248,9 @@ step).
 
 - **Layer boundary norm + embed/output**: fuse `paro_rmsnorm` → next layer or
   `paro_add_rmsnorm` → selected-expert start into single kernels.
-- **Router logits → softmax/top-k/renormalize**: M3a made both stages
-  parallel, but still launches two kernels per layer. Evaluate DeepGrove's
-  last-threadgroup/atomic-counter pattern as a one-dispatch HIP composite
-  before attempting router-to-expert fusion.
+- **Router logits → softmax/top-k/renormalize**: D0 completes this item with
+  the retained exact last-threadgroup/atomic-counter composite; see D3. Do not
+  attempt router-to-expert fusion without a new measured owner.
 - **QK-norm+RoPE+KV-write → attention**: already one fused qknorm write; fold
   the online-softmax attention into the same kernel or a tight two-kernel
   chain to keep Q/K/V in flight.
@@ -277,21 +281,26 @@ promoted; all unfused fallbacks (the invariant) are preserved.
 
 ### D3 — MoE routing and grouped selected-expert
 
-The historical M0 router was the 7.8-ms / 61% bottleneck; M3a already replaced
-it with parallel logits plus parallel stable top-k. In the corrected c1 profile,
-router logits + top-k consume **1.108 ms / 22.0% of kernel time**.
+The historical M0 router was the 7.8-ms / 61% bottleneck; M3a replaced it with
+parallel logits plus parallel stable top-k. D0 now makes the exact
+last-threadgroup composite the retained default: it keeps the same logit tree
+and FP32 softmax/stable top-8, uses one four-byte owned counter, and runs
+finalization in the last expert block.
 
-The D0 last-threadgroup composite is now the default implementation candidate:
-it keeps the same logit tree and FP32 softmax/stable top-8, uses one four-byte
-owned counter, and runs finalization in the last expert block. Production-shape
-outputs are bit-identical, the dirty complete gate passes **18/18** state hashes
-and **90/90** positions with KL 0, and a same-resident screen improves
-**165.791 -> 170.279 tok/s (+2.71%, 58/64 wins)**. Cached tracing cuts router
-calls **48 -> 24** and total token launches **295 -> 271**; router kernel time
-changes only **1.108 -> 1.095 ms**, so deleted dispatch boundaries explain the
-larger wall gain. Clean c1 category qualification remains pending before this
-becomes a retained row. The next D0 kernel target is therefore the exact
-167-MiB affine4 head, not a return to the serial router.
+The clean two-resident qualification covers all 18 natural+heldout prompts,
+two repetitions, 4 warmup and 32 measured continuation steps. Selector-unset
+production improves its exact two-dispatch rollback **139.538 -> 145.321 tok/s
+(+4.14%)**, saves **0.301 ms** at the paired median, and wins
+**1,127/1,152** pairs. All **1,296/1,296** tokens/top logits, **36/36**
+native-prefill and final state pairs, and **2,592/2,592** counter checks are
+exact; lifecycle returns to zero.
+
+Cached tracing cuts router calls **48 -> 24** and total token launches **295 ->
+271**. Router compute remains **1.094 ms / 22.51%** of the refreshed kernel
+sum, so deleted dispatch boundaries—not changed math—supply the wall win. The
+short fixed-token diagnostic is now **5.527 ms / 180.935 tok/s**, with
+**4.859 ms** of kernels. The next D0 target is the exact 167-MiB affine4 head,
+not a return to either older router.
 
 The rejected M3c experiment grouped the eight routes of one c1 token and lost
 because the shared activation was already L2-cached. It says nothing about
@@ -302,7 +311,8 @@ as required by `docs/PREFILL.md`.
 ### D4 — lm_head fast paths
 
 `maple_affine4_gemv_f32` spans 151,936 output rows (affine4, 2048 in) plus a
-two-stage FP32 argmax and now measures 1.448 ms / 28.75% of c1 kernels.
+two-stage FP32 argmax and now measures **1.278 ms / 26.30%** of post-D0 c1
+kernels. Argmax remains only 0.008 ms/token.
 
 Exact work, in order:
 
@@ -484,6 +494,7 @@ dense/attention target.
 | M4 | batched ternary prefill primitives | exact vs packed oracle; prefill tok/s up | GEMM + QKV GEMM primitives in (done) |
 | M5/P0+P1+P2 | final-row + expert-major + exact GQA4 native prefill | exact through native 512-token limit; serial fallback above it; scalar ternary ceiling recorded | 749.175/741.368/754.000 tok/s; 18/18 byte-exact states and 90/90 positions |
 | P3 | dense ternary tile + native-BF16-WMMA sweep | tile 16/32 regress; WMMA fails byte exactness | 744.116/731.182/571.923 tok/s; WMMA 106/256 FP32 partial and 43/655,360 BF16 output mismatches; production unchanged |
+| D0 router | one-dispatch exact c1 routing | complete category/state/counter gate; default retained | 139.538 -> 145.321 tok/s (+4.14%); 1,127/1,152 wins; current short profile 180.935 tok/s / 271 launches |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
 | M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
