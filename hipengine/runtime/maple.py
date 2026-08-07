@@ -175,6 +175,27 @@ class MapleRunnerLibraries:
 PREFILL_CHUNK = 256
 
 
+def _maple_prefill_swa_segments(
+    *,
+    start: int,
+    rows: int,
+    capacity: int,
+) -> tuple[tuple[int, int], ...]:
+    """Split a prefill chunk so SWA bulk append cannot overwrite its prefix."""
+
+    start = int(start)
+    rows = int(rows)
+    capacity = int(capacity)
+    if start < 0 or rows <= 0 or capacity <= 0:
+        raise ValueError("Maple SWA prefill segment dimensions are invalid")
+    safe_rows = min(rows, max(0, capacity - start))
+    segments: list[tuple[int, int]] = []
+    if safe_rows:
+        segments.append((0, safe_rows))
+    segments.extend((offset, 1) for offset in range(safe_rows, rows))
+    return tuple(segments)
+
+
 @dataclass
 class _PrefillBuffers:
     """T-row scratch buffers for the batched prefill path."""
@@ -1039,10 +1060,12 @@ class MapleRunner:
         Uses the batched prefill kernel chain (embed, QKV GEMM, qknorm ring
         write, ring attention, o_proj GEMM, router, stable expert compaction,
         expert-major MoE, and weighted residual), then samples only the final
-        prompt row with the proven c1 norm/head/argmax tail. Returns that row's
-        next-token prediction and top logit while preserving the token-serial
-        continuation contract. The row/route-gather MoE remains an explicit
-        rollback path.
+        prompt row with the proven c1 norm/head/argmax tail. Sliding layers keep
+        dense/MoE work row-batched beyond SWA capacity while attention replays
+        the pre-chunk ring mapping and serializes only post-wrap rows. Returns
+        the final row's next-token prediction and top logit while preserving the
+        token-serial continuation contract. The row/route-gather MoE remains an
+        explicit rollback path.
         """
 
         self._require_open()
@@ -1069,11 +1092,6 @@ class MapleRunner:
         end_position = self.position + len(tokens)
         if end_position > self.max_context:
             raise ValueError("Maple prompt exceeds runner context capacity")
-        if end_position > spec.sliding_window:
-            raise NotImplementedError(
-                "Maple native prefill currently supports at most one sliding-window "
-                f"capacity ({spec.sliding_window} positions); use serial prefill beyond it"
-            )
         b = self.buffers
         pf = b.pf
         libs = self.libraries
@@ -1097,9 +1115,22 @@ class MapleRunner:
             ids = tokens[c0 : c0 + parsed_chunk]
             rows = len(ids)
             pos = start_position + c0
-            for span_owner in (b.sliding_span_owner, b.global_span_owner):
+            swa_segments = _maple_prefill_swa_segments(
+                start=pos,
+                rows=rows,
+                capacity=b.sliding_span_owner.capacity,
+            )
+            replay_swa_per_layer = len(swa_segments) > 1
+            maple_kv_span_update_batched(
+                b.global_span_owner.spans,
+                start=pos,
+                rows=rows,
+                library=libs.attention,
+                runtime=self.runtime,
+            )
+            if not replay_swa_per_layer:
                 maple_kv_span_update_batched(
-                    span_owner.spans,
+                    b.sliding_span_owner.spans,
                     start=pos,
                     rows=rows,
                     library=libs.attention,
@@ -1123,8 +1154,8 @@ class MapleRunner:
                 library=libs.ternary,
                 runtime=self.runtime,
             )
-            for layer_id, (layer_weights, kv_layer) in enumerate(
-                zip(self.weights.layers, b.layers)
+            for layer_id, (layer_weights, kv_layer, layer_kind) in enumerate(
+                zip(self.weights.layers, b.layers, spec.layer_types)
             ):
                 paro_rmsnorm_out_bf16(
                     pf.hidden.ptr,
@@ -1153,44 +1184,79 @@ class MapleRunner:
                     runtime=self.runtime,
                 )
                 rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
-                maple_qknorm_rope_kv_write_batched_bf16(
-                    pf.qkv.ptr,
-                    layer_weights.q_norm.ptr,
-                    layer_weights.k_norm.ptr,
-                    kv_layer.key_cache.ptr,
-                    kv_layer.value_cache.ptr,
-                    kv_layer.spans,
-                    q_heads=spec.num_attention_heads,
-                    kv_heads=spec.num_key_value_heads,
-                    head_dim=spec.head_dim,
-                    rope_dim=rope_dim,
-                    eps=spec.rms_norm_eps,
-                    rope_theta=spec.rope_theta,
-                    start=pos,
-                    rows=rows,
-                    library=libs.attention,
-                    runtime=self.runtime,
-                )
                 attention_prefill = (
                     maple_attention_prefill_ring_gqa4_bf16
                     if gqa4_attention
                     else maple_attention_prefill_ring_bf16
                 )
-                attention_prefill(
-                    pf.qkv.ptr,
-                    kv_layer.key_cache.ptr,
-                    kv_layer.value_cache.ptr,
-                    pf.attention.ptr,
-                    kv_layer.spans,
-                    rows=rows,
-                    q_heads=spec.num_attention_heads,
-                    kv_heads=spec.num_key_value_heads,
-                    head_dim=spec.head_dim,
-                    scale=spec.head_dim**-0.5,
-                    start=pos,
-                    library=libs.attention,
-                    runtime=self.runtime,
+                layer_segments = (
+                    swa_segments
+                    if layer_kind == "sliding_attention" and replay_swa_per_layer
+                    else ((0, rows),)
                 )
+                if layer_kind == "sliding_attention" and replay_swa_per_layer:
+                    # All sliding layers share span metadata, but own distinct
+                    # cache storage. Restore this layer's pre-chunk logical ring
+                    # before earlier queries can observe a prior layer's future
+                    # positions, then publish each safe attention segment.
+                    prefix_rows = min(pos, b.sliding_span_owner.capacity)
+                    if prefix_rows:
+                        maple_kv_span_update_batched(
+                            b.sliding_span_owner.spans,
+                            start=pos - prefix_rows,
+                            rows=prefix_rows,
+                            library=libs.attention,
+                            runtime=self.runtime,
+                        )
+                qkv_row_bytes = (q_size + 2 * kv_size) * 2
+                attention_row_bytes = q_size * 2
+                for row_offset, segment_rows in layer_segments:
+                    segment_start = pos + row_offset
+                    if layer_kind == "sliding_attention" and replay_swa_per_layer:
+                        maple_kv_span_update_batched(
+                            b.sliding_span_owner.spans,
+                            start=segment_start,
+                            rows=segment_rows,
+                            library=libs.attention,
+                            runtime=self.runtime,
+                        )
+                    qkv_ptr = pf.qkv.ptr + row_offset * qkv_row_bytes
+                    attention_ptr = (
+                        pf.attention.ptr + row_offset * attention_row_bytes
+                    )
+                    maple_qknorm_rope_kv_write_batched_bf16(
+                        qkv_ptr,
+                        layer_weights.q_norm.ptr,
+                        layer_weights.k_norm.ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        kv_layer.spans,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        rope_dim=rope_dim,
+                        eps=spec.rms_norm_eps,
+                        rope_theta=spec.rope_theta,
+                        start=segment_start,
+                        rows=segment_rows,
+                        library=libs.attention,
+                        runtime=self.runtime,
+                    )
+                    attention_prefill(
+                        qkv_ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        attention_ptr,
+                        kv_layer.spans,
+                        rows=segment_rows,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        scale=spec.head_dim**-0.5,
+                        start=segment_start,
+                        library=libs.attention,
+                        runtime=self.runtime,
+                    )
                 maple_ternary_gemm_bf16(
                     pf.attention.ptr,
                     layer_weights.o_proj.weight.ptr,
