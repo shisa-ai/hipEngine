@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "status": "rejected_vulkan_source_q6_root_geometry_net_root_regression",
+  "performance_claim": true,
+  "performance_claim_scope": "Counterbalanced actual-weight Qwen3.6-27B root leaves on W7900 and RX 7900 XTX, a call-normalized W7900 AR plus natural-B3 trace, and the complete W7900 ten-prompt natural25 AR/B1/B2/B3 packet. The packet is diagnostic and does not replace the canonical topline.",
+  "correctness_claim": true,
+  "correctness_scope": "Temporary CPU-reference Q6_K gates, source-batched versus repeated-source-c1 FP32 identity, actual-root KL/top-1, complete W7900 B1-B3 transaction/state/provider equality, natural-suite exact greedy IDs, GPU/CPU acceptance agreement, and clean teardown.",
+  "kind": "qwen36_27b_vulkan_source_q6_root_geometry_rejected",
+  "timestamp": "2026-08-07T13:00:00+09:00",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "quant": "MOSTLY_Q4_K_M",
+    "root_shape": {"in_features": 5120, "out_features": 248320},
+    "root_resident_bytes": 1042944000
+  },
+  "hardware": {
+    "binding_gpu_index": 0,
+    "binding_gpu": "AMD Radeon Pro W7900",
+    "transfer_gpu_index": 1,
+    "transfer_gpu": "AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "software": {
+    "production_base_commit": "a934a65af",
+    "candidate_state": "uncommitted temporary implementation, fully removed before publication",
+    "backend": "hip_gfx1100",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "python": "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "llamacpp_vulkan_commit": "c8e03ce8122b",
+    "llamacpp_source": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec_q6_k.comp"
+  },
+  "source_audit": {
+    "mechanism": "Reproduce Vulkan's AMD floating Q6_K matvec association over the existing byte-neutral planar-qmicro owner: one local32 wave, two adjacent output rows, two half-wave QK-block partitions, four nested scaled segment sums, and every activation row.",
+    "why_previous_coverage_was_incomplete": "The prior root ladder covered exact local128 col8/col4 and scalar-DP4A, but not Vulkan's floating local32/col2 association. The review also found that the first local64 experiment emulated the retained reduction tree rather than packing independent source waves, so both independent-wave packing and per-wave output widening were screened before closure.",
+    "weight_ownership": "No new resident bytes or workspace; every temporary leaf consumed the existing 1,042,944,000-byte root planar-qmicro allocation.",
+    "changed_association": true,
+    "prompt_or_token_condition": false,
+    "benchmark_specific_branch": false
+  },
+  "actual_weight_local32_col2": {
+    "protocol": "W7900, 25 warmup pairs, 15 counterbalanced samples, five launches/sample; final two-arm control versus source candidate.",
+    "rows": {
+      "1": {"control_us": 1493.577, "candidate_us": 1533.753, "speedup": 0.973806, "delta_percent": 2.6899},
+      "2": {"control_us": 2327.534, "candidate_us": 1944.428, "speedup": 1.197033, "delta_percent": -16.4603},
+      "3": {"control_us": 2470.719, "candidate_us": 2237.430, "speedup": 1.104266, "delta_percent": -9.4413},
+      "4": {"control_us": 2507.544, "candidate_us": 2391.231, "speedup": 1.048642, "delta_percent": -4.6386}
+    },
+    "correctness": "All actual-root rows preserve top-1; maximum KL versus retained planar output is 1.873e-15 and maximum absolute FP32 delta is 1.78814e-7. Temporary synthetic tests also passed the project CPU-reference KL/top-1 gate."
+  },
+  "geometry_completion": {
+    "old_tree_local64_col4": {
+      "purpose": "Preserve retained scalar association so verifier rows would not require a source c1 route.",
+      "event_us_control_to_candidate": {"1": [1499.637, 1677.302], "2": [2170.521, 2402.729], "3": [2342.586, 2467.058], "4": [2478.756, 2768.380]},
+      "speedup": {"1": 0.8941, "2": 0.9034, "3": 0.9495, "4": 0.8954},
+      "decision": "rejected at every row"
+    },
+    "independent_source_wave_packing": {
+      "geometries": ["local32/col2", "local64/two independent col2 waves", "local128/four independent col2 waves"],
+      "result": "All outputs are FP32-bit identical. W7900 and XTX changes versus local32 are mixed and below 1%; no wider workgroup is retained."
+    },
+    "source_output_widening": {
+      "geometries": ["local32/col2", "local32/col4", "local32/col8"],
+      "result": "Col8 loses decisively. Dedicated col4 improves rows2-4 but worsens the required c1 owner on both cards.",
+      "w7900_speedup_vs_retained": {"rows1": 0.9610, "rows2": 1.3172, "rows3": 1.2427, "rows4": 1.1778},
+      "rx7900xtx_speedup_vs_retained": {"rows1": 0.9326, "rows2": 1.1602, "rows3": 1.1491, "rows4": 1.0946}
+    }
+  },
+  "transaction_requirement": {
+    "initial_failure": "Routing only verifier rows changed target logits versus scalar AR by up to 2.86e-6 because the source shader uses a different FP32 association.",
+    "repair": "Route source-association c1 and rows2-4 together. Temporary tests prove every batched source output FP32-bit equal to repeated source c1, and the complete B1-B3 transaction then passes.",
+    "consequence": "The c1 route is not optional: keeping the faster retained scalar owner while selecting source verifier rows violates the exact transaction contract."
+  },
+  "call_normalized_profile": {
+    "protocol": "Separate cached compiler-free W7900 rocprofv3 kernel/marker/copy traces of code_merge_intervals natural25 AR followed by B3. Counts and exact family replacements match; microbench direction independently agrees.",
+    "control": {
+      "scalar_root_calls": 65,
+      "scalar_root_ms": 96.195273,
+      "ar_first_24_scalar_ms": 35.499946,
+      "mtp_scalar_calls": 41,
+      "mtp_scalar_ms": 60.695327,
+      "target_row4_calls": 7,
+      "target_row4_ms": 11.915263,
+      "mtp_root_total_ms": 72.610590,
+      "all_root_total_ms": 108.110536
+    },
+    "candidate_local32_col2": {
+      "scalar_root_calls": 65,
+      "scalar_root_ms": 99.453417,
+      "ar_first_24_scalar_ms": 36.719446,
+      "mtp_scalar_calls": 41,
+      "mtp_scalar_ms": 62.733971,
+      "target_row4_calls": 7,
+      "target_row4_ms": 11.365432,
+      "mtp_root_total_ms": 74.099403,
+      "all_root_total_ms": 110.818849
+    },
+    "delta": {
+      "target_row4_ms": -0.549831,
+      "target_row4_percent": -4.6145,
+      "mtp_scalar_ms": 2.038644,
+      "mtp_root_total_ms": 1.488813,
+      "mtp_root_total_percent": 2.0504,
+      "all_root_total_ms": 2.708313,
+      "all_root_total_percent": 2.5051
+    },
+    "best_col4_bound": "Replacing only candidate row4 with the faster source-col4 leaf cannot make the package robustly positive: on W7900 its approximately 1.80-ms row4 saving is still consumed by the required approximately 2.04-ms source-c1 penalty, while XTX's c1 penalty is larger."
+  },
+  "natural25": {
+    "protocol": "W7900 ten-prompt code/general_en/general_ja/mixed_ja_en suite, true AR plus B1-B3, one warmup and one measured run per route, 25 visible outputs / 24 timed transitions.",
+    "control_tok_s": {"true_ar": 22.926202957640296, "B1": 44.73042275530028, "B2": 56.19405113345444, "B3": 61.14680879565122},
+    "candidate_tok_s": {"true_ar": 23.61577955128861, "B1": 44.82315496671919, "B2": 56.45184522949103, "B3": 61.428717150489504},
+    "candidate_delta_percent": {"true_ar": 3.007809862463562, "B1": 0.20731351439757795, "B2": 0.45875691614465364, "B3": 0.46103526969070163},
+    "prompt_wins": {"B1": "6/10", "B2": "10/10", "B3": "10/10"},
+    "correctness": {"all_output_ids_equal": true, "all_acceptance_sequences_equal": true, "all_gpu_accept_match_cpu": true, "all_candidate_mtp_exact_to_candidate_ar": true},
+    "interpretation": "The one-run aggregate is positive, but it conflicts with both counterbalanced c1 leaves and the exact call-normalized root family. It is treated as whole-run clock/queue variance, not as evidence to retain a package that increases the intended root work."
+  },
+  "kernel_trace_smoke": {
+    "kernel": "q6_k_t16_qmicro_planar_root_local32_col2_f32_kernel<4>",
+    "duration_ns": 6599,
+    "workgroup_size_x": 32,
+    "grid_size_x": 4096,
+    "vgpr": 104,
+    "sgpr": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "note": "Synthetic N256/K512 CPU-reference test trace; production timing comes from actual output.weight screens and the full profile."
+  },
+  "validation": {
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat completed; only the previously documented unrelated nano-vllm-amd drift was reported.",
+    "focused": "The temporary CPU/GPU root kernel, dispatch, rollback, and lm-head bundle passed in full on RX 7900 XTX.",
+    "w7900_transaction": "tests/test_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar passed after the source c1/rowtile association repair; review reran it after removing the unused old-association diagnostic, before final candidate removal. The restored production tree is byte-identical to already-gated a934a65af.",
+    "cleanup": "All temporary HIP, Python wrappers, registry keys, dispatch selectors, environment flags, and tests were removed. git status returned clean before documentation publication."
+  },
+  "decision": {
+    "action": "reject_and_remove",
+    "reason": "The source rowtile is fast and numerically safe, but exact transactional semantics require the matching source c1 owner. That singleton runs often enough to make MTP root work 2.050% slower and all traced root work 2.505% slower. Wider source columns/wave packing and an old-association exact sibling do not repair the package on both gfx1100 cards.",
+    "canonical_scoreboard_changed": false,
+    "canonical_hipengine_B3_tok_s": 61.39440170570785,
+    "matched_vulkan_B3_tok_s": 67.682,
+    "selected_vulkan_B4_tok_s": 69.798,
+    "root_module_status": "source-faithful mechanism ladder exhausted",
+    "next_target": "Advance D27-R2 to final module-closure accounting; do not repeat root geometry without a materially new association-preserving c1 primitive or changed source/compiler/model."
+  },
+  "commands": {
+    "local32_col2": "PATH=/home/lhl/mambaforge/envs/therock/bin:$PATH PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/screen_qwen36_root_q6_production.py --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-root-q6-production-local32-col2-final-w7900.json",
+    "source_col4_w7900": "PATH=/home/lhl/mambaforge/envs/therock/bin:$PATH PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/screen_qwen36_root_q6_source_col4_production.py --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/qwen36-root-q6-source-col4-dedicated-w7900.json",
+    "natural25_candidate": "PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/natural25-root-source-b1-b3.json",
+    "natural25_control": "PYTHONPATH=$PWD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_Q6_ROOT_SOURCE=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/natural25-control-b1-b3.json",
+    "profile_candidate": "rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv -d /tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/profile-native-root-source-b3-marked -o mtp-b3 -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --no-warmup --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-hipcc-version.txt --require-cached-build --output /tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/profile-native-root-source-b3-marked/suite.json"
+  },
+  "source_artifacts": {
+    "natural_control": {"path": "/tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/natural25-control-b1-b3.json", "sha256": "d145f13331ed9014d029ac2ae56c67dda710932b1812ebf33b7cb3255453e705"},
+    "natural_candidate": {"path": "/tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/natural25-root-source-b1-b3.json", "sha256": "4c73c33f448bebdf1871ce0e98a656fb229a56bba7db5c35c425f201f4b102be"},
+    "local32_col2_w7900": {"path": "/tmp/qwen36-root-q6-production-local32-col2-final-w7900.json", "sha256": "ae498e2b80bc0c0c727d2fe795a479b4f8c5c242b2718d727ce7e8ffb8f4e2fd"},
+    "source_col4_w7900": {"path": "/tmp/qwen36-root-q6-source-col4-dedicated-w7900.json", "sha256": "bb2b2b74de4d6ce4bd37efe9985e6e3b1239bd0a8be4ed3094c217e2b6399ba4"},
+    "source_col4_rx7900xtx": {"path": "/tmp/qwen36-root-q6-source-col4-dedicated-gpu1.json", "sha256": "df218acce410a0c6f799b0b49a5f790f5ec9610470d90e80a420e915fd774fa7"},
+    "source_wavepack_w7900": {"path": "/tmp/qwen36-root-q6-source-wavepack-w7900.json", "sha256": "a18e5445202ac64ce3e2a73a4b0e58f3fd3aac629b1721c04fbb707a32b833dd"},
+    "source_wavepack_rx7900xtx": {"path": "/tmp/qwen36-root-q6-source-wavepack-gpu1.json", "sha256": "9bae55c0d3e2785ac9783c65609904fbbf4d364504854405127c7bfa166d35d1"},
+    "old_tree_local64_col4": {"path": "/tmp/qwen36-root-q6-exact-local64-col4-w7900.json", "sha256": "cbf0c97ee007c7f09ce9f0a2299f9275121e7c21175a670fbb9b4787ed29dc4c"},
+    "control_profile_suite": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/profile-native-v-qmicro-b3-marked/suite.json", "sha256": "7519225aa89086c2456d289fa6203059a0cb0b7ff37bc1897d1aa38234cfdf32"},
+    "control_profile_trace": {"path": "/tmp/hipengine-qwen36-27b/final-v-qmicro-uncommitted/profile-native-v-qmicro-b3-marked/mtp-b3_kernel_trace.csv", "sha256": "98bc0c5bc40889f3a8b5f05cbc2773bc87e6144b32bfab4404f3351a94c8bf85"},
+    "candidate_profile_suite": {"path": "/tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/profile-native-root-source-b3-marked/suite.json", "sha256": "25f5545193498e95c5bec6b54cbe519d475bcc5f9ff0826e2b9623c973e2bb4e"},
+    "candidate_profile_trace": {"path": "/tmp/hipengine-qwen36-27b/final-root-source-local32-col2-uncommitted/profile-native-root-source-b3-marked/mtp-b3_kernel_trace.csv", "sha256": "46b07f95da7c4a83b004c3c30d062be3a1b75fa8891bd124dec54de74c15cb6a"},
+    "kernel_trace_smoke": {"path": "/tmp/hipengine-qwen36-root-source-final-trace/epyc/11516_kernel_trace.csv", "sha256": "65a9e50239aaf11e8e472f7a34f738eb1bc2e6acf55fa8157304e0e3e0f9418a"}
+  }
+}
