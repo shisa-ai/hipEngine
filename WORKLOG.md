@@ -203684,3 +203684,20 @@ bundle: **23 passed, 2 skipped**; the continuous file itself passes **3/3** with
 all six generated token streams exact to EOS. Focused Ruff, compilation, and
 diff checks pass. Performance/P50/P95 and B=2/4/8 lockstep comparisons follow
 as a separate evidence commit.
+
+## 2026-08-08 — Moonshine continuous benchmark harness
+
+Added `scripts/benchmark_moonshine_cuda_continuous.py` plus focused summary
+coverage. The harness cycles 48 logical requests across all six real fixture
+cross caches, includes row admission in synchronized scheduler wall time, and
+compares FIFO refill/reclaim against static lockstep at B=2/4/8. It retains ten
+raw wall/throughput samples and every per-request latency per route, P50/P95,
+workspace, graph-LRU and scheduler counters, complete source/dependency
+identity, exact-to-EOS outputs, and teardown parity.
+
+A dirty-tree 12-request / two-sample diagnostic verifies the protocol:
+continuous vs lockstep is **1.014x at B=2** and **1.054x at B=4**, while request
+P95 improves **1.071x/1.095x**; outputs remain exact. These are smoke values,
+not retained performance claims. Focused helper/runtime tests, Ruff,
+compilation, and diff checks pass. Commit the harness, then run the frozen
+48-request / 2-warmup / 10-sample publication on exclusive GPU0.
