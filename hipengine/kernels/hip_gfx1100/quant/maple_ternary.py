@@ -103,6 +103,49 @@ def maple_ternary_gemm_bf16(
     )
 
 
+def maple_ternary_qkv_gemm_bf16(
+    x_ptr: int,
+    q_weight_ptr: int,
+    q_alpha_ptr: int,
+    k_weight_ptr: int,
+    k_alpha_ptr: int,
+    v_weight_ptr: int,
+    v_alpha_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    kv_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Batched QKV ternary GEMM: [rows, q+2kv] qkv buffer (P1 prefill)."""
+
+    _launch(
+        "hipengine_maple_ternary_qkv_gemm_bf16",
+        (_PTR,) * 8 + (_I64, _I64, _I64, _I64, _PTR),
+        (
+            x_ptr,
+            q_weight_ptr,
+            q_alpha_ptr,
+            k_weight_ptr,
+            k_alpha_ptr,
+            v_weight_ptr,
+            v_alpha_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            q_features,
+            kv_features,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_ternary_qkv_gemv_bf16(
     x_ptr: int,
     q_weight_ptr: int,
@@ -272,6 +315,7 @@ def register_maple_ternary_kernels(
         ("maple_ternary_gemv", "row_alpha"): maple_ternary_gemv_bf16,
         ("maple_ternary_gemm", "row_alpha"): maple_ternary_gemm_bf16,
         ("maple_ternary_qkv", "fused_split_weights"): maple_ternary_qkv_gemv_bf16,
+        ("maple_ternary_qkv", "fused_split_weights_gemm"): maple_ternary_qkv_gemm_bf16,
         (
             "maple_selected_ternary_dual",
             "row_alpha",
@@ -316,6 +360,7 @@ __all__ = [
     "maple_selected_ternary_gemv_bf16",
     "maple_ternary_gemm_bf16",
     "maple_ternary_gemv_bf16",
+    "maple_ternary_qkv_gemm_bf16",
     "maple_ternary_qkv_gemv_bf16",
     "plan_maple_ternary_build",
     "register_maple_ternary_kernels",

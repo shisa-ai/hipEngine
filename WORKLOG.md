@@ -203092,3 +203092,22 @@ Vulkan local sizes verbatim will close the measured gap.
   the padded `q_size+2*kv_size` decode-style layout (which shifts row 1+ reads
   into kv-padding). The test assertion also needed `out.reshape(-1)` because
   `np.array_equal` is shape-strict and `out` is `[T, q_heads*head_dim]`.
+
+## 2026-08-07 — M4/P1: batched QKV ternary GEMM primitive
+
+- Add `maple_ternary_qkv_gemm_kernel` (P1): computes the full
+  `[rows, q_features + 2*kv_features]` qkv buffer from the q/k/v ternary
+  projections of a `[rows, in]` input. Grid is (total_output_rows x 8-token
+  tiles); each block owns one output row (selecting q/k/v weight+alpha and the
+  matching `[q|k|v]` column offset) and loads that weight row into LDS once,
+  reusing it across the 8-token tile — same weight-reuse structure as
+  `maple_ternary_gemm_bf16`.
+- Wrapper `maple_ternary_qkv_gemm_bf16` + registry key
+  `("maple_ternary_qkv", "fused_split_weights_gemm")`.
+- Correctness: new
+  `test_maple_ternary_qkv_gemm_batched_matches_oracle` is bit-exact vs 3x CPU
+  `ternary_gemv` per row (13 rows spanning two 8-token tiles). 6/6 ternary
+  kernel tests pass; ruff clean.
+- This is a P1 primitive for the bulk prefill path (batched QKV projection);
+  the full `prefill_native` (batched qknorm+KV append, batched router, grouped
+  MoE, chunked wiring) is still to be built, so M4/M5 stay open.
