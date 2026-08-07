@@ -132,6 +132,7 @@ class MoonshineCudaBatchRuntime:
         device: Device | None = None,
         runtime: CudaRuntime | None = None,
         owns_weights: bool = True,
+        lm_head_route: str = "fused",
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -154,6 +155,13 @@ class MoonshineCudaBatchRuntime:
         self.encoder_state_valid = False
         self.decode_position: int | None = None
         self._device_owned_decode = False
+        # LM-head route (C6/RR-8): "fused" (exact, default) or "wave8" (fused
+        # wave8 + stable top-1 batch variant, FP32-reassociation-level deltas).
+        self.lm_head_route = lm_head_route
+        if lm_head_route not in ("fused", "wave8"):
+            raise ValueError(
+                f"lm_head_route must be 'fused' or 'wave8', got {lm_head_route!r}"
+            )
         self.decoder_libraries: MoonshineCudaDecoderLibraries | None = None
         self._token_graphs: dict[str, MoonshineCudaBatchTokenGraph] = {}
         self.closed = False
@@ -782,6 +790,7 @@ class MoonshineCudaBatchRuntime:
         )
         from hipengine.kernels.cuda_sm120a.linear.lm_head import (
             moonshine_lm_head_argmax_batch_fp16,
+            moonshine_lm_head_argmax_wave8_batch_fp16,
         )
         from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
             moonshine_f16_projection,
@@ -1012,7 +1021,7 @@ class MoonshineCudaBatchRuntime:
         )
         if boundary_callback is not None:
             boundary_callback("final_hidden", normalized)
-        moonshine_lm_head_argmax_batch_fp16(
+        lm_head_args = (
             normalized.ptr,
             self.weights[spec.lm_head_alias_name].ptr,
             self.tensor("lm_head_values").ptr,
@@ -1022,10 +1031,18 @@ class MoonshineCudaBatchRuntime:
             spec.hidden_size,
             spec.vocab_size,
             batch,
-            rows_per_block=_LM_HEAD_ROWS_PER_BLOCK,
-            library=libraries.lm_head,
-            **common,
         )
+        if self.lm_head_route == "wave8":
+            moonshine_lm_head_argmax_wave8_batch_fp16(
+                *lm_head_args, library=libraries.lm_head, **common
+            )
+        else:
+            moonshine_lm_head_argmax_batch_fp16(
+                *lm_head_args,
+                rows_per_block=_LM_HEAD_ROWS_PER_BLOCK,
+                library=libraries.lm_head,
+                **common,
+            )
         if self._device_owned_decode:
             from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
                 moonshine_advance_position_batch_fp16,

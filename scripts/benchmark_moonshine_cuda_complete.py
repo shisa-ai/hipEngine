@@ -198,6 +198,7 @@ class Route:
         encoder_graph: bool = False,
         bucket_frames: str | None = None,
         attention_route: str = "custom",
+        lm_head_route: str = "fused",
     ) -> None:
         self.mode = mode
         self.fixture = fixture
@@ -236,6 +237,11 @@ class Route:
         if attention_route not in ("custom", "cutlass"):
             raise ValueError(f"attention_route must be 'custom' or 'cutlass'")
         self.attention_route = attention_route
+        # C6/RR-8 LM-head route: "fused" (exact C1f stage, default) or
+        # "wave8" (fused wave8 + stable top-1 candidate, review §7.3).
+        if lm_head_route not in ("fused", "wave8"):
+            raise ValueError(f"lm_head_route must be 'fused' or 'wave8'")
+        self.lm_head_route = lm_head_route
         self.enc = None
         self.dec = None
         self.torch_encoder = None
@@ -269,6 +275,7 @@ class Route:
             encoder_frames=self.encoder_capacity,
             loaded_model=loaded,
             owns_weights=False,
+            lm_head_route=self.lm_head_route,
         )
         t0 = time.perf_counter()
         self.dec.prepare_decoder_kernels()
@@ -663,6 +670,13 @@ def main() -> int:
         help="encoder self-attention route: 'custom' (default, unchanged deployment)"
         " or 'cutlass' (opt-in torch-free AOT CUTLASS/CuTe .so, review §8.3 item 3)",
     )
+    parser.add_argument(
+        "--lm-head-route",
+        choices=("fused", "wave8"),
+        default="fused",
+        help="decoder LM-head route: 'fused' (exact C1f stage, default) or 'wave8'"
+        " (opt-in fused wave8 + stable top-1 candidate, review §7.3/RR-8)",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -719,6 +733,7 @@ def main() -> int:
             "device_owned": bool(args.device_owned),
             "encoder_graph": bool(args.encoder_graph),
             "attention_route": args.attention_route,
+            "lm_head_route": args.lm_head_route,
             "bucket_capacity": args.bucket,
             "preprocessing_timed": False,
             "initial_h2d_timed": False,
@@ -763,6 +778,7 @@ def main() -> int:
                 encoder_graph=args.encoder_graph,
                 bucket_frames=args.bucket,
                 attention_route=args.attention_route,
+                lm_head_route=args.lm_head_route,
             )
             try:
                 prepare = route.prepare()

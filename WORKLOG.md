@@ -203454,3 +203454,43 @@ compact artifact (exclusive 38 snapshots, five routes, custom route faster than
 compiled baseline and smallest footprint, EOS exactness, partial note); docs
 lint/`make check` pass. HipEngine: the new split test plus the full CUDA +
 moonshine bundle re-validated. No commit or push was performed.
+
+## 2026-08-06 — C6/RR-8: fused wave8 LM-head + stable top-1 (opt-in route)
+
+### Goal
+Close the review's remaining LM-head optimization (§7.3, RR-8): fuse the
+C6-screened wave8 projection with the stable lowest-index top-1 so a single
+bounded pass replaces the exact fused stage, opt-in via `--lm-head-route
+wave8` (default stays the byte-exact C1f fused stage).
+
+### Kernel + integration
+- `hipengine/kernels/cuda_sm120a/linear/lm_head.{cu,py}`:
+  `moonshine_lm_head_argmax_wave8_fp16` (single row) and `..._batch_fp16`
+  (batch). Each 256-thread block is 8 warps, one vocab column per warp
+  (`ceil(vocab/8)` blocks), using the C6-screened wave8 arithmetic
+  (lane-stride 32 FP32 accumulation + warp butterfly, no cross-warp serial
+  sum) with the same stable tie break and bounded partial scratch; no logit
+  plane. Registered `fused_argmax_wave8` / `fused_argmax_wave8_batch`.
+- `MoonshineCudaResidentRuntime(lm_head_route=...)` (token step) and
+  `MoonshineCudaBatchRuntime` select the wave8 stage; C5 driver
+  `--lm-head-route fused|wave8`; tests
+  `tests/test_moonshine_cuda_sm120a_lm_head.py` +10 wave8 unit tests.
+
+### Gate (docs repo `scripts/gate_cuda_lm_head_wave8.py`, exclusive GPU0,
+### six retained fixtures; hipEngine head `6255dc9cc` + this change)
+- Complete-ASR parity: fused vs wave8 complete token streams **identical**
+  for all six fixtures, both exact-to-EOS and both matching the retained
+  reference; full-route median-of-medians 3.901 (fused) vs 3.803 ms (wave8),
+  1.026x (P95 3.908 vs 3.805 ms).
+- Leaf (per-position): 36/36 retained decode positions token-exact (0 flips),
+  top-1 logit delta 0.0, min margin 0.117 (no near-tie); isolated per-token
+  29.3 (exact fused) vs 11.2 us (wave8), 2.6x (~18 us/token) matching the C3
+  Amdahl LM-head headroom.
+- Regression: full sm120a suite 145 passed / 2 fixture-gated skips / 0 failed
+  with the wave8 route present.
+
+Not promoted to the default (exact fused fallback retained per the bounded-
+fusion admission rule). Artifacts in the docs repo:
+`results/moonshine-cuda-lm-head-wave8-{complete,leaf}-v1.json`; recorded in
+`docs/OPTIMIZATION-CUDA.md` C6.1 and the docs-repo `IMPLEMENTATION.md`. No
+remote push.
