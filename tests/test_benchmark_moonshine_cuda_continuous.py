@@ -6,6 +6,7 @@ from scripts.benchmark_moonshine_cuda_continuous import (
     WorkloadResult,
     _gpu_processes,
     parse_batches,
+    staggered_arrival_steps,
     timing_summary,
 )
 
@@ -41,6 +42,15 @@ def test_continuous_benchmark_exclusivity_filters_selected_gpu(monkeypatch) -> N
         lambda *_args, **_kwargs: next(outputs),
     )
     assert _gpu_processes(0) == []
+
+
+def test_continuous_benchmark_staggered_arrival_schedule() -> None:
+    assert staggered_arrival_steps(8, 4, 2) == (0, 0, 0, 0, 1, 3, 5, 7)
+    assert staggered_arrival_steps(2, 2, 1) == (0, 0)
+    with pytest.raises(ValueError, match="interval_steps"):
+        staggered_arrival_steps(2, 1, 0)
+    with pytest.raises(ValueError, match="inconsistent"):
+        staggered_arrival_steps(2, 3, 1)
 
 
 def test_continuous_benchmark_batch_parser_rejects_invalid_values() -> None:

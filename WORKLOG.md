@@ -203731,3 +203731,25 @@ scheduler output identical to reference through EOS. A dirty 12-request timing
 smoke is honest about the extra exactness cost: vs lockstep, B2/B4 are
 **0.885x/0.932x**, while B8 is **1.274x** (two samples, diagnostic). The frozen
 48-request clean benchmark and full exact FLEURS rerun follow after commit.
+
+## 2026-08-08 — Continuous corrected-quality and mixed-arrival benchmark
+
+The docs-side 266-case rerun found that the apparent uniform-t256 quality
+regression came from a three-frame FLEURS mask undercount outside hipEngine.
+With the full installed mask, both uniform t256 and exact two-region routes
+match exact custom CUDA on all 266 normalized transcripts (1,062 / 12,821
+errors, zero changed transcripts) and repeat exactly to EOS. The benchmark now
+selects either qualified topology explicitly; uniform is the default performance
+candidate and exact two-region remains the strict arithmetic fallback.
+
+Added a second measured arrival profile. In addition to all-at-start FIFO
+refill, each sample starts B requests and submits one new request every two live
+scheduler steps while prior requests are decoding. This deterministic
+step-staggered profile has no artificial sleep, retains raw wall and per-request
+latency samples, and directly exercises live admission rather than inferring it
+from an initially full pending queue. Pure arrival-schedule tests cover bounds
+and exact tick placement. Dirty one-sample B=2 GPU smokes pass exact output and
+lifecycle for both routes: uniform refill/staggered/lockstep
+`586.4/741.4/630.5 req/s`; exact two-region `485.9/644.1/636.1 req/s`.
+These are diagnostics only. Clean exclusive B=2/4/8 publication for both
+qualified topologies follows this source commit.

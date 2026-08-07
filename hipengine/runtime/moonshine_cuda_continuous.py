@@ -133,6 +133,7 @@ class MoonshineCudaContinuousBatchRuntime:
             raise ValueError("eos_token_id is outside the Moonshine vocabulary")
         self.decoder = decoder
         self.owns_decoder = bool(owns_decoder)
+        self.max_batch = decoder.max_batch
         self.max_pending = max_pending
         self.max_graphs = max_graphs
         self.eos_token_id = eos_token_id
