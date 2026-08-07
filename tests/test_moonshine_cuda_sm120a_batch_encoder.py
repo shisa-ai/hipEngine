@@ -583,3 +583,282 @@ def test_moonshine_cuda_batch_encoder_handoff_contract() -> None:
             benc.close()
     finally:
         loaded.weights.free(runtime=runtime)
+
+
+# ---------------------------------------------------------------------------
+# C8 continuation: cuBLASLt long-bucket GEMM route (re-derived gate)
+# ---------------------------------------------------------------------------
+#
+# ``projection_route="cublaslt"`` replaces the exact custom row-projection
+# kernels with cuBLASLt fp16/FP32 GEMMs when ``rows = B * frames >=
+# long_bucket_gemm_rows`` (default 768); below the threshold the exact custom
+# kernels are kept (bit-exact), and the 40-frame bucket therefore always stays
+# custom.  cuBLASLt diverges from the custom kernels at the FP32-reassociation
+# (ULP) level, so the C6 exact single-route fixture token gate cannot be
+# reused; the re-derived gate here asserts (a) the long-bucket encoder output
+# stays finite with a bounded max-abs / relative-L2 divergence, (b) the
+# below-threshold route is byte-exact (fallback preserved), and (c) on the
+# retained real-audio fixture corpus at rows >= 768 the full-route greedy
+# transcripts remain token-identical (the empirical quality gate, opt-in).
+
+_LT_BUCKET_SAMPLES = 480_000  # 30 s @ 16 kHz -> the certified 1,248-frame bucket
+
+
+def _lt_speech_audio(batch: int, samples: int, seed: int = 20260808) -> np.ndarray:
+    """Deterministic speech-like low-frequency modulated noise (finite FP16)."""
+    t = np.arange(samples) / 16000.0
+    carrier = np.sin(2 * np.pi * 120 * t) * 0.5
+    mod = 0.5 + 0.5 * np.sin(2 * np.pi * 2.0 * t)
+    noise = np.random.default_rng(seed).standard_normal(samples) * 0.05
+    audio = (carrier * mod + noise).astype(np.float16)
+    return np.repeat(audio[None, :], batch, axis=0)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_lt_arithmetic_gate_long_bucket() -> None:
+    """Re-derived gate: long-bucket cuBLASLt output stays ULP-bounded vs custom.
+
+    At B=1 on the 1,248-frame bucket (rows = 1248 >= 768 the cuBLASLt route
+    is armed) the encoder output must be finite and within the measured
+    FP32-reassociation envelope: max-abs FP16 diff <= 2^-3 (the C6 screen's
+    observed bound) and relative L2 <= 5e-3.  This is the deterministic
+    numerical gate that replaces the unusable exact single-route token gate.
+    """
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    audio = _lt_speech_audio(1, _LT_BUCKET_SAMPLES)
+    mask = np.ones((1, _LT_BUCKET_SAMPLES), dtype=np.int64)
+    try:
+        outputs = {}
+        for route in ("custom", "cublaslt"):
+            benc = MoonshineCudaBatchEncoderRuntime(
+                max_batch=1,
+                audio_samples=_LT_BUCKET_SAMPLES,
+                loaded_model=loaded,
+                owns_weights=False,
+                projection_route=route,
+            )
+            benc.prepare_encoder_kernels()
+            try:
+                benc.encode(audio, mask)
+                outputs[route] = _tensor_to_host(runtime, benc.encoder_output())
+            finally:
+                benc.close()
+        custom = outputs["custom"].astype(np.float32)
+        lt = outputs["cublaslt"].astype(np.float32)
+        assert np.isfinite(lt).all()
+        assert np.isfinite(custom).all()
+        diff = custom - lt
+        max_abs = float(np.max(np.abs(diff)))
+        rel_l2 = float(np.linalg.norm(diff) / np.linalg.norm(custom))
+        assert max_abs <= 2**-3, f"max-abs FP16 diff {max_abs} exceeds 2^-3"
+        assert rel_l2 <= 5e-3, f"relative L2 {rel_l2} exceeds 5e-3"
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_lt_threshold_fallback_bit_exact() -> None:
+    """Below the long-bucket threshold the cuBLASLt route stays byte-exact.
+
+    At B=1 on the 40-frame bucket (rows = 40 < 768) ``projection_route=
+    "cublaslt"`` must fall back to the exact custom kernels, so the encoder
+    output is byte-identical to the custom route -- preserving the short-
+    bucket production route and the C8 phase-2 bit-exact contract.
+    """
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    audio = np.random.default_rng(7).standard_normal((1, _AUDIO_SAMPLES)).astype(np.float16)
+    mask = np.ones((1, _AUDIO_SAMPLES), dtype=np.int64)
+    try:
+        outputs = {}
+        for route in ("custom", "cublaslt"):
+            benc = MoonshineCudaBatchEncoderRuntime(
+                max_batch=1,
+                audio_samples=_AUDIO_SAMPLES,
+                loaded_model=loaded,
+                owns_weights=False,
+                projection_route=route,
+            )
+            benc.prepare_encoder_kernels()
+            try:
+                benc.encode(audio, mask)
+                outputs[route] = _tensor_to_host(runtime, benc.encoder_output())
+            finally:
+                benc.close()
+        assert np.array_equal(outputs["custom"], outputs["cublaslt"]), (
+            "below-threshold cuBLASLt route must be byte-exact to custom"
+        )
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_lt_route_validation() -> None:
+    """The cuBLASLt route and threshold validate their inputs."""
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    try:
+        with pytest.raises(ValueError, match="projection_route"):
+            MoonshineCudaBatchEncoderRuntime(
+                max_batch=1, audio_samples=_AUDIO_SAMPLES, loaded_model=loaded,
+                owns_weights=False, projection_route="bogus",
+            )
+        with pytest.raises(ValueError, match="long_bucket_gemm_rows"):
+            MoonshineCudaBatchEncoderRuntime(
+                max_batch=1, audio_samples=_AUDIO_SAMPLES, loaded_model=loaded,
+                owns_weights=False, long_bucket_gemm_rows=0,
+            )
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+# Opt-in empirical quality gate: the retained real-audio corpus at rows >= 768
+# stays token-identical to the custom route.  Requires the production fixture
+# directory and the explicit opt-in env var (it runs full routes to EOS and is
+# intentionally slower).
+_FIXTURE_DIR = os.environ.get(
+    "HIPENGINE_MOONSHINE_FIXTURES_SIX",
+    "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six",
+)
+_LT_FIXTURES = [
+    "audio-hai-fp16",
+    "audio-konichiwa-fp16",
+    "audio-konichiwa.ogenkidesuka-fp16",
+    "audio-kumbawa-fp16",
+    "audio-sosososo-fp16",
+    "audio-sumimasen-fp16",
+    "synthetic-1s-seed1234-fp16",
+]
+_EOS_ID = 2
+_LT_MAX_STEPS = 194
+
+
+def _fixture_gate_requested() -> bool:
+    return os.environ.get("HIPENGINE_RUN_CUDA_LT_FIXTURE_GATE") == "1"
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled()
+    or not _snapshot_available()
+    or not _fixture_gate_requested()
+    or not os.path.isdir(_FIXTURE_DIR),
+    reason="CUDA sm_120a gate, opt-in env, or fixture directory unavailable",
+)
+def test_moonshine_cuda_batch_encoder_lt_fixture_token_gate() -> None:
+    """Re-derived quality gate: token-identical full routes on the retained corpus.
+
+    For each retained fixture the batch is sized so rows = B * frames >= 768
+    (the cuBLASLt route is armed); every row repeats the same fixture
+    (homogeneous B).  The full-route greedy transcripts (batch encoder ->
+    on-device handoff -> batch decode to EOS) must be token-identical between
+    the custom and cuBLASLt routes.  This is the empirical quality gate that
+    the C6 screen could not promise at the leaf level but that the composed
+    batch route achieves on the retained corpus.
+    """
+    import json
+
+    from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+
+    def frames_for(samples: int) -> int:
+        length = (samples - 127) // 64 + 1
+        length = (length - 7) // 3 + 1
+        return (length - 3) // 2 + 1
+
+    def run_route(fixture: str, batch: int, frames: int, route: str) -> list[int]:
+        path = os.path.join(_FIXTURE_DIR, f"{fixture}.npz")
+        with np.load(path) as data:
+            audio = np.repeat(data["input.values"], batch, axis=0).astype(np.float16)
+            mask = np.repeat(data["input.attention_mask"], batch, axis=0)
+        benc = MoonshineCudaBatchEncoderRuntime(
+            max_batch=batch,
+            audio_samples=audio.shape[1],
+            loaded_model=loaded,
+            owns_weights=False,
+            projection_route=route,
+        )
+        benc.prepare_encoder_kernels()
+        bdec = MoonshineCudaBatchRuntime(
+            max_batch=batch,
+            encoder_frames=frames,
+            loaded_model=loaded,
+            owns_weights=False,
+        )
+        bdec.prepare_decoder_kernels()
+        try:
+            benc.encode(audio, mask)
+            benc.handoff_to(bdec)
+            transcripts: list[int] = []
+            toks = np.zeros(batch, dtype=np.int64)
+            done = np.zeros(batch, dtype=bool)
+            for _position in range(_LT_MAX_STEPS):
+                bdec.set_batch_decode_state(
+                    tokens=toks.tolist(), position=bdec.self_cache_length
+                )
+                bdec.batch_token_step()
+                toks = bdec.read_tokens()
+                for row in range(batch):
+                    if not done[row]:
+                        transcripts.append(int(toks[row]))
+                        if int(toks[row]) == _EOS_ID:
+                            done[row] = True
+                if bool(done.all()):
+                    break
+            return transcripts
+        finally:
+            bdec.close()
+            benc.close()
+
+    try:
+        for fixture in _LT_FIXTURES:
+            with np.load(os.path.join(_FIXTURE_DIR, f"{fixture}.npz")) as data:
+                samples = int(data["input.values"].shape[1])
+            frames = frames_for(samples)
+            batch = max(1, (768 + frames - 1) // frames)
+            custom = run_route(fixture, batch, frames, "custom")
+            lt = run_route(fixture, batch, frames, "cublaslt")
+            assert custom == lt, (
+                f"{fixture} at B={batch} (rows={batch * frames}): "
+                f"cuBLASLt transcript diverged at position "
+                f"{next((i for i, (a, b) in enumerate(zip(custom, lt)) if a != b), len(custom))}"
+            )
+    finally:
+        loaded.weights.free(runtime=runtime)
