@@ -30,6 +30,8 @@ from hipengine.loading.moonshine import load_moonshine_model
 from hipengine.runtime.moonshine_cuda import MoonshineCudaResidentRuntime
 from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
 
+from c8_report_common import build_report, percentile
+
 _FIXTURE_DIR = os.environ.get(
     "HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR",
     "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six",
@@ -176,6 +178,12 @@ def _pct(sorted_vals: list[float], pct: float) -> float:
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--json-out", default=None, help="write RR-6 report JSON")
+    args = parser.parse_args()
+
     runtime = get_cuda_runtime()
     runtime.set_device(0)
     loaded = load_moonshine_model(_SNAPSHOT, device=Device("cuda", 0), runtime=runtime)
@@ -188,6 +196,7 @@ def main() -> None:
     print(f"shared encoder bucket: {shared_frames} frames")
     print(f"{'B':>3} {'mode':<10} {'ms/route':>9} {'req/s':>8} {'P50(ms)':>8} "
           f"{'P95(ms)':>8} {'vs c1-seq':>9}")
+    results: dict[str, object] = {}
     try:
         for batch in (1, 2, 4, 8):
             names = [_SIX_FIXTURES[i % len(_SIX_FIXTURES)] for i in range(batch)]
@@ -223,13 +232,24 @@ def main() -> None:
                     times = _route_batch(decoder, seeds, graph=graph, warmup=_WARMUP, routes=_ROUTES)
                     sorted_times = sorted(times)
                     median = statistics.median(times)
-                    p50 = _pct(sorted_times, 50) * 1000.0
-                    p95 = _pct(sorted_times, 95) * 1000.0
+                    p50 = percentile(sorted_times, 50) * 1000.0
+                    p95 = percentile(sorted_times, 95) * 1000.0
                     req_s = batch / median
                     speedup = req_s / c1_req_s
                     mode = "graph" if graph else "eager"
                     print(f"{batch:>3} {mode:<10} {median*1000:>9.3f} {req_s:>8.1f} "
                           f"{p50:>8.3f} {p95:>8.3f} {speedup:>9.2f}x")
+                    # RR-6: retain raw per-route wall samples and actual P50/P95.
+                    results.setdefault(str(batch), {})[mode] = {
+                        "c1_seq_total_s": float(c1_seq_total),
+                        "batch_median_ms": float(median),
+                        "batch_req_per_s": float(req_s),
+                        "vs_c1_seq_req_per_s": float(speedup),
+                        "route_wall_s_raw": [float(value) for value in times],
+                        "p50_ms": float(p50),
+                        "p95_ms": float(p95),
+                        "sample_count": len(times),
+                    }
                 # graph-to-eager correctness: transcripts must match
                 decoder.reset_generation(clear_cross_cache=False)
                 decoder.set_batch_device_owned_decode(False)
@@ -263,12 +283,56 @@ def main() -> None:
                 assert eager_trans == graph_trans, (
                     f"B={batch} graph vs eager transcripts diverged"
                 )
+                results.setdefault(str(batch), {})["graph_eager_transcripts_match"] = True
                 contract = decoder.batch_token_graph_contract()
                 assert contract["captured"] is True
             finally:
                 decoder.close()
     finally:
         loaded.weights.free(runtime=runtime)
+
+    # RR-6: complete retained report with raw samples, P50/P95, full source
+    # manifest hashes, clean git revision, and dependency-adjusted bytes.
+    report = build_report(
+        artifact="moonshine_cuda_c8_batch_throughput",
+        scope={
+            "target": "static_batch_decoder_throughput",
+            "gpu_index": 0,
+            "exclusive_gpu": True,
+            "fixtures": list(_SIX_FIXTURES),
+            "shared_encoder_bucket_frames": shared_frames,
+        },
+        environment={
+            "torch": _torch_version(),
+            "platform": __import__("platform").platform(),
+        },
+        results=results,
+        correctness={"graph_eager_transcripts_match": True},
+        method={
+            "benchmark": "scripts/benchmark_c8_batch_throughput.py",
+            "runtime": "MoonshineCudaBatchRuntime",
+            "baseline": "B independent warm eager c=1 resident sessions decoded sequentially",
+            "warmup_routes": _WARMUP,
+            "timed_routes": _ROUTES,
+        },
+        dependency_route="custom_cuda_runtime_subset",
+    )
+    if args.json_out:
+        import pathlib
+
+        pathlib.Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.json_out, "w") as handle:
+            json.dump(report, handle, indent=2)
+        print(f"wrote {args.json_out}")
+
+
+def _torch_version() -> str:
+    try:
+        import torch
+
+        return torch.__version__
+    except Exception:
+        return "n/a"
 
 
 if __name__ == "__main__":
