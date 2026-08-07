@@ -194,6 +194,99 @@ __global__ void maple_router_softmax_topk_kernel(
   }
 }
 
+// Batched router (P3 prefill): same two-kernel design as the c1 parallel router,
+// but with a row dimension over T prompt rows.  logits_out is [T, num_experts];
+// selected_experts / selected_weights are [T, top_k].
+__global__ void maple_router_logits_batched_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    float* __restrict__ logits_out,
+    int64_t hidden_size,
+    int64_t num_experts) {
+  const int e = static_cast<int>(blockIdx.x);
+  const int64_t row = blockIdx.y;
+  const int t = static_cast<int>(threadIdx.x);
+  float acc = 0.0f;
+  const uint16_t* xrow = x + row * hidden_size;
+  const uint16_t* wrow = weight + static_cast<int64_t>(e) * hidden_size;
+  for (int64_t i = t; i < hidden_size; i += blockDim.x) {
+    acc += bf16_to_float(xrow[i]) * bf16_to_float(wrow[i]);
+  }
+  __shared__ float red[256];
+  red[t] = acc;
+  __syncthreads();
+  for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+    if (t < s) red[t] += red[t + s];
+    __syncthreads();
+  }
+  if (t == 0 && e < num_experts) logits_out[row * num_experts + e] = red[0];
+}
+
+__global__ void maple_router_softmax_topk_batched_kernel(
+    const float* __restrict__ logits_in,
+    int32_t* __restrict__ selected_experts,
+    float* __restrict__ selected_weights,
+    int64_t num_experts,
+    int64_t top_k) {
+  const int64_t row = blockIdx.x;
+  const int t = static_cast<int>(threadIdx.x);
+  __shared__ float logits[256];
+  __shared__ float probs[256];
+  __shared__ float red[256];
+  __shared__ uint8_t sel_mask[256];
+
+  const float* lrow = logits_in + row * num_experts;
+  const float logit = (t < num_experts) ? lrow[t] : -INFINITY;
+  logits[t] = logit;
+  red[t] = logit;
+  sel_mask[t] = 0;
+  __syncthreads();
+  for (int s = 128; s > 0; s >>= 1) {
+    if (t < s) red[t] = fmaxf(red[t], red[t + s]);
+    __syncthreads();
+  }
+  const float max_logit = red[0];
+  const float ex = (t < num_experts) ? expf(logits[t] - max_logit) : 0.0f;
+  probs[t] = ex;
+  red[t] = ex;
+  __syncthreads();
+  for (int s = 128; s > 0; s >>= 1) {
+    if (t < s) red[t] += red[t + s];
+    __syncthreads();
+  }
+  const float inv_sum = 1.0f / red[0];
+  if (t < num_experts) probs[t] *= inv_sum;
+  __syncthreads();
+
+  if (t < num_experts) {
+    const float my = probs[t];
+    int rank = 0;
+    for (int e2 = 0; e2 < num_experts; ++e2) {
+      const float p2 = probs[e2];
+      if (p2 > my || (p2 == my && e2 < t)) ++rank;
+    }
+    if (rank < top_k) {
+      selected_experts[row * top_k + rank] = t;
+      sel_mask[t] = 1;
+    }
+  }
+  __syncthreads();
+
+  float sum = 0.0f;
+  for (int e2 = 0; e2 < num_experts; ++e2) {
+    if (sel_mask[e2]) sum += probs[e2];
+  }
+  if (t < num_experts && sel_mask[t]) {
+    const float my = probs[t];
+    int rank = 0;
+    for (int e2 = 0; e2 < num_experts; ++e2) {
+      const float p2 = probs[e2];
+      if (p2 > my || (p2 == my && e2 < t)) ++rank;
+    }
+    selected_weights[row * top_k + rank] = probs[t] / (sum + 1.0e-20f);
+  }
+}
+
 __global__ void maple_clamped_swiglu_kernel(
     const uint16_t* __restrict__ gate,
     const uint16_t* __restrict__ up,
@@ -289,6 +382,47 @@ extern "C" int hipengine_maple_router_topk_parallel_bf16(
   hipLaunchKernelGGL(
       maple_router_softmax_topk_kernel,
       dim3(1),
+      dim3(256),
+      0,
+      stream,
+      logits_scratch,
+      selected_experts,
+      selected_weights,
+      num_experts,
+      top_k);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_router_topk_parallel_batched_bf16(
+    const uint16_t* x,
+    const uint16_t* weight,
+    int32_t* selected_experts,
+    float* selected_weights,
+    float* logits_scratch,
+    int64_t rows,
+    int64_t hidden_size,
+    int64_t num_experts,
+    int64_t top_k,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || num_experts <= 0 || num_experts > 256
+      || top_k <= 0 || top_k > 16 || top_k > num_experts) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      maple_router_logits_batched_kernel,
+      dim3(static_cast<unsigned int>(num_experts),
+           static_cast<unsigned int>(rows)),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight,
+      logits_scratch,
+      hidden_size,
+      num_experts);
+  hipLaunchKernelGGL(
+      maple_router_softmax_topk_batched_kernel,
+      dim3(static_cast<unsigned int>(rows)),
       dim3(256),
       0,
       stream,

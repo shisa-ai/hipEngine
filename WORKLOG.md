@@ -203148,3 +203148,19 @@ Vulkan local sizes verbatim will close the measured gap.
   QKV GEMM -> batched qknorm ring write -> ring prefill attention -> o_proj
   GEMM. The MoE half (batched router + grouped MoE) and the prefill_native
   wiring remain.
+
+## 2026-08-07 — M5/P3: batched router over T rows primitive
+
+- Add `maple_router_logits_batched_kernel` (grid (num_experts, T)) +
+  `maple_router_softmax_topk_batched_kernel` (grid T): the two-kernel parallel
+  router extended with a row dimension. logits_out is [T, num_experts];
+  selected_experts / selected_weights are [T, top_k]. Same softmax/top-k
+  rank-count logic per row as the c1 parallel router.
+- Wrapper `maple_router_topk_parallel_batched_bf16` + registry key
+  `("maple_router_topk", "bf16_fp32_parallel_grid_batched")`.
+- Correctness: new
+  `test_maple_router_topk_parallel_batched_matches_ids_and_renorm` — IDs exact
+  vs the `router_topk` oracle across 5 rows, weights allclose, each row sums ~1.
+  6/6 moe + 20/20 maple kernel tests pass.
+- MoE-half prefill chain now has the router; grouped MoE over rows (P3) and the
+  prefill_native wiring remain.
