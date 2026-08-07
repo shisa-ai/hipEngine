@@ -203030,3 +203030,28 @@ Vulkan local sizes verbatim will close the measured gap.
 - Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-hipgraph-c1.json`.
 - Next (higher leverage than c1 hipGraph): M3c selected-expert grouping (~12%),
   then M4/M5 batched prefill.
+
+## 2026-08-07 — M3c: grouped selected-expert dual gemv explored, rejected (dead end)
+
+- Hypothesis: `maple_selected_ternary_dual_gemv_bf16` (gate/up, grid =
+  top_k × out_features = 4096 blocks, wg 128) re-reads the 2048-wide hidden x
+  per (route,row) block; a grouped variant loading x into LDS once and looping
+  all top_k experts per output-row block should cut x global traffic.
+- Implemented `maple_selected_ternary_dual_gemv_bf16_grouped` (grid =
+  out_features blocks, x in LDS, per-route tree reduce). Bit-exact vs eager on
+  synthetic real-shape data (gate and up maxdiff 0.0, all finite).
+- Measured (num_experts=256, top_k=8, in=2048, out=512): eager 0.041 ms vs
+  grouped 0.059 ms (**0.69×, no win**). x is only 4 KB and already L2-cached, so
+  the redundant reads were NOT the bottleneck; the eager 4096-block shape
+  parallelizes the 40-CU machine better than the serialized per-block route
+  loop. Reverted (uncommitted). Do not re-port grouped GEMV for c1 selected
+  experts.
+- Updated decode profile to post-M3a state: wall 6,038 µs, kernel 5,492 µs,
+  host gap 545 µs (90.1% kernel), 295 launches. Top kernels now: affine4 lm_head
+  1,236 µs (22.5%), selected dual 848 µs (15.4%), selected down 745 µs (13.6%),
+  router softmax_topk 722 µs (13.2%), router logits 382 µs (7.0%), attention
+  563 µs (10.2%).
+- Conclusion: lm_head and selected-expert are weight-bandwidth bound on c1 —
+  per-GEMV shaping (tiled/grouped) does not help. The lever is weight reuse
+  across a batch: M4/M5 batched prefill and M6 batch decode. Router kernel B
+  (softmax/topk, 722 µs) is the one remaining c1 kernel-shape target.
