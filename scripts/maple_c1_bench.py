@@ -3,7 +3,7 @@
 
 The router comparison uses selector-unset production versus the exact
 ``HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0`` rollback. The affine4 comparison
-uses the default-off exact wave32 candidate versus the production group64 head.
+uses selector-unset exact wave32 production versus the group64 ``=0`` rollback.
 Two resident runners
 start from byte-identical native-prefill state, advance in lockstep, and
 alternate execution order. The artifact records exact token/top-logit parity,
@@ -148,9 +148,9 @@ def _set_comparison_mode(mode: str, comparison: str) -> None:
     if comparison == "affine4_wave32":
         os.environ.pop(ROUTER_SELECTOR, None)
         if mode == "candidate":
-            os.environ[AFFINE4_SELECTOR] = "1"
-        else:
             os.environ.pop(AFFINE4_SELECTOR, None)
+        else:
+            os.environ[AFFINE4_SELECTOR] = "0"
         return
     raise ValueError(f"unsupported comparison {comparison!r}")
 
@@ -674,7 +674,7 @@ def main() -> int:
             "The candidate uses the selector-unset production router; the control uses the exact two-dispatch rollback."
         ),
         "affine4_wave32": (
-            "The candidate uses the exact wave32 affine4 head; the control uses the production 128-thread group64 head."
+            "The candidate uses the selector-unset exact wave32 affine4 head; the control uses the exact group64 rollback."
         ),
     }
     artifact = {
@@ -717,7 +717,7 @@ def main() -> int:
                     else "unset both"
                 ),
                 AFFINE4_SELECTOR: (
-                    "1 candidate; unset control"
+                    "unset candidate; 0 control"
                     if args.comparison == "affine4_wave32"
                     else "unset both"
                 ),

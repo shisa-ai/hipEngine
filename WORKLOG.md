@@ -207482,3 +207482,37 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   candidate gates pass **3/3**; Python compile, `--help`, diff, narrow lineage,
   exact full-logit screen, complete dirty state gate, and named cached trace
   pass. Commit default-off before clean 32-step/two-repeat qualification.
+
+## 2026-08-08 — Retain/promote Maple D0 exact wave32 affine4 head
+
+- Run the binding clean qualification from implementation commit `ab80552b5`
+  with `GPU_MAX_HW_QUEUES=1`, gfx1151, cached-only JIT, the complete 18-prompt
+  natural+category-heldout suite, two simultaneous resident runners, two
+  repetitions, 4 warmup steps, and 32 measured continuation steps. The retained
+  one-dispatch router is selector-unset in both arms; only the head differs.
+- The exact wave32 candidate improves group64 **143.679 -> 153.409 tok/s
+  (+6.772%)**; mean/median wall is **6.519/6.493 ms** versus **6.960/6.934
+  ms**, paired mean/median saving is **0.441/0.442 ms**, and the candidate wins
+  **1,146/1,152** timed pairs. Every category wins: code/general-English/
+  general-Japanese/mixed-Japanese-English are **156.313/159.655/151.115/
+  145.854 tok/s** versus **146.314/149.129/141.716/136.876 tok/s**. Call order
+  is exactly balanced **648/648** including warmups.
+- The binding gate is exact: **18/18** prompts, **36/36** native-prefill and
+  final state pairs, **1,296/1,296** token/top-logit positions, and
+  **2,592/2,592** zero-counter checks. Two-runner tracked residency is
+  **10,672,716,372 bytes** and close returns **0 bytes / 0 allocations**.
+- Promote selector-unset c1 and native-prefill final-row sampling to
+  `group64_wave32_exact`; preserve
+  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` and the registered original group64
+  primitive as the exact rollback. Update the reusable A/B harness so future
+  head comparisons mean selector-unset production versus `=0` rollback.
+- Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json`
+  (compact SHA-256
+  `d51ba6b4cec5892fefe5d202df0894e140bf50ef864524f961bc3b1702765a59`).
+  The artifact records clean source `ab80552b5`, the exact command, full
+  hardware/compiler provenance, per-repetition hashes and timing summaries,
+  aggregate/category timing, and lifecycle. Update MAPLE overview/performance/
+  kernel/refactor docs plus benchmark rollup/changelog. A clean selector-unset
+  fixed-token profile remains the final D0 closure step; do not promote the
+  dirty **199.659 tok/s** diagnostic as the clean 200+ row.

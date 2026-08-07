@@ -16,17 +16,17 @@ should be removed or collapsed.
 
 ## Maple D0 exact wave32 affine4 c1 head
 
-- Added 2026-08-08 as default-off
-  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=1`. One wave emulates all four
-  production virtual waves and the exact 128-thread reduction tree, eliminating
-  LDS/barriers without changing FP32 logit bits. The first real
-  151,936x2,048 leaf screen is **1.527 -> 1.020 ms (1.496x, 48/48 wins)**; the
-  dirty 18-prompt c1 screen is exact and improves **148.409 -> 158.903 tok/s
-  (+7.07%, 287/288 wins)**.
-- Keep the selector only through clean category qualification and final roadmap
-  audit. Promote the wave32 route and retain the registered group64 kernel as
-  the numerical rollback if the clean gate passes; otherwise remove the
-  candidate kernel, registry key, runtime branch, selector, and RED fixture.
+- Added and promoted 2026-08-08. One wave emulates all four production virtual
+  waves and the exact 128-thread reduction tree, eliminating LDS/barriers
+  without changing FP32 logit bits. The real 151,936x2,048 leaf improves
+  **1.527 -> 1.020 ms (1.496x, 48/48 wins)**. Clean 18-prompt qualification
+  improves the exact group64 rollback **143.679 -> 153.409 tok/s (+6.77%)**
+  with **1,146/1,152** wins; all **1,296/1,296** positions, **36/36**
+  start/final states, **2,592/2,592** counter checks, and lifecycle are exact.
+- Keep `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` as the group64 rollback through
+  the clean selector-unset profile and final Maple roadmap audit, then remove
+  the environment seam. Preserve the registered group64 kernel as the required
+  numerical fallback.
 
 ## Maple D0 one-dispatch c1 router
 

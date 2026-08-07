@@ -180,11 +180,11 @@ def test_maple_router_single_dispatch_is_default_with_parallel_rollback(
     assert maple_runtime._maple_router_single_dispatch() is False
 
 
-def test_maple_affine4_wave32_candidate_is_default_off(monkeypatch) -> None:
+def test_maple_affine4_wave32_is_default_with_group64_rollback(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", raising=False)
-    assert maple_runtime._maple_affine4_wave32_exact() is False
-    monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "1")
     assert maple_runtime._maple_affine4_wave32_exact() is True
+    monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "0")
+    assert maple_runtime._maple_affine4_wave32_exact() is False
 
 
 @pytest.mark.parametrize("wave32", [False, True])
@@ -192,9 +192,9 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) ->
     from hipengine.core.memory import DeviceBuffer
 
     if wave32:
-        monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "1")
-    else:
         monkeypatch.delenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT", "0")
 
     def buffer(ptr: int, nbytes: int = 4_096) -> DeviceBuffer:
         return DeviceBuffer(ptr=ptr, nbytes=nbytes)
