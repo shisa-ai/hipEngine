@@ -196,6 +196,7 @@ class Route:
         async_chain: bool = False,
         device_owned: bool = False,
         encoder_graph: bool = False,
+        decode_batch: int = 0,
         bucket_frames: str | None = None,
         attention_route: str = "custom",
         lm_head_route: str = "fused",
@@ -231,6 +232,18 @@ class Route:
         self.async_chain = bool(async_chain)
         self.device_owned = bool(device_owned)
         self.encoder_graph = bool(encoder_graph)
+        # RR-8 device-owned EOS/result: when > 0, decode runs the captured token
+        # graphs ``decode_batch`` steps back-to-back with no per-token D2H and
+        # reads only the tiny device EOS status per batch (requires
+        # ``device_owned``; a batched decode publishes every token to the device
+        # result buffer, so the recovered stream equals the per-step path).
+        if isinstance(decode_batch, bool) or not isinstance(decode_batch, int):
+            raise ValueError("decode_batch must be a non-negative integer")
+        if decode_batch < 0:
+            raise ValueError("decode_batch must be a non-negative integer")
+        self.decode_batch = decode_batch
+        if decode_batch > 0 and not device_owned:
+            raise ValueError("--decode-batch requires --device-owned")
         # Opt-in torch-free AOT CUTLASS/CuTe encoder self-attention route
         # (review §8.3 item 3/4); the default keeps the custom kernel so the
         # deployment path never changes.
@@ -248,6 +261,9 @@ class Route:
         self._device_buffers = []
         self._enc_chain_graph = 0
         self._enc_chain_exec = None
+        # RR-8: torch-encoder producer handoff event (replaces the global
+        # ``torch.cuda.synchronize()`` producer sync with a stream-event wait).
+        self._producer_event = None
 
     # -- preparation ---------------------------------------------------------
 
@@ -446,6 +462,14 @@ class Route:
         if self.mode == "standalone":
             self.enc.handoff_to(dec, synchronize=synchronize)
         elif self.mode == "torch-encoder":
+            # RR-8: wait the decoder stream on the torch producer event before
+            # the D2D handoff copies the hidden/mask on its own stream (no
+            # global device sync); the decoder D2D is ordered after the torch
+            # encoder work, not after the whole device.
+            if self._producer_event is not None:
+                self.cuda_runtime.stream_wait_event(
+                    self.dec.stream, self._producer_event
+                )
             dec.set_encoder_state_from_device(
                 hidden_fp16_ptr=self._torch_hidden_ptr,
                 attention_mask_int32_ptr=self._torch_mask_ptr,
@@ -489,9 +513,14 @@ class Route:
             hidden = self.torch_encoder(
                 input_values=self._torch_input, attention_mask=self._torch_mask
             ).last_hidden_state
-        # The producer (torch) stream must finish before the decoder's D2D
-        # handoff copies the hidden/mask on its own stream.
-        torch.cuda.synchronize()
+        # The producer (torch) stream is handed off to the decoder via an event
+        # (recorded on torch's current stream after the forward); the decoder
+        # D2D handoff waits on it, so no global device sync is needed (RR-8).
+        if self._producer_event is None:
+            self._producer_event = self.cuda_runtime.event_create()
+        self.cuda_runtime.event_record(
+            self._producer_event, torch.cuda.current_stream().cuda_stream
+        )
         self._torch_hidden_ptr = hidden.data_ptr()
         # RR-1: hand the downsampled int32 encoder mask (not the audio mask).
         self._torch_mask_ptr = self._torch_enc_mask.data_ptr()
@@ -519,6 +548,14 @@ class Route:
             # position and the fused LM head writes each next token into the
             # same device token buffer (no per-step H2D re-upload).
             dec.set_decode_seed(token_id=fixture.reference[0])
+            if self.decode_batch > 0:
+                # RR-8 device-owned EOS/result: launch several token graphs
+                # back-to-back with no per-token D2H, read the tiny device EOS
+                # status once per batch, and recover the full token stream from
+                # the device result buffer.  The stream equals the per-step
+                # readback path (the graph tail publishes every token).
+                tokens = self._decode_device_batched(dec)
+                return tokens, len(tokens)
             tokens: list[int] = []
             for _ in range(_MAX_POSITIONS):
                 dec.graph_token_step()
@@ -539,6 +576,19 @@ class Route:
             if token_id == _EOS_TOKEN or position >= _MAX_POSITIONS:
                 break
         return tokens, position
+
+    def _decode_device_batched(self, dec) -> list[int]:
+        """RR-8 batched device-owned decode to EOS (one sync per batch)."""
+
+        batch = self.decode_batch
+        steps = 0
+        for start in range(0, _MAX_POSITIONS, batch):
+            count = min(batch, _MAX_POSITIONS - start)
+            dec.graph_token_step_batch(count)
+            steps += count
+            if dec.read_eos_flag():
+                return dec.read_result_tokens()
+        return dec.read_result_tokens()
 
     def timed_run(self) -> tuple[float, list[int], int]:
         """Time one complete route (stream-synchronized host wall) to EOS."""
@@ -612,6 +662,9 @@ class Route:
             self.enc.close()
         if self.dec is not None:
             self.dec.close()
+        if self._producer_event is not None:
+            self.cuda_runtime.event_destroy(self._producer_event)
+            self._producer_event = None
         for buffer in self._device_buffers:
             free(buffer, runtime=self.cuda_runtime)
         self._device_buffers.clear()
@@ -654,6 +707,7 @@ def main() -> int:
     parser.add_argument("--packed", action="store_true", help="load the deployable FP16 artifact (scripts/pack_moonshine_fp16.py)")
     parser.add_argument("--async-chain", action="store_true", help="enqueue encoder->handoff->cross-KV on the decoder stream without terminal syncs (C5/§7.3 async chain)")
     parser.add_argument("--device-owned", action="store_true", help="device-owned token/position decode state (graph-tail position advance, C5/§7.3)")
+    parser.add_argument("--decode-batch", type=int, default=0, help="RR-8 device-owned EOS/result: run N token graphs back-to-back with no per-token D2H, reading only the device EOS status per batch (requires --device-owned; 0 = per-step readback)")
     parser.add_argument("--encoder-graph", action="store_true", help="capture encoder+handoff+cross-KV as one fixed-address graph per bucket (standalone only, C5/§7.3)")
     parser.add_argument(
         "--bucket",
@@ -731,6 +785,8 @@ def main() -> int:
             "mode": args.mode,
             "async_chain": bool(args.async_chain),
             "device_owned": bool(args.device_owned),
+            "encode_batch": 0,
+            "decode_batch": args.decode_batch,
             "encoder_graph": bool(args.encoder_graph),
             "attention_route": args.attention_route,
             "lm_head_route": args.lm_head_route,
@@ -776,6 +832,7 @@ def main() -> int:
                 async_chain=args.async_chain,
                 device_owned=args.device_owned,
                 encoder_graph=args.encoder_graph,
+                decode_batch=args.decode_batch,
                 bucket_frames=args.bucket,
                 attention_route=args.attention_route,
                 lm_head_route=args.lm_head_route,

@@ -97,6 +97,7 @@ def test_moonshine_cuda_glue_wrappers_keep_raw_pointer_abis() -> None:
         moonshine_embedding_lookup_fp16,
         moonshine_partial_rope_cache_append_fp16,
         moonshine_partial_rope_fp16,
+        moonshine_publish_result_fp16,
         moonshine_residual_fp16,
         moonshine_self_cache_append_fp16,
     )
@@ -116,6 +117,7 @@ def test_moonshine_cuda_glue_wrappers_keep_raw_pointer_abis() -> None:
         hipengine_cuda_sm120a_moonshine_partial_rope_fp16 = FakeKernel()
         hipengine_cuda_sm120a_moonshine_self_cache_append_fp16 = FakeKernel()
         hipengine_cuda_sm120a_moonshine_partial_rope_cache_append_fp16 = FakeKernel()
+        hipengine_cuda_sm120a_moonshine_publish_result_fp16 = FakeKernel()
 
     library = FakeLibrary()
     common = {"threads": 256, "stream": 7, "library": library, "runtime": object()}
@@ -126,6 +128,10 @@ def test_moonshine_cuda_glue_wrappers_keep_raw_pointer_abis() -> None:
     moonshine_self_cache_append_fp16(1, 2, 3, 4, 5, 8, 52, 194, **common)
     moonshine_partial_rope_cache_append_fp16(
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 8, 52, 32, 194, 194, **common
+    )
+    publish_common = {"stream": 7, "library": library, "runtime": object()}
+    moonshine_publish_result_fp16(
+        1, 2, 3, 4, 194, 2, **publish_common
     )
     assert library.hipengine_cuda_sm120a_moonshine_argmax_fp16.calls == [
         (1, 2, 36_864, 256, 7)
@@ -146,6 +152,9 @@ def test_moonshine_cuda_glue_wrappers_keep_raw_pointer_abis() -> None:
         library.hipengine_cuda_sm120a_moonshine_partial_rope_cache_append_fp16.calls
         == [(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 8, 52, 32, 194, 194, 256, 7)]
     )
+    assert library.hipengine_cuda_sm120a_moonshine_publish_result_fp16.calls == [
+        (1, 2, 3, 4, 194, 2, 7)
+    ]
 
 
 def test_moonshine_cuda_glue_rejects_invalid_shapes_before_build() -> None:
@@ -234,6 +243,82 @@ def test_moonshine_cuda_embedding_residual_and_argmax_match_cpu() -> None:
     np.testing.assert_array_equal(actual_hidden, embedding[token])
     np.testing.assert_array_equal(actual_sum, expected_residual)
     np.testing.assert_array_equal(actual_argmax, expected_argmax.reshape(1))
+
+
+@pytest.mark.skipif(not _cuda_sm120a_enabled(), reason="CUDA sm_120a gate is not enabled")
+def test_moonshine_cuda_publish_result_contract() -> None:
+    """RR-8: publish-result appends the token, sets sticky EOS, advances pos.
+
+    Runs the graph-tail publish kernel three times over a small capacity and
+    checks that each token lands at its position, the EOS flag is sticky once
+    the EOS token is seen, and the position scalar advances (bounded by
+    capacity) exactly as the device-owned decode expects.
+    """
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
+        build_moonshine_glue,
+        moonshine_publish_result_fp16,
+    )
+
+    capacity, eos_token = 8, 2
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library = build_moonshine_glue(load=True)
+    allocations = []
+    try:
+        device_token = _upload(np.asarray([5], dtype=np.int64), runtime, allocations)
+        device_position = _upload(np.asarray([0], dtype=np.int64), runtime, allocations)
+        device_result = _empty((capacity,), np.int64, runtime, allocations)
+        device_eos = _upload(np.asarray([0], dtype=np.int64), runtime, allocations)
+        moonshine_publish_result_fp16(
+            device_token.ptr,
+            device_position.ptr,
+            device_result.ptr,
+            device_eos.ptr,
+            capacity,
+            eos_token,
+            library=library,
+            runtime=runtime,
+        )
+        # Second step publishes the EOS token -> sticky flag + advance.
+        _upload_into(np.asarray([2], dtype=np.int64), device_token, runtime)
+        moonshine_publish_result_fp16(
+            device_token.ptr,
+            device_position.ptr,
+            device_result.ptr,
+            device_eos.ptr,
+            capacity,
+            eos_token,
+            library=library,
+            runtime=runtime,
+        )
+        # Third step publishes a non-EOS token; the EOS flag must stay set.
+        _upload_into(np.asarray([9], dtype=np.int64), device_token, runtime)
+        moonshine_publish_result_fp16(
+            device_token.ptr,
+            device_position.ptr,
+            device_result.ptr,
+            device_eos.ptr,
+            capacity,
+            eos_token,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        result = _download(device_result, (capacity,), np.int64, runtime)
+        eos = _download(device_eos, (1,), np.int64, runtime)
+        position = _download(device_position, (1,), np.int64, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    assert result[0] == 5
+    assert result[1] == 2
+    assert result[2] == 9
+    assert np.all(result[3:] == 0)
+    assert int(eos[0]) == 1
+    assert int(position[0]) == 3
 
 
 @pytest.mark.parametrize("position", [0, 1, 63, 193])
@@ -387,6 +472,11 @@ def _upload(array: np.ndarray, runtime, allocations):
     allocations.append(device)
     copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
     return device
+
+
+def _upload_into(array: np.ndarray, device, runtime) -> None:
+    host = np.ascontiguousarray(array)
+    copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
 
 
 def _empty(shape: tuple[int, ...], dtype, runtime, allocations):

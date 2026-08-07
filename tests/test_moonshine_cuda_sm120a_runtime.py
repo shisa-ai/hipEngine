@@ -2105,6 +2105,72 @@ def test_cuda_resident_runtime_device_owned_decode_exact_token_stream_on_fixture
 
 
 @pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _fixtures_available(),
+    reason="CUDA sm_120a gate or model-derived fixtures are not available",
+)
+def test_cuda_resident_runtime_device_owned_batched_decode_exact_stream_on_fixtures() -> None:
+    """RR-8: batched device-owned readback reproduces the exact token stream.
+
+    The graph tail publishes each token to the device result buffer and sets a
+    sticky EOS flag, so the host launches several token steps back-to-back with
+    no per-token D2H, reads only the tiny EOS status per batch, and recovers
+    the full token stream from the result buffer.  The recovered stream must be
+    identical to the per-step readback path (the existing exact device-owned
+    gate) and to the retained reference (reference[0] is the seeded BOS).
+    """
+
+    from hipengine.core.cuda import get_cuda_runtime
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    batch = 8
+    for fixture_name in _FIXTURES:
+        with open(os.path.join(_FIXTURE_DIR, f"{fixture_name}.json")) as handle:
+            manifest = json.load(handle)
+        frames = int(manifest["input"]["encoder_frames"])
+        reference = [int(token) for token in manifest["decoder"]["token_ids"]]
+        with np.load(os.path.join(_FIXTURE_DIR, f"{fixture_name}.npz")) as fixture:
+            keys = [fixture[f"cross.layer_{layer}.key"] for layer in range(8)]
+            values = [fixture[f"cross.layer_{layer}.value"] for layer in range(8)]
+            mask = fixture["encoder.attention_mask"]
+
+        resident = MoonshineCudaResidentRuntime(
+            model_path=_SNAPSHOT,
+            encoder_frames=frames,
+        )
+        resident.prepare_decoder_kernels()
+        resident.load_cross_cache(keys, values, mask=mask)
+        resident.set_device_owned_decode(True)
+        captures = resident.capture_token_graphs()
+        assert len(captures) == 2
+        try:
+            resident.set_decode_seed(token_id=reference[0])
+            max_positions = resident.spec.self_cache_capacity
+            steps = 0
+            eos_seen = False
+            for start in range(0, max_positions, batch):
+                count = min(batch, max_positions - start)
+                resident.graph_token_step_batch(count)
+                steps += count
+                if resident.read_eos_flag():
+                    eos_seen = True
+                    break
+            result = resident.read_result_tokens()
+            assert eos_seen, f"{fixture_name}: device EOS flag was never published"
+            assert result[-1] == resident.spec.eos_token_ids[0], (
+                f"{fixture_name}: result does not end in EOS"
+            )
+            expected = reference[1 : 1 + len(result)]
+            assert result == expected, (
+                f"{fixture_name}: batched result {result} != reference {expected}"
+            )
+            contract = resident.token_graph_contract()
+            assert contract["replay_count"] == steps
+        finally:
+            resident.close()
+
+
+@pytest.mark.skipif(
     not _cuda_sm120a_enabled() or not _six_fixtures_available(),
     reason="CUDA sm_120a gate or six audio fixtures are not available",
 )
