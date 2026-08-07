@@ -12,24 +12,27 @@ exact with KL 0. Max-context-512 tracked residency remains **4.988 GiB**
 (**5,355,881,848 bytes**), and close returns zero ownership. Evidence:
 [`P2/M5`](results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json).
 
-**Maple D0 exact c1 router and head retained/default:** the one-dispatch router
+**Maple D0 exact c1 path retained/default:** the one-dispatch router
 first improves its exact rollback **139.538 -> 145.321 tok/s (+4.14%)**. With
 that route fixed, the exact wave32 affine4 head then improves group64
 **143.679 -> 153.409 tok/s (+6.77%)**, saves **0.442 ms** at the paired median,
 and wins **1,146/1,152** pairs on the complete natural+heldout suite. All
 **1,296/1,296** token/top-logit positions, **36/36** native-start/final state
-pairs, **2,592/2,592** counter checks, and tracked teardown are exact. The clean
-selector-unset short profile improves the pre-head diagnostic **180.935 ->
-199.772 tok/s (+10.41%)** at **5.006-ms wall / 4.581-ms kernels / 0.425-ms host
-gap / 271 launches**; it remains below exact 200 by 0.228 tok/s. Evidence:
+pairs, **2,592/2,592** counter checks, and tracked teardown are exact. A final
+behavior-neutral host cleanup snapshots two invariant fusion selectors once per
+step, improving fresh-process fixed-token A/B **200.279 -> 202.580 tok/s
+(+1.15%, 0.076-ms paired median, 3/4 wins)**; all four candidate processes are
+above 201 tok/s. The separate cached trace process is **199.293 tok/s / 5.018-ms
+wall / 4.550-ms kernels / 0.468-ms host gap / 271 launches**, so 200 remains
+protocol-sensitive. Evidence:
 [`D0 router`](results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
 [`D0 head`](results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
-and [`D0 wave32 profile`](results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json).
+and [`D0 selector snapshot`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json).
 
 | Maple retained workload | Current throughput | Exactness / scope | Artifact |
 | --- | ---: | --- | --- |
 | Public native prefill 128/320/512 | **749.175/741.368/754.000 tok/s** | 18/18 states, 90/90 positions, KL 0 | [`P2/M5`](results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json) |
-| c1 natural+heldout continuation | **153.409 tok/s** | 18 prompts, 1,152 paired timing samples; full-head exact | [`D0 head`](results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json) |
+| c1 natural+heldout continuation | **153.201 tok/s** | 18 prompts, 1,152 paired timing samples; full-head exact; -0.14% vs prior | [`D0 current`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json) |
 | Fixed-helper c2/c4/c8 decode64 | **218.818/261.099/299.181 aggregate tok/s** | helper only; not public server throughput | [`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json) |
 
 The fixed-capacity M6 runtime helper remains c=2/4/8 median aggregate
@@ -55,9 +58,9 @@ measures **439.479 ms / 728.135 tok/s** and attention **21.916 ms (2.920x,
 8/16/32 screen is closed at **744.116/731.182/571.923 tok/s** with tile 16/32
 at **0/16** paired wins. Direct native BF16 WMMA also fails the exact gate at
 **106/256 FP32 K16 partials** and **43/655,360 BF16 production-shape outputs**;
-production stays tile 8. D0's exact router and wave32 affine4 head are retained;
-the clean selector-unset short profile closes D0 at 199.772 tok/s, and c2/c4/c8
-affine4 row reuse is next. Evidence:
+production stays tile 8. D0's exact router, wave32 affine4 head, and once-per-
+step selector snapshot are retained; fixed-token A/B reaches 202.580 tok/s and
+c2/c4/c8 affine4 row reuse is next. Evidence:
 [`P3 rejected`](results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json).
 A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)

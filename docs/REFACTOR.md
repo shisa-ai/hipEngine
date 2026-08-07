@@ -3266,3 +3266,9 @@ should be boring.
   blocks writes the same K/V) plus the folded 88 us qknorm work offset the single
   launch saved. Remove the flag + fused branch once the fused kernel's efficiency
   gap is eliminated (e.g. leader-only K/V write + cooperative grid sync).
+- D0 now snapshots both fusion flags once at the `MapleRunner.step()` boundary,
+  rather than rereading them in all 24 layers. The retained fresh-process A/B
+  is **200.279 -> 202.580 tok/s (+1.15%)** with no kernel/launch change.
+  Environment changes remain supported between calls, not during an in-flight
+  token. Remove the two snapshots with the corresponding branches when these
+  flags are retired.

@@ -18,8 +18,10 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Quantity | Value | Source |
 | --- | ---: | --- |
 | Public native prefill 128/320/512 | 749.175 / 741.368 / 754.000 tok/s | retained P2/M5 recertification |
-| Current c1 short profile | 199.772 tok/s (5.006 ms/token) | clean selector-unset wave32 trace |
-| Qualified c1 natural-context A/B | 143.679 -> 153.409 tok/s (+6.77%) | retained D0 wave32-head qualification |
+| Current c1 fixed-token A/B candidate | 202.580 tok/s (4.936-ms process mean) | four-process alternating selector-snapshot gate |
+| Current c1 trace companion | 199.293 tok/s (5.018 ms/token) | separate clean cached trace; 4.550-ms kernels |
+| Current c1 natural-context | 153.201 tok/s | repeated complete category/state gate; -0.14% vs prior 153.409 |
+| Qualified wave32-head A/B | 143.679 -> 153.409 tok/s (+6.77%) | retained D0 head qualification |
 | Prior pre-head c1 short profile | 180.935 tok/s (5.527 ms/token) | post-router cached trace |
 | Fixed-helper c8 decode64 | 299.181 aggregate tok/s median | M6 recertification |
 | HIP kernels per c1 decode token | 271 | post-D0 cached trace |
@@ -33,20 +35,21 @@ MoE adds 3.68-5.83%, and exact GQA4 adds another 3.13-15.87%. The clean
 retained-P0/P1/P2 traces remain immutable phase baselines. Exact dense tile 16
 and 32 regress tile 8 on every paired sample. D0's exact one-dispatch router and
 one-wave affine4 head both pass the complete clean category gate and are now
-default. The clean short profile reaches 199.772 tok/s; D0 is closed and the c8
-row remains the corrected helper baseline:
+default. A final behavior-neutral selector snapshot improves fixed-token A/B
+**200.279 -> 202.580 tok/s (+1.15%)**; D0 is closed and the c8 row remains the
+corrected helper baseline:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | public native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **7.813 ms (1.78%)** | **730** | **728.135 tok/s** |
-| autoregressive c1 decode, post-D0 wave32 head | **5.006 ms/token** | **4.581 ms** | **0.425 ms (8.48%)** | **271** | **199.772 tok/s** |
+| autoregressive c1 decode, post-D0 selector snapshot (trace process) | **5.018 ms/token** | **4.550 ms** | **0.468 ms (9.32%)** | **271** | **199.293 tok/s** |
 | fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
 
 After P2, the exact affine4 head owns only **0.31%** of prefill320 kernel time,
 while grouped gate/up + down owns **59.08%**. Attention is down to **21.916 ms /
 5.08%**; dense QKV+O is the next bounded owner at **124.770 ms / 28.90%**. The
-post-D0 c1 profile attributes **21.43%** to the head, **24.89%** to selected
-experts, and **23.88%** to router compute; the corrected c8 baseline attributes
+post-D0 c1 trace attributes **21.28%** to the head, **24.97%** to selected
+experts, and **24.04%** to router compute; the corrected c8 baseline attributes
 **46.52%/29.67%** to head/selected experts. The paths therefore have different
 actions:
 
@@ -61,10 +64,13 @@ actions:
   retained/default. The head improves its group64 rollback **143.679 ->
   153.409 tok/s (+6.77%)** on the clean complete suite. A controlled 3+3-process
   review measures graph at only **1.0047x** (+0.47%, 0.033 ms), so graph stays
-  opt-in. The clean selector-unset profile is **5.006-ms wall / 4.581-ms
-  kernels / 0.425-ms host gap / 271 launches = 199.772 tok/s**. Its kernel-only
-  roof is **218.286 tok/s**; the measured wall remains **5.7 us/token** above
-  exact 200, so no 200+ claim is made.
+  opt-in. Snapshotting the two invariant default-off fusion selectors once per
+  step removes 46 environment reads/token and improves a four-process
+  alternating fixed-token gate **200.279 -> 202.580 tok/s (+1.15%)**, with all
+  four candidate processes above 201 tok/s. A separate cached trace is
+  **5.018-ms wall / 4.550-ms kernels / 0.468-ms host gap / 271 launches =
+  199.293 tok/s**; therefore 200 is protocol/noise-sensitive, not a universal
+  floor.
 
 P1 now uses registered stable int32 count/prefix/scatter metadata and
 expert-major ternary consumers with direct original-lane output. The qualified
@@ -90,6 +96,7 @@ not a cross-device benchmark.
 Evidence:
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json`,
+`benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json`,
@@ -318,8 +325,8 @@ as required by `docs/PREFILL.md`.
 
 `maple_affine4_gemv_f32` spans 151,936 output rows (affine4, 2048 in) plus a
 two-stage FP32 argmax. The pre-head trace measured **1.278 ms / 26.30%** of c1
-kernels; selector-unset wave32 now measures **0.982 ms / 21.43%**. Argmax
-remains only 0.008 ms/token.
+kernels; the final selector-snapshot trace measures wave32 at **0.968 ms /
+21.28%**. Argmax remains only 0.008 ms/token.
 
 The retained/default `group64_wave32_exact` schedule computes the same four
 virtual 128-thread partial groups inside one wave and reconstructs the exact
@@ -330,12 +337,13 @@ the exact group64 rollback **143.679 -> 153.409 tok/s (+6.77%)**, saves **0.442
 ms** at the paired median, and wins **1,146/1,152** pairs. All **1,296/1,296**
 token/top-logit positions, **36/36** native-start/final states, **2,592/2,592**
 counter checks, and teardown are exact. Cached tracing names the wave32 kernel
-at local32/VGPR16/LDS0/scratch0 and **0.982 ms/step**. The clean selector-unset
-short profile improves the pre-head diagnostic **180.935 -> 199.772 tok/s
-(+10.41%)**, with **5.006-ms wall / 4.581-ms kernels / 0.425-ms host gap / 271
-launches**. It misses exact 200 by **0.228 tok/s / 5.7 us per token**, so no
-200+ claim is made. `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` preserves the
-group64 rollback.
+at local32/VGPR16/LDS0/scratch0 and **0.968 ms/step** in the final trace. The
+retained selector snapshot changes no kernel or launch and improves fresh-
+process fixed-token A/B **200.279 -> 202.580 tok/s (+1.15%)**, paired median
+saving **0.076 ms**, with **3/4** wins. The separate trace process measures
+**5.018-ms wall / 4.550-ms kernels / 0.468-ms host gap / 271 launches = 199.293
+tok/s**. `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` preserves the group64
+rollback.
 
 Exact work, in order:
 
@@ -516,7 +524,7 @@ dense/attention target.
 | M5/P0+P1+P2 | final-row + expert-major + exact GQA4 native prefill | exact through native 512-token limit; serial fallback above it; scalar ternary ceiling recorded | 749.175/741.368/754.000 tok/s; 18/18 byte-exact states and 90/90 positions |
 | P3 | dense ternary tile + native-BF16-WMMA sweep | tile 16/32 regress; WMMA fails byte exactness | 744.116/731.182/571.923 tok/s; WMMA 106/256 FP32 partial and 43/655,360 BF16 output mismatches; production unchanged |
 | D0 router | one-dispatch exact c1 routing | complete category/state/counter gate; default retained | 139.538 -> 145.321 tok/s (+4.14%); 1,127/1,152 wins; pre-head short profile 180.935 tok/s / 271 launches |
-| D0 head | one-wave exact affine4 c1/final-row head | complete category/state/counter gate; default retained | 143.679 -> 153.409 tok/s (+6.77%); 1,146/1,152 wins; clean short profile 199.772 tok/s / 271 launches |
+| D0 head+host | one-wave exact affine4 plus once-per-step selector snapshot | complete category/state/counter gate; default retained | Head: 143.679 -> 153.409 tok/s (+6.77%); host A/B: 200.279 -> 202.580 tok/s (+1.15%); trace companion 199.293 tok/s / 271 launches |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
 | M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |

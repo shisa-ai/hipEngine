@@ -207579,3 +207579,37 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   not publish a delta or replace the canonical profile. Commit the behavior-
   neutral host unit, then run a clean alternating baseline/candidate process
   gate plus the existing exact state/category protocol before retention.
+- Commit implementation at `ed89dc50a`, then compare clean baseline `56f1bd5d9`
+  and candidate in four alternating fresh-process pairs, each using marker token
+  9707, 4 warmups, and the median of 32 cached resident steps. Baseline process
+  medians are **4.915200/5.016156/4.992967/5.047849 ms**; candidate medians are
+  **4.927268/4.928431/4.917004/4.972563 ms**. Mean wall improves **4.993043 ->
+  4.936317 ms**, aggregate throughput **200.279 -> 202.580 tok/s (+1.149%)**,
+  paired median saving is **0.075624 ms**, and candidate wins **3/4** pairs. All
+  four candidate processes are independently above **201 tok/s**.
+- Run the unchanged complete category gate on clean candidate: **18/18** prompts,
+  **36/36** native-start/final state pairs, **1,296/1,296** token/top-logit
+  positions, **2,592/2,592** zero-counter checks, and lifecycle are exact. The
+  current natural-context candidate is **153.201 tok/s**, only **-0.136%** from
+  the prior 153.409 row and within the 1% non-regression gate; close returns
+  **0 bytes / 0 allocations** after **10,672,716,372 bytes** tracked residency.
+- A separate cached-only trace process keeps the same **271 launches** and names
+  the exact wave32 head at local32/VGPR16/SGPR128/LDS0/scratch0. It measures
+  **5.018-ms wall / 4.550-ms kernels / 0.468-ms host gap = 199.293 tok/s** and
+  head **0.968 ms**. Do not combine that process's wall/kernel values with the
+  A/B rate or claim 200 as a universal floor; the retained fact is a +1.15%
+  same-protocol host win with every A/B candidate process above 201.
+- Source SHA-256: A/B
+  `38e7ff2f8ef785e82efce5ed36f1f988daf7b223b1d467dadd17d16e0fc0c32a`,
+  full category
+  `569975aab3153580c49a6359ba12cc40fe9190909b3eca175644deb9ce122414`,
+  generated profile
+  `9d2d84350054eade1f28263798a6805ba1a33ab6d48c37d05f08d2fddcbce1b5`,
+  raw trace
+  `e14a452854596dc288273044cad78ff3c327a4e11a6e7ef52bc6fb9d90363d3a`.
+  Publish compact combined artifact
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json`
+  (SHA-256
+  `a32f2db9708eeddce989e33bef5b49a69dfa3b57f98b451e893707ff03b64a27`).
+  D0's exact fixed-token target is reached under the retained A/B protocol;
+  advance Task #92 to c2/c4/c8 affine4 row reuse.
