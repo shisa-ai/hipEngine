@@ -245,7 +245,8 @@ Primary evidence:
 
 Clean cached-only profiles freeze every retained phase: P0 is the immutable P1
 baseline, P1 is the immutable P2 baseline, and P2 remains the current prefill
-production row after P3's exact tile-16/32 screen regressed. The c1 and c8 rows
+production row after P3's exact tile-16/32 screen regressed and direct BF16
+WMMA failed byte exactness. The c1 and c8 rows
 remain the corrected decode baselines because P0-P3 do not alter those paths
 (later diagnostics remeasure them within ordinary run variance):
 
@@ -285,8 +286,8 @@ P1 does not meet the aggressive profile ceiling. The final diagnostic changes
 the expert family only **276.150 -> 254.179 ms (1.086x)**; stable metadata costs
 0.444 ms and exact 2-/4-lane schedules regress. The measured blocker is now the
 scalar ternary unpack/dot/reduction, especially dual gate/up. Reaching the
-original **<=97.708-ms** target requires a materially different matrix/SIMD
-consumer rather than more sorting or grouped-lane geometry.
+original **<=97.708-ms** target requires a materially different exact non-WMMA
+SIMD consumer rather than more sorting or grouped-lane geometry.
 
 ### P2 retained: exact wave32 GQA4 attention
 
@@ -303,9 +304,9 @@ exact and no additional persistent memory. Local128 remains the rollback.
 | Priority | Work | Measured rationale and gate |
 | ---: | --- | --- |
 | **P0 — DONE** | Sample only the final prompt row | Retained at 700.643/649.280/614.874 tok/s, 18/18 byte-exact state hashes, and 148.813 MiB lower residency. |
-| **P1 — DONE / SCALAR BLOCKER** | True expert-major compact MoE | Retained at 726.421/679.632/650.745 tok/s and byte-exact; expert family improves 1.086x but misses the 2.826x ceiling, selecting a future matrix/SIMD ternary consumer rather than more grouping geometry. |
+| **P1 — DONE / SCALAR BLOCKER** | True expert-major compact MoE | Retained at 726.421/679.632/650.745 tok/s and byte-exact; expert family improves 1.086x but misses the 2.826x ceiling, selecting a future exact non-WMMA SIMD ternary consumer rather than more grouping geometry. |
 | **P2 — DONE** | GQA/query-row prefill attention | Retained at 749.175/741.368/754.000 tok/s and byte-exact; attention falls **63.993 -> 21.916 ms (2.920x)** with no memory or launch increase. |
-| **P3 — DONE / REJECTED** | Retune dense ternary row tiles | Tile 8/16/32 are bit-exact, but a counterbalanced natural+heldout screen measures **744.116/731.182/571.923 tok/s**; tile 16/32 lose all 16 paired samples, so all candidate surfaces are removed and tile 8 remains production. |
+| **P3 — DONE / REJECTED** | Retune dense ternary row tiles and test native BF16 WMMA | Tile 8/16/32 are bit-exact, but a counterbalanced natural+heldout screen measures **744.116/731.182/571.923 tok/s** and tile 16/32 lose all 16 pairs. Direct WMMA then changes **106/256 FP32** K16 partials and **43/655,360 BF16** production-shape outputs. All candidate surfaces are removed; tile 8 remains production. |
 | **D0 — NEXT** | Exact c1 kernel work, not graph promotion | A controlled 3+3-process review measured current graph replay at only **1.0047x** (0.033 ms saved), exact and leak-free. The corrected kernel-only roof is 198.591 tok/s, so exact 200+ needs at least one kernel win: first test DeepGrove's one-dispatch router pattern and then affine4-head bandwidth/layout changes. |
 | **D1** | c2/c4/c8 affine4 row reuse | Unlike prefill, every active request needs a head result. Tile the exact affine4 head across request rows; keep c1 on its proven kernel. |
 
