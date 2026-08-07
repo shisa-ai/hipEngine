@@ -459,6 +459,70 @@ class Route:
             np.ascontiguousarray(self.fixture.encoder_mask, dtype=np.int32)
         ).to("cuda")
 
+    def bind_fixture(self, fixture: Fixture) -> dict[str, Any]:
+        """Install another fixture into the existing standalone bucket runtime.
+
+        The encoder/decoder objects, workspace pointers, prepared libraries,
+        and decoder token graphs stay unchanged. Only the preuploaded input and
+        fixture-specific encoder state are replaced. Encoder-chain graphs are
+        intentionally excluded because their launch shapes depend on the real
+        frame length (the measured GroupNorm padding stop verdict).
+        """
+
+        if self.mode != "standalone" or self.bucket_frames is None:
+            raise RuntimeError("fixture rebinding requires standalone bucket mode")
+        if self.encoder_graph:
+            raise RuntimeError("fixture rebinding does not support encoder-chain graphs")
+        if self.enc is None or self.dec is None:
+            raise RuntimeError("route must be prepared before fixture rebinding")
+        from hipengine.runtime.moonshine_encoder_cuda import (
+            moonshine_encoder_bucket_for_frames,
+        )
+
+        selected = moonshine_encoder_bucket_for_frames(fixture.frames)
+        if selected != self.encoder_capacity:
+            raise ValueError(
+                f"fixture requires bucket {selected}, prepared pool is "
+                f"{self.encoder_capacity}"
+            )
+        self.fixture = fixture
+        self.exact_frames = fixture.frames
+        self.enc.upload_input(fixture.audio, fixture.audio_mask)
+        self._enqueue_encoder(fixture)
+        self._set_encoder_state(self.dec, source_frames=fixture.frames)
+        readback = self._verify_installed_encoder_mask(fixture.frames)
+        self.dec.reset_generation(clear_cross_cache=False)
+        return {
+            "fixture": fixture.name,
+            "real_frames": fixture.frames,
+            "bucket_frames": self.encoder_capacity,
+            "encoder_mask_readback": readback,
+        }
+
+    def runtime_identity(self) -> dict[str, Any]:
+        """Stable pool identity used by retained same-runtime reuse evidence."""
+
+        if self.enc is None or self.dec is None:
+            raise RuntimeError("route must be prepared before reading identity")
+        token_graphs = getattr(self.dec, "_token_graphs", {})
+        return {
+            "encoder_object_id": id(self.enc),
+            "decoder_object_id": id(self.dec),
+            "encoder_stream": int(self.enc.stream),
+            "decoder_stream": int(self.dec.stream),
+            "encoder_workspace_ptrs": {
+                name: int(self.enc.workspace.allocation(name).buffer.ptr)
+                for name in self.enc.workspace.names
+            },
+            "decoder_workspace_ptrs": {
+                name: int(self.dec.workspace.allocation(name).buffer.ptr)
+                for name in self.dec.workspace.names
+            },
+            "token_graph_execs": {
+                name: int(graph.graph_exec) for name, graph in token_graphs.items()
+            },
+        }
+
     # -- per-iteration route -------------------------------------------------
 
     def _set_encoder_state(

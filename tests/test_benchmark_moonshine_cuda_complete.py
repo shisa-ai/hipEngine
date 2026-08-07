@@ -131,6 +131,83 @@ def test_teardown_drains_consumer_before_releasing_torch_output() -> None:
     assert route._torch_hidden_ptr == 0
 
 
+def test_standalone_bucket_rebind_preserves_runtime_identity() -> None:
+    trace: list[tuple[object, ...]] = []
+
+    class Workspace:
+        names = ("state",)
+
+        @staticmethod
+        def allocation(_name):
+            return SimpleNamespace(buffer=SimpleNamespace(ptr=0xA000))
+
+    class Encoder:
+        stream = 0xE000
+        workspace = Workspace()
+
+        @staticmethod
+        def upload_input(audio, mask) -> None:
+            trace.append(("upload", audio.shape, mask.shape))
+
+    class Decoder:
+        stream = 0xD000
+        workspace = Workspace()
+        _token_graphs = {"t32": SimpleNamespace(graph_exec=0x7000)}
+
+        @staticmethod
+        def reset_generation(*, clear_cross_cache) -> None:
+            trace.append(("reset", clear_cross_cache))
+
+    route = _bare_route()
+    route.mode = "standalone"
+    route.bucket_frames = 40
+    route.encoder_capacity = 40
+    route.encoder_graph = False
+    route.enc = Encoder()
+    route.dec = Decoder()
+    route._enqueue_encoder = lambda fixture: trace.append(("encode", fixture.name))
+    route._set_encoder_state = lambda dec, source_frames: trace.append(
+        ("handoff", dec.stream, source_frames)
+    )
+    route._verify_installed_encoder_mask = lambda frames: {
+        "source_frames": frames,
+        "readback_matches": True,
+    }
+    before = route.runtime_identity()
+    fixture = SimpleNamespace(
+        name="short",
+        frames=24,
+        audio=np.zeros((1, 10_000), dtype=np.float16),
+        audio_mask=np.ones((1, 10_000), dtype=np.int64),
+    )
+
+    report = route.bind_fixture(fixture)
+
+    assert route.runtime_identity() == before
+    assert report["fixture"] == "short"
+    assert report["bucket_frames"] == 40
+    assert trace == [
+        ("upload", (1, 10_000), (1, 10_000)),
+        ("encode", "short"),
+        ("handoff", 0xD000, 24),
+        ("reset", False),
+    ]
+
+
+def test_standalone_bucket_rebind_rejects_different_capacity() -> None:
+    route = _bare_route()
+    route.mode = "standalone"
+    route.bucket_frames = 40
+    route.encoder_capacity = 40
+    route.encoder_graph = False
+    route.enc = object()
+    route.dec = object()
+    fixture = SimpleNamespace(name="long", frames=105)
+
+    with pytest.raises(ValueError, match="requires bucket 207"):
+        route.bind_fixture(fixture)
+
+
 def test_encoder_mask_readback_fails_immediately_on_mismatch(monkeypatch) -> None:
     route = _bare_route()
     route.fixture = SimpleNamespace(encoder_mask=np.ones(4, dtype=np.int32))

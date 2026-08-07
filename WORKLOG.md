@@ -203640,3 +203640,19 @@ Exclusive-GPU0 focused regression across c=1 attention, AOT, and batch encoder:
 **31 passed, 2 skipped**. Source tests are **6 passed, 2 GPU skips**; focused
 Ruff/compileall/diff checks pass. Clean all-B/all-bucket retained performance
 and complete-route evidence follows after this implementation commit.
+
+## 2026-08-08 — PRR-2 same-runtime C5 bucket rebinding
+
+Added an explicit standalone-bucket rebinding contract to the C5 driver. A
+prepared 40/207/1,248 route can upload a new same-capacity fixture, replace the
+encoder/cross state, verify the installed int32 mask, and reset generation while
+preserving the encoder/decoder objects, all workspace pointers, streams,
+prepared libraries, and decoder token-graph executables. Rebinding rejects a
+fixture whose certified capacity differs and rejects encoder-chain graphs (real
+launch lengths vary; the measured GroupNorm-padding stop verdict still applies).
+
+`Route.runtime_identity()` exposes the stable object/stream/workspace/graph
+identity for retained evidence. Two new CPU regressions cover successful
+same-bucket replacement and fail-fast cross-capacity rejection; complete driver
+CPU tests pass **7/7**, focused Ruff/diff checks pass. Clean GPU pool campaign
+(40/207 real files plus two 1,248 synthetic fixtures) follows after commit.
