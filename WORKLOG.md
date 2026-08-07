@@ -207191,3 +207191,48 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   16/8/4/2/1 tree. This preserves FP32 association and online-softmax/PV order
   while enabling adjacent-query and/or GQA K/V reuse; local128 remains the
   oracle/rollback.
+- RED production-shape coverage initially fails on the absent GQA4 wrapper.
+  GREEN registers a one-wave `(KV head,row)` consumer and consumes all five
+  span pointers. The short primitive is exact, but the 260-token real-checkpoint
+  continuation exposes one divergent token. Tightening the primitive to the
+  exact `start=256, capacity=512` boundary finds **1/2,048 BF16 outputs** one ULP
+  from local128.
+- Root cause the one-bit drift from generated ISA rather than weakening the
+  gate. Local128 materializes every product and reduction stage in LDS and
+  rounds `value*new_scale` before `fma(acc,old,weighted)`. The final GQA4 body
+  emulates all 128 virtual threads through the exact 64/32/16/8/4/2/1 LDS tree
+  and spells out that contraction. The long primitive, complete-span
+  eviction/mapping fixture, and formerly failing 260-token continuation then
+  pass byte-for-byte. All Maple attention tests pass **13/13**.
+- A seven-pair same-resident dirty screen improves local128 **471.365 ms /
+  678.880 tok/s** to GQA4 **432.015 ms / 740.715 tok/s (1.091x)**; all seven
+  candidate samples are faster and token/top-logit pairs match. This screen is
+  diagnostic only.
+- Cached dirty tracing names
+  `maple_attention_prefill_ring_gqa4_wave32_kernel` at local32/VGPR64,
+  dynamic-LDS512 (static trace field LDS0), SGPR128, scratch0. Attention falls
+  **63.993 -> 22.064 ms (2.900x)**, exceeding the <=31.996-ms stretch gate;
+  request kernel time falls **472.321 -> 435.302 ms**, launch count remains
+  **730**, and traced wall is **442.539 ms / 723.101 tok/s**. Dirty trace
+  artifact `/tmp/hipengine-maple-p2-gqa4-dirty-profile.json`, SHA-256
+  `e18166d37683afed580632700c605dc714986a8095573ecb7085a263d135786c`, makes
+  no retained claim.
+- Reduced M5 dirty state gate passes all **18/18** natural+heldout final
+  hidden/normalized/live-KV/span hashes, **90/90** tokens/top-1, max/mean KL
+  **0/0**, and exact lifecycle. Its one-shape 128 diagnostic is **748.023
+  tok/s** and is mechanically rejected because the tree/protocol are
+  unqualified. Artifact `/tmp/maple-p2-gqa4-dirty-state-gate.json`, SHA-256
+  `c06edae64aaed834779c1cee70be2b9c80f4719d30509a5fc8b9827cc4fe1fa3`.
+- Promote exact GQA4 as the public native-prefill default with
+  `HIPENGINE_MAPLE_PREFILL_GQA4=0` as temporary local128 rollback. The affected
+  default runtime bundle passes **5/5**, including short, natural English/
+  Japanese, and cross-256 continuation. Both evidence harnesses now record the
+  selector. Commit this validated implementation before the clean binding
+  128/320/512 M5 recertification.
+- Final pre-commit validation: Maple attention kernels **13/13**, affected
+  default runtime/real-checkpoint nodes **5/5**, benchmark provenance+rollup
+  **14/14**, Python compile, diff, and WORKLOG checks pass. A three-node runtime
+  unit rerun had one isolated fake-spec failure after shape qualification was
+  added; extending that fixture with its omitted head geometry repairs the node
+  focused. No previously passing production behavior was implicated, so the
+  already-complete GPU gates are not repeated.

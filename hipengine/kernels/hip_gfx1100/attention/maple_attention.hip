@@ -862,6 +862,140 @@ __global__ void maple_attention_prefill_ring_kernel(
   }
 }
 
+// Exact production-shape GQA prefill (P2). One wave owns one (KV head,row)
+// and evaluates the four query heads sharing that KV stream. Each lane owns
+// dimensions lane/{+32,+64,+96}, then emulates all 128 virtual threads across
+// the original 64/32/16/8/4/2/1 LDS stages. This keeps the local128 rounding
+// and contraction boundaries bit-for-bit while loading K/V once per GQA group.
+__global__ __launch_bounds__(32) void maple_attention_prefill_ring_gqa4_wave32_kernel(
+    const uint16_t* __restrict__ qkv,
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    uint16_t* __restrict__ out,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t rows,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t start,
+    int64_t capacity) {
+  constexpr int64_t kGqaGroup = 4;
+  constexpr int64_t kPartsPerLane = 4;
+  const int64_t kv_head = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t lane = threadIdx.x;
+  if (kv_head >= kv_heads || row >= rows || lane >= 32) {
+    return;
+  }
+
+  const int64_t q_size = q_heads * head_dim;
+  const int64_t kv_stride = kv_heads * head_dim;
+  const int64_t qkv_stride = q_size + 2 * kv_stride;
+  const int64_t query_position = start + row;
+  const int64_t published_position = row_positions[0];
+  if (published_position < query_position) {
+    return;
+  }
+  int64_t live = live_counts[0] < capacity ? live_counts[0] : capacity;
+  if (live > query_position + 1) {
+    live = query_position + 1;
+  }
+  const int64_t first_position = query_position + 1 - live;
+
+  extern __shared__ float product_scratch[];
+  float query_values[kGqaGroup][kPartsPerLane];
+  float accumulator[kGqaGroup][kPartsPerLane] = {};
+  float running_max[kGqaGroup];
+  float running_sum[kGqaGroup] = {};
+#pragma unroll
+  for (int64_t group_head = 0; group_head < kGqaGroup; ++group_head) {
+    running_max[group_head] = -INFINITY;
+    const int64_t q_head = kv_head * kGqaGroup + group_head;
+#pragma unroll
+    for (int64_t part = 0; part < kPartsPerLane; ++part) {
+      const int64_t dimension = lane + part * 32;
+      query_values[group_head][part] = bf16_to_float(
+          qkv[row * qkv_stride + q_head * head_dim + dimension]);
+    }
+  }
+
+  for (int64_t absolute_position = first_position;
+       absolute_position <= query_position;
+       ++absolute_position) {
+    const int64_t logical_slot = positive_mod(absolute_position, capacity);
+    const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+    const bool valid = physical_slot >= 0 && physical_slot < capacity
+        && token_positions[logical_slot] == absolute_position
+        && evict_mask[logical_slot] == 0;
+    if (!valid) {
+      continue;
+    }
+    float key_values[kPartsPerLane];
+    float value_values[kPartsPerLane];
+#pragma unroll
+    for (int64_t part = 0; part < kPartsPerLane; ++part) {
+      const int64_t dimension = lane + part * 32;
+      const int64_t cache_offset =
+          physical_slot * kv_stride + kv_head * head_dim + dimension;
+      key_values[part] = bf16_to_float(key_cache[cache_offset]);
+      value_values[part] = bf16_to_float(value_cache[cache_offset]);
+    }
+
+#pragma unroll
+    for (int64_t group_head = 0; group_head < kGqaGroup; ++group_head) {
+#pragma unroll
+      for (int64_t part = 0; part < kPartsPerLane; ++part) {
+        const int64_t dimension = lane + part * 32;
+        product_scratch[dimension] =
+            query_values[group_head][part] * key_values[part];
+      }
+      __syncthreads();
+#pragma unroll
+      for (int stride = 64; stride > 0; stride >>= 1) {
+        for (int virtual_tid = static_cast<int>(lane);
+             virtual_tid < stride;
+             virtual_tid += 32) {
+          product_scratch[virtual_tid] += product_scratch[virtual_tid + stride];
+        }
+        __syncthreads();
+      }
+      const float score = product_scratch[0] * scale;
+      const float next_max = fmaxf(running_max[group_head], score);
+      const float old_scale = isinf(running_max[group_head])
+          ? 0.0f
+          : expf(running_max[group_head] - next_max);
+      const float new_scale = expf(score - next_max);
+#pragma unroll
+      for (int64_t part = 0; part < kPartsPerLane; ++part) {
+        const float weighted_value = value_values[part] * new_scale;
+        accumulator[group_head][part] = fmaf(
+            accumulator[group_head][part], old_scale, weighted_value);
+      }
+      running_sum[group_head] = fmaf(
+          running_sum[group_head], old_scale, new_scale);
+      running_max[group_head] = next_max;
+    }
+  }
+
+#pragma unroll
+  for (int64_t group_head = 0; group_head < kGqaGroup; ++group_head) {
+    const int64_t q_head = kv_head * kGqaGroup + group_head;
+#pragma unroll
+    for (int64_t part = 0; part < kPartsPerLane; ++part) {
+      const int64_t dimension = lane + part * 32;
+      out[row * q_size + q_head * head_dim + dimension] = float_to_bf16(
+          running_sum[group_head] > 0.0f
+              ? accumulator[group_head][part] / running_sum[group_head]
+              : 0.0f);
+    }
+  }
+}
+
 inline int launch_threads_for_dim(int64_t head_dim) {
   if (head_dim > 64) {
     return 128;
@@ -1310,6 +1444,54 @@ extern "C" int hipengine_maple_attention_prefill_ring_bf16(
       value_cache,
       out,
       base_offsets,
+      rows,
+      q_heads,
+      kv_heads,
+      head_dim,
+      scale,
+      start,
+      capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_attention_prefill_ring_gqa4_bf16(
+    const uint16_t* qkv,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t start,
+    int64_t capacity,
+    hipStream_t stream) {
+  if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || q_heads != kv_heads * 4
+      || head_dim != 128 || capacity <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      maple_attention_prefill_ring_gqa4_wave32_kernel,
+      dim3(static_cast<unsigned int>(kv_heads),
+           static_cast<unsigned int>(rows)),
+      dim3(32),
+      128 * sizeof(float),
+      stream,
+      qkv,
+      key_cache,
+      value_cache,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
       rows,
       q_heads,
       kv_heads,

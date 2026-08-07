@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
     maple_attention_decode_bf16,
     maple_attention_fused_qknorm_decode_bf16,
     maple_attention_prefill_ring_bf16,
+    maple_attention_prefill_ring_gqa4_bf16,
     maple_kv_span_update,
     maple_kv_span_update_batched,
     maple_qknorm_rope_kv_write_batched_bf16,
@@ -110,6 +111,12 @@ def _maple_prefill_grouped_moe() -> bool:
     # P1 exact expert-major prefill is the default. Preserve the original
     # row/route-gather chain as HIPENGINE_MAPLE_PREFILL_GROUPED_MOE=0 rollback.
     return os.environ.get("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", "1") != "0"
+
+
+def _maple_prefill_gqa4() -> bool:
+    # P2 exact wave32 GQA4 is the prefill default after the complete byte-state
+    # and physical profile gates. Preserve local128 as =0 rollback.
+    return os.environ.get("HIPENGINE_MAPLE_PREFILL_GQA4", "1") != "0"
 
 
 def _maple_graph_enabled() -> bool:
@@ -1014,6 +1021,11 @@ class MapleRunner:
         top_k = spec.num_experts_per_tok
         intermediate = spec.moe_intermediate_size
         grouped_moe = _maple_prefill_grouped_moe()
+        gqa4_attention = (
+            _maple_prefill_gqa4()
+            and spec.num_attention_heads == spec.num_key_value_heads * 4
+            and spec.head_dim == 128
+        )
         n = len(tokens)
         started = time.perf_counter()
         start_position = self.position
@@ -1097,7 +1109,12 @@ class MapleRunner:
                     library=libs.attention,
                     runtime=self.runtime,
                 )
-                maple_attention_prefill_ring_bf16(
+                attention_prefill = (
+                    maple_attention_prefill_ring_gqa4_bf16
+                    if gqa4_attention
+                    else maple_attention_prefill_ring_bf16
+                )
+                attention_prefill(
                     pf.qkv.ptr,
                     kv_layer.key_cache.ptr,
                     kv_layer.value_cache.ptr,

@@ -554,6 +554,9 @@ def main() -> int:
                 "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get(
                     "HIPENGINE_REQUIRE_CACHED_BUILD"
                 ),
+                "HIPENGINE_MAPLE_PREFILL_GQA4": os.environ.get(
+                    "HIPENGINE_MAPLE_PREFILL_GQA4"
+                ),
             },
             "backend": args.backend,
             "suite": str(args.suite),
