@@ -2046,6 +2046,71 @@ stack, or a newly profiled production mechanism with a credible >=5%-wall
 ceiling. Compact authority:
 `benchmarks/results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json`.
 
+### Post-closure MTP-only cycle audit (2026-08-07)
+
+A follow-up deep profile resolves why the module-improved path still trails.
+The unprofiled ten-prompt walls decompose as follows; cycles are target passes
+needed for the 240 timed transitions:
+
+| Comparison | hipEngine cycles / ms per cycle | Vulkan cycles / ms per cycle | Complete gap | Cycle-count contribution | Per-cycle contribution |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Matched B3 | 76 / **51.644** | 77 / **46.052** | **+379.005 ms** | **-46.298 ms** (topology favors hipEngine) | **+425.303 ms** |
+| hipEngine B3 vs selected Vulkan B4 | 76 / **51.644** | 69 / **49.833** | **+486.478 ms** | **+376.685 ms / 77.4%** | **+109.793 ms / 22.6%** |
+
+Thus matched B3 is not behind because of aggregate acceptance or extra target
+passes: hipEngine executes one fewer pass and still loses because every complete
+proposal/verify transaction costs about **5.59 ms more**. The selected B4 gap is
+different and mostly algorithmic. B4 saves seven passes aggregate; the largest
+single effect is `mixed_ja_en_review`, where it needs five passes versus
+hipEngine B3's nine and contributes **249.950 ms** of the total gap. B4 is not
+uniformly better—it needs more passes on two Japanese/mixed prompts—so this is
+suite-wide schedule evidence, not permission for prompt-conditioned selection.
+
+The unprofiled hipEngine B3 stage ledger across all 76 cycles assigns
+**3665.650 ms / 48.232 ms per cycle (93.39%)** to the device-chained proposal
+plus target graph submit. Metadata/call-boundary preparation is **1.104
+ms/cycle**, proposal launch/full-accept update **1.608 ms**, result readback
+**0.239 ms**, scheduler replay **0.380 ms**, and commit/finish only **0.082
+ms**. Commit is therefore not the residual.
+
+A clean `69b3b691b` one-prompt runtime trace confirms the boundary. Its seven
+`target_verify` markers consume **349.592 / 364.677 ms**; seven
+`hipStreamSynchronize` calls waiting for proposal+target retirement consume
+**336.511 ms**, while target `hipGraphLaunch` API time is **3.782 ms**, target
+copy-API time **2.474 ms**, and target host work outside traced APIs **6.785
+ms**. The
+matching unprofiled post-module hipEngine control is **356.127 ms / seven
+cycles**. Fresh unprofiled Vulkan controls are **320.969 ms B3 / seven cycles**
+and **300.016 ms B4 / six cycles**, with the same content hash.
+
+Per-graph Vulkan timestamp queries close the comparison without assigning HTTP
+or server residual to GPU work. B3's 21 draft graphs, seven target graphs, and
+seven post-target/update graphs total **50.782 + 261.589 + 6.918 = 319.289
+ms**, or **99.48%** of its independent 320.969-ms wall. B4 totals
+**57.995 + 229.985 + 6.338 = 294.318 ms**, or **98.10%** of its independent
+300.016-ms wall. On the exact B3 trajectory, about **2.91 ms/cycle** of
+hipEngine's **5.02-ms** deficit lies inside the combined proposal+target submit
+relative to Vulkan's queried graphs, and about **2.11 ms/cycle** lies in
+metadata/proposal-update/readback/scheduler control outside that submit.
+
+The causal verdict is therefore precise: **matched B3 is limited by the
+proposal-to-target verification transaction, not commit, CPU sampling, or
+HTTP; selected B4 additionally wins mostly by avoiding target passes.** The
+prior semantic kernel ledger remains an arithmetic ranking tool, but summed HIP
+kernel durations and Vulkan adjacent-query intervals are not complete-wall
+interchangeable. In particular, rocprof's three approximately 5.7-ms gaps
+exactly 256 dispatches apart remain proven instrumentation artifacts.
+
+No current mechanism is newly admitted. The largest route is a materially new
+five-row/B4 verifier below the frozen **50.3-ms/pass** gate; the already exact
+row-5 implementation costs **61.957 ms/pass** and was removed. The matched-B3
+residual would require a genuinely persistent/hostless multi-cycle owner or a
+new target-verification composite; graph upload, splitting, and parent/child
+composition are already rejected. Any proposer-quality or adaptive-budget work
+must pass the complete category and heldout suite without prompt-conditioned
+reranking. Artifact:
+`benchmarks/results/2026-08-07-qwen36-27b-mtp-cycle-deep-profile.json`.
+
 ---
 
 ## 7. Prioritized execution plan
