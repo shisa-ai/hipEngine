@@ -167,6 +167,54 @@ def test_maple_router_topk_parallel_matches_ids_and_renorm(
     assert float(weights.sum()) == pytest.approx(1.0, abs=2e-6)
 
 
+def test_maple_router_topk_parallel_batched_matches_ids_and_renorm(
+    maple_moe_lib, hip_test_target_arch
+) -> None:
+    """Batched router over T rows: IDs exact, weights close, each row sums ~1 (P3)."""
+
+    from hipengine.kernels.hip_gfx1100.moe.maple_moe import (
+        maple_router_topk_parallel_batched_bf16,
+    )
+
+    rng = np.random.default_rng(77)
+    rows, experts, hidden, top_k = 5, 8, 32, 3
+    x_f32 = rng.normal(size=(rows, hidden)).astype(np.float32)
+    weight_f32 = rng.normal(size=(experts, hidden)).astype(np.float32)
+    x = f32_to_bf16_bits(x_f32)
+    weight = f32_to_bf16_bits(weight_f32)
+    expected_ids = np.zeros((rows, top_k), dtype=np.int64)
+    expected_weights = np.zeros((rows, top_k), dtype=np.float32)
+    for r in range(rows):
+        eid, ew = router_topk(bf16_round(x_f32[r]), bf16_round(weight_f32), top_k=top_k)
+        expected_ids[r] = eid
+        expected_weights[r] = ew
+
+    with DeviceArrays() as dev:
+        x_d, weight_d = dev.put(x), dev.put(weight)
+        _scratch, scratch_d = dev.empty((rows * experts,), np.dtype(np.float32))
+        ids, ids_d = dev.empty((rows, top_k), np.dtype(np.int32))
+        weights, weights_d = dev.empty((rows, top_k), np.dtype(np.float32))
+        maple_router_topk_parallel_batched_bf16(
+            x_d.ptr,
+            weight_d.ptr,
+            ids_d.ptr,
+            weights_d.ptr,
+            scratch_d.ptr,
+            rows,
+            hidden,
+            experts,
+            top_k,
+            library=maple_moe_lib,
+        )
+        dev.get(ids, ids_d)
+        dev.get(weights, weights_d)
+
+    assert np.array_equal(ids, expected_ids.astype(np.int32))
+    np.testing.assert_allclose(weights, expected_weights, rtol=1e-2, atol=1e-4)
+    assert np.allclose(weights.sum(axis=1), np.ones(rows), atol=2e-6)
+
+
+
 def test_maple_clamped_swiglu_matches_trained_clamp_oracle(maple_moe_lib) -> None:
     gate_f32 = np.asarray(
         [[-10.0, -1.0, 0.0, 1.0, 10.0], [3.0, 7.0, 8.0, -8.0, 0.5]],
