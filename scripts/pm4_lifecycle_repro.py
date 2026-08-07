@@ -553,6 +553,8 @@ def run_reproducer(
             "status": "fail" if failure is not None else "pass",
             "config": asdict(config),
             "hardware": {
+                "process_id": os.getpid(),
+                "hip_ordinal": runtime.current_device(),
                 "pci_bdf": pci_bdf,
                 "gfx_arch": "gfx1100",
                 "platform": platform.platform(),

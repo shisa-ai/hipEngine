@@ -209163,3 +209163,28 @@ Vulkan local sizes verbatim will close the measured gap.
   interop+timestamp persistent reuse and two-generation no-submit queue-first
   quarantine both report `final_cleanup_passed=true`; no native
   submit/resource-recreate arm was run.
+
+## 2026-08-08 — Close native PM4 admission and provenance review findings
+
+- Fix loader/metadata alignment admission. A compatible stricter public-HSA
+  kernarg alignment was accepted but allocation used only the weaker inspected
+  alignment. The loader alignment must now be a nonzero power of two and the
+  allocation uses `max(16, inspected, loader)`, with the live smoke proving the
+  resulting kernarg address is aligned to the loader requirement.
+- Strengthen graph immutability from topology-only re-enumeration to a second
+  complete node pass: node type, function/name, grid/block/shared bytes, and
+  recopied packed kernargs must all match. A deterministic mutation fixture now
+  changes only grid geometry between passes and is rejected fail-closed.
+- Extend local native provenance for #6529 with process/HSA ABI, queue type,
+  raw and last-host-published doorbell values, completion value, packet
+  ID/count/AQL+PM4 headers/timeout/transport, module reader+executable handles,
+  and per-dispatch symbol/kernel object/relocated code entry/kernarg
+  address+size+alignment/geometry. Raw doorbell readback is observed as zero on
+  the W7900 after consumption, while the explicit host publication ledger is
+  packet ID 3; report both rather than pretending readback is authoritative.
+- The first telemetry build stopped before context creation on one missing C++
+  JSON string quote. After the scoped syntax repair, the three originally
+  affected native/lifecycle nodes pass; after adding the explicit doorbell
+  ledger, the native node and both safe lifecycle nodes pass again. Final CPU
+  admission/lifecycle/transport bundle is 20 passed; Ruff, `compileall`, and
+  `git diff --check` pass. No destructive submit/resource-recreate arm ran.

@@ -107,10 +107,32 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         assert provenance["nodes"] == 1
         assert provenance["modules"] == 1
         assert provenance["pm4_dwords"] > 0
+        assert provenance["aql_publication"] != 0
+        assert provenance["pm4_publication"] != 0
         assert provenance["aql_submissions"] == 2
         assert provenance["pm4_submissions"] == 2
+        assert provenance["last_packet_id"] == 3
+        assert provenance["last_packet_count"] == 1
+        assert provenance["last_timeout_ns"] == 5_000_000_000
+        assert provenance["last_completion_value"] == 0
+        assert provenance["last_transport"] == "pm4"
         assert provenance["retired"] is True
         assert provenance["usable"] is True
+        assert len(provenance["module_records"]) == 1
+        assert provenance["module_records"][0]["reader_handle"] != 0
+        assert provenance["module_records"][0]["executable_handle"] != 0
+        assert len(provenance["dispatch_records"]) == 1
+        dispatch = provenance["dispatch_records"][0]
+        assert dispatch["symbol"] == "hipengine_smoke_add_f32_kernel.kd"
+        assert dispatch["kernel_object"] != 0
+        assert dispatch["code_entry"] != 0
+        assert dispatch["kernarg_address"] % dispatch["kernarg_align"] == 0
+        assert context_provenance["process_id"] == os.getpid()
+        assert context_provenance["hsa_version_major"] >= 1
+        assert context_provenance["queue_type"] == "multi"
+        assert context_provenance["last_doorbell_value"] == 3
+        assert isinstance(context_provenance["doorbell_value"], int)
+        assert context_provenance["completion_value"] == 0
         assert context_provenance["submissions"] == 4
         assert context_provenance["callback_status"] == 0
         assert context_provenance["usable"] is True

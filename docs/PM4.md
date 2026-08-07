@@ -688,6 +688,13 @@ For every process and cycle record:
 - output hash/value versus CPU and HIP oracles.
 
 Sensitive model/process memory and raw coredumps are not committed or published.
+The native provenance records both the raw observable doorbell signal value and
+the last host-published absolute doorbell value; the latter is the authoritative
+publication ledger because a consumed doorbell may read back as zero. It also
+records HSA ABI version, completion value, packet ID/count/header/timeout,
+reader/executable handles, and per-dispatch symbol, kernel object, relocated code
+entry, loader alignment, geometry, and kernarg address/size. Full-address ledgers
+remain local issue evidence and are compacted before publication.
 
 ### Interpretation matrix
 
