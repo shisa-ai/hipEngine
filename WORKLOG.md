@@ -203002,3 +203002,31 @@ Vulkan local sizes verbatim will close the measured gap.
   need FlashHead (approximate, non-default) or weight reuse across a batch (M6).
 - Next per plan: selected-expert grouping (M3c, ~12%) or batched prefill
   (M4/M5). hipGraph (M1) is a minor ~4.3% host-gap win on c1.
+
+## 2026-08-07 — M1: whole-step hipGraph capture for Maple decode (opt-in)
+
+- Implement `MapleGraphCache` (`hipengine/runtime/maple_graph.py`): captures the
+  entire stateless decode step (24-layer loop + final norm + affine4 lm_head +
+  argmax) as one hipGraph, self-validating bit-exact on first capture.
+- Stateless-basis: the KVLiveSpans ABI passes all span metadata
+  (`live`/`token_positions`/`evict`/`row`) as DEVICE pointers read at
+  graph-execution time, so a graph captured against fixed buffer pointers stays
+  valid across tokens; the eager per-token span update + embed run as host
+  launches before each replay.
+- Key gotchas hit during bring-up: (1) every kernel in the body must be launched
+  with `stream=stream` or it silently launches on the default stream and the
+  captured graph is EMPTY; (2) validation must clear the argmax outputs before
+  the replay check, or a no-op graph vacuously matches the eager reference; (3)
+  capture must restore `hidden` before the recording phase and before the final
+  caller-stream eager rerun, or it captures/replays corrupted input.
+- Correctness: bit-exact vs eager across 120 tokens over a growing KV cache
+  (`tests/test_maple_graph_capture.py::test_maple_graph_bit_exact_vs_eager_over_growing_kv`).
+  Focused suite 43 passed.
+- Perf: kernel-bound c1 leaves only ~4% host gap; repeated interleaved benches
+  ranged 0.99–1.10× (noise-dominated, ~1.0×). Not a robust c1 win, so the graph
+  is OPT-IN (`HIPENGINE_MAPLE_GRAPH=1`) and the eager path stays default. The
+  captured graph is the reusable infrastructure for M6 batch decode, where the
+  per-token launch win compounds.
+- Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-hipgraph-c1.json`.
+- Next (higher leverage than c1 hipGraph): M3c selected-expert grouping (~12%),
+  then M4/M5 batched prefill.

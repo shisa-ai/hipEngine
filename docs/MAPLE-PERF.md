@@ -118,11 +118,23 @@ Next: lm_head affine4 (M3b), then selected-expert (M3c).
 
 ## 3. Decode plan (kernel-bound → optimize the hot kernels)
 
-### D1 — hipGraph-capture the whole token step (now lower leverage)
+### D1 — hipGraph-capture the whole token step (implemented, opt-in)
 
 M0 shows the host gap is only ~4.3% (549 µs/step), so capture is a secondary win
 versus kernel-level work. It remains valuable once kernels are fast and for
 batch/prefill. Pattern and caveats below.
+
+**M1 status: DONE (opt-in).** `MapleGraphCache` captures the whole stateless
+decode step (24-layer loop + final norm + affine4 lm_head + argmax) as one graph
+and self-validates bit-exact on first capture (argmax parity vs a fresh eager
+reference, with the output cleared so a no-op graph is rejected). The capture is
+bit-exact across 120 tokens over a growing KVLiveSpans cache
+(`tests/test_maple_graph_capture.py`). Kept opt-in (`HIPENGINE_MAPLE_GRAPH=1`,)
+because on c1 decode is kernel-bound: repeated interleaved benches ranged
+0.99–1.10× (noise-dominated; only the ~4% host gap is recoverable), so the eager
+path stays the default. The captured graph is the infrastructure M6 batch
+decode reuses, where the per-token launch win compounds. Evidence:
+`benchmarks/results/2026-08-07-gfx1151-maple-hipgraph-c1.json`.
 
 The repo already proved this pattern in `hipengine/runtime/moe_graph.py`: a
 **stateless** per-layer unit is safe to capture and replay across arbitrarily
@@ -130,27 +142,25 @@ many relaunches (bit-exact in `tests/test_hip_graph_capture_replay.py`). Maple
 decode is stateless per token: every layer recomputes from fresh
 `hidden`/`qkv` buffers through fixed session-resident scratch pointers. The only
 stateful memory is the KV cache, but the KV-write/attention kernels read and
-write by **absolute `token_positions`** with `KVLiveSpans`, so a graph captured
-against fixed buffer pointers is valid across tokens (same shape each step).
+write by **absolute `token_positions`** with `KVLiveSpans`, and all span
+metadata (`live`/`token_positions`/`evict`/`row`) is passed as **device
+pointers** read at graph-execution time — so a graph captured against fixed
+buffer pointers stays valid across tokens (the eager span update runs before
+each replay).
 
 Steps:
-1. Capture the 11-kernel per-layer body into a `MoeGraphCache`-style
-   `MapleLayerGraphCache` keyed by `(layer_id, hidden_in_ptr, hidden_out_ptr,
-   position)`. Validate bit-exact on first capture, replay thereafter.
-2. Capture the top-level tail (embed, final norm, affine4 lm_head, argmax) as
-   one graph too.
-3. Because attention reads a growing cache, verify the captured attention graph
-   is correct across positions (live-count metadata is a host-side arg that can
-   be updated between replays without recapture if the ABI allows; otherwise
-   capture per position-bucket).
+1. Capture the whole 24-layer + tail body into a `MapleGraphCache` (M1, done).
+   The per-token eager span update (`_publish_span_position`) and embed remain
+   host launches before the graph; the final argmax host copies stay after.
+2. Validate bit-exact on first capture, replay thereafter, eager fallback on
+   any mismatch (done, with output-clearing to catch no-op graphs).
+3. Because attention reads a growing cache, the captured graph must stay
+   correct across positions — the device-pointer span ABI guarantees this, and
+   the 120-token parity test pins it.
 4. Replay only — Python runs once per token for sampling, not 271 times.
 
-Expected: eliminate the ~48 µs/launch host cost → several × decode speedup,
-moving decode from ~77 tok/s toward the memory floor (hundreds of tok/s) and
-then toward the compute/bandwidth balance for MoE.
-
-Guard: if capture changes arithmetic, keep eager as the reference and only
-retain the graph path that is bit-exact.
+Guard: capture must not change arithmetic; the eager path is the reference and
+the graph is only kept when bit-exact (self-validation enforces this).
 
 ### D2 — Fuse kernels to cut launch count
 
@@ -269,7 +279,7 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M3c | selected-expert grouping | exact; decode wall ↓ | `WORKLOG.md` |
 | M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | `...-maple-prefill.json` |
 | M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `benchmarks/README.md` |
-| M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact |
+| M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
 | M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | `benchmarks/README.md` |
 | M2 | D2 fusion | exact, non-regressive | `WORKLOG.md` |
 
