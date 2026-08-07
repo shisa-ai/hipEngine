@@ -72,8 +72,8 @@ Current exact priority:
 1. D0 one-dispatch c1 router then affine4-head bandwidth work.
 2. D1 c2/c4/c8 affine4 row reuse.
 3. P4 safe long-prompt/public scheduler admission.
-4. Future P1b matrix/SIMD ternary consumers; do not repeat grouped-lane or
-   dense token-tile sweeps.
+4. Future P1b exact non-WMMA SIMD ternary consumers; do not repeat grouped-lane,
+   dense token-tile, or direct native-BF16-WMMA schedules.
 
 DeepGrove's published M4 table supports this split: **169 tok/s exact**, **218
 tok/s with approximate FlashHead**, and **1075 tok/s prefill**. Its generation
@@ -372,7 +372,7 @@ The qualified result is **726.421/679.632/650.745 tok/s**, up
 top-1, KL 0, and exact close. Fixed metadata adds **45,072 bytes**. The expert
 family improves only **1.086x** versus the required 2.826x; exact wider-lane
 schedules regress. P1 therefore closes with a measured scalar-compute blocker,
-and future work must use a different matrix/SIMD ternary contraction.
+and future work must use a different exact non-WMMA SIMD ternary contraction.
 
 ### P2 — GQA/query-row prefill attention — DONE
 
@@ -399,7 +399,7 @@ lifecycle, and unchanged **5,355,881,848-byte** residency. Extending native
 prefill beyond 512 separately requires append/attend orchestration that cannot
 overwrite a still-visible SWA prefix.
 
-### P3 — Dense ternary row-tile sweep — DONE / REJECTED
+### P3 — Dense ternary row-tile + native-WMMA sweep — DONE / REJECTED
 
 Dense QKV/O kernels reuse one 512-byte packed weight row across a fixed
 eight-row tile and consume **124.770 ms** at post-P2 prefill320. Explicit tile
@@ -412,13 +412,21 @@ A same-resident, counterbalanced 8-prompt natural+heldout screen measured tile
 **1.738%/23.141%**, lost all **16/16** paired samples, and retained identical
 next-token/top-logit pairs. The regression is consistent with their 8/16-KiB
 dynamic-LDS footprints and longer block residency outweighing fewer 512-byte
-weight-row reloads. The expensive full
-state gate was therefore not run, every temporary selector/export was removed,
-and tile 8 remains the sole production path. Do not repeat this schedule.
+weight-row reloads. The expensive full state gate was therefore not run, every
+temporary selector/export was removed, and tile 8 remains the sole production
+path. Do not repeat this schedule.
 
-WMMA is not a byte-exact substitute: a materially different matrix/SIMD
-consumer may proceed only if it preserves the existing BF16 state contract,
-rather than changing contraction order to manufacture throughput.
+The required native-BF16-WMMA follow-up is also rejected mechanically. A direct
+16x16x16 wave32 probe changes **106/256 FP32** K16 partials relative to Maple's
+sequential 16-term accumulation and then changes **43/655,360 BF16** outputs at
+the full 320x2048x2048 production shape. Cached tracing names
+`maple_ternary_gemm_wmma_kernel` at local32/VGPR48/SGPR128/LDS0/scratch0 and
+23.604 us for a one-block 16x2048x16 smoke; extracted ISA contains
+`v_wmma_f32_16x16x16_bf16`. The probe therefore executed as intended but fails
+the byte-state contract before a model/state or timing gate. All probe surfaces
+were removed. A future exact SIMD consumer must preserve both the sequential
+K16 partial and the outer 128-partial tree; direct or outer-compensated WMMA
+cannot substitute a different internal association.
 
 **Landed prefill primitives (through 2026-08-08, bit-exact vs CPU oracle):**
 
@@ -447,8 +455,9 @@ scheduler helper. Serial remains the correctness fallback above 512.
 P0+P1+P2 deliver **741.368 tok/s** at 320. P2 exceeds its attention gate at
 **21.916 ms / 2.920x**, but P1's expert family still reaches only **255.050 ms /
 1.083x** versus its original **<=97.708-ms / 2.826x** ceiling. P3 proves that
-larger scalar dense token tiles do not close the gap; crossing 1,000 now
-requires a materially different exact matrix/SIMD ternary consumer. DeepGrove's
+larger scalar dense token tiles do not close the gap, while direct BF16 WMMA
+fails the byte-exact reduction gate. Crossing 1,000 now requires a materially
+different exact non-WMMA SIMD ternary consumer. DeepGrove's
 1075 tok/s M4 row avoids discarded heads and groups routed rows, independently
 showing that 1,000+ is credible. The near-term exact target remains
 **>=1,000 tok/s at qualified 128/320/512 shapes**; 2,000 is a later
@@ -464,7 +473,7 @@ dense/attention target.
 | M3c | c1 eight-route grouping | exact; dead-end (0.69x, shared activation already L2-cached); does not close row-bulk grouped MoE | `WORKLOG.md` |
 | M4 | batched ternary prefill primitives | exact vs packed oracle; prefill tok/s up | GEMM + QKV GEMM primitives in (done) |
 | M5/P0+P1+P2 | final-row + expert-major + exact GQA4 native prefill | exact through native 512-token limit; serial fallback above it; scalar ternary ceiling recorded | 749.175/741.368/754.000 tok/s; 18/18 byte-exact states and 90/90 positions |
-| P3 | dense ternary 8/16/32 token-tile sweep | exact; tile 16/32 rejected at 0/16 paired wins | 744.116/731.182/571.923 tok/s dirty same-resident diagnostic; production unchanged |
+| P3 | dense ternary tile + native-BF16-WMMA sweep | tile 16/32 regress; WMMA fails byte exactness | 744.116/731.182/571.923 tok/s; WMMA 106/256 FP32 partial and 43/655,360 BF16 output mismatches; production unchanged |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
 | M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |

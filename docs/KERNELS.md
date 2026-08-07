@@ -69,9 +69,13 @@ unchanged. Exact tile 16/32 candidates preserved the production 2,048-wide
 reduction bit-for-bit but measured **731.182/571.923 tok/s** versus tile 8
 **744.116 tok/s**, with **0/16** paired wins for each candidate. The regression
 is consistent with larger dynamic LDS (8/16 KiB versus 4 KiB) and longer block
-residency dominating the saved 512-byte weight-row reloads. All temporary
-selectors and alternate exports were
-removed; do not repeat this scalar schedule.
+residency dominating the saved 512-byte weight-row reloads. The required direct
+BF16-WMMA probe is also rejected: native K16 association changes **106/256
+FP32** word partials and **43/655,360 BF16** production-shape outputs. A cached
+trace names `maple_ternary_gemm_wmma_kernel` at local32/VGPR48/SGPR128/LDS0/
+scratch0, and extracted ISA confirms `v_wmma_f32_16x16x16_bf16`. All temporary
+selectors, alternate exports, and WMMA probes were removed; do not repeat these
+scalar-tile or direct-WMMA schedules.
 
 `hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
 unfused attention/KV chain: device span publication, per-head standard

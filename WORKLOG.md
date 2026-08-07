@@ -207293,3 +207293,42 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Publish rejected diagnostic
   `benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json`,
   SHA-256 `f7ca7b1f2cd4b94e9ff05c24dce09192160dc0faf353f1a53d9a3fe34e9285ef`.
+
+## 2026-08-08 — Maple P3 direct native-BF16-WMMA gate rejected
+
+- Continue task #90 after scalar-tile closure `c70ec1809` because dense QKV/O
+  remains **124.770 ms / 28.90%** and the plan requires WMMA adjudication after
+  the 8/16/32 sweep. In-tree DFlash supplies the gfx11 wave32 operand mapping;
+  no external source is copied. The Maple probe expands each packed ternary
+  code exactly to BF16 and executes `v_wmma_f32_16x16x16_bf16` with FP32
+  accumulators over a 16-token x 16-output tile. It is never registered or
+  wired into runtime dispatch.
+- RED first fails on the intentionally absent WMMA wrapper. A tiny 17x2048x17
+  candidate fixture initially rounds to the same BF16 bits, so tighten the gate
+  to the actual 320x2048x2048 dense-O shape rather than declaring success. The
+  direct candidate then changes **43/655,360 BF16 outputs** versus tile 8.
+- Isolate whether an exact outer-tree hybrid could repair the result. A one-word
+  FP32 probe compares native WMMA's K16 partial with Maple's required sequential
+  16-term partial and changes **106/256 FP32 outputs**. The intrinsic therefore
+  changes the inner association before any outer 128-partial reduction;
+  compensation across WMMA tiles cannot restore the required partial without
+  recomputing the scalar sequence.
+- Prebuild the candidate outside profiling with compiler-version file
+  `/tmp/hipengine-maple-p3-hipcc-version.txt`, then run cached-only
+  `rocprofv3 --kernel-trace` on a 16x2048x16 smoke. Trace
+  `/tmp/hipengine-maple-p3-wmma-trace/gfx1151/1790963_kernel_trace.csv`, SHA-256
+  `5980e8f90988b24592a50880e46ddfd8b5c4e2c295266ce5da39492fc75f5149`,
+  names `maple_ternary_gemm_wmma_kernel` at **23,604 ns**, local32, VGPR48,
+  SGPR128, LDS0, scratch0. Extracted code object SHA-256
+  `746779b70f3ffb4a32ca988e88180531b175c9200280afe071764c207b1cbc0e`
+  contains `v_wmma_f32_16x16x16_bf16`, proving the intended matrix instruction
+  ran.
+- Stop before model/state/performance gates because the primitive violates the
+  user's byte-exact state contract. Remove the direct and one-word kernels,
+  wrappers, and RED fixtures; production code/tests/scripts again match
+  `c70ec1809` byte-for-byte. Direct native BF16 WMMA and an outer-compensated
+  sibling are closed; only a materially different exact non-WMMA SIMD consumer
+  may reopen dense ternary work.
+- Extend the rejected P3 artifact with the correctness/trace verdict. New
+  SHA-256 is `5ca0bc2b259e2e9de9205da9dfe9de731e9f0298dc31a1d86bdb9b416484d8ec`;
+  the prior SHA above remains the immutable scalar-tile version.
