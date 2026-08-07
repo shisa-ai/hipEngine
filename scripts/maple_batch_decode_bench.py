@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Recertify Maple M6 fixed-capacity batch-decode throughput.
+"""Recertify Maple M6/D1 fixed-capacity batch-decode throughput.
 
-This benchmark measures ``MapleBatchRunner`` + ``MapleContinuousBatcher`` at
-c=2/4/8, gates every measured width against c1 serial trajectories, exercises
-sparse category-derived seeds, and records tracked lifecycle. It is deliberately
-not labeled as public server throughput: prompt batching/admission is not wired
-into the public generation scheduler yet.
+This low-level benchmark measures ``MapleBatchRunner.batch_step`` directly at
+c=2/4/8, gates every measured width against c1 serial trajectories, exercises a
+sparse category-derived seed group, and records tracked lifecycle. It isolates
+resident decode from the public scheduler and prompt-prefill wall measured by
+``maple_public_batch_bench.py``.
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.core.memory import memory_stats, reset_memory_stats  # noqa: E402
 from hipengine.loading.maple import load_maple_checkpoint  # noqa: E402
 from hipengine.runtime.maple import MapleBatchRunner, MapleRunner  # noqa: E402
-from hipengine.runtime.maple_batch import MapleContinuousBatcher  # noqa: E402
 from hipengine.tokenization.maple import MapleTokenizer  # noqa: E402
 
 DEFAULT_MODEL = "deepgrove/maple-preview-2bit-mlx"
@@ -125,14 +124,24 @@ def _run_batch(
     *,
     steps: int,
 ) -> tuple[list[list[int]], float]:
-    batcher = MapleContinuousBatcher(runner)
-    for seed in seeds:
-        batcher.submit(seed, max_new=steps)
+    if not seeds or len(seeds) > runner.batch_size:
+        raise ValueError("seed count must be within the fixed batch capacity")
+    active_mask = [request < len(seeds) for request in range(runner.batch_size)]
+    inputs = [0] * runner.batch_size
+    outputs: list[list[int]] = [[] for _ in seeds]
+    for request, seed in enumerate(seeds):
+        runner.reset_request(request)
+        inputs[request] = int(seed)
+
     started = time.perf_counter()
-    while batcher.active():
-        batcher.step()
+    for _ in range(steps):
+        next_tokens = runner.batch_step(inputs, active_mask=active_mask)
+        for request in range(len(seeds)):
+            token = int(next_tokens[request])
+            outputs[request].append(token)
+            inputs[request] = token
     elapsed = time.perf_counter() - started
-    return batcher.completions, elapsed
+    return outputs, elapsed
 
 
 def _natural_seed_gate(
@@ -347,7 +356,7 @@ def main() -> int:
         "artifact_type": "maple_m6_batch_decode_recertification",
         "status": status,
         "performance_claim": status == "accepted",
-        "claim_scope": "fixed-capacity Maple runtime helper; excludes public server/prompt-batching E2E",
+        "claim_scope": "fixed-capacity MapleBatchRunner decode helper; excludes public scheduler and prompt-prefill E2E",
         "model": {
             "id": args.model,
             "revision": PINNED_REVISION,
@@ -378,7 +387,7 @@ def main() -> int:
             "warmup_steps": args.warmup_steps,
             "natural_gate_steps": args.natural_gate_steps,
             "concurrencies": [2, 4, 8],
-            "timing_scope": "resident decode owner loop; excludes model load and prompt prefill",
+            "timing_scope": "direct resident MapleBatchRunner.batch_step loop; excludes model load, public scheduling, and prompt prefill",
         },
         "correctness": {
             "all_widths_passed": width_gate,
@@ -388,7 +397,7 @@ def main() -> int:
         "notes": [
             "Every c=2/4/8 timing sample is compared with all corresponding serial c1 trajectories.",
             "The 18-prompt category/heldout gate derives diverse seed IDs from natural prompt content and exercises a sparse final c=8 group.",
-            "MapleContinuousBatcher is not wired into the public generation scheduler; these are helper throughput rows, not server throughput.",
+            "This direct MapleBatchRunner gate isolates D1 decode; public scheduler throughput is measured separately by maple_public_batch_bench.py.",
         ],
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -207851,3 +207851,28 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   checks pass. Raw result SHA-256 is `928ee7cf...3be9`; hardened harness SHA-256
   is `7ea64300...bed`; update the compact artifact/docs to this final row before
   closing P4.
+
+## 2026-08-08 — Close Maple retained-path refactor triggers
+
+- Reach the final roadmap-audit triggers after clean P0-P4/D0-D1 publication.
+  Remove the temporary P2 GQA4, D0 one-dispatch router, D0 wave32 affine4, and
+  D1 batched row-reuse environment selectors plus their dead production
+  branches. Production now selects the already-qualified leaves directly;
+  local128, two-dispatch router, group64 c1 head, and all-row batch head remain
+  separately registered and covered by direct bit-exact kernel tests.
+- Remove the duplicate private `MapleContinuousBatcher` admission/reclaim owner.
+  The low-level M6/D1 harness now drives `MapleBatchRunner.batch_step` directly
+  for isolated c2/c4/c8 timing and sparse masks; public admission, staggered
+  reclaim, and singleton routing remain solely owned by
+  `MapleResidentModelRunner`. Convert `maple_c1_bench.py` from the retired
+  environment A/B protocol to an independent production-repeat correctness
+  diagnostic with no performance claim. Historical retained artifacts and
+  source commits remain immutable.
+- Focused validation is GREEN: runtime dispatch/final-row/direct-harness tests **5/5**;
+  direct exact router, c1 head, c2/c4/c8 head, and GQA4-vs-local128 kernel tests
+  **6/6**; all changed Python files compile; benchmark `--help` entry points and
+  `git diff --check` pass. Do not repeat the expensive real-checkpoint suites:
+  the final clean P4 run already established 15/15 public trajectory sets,
+  exact 520/770 state, sparse/staggered reclaim, singleton preservation, and
+  zero lifecycle, while this unit deletes selectors without changing the
+  selector-unset production leaves.
