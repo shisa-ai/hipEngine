@@ -698,6 +698,8 @@ class MapleRunner:
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
         single_dispatch_router = _maple_router_single_dispatch()
         affine4_wave32_exact = _maple_affine4_wave32_exact()
+        fuse_qkattn = _maple_fuse_qkattn()
+        fuse_moe = _maple_fuse_moe()
 
         def _decode_body(stream: int) -> None:
             _decode_layers_and_tail(stream)
@@ -732,7 +734,7 @@ class MapleRunner:
                     runtime=self.runtime, stream=stream,
                 )
                 rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
-                if _maple_fuse_qkattn():
+                if fuse_qkattn:
                     maple_attention_fused_qknorm_decode_bf16(
                         b.qkv.ptr,
                         layer_weights.q_norm.ptr,
@@ -832,7 +834,7 @@ class MapleRunner:
                         runtime=self.runtime,
                         stream=stream,
                     )
-                if _maple_fuse_moe():
+                if fuse_moe:
                     maple_moe_dual_swiglu_bf16(
                         b.normalized.ptr,
                         layer_weights.expert_gate_proj.weight.ptr,

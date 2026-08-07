@@ -207556,3 +207556,26 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   with clean source, selector, command, trace, derived-share, and qualification
   provenance. D0 is complete; D1 c2/c4/c8 affine4 row reuse is the next exact
   owner. Preserve the `=0` group64 rollback until the final roadmap audit.
+
+## 2026-08-08 — Maple D0 residual host-selector snapshot candidate
+
+- Reopen only the measured **5.7-us/token** fixed-profile gap to the Task #91
+  exact-200 target; do not revisit rejected c1 output-row tiles, old routers, or
+  graph-only noise. Audit `MapleRunner.step()` and find that router/head choices
+  are already snapshotted once per call, but the invariant QK-attention and MoE
+  fusion env selectors are reread inside every one of 24 layers: **48
+  `os.environ.get` calls/token** for two default-off routes.
+- RED first adds a hot-path AST invariant and fails because both selector calls
+  live under `_decode_layers_and_tail`. Hoist their values beside the existing
+  router/head snapshots, preserving selection between calls and every kernel,
+  pointer, launch, and arithmetic operation within a call. GREEN passes the
+  focused node and the complete Maple runtime suite **22/22**; Python compile
+  and diff checks pass. No kernel source, allocation, or dispatch registry
+  changes.
+- An unqualified three-fresh-process host-wall screen with both fusion selectors
+  and both retained selectors explicitly unset measures **5.019783 / 4.956033 /
+  4.953308 ms**, median **4.956033 ms = 201.774 tok/s**. This is admission-only:
+  the tree is dirty and the 199.772 baseline is a prior process/revision, so do
+  not publish a delta or replace the canonical profile. Commit the behavior-
+  neutral host unit, then run a clean alternating baseline/candidate process
+  gate plus the existing exact state/category protocol before retention.
