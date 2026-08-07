@@ -207680,3 +207680,29 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   unchanged complete M6 protocol once more from the clean promotion commit to
   publish selector-unset production; do not substitute the trace wall for that
   retained aggregate-throughput row.
+- Commit promotion as `f897dc350`, then rerun the unchanged complete M6 protocol
+  from that clean revision with the row-reuse selector explicitly absent and
+  cached builds required. Selector-unset production is accepted at
+  **250.481/346.365/428.063 aggregate tok/s**, improvements of
+  **14.47%/32.66%/43.08%** over the corrected M6 baseline. Publication sample
+  ranges are **250.048-251.773 / 346.241-346.972 / 427.804-428.070 tok/s**.
+- The final publication repeats all nine width trajectories exact, **18/18**
+  natural/category-heldout trajectories exact with a two-active-row sparse c8
+  group, and every runner lifecycle at **0 bytes / 0 allocations**. Tracked
+  c2/c4/c8 residency is **5,316,071,856 / 5,323,952,976 / 5,339,715,216
+  bytes**; the helper scope still excludes model load, prompt prefill, and
+  public scheduler/server admission.
+- Full selector-unset source SHA-256 is
+  `1a7cc74bfef538688d7728a530d6e1a4edb17c9894e6a2dfa05b5cff9fb63b93`.
+  Publish compact artifact
+  `benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`
+  (SHA-256
+  `38d11961037c23ef0886c2a87d689baac9dc8f336e6c6b3c0d65b05c0158fa4e`)
+  and update the Maple overview/performance plan, benchmark rollup/changelog,
+  kernel catalog, and refactor ledger. D1 is complete; P4 safe long-prompt and
+  public batch admission is next.
+- Publication validation is GREEN: repository benchmark provenance/readme-sync
+  tests **14/14**, compact artifact/source-hash/metric/link/current-row checks
+  **6/6**, JSON parsing, stale-row scan, and `git diff --check` all pass. The
+  custom current-row check caught and corrected two qualification-vs-publication
+  labels in the kernel/refactor ledgers before commit.

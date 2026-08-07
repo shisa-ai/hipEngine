@@ -29,18 +29,31 @@ protocol-sensitive. Evidence:
 [`D0 head`](results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
 and [`D0 selector snapshot`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json).
 
+**Maple D1 exact c2/c4/c8 head retained/default:** one block now owns one
+full-vocabulary affine4 row across all request rows, reusing immutable weights
+while replaying the original FP32 tree independently per request. Clean
+selector-unset helper throughput improves **218.818/261.099/299.181 ->
+250.481/346.365/428.063 aggregate tok/s (+14.47%/+32.66%/+43.08%)**. All nine
+measured trajectories, all **18/18** natural/category-heldout trajectories, the
+sparse final c8 group, reclaimed-slot reuse, and lifecycle are exact. Cached c8
+tracing reduces the head **10.490 -> 3.734 ms (2.809x)** and wall **25.925 ->
+19.296 ms** with the same 293 launches. Evidence:
+[`D1 row reuse`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json).
+
 | Maple retained workload | Current throughput | Exactness / scope | Artifact |
 | --- | ---: | --- | --- |
 | Public native prefill 128/320/512 | **749.175/741.368/754.000 tok/s** | 18/18 states, 90/90 positions, KL 0 | [`P2/M5`](results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json) |
 | c1 natural+heldout continuation | **153.201 tok/s** | 18 prompts, 1,152 paired timing samples; full-head exact; -0.14% vs prior | [`D0 current`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json) |
-| Fixed-helper c2/c4/c8 decode64 | **218.818/261.099/299.181 aggregate tok/s** | helper only; not public server throughput | [`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json) |
+| Fixed-helper c2/c4/c8 decode64 | **250.481/346.365/428.063 aggregate tok/s** | exact row reuse; helper only, not public server throughput | [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json) |
 
-The fixed-capacity M6 runtime helper remains c=2/4/8 median aggregate
-**218.818/261.099/299.181 tok/s** at 64 tokens/request with every measured
-trajectory exact and **4.951/4.958/4.973 GiB** tracked resident ownership; it is
-not yet public server throughput. The former 223.2/275.6/321.1 rows are invalid
-(wrong hardware label and c=1-only gate). Evidence:
-[`M6`](results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json).
+The fixed-capacity helper now uses exact affine4 row reuse at c=2/4/8 and
+reaches median aggregate **250.481/346.365/428.063 tok/s** at 64 tokens/request.
+Every measured and natural/heldout trajectory is exact, sparse/reclaimed slots
+pass, tracked residency is **4.951/4.958/4.973 GiB**, and close returns zero.
+It is not public server throughput. The corrected pre-D1
+**218.818/261.099/299.181** rows remain the baseline; the older
+223.2/275.6/321.1 rows remain invalid (wrong hardware label and c=1-only gate).
+Evidence: [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json).
 
 The clean cached-only
 [`post-P0 phase profile`](results/2026-08-07-gfx1151-maple-p0-phase-profile.json)
@@ -59,9 +72,11 @@ measures **439.479 ms / 728.135 tok/s** and attention **21.916 ms (2.920x,
 at **0/16** paired wins. Direct native BF16 WMMA also fails the exact gate at
 **106/256 FP32 K16 partials** and **43/655,360 BF16 production-shape outputs**;
 production stays tile 8. D0's exact router, wave32 affine4 head, and once-per-
-step selector snapshot are retained; fixed-token A/B reaches 202.580 tok/s and
-c2/c4/c8 affine4 row reuse is next. Evidence:
-[`P3 rejected`](results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json).
+step selector snapshot are retained; fixed-token A/B reaches 202.580 tok/s.
+D1's exact c2/c4/c8 affine4 row reuse is also retained, making safe long-prompt
+and public scheduler admission the next roadmap owner. Evidence:
+[`P3 rejected`](results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json)
+and [`D1 retained`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json).
 A counterbalanced exact/leak-free
 [`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
 measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and

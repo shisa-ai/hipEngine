@@ -23,34 +23,34 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Current c1 natural-context | 153.201 tok/s | repeated complete category/state gate; -0.14% vs prior 153.409 |
 | Qualified wave32-head A/B | 143.679 -> 153.409 tok/s (+6.77%) | retained D0 head qualification |
 | Prior pre-head c1 short profile | 180.935 tok/s (5.527 ms/token) | post-router cached trace |
-| Fixed-helper c8 decode64 | 299.181 aggregate tok/s median | M6 recertification |
+| Fixed-helper c8 decode64 | 428.063 aggregate tok/s median | retained D1 exact row reuse |
 | HIP kernels per c1 decode token | 271 | post-D0 cached trace |
 | Exact affine4 lm-head payload | 166.922 MiB | packed weight + BF16 scale/bias |
 | Public tracked residency (max context 512) | 4.988 GiB (5,355,881,848 bytes) | retained P2/M5 recertification |
 | Native-prefill limit | 512 tokens; serial fallback above | public generator contract |
 
-**Current conclusion (P0+P1+P2 and D0 router+head retained; P3 rejected).**
+**Current conclusion (P0+P1+P2, D0, and D1 retained; P3 rejected).**
 Final-row-only sampling nearly doubles qualified native prefill, expert-major
 MoE adds 3.68-5.83%, and exact GQA4 adds another 3.13-15.87%. The clean
 retained-P0/P1/P2 traces remain immutable phase baselines. Exact dense tile 16
 and 32 regress tile 8 on every paired sample. D0's exact one-dispatch router and
 one-wave affine4 head both pass the complete clean category gate and are now
 default. A final behavior-neutral selector snapshot improves fixed-token A/B
-**200.279 -> 202.580 tok/s (+1.15%)**; D0 is closed and the c8 row remains the
-corrected helper baseline:
+**200.279 -> 202.580 tok/s (+1.15%)**; D0 is closed. D1's exact affine4
+row-reuse head is also retained and supersedes the corrected c8 baseline:
 
 | Current phase | Wall / unit | Kernel / unit | Host gap | Launches / unit | Useful throughput |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | public native prefill320, post-P2 | **439.479 ms/request** | **431.666 ms** | **7.813 ms (1.78%)** | **730** | **728.135 tok/s** |
 | autoregressive c1 decode, post-D0 selector snapshot (trace process) | **5.018 ms/token** | **4.550 ms** | **0.468 ms (9.32%)** | **271** | **199.293 tok/s** |
-| fixed-helper c8 decode | 27.256 ms/batch | 25.337 ms | 1.919 ms (7.04%) | 293 | 293.514 aggregate tok/s |
+| fixed-helper c8 decode, post-D1 | **19.296 ms/batch** | **17.305 ms** | **1.991 ms (10.32%)** | **293** | **414.602 aggregate tok/s** |
 
 After P2, the exact affine4 head owns only **0.31%** of prefill320 kernel time,
 while grouped gate/up + down owns **59.08%**. Attention is down to **21.916 ms /
 5.08%**; dense QKV+O is the next bounded owner at **124.770 ms / 28.90%**. The
 post-D0 c1 trace attributes **21.28%** to the head, **24.97%** to selected
-experts, and **24.04%** to router compute; the corrected c8 baseline attributes
-**46.52%/29.67%** to head/selected experts. The paths therefore have different
+experts, and **24.04%** to router compute; the post-D1 c8 trace attributes
+**21.58%/43.52%** to head/selected experts. The paths therefore have different
 actions:
 
 - **Prefill:** P0 samples only the final prompt row, P1 groups routed rows by
@@ -58,8 +58,9 @@ actions:
   128/320/512 throughput is now **749.175/741.368/754.000 tok/s**, versus
   **726.421/679.632/650.745** at P1. P2 adds no persistent allocation;
   max-context-512 residency remains **4.988 GiB**.
-- **c8:** all request rows require logits. A rows>1 affine4 tile that streams
-  each 166.922-MiB payload once across request rows remains the correct owner.
+- **c8:** D1 now streams each 166.922-MiB affine4 payload once across request
+  rows while preserving every result. Qualified c2/c4/c8 reaches
+  **250.481/346.365/428.063 aggregate tok/s**.
 - **c1:** the exact one-dispatch router and one-wave affine4 head are
   retained/default. The head improves its group64 rollback **143.679 ->
   153.409 tok/s (+6.77%)** on the clean complete suite. A controlled 3+3-process
@@ -82,9 +83,8 @@ compaction—is the blocker.
 
 Current exact priority:
 
-1. D1 c2/c4/c8 affine4 row reuse.
-2. P4 safe long-prompt/public scheduler admission.
-3. Future P1b exact non-WMMA SIMD ternary consumers; do not repeat grouped-lane,
+1. P4 safe long-prompt/public scheduler admission.
+2. Future P1b exact non-WMMA SIMD ternary consumers; do not repeat grouped-lane,
    dense token-tile, or direct native-BF16-WMMA schedules.
 
 DeepGrove's published M4 table supports this split: **169 tok/s exact**, **218
@@ -94,6 +94,7 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json`,
@@ -166,7 +167,7 @@ Per-step kernel breakdown (24 layers/token, one token = 9707):
 256-thread block (grid 256/wg 256) that serially computes logits and the
 softmax/top-8 over all 256 experts, ~362 µs per call × 24 layers. Parallelizing
 it (grid over experts / vectorized 2048-wide dot) is the single largest win
-(see D3/M3). lm_head and selected-expert GEMVs follow. hipGraph (D1) could at
+(see D3/M3). lm_head and selected-expert GEMVs follow. hipGraph (M1) could at
 most recover this historical ~4.3% host gap and is deprioritized below kernel
 work.
 
@@ -179,7 +180,7 @@ Produce a kernel-time vs host-gap breakdown:
 - Per-kernel `DurationNs` by family (ternary GEMV, selected-expert, router,
   attention, qknorm, affine4 embed, affine4 lm_head, argmax, norms).
 - **Host gap** = step wall − Σ kernel time. This is the launch/dispatch budget
-  that hipGraph capture attacks (see D1).
+  that hipGraph capture attacks (see M1).
 - Which single kernel dominates (confirmed: the serial 256-expert router).
 
 Deliverable: a `docs/KERNELS.md` Maple trace block and a
@@ -196,7 +197,7 @@ Prebuild the `.so` and use `require_cached` so the profiled process never spawns
 | **M3c c1 eight-route grouping** | Rejected at 0.69x | This tested activation reuse within one token, not expert-major reuse across prompt rows. |
 | **M4/M5 batched prefill** | P2 retained at 741-754 tok/s | Exact through 512; dense ternary QKV/O is next while scalar expert compute blocks the original P1 ceiling. |
 | **M1 c1 hipGraph** | Exact but only 1.0047x in the current review | Keep opt-in; do not use the historical host-gap estimate as a speed claim. |
-| **M6 batch decode** | c2/c4/c8 helper at 218.818/261.099/299.181 aggregate tok/s | Retained helper; public scheduler/server integration remains open. |
+| **M6+D1 batch decode** | c2/c4/c8 exact row-reuse helper at 250.481/346.365/428.063 aggregate tok/s | Retained helper; public scheduler/server integration remains open. |
 | **M2 fusion** | Exact composites regressed kernel efficiency | Keep opt-in/fallbacks; no default promotion. |
 
 M3a evidence:
@@ -204,7 +205,7 @@ M3a evidence:
 
 ## 3. Decode plan (kernel-bound → optimize the hot kernels)
 
-### D1 — hipGraph-capture the whole token step (implemented, opt-in)
+### M1 — hipGraph-capture the whole token step (implemented, opt-in)
 
 M0 shows the host gap is only ~4.3% (549 µs/step), so capture is a secondary win
 versus kernel-level work. The current review confirms that this c1 graph does
@@ -345,11 +346,12 @@ saving **0.076 ms**, with **3/4** wins. The separate trace process measures
 tok/s**. `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` preserves the group64
 rollback.
 
-Exact work, in order:
-
-1. For c2/c4/c8 only, tile request rows so each packed weight row is streamed
-   once across requests.
-2. Head+argmax fusion is secondary: argmax is only 0.008 ms/token.
+D1 completes the rows>1 exact work: `group64_batched_rowreuse_exact` loads each
+packed weight row once across c2/c4/c8 while replaying the original per-request
+FP32 tree. Clean helper medians improve **218.818/261.099/299.181 ->
+250.481/346.365/428.063 aggregate tok/s**. Cached c8 tracing cuts the head
+**10.490 -> 3.734 ms (2.809x)**. Head+argmax fusion remains secondary because
+argmax is only 0.008 ms/token.
 
 Separately, add **FlashHead** only as an opt-in approximate path. The official
 configuration probes 512 of 4,748 clusters (16,384 candidate tokens plus forced
@@ -359,29 +361,27 @@ not part of the exact 200+ target.
 
 ### D5 — Batch decode (c>1) and continuous batching
 
-Multi-request decode is independent of the c1 graph and should reuse weight
-traffic across requests:
-- Multi-column / MMQ-style ternary decode kernels for c=2/4/8 (the current
-  row-GEMV head still rereads weights per request).
-- Batched GQA attention decode and KV append with a batch grid dimension.
-- A continuous-batching owner loop for admission, prompt prefill, decode,
-  sampling, and reclaim, reusing the GGUF/PARO server patterns.
+Multi-request decode is independent of the c1 graph. M6 provides batched GQA
+attention/KV append and fixed-slot reclaim; D1 now reuses affine4 head weights
+across c2/c4/c8. The remaining owner is a public continuous-batching admission
+loop with packed prompt prefill, decode, sampling, and reclaim, following the
+GGUF/PARO server patterns.
 
-**M6 fixed-capacity runtime helper: DONE; public server integration: OPEN.**
+**M6+D1 fixed-capacity runtime helper: DONE; public server integration: OPEN.**
 Batch decode is implemented with separate request-local SWA/global rings,
 sparse active masks, offset-correct reclaim, and c-specific real-checkpoint
 trajectory gates. `MapleBatchRunner.batch_step` runs c requests through the full
 batched ternary chain; `MapleContinuousBatcher` owns fixed slots and reclaim,
 but is not wired into the public generation scheduler or a server endpoint.
 
-The corrected Radeon 8060S/gfx1151 c=2/4/8 medians are
-**218.818/261.099/299.181 aggregate tok/s** at 64 tokens/request. Every repeated
-measured trajectory matches c1, the 18-prompt natural-derived seed gate passes
-(including a sparse final c=8 group), tracked residency is
-**4.951/4.958/4.973 GiB**, and close returns ownership to zero. The former
-223.2/275.6/321.1 rows are invalid because their artifact mislabeled the device
-as W7900/gfx1151 and gated c=1 rather than the measured widths. Evidence:
-`benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
+The retained Radeon 8060S/gfx1151 c2/c4/c8 medians are
+**250.481/346.365/428.063 aggregate tok/s** at 64 tokens/request, improvements
+of **14.47%/32.66%/43.08%** over the corrected pre-D1 rows. Every repeated
+measured trajectory matches c1, the 18-prompt natural/category-heldout seed gate
+passes (including a sparse final c8 group), explicit reclaimed-slot reuse is
+exact, tracked residency is **4.951/4.958/4.973 GiB**, and close returns zero.
+The helper remains outside public scheduler/server admission. Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`.
 
 ## 4. Prefill plan (current 741-754 tok/s -> exact 1,000+)
 
@@ -525,8 +525,9 @@ dense/attention target.
 | P3 | dense ternary tile + native-BF16-WMMA sweep | tile 16/32 regress; WMMA fails byte exactness | 744.116/731.182/571.923 tok/s; WMMA 106/256 FP32 partial and 43/655,360 BF16 output mismatches; production unchanged |
 | D0 router | one-dispatch exact c1 routing | complete category/state/counter gate; default retained | 139.538 -> 145.321 tok/s (+4.14%); 1,127/1,152 wins; pre-head short profile 180.935 tok/s / 271 launches |
 | D0 head+host | one-wave exact affine4 plus once-per-step selector snapshot | complete category/state/counter gate; default retained | Head: 143.679 -> 153.409 tok/s (+6.77%); host A/B: 200.279 -> 202.580 tok/s (+1.15%); trace companion 199.293 tok/s / 271 launches |
-| M1 | D1 graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
-| M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
+| D1 head | exact c2/c4/c8 affine4 row reuse | full-logit bits, all widths, category/sparse/reclaim/lifecycle, and trace; default retained | 218.818/261.099/299.181 -> 250.481/346.365/428.063 aggregate tok/s; c8 head 10.490 -> 3.734 ms |
+| M1 | graph-captured c1 decode | bit-exact vs eager; no default promotion | current review 1.0047x / 0.033 ms, opt-in |
+| M6+D1 | D5 batch decode helper plus exact row-reuse head | exact c2/c4/c8; helper rows only | 250.481/346.365/428.063 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):

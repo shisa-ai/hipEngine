@@ -24,7 +24,7 @@ should be removed or collapsed.
   **5.281 -> 2.023 ms (2.611x)**, and **10.554 -> 3.763 ms (2.804x)** with
   **96/96** paired wins and exact teardown.
 - The clean helper gate improves c2/c4/c8 aggregate throughput
-  **218.818/261.099/299.181 -> 250.037/347.511/427.929 tok/s**. All widths,
+  **218.818/261.099/299.181 -> 250.481/346.365/428.063 tok/s**. All widths,
   **18/18** natural/category-heldout trajectories, sparse and reclaimed slots,
   and lifecycle are exact. Cached c8 tracing measures the head **10.490 ->
   3.734 ms (2.809x)** and total wall **25.925 -> 19.296 ms** at the unchanged
