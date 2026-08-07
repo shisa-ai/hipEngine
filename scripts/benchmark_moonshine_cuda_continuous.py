@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark Moonshine continuous refill against static lockstep B=2/4/8."""
+"""Benchmark Moonshine continuous refill/arrivals against lockstep B=2/4/8."""
 
 from __future__ import annotations
 
@@ -176,6 +176,84 @@ def run_continuous_workload(scheduler, workload: list[Fixture], run_index: int) 
     )
 
 
+def staggered_arrival_steps(
+    request_count: int, initial_requests: int, interval_steps: int
+) -> tuple[int, ...]:
+    """Return deterministic scheduler-step arrivals without artificial sleeps."""
+
+    if request_count <= 0 or not 1 <= initial_requests <= request_count:
+        raise ValueError("request_count/initial_requests are inconsistent")
+    if interval_steps <= 0:
+        raise ValueError("interval_steps must be positive")
+    return tuple(
+        0 if index < initial_requests else 1 + (index - initial_requests) * interval_steps
+        for index in range(request_count)
+    )
+
+
+def run_staggered_continuous_workload(
+    scheduler,
+    workload: list[Fixture],
+    run_index: int,
+    *,
+    arrival_interval_steps: int,
+) -> WorkloadResult:
+    """Submit requests during live decode on a deterministic step schedule."""
+
+    arrivals = staggered_arrival_steps(
+        len(workload), scheduler.max_batch, arrival_interval_steps
+    )
+    started = time.perf_counter_ns()
+    submitted: dict[str, int] = {}
+    expected: dict[str, tuple[int, ...]] = {}
+    completed_at: dict[str, int] = {}
+    outputs: dict[str, tuple[int, ...]] = {}
+    next_request = 0
+    scheduler_step = 0
+    while next_request < len(workload) or not scheduler.idle:
+        while (
+            next_request < len(workload)
+            and arrivals[next_request] <= scheduler_step
+        ):
+            fixture = workload[next_request]
+            request_id = f"staggered-{run_index}-{next_request}"
+            scheduler.submit(
+                request_id,
+                fixture.keys,
+                fixture.values,
+                mask=fixture.mask,
+                seed_token_id=fixture.reference[0],
+            )
+            submitted[request_id] = time.perf_counter_ns()
+            expected[request_id] = expected_output(fixture)
+            next_request += 1
+        if scheduler.idle:
+            scheduler_step = arrivals[next_request]
+            continue
+        step = scheduler.step()
+        now = time.perf_counter_ns()
+        for request_id in step.completed:
+            result = scheduler.take_completed(request_id)
+            if result.reason != "eos":
+                raise AssertionError(
+                    f"staggered request {request_id} ended by {result.reason}"
+                )
+            outputs[request_id] = result.tokens
+            completed_at[request_id] = now
+        scheduler_step += 1
+    ended = time.perf_counter_ns()
+    if outputs != expected:
+        raise AssertionError("staggered continuous outputs differ from references")
+    return WorkloadResult(
+        wall_ms=(ended - started) * 1.0e-6,
+        request_latency_ms=tuple(
+            (completed_at[request_id] - submitted[request_id]) * 1.0e-6
+            for request_id in submitted
+        ),
+        outputs=outputs,
+    )
+
+
 def _batch_arrays(rows: list[Fixture], batch: int):
     padded = list(rows)
     while len(padded) < batch:
@@ -313,7 +391,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--snapshot-dir", type=Path, required=True)
     parser.add_argument("--fixture-dir", type=Path, required=True)
     parser.add_argument("--batches", type=parse_batches, default=parse_batches("2,4,8"))
+    parser.add_argument(
+        "--topology",
+        choices=("uniform-t256", "exact-two-region"),
+        default="uniform-t256",
+    )
     parser.add_argument("--requests", type=int, default=48)
+    parser.add_argument("--arrival-interval-steps", type=int, default=2)
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--iterations", type=int, default=10)
     parser.add_argument("--max-graphs", type=int, default=8)
@@ -328,6 +412,8 @@ def main() -> int:
     args = parse_args()
     if args.requests <= 0 or args.warmup < 0 or args.iterations <= 0:
         raise ValueError("requests/iterations must be positive and warmup non-negative")
+    if args.arrival_interval_steps <= 0:
+        raise ValueError("arrival-interval-steps must be positive")
     if max(args.batches) > args.requests:
         raise ValueError("requests must be at least the largest batch")
     root = Path(__file__).resolve().parents[1]
@@ -345,6 +431,7 @@ def main() -> int:
     from hipengine.loading.moonshine import load_moonshine_model
     from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
     from hipengine.runtime.moonshine_cuda_continuous import (
+        MoonshineCudaContinuousBatchRuntime,
         MoonshineCudaExactContinuousBatchRuntime,
     )
 
@@ -360,27 +447,47 @@ def main() -> int:
     results: dict[str, Any] = {}
     try:
         for batch in args.batches:
-            early_decoder = MoonshineCudaBatchRuntime(
-                max_batch=batch,
-                encoder_frames=frames,
-                loaded_model=loaded,
-                owns_weights=False,
-            )
-            mature_decoder = MoonshineCudaBatchRuntime(
-                max_batch=batch,
-                encoder_frames=frames,
-                loaded_model=loaded,
-                owns_weights=False,
-            )
-            early_decoder.prepare_decoder_kernels()
-            mature_decoder.prepare_decoder_kernels()
-            continuous = MoonshineCudaExactContinuousBatchRuntime(
-                early_decoder,
-                mature_decoder,
-                owns_decoders=True,
-                max_pending=args.requests,
-                max_graphs=args.max_graphs,
-            )
+            continuous_decoders: list[tuple[str, MoonshineCudaBatchRuntime]] = []
+            if args.topology == "exact-two-region":
+                early_decoder = MoonshineCudaBatchRuntime(
+                    max_batch=batch,
+                    encoder_frames=frames,
+                    loaded_model=loaded,
+                    owns_weights=False,
+                )
+                mature_decoder = MoonshineCudaBatchRuntime(
+                    max_batch=batch,
+                    encoder_frames=frames,
+                    loaded_model=loaded,
+                    owns_weights=False,
+                )
+                early_decoder.prepare_decoder_kernels()
+                mature_decoder.prepare_decoder_kernels()
+                continuous = MoonshineCudaExactContinuousBatchRuntime(
+                    early_decoder,
+                    mature_decoder,
+                    owns_decoders=True,
+                    max_pending=args.requests,
+                    max_graphs=args.max_graphs,
+                )
+                continuous_decoders.extend(
+                    (("early", early_decoder), ("mature", mature_decoder))
+                )
+            else:
+                decoder = MoonshineCudaBatchRuntime(
+                    max_batch=batch,
+                    encoder_frames=frames,
+                    loaded_model=loaded,
+                    owns_weights=False,
+                )
+                decoder.prepare_decoder_kernels()
+                continuous = MoonshineCudaContinuousBatchRuntime(
+                    decoder,
+                    owns_decoder=True,
+                    max_pending=args.requests,
+                    max_graphs=args.max_graphs,
+                )
+                continuous_decoders.append(("uniform", decoder))
             try:
                 continuous_samples = benchmark_route(
                     lambda index: run_continuous_workload(
@@ -389,22 +496,29 @@ def main() -> int:
                     warmup=args.warmup,
                     iterations=args.iterations,
                 )
+                staggered_samples = benchmark_route(
+                    lambda index: run_staggered_continuous_workload(
+                        continuous,
+                        workload,
+                        index,
+                        arrival_interval_steps=args.arrival_interval_steps,
+                    ),
+                    warmup=args.warmup,
+                    iterations=args.iterations,
+                )
                 continuous_graph = continuous.graph_cache_contract()
                 continuous_scheduler = continuous.scheduler_contract()
                 continuous_workspace = sum(
                     decoder.allocation_contract()["workspace_nbytes"]
-                    for decoder in (early_decoder, mature_decoder)
+                    for _name, decoder in continuous_decoders
                 )
             finally:
                 continuous.close()
-            if not mature_decoder.teardown_returned_to_baseline:
-                raise RuntimeError(
-                    f"continuous B={batch} mature decoder teardown leaked"
-                )
-            if not early_decoder.teardown_returned_to_baseline:
-                raise RuntimeError(
-                    f"continuous B={batch} early decoder teardown leaked"
-                )
+            for name, decoder in continuous_decoders:
+                if not decoder.teardown_returned_to_baseline:
+                    raise RuntimeError(
+                        f"continuous B={batch} {name} decoder teardown leaked"
+                    )
 
             lockstep_decoder = MoonshineCudaBatchRuntime(
                 max_batch=batch,
@@ -431,10 +545,12 @@ def main() -> int:
                 raise RuntimeError(f"lockstep B={batch} decoder teardown leaked")
 
             continuous_summary = timing_summary(continuous_samples, args.requests)
+            staggered_summary = timing_summary(staggered_samples, args.requests)
             lockstep_summary = timing_summary(lockstep_samples, args.requests)
             results[f"b{batch}"] = {
                 "batch": batch,
                 "continuous": continuous_summary,
+                "staggered_continuous": staggered_summary,
                 "lockstep": lockstep_summary,
                 "continuous_vs_lockstep_requests_per_s": (
                     continuous_summary["requests_per_s_median"]
@@ -455,8 +571,9 @@ def main() -> int:
                 "all_teardown_returned_to_baseline": True,
             }
             print(
-                f"B={batch}: continuous {continuous_summary['requests_per_s_median']:.2f} "
-                f"vs lockstep {lockstep_summary['requests_per_s_median']:.2f} req/s",
+                f"B={batch}: refill {continuous_summary['requests_per_s_median']:.2f}, "
+                f"staggered {staggered_summary['requests_per_s_median']:.2f}, "
+                f"lockstep {lockstep_summary['requests_per_s_median']:.2f} req/s",
                 flush=True,
             )
     finally:
@@ -494,10 +611,17 @@ def main() -> int:
             "encoder_frames": frames,
             "warmup_samples": args.warmup,
             "timed_samples": args.iterations,
-            "continuous_topology": "exact two-region: t32 positions 0-6 / t256 positions 7-193",
+            "continuous_topology": args.topology,
             "lockstep_topology": "exact t32 positions 0-6 / t256 positions 7-193",
             "timing": "synchronized end-to-end scheduler wall including cross-cache admission",
-            "all_requests_logically_submitted_at_sample_start": True,
+            "arrival_profiles": {
+                "continuous": "all requests submitted at sample start; FIFO refill",
+                "staggered_continuous": (
+                    f"initial B requests at step 0, then one every "
+                    f"{args.arrival_interval_steps} scheduler steps; no artificial sleep"
+                ),
+            },
+            "arrival_interval_steps": args.arrival_interval_steps,
         },
         "dependency_adjusted": dependency_adjusted_bytes(
             "custom_cuda_runtime_subset"
@@ -506,15 +630,31 @@ def main() -> int:
             "all_outputs_exact_to_six_fixture_references": True,
             "all_routes_repeat_deterministic": True,
             "continuous_numerical_contract": (
-                "bit-exact topology per request: t32 positions 0-6, one D2D state "
-                "transfer, then t256 positions 7-193"
+                "full-corpus-qualified uniform t256 reassociation"
+                if args.topology == "uniform-t256"
+                else "bit-exact t32/t256 regions with one D2D state transfer"
             ),
         },
         "results": results,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-    print(json.dumps({key: value["continuous_vs_lockstep_requests_per_s"] for key, value in results.items()}, indent=2))
+    print(
+        json.dumps(
+            {
+                key: {
+                    "refill_vs_lockstep": value[
+                        "continuous_vs_lockstep_requests_per_s"
+                    ],
+                    "staggered_requests_per_s": value["staggered_continuous"][
+                        "requests_per_s_median"
+                    ],
+                }
+                for key, value in results.items()
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

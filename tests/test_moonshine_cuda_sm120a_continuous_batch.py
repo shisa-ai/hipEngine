@@ -184,6 +184,7 @@ def test_continuous_scheduler_fifo_mixed_positions_reclaim_and_lru() -> None:
         max_pending=3,
         max_graphs=1,
     )
+    assert scheduler.max_batch == 2
     for request_id, length in (("a", 1), ("b", 4), ("c", 2)):
         keys, values, mask = _request_arrays(length)
         scheduler.submit(request_id, keys, values, mask=mask)
