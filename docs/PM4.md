@@ -831,6 +831,11 @@ counterbalanced order on the same loaded model and graph. Attribute:
 - end-to-end p512/d128 throughput.
 
 Only then consider register-write elision and narrower dependency boundaries.
+The canonical focused harness is `scripts/pm4_graph_bench.py`: one loaded model,
+one stable-pointer graph per transport, exact reset/rearm, rotating order, and
+separate host-call/synchronized/capture-inclusive metrics. Native call wall is
+blocking by contract and includes its stream drain plus finite wait; synchronized
+replay is therefore the primary cross-transport comparison.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact

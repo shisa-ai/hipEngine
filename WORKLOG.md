@@ -209031,3 +209031,29 @@ Vulkan local sizes verbatim will close the measured gap.
   lifecycle/registry controls), GGUF decode-graph contracts, G5 helpers, and
   GGUF generation routing pass in one affected bundle. Ruff, `compileall`, JSON
   validation, torch/backend-branch audits, and `git diff --check` pass.
+
+## 2026-08-08 — Add the counterbalanced PM4 graph benchmark harness (P6 setup)
+
+- Add `scripts/pm4_graph_bench.py` for the focused transport metric: one loaded
+  Q4_K_M session, one stable-pointer graph generation per selected transport,
+  rotating run order, exact reset/prefill/rearm before each window, separate
+  host API-call and synchronized replay wall, explicit capture-inclusive/request
+  wall, transport ledgers, final token/recurrent+KV/logit hashes, and checked
+  teardown. The native API-call metric includes its required stream drain and
+  finite wait; synchronized replay is the fair cross-transport headline.
+- RED/GREEN model-free tests cover rotation, metric reduction, and fail-closed
+  cross-transport correctness. Document the canonical p512/d128 one-warmup,
+  five-round protocol in `docs/BENCHMARK.md`; results remain
+  `performance_claim=false` until the PM4 promotion policy's natural-suite and
+  lifecycle gates pass.
+- One dirty-tree p512/d3 harness smoke (zero warmups, one round) proved
+  simultaneous graph ownership and all transport paths: final token `9707`,
+  recurrent/KV hash `3fa40af8...c658`, and final-logit hash `7d887b40...e357`
+  match across HIP graph, AQL, and PM4. Directional replay was HIP graph
+  `10.644 ms/token`, AQL `11.407`, PM4 `9.940`; this is a one-sample harness
+  smoke, not performance evidence. All native submission/retirement/context
+  ledgers passed. The initial harness verdict rejected only a strict
+  `hipMemGetInfo` equality check: simultaneous first-use graph/HSA caches left a
+  bounded 4 MiB delta after all owned resources closed. Record the delta and use
+  the existing 64 MiB diagnostic tolerance; P5's isolated transport allocation
+  recovery remains exactly zero-delta. No submit/recreate stress ran.

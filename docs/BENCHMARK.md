@@ -1215,6 +1215,20 @@ generated token, FP32 hidden seed, all resident Conv/GDN states, and all live
 BF16 K/V rows. Third-and-later launches are mandatory; replay-only timing is
 diagnostic, and per-token recapture is a separately timed rejection control.
 
+For the in-tree retained-PM4 P6 transport comparison, use
+`scripts/pm4_graph_bench.py` on gfx1100. The focused baseline is one loaded GGUF
+Q4_K_M session, `[9707] * 512`, 128 transitions, one discarded warmup, and five
+measured rounds. Capture one stable-pointer graph generation for each selected
+`hipgraph|aql|pm4` transport, rotate transport order every round, reconstruct
+exact state with reset/prefill/rearm before every window, and report host API
+call wall, synchronized replay wall, capture-inclusive wall, queue/provenance
+ledgers, final token, recurrent/KV hash, final-logit hash, and context teardown.
+Native API call wall includes the required stream drain and finite native wait;
+HIP call wall is asynchronous issue time, so synchronized replay is the primary
+cross-transport metric. The harness remains `performance_claim=false` until
+natural prompt/category and heldout gates satisfy `docs/PM4.md` promotion policy.
+It never performs submit-plus-queue-recreate stress.
+
 For the SOL-G6 replacement-residency gate, run a clean persistent-session
 `scripts/qwen35_gguf_bench.py` p512/d128 row with the production graph selected,
 then compact it with `scripts/gguf_residency_g6.py`. Snapshot the graph live,
