@@ -268,19 +268,21 @@ reused across requests:
 - Then a continuous-batching owner loop (admission, chunked prefill, decode
   steps, sampler routing, reclaim) reusing the GGUF/PARO server patterns.
 
-**M6 status: DONE.** Batch decode of c independent requests is implemented and
-validated bit-exact vs c serial decodes on the real checkpoint:
-- Batched per-request QK-norm+RoPE+KV write and batched GQA attention decode
-  kernels with a batch grid dimension and per-row `KVLiveSpans`
-  (`maple_qknorm_rope_kv_write_batched_decode_bf16`,
-  `maple_attention_decode_batched_bf16`). Each request owns a disjoint arena
-  range via `row_base_offsets[row]` while using its own local RoPE position.
-- `MapleBatchRunner.batch_step` runs c requests through the full batched
-  ternary chain (embed, QKV GEMM, attention, MoE, lm_head) reusing weights
-  across the batch.
-- `MapleContinuousBatcher` is a fixed-batch owner loop with admission, decode
-  rounds, and slot reclaim (`reset_request`), reusing the GGUF/PARO pattern.
-- Retained c2/c4/c8 rows on gfx1151 (W7900), see `benchmarks/README.md`.
+**M6 fixed-capacity runtime helper: DONE; public server integration: OPEN.**
+Batch decode is implemented with separate request-local SWA/global rings,
+sparse active masks, offset-correct reclaim, and c-specific real-checkpoint
+trajectory gates. `MapleBatchRunner.batch_step` runs c requests through the full
+batched ternary chain; `MapleContinuousBatcher` owns fixed slots and reclaim,
+but is not wired into the public generation scheduler or a server endpoint.
+
+The corrected Radeon 8060S/gfx1151 c=2/4/8 medians are
+**218.818/261.099/299.181 aggregate tok/s** at 64 tokens/request. Every repeated
+measured trajectory matches c1, the 18-prompt natural-derived seed gate passes
+(including a sparse final c=8 group), tracked residency is
+**4.951/4.958/4.973 GiB**, and close returns ownership to zero. The former
+223.2/275.6/321.1 rows are invalid because their artifact mislabeled the device
+as W7900/gfx1151 and gated c=1 rather than the measured widths. Evidence:
+`benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
 
 ## 4. Prefill plan (serial → batched, compute-bound)
 
@@ -374,9 +376,9 @@ tok/s** (vs ~77 tok/s serial), matching the PARO/Laguna gfx1151 trajectory.
 | M3b | lm_head affine4 | exact; dead-end (tiled 0.96×, weight-bandwidth bound) | `WORKLOG.md` |
 | M3c | selected-expert grouping | exact; dead-end (grouped 0.69×, x is L2-cached) | `WORKLOG.md` |
 | M4 | P1 batched ternary prefill | exact vs packed oracle; prefill tok/s ↑ | GEMM + QKV GEMM primitives in (done) |
-| M5 | P2/P3/P4 full bulk prefill | exact; retained prefill row | `prefill_native` wired + validated (ac118f0b7): 12-tok ~64 ms, 320-tok ~347 tok/s, matches serial next-token |
+| M5 | P2/P3/P4 full bulk prefill | exact through native 512-token limit; serial fallback above it | public path recertified at 128/320/512 = 339.890/326.573/317.488 tok/s; 18 prompts / 90 positions exact |
 | M1 | D1 graph-captured c1 decode | bit-exact vs eager; decode wall ↓ | `WORKLOG.md` + artifact (opt-in; c1 is kernel-bound, ~1.0× within noise) |
-| M6 | D5 batch decode / server | exact c2/c4/c8; retained rows | `MapleBatchRunner` + `MapleContinuousBatcher` wired + validated bit-exact vs serial; retained c2/c4/c8 rows in `benchmarks/README.md` |
+| M6 | D5 batch decode helper | exact c2/c4/c8; helper rows only | 218.818/261.099/299.181 aggregate tok/s; public scheduler/server integration remains open |
 | M2 | D2 fusion | exact; not promoted (kernel-efficiency regression) | dual+swiglu + qknorm+attention opt-in; down+weighted reverted (see `WORKLOG.md`) |
 
 Rules (per `AGENTS.md`):

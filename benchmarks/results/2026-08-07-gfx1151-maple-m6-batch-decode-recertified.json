@@ -1,0 +1,790 @@
+{
+  "artifact_type": "maple_m6_batch_decode_recertification",
+  "claim_scope": "fixed-capacity Maple runtime helper; excludes public server/prompt-batching E2E",
+  "correctness": {
+    "all_widths_passed": true,
+    "natural_seed_gate": {
+      "category_counts": {
+        "code": 6,
+        "general_en": 4,
+        "general_ja": 4,
+        "mixed_ja_en": 4
+      },
+      "decode_steps": 8,
+      "heldout_category_counts": {
+        "code": 2,
+        "general_en": 2,
+        "general_ja": 2,
+        "mixed_ja_en": 2
+      },
+      "lifecycle_rows": [
+        {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 5317678080,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5317678080,
+          "total_freed_bytes": 5317678080
+        },
+        {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 5317678080,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5317678080,
+          "total_freed_bytes": 5317678080
+        },
+        {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 5317678080,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5317678080,
+          "total_freed_bytes": 5317678080
+        }
+      ],
+      "passed": true,
+      "prompt_count": 18,
+      "rows": [
+        {
+          "batch_tokens": [
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992
+          ],
+          "category": "code",
+          "heldout": false,
+          "id": "code_merge_intervals",
+          "seed": 26992,
+          "serial_tokens": [
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992
+          ],
+          "text": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            15402,
+            15402,
+            15402,
+            15402,
+            15402,
+            15402,
+            15402,
+            15402
+          ],
+          "category": "code",
+          "heldout": false,
+          "id": "code_topological_sort",
+          "seed": 15402,
+          "serial_tokens": [
+            15402,
+            15402,
+            15402,
+            15402,
+            15402,
+            15402,
+            15402,
+            15402
+          ],
+          "text": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            897,
+            897,
+            897,
+            897,
+            897,
+            897,
+            897,
+            897
+          ],
+          "category": "code",
+          "heldout": false,
+          "id": "code_lru_cache",
+          "seed": 897,
+          "serial_tokens": [
+            897,
+            897,
+            897,
+            897,
+            897,
+            897,
+            897,
+            897
+          ],
+          "text": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            32095,
+            32095,
+            32095,
+            32095,
+            32095,
+            32095,
+            32095,
+            32095
+          ],
+          "category": "code",
+          "heldout": false,
+          "id": "code_markdown_table",
+          "seed": 32095,
+          "serial_tokens": [
+            32095,
+            32095,
+            32095,
+            32095,
+            32095,
+            32095,
+            32095,
+            32095
+          ],
+          "text": "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            504,
+            504,
+            504,
+            504,
+            504,
+            504,
+            504,
+            504
+          ],
+          "category": "general_en",
+          "heldout": false,
+          "id": "general_en_plan",
+          "seed": 504,
+          "serial_tokens": [
+            504,
+            504,
+            504,
+            504,
+            504,
+            504,
+            504,
+            504
+          ],
+          "text": "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            659,
+            659,
+            659,
+            659,
+            659,
+            659,
+            659,
+            659
+          ],
+          "category": "general_en",
+          "heldout": false,
+          "id": "general_en_explain",
+          "seed": 13,
+          "serial_tokens": [
+            659,
+            659,
+            659,
+            659,
+            659,
+            659,
+            659,
+            659
+          ],
+          "text": "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            9370,
+            9370,
+            9370,
+            9370,
+            9370,
+            9370,
+            9370,
+            9370
+          ],
+          "category": "general_ja",
+          "heldout": false,
+          "id": "general_ja_plan",
+          "seed": 29412,
+          "serial_tokens": [
+            9370,
+            9370,
+            9370,
+            9370,
+            9370,
+            9370,
+            9370,
+            9370
+          ],
+          "text": "\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            43316,
+            43316,
+            43316,
+            43316,
+            43316,
+            43316,
+            43316,
+            43316
+          ],
+          "category": "general_ja",
+          "heldout": false,
+          "id": "general_ja_explain",
+          "seed": 43316,
+          "serial_tokens": [
+            43316,
+            43316,
+            43316,
+            43316,
+            43316,
+            43316,
+            43316,
+            43316
+          ],
+          "text": "\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            33126,
+            33126,
+            33126,
+            33126,
+            33126,
+            33126,
+            33126,
+            33126
+          ],
+          "category": "mixed_ja_en",
+          "heldout": false,
+          "id": "mixed_ja_en_translate",
+          "seed": 33126,
+          "serial_tokens": [
+            33126,
+            33126,
+            33126,
+            33126,
+            33126,
+            33126,
+            33126,
+            33126
+          ],
+          "text": "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n\u6765\u9031\u306e\u30ea\u30ea\u30fc\u30b9\u3067\u306f\u3001\u30ed\u30b0\u51fa\u529b\u306e\u5f62\u5f0f\u5909\u66f4\u3001\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u7121\u52b9\u5316\u30aa\u30d7\u30b7\u30e7\u30f3\u3001\u305d\u3057\u3066API\u30ec\u30b9\u30dd\u30f3\u30b9\u306e\u5f8c\u65b9\u4e92\u63db\u6027\u3092\u91cd\u70b9\u7684\u306b\u78ba\u8a8d\u3057\u305f\u3044\u3067\u3059\u3002",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            43959,
+            43959,
+            43959,
+            43959,
+            43959,
+            43959,
+            43959,
+            43959
+          ],
+          "category": "mixed_ja_en",
+          "heldout": false,
+          "id": "mixed_ja_en_review",
+          "seed": 43959,
+          "serial_tokens": [
+            43959,
+            43959,
+            43959,
+            43959,
+            43959,
+            43959,
+            43959,
+            43959
+          ],
+          "text": "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n\u65b0\u3057\u3044\u63a8\u8ad6\u30e2\u30fc\u30c9\u3067\u306f MTP \u3092\u6709\u52b9\u306b\u3059\u308b\u3068\u751f\u6210\u901f\u5ea6\u304c\u5411\u4e0a\u3057\u307e\u3059\u3002\u305f\u3060\u3057\u3001\u9577\u3044\u30b3\u30f3\u30c6\u30ad\u30b9\u30c8\u3067\u306f KV cache \u306e\u4f7f\u7528\u91cf\u304c\u5897\u3048\u308b\u305f\u3081\u3001\u30e1\u30e2\u30ea\u76e3\u8996\u3092\u63a8\u5968\u3057\u307e\u3059\u3002",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            309,
+            309,
+            309,
+            309,
+            309,
+            309,
+            309,
+            309
+          ],
+          "category": "code",
+          "heldout": true,
+          "id": "heldout_code_rate_limiter",
+          "seed": 309,
+          "serial_tokens": [
+            309,
+            309,
+            309,
+            309,
+            309,
+            309,
+            309,
+            309
+          ],
+          "text": "Implement a Python SlidingWindowRateLimiter with allow(key, timestamp) and an O(1)-amortized per-key window. Include focused pytest-style tests for expiry and independent keys. Return only code.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992
+          ],
+          "category": "code",
+          "heldout": true,
+          "id": "heldout_code_interval_schedule",
+          "seed": 26992,
+          "serial_tokens": [
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992,
+            26992
+          ],
+          "text": "Write a Python function max_non_overlapping(intervals) that returns a maximum-size subset of half-open intervals. State the tie-breaking rule in a docstring and include compact tests. Return only code.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            1283,
+            1283,
+            1283,
+            1283,
+            1283,
+            1283,
+            1283,
+            1283
+          ],
+          "category": "general_en",
+          "heldout": true,
+          "id": "heldout_general_en_incident",
+          "seed": 1283,
+          "serial_tokens": [
+            1283,
+            1283,
+            1283,
+            1283,
+            1283,
+            1283,
+            1283,
+            1283
+          ],
+          "text": "Draft a concise incident-response checklist for a production API whose p99 latency doubled after a deploy. Cover containment, evidence collection, rollback criteria, and follow-up.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            323,
+            323,
+            323,
+            323,
+            323,
+            323,
+            323,
+            323
+          ],
+          "category": "general_en",
+          "heldout": true,
+          "id": "heldout_general_en_quant",
+          "seed": 323,
+          "serial_tokens": [
+            323,
+            323,
+            323,
+            323,
+            323,
+            323,
+            323,
+            323
+          ],
+          "text": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            102819,
+            102819,
+            102819,
+            102819,
+            102819,
+            102819,
+            102819,
+            102819
+          ],
+          "category": "general_ja",
+          "heldout": true,
+          "id": "heldout_general_ja_migration",
+          "seed": 102819,
+          "serial_tokens": [
+            102819,
+            102819,
+            102819,
+            102819,
+            102819,
+            102819,
+            102819,
+            102819
+          ],
+          "text": "\u793e\u5185\u5411\u3051REST API\u3092\u540c\u671f\u51e6\u7406\u304b\u3089\u975e\u540c\u671f\u30b8\u30e7\u30d6\u65b9\u5f0f\u3078\u79fb\u884c\u3059\u308b\u8a08\u753b\u3092\u3001\u65e5\u672c\u8a9e\u3067\u7c21\u6f54\u306b\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u4e92\u63db\u6027\u3001\u76e3\u8996\u3001\u30ed\u30fc\u30eb\u30d0\u30c3\u30af\u6761\u4ef6\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            654,
+            654,
+            654,
+            654,
+            654,
+            654,
+            654,
+            654
+          ],
+          "category": "general_ja",
+          "heldout": true,
+          "id": "heldout_general_ja_speculative",
+          "seed": 105,
+          "serial_tokens": [
+            654,
+            654,
+            654,
+            654,
+            654,
+            654,
+            654,
+            654
+          ],
+          "text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\u304c\u5e38\u306b\u9ad8\u901f\u5316\u306b\u3064\u306a\u304c\u308b\u308f\u3051\u3067\u306f\u306a\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u53d7\u7406\u7387\u3001\u691c\u8a3c\u30b3\u30b9\u30c8\u3001\u30e1\u30e2\u30ea\u4f7f\u7528\u91cf\u306b\u89e6\u308c\u3066\u304f\u3060\u3055\u3044\u3002",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            6500,
+            6500,
+            6500,
+            6500,
+            6500,
+            6500,
+            6500,
+            6500
+          ],
+          "category": "mixed_ja_en",
+          "heldout": true,
+          "id": "heldout_mixed_summary",
+          "seed": 6500,
+          "serial_tokens": [
+            6500,
+            6500,
+            6500,
+            6500,
+            6500,
+            6500,
+            6500,
+            6500
+          ],
+          "text": "Summarize this English operations note in Japanese, then give one short mitigation in English:\n\nThe cache hit rate fell after keys were namespaced by region, while database load and timeout errors increased.",
+          "trajectory_equal": true
+        },
+        {
+          "batch_tokens": [
+            28195,
+            28195,
+            28195,
+            28195,
+            28195,
+            28195,
+            28195,
+            28195
+          ],
+          "category": "mixed_ja_en",
+          "heldout": true,
+          "id": "heldout_mixed_review",
+          "seed": 28195,
+          "serial_tokens": [
+            28195,
+            28195,
+            28195,
+            28195,
+            28195,
+            28195,
+            28195,
+            28195
+          ],
+          "text": "Review the following bilingual alert for clarity. Respond with Japanese bullets while preserving English metric names:\n\np99 latency \u304c\u95be\u5024\u3092\u8d85\u3048\u3001error rate \u3082\u4e0a\u6607\u3057\u3066\u3044\u307e\u3059\u3002\u65b0\u3057\u3044 retry policy \u306e\u5f71\u97ff\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+          "trajectory_equal": true
+        }
+      ],
+      "scope": "natural-prompt-derived empty-context seeds; not batched prompt-prefill E2E",
+      "sparse_final_group_size": 2,
+      "trajectory_matches": 18
+    }
+  },
+  "date": "2026-08-07",
+  "hardware": {
+    "architecture": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "hipcc": {
+      "command": "hipcc --version",
+      "output": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+      "returncode": 0
+    },
+    "host": "gfx1151",
+    "rocm_smi": {
+      "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "output": "============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 50.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 84\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 536870912\nGPU[0]\t\t: VRAM Total Used Memory (B): 155426816\n==========================================================================================\n================================== End of ROCm SMI Log ===================================",
+      "returncode": 0
+    },
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|Marketing Name:|gfx'\"'\"' | head -8'",
+      "output": "Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Name:                    gfx1151                            \n  Marketing Name:          AMD Radeon 8060S Graphics          \n  Vendor Name:             AMD                                \n      Name:                    amdgcn-amd-amdhsa--gfx1151         \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic",
+      "returncode": 0
+    }
+  },
+  "model": {
+    "exact_weight_bytes": 5308186624,
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "quant": "maple_ternary2",
+    "resolved_path": "/home/lhl/.cache/huggingface/hub/models--deepgrove--maple-preview-2bit-mlx/snapshots/361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a"
+  },
+  "notes": [
+    "Every c=2/4/8 timing sample is compared with all corresponding serial c1 trajectories.",
+    "The 18-prompt category/heldout gate derives diverse seed IDs from natural prompt content and exercises a sparse final c=8 group.",
+    "MapleContinuousBatcher is not wired into the public generation scheduler; these are helper throughput rows, not server throughput."
+  ],
+  "performance": {
+    "rows": [
+      {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 5316067424,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5316067424,
+          "total_freed_bytes": 5316067424
+        },
+        "concurrency": 2,
+        "correctness_passed": true,
+        "lifecycle_passed": true,
+        "max_aggregate_tokens_per_second": 219.24714239138214,
+        "median_aggregate_tokens_per_second": 218.81819143840934,
+        "min_aggregate_tokens_per_second": 218.5018507036232,
+        "repetitions": 3,
+        "resident_tracked": {
+          "active_allocations": 542,
+          "current_allocated_bytes": 5316067424,
+          "peak_allocated_bytes": 5316067424,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5316067424,
+          "total_freed_bytes": 0
+        },
+        "samples": [
+          {
+            "aggregate_tokens_per_second": 219.24714239138214,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 0.5838160470593721,
+            "repetition": 0,
+            "total_tokens": 128,
+            "trajectory_matches": 2
+          },
+          {
+            "aggregate_tokens_per_second": 218.5018507036232,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 0.5858073951676488,
+            "repetition": 1,
+            "total_tokens": 128,
+            "trajectory_matches": 2
+          },
+          {
+            "aggregate_tokens_per_second": 218.81819143840934,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 0.5849605060648173,
+            "repetition": 2,
+            "total_tokens": 128,
+            "trajectory_matches": 2
+          }
+        ],
+        "tokens_per_request": 64,
+        "total_tokens_per_sample": 128,
+        "warmup_steps": 8
+      },
+      {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 5323948224,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5323948224,
+          "total_freed_bytes": 5323948224
+        },
+        "concurrency": 4,
+        "correctness_passed": true,
+        "lifecycle_passed": true,
+        "max_aggregate_tokens_per_second": 261.3613068520268,
+        "median_aggregate_tokens_per_second": 261.09912863571964,
+        "min_aggregate_tokens_per_second": 260.77992921819276,
+        "repetitions": 3,
+        "resident_tracked": {
+          "active_allocations": 542,
+          "current_allocated_bytes": 5323948224,
+          "peak_allocated_bytes": 5323948224,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5323948224,
+          "total_freed_bytes": 0
+        },
+        "samples": [
+          {
+            "aggregate_tokens_per_second": 261.09912863571964,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 0.9804705260321498,
+            "repetition": 0,
+            "total_tokens": 256,
+            "trajectory_matches": 4
+          },
+          {
+            "aggregate_tokens_per_second": 260.77992921819276,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 0.9816706399433315,
+            "repetition": 1,
+            "total_tokens": 256,
+            "trajectory_matches": 4
+          },
+          {
+            "aggregate_tokens_per_second": 261.3613068520268,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 0.9794869909528643,
+            "repetition": 2,
+            "total_tokens": 256,
+            "trajectory_matches": 4
+          }
+        ],
+        "tokens_per_request": 64,
+        "total_tokens_per_sample": 256,
+        "warmup_steps": 8
+      },
+      {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 5339709824,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5339709824,
+          "total_freed_bytes": 5339709824
+        },
+        "concurrency": 8,
+        "correctness_passed": true,
+        "lifecycle_passed": true,
+        "max_aggregate_tokens_per_second": 299.4162613914585,
+        "median_aggregate_tokens_per_second": 299.18136116860035,
+        "min_aggregate_tokens_per_second": 299.0779696097144,
+        "repetitions": 3,
+        "resident_tracked": {
+          "active_allocations": 542,
+          "current_allocated_bytes": 5339709824,
+          "peak_allocated_bytes": 5339709824,
+          "peak_allocations": 542,
+          "total_allocated_bytes": 5339709824,
+          "total_freed_bytes": 0
+        },
+        "samples": [
+          {
+            "aggregate_tokens_per_second": 299.4162613914585,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 1.7099939649924636,
+            "repetition": 0,
+            "total_tokens": 512,
+            "trajectory_matches": 8
+          },
+          {
+            "aggregate_tokens_per_second": 299.18136116860035,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 1.711336555192247,
+            "repetition": 1,
+            "total_tokens": 512,
+            "trajectory_matches": 8
+          },
+          {
+            "aggregate_tokens_per_second": 299.0779696097144,
+            "all_trajectories_equal": true,
+            "elapsed_seconds": 1.7119281659834087,
+            "repetition": 2,
+            "total_tokens": 512,
+            "trajectory_matches": 8
+          }
+        ],
+        "tokens_per_request": 64,
+        "total_tokens_per_sample": 512,
+        "warmup_steps": 8
+      }
+    ]
+  },
+  "performance_claim": true,
+  "protocol": {
+    "backend": "hip_gfx1151",
+    "command": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/maple_batch_decode_bench.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --steps 64 --repetitions 3 --warmup-steps 8 --natural-gate-steps 8 --out benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json",
+    "concurrencies": [
+      2,
+      4,
+      8
+    ],
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "heldout": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "natural_gate_steps": 8,
+    "repetitions": 3,
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "timing_scope": "resident decode owner loop; excludes model load and prompt prefill",
+    "tokens_per_request": 64,
+    "warmup_steps": 8
+  },
+  "schema_version": 1,
+  "software": {
+    "git": {
+      "head": "cc0a4e43983993c58e3e07b924fd010af6b5bd59",
+      "tracked_clean": true,
+      "tracked_status": ""
+    },
+    "python": "3.12.13"
+  },
+  "status": "accepted",
+  "timestamp_utc": "2026-08-07T13:24:56.575010+00:00"
+}
