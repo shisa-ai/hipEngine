@@ -495,6 +495,7 @@ def _run_relaunch_correctness(
     prompt_ids: Sequence[int],
     steps: int,
     reference: Sequence[Mapping[str, Any]],
+    submission_transport: str | None = None,
 ) -> dict[str, Any]:
     current = _prefill(session, prompt_ids)
     start_position = int(session.position)
@@ -507,6 +508,7 @@ def _run_relaunch_correctness(
         steps_per_replay=1,
         attention_max_context_len=start_position + int(steps),
         capture_hidden_seed_fp32=True,
+        submission_transport=submission_transport,
     ) as graph:
         key = graph.bucket_key.as_dict()
         for launch_index in range(1, int(steps) + 1):
@@ -531,6 +533,8 @@ def _run_relaunch_correctness(
                 }
             )
             generated.append(current)
+        live_transport_provenance = graph.transport_provenance()
+    closed_transport_provenance = graph.transport_provenance()
     first_failure = next((row["launch"] for row in comparisons if not row["passed"]), None)
     return {
         "passed": first_failure is None,
@@ -538,6 +542,10 @@ def _run_relaunch_correctness(
         "third_and_later_launches_checked": max(0, int(steps) - 2),
         "graph_key": key,
         "generated_token_ids": generated,
+        "transport_provenance": {
+            "live": live_transport_provenance,
+            "closed": closed_transport_provenance,
+        },
         "comparisons": comparisons,
         "checkpoint_summaries": checkpoint_summaries,
     }

@@ -682,14 +682,15 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 **Phase-0 commitment:** lever #1 only. The nano-vllm-amd code already demonstrates it works on ROCm via PyTorch's `torch.cuda.CUDAGraph` wrapper; hipEngine's torch-free port calls `hipGraphCreate` / `hipGraphInstantiate` / `hipGraphLaunch` directly through `ctypes` on `libamdhip64.so` (~300 lines).
 
 **In-tree retained-PM4 program:** native HIP graph replay remains the package
-baseline and default. For explicit gfx1100 experiments, hipEngine will inspect
-its already captured kernel-only graph through public HIP APIs, extract the
-exact JIT-embedded HSACO, and lower it to one retained PM4 indirect buffer
-submitted through a persistent public-ROCr queue. This removes the Redline
-runtime/interposer dependency while providing a smaller lifecycle reproducer
-for ROCm/ROCm#6529. Architecture admission, exact ABI checks, conservative
-ordering, no post-submit fallback, and promotion gates are specified in
-[`PM4.md`](PM4.md).
+baseline and default. The explicit gfx1100 path now inspects an already captured
+kernel-only graph through public HIP APIs, extracts the exact JIT-embedded
+HSACO, and lowers it to one retained PM4 indirect buffer submitted through a
+session-persistent public-ROCr queue. P5 proves one 627-node production GGUF
+decode graph bit exact across eager, HIP graph, direct AQL, and PM4; performance
+promotion remains pending P6. This removes the Redline runtime/interposer
+dependency while providing a smaller lifecycle reproducer for ROCm/ROCm#6529.
+Architecture admission, exact ABI checks, conservative ordering, no post-submit
+fallback, and promotion gates are specified in [`PM4.md`](PM4.md).
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 

@@ -28,6 +28,11 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.core.pm4.transport import (
+    GraphSubmission,
+    GraphSubmissionContext,
+    create_graph_submission,
+)
 from hipengine.kvcache import KV_STORAGE_TAIL4_HADAMARD_GROUP32
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
@@ -324,6 +329,9 @@ def capture_qwen35_gguf_decode_graph(
     attention_max_context_len: int | None = None,
     capture_hidden_seed_fp32: bool = False,
     record_hidden_seeds: bool = False,
+    submission_transport: str | None = None,
+    submission_timeout_seconds: float = 5.0,
+    submission_context: GraphSubmissionContext | None = None,
 ) -> "Qwen35GGUFDecodeGraph":
     if session.runner is None or session.scratch is None:
         raise RuntimeError("GGUF resident session is closed")
@@ -368,6 +376,7 @@ def capture_qwen35_gguf_decode_graph(
 
     graph = 0
     stream = 0
+    submission: GraphSubmission | None = None
     try:
         key = build_qwen35_gguf_decode_graph_key(
             session,
@@ -411,8 +420,25 @@ def capture_qwen35_gguf_decode_graph(
             except Exception:
                 pass
             raise
-        graph_exec = runtime.graph_instantiate(graph)
-    except Exception:
+        resolved_backend = str(getattr(session.runner, "backend", session.backend))
+        submission = create_graph_submission(
+            backend=resolved_backend,
+            gfx_arch=str(session.runner.target_arch),
+            runtime=runtime,
+            graph=graph,
+            stream=stream,
+            transport=submission_transport,
+            timeout_seconds=float(submission_timeout_seconds),
+            submission_context=submission_context,
+        )
+        graph_exec = int(submission.graph_exec)
+    except Exception as operation_error:
+        submission_close_error: Exception | None = None
+        if submission is not None:
+            try:
+                submission.close()
+            except Exception as exc:
+                submission_close_error = exc
         if graph:
             try:
                 runtime.graph_destroy(graph)
@@ -423,6 +449,11 @@ def capture_qwen35_gguf_decode_graph(
         for buffer in (generated_index, generated_hidden_seeds, generated):
             if buffer is not None:
                 free(buffer, runtime=runtime)
+        if submission_close_error is not None:
+            raise RuntimeError(
+                f"decode graph construction failed: {operation_error}; "
+                f"submission teardown also failed: {submission_close_error}"
+            ) from operation_error
         raise
     handle = Qwen35GGUFDecodeGraph(
         session=session,
@@ -439,6 +470,7 @@ def capture_qwen35_gguf_decode_graph(
         bucket_key=key,
         attention_max_context_len=replay_context_limit,
         capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32 or record_hidden_seeds),
+        submission=submission,
     )
     session._decode_graphs.append(handle)
     return handle
@@ -460,6 +492,7 @@ class Qwen35GGUFDecodeGraph:
     bucket_key: Qwen35GGUFDecodeGraphKey
     attention_max_context_len: int
     capture_hidden_seed_fp32: bool
+    submission: GraphSubmission | None = None
     replayed_steps: int = 0
     closed: bool = False
 
@@ -503,7 +536,10 @@ class Qwen35GGUFDecodeGraph:
             )
         launches = steps // self.steps_per_replay
         for _ in range(launches):
-            self.session.runtime.graph_launch(self.graph_exec, self.stream)
+            if self.submission is None:
+                self.session.runtime.graph_launch(self.graph_exec, self.stream)
+            else:
+                self.submission.launch(self.stream)
             self.session.runtime.stream_synchronize(self.stream)
             self.replayed_steps += self.steps_per_replay
             self.session._position = self.position + self.replayed_steps
@@ -512,6 +548,23 @@ class Qwen35GGUFDecodeGraph:
                 self.session.scratch.context_host[0] = self.session._position + 1
         if self.capture_hidden_seed_fp32:
             self.session._hidden_seed_fp32_populated = True
+
+    def transport_provenance(self) -> dict[str, Any]:
+        """Return inspectable transport proof for this decode graph generation."""
+
+        if self.submission is None:
+            value: dict[str, Any] = {
+                "schema_version": 1,
+                "transport": "hipgraph",
+                "graph_exec": int(self.graph_exec),
+                "launches": self.replayed_steps // self.steps_per_replay,
+                "native_fallbacks": 0,
+            }
+        else:
+            value = self.submission.provenance()
+        value["decode_graph_key_sha256"] = str(self.bucket_key.key_sha256)
+        value["replayed_steps"] = int(self.replayed_steps)
+        return value
 
     def read_sample(self, *, return_logits: bool = True) -> Any:
         if self.closed:
@@ -556,12 +609,19 @@ class Qwen35GGUFDecodeGraph:
     def close(self) -> None:
         if self.closed:
             return
-        self.closed = True
         runtime = self.session.runtime or get_hip_runtime()
-        runtime.graph_exec_destroy(self.graph_exec)
-        runtime.graph_destroy(self.graph)
+        if self.submission is None:
+            if self.graph_exec:
+                runtime.graph_exec_destroy(self.graph_exec)
+                self.graph_exec = 0
+        else:
+            self.submission.close()
+        if self.graph:
+            runtime.graph_destroy(self.graph)
+            self.graph = 0
         if self.stream:
             runtime.stream_destroy(self.stream)
+            self.stream = 0
         for name in ("generated_index", "generated_hidden_seeds", "generated"):
             buffer = getattr(self, name)
             if buffer is not None:
@@ -573,6 +633,7 @@ class Qwen35GGUFDecodeGraph:
         unpin = getattr(self.session, "_unpin_device_kv_graph", None)
         if callable(unpin):
             unpin(self)
+        self.closed = True
 
     def __enter__(self) -> "Qwen35GGUFDecodeGraph":
         return self

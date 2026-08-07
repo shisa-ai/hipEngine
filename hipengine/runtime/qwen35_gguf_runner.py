@@ -11075,6 +11075,12 @@ class Qwen35GGUFResidentSession:
     int8_bf16_prefix_full_attention_layers: int = field(default=0, init=False)
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
     _decode_graphs: list[object] = field(default_factory=list, init=False)
+    _decode_graph_submission_contexts: dict[str, object] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _decode_graph_default_submission_transport: str | None = field(
+        default=None, init=False, repr=False
+    )
     _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
     _native_spec_b1_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph: object | None = field(default=None, init=False, repr=False)
@@ -19741,6 +19747,8 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         record_hidden_seeds: bool = False,
         input_token_id: int | None = None,
+        submission_transport: str | None = None,
+        submission_timeout_seconds: float = 5.0,
     ):
         """Capture one session-bound GGUF decode transition window.
 
@@ -19753,8 +19761,31 @@ class Qwen35GGUFResidentSession:
 
         if _gguf_moe_graph_enabled():
             raise RuntimeError("whole-step GGUF graph cannot nest the per-layer MoE graph diagnostic")
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        from hipengine.core.pm4.transport import (
+            create_graph_submission_context,
+            select_submission_transport,
+        )
         from hipengine.runtime.gguf_decode_graph import capture_qwen35_gguf_decode_graph
 
+        if submission_transport is None:
+            selected_transport = self._decode_graph_default_submission_transport
+            if selected_transport is None:
+                selected_transport = select_submission_transport()
+                self._decode_graph_default_submission_transport = selected_transport
+        else:
+            selected_transport = select_submission_transport(submission_transport)
+        submission_context = self._decode_graph_submission_contexts.get(selected_transport)
+        if submission_context is None:
+            submission_context = create_graph_submission_context(
+                backend=str(self.runner.backend),
+                gfx_arch=str(self.runner.target_arch),
+                runtime=self.runtime or get_hip_runtime(),
+                transport=selected_transport,
+            )
+            if submission_context is not None:
+                self._decode_graph_submission_contexts[selected_transport] = submission_context
         if input_token_id is not None:
             self._seed_decode_graph_input_token(int(input_token_id))
         graph = capture_qwen35_gguf_decode_graph(
@@ -19766,6 +19797,9 @@ class Qwen35GGUFResidentSession:
             attention_max_context_len=attention_max_context_len,
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
             record_hidden_seeds=bool(record_hidden_seeds),
+            submission_transport=selected_transport,
+            submission_timeout_seconds=float(submission_timeout_seconds),
+            submission_context=submission_context,
         )
         self._pin_device_kv_graph(graph)
         return graph
@@ -19806,6 +19840,22 @@ class Qwen35GGUFResidentSession:
             session._pin_device_kv_graph(graph)
         return graph
 
+    def close_decode_graph_submission_contexts(self) -> dict[str, dict[str, object]]:
+        """Close idle retained submission contexts and return teardown proof."""
+
+        proofs: dict[str, dict[str, object]] = {}
+        for name, context in tuple(self._decode_graph_submission_contexts.items()):
+            provenance = getattr(context, "provenance", None)
+            close = getattr(context, "close", None)
+            if not callable(provenance) or not callable(close):
+                raise RuntimeError(f"decode submission context {name!r} has an invalid lifecycle ABI")
+            before = provenance()
+            close()
+            after = provenance()
+            proofs[str(name)] = {"before": before, "after": after}
+        self._decode_graph_submission_contexts.clear()
+        return proofs
+
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
         recorder = self._prefill_flight_recorder
@@ -19827,6 +19877,7 @@ class Qwen35GGUFResidentSession:
         for graph in tuple(self._decode_graphs):
             graph.close()
         self._decode_graphs.clear()
+        self.close_decode_graph_submission_contexts()
         if self._device_kv_allocation is not None:
             pool = self._device_kv_pool
             allocation = self.unbind_device_kv_allocation()

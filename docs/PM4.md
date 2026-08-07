@@ -2,10 +2,10 @@
 
 > **Status (2026-08-07):** implementation in progress. P0 documentation, P1
 > exact graph inspection, P2 direct public-HSA AQL, P3 retained gfx1100 PM4,
-> and P4 lifecycle-reproducer implementation are complete through safe controls;
-> production graph integration is next. Native HIP graphs remain the package
-> default. Explicit PM4 selection must fail closed, and reset-prone submit/
-> recreate stress remains unrun pending a separate warning and approval.
+> P4 lifecycle-reproducer safe controls, and P5 production GGUF graph integration
+> are complete. Performance/optimization P6 is next. Native HIP graphs remain
+> the package default. Explicit PM4 selection fails closed, and reset-prone
+> submit/recreate stress remains unrun pending a separate warning and approval.
 
 This document defines hipEngine's plan for a small, torch-free, in-tree
 retained-PM4 transport. The transport is intended to preserve the useful launch
@@ -49,8 +49,8 @@ graph framework, compiler, profiler, or HIP interposer.
 | P2 direct public-HSA AQL | Complete | Exact PCI-BDF agent match, public executable load, persistent queue, checked packet publication/wait/teardown, and bit-exact smoke |
 | P3 retained gfx1100 PM4 | Complete | Strict descriptor admission, conservative PM4 tape, vendor-AQL IB, two bit-exact safe replays, and no fallback |
 | P4 lifecycle reproducer | Complete (safe controls) | Reuse, recreate/no-submit, HSA/HIP allocation, timestamps, queue-first quarantine, and complete per-cycle JSON; reset-prone submit/recreate stress implemented but intentionally unrun |
-| P5 production graph integration | Next | P2/P3 correctness prerequisites pass |
-| P6 performance/promotion | Pending | No in-tree PM4 performance claim yet |
+| P5 production graph integration | Complete | Registry-selected session-owned transport, persistent context across graph generations, p512/d3 exact eager/HIP/AQL/PM4 token-state-KV-logit gate, cancellation/close, zero fallback, and exact memory recovery |
+| P6 performance/promotion | Next | No in-tree PM4 performance claim yet |
 
 ## Goals and non-goals
 
@@ -574,7 +574,9 @@ HIPENGINE_SUBMISSION_TRANSPORT=hipgraph|aql|pm4
 The environment value is parsed once at owner construction, not read inside a
 per-token hot loop. Production/model code asks the registry for the configured
 backend and transport capability; it does not branch on `backend == ...` or
-`quant == ...`.
+`quant == ...`. The GGUF resident session retains one native submission context
+per explicit transport, so graph pointer/topology generations replace only the
+executable while the matched ROCr queue persists until session/context close.
 
 ### Interoperation with HIP streams
 
@@ -802,6 +804,19 @@ fault, never retried into a passing aggregate.
 **Gate:** exact native-HIP/PM4 final logits, token IDs, state/KV checks, graph
 reuse, cancellation/close, memory recovery, and transport provenance. No broad
 performance claim yet.
+
+**Result (W7900/gfx1100):** complete. `scripts/pm4_gguf_decode_gate.py` captured
+one 627-node/17-HSACO p512 GGUF decode graph and replayed it three times through
+native HIP graph, direct AQL, and retained PM4 against the same eager state
+oracle. All token IDs, per-step FP32 hidden plus Conv/GDN state and live BF16
+K/V fingerprints, and all 248,320 final FP32 logits were bit exact. Direct AQL
+consumed 1,881 queue packets; retained PM4 consumed three vendor packets for the
+same 25,707-dword/102,828-byte IB. Both native routes recorded zero fallback,
+zero callback status, complete retirement, a no-submit cancellation generation,
+checked context close, and exact recovery of the retained 2 MiB allocation.
+Evidence:
+`benchmarks/results/2026-08-07-gfx1100-in-tree-pm4-gguf-p5-correctness.json`.
+Destructive submit/recreate stress remains intentionally unrun.
 
 ### P6 — Performance and conservative optimization
 
