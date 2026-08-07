@@ -124,6 +124,65 @@ def _batch_encoder_route(benc, audio, mask, warmup, routes) -> list[float]:
     return times
 
 
+def _batch_enc_handoff_graph_timing(
+    runtime, benc, bdec, audio, mask, warmup, routes
+) -> tuple[list[float], list[float], dict[str, object]]:
+    """Time eager encode+handoff vs one captured encoder-chain graph replay.
+
+    Captures the batch encoder DAG + fresh-generation reset + cross-KV handoff
+    as one fixed-address graph on the decoder stream, then returns the per-route
+    wall times for (a) the eager encode+handoff and (b) the single graph
+    replay, plus the capture/instantiate contract.  Both paths do identical
+    device work (the graph adds only the generation-reset memsets that the
+    eager ``handoff_to`` also performs); the graph removes the per-request
+    Python dispatch of ~101 encoder kernels plus the handoff.
+    """
+
+    eager: list[float] = []
+    graph: list[float] = []
+    benc.upload_input(audio, mask)
+    # eager warmup (encode on the encoder stream, handoff on the decoder stream)
+    for _ in range(warmup):
+        benc.run_encode(synchronize=False)
+        benc.handoff_to(bdec, synchronize=False)
+        runtime.stream_synchronize(benc.stream)
+        runtime.stream_synchronize(bdec.stream)
+    for _ in range(routes):
+        started = time.perf_counter()
+        benc.run_encode(synchronize=False)
+        benc.handoff_to(bdec, synchronize=False)
+        runtime.stream_synchronize(benc.stream)
+        runtime.stream_synchronize(bdec.stream)
+        eager.append(time.perf_counter() - started)
+
+    # capture once outside the timed region, then warmup + time graph replays.
+    graph_obj = benc.capture_encoder_chain(bdec)
+    contract = benc.encoder_chain_graph_contract()
+    for _ in range(warmup):
+        benc.graph_encode_and_handoff(bdec)
+        runtime.stream_synchronize(bdec.stream)
+    for _ in range(routes):
+        started = time.perf_counter()
+        benc.graph_encode_and_handoff(bdec)
+        runtime.stream_synchronize(bdec.stream)
+        graph.append(time.perf_counter() - started)
+    return eager, graph, {
+        "captured": contract["captured"],
+        "graph": graph_obj.graph if contract["captured"] else 0,
+        "capture_wall_ms": contract["capture_wall_ms"],
+        "instantiate_wall_ms": contract["instantiate_wall_ms"],
+        "replay_count": contract["replay_count"],
+    }
+
+
+def _print_graph_row(batch: int, label: str, eager_ms: float, graph_ms: float) -> dict:
+    speedup = eager_ms / graph_ms if graph_ms > 0 else float("inf")
+    print(f"{batch:>3} {label:<16} {eager_ms:>9.3f} {graph_ms:>9.3f} "
+          f"{speedup:>9.2f}x")
+    return {"eager_enc_handoff_ms": float(eager_ms), "graph_enc_handoff_ms": float(graph_ms),
+            "graph_speedup": float(speedup)}
+
+
 def _c1_full_route(runtime, loaded, audio, mask, seeds) -> tuple[float, list[list[int]]]:
     """B sequential c=1 encoder+decoder sessions to EOS; return (wall_s, transcripts).
 
@@ -240,6 +299,10 @@ def main() -> None:
     parser.add_argument("--json-out", default=None, help="write results JSON to this path")
     parser.add_argument("--skip-long-bucket", action="store_true",
                         help="skip the 1,248-frame encoder-only scaling table")
+    parser.add_argument("--encoder-graph", action="store_true",
+                        help="capture the batch encoder-chain (encoder+handoff+cross-KV) "
+                             "as one fixed-address graph and time eager vs graph replay "
+                             "(Table C, long-bucket 1,248-frame cuBLASLt route)")
     args = parser.parse_args()
 
     runtime = get_cuda_runtime()
@@ -323,6 +386,41 @@ def main() -> None:
                 finally:
                     benc.close()
                 results["results"].setdefault(str(batch), {})["encoder_1248"] = row
+
+        # ---- Table C: encoder-chain graph vs eager encode+handoff ----------
+        if args.encoder_graph:
+            print(f"[C] encoder-chain graph capture vs eager encode+handoff, "
+                  f"long-bucket cuBLASLt route (480000 samples -> 1,248 frames)")
+            print(f"{'B':>3} {'route':<16} {'eager ms':>9} {'graph ms':>9} {'speedup':>9}")
+            results["graph"] = {}
+            for batch in _BATCH_SIZES:
+                audio, mask = _synthesize_1248(batch)
+                benc = MoonshineCudaBatchEncoderRuntime(
+                    max_batch=batch, audio_samples=_ENC_SAMPLES,
+                    loaded_model=loaded, owns_weights=False,
+                    projection_route="cublaslt",
+                )
+                benc.prepare_encoder_kernels()
+                bdec = MoonshineCudaBatchRuntime(
+                    max_batch=batch, encoder_frames=1248,
+                    loaded_model=loaded, owns_weights=False,
+                )
+                bdec.prepare_decoder_kernels()
+                try:
+                    eager, graph, contract = _batch_enc_handoff_graph_timing(
+                        runtime, benc, bdec, audio, mask, warmup=_WARMUP, routes=_ROUTES
+                    )
+                    row = _print_graph_row(
+                        batch, "lt-graph",
+                        statistics.median(eager) * 1000.0,
+                        statistics.median(graph) * 1000.0,
+                    )
+                    row.update(contract)
+                    results["graph"][str(batch)] = row
+                finally:
+                    bdec.close()
+                    benc.close()
+            print()
     finally:
         loaded.weights.free(runtime=runtime)
 

@@ -465,14 +465,9 @@ class MoonshineCudaBatchRuntime:
         ``1..encoder_frames`` (the decoder's padded bucket capacity).
         """
 
-        from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
-            moonshine_f16_projection_pair_head_major_batch,
-        )
-
         if self.closed or self.spec is None or self.weights is None:
             raise RuntimeError("Moonshine batch runtime is closed")
-        libraries = self.decoder_libraries
-        if libraries is None:
+        if self.decoder_libraries is None:
             raise RuntimeError("Moonshine batch decoder kernels are not prepared")
         if (
             isinstance(encoder_hidden_ptr, bool)
@@ -493,6 +488,43 @@ class MoonshineCudaBatchRuntime:
                 f"source_frames must be in 1..{self.encoder_frames} for the resident bucket"
             )
         self.reset_generation(clear_cross_cache=True)
+        self._enqueue_cross_kv_handoff(
+            encoder_hidden_ptr=encoder_hidden_ptr,
+            attention_mask_ptr=attention_mask_ptr,
+            source_frames=source_frames,
+            stream=self.stream,
+        )
+        if synchronize:
+            self.runtime.stream_synchronize(self.stream)
+        self.cross_cache_valid = True
+        self.encoder_state_valid = True
+
+    def _enqueue_cross_kv_handoff(
+        self,
+        *,
+        encoder_hidden_ptr: int,
+        attention_mask_ptr: int,
+        source_frames: int,
+        stream: int,
+    ) -> None:
+        """Enqueue only the cross-KV projection + mask D2D copy on ``stream``.
+
+        The caller has already reset generation state (and, for the
+        captured-graph path, enqueued the generation memsets inside the same
+        capture).  This enqueues just the eight-layer batch cross-KV
+        projection and the downsampled-mask D2D copy, with no host reset and
+        no synchronization, so it is safe to record inside a CUDA graph.
+        """
+
+        from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+            moonshine_f16_projection_pair_head_major_batch,
+        )
+
+        if self.closed or self.spec is None or self.weights is None:
+            raise RuntimeError("Moonshine batch runtime is closed")
+        libraries = self.decoder_libraries
+        if libraries is None:
+            raise RuntimeError("Moonshine batch decoder kernels are not prepared")
         spec = self.spec
         kv_features = spec.decoder_kv_heads * spec.head_dim
         for layer in range(spec.decoder_layers):
@@ -511,7 +543,7 @@ class MoonshineCudaBatchRuntime:
                 kv_features,
                 kv_features,
                 spec.head_dim,
-                stream=self.stream,
+                stream=stream,
                 library=libraries.projection,
                 runtime=self.runtime,
             )
@@ -521,15 +553,22 @@ class MoonshineCudaBatchRuntime:
             attention_mask_ptr,
             self.max_batch * source_frames * DType.INT32.itemsize,
             MemcpyKind.DEVICE_TO_DEVICE,
-            self.stream,
+            stream,
         )
-        if synchronize:
-            self.runtime.stream_synchronize(self.stream)
-        self.cross_cache_valid = True
-        self.encoder_state_valid = True
 
-    def reset_generation(self, *, clear_cross_cache: bool = False) -> None:
-        """Reset generation state without changing any allocation or address."""
+    def _enqueue_generation_reset(
+        self,
+        *,
+        stream: int,
+        clear_cross_cache: bool,
+    ) -> None:
+        """Enqueue the generation memsets on ``stream`` without host state change.
+
+        Capturable: no host synchronization, no allocation.  Mirrors
+        :meth:`reset_generation`'s device work so a captured batch
+        encoder-chain graph can carry the fresh-generation reset inside the
+        graph (each replay is self-contained).
+        """
 
         if self.closed:
             raise RuntimeError("Moonshine batch runtime is closed")
@@ -542,14 +581,29 @@ class MoonshineCudaBatchRuntime:
                 allocation.buffer.ptr,
                 0,
                 allocation.buffer.nbytes,
-                self.stream,
+                stream,
             )
-        self.runtime.stream_synchronize(self.stream)
+
+    def _reset_generation_host_state(self, *, clear_cross_cache: bool) -> None:
+        """Reset the host-side generation scalars/flags (no device work)."""
+
         self.self_cache_length = 0
         self.decode_position = None
         if clear_cross_cache:
             self.cross_cache_valid = False
             self.encoder_state_valid = False
+
+    def reset_generation(self, *, clear_cross_cache: bool = False) -> None:
+        """Reset generation state without changing any allocation or address."""
+
+        if self.closed:
+            raise RuntimeError("Moonshine batch runtime is closed")
+        self._enqueue_generation_reset(
+            stream=self.stream,
+            clear_cross_cache=clear_cross_cache,
+        )
+        self.runtime.stream_synchronize(self.stream)
+        self._reset_generation_host_state(clear_cross_cache=clear_cross_cache)
 
     @contextmanager
     def no_allocation_region(self, name: str) -> Iterator[None]:

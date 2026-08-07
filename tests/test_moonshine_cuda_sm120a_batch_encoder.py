@@ -862,3 +862,323 @@ def test_moonshine_cuda_batch_encoder_lt_fixture_token_gate() -> None:
             )
     finally:
         loaded.weights.free(runtime=runtime)
+
+
+# ---------------------------------------------------------------------------
+# Batch encoder-chain graph capture (C8 continuation: encoder + handoff +
+# cross-KV as one captured graph).  The decoder token graphs are already done;
+# this closes the encoder side so the full static-B route is all graph replay
+# (upload -> encoder-chain graph -> token graphs -> readback).
+# ---------------------------------------------------------------------------
+
+
+def _batch_cross_cache_host(
+    runtime, decoder, batch: int, layers: int
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Read the decoder's head-major batch cross K/V caches to host arrays."""
+    caches = []
+    for layer in range(layers):
+        cache = decoder.cross_cache(layer)
+        caches.append(
+            (
+                _tensor_to_host(runtime, cache.key),
+                _tensor_to_host(runtime, cache.value),
+            )
+        )
+    return caches
+
+
+def _assert_caches_equal(got, ref, *, context: str) -> None:
+    for layer, (gkey, gval) in enumerate(got):
+        rkey, rval = ref[layer]
+        assert np.array_equal(gkey, rkey), f"{context}: layer {layer} key diverged"
+        assert np.array_equal(gval, rval), f"{context}: layer {layer} value diverged"
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_chain_graph_bit_exact_vs_eager() -> None:
+    """Encoder-chain graph capture/replay is bit-exact vs the eager route.
+
+    Captures the batch encoder DAG + fresh-generation reset + cross-KV handoff
+    as one fixed-address graph on the decoder stream, then asserts: (a) replay
+    reproduces the eager cross K/V caches and mask byte-for-byte, (b) replay
+    after a different upload (then back to the original) tracks the fixed
+    audio buffer, (c) capture twice returns the same graph (idempotent), (d)
+    the full route (encoder-chain graph + eager token steps) matches the eager
+    full route, and (e) teardown parity closes the lifecycle.
+    """
+    from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    batch = 2
+    layers = 8
+    try:
+        audio1, mask1 = _batch_audio(runtime, batch, mask_row=1)
+        audio2, mask2 = _batch_audio(runtime, batch, mask_row=None)
+
+        benc = MoonshineCudaBatchEncoderRuntime(
+            max_batch=batch,
+            audio_samples=_AUDIO_SAMPLES,
+            loaded_model=loaded,
+            owns_weights=False,
+        )
+        benc.prepare_encoder_kernels()
+        bdec = MoonshineCudaBatchRuntime(
+            max_batch=batch,
+            encoder_frames=40,
+            loaded_model=loaded,
+            owns_weights=False,
+        )
+        bdec.prepare_decoder_kernels()
+        try:
+            # ---- eager reference ------------------------------------------
+            benc.encode(audio1, mask1)
+            benc.handoff_to(bdec, synchronize=True)
+            eager_caches = _batch_cross_cache_host(runtime, bdec, batch, layers)
+            eager_mask = _tensor_to_host(
+                runtime,
+                bdec.workspace.allocation("encoder_attention_mask").tensor,
+                dtype=np.int32,
+            )
+
+            # ---- capture + replay (same resident audio) --------------------
+            graph = benc.capture_encoder_chain(bdec)
+            contract = benc.encoder_chain_graph_contract()
+            assert contract["captured"] is True
+            assert contract["graph"] == graph.graph
+            assert contract["replay_count"] == 0
+
+            # capture twice is idempotent (same graph object).
+            again = benc.capture_encoder_chain(bdec)
+            assert again is graph
+
+            benc.graph_encode_and_handoff(bdec)
+            runtime.stream_synchronize(bdec.stream)
+            replay_caches = _batch_cross_cache_host(runtime, bdec, batch, layers)
+            replay_mask = _tensor_to_host(
+                runtime,
+                bdec.workspace.allocation("encoder_attention_mask").tensor,
+                dtype=np.int32,
+            )
+            _assert_caches_equal(replay_caches, eager_caches, context="replay")
+            assert np.array_equal(replay_mask, eager_mask), "replay mask diverged"
+            assert (
+                benc.encoder_chain_graph_contract()["replay_count"] == 1
+            ), "replay count should advance after graph_encode_and_handoff"
+
+            # ---- replay after a different upload (fixed buffer semantics) --
+            benc.upload_input(audio2, mask2)
+            benc.graph_encode_and_handoff(bdec)
+            runtime.stream_synchronize(bdec.stream)
+            other_caches = _batch_cross_cache_host(runtime, bdec, batch, layers)
+            assert not np.array_equal(other_caches[0][0], eager_caches[0][0]), (
+                "different upload should change the cross cache"
+            )
+
+            # back to the original audio reproduces the eager caches exactly.
+            benc.upload_input(audio1, mask1)
+            benc.graph_encode_and_handoff(bdec)
+            runtime.stream_synchronize(bdec.stream)
+            back_caches = _batch_cross_cache_host(runtime, bdec, batch, layers)
+            _assert_caches_equal(back_caches, eager_caches, context="back-to-original")
+
+            # ---- full route: encoder-chain graph + token steps -------------
+            seeds = np.asarray([1, 2], dtype=np.int64)
+            # eager full route on audio1 (fresh generation)
+            bdec.reset_generation(clear_cross_cache=True)
+            benc.encode(audio1, mask1)
+            benc.handoff_to(bdec, synchronize=True)
+            eager_tokens = []
+            toks = seeds.copy()
+            for position in range(6):
+                bdec.set_batch_decode_state(
+                    tokens=toks.tolist(), position=position
+                )
+                bdec.batch_token_step()
+                toks = bdec.read_tokens()
+                eager_tokens.append(toks.copy())
+            eager_tokens = np.stack(eager_tokens)
+
+            # graph-encoder + eager token steps (fresh generation via graph)
+            bdec.reset_generation(clear_cross_cache=True)
+            benc.upload_input(audio1, mask1)
+            benc.graph_encode_and_handoff(bdec)
+            graph_tokens = []
+            toks = seeds.copy()
+            for position in range(6):
+                bdec.set_batch_decode_state(
+                    tokens=toks.tolist(), position=position
+                )
+                bdec.batch_token_step()
+                toks = bdec.read_tokens()
+                graph_tokens.append(toks.copy())
+            graph_tokens = np.stack(graph_tokens)
+            assert np.array_equal(graph_tokens, eager_tokens), (
+                "graph-encoder full route diverged from eager full route"
+            )
+
+            # graph-encoder + batch token graphs (all-graph full route)
+            bdec.reset_generation(clear_cross_cache=True)
+            benc.upload_input(audio1, mask1)
+            benc.graph_encode_and_handoff(bdec)
+            bdec.set_batch_device_owned_decode(True)
+            bdec.capture_batch_token_graphs()
+            bdec.set_batch_decode_seed(tokens=seeds.tolist())
+            all_graph_tokens = []
+            for _ in range(6):
+                bdec.graph_batch_token_step()
+                all_graph_tokens.append(bdec.read_tokens().copy())
+            all_graph_tokens = np.stack(all_graph_tokens)
+            assert np.array_equal(all_graph_tokens, eager_tokens), (
+                "all-graph full route diverged from eager full route"
+            )
+        finally:
+            bdec.close()
+            benc.close()
+            assert bdec.teardown_returned_to_baseline is True
+            assert benc.teardown_returned_to_baseline is True
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_chain_graph_lt_route() -> None:
+    """Encoder-chain graph capture also records the cuBLASLt long-bucket route.
+
+    At B=1 on the 1,248-frame bucket the cuBLASLt route is armed (rows =
+    1248 >= 768); the captured graph must include the ``cublasLtMatmul`` calls
+    and replay bit-exactly against the eager cuBLASLt route's cross cache.
+    """
+    from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    batch = 1
+    layers = 8
+    audio = _lt_speech_audio(batch, _LT_BUCKET_SAMPLES)
+    mask = np.ones((batch, _LT_BUCKET_SAMPLES), dtype=np.int64)
+    try:
+        benc = MoonshineCudaBatchEncoderRuntime(
+            max_batch=batch,
+            audio_samples=_LT_BUCKET_SAMPLES,
+            loaded_model=loaded,
+            owns_weights=False,
+            projection_route="cublaslt",
+        )
+        benc.prepare_encoder_kernels()
+        bdec = MoonshineCudaBatchRuntime(
+            max_batch=batch,
+            encoder_frames=1248,
+            loaded_model=loaded,
+            owns_weights=False,
+        )
+        bdec.prepare_decoder_kernels()
+        try:
+            assert benc._use_cublaslt(), "long-bucket cuBLASLt route should be armed"
+
+            # eager reference (cuBLASLt route)
+            benc.encode(audio, mask)
+            benc.handoff_to(bdec, synchronize=True)
+            eager_caches = _batch_cross_cache_host(runtime, bdec, batch, layers)
+
+            # capture + replay
+            graph = benc.capture_encoder_chain(bdec)
+            assert benc.encoder_chain_graph_contract()["captured"] is True
+            benc.graph_encode_and_handoff(bdec)
+            runtime.stream_synchronize(bdec.stream)
+            replay_caches = _batch_cross_cache_host(runtime, bdec, batch, layers)
+            _assert_caches_equal(
+                replay_caches, eager_caches, context="lt-route replay"
+            )
+
+            # a second replay reproduces itself (deterministic graph replay).
+            benc.graph_encode_and_handoff(bdec)
+            runtime.stream_synchronize(bdec.stream)
+            replay2 = _batch_cross_cache_host(runtime, bdec, batch, layers)
+            _assert_caches_equal(
+                replay2, eager_caches, context="lt-route replay2"
+            )
+        finally:
+            bdec.close()
+            benc.close()
+            assert bdec.teardown_returned_to_baseline is True
+            assert benc.teardown_returned_to_baseline is True
+    finally:
+        loaded.weights.free(runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _snapshot_available(),
+    reason="CUDA sm_120a gate or snapshot is not available",
+)
+def test_moonshine_cuda_batch_encoder_chain_graph_validation() -> None:
+    """Encoder-chain graph capture/replay validates its preconditions."""
+    from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+    from hipengine.runtime.moonshine_encoder_cuda_batch import (
+        MoonshineCudaBatchEncoderRuntime,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    loaded = load_moonshine_model(
+        _SNAPSHOT, device=Device("cuda", 0), runtime=runtime
+    )
+    try:
+        benc = MoonshineCudaBatchEncoderRuntime(
+            max_batch=1,
+            audio_samples=_AUDIO_SAMPLES,
+            loaded_model=loaded,
+            owns_weights=False,
+        )
+        benc.prepare_encoder_kernels()
+        bdec = MoonshineCudaBatchRuntime(
+            max_batch=1,
+            encoder_frames=40,
+            loaded_model=loaded,
+            owns_weights=False,
+        )
+        bdec.prepare_decoder_kernels()
+        try:
+            # decoder must be the batch runtime type.
+            with pytest.raises(TypeError, match="MoonshineCudaBatchRuntime"):
+                benc.capture_encoder_chain(object())
+            # input must be resident before capture.
+            with pytest.raises(RuntimeError, match="input is not uploaded"):
+                benc.capture_encoder_chain(bdec)
+            # replay before capture is an error.
+            with pytest.raises(RuntimeError, match="not captured"):
+                benc.graph_encode_and_handoff(bdec)
+            # a valid capture then replay works.
+            audio = np.random.default_rng(3).standard_normal(
+                (1, _AUDIO_SAMPLES)
+            ).astype(np.float16)
+            mask = np.ones((1, _AUDIO_SAMPLES), dtype=np.int64)
+            benc.upload_input(audio, mask)
+            graph = benc.capture_encoder_chain(bdec)
+            assert graph is benc.capture_encoder_chain(bdec)
+            benc.graph_encode_and_handoff(bdec)
+            runtime.stream_synchronize(bdec.stream)
+        finally:
+            bdec.close()
+            benc.close()
+    finally:
+        loaded.weights.free(runtime=runtime)
