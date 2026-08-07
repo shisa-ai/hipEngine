@@ -323,6 +323,36 @@ __global__ void maple_weighted_residual_kernel(
   }
 }
 
+// Batched weighted residual (P3 prefill): combines T rows' top-k expert
+// outputs into the layer residual.  residual/expert_outputs/out are
+// [T, hidden_size]; routing_weights is [T, top_k].  Same rounding order as
+// the c1 kernel (round combined to bf16, then add residual).
+__global__ void maple_weighted_residual_batched_kernel(
+    const uint16_t* __restrict__ residual,
+    const uint16_t* __restrict__ expert_outputs,
+    const float* __restrict__ routing_weights,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t top_k,
+    int64_t hidden_size) {
+  const int64_t total = rows * hidden_size;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const int64_t row = idx / hidden_size;
+    const int64_t hid = idx - row * hidden_size;
+    float combined = 0.0f;
+    const float* wrow = routing_weights + row * top_k;
+    const uint16_t* erow = expert_outputs + row * top_k * hidden_size;
+    for (int64_t route = 0; route < top_k; ++route) {
+      combined += wrow[route] * bf16_to_float(erow[route * hidden_size + hid]);
+    }
+    const uint16_t combined_bits = float_to_bf16(combined);
+    out[idx] = float_to_bf16(
+        bf16_to_float(residual[idx]) + bf16_to_float(combined_bits));
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_maple_router_topk_bf16(
@@ -481,6 +511,36 @@ extern "C" int hipengine_maple_weighted_residual_bf16(
       expert_outputs,
       routing_weights,
       out,
+      top_k,
+      hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_maple_weighted_residual_batched_bf16(
+    const uint16_t* residual,
+    const uint16_t* expert_outputs,
+    const float* routing_weights,
+    uint16_t* out,
+    int64_t rows,
+    int64_t top_k,
+    int64_t hidden_size,
+    hipStream_t stream) {
+  if (rows <= 0 || top_k <= 0 || hidden_size <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total = rows * hidden_size;
+  const int blocks = static_cast<int>((total + 255) / 256);
+  hipLaunchKernelGGL(
+      maple_weighted_residual_batched_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(256),
+      0,
+      stream,
+      residual,
+      expert_outputs,
+      routing_weights,
+      out,
+      rows,
       top_k,
       hidden_size);
   return static_cast<int>(hipGetLastError());
