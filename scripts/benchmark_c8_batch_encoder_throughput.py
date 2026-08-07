@@ -454,6 +454,14 @@ def main() -> None:
         "warmup_routes": _WARMUP,
         "timed_routes": _ROUTES,
     }
+    # RR-6: fold the encoder-chain graph table (when measured) into the
+    # retained report so the graph evidence survives into the JSON (raw
+    # per-B eager/graph samples from ``_print_graph_row``).  ``build_report``
+    # only serializes ``results["results"]``, so the sibling graph dict must
+    # be merged here rather than dropped.
+    if "graph" in results:
+        results["results"]["graph"] = results["graph"]
+
     # RR-6: complete retained report with raw samples, P50/P95, full source
     # manifest hashes, clean git revision, and dependency-adjusted bytes.  The
     # in-loop transcript assertions passed (they raise on divergence), so the
