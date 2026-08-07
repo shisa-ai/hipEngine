@@ -207805,3 +207805,18 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   and records a physical-c8 singleton row for the c1 fast path. A deliberately
   unqualified dirty-tree c1/c8 smoke is exact, closes all owners, and exits
   rejected as designed; Python compilation, `--help`, and diff checks pass.
+- From clean harness commit `5f43dcc70`, the symmetric public protocol accepts
+  c1/c2/c4/c8 at **122.564/165.385/201.203/214.378 aggregate tok/s**; c2/c4/c8
+  are **1.349x/1.642x/1.749x** public c1. A single active request inside the
+  physical-c8 owner reaches **122.175 tok/s**, **99.683%** of the c1 owner, so
+  the retained D0 path is preserved rather than executing seven empty rows.
+  All **15** repeated 18-prompt trajectory sets equal the independent serial
+  oracle, sparse final groups reclaim, and all five owner lifecycles close to
+  zero. Full result SHA-256 is `382f50f9...c159`; harness SHA-256 is
+  `a518155d...6080`.
+- Make the decisive 770-token gate durable by parameterizing the existing 520
+  physical-state regression. The new 770 node covers a full 256-row post-wrap
+  segment plus a second fully wrapped chunk and is GREEN with exact physical
+  K/V, complete span metadata, final hidden/norm, FP32 top-logit bits, three
+  continuations, and teardown. This test-only change cannot affect the clean
+  performance rows.

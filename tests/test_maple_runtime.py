@@ -541,8 +541,11 @@ def test_maple_prefill_native_natural_prompt_continuations(hip_test_target_arch)
         serial.close()
 
 
-def test_maple_prefill_native_multichunk_continuation_gate(hip_test_target_arch) -> None:
-    """A prompt crossing SWA-512 keeps physical state and decode aligned."""
+@pytest.mark.parametrize("prompt_length", [520, 770])
+def test_maple_prefill_native_multichunk_continuation_gate(
+    hip_test_target_arch, prompt_length
+) -> None:
+    """Post-wrap chunks keep physical state and continuation aligned."""
     del hip_test_target_arch
     from hipengine.core.memory import (
         DeviceBuffer,
@@ -555,7 +558,7 @@ def test_maple_prefill_native_multichunk_continuation_gate(hip_test_target_arch)
         checkpoint = load_maple_checkpoint("deepgrove/maple-preview-2bit-mlx")
     except Exception as exc:  # noqa: BLE001 - checkpoint missing
         pytest.skip(f"maple checkpoint unavailable: {exc}")
-    prompt = tuple(9_000 + (index % 512) for index in range(520))
+    prompt = tuple(9_000 + (index % 512) for index in range(prompt_length))
     backend = "hip_gfx1151"
 
     def device_bytes(runner, source, *, offset=0, nbytes=None):
@@ -569,8 +572,9 @@ def test_maple_prefill_native_multichunk_continuation_gate(hip_test_target_arch)
         )
         return host
 
-    serial = MapleRunner.load(checkpoint, backend=backend, max_context=528)
-    native = MapleRunner.load(checkpoint, backend=backend, max_context=528)
+    max_context = prompt_length + 8
+    serial = MapleRunner.load(checkpoint, backend=backend, max_context=max_context)
+    native = MapleRunner.load(checkpoint, backend=backend, max_context=max_context)
     try:
         serial_result = serial.prefill(prompt)
         native_result = native.prefill_native(prompt)
