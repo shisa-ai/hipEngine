@@ -207706,3 +207706,41 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   **6/6**, JSON parsing, stale-row scan, and `git diff --check` all pass. The
   custom current-row check caught and corrected two qualification-vs-publication
   labels in the kernel/refactor ledgers before commit.
+
+## 2026-08-08 — Maple P4 safe long-prompt native prefill candidate
+
+- Audit the >512 serial fallback and isolate the SWA hazard: publishing a whole
+  post-wrap chunk overwrites ring slots still needed by its earliest queries.
+  Keep embed/dense/MoE work row-batched; for sliding attention, bulk only the
+  pre-wrap segment and append/attend post-wrap rows one at a time. Because all
+  sliding layers share one span-metadata set but own separate K/V caches, replay
+  the pre-chunk logical ring before each sliding layer so a prior layer's future
+  positions cannot poison the next layer's earliest queries. Global layers stay
+  fully chunk-batched.
+- RED first freezes segmentation at starts 0/256/400/512/700. The implementation
+  removes only the >512 rejection and adds host orchestration; no arithmetic or
+  kernel body changes. Real-checkpoint dirty-tree gates at 513 and 770 tokens
+  match serial at the next-token and FP32 top-logit bits, final hidden and norm,
+  every physical live K/V byte, both complete span metadata sets, and the next
+  continuation. The 770 case covers one full post-wrap 256-row chunk and a
+  second fully wrapped chunk. Both runners close to **0 bytes / 0 allocations**;
+  the 770 state SHA-256 is
+  `d37dd985391371faf840f715ebd6664ab666d9613ac2aa55d6444bd6cb0b98a3`.
+- The full Maple runtime run establishes **22 passing nodes** with only the two
+  parameterizations of one host fake missing newly consumed `capacity` and
+  `layer_types` fields. Focused fixture repair is GREEN **2/2**; the new physical
+  SWA-boundary node and segmentation node are independently GREEN. Python
+  compilation and `git diff --check` pass; per the focused-repair rule, do not
+  repeat the already-established GPU-heavy full file.
+- Run the unchanged qualified P2 protocol at 128/320/512 (3 repetitions, 1
+  warmup, 18 natural/category-heldout prompts, 90 positions, full byte-state,
+  lifecycle). Candidate aggregate throughput is
+  **750.294/741.541/753.342 tok/s** versus retained
+  **749.175/741.368/754.000**, changes of **+0.149%/+0.023%/-0.087%**; every
+  shape is within the 1% preservation gate. Quality is exact: **18/18** states,
+  **90/90** tokens, top-1 100%, KL 0, lifecycle zero. The temporary artifact is
+  rejected only because the measured source is intentionally dirty; SHA-256
+  `9b882f2e476cb05c7b4e7c1e17b98c5a2ab449a6a12fdf88aa794cd60235ca65`.
+- Freeze this long-prompt implementation as its own logical unit before wiring
+  fixed-capacity prompt admission into the public scheduler. A clean retained
+  P4 publication will combine the long-prompt and public-admission gates.

@@ -267,6 +267,7 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) ->
         moe_intermediate_size=2,
         num_experts=3,
         rms_norm_eps=1e-6,
+        layer_types=(),
     )
     pf = SimpleNamespace(
         token_ids=buffer(100),
@@ -286,8 +287,8 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) ->
         argmax_block_indices=buffer(5_000),
         argmax_index=buffer(6_000),
         argmax_value=buffer(7_000),
-        sliding_span_owner=SimpleNamespace(spans=object()),
-        global_span_owner=SimpleNamespace(spans=object()),
+        sliding_span_owner=SimpleNamespace(capacity=8, spans=object()),
+        global_span_owner=SimpleNamespace(capacity=8, spans=object()),
         layers=(),
     )
     pointer = lambda value: SimpleNamespace(ptr=value)  # noqa: E731
@@ -392,6 +393,19 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch, wave32) ->
     assert result.top_logit == pytest.approx(3.5)
 
 
+def test_maple_prefill_swa_segments_never_bulk_append_across_ring_wrap() -> None:
+    segments = maple_runtime._maple_prefill_swa_segments
+
+    assert segments(start=0, rows=256, capacity=512) == ((0, 256),)
+    assert segments(start=256, rows=256, capacity=512) == ((0, 256),)
+    assert segments(start=400, rows=200, capacity=512) == (
+        (0, 112),
+        *((offset, 1) for offset in range(112, 200)),
+    )
+    assert segments(start=512, rows=3, capacity=512) == ((0, 1), (1, 1), (2, 1))
+    assert segments(start=700, rows=1, capacity=512) == ((0, 1),)
+
+
 def test_maple_prefill_native_rejects_invalid_chunk_and_token_before_launch() -> None:
     runner = object.__new__(MapleRunner)
     runner.closed = False
@@ -405,8 +419,6 @@ def test_maple_prefill_native_rejects_invalid_chunk_and_token_before_launch() ->
         runner.prefill_native((1,), chunk_size=257)
     with pytest.raises(ValueError, match="token_id"):
         runner.prefill_native((-1,), chunk_size=1)
-    with pytest.raises(NotImplementedError, match="sliding-window"):
-        runner.prefill_native(tuple(1 for _ in range(513)), chunk_size=1)
 
 
 def test_maple_prefill_native_matches_serial_step_gate(hip_test_target_arch) -> None:
@@ -498,24 +510,93 @@ def test_maple_prefill_native_natural_prompt_continuations(hip_test_target_arch)
 
 
 def test_maple_prefill_native_multichunk_continuation_gate(hip_test_target_arch) -> None:
-    """A prompt crossing the 256-row chunk boundary keeps decode state aligned."""
+    """A prompt crossing SWA-512 keeps physical state and decode aligned."""
     del hip_test_target_arch
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        host_array_ptr,
+    )
     from hipengine.loading.maple import load_maple_checkpoint
 
     try:
         checkpoint = load_maple_checkpoint("deepgrove/maple-preview-2bit-mlx")
     except Exception as exc:  # noqa: BLE001 - checkpoint missing
         pytest.skip(f"maple checkpoint unavailable: {exc}")
-    prompt = tuple(9_000 + (index % 512) for index in range(260))
+    prompt = tuple(9_000 + (index % 512) for index in range(520))
     backend = "hip_gfx1151"
 
-    serial = MapleRunner.load(checkpoint, backend=backend, max_context=512)
-    native = MapleRunner.load(checkpoint, backend=backend, max_context=512)
+    def device_bytes(runner, source, *, offset=0, nbytes=None):
+        size = source.nbytes - offset if nbytes is None else nbytes
+        host = np.empty(size, dtype=np.uint8)
+        copy_device_to_host(
+            host_array_ptr(host),
+            DeviceBuffer(ptr=source.ptr + offset, nbytes=size),
+            nbytes=size,
+            runtime=runner.runtime,
+        )
+        return host
+
+    serial = MapleRunner.load(checkpoint, backend=backend, max_context=528)
+    native = MapleRunner.load(checkpoint, backend=backend, max_context=528)
     try:
         serial_result = serial.prefill(prompt)
         native_result = native.prefill_native(prompt)
         assert native_result.position == len(prompt) - 1
         assert native_result.token_id == serial_result.token_id
+        assert (
+            np.asarray(native_result.top_logit, dtype=np.float32).view(np.uint32)
+            == np.asarray(serial_result.top_logit, dtype=np.float32).view(np.uint32)
+        )
+
+        spec = checkpoint.spec
+        hidden_bytes = spec.hidden_size * np.dtype(np.uint16).itemsize
+        final_row = (len(prompt) - 1) % maple_runtime.PREFILL_CHUNK
+        assert np.array_equal(
+            device_bytes(serial, serial.buffers.hidden, nbytes=hidden_bytes),
+            device_bytes(
+                native,
+                native.buffers.pf.hidden,
+                offset=final_row * hidden_bytes,
+                nbytes=hidden_bytes,
+            ),
+        )
+        assert np.array_equal(
+            device_bytes(serial, serial.buffers.normalized, nbytes=hidden_bytes),
+            device_bytes(native, native.buffers.normalized, nbytes=hidden_bytes),
+        )
+        for serial_layer, native_layer in zip(
+            serial.buffers.layers, native.buffers.layers, strict=True
+        ):
+            live_bytes = (
+                min(len(prompt), serial_layer.spans.max_live_count)
+                * spec.kv_size
+                * np.dtype(np.uint16).itemsize
+            )
+            for field in ("key_cache", "value_cache"):
+                assert np.array_equal(
+                    device_bytes(
+                        serial, getattr(serial_layer, field), nbytes=live_bytes
+                    ),
+                    device_bytes(
+                        native, getattr(native_layer, field), nbytes=live_bytes
+                    ),
+                )
+        for owner_name in ("sliding_span_owner", "global_span_owner"):
+            serial_owner = getattr(serial.buffers, owner_name)
+            native_owner = getattr(native.buffers, owner_name)
+            for field in (
+                "base_offsets",
+                "live_counts",
+                "token_positions",
+                "evict_mask",
+                "row_positions",
+            ):
+                assert np.array_equal(
+                    device_bytes(serial, getattr(serial_owner, field)),
+                    device_bytes(native, getattr(native_owner, field)),
+                )
+
         serial_token = serial_result.token_id
         native_token = native_result.token_id
         for _ in range(3):
