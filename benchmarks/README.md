@@ -17,6 +17,7 @@ records remain in the model-specific sections below.
 | Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
 | Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
+| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / matched 8-prompt serial grid | **1917.492** | — |
 
 Where a row names separate prefill and decode workloads, its cells are the
 latest retained results for those explicitly named protocols, not one combined
@@ -38,6 +39,18 @@ c1/c8/c9/c13 packet reaches **72.169/158.542/137.001/129.507 aggregate tok/s**;
 all retained trajectories/IDs are exact, with zero PM4 fallback and clean
 ownership drain.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
+
+**Maple CUDA sm_120a native c1 prefill retained on RTX PRO 6000 Blackwell GPU0:**
+the same 8 natural/category-heldout fixed-shape prompts x 3 repetitions measure
+native vs serial **1953.820 vs 361.038**, **1852.124 vs 204.842**, and
+**1917.492 vs 142.893 tok/s** at 128/320/512, or
+**5.412x/9.042x/13.419x**. The complete 18-prompt quality gate preserves
+**18/18** hidden/KV/span states and **90/90** positions at KL 0; 520/770-token
+physical SWA/global K/V and continuation gates are also exact. Tracked
+residency is **5,355,881,852 bytes / 560 allocations** and close returns zero.
+This promotes native c1 prefill only; CUDA resident batching, serving, and
+decode throughput remain unclaimed. Evidence:
+[`CUDA native prefill`](results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json).
 
 **Maple P4 retained on Radeon 8060S/gfx1151:** safe SWA-wrap orchestration
 extends exact native prefill beyond 512, and fixed-slot admission now connects
@@ -107,7 +120,7 @@ and
 | c1 natural+heldout continuation | **153.201 tok/s** | 18 prompts, 1,152 paired timing samples; full-head exact; -0.14% vs prior | [`D0 current`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json) |
 | Fixed-helper c2/c4/c8 decode64 | **250.481/346.365/428.063 aggregate tok/s** | exact row reuse; excludes prompt/public scheduling | [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json) |
 | Public c1/c2/c4/c8 generation64 | **123.131/165.697/202.038/214.788 aggregate tok/s** | same public protocol; admission/prefill/reclaim included; exact full head | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
-| CUDA sm_120a correctness-first c1 | **— (no throughput claim)** | GPU0; packed max KL 0.013793, top-1 18/18, exact device argmax; serial prompt admission | [`CUDA c1`](results/2026-08-08-cuda-sm120a-maple-c1-correctness.json) |
+| CUDA sm_120a native c1 prefill 128/320/512 | **1953.820/1852.124/1917.492 tok/s** | matched serial grid 5.412x/9.042x/13.419x; 18/18 states, 90/90 positions, KL 0 | [`CUDA native prefill`](results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json) |
 
 The fixed-capacity helper now uses exact affine4 row reuse at c=2/4/8 and
 reaches median aggregate **250.481/346.365/428.063 tok/s** at 64 tokens/request.

@@ -218,7 +218,7 @@ bring-up diagnostics only, not retained throughput claims. Evidence:
 `benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json` and
 `benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
 
-### Maple CUDA sm_120a peer c1 path (**hipEngine landed, correctness-qualified**)
+### Maple CUDA sm_120a peer c1 + native prefill (**hipEngine landed, retained**)
 
 `hipengine/kernels/cuda_sm120a/{quant,attention,moe,norm,linear}/maple_*`
 ports the in-tree Maple raw-pointer families to architecture-qualified CUDA
@@ -248,11 +248,22 @@ selected-dual/down, clamp, weighted-residual, and residual-norm calls, plus one
 embed/head/argmax tail; representative medians are **5.856 us** QKV,
 **1.984 us** attention, **10.752 us** router, and **111.007 us** exact head.
 The public 16-token c1 smoke is coherent and closes tracked ownership from
-**5,399,968,636 bytes / 560 allocations** to zero. Prompt admission remains a
-correctness-first serial c1 fallback and resident batching is deliberately not
-advertised, so this is not a native-prefill, serving, or performance claim.
-Evidence:
+**5,399,968,636 bytes / 560 allocations** to zero. Evidence:
 `benchmarks/results/2026-08-08-cuda-sm120a-maple-c1-correctness.json`.
+
+`hipengine/kernels/cuda_sm120a/moe/group_scatter.{cu,py}` adds the stable int32
+count/prefix/scatter metadata family, completing the grouped native-prefill
+chain without a HIP builder or row/route-gather production fallback. The clean
+matched 8-prompt x 3-repetition GPU0 protocol moves serial
+**361.038/204.842/142.893 -> native 1953.820/1852.124/1917.492 tok/s** at
+128/320/512 (**5.412x/9.042x/13.419x**). All **18/18** complete states and
+**90/90** positions are exact at KL 0; 520/770 physical SWA/global state and
+continuation also match. A cache-only 128-row Nsight trace records all expected
+24-call batched families across **367 launches / 68.194 ms** kernels, including
+QKV/O, QK/KV, GQA4 attention, router, stable compaction, grouped gate/up/down,
+and weighted residual. CUDA resident batching, serving, and decode throughput
+remain unclaimed. Evidence:
+`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`.
 
 ### Laguna gfx1151 decode transfer screen
 

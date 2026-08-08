@@ -1,6 +1,6 @@
 # MAPLE — gfx1151 Prefill & Decode Performance Plan
 
-Last updated: 2026-08-08 (branch `maple`)
+Last updated: 2026-08-08
 
 This is the authoritative performance punchlist for
 `deepgrove/maple-preview-2bit-mlx` on Radeon 8060S / `hip_gfx1151`. It reuses
@@ -18,6 +18,7 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Quantity | Value | Source |
 | --- | ---: | --- |
 | Public native prefill 128/320/512 | 750.854 / 741.890 / 754.458 tok/s | retained P4 recertification; <=0.224% from P2 |
+| CUDA sm_120a native c1 prefill 128/320/512 | 1953.820 / 1852.124 / 1917.492 tok/s | RTX PRO 6000 GPU0; 5.412x / 9.042x / 13.419x matched serial |
 | Current c1 fixed-token A/B candidate | 202.580 tok/s (4.936-ms process mean) | four-process alternating selector-snapshot gate |
 | Current c1 trace companion | 199.293 tok/s (5.018 ms/token) | separate clean cached trace; 4.550-ms kernels |
 | Current c1 natural-context | 153.201 tok/s | repeated complete category/state gate; -0.14% vs prior 153.409 |
@@ -30,7 +31,16 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Public tracked residency (max context 512) | 4.988 GiB (5,355,881,852 bytes) | retained P4 recertification |
 | Native-prefill qualification | performance: 128/320/512; exact state: 520/770 | public path continues to configured context |
 
-**Current conclusion (P0+P1+P2+P4, D0, and D1 retained; P3 rejected).**
+**CUDA peer conclusion.** The complete grouped native c1 prefill path is now
+retained on `cuda_sm120a`: 18/18 natural+heldout states and 90/90 positions are
+exact at KL 0, 520/770 physical state matches serial, and cache-only Nsight names
+all batched families. The fixed matched-grid row is
+**1953.820/1852.124/1917.492 tok/s** at 128/320/512. CUDA resident batching,
+serving, and decode throughput remain separate from this gfx1151 punchlist.
+Evidence:
+`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`.
+
+**Current gfx1151 conclusion (P0+P1+P2+P4, D0, and D1 retained; P3 rejected).**
 Final-row-only sampling nearly doubles qualified native prefill, expert-major
 MoE adds 3.68-5.83%, and exact GQA4 adds another 3.13-15.87%. The clean
 retained-P0/P1/P2 traces remain immutable phase baselines. Exact dense tile 16
@@ -101,6 +111,7 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json`,
@@ -559,9 +570,10 @@ Rules (per `AGENTS.md`):
   command + result + correctness gate. No single-prompt overfit; validate on
   the multi-prompt suite.
 - Each fused composite keeps an unfused fallback.
-- New kernels pass the CPU-reference gate + `rocprofv3 --kernel-trace`.
-- Profile with prebuilt `.so` + `require_cached`; never let the profiled
-  process spawn `hipcc`.
+- New kernels pass the CPU-reference gate plus the backend profiler
+  (`rocprofv3` for HIP, Nsight Systems for CUDA).
+- Profile with prebuilt `.so` + cached-only metadata; never let the profiled
+  process spawn `hipcc` or `nvcc`.
 - Log measurements and decisions in `WORKLOG.md` as they happen; update
   `benchmarks/README.md` / `CHANGELOG.md` for every retained result, including
   accepted diagnostics.
@@ -570,8 +582,8 @@ Rules (per `AGENTS.md`):
 
 - FlashHead as the default (approximate; opt-in only).
 - MTP speculative decode (no drafter for Maple yet).
-- CUDA sm_120a c1 correctness is tracked separately; native CUDA prefill,
-  resident batching/performance, tensor parallelism, and FP16-dequant prefill
-  remain separate tracks.
+- CUDA sm_120a c1 generation and native c1 prefill are retained separately;
+  CUDA resident batching/serving, decode performance, tensor parallelism, and
+  FP16-dequant prefill remain separate tracks.
 - Do not land throwaway prefill paths; build the complete bulk path directly
   per `docs/PREFILL.md` policy.

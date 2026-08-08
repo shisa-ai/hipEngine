@@ -17,7 +17,7 @@ that arbitrary models in the same container format will run.
 | **Qwen3.5/3.6 MoE — PARO** | [`shisa-ai/Qwen3.6-35B-A3B-PARO-packed`](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed); W4 ParoQuant | Public generation and serving on gfx1100/gfx1151; native concurrency is qualified per backend | [`docs/PLAN.md`](docs/PLAN.md) · [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) |
 | **Qwen3.5/3.6 MoE — GGUF** | [`unsloth/Qwen3.5-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) and [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF); `Q4_K_M`, `Q4_K_S`, and retained `UD-Q3_K_M` execution | Public generation and serving on gfx1100/gfx1151; bundled NextN/MTP is available only through its documented guarded routes | [`docs/GGUF.md`](docs/GGUF.md) · [`docs/MTP-gguf.md`](docs/MTP-gguf.md) |
 | **Laguna S 2.1** | [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) `Q4_K_M`; [`unsloth/Laguna-S-2.1-GGUF`](https://huggingface.co/unsloth/Laguna-S-2.1-GGUF) `UD-Q2_K_XL` | Public c1 generation/serving through 4K on gfx1151; measured resident W7900 path for `UD-Q2_K_XL`; matched DFlash is explicit-only | [`docs/LAGUNA.md`](docs/LAGUNA.md) · [`docs/LAGUNA-PARITY-STATUS.md`](docs/LAGUNA-PARITY-STATUS.md) |
-| **Maple-Preview 20B-A1B** | [`deepgrove/maple-preview-2bit-mlx`](https://huggingface.co/deepgrove/maple-preview-2bit-mlx); native ternary 2-bit MLX checkpoint (5.31 GB) | Exact full-head public c1/c2/c4/c8 generation on gfx1151; correctness-qualified c1 `LLM.generate()` on `cuda_sm120a` with serial prompt admission (no CUDA throughput/batch claim); gfx11 public default context is 4K and the retained long-prompt exactness gate reaches 770 tokens | [`docs/MAPLE.md`](docs/MAPLE.md) · [`docs/MAPLE-PERF.md`](docs/MAPLE-PERF.md) |
+| **Maple-Preview 20B-A1B** | [`deepgrove/maple-preview-2bit-mlx`](https://huggingface.co/deepgrove/maple-preview-2bit-mlx); native ternary 2-bit MLX checkpoint (5.31 GB) | Exact full-head public c1/c2/c4/c8 generation on gfx1151; correctness-qualified c1 `LLM.generate()` plus retained native c1 prefill on `cuda_sm120a` through the 770-token state gate (no CUDA batching/serving/decode-throughput claim); public default context is 4K | [`docs/MAPLE.md`](docs/MAPLE.md) · [`docs/MAPLE-PERF.md`](docs/MAPLE-PERF.md) |
 
 Maple's deployment configuration declares 128,000 positions (the model is
 marketed at 131,072), and Laguna's GGUF declares 256K. Those model limits are
@@ -39,6 +39,7 @@ ranking.
 | Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
 | Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
+| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / matched 8-prompt serial grid | **1917.492** | — |
 
 Where a row names separate prefill and decode workloads, its cells are the
 latest retained results for those explicitly named protocols, not one combined

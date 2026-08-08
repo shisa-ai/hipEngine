@@ -924,7 +924,7 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
 | **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target |
 | **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](MOONSHINE.md) |
-| **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` correctness-first c1 generation passes the 18-position packed gate on GPU0, while CUDA native prefill/resident batching remain pending |
+| **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation plus native prefill are retained through p512 performance / 770 state on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |

@@ -216657,3 +216657,23 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   tests/test_maple_prefill_bench_script.py` passes **13/13**. Add the NVCC
   version-file field to benchmark metadata and perform one final matched run
   from the resulting committed source before publication.
+- Commit the long-state/evidence gate as `3269b4dfa`, then run the final clean
+  matched protocol with physical GPU0 and the pinned checkpoint. Results are
+  **1953.820/1852.124/1917.492 native tok/s** versus
+  **361.038/204.842/142.893 serial tok/s** at 128/320/512, or
+  **5.412x/9.042x/13.419x (+441.17%/+804.17%/+1241.91%)**. The full quality
+  gate remains KL 0 with **18/18** complete state and **90/90** top-1/token
+  positions; all three rows have 24 samples per arm on identical keys. Tracked
+  residency remains **5,355,881,852 bytes / 560 allocations**, close is zero,
+  and the detailed 80,293-byte artifact SHA-256 is
+  `7b446b21474a6341de8258f17ac48f82c43d657bb2361ef454e03d6da93ed587`.
+- Public `LLM.generate_detailed()` with the plain maple-tree prompt now consumes
+  native CUDA prefill and emits 16 deterministic IDs/text; its 1.681-s
+  load-inclusive wall is diagnostic only. Tracked default-4K ownership closes
+  **5,399,968,636 bytes / 560 allocations -> 0**.
+- Publish compact retained artifact
+  `benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`
+  and update root/model support, topline rollup, changelog, kernel catalog,
+  architecture plan, refactor closure, performance-plan boundary, and exact
+  reproduction command. CUDA native c1 prefill is default/retained; resident
+  batching/serving and decode-throughput claims remain explicitly deferred.
