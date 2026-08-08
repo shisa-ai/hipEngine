@@ -765,6 +765,7 @@ def _run_packed_child(owner: Any, sessions: Sequence[Any], args: argparse.Namesp
             steps_per_replay=1,
             max_replay_steps=1,
             record_steps=1,
+            submission_transport=str(args.submission_transport),
         )
         try:
             if marker is not None:
@@ -802,6 +803,7 @@ def _run_packed_child(owner: Any, sessions: Sequence[Any], args: argparse.Namesp
     return {
         "concurrency": len(session_tuple),
         "decode_mode": str(args.decode_mode),
+        "submission_transport": str(args.submission_transport),
         "prefill_plan": dict(owner.last_packed_prefill_plan),
         "warmup_token_ids": current,
         "profile_token_ids": final,
@@ -864,6 +866,7 @@ def _run_child(args: argparse.Namespace) -> int:
                 "backend": str(owner.backend),
                 "target_arch": str(owner.runner.target_arch),
                 "decode_mode": str(args.decode_mode),
+                "submission_transport": str(args.submission_transport),
                 "require_cached_build": bool(args.require_cached_build),
             }
         )
@@ -921,6 +924,8 @@ def _child_command(
         str(args.backend),
         "--decode-mode",
         str(args.decode_mode),
+        "--submission-transport",
+        str(args.submission_transport),
         "--prompt-length",
         str(args.prompt_length),
         "--prompt-token-id",
@@ -1155,6 +1160,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             "active_mask": [True] * packed_concurrency,
             "c1_decode_mode": "eager",
             f"{packed_label}_decode_mode": str(args.decode_mode),
+            "submission_transport": str(args.submission_transport),
             "sampling": "greedy_top1",
             "speculative_decode": False,
         },
@@ -1213,6 +1219,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backend", choices=("hip_gfx1100", "hip_gfx1151"), default="hip_gfx1100")
     parser.add_argument("--decode-mode", choices=("eager", "graph"), default="eager")
     parser.add_argument(
+        "--submission-transport",
+        choices=("hipgraph", "aql"),
+        default="hipgraph",
+        help="Graph replay transport; direct AQL exposes inner dispatches to rocprofv3.",
+    )
+    parser.add_argument(
         "--packed-concurrency",
         type=int,
         choices=(2, 4, 8),
@@ -1239,6 +1251,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     if int(args.prompt_length) <= 0 or int(args.prompt_length) + 2 >= 1024:
         raise ValueError("prompt-length must be positive and leave two decode positions below 1024")
+    if args.submission_transport != "hipgraph" and (
+        args.backend != "hip_gfx1100" or args.decode_mode != "graph"
+    ):
+        raise ValueError("direct AQL profiling requires hip_gfx1100 graph decode")
     if args.child_mode is not None:
         if args.concurrency not in {1, 2, 4, 8} or args.child_json is None:
             raise ValueError("child mode requires --concurrency 1|2|4|8 and --child-json")

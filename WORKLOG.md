@@ -209493,3 +209493,24 @@ Vulkan local sizes verbatim will close the measured gap.
   cleanly. The initially requested d7 shape was rejected by the harness before
   model load because this canonical lifecycle is fixed at c8/d5; the corrected
   command is the retained evidence. No HSA queue is recreated.
+
+## 2026-08-08 — Start selective-PM4 full transport attribution
+
+- Reconfirm c1 at tracked-clean `3c10aebbc` with HIP graph/direct AQL/canonical
+  PM4 in one resident p512/d128 session. All tokens, recurrent/KV state, and
+  final logits are exact. Median replay is **10.751/11.508/9.957 ms/token**;
+  PM4 wins HIP by **7.385%**, while direct AQL loses by **7.037%**. The 626-node
+  AQL/PM4 executables retire 768 submissions each; PM4 uses 18,079 dwords versus
+  the retained 25,666-dword conservative tape. This independently confirms c1
+  is the positive PM4 selection scope.
+- Run a clean direct-AQL packed control at c2/c4/c8. Aggregate p512/d128 replay is
+  **109.516/169.291/234.042 tok/s** (three-run medians), below both HIP graph
+  **136.274/197.513/257.220** and PM4 **121.078/180.880/243.379** from the clean
+  paired matrix. Direct AQL is therefore attribution-only, not a candidate
+  transport; its barrier-bit/system-scope packet stream is expected to expose
+  all inner dispatches to `rocprofv3`.
+- Add RED/GREEN profiler-harness plumbing for explicit packed graph
+  `hipgraph|aql` selection. The parent forwards selection to cached-only child
+  capture and records it in child/workload provenance; non-gfx1100 or eager AQL
+  requests fail before profiling. This enables direct-AQL kernel/gap attribution
+  without falsely claiming that rocprof can decode nested PM4 IB dispatches.
