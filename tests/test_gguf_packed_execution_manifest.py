@@ -422,7 +422,7 @@ def test_packed_c3_profiler_census_requires_each_caware_family() -> None:
             for _ in range(40)
         ],
         KernelTraceRow(
-            kernel="q6_k_t16_gemv_rowtile_kernel",
+            kernel="q6_k_t16_gemv_rowtile_col8_kernel",
             duration_ns=10,
             grid_y=1,
         ),

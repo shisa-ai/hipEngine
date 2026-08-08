@@ -1083,6 +1083,35 @@ std::string executable_json(Executable* executable) {
   const uint32_t aql_publication = executable->aql_packets.empty()
                                        ? 0
                                        : executable->aql_packets.front().full_header;
+  uint64_t timestamp_begin = 0;
+  uint64_t timestamp_end = 0;
+  if (executable->timestamps.pointer != nullptr && executable->timestamps.length >= 16) {
+    std::memcpy(&timestamp_begin, executable->timestamps.pointer, sizeof(timestamp_begin));
+    std::memcpy(&timestamp_end,
+                static_cast<const uint8_t*>(executable->timestamps.pointer) + 8,
+                sizeof(timestamp_end));
+  }
+  const uint64_t timestamp_ticks =
+      timestamp_end >= timestamp_begin ? timestamp_end - timestamp_begin : 0;
+  const unsigned __int128 timestamp_ns_wide =
+      executable->context->timestamp_frequency == 0
+          ? 0
+          : (static_cast<unsigned __int128>(timestamp_ticks) * kNanosPerSecond) /
+                executable->context->timestamp_frequency;
+  const uint64_t timestamp_duration_ns =
+      timestamp_ns_wide > std::numeric_limits<uint64_t>::max()
+          ? std::numeric_limits<uint64_t>::max()
+          : static_cast<uint64_t>(timestamp_ns_wide);
+  const uint64_t dependency_barriers =
+      executable->dispatches.empty() ? 0 : executable->dispatches.size() - 1;
+  constexpr uint64_t kDependencyDwords = 11;
+  constexpr uint64_t kTimestampDwords = 14;
+  const uint64_t dependency_dwords = dependency_barriers * kDependencyDwords;
+  const uint64_t timestamp_dwords = executable->timestamps.pointer == nullptr ? 0 : kTimestampDwords;
+  const uint64_t non_dependency_pm4_dwords =
+      executable->pm4_words.size() >= dependency_dwords + timestamp_dwords
+          ? executable->pm4_words.size() - dependency_dwords - timestamp_dwords
+          : 0;
   std::ostringstream out;
   out << "{\"abi_version\":" << kAbiVersion << ",\"generation\":"
       << executable->generation << ",\"nodes\":" << executable->dispatches.size()
@@ -1093,6 +1122,14 @@ std::string executable_json(Executable* executable) {
       << ",\"pm4_publication\":" << pm4_publication << ",\"timestamp_address\":"
       << reinterpret_cast<uintptr_t>(executable->timestamps.pointer)
       << ",\"timestamp_bytes\":" << executable->timestamps.length
+      << ",\"timestamp_frequency\":" << executable->context->timestamp_frequency
+      << ",\"timestamp_begin\":" << timestamp_begin
+      << ",\"timestamp_end\":" << timestamp_end
+      << ",\"timestamp_ticks\":" << timestamp_ticks
+      << ",\"timestamp_duration_ns\":" << timestamp_duration_ns
+      << ",\"dependency_barriers\":" << dependency_barriers
+      << ",\"dependency_dwords\":" << dependency_dwords
+      << ",\"non_dependency_pm4_dwords\":" << non_dependency_pm4_dwords
       << ",\"kernarg_slab_address\":"
       << reinterpret_cast<uintptr_t>(executable->kernargs.pointer)
       << ",\"kernarg_slab_bytes\":" << executable->kernargs.length

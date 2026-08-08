@@ -407,6 +407,7 @@ class NativeGraphSubmissionContext:
     context: NativePm4Context
     stateful_registers: bool = False
     local_cache_dependencies: bool = False
+    timestamps: bool = False
     context_create_ns: int = 0
     last_graph_inspection_ns: int = 0
     last_graph_inspection_phases_ns: dict[str, int] = field(default_factory=dict)
@@ -445,11 +446,13 @@ class NativeGraphSubmissionContext:
         self.last_graph_inspection_ns = time.perf_counter_ns() - inspection_start_ns
         self.graph_inspection_ns_total += self.last_graph_inspection_ns
         instantiate_start_ns = time.perf_counter_ns()
-        executable = self.context.instantiate(
-            manifest,
-            stateful_registers=self.stateful_registers,
-            local_cache_dependencies=self.local_cache_dependencies,
-        )
+        instantiate_options = {
+            "stateful_registers": self.stateful_registers,
+            "local_cache_dependencies": self.local_cache_dependencies,
+        }
+        if self.timestamps:
+            instantiate_options["timestamps"] = True
+        executable = self.context.instantiate(manifest, **instantiate_options)
         self.last_native_instantiate_ns = time.perf_counter_ns() - instantiate_start_ns
         self.native_instantiate_ns_total += self.last_native_instantiate_ns
         self.children += 1
@@ -487,6 +490,7 @@ class NativeGraphSubmissionContext:
             "generations": int(self.generations),
             "stateful_registers": bool(self.stateful_registers),
             "local_cache_dependencies": bool(self.local_cache_dependencies),
+            "timestamps": bool(self.timestamps),
             "context_create_ns": int(self.context_create_ns),
             "last_graph_inspection_ns": int(self.last_graph_inspection_ns),
             "last_graph_inspection_phases_ns": dict(self.last_graph_inspection_phases_ns),

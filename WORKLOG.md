@@ -209514,3 +209514,23 @@ Vulkan local sizes verbatim will close the measured gap.
   capture and records it in child/workload provenance; non-gfx1100 or eager AQL
   requests fail before profiling. This enables direct-AQL kernel/gap attribution
   without falsely claiming that rocprof can decode nested PM4 IB dispatches.
+
+## 2026-08-08 — Add packed PM4 timestamp and barrier attribution
+
+- Tracked-clean direct-AQL `rocprofv3` traces expose exactly 747/747/748 inner
+  dispatches at c2/c4/c8. Marker span / kernel sum / explicit inter-dispatch-gap
+  sum is **20.805/13.044/2.082 ms**, **26.170/17.074/2.315 ms**, and
+  **34.031/26.290/3.083 ms** respectively. Median gaps are 3.72/3.72/3.84 us;
+  502/550/642 gaps exceed 1 us. These are instrumented diagnostic timings, not
+  throughput. The c4 raw trace is valid/exact but the old census missed the
+  current `q6_k_t16_gemv_rowtile_col8_kernel` spelling; broaden the rowtile
+  match under RED/GREEN instead of rerunning the expensive trace.
+- Add default-off retained PM4 begin/end GPU timestamps to native executable
+  provenance, plus mechanical dependency barrier/dword and non-dependency tape
+  counts. Timestamp-enabled contexts are explicit benchmark-owned state;
+  production contexts remain timestamp-free. The guarded same-HSACO HIP/AQL/PM4
+  GPU test passes bit-exact and reports a positive timestamp duration.
+- Add `--pm4-timestamps` to the paired packed benchmark. It pre-creates one
+  timestamp-enabled persistent PM4 context, leaves HIP unchanged, and preserves
+  timestamp/barrier fields in compact proofs. This will distinguish actual PM4
+  device tape time from blocking host submission and direct-AQL profiler gaps.

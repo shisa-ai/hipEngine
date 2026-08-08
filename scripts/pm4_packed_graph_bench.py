@@ -225,6 +225,14 @@ def _compact_transport_proof(proof: Mapping[str, Any]) -> dict[str, Any]:
                 "modules",
                 "pm4_dwords",
                 "pm4_submissions",
+                "timestamp_frequency",
+                "timestamp_begin",
+                "timestamp_end",
+                "timestamp_ticks",
+                "timestamp_duration_ns",
+                "dependency_barriers",
+                "dependency_dwords",
+                "non_dependency_pm4_dwords",
                 "retired",
                 "usable",
             )
@@ -379,6 +387,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     )
                 )
+            if bool(args.pm4_timestamps):
+                from hipengine.core.pm4.transport import create_graph_submission_context
+
+                timestamp_context = create_graph_submission_context(
+                    backend=str(owner.runner.backend),
+                    gfx_arch=str(owner.runner.target_arch),
+                    runtime=runtime,
+                    transport="pm4",
+                )
+                if timestamp_context is None:
+                    raise RuntimeError("PM4 timestamp profiling context was not created")
+                timestamp_context.timestamps = True
+                owner._decode_graph_submission_contexts["pm4"] = timestamp_context
             memory["after_load"] = _memory_snapshot("after_load", runtime)
 
             for config_index, name in enumerate(names):
@@ -596,6 +617,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "repetitions": int(args.repetitions),
             "natural_steps": int(args.natural_steps),
             "natural_cases": len(natural_cases),
+            "pm4_timestamps": bool(args.pm4_timestamps),
             "suite_files": [str(Path(path).resolve()) for path in args.suite_files],
         },
         "summaries": summaries,
@@ -652,6 +674,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--suite-files", type=Path, nargs="+", default=list(DEFAULT_SUITES))
     parser.add_argument("--natural-steps", type=int, default=3)
+    parser.add_argument(
+        "--pm4-timestamps",
+        action="store_true",
+        help="Add retained GPU begin/end timestamps to diagnostic PM4 tapes.",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached", action="store_true")
     parser.add_argument(
