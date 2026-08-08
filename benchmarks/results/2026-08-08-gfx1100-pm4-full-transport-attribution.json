@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_pm4_full_transport_attribution_and_selection",
+  "created_at": "2026-08-08T06:41:50Z",
+  "status": "accepted",
+  "performance_claim": true,
+  "source_commit": "a5620802a54c0e00f780cb0ba5f3d413cb49e747",
+  "source_clean": true,
+  "decision": "select canonical PM4 for proven gfx1100 Qwen3.5 GGUF whole-step c1 and packed physical c2/c4/c8 graph scopes; retain packed eager for logical c3/c5/c6/c7 and HIP graph for unproven graph scopes or peer backends",
+  "root_cause": "Qwen35GGUFPackedDecodeGraph.replay serialized full native provenance, including 747/748 dispatch records, after every synchronized token; defer full proof generation until outside replay timing and update only O(1) counters on the hot path",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "gfx_arch": "gfx1100",
+    "pci_bdf": "0000:0d:00.0",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": "1",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "workload": {
+    "prompt_source": "repeated-token paired performance plus complete natural category/heldout transport equality",
+    "prompt_token_id": 9707,
+    "prompt_length": 512,
+    "decode_steps": 128,
+    "warmups": 1,
+    "repetitions": 5,
+    "counterbalanced": true,
+    "one_loaded_model": true,
+    "resident_session_pool": 8,
+    "physical_widths": [1, 2, 4, 8],
+    "natural_steps": 3,
+    "natural_cases": 18,
+    "natural_groups": [8, 8, 2],
+    "logical_c3_c5_c6_c7_transport_path": "packed_eager_unaffected"
+  },
+  "command": "PYTHONPATH=/home/lhl/hipEngine-main HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/pm4_packed_graph_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c2,c4,native_c8 --prompt-length 512 --decode-steps 128 --warmups 1 --repetitions 5 --natural-steps 3 --compiler-version-file /tmp/hipengine-pm4-packed/hipcc-version.txt --require-cached --json /tmp/hipengine-pm4-packed-provenance-clean.json",
+  "performance": {
+    "c1_retained_reference": {
+      "hipgraph_median_ms_per_token": 10.7263501171875,
+      "pm4_median_ms_per_token": 9.9643580078125,
+      "replay_wall_delta_percent": -7.103927254379039,
+      "paired_pm4_wins": 5,
+      "paired_rounds": 5,
+      "artifact": "benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json"
+    },
+    "c2": {
+      "hipgraph_replay_seconds": [1.8510112105868757, 1.8667560680769384, 1.8692856687121093, 1.8660645009949803, 1.8766864170320332],
+      "pm4_replay_seconds": [1.737285457085818, 1.7404437749646604, 1.74307283712551, 1.7441851496696472, 1.7514381660148501],
+      "hipgraph_median_ms_per_step": 14.584031781851081,
+      "pm4_median_ms_per_step": 13.617756540043047,
+      "hipgraph_aggregate_tok_s": 137.136289190543,
+      "pm4_aggregate_tok_s": 146.8670697790047,
+      "replay_wall_delta_percent": -6.6255700499124215,
+      "paired_pm4_wins": 5,
+      "paired_rounds": 5,
+      "capture_inclusive_wall_delta_percent": -3.812690177000222,
+      "request_inclusive_wall_delta_percent": -2.5755750232823282,
+      "previous_pm4_ms_per_step": 16.518314150744118,
+      "pm4_hot_path_improvement_percent": -17.559646730477073
+    },
+    "c4": {
+      "hipgraph_replay_seconds": [2.589828494936228, 2.585753607098013, 2.590044586919248, 2.5962433218955994, 2.595470962114632],
+      "pm4_replay_seconds": [2.476813309825957, 2.4832880860194564, 2.482232495211065, 2.4838122529909015, 2.483190525788814],
+      "hipgraph_median_ms_per_step": 20.234723335306626,
+      "pm4_median_ms_per_step": 19.399925982725108,
+      "hipgraph_aggregate_tok_s": 197.67999461700504,
+      "pm4_aggregate_tok_s": 206.18635367793914,
+      "replay_wall_delta_percent": -4.12556840411511,
+      "paired_pm4_wins": 5,
+      "paired_rounds": 5,
+      "capture_inclusive_wall_delta_percent": -2.2069782194312326,
+      "request_inclusive_wall_delta_percent": -1.1996851249243878,
+      "previous_pm4_ms_per_step": 22.114162678917637,
+      "pm4_hot_path_improvement_percent": -12.2737484371503
+    },
+    "c8": {
+      "hipgraph_replay_seconds": [3.961217768024653, 3.965599610004574, 3.96862329589203, 3.971497671213001, 3.9687221171334386],
+      "pm4_replay_seconds": [3.8693618150427938, 3.869429874699563, 3.8740803408436477, 3.870739011093974, 3.875163462944329],
+      "hipgraph_median_ms_per_step": 31.004869499156484,
+      "pm4_median_ms_per_step": 30.240148524171673,
+      "hipgraph_aggregate_tok_s": 258.02398556193396,
+      "pm4_aggregate_tok_s": 264.54896521442043,
+      "replay_wall_delta_percent": -2.466454422604869,
+      "paired_pm4_wins": 5,
+      "paired_rounds": 5,
+      "capture_inclusive_wall_delta_percent": -1.0797868328588311,
+      "request_inclusive_wall_delta_percent": -0.6765190997794157,
+      "previous_pm4_ms_per_step": 32.87049580467283,
+      "pm4_hot_path_improvement_percent": -8.00215273944006
+    }
+  },
+  "attribution": {
+    "direct_aql_unprofiled_ms_per_step": {
+      "c1": 11.5075527421875,
+      "c2": 18.26219908507113,
+      "c4": 23.627898404762437,
+      "c8": 34.18190613186266
+    },
+    "direct_aql_rocprof": {
+      "c2": {"dispatches": 747, "marker_ms": 20.805366, "kernel_sum_ms": 13.044495, "inter_dispatch_gap_sum_ms": 2.08222, "median_gap_us": 3.72},
+      "c4": {"dispatches": 747, "marker_ms": 26.169751, "kernel_sum_ms": 17.073554, "inter_dispatch_gap_sum_ms": 2.314811, "median_gap_us": 3.72},
+      "c8": {"dispatches": 748, "marker_ms": 34.030724, "kernel_sum_ms": 26.289761, "inter_dispatch_gap_sum_ms": 3.082929, "median_gap_us": 3.84}
+    },
+    "calibrated_pm4_device_ms": {
+      "clock_frequency_hz": 100000000,
+      "c1_final_step": 10.19136,
+      "c2_five_run_median_final_step": 13.25408,
+      "c4_five_run_median_final_step": 18.81792,
+      "c8_five_run_median_final_step": 29.26656
+    },
+    "pre_fix_final_step_host_minus_device_ms_ranges": {
+      "c2": [2.864222, 3.818802],
+      "c4": [3.016159, 3.590756],
+      "c8": [3.061515, 3.408019]
+    },
+    "conclusion": "the packed regression was host-side full-provenance serialization, not PM4 dependency execution; canonical local-cache barriers remain required for correctness"
+  },
+  "correctness": {
+    "passed": true,
+    "paired_performance_trajectories_exact": true,
+    "transport_repeatable": true,
+    "natural_suite_trajectories_exact": true,
+    "natural_category_counts": {"code": 6, "general_en": 4, "general_ja": 4, "mixed_ja_en": 4},
+    "prior_independent_c1_oracle_all_layer_comparisons": {"c2": 400, "c4": 800, "c8": 1600},
+    "prior_sparse_retirement": {
+      "active_row_counts": [8, 6, 4, 2, 1],
+      "graph_generations": 5,
+      "all_layer_comparisons": 1160,
+      "passed": true,
+      "artifact": "benchmarks/results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json"
+    }
+  },
+  "transport_proof": {
+    "canonical_encoder": {"stateful_registers": true, "local_cache_dependencies": true, "native_fallbacks": 0},
+    "c2": {"nodes": 747, "pm4_dwords": 21305, "dependency_barriers": 746, "pm4_submissions_per_run": 128, "retired": true},
+    "c4": {"nodes": 747, "pm4_dwords": 21305, "dependency_barriers": 746, "pm4_submissions_per_run": 128, "retired": true},
+    "c8": {"nodes": 748, "pm4_dwords": 21330, "dependency_barriers": 747, "pm4_submissions_per_run": 128, "retired": true}
+  },
+  "lifecycle": {
+    "passed": true,
+    "native_fallbacks": 0,
+    "callback_status": 0,
+    "unretired_submissions": 0,
+    "contexts_closed": true,
+    "measured_free_delta_bytes": 262144,
+    "recovery_tolerance_bytes": 67108864,
+    "memory_recovered": true
+  },
+  "source_evidence": {
+    "paired_full_artifact_path": "/tmp/hipengine-pm4-packed-provenance-clean.json",
+    "paired_full_artifact_size_bytes": 756369,
+    "paired_full_artifact_sha256": "4b25d72a4a9b2c36fb08055bd7e2ff1523eaa3c09229398efb8f92eede17f8b4",
+    "c1_host_control_sha256": "50dbfbf9ac02a633fe1a95215666097aac4fadbd20208618f2d77940d94ea550",
+    "packed_timestamp_profile_sha256": "709052de84c620b7b830f2ae1025e023bd8348fa91e7c6911c3c161eb617f490",
+    "c1_timestamp_profile_sha256": "8f0a9defe38df8e8eb2caae7422a5470eaa6db06830433c1f38e96790e83de19",
+    "aql_rocprof_c2_sha256": "df123a2e0f9a36596200e3c7875252d1356b6d9f18839a4eded207e904b03931",
+    "aql_rocprof_c4_sha256": "cd548dd2f20a9dc1fc5dbe7ee3ef484ec66ddaed8338d5d69e1e6ec8e9e4c98f",
+    "aql_rocprof_c8_sha256": "3b9f345514821baca63f76e04063d2fc894ef805c6de12f282e44b8ade522dd5"
+  },
+  "notes": [
+    "PM4 now wins replay, capture-inclusive wall, and request-inclusive wall at every graph-backed physical width c1/c2/c4/c8.",
+    "Logical c3/c5/c6/c7 remain packed eager and are unaffected by graph submission transport selection.",
+    "Direct AQL is an attribution control and remains slower than both retained transports.",
+    "No submit-plus-queue-recreate lifecycle arm was performed; the retained persistent owner does not recreate queues in-process."
+  ]
+}

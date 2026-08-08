@@ -209570,3 +209570,26 @@ Vulkan local sizes verbatim will close the measured gap.
   only because this short one-width diagnostic observes a 413 MiB ROCm free-memory
   baseline delta; all allocations are freed and context teardown passes. Use the
   clean full d128/max-shape matrix for retention, not this exploratory row.
+
+## 2026-08-08 — Resolve packed PM4 performance blocker
+
+- At tracked-clean `a5620802a`, rerun the exact one-model/eight-session p512/d128
+  c2/c4/c8 matrix with one warmup and five counterbalanced rounds. PM4 now wins
+  every replay pair: **14.584→13.618 ms/step (-6.626%, 5/5)** at c2,
+  **20.235→19.400 (-4.126%, 5/5)** at c4, and
+  **31.005→30.240 (-2.466%, 5/5)** at c8. Relative to the previously blocked PM4
+  rows, hot replay improves **17.560%/12.274%/8.002%**. Capture-inclusive wall
+  improves **3.813%/2.207%/1.080%** and complete request wall improves
+  **2.576%/1.200%/0.677%**; this is not a replay-only benchmark win.
+- All measured and natural transport trajectories remain exact across the full
+  18-prompt code/general-en/general-ja/mixed suite. Each 128-step executable
+  retires with zero fallback/callback/unretired work; the persistent context
+  drains/closes and memory recovers within 256 KiB. The code change only defers
+  diagnostic JSON and leaves the previously proven 2,800 independent-c1 plus
+  1,160 sparse-retirement all-layer arithmetic/state/KV comparisons unchanged.
+- The measured selection boundary is now PM4 for admitted gfx1100 Qwen3.5 GGUF
+  whole-step c1 and packed physical c2/c4/c8 graph families. Logical
+  c3/c5/c6/c7 remain packed eager and transport-unaffected. Unrelated graph
+  families and peer backends must stay on HIP graph until separately proven.
+  Publish full host/direct-AQL/device attribution and the superseded blocked row
+  in `benchmarks/results/2026-08-08-gfx1100-pm4-full-transport-attribution.json`.

@@ -25,23 +25,28 @@ The optimized cold PM4 capture is **193.739 -> 132.858 ms (-31.425%)** versus
 the prior stateful artifact; cold capture-inclusive p512/d128 is now within
 **0.329 ms / 0.023%** of HIP graph rather than about 3.5% slower.
 
-The same encoder is stable but **rejected for packed c2/c4/c8 performance** in a
-tracked-clean, one-model/eight-session, alternating-order p512/d128 matrix:
+Full host/device attribution found that packed replay serialized all 747/748
+native dispatch records into provenance JSON after every token. Deferring that
+complete proof until after timed replay makes the canonical PM4 encoder
+**non-regressive at every graph-backed physical width** in a tracked-clean,
+one-model/eight-session, alternating-order p512/d128 matrix:
 
 | Physical width | HIP graph replay | PM4 replay | PM4 delta | Paired PM4 wins | Decision |
 | --- | ---: | ---: | ---: | ---: | --- |
-| c2 | **14.676 ms/step / 136.274 aggregate tok/s** | 16.518 / 121.078 | **+12.551% wall** | 0/5 | Keep HIP graph |
-| c4 | **20.252 / 197.513** | 22.114 / 180.880 | **+9.196%** | 0/5 | Keep HIP graph |
-| c8 | **31.102 / 257.220** | 32.870 / 243.379 | **+5.687%** | 0/5 | Keep HIP graph |
+| c2 | 14.584 ms/step / 137.136 aggregate tok/s | **13.618 / 146.867** | **-6.626% wall** | 5/5 | PM4 eligible |
+| c4 | 20.235 / 197.680 | **19.400 / 206.186** | **-4.126%** | 5/5 | PM4 eligible |
+| c8 | 31.005 / 258.024 | **30.240 / 264.549** | **-2.466%** | 5/5 | PM4 eligible |
 
-All paired trajectories and all 18 natural category/heldout trajectories are
-exact. Independent-c1 packed oracles add **400/800/1,600** exact all-layer
-comparisons at c2/c4/c8 plus exact Conv/GDN/live-KV and lifecycle state. A
-focused sparse-retirement follow-up adds **1,160/1,160** exact all-layer rows
-across active widths **8→6→4→2→1**, five PM4 graph generations, and five retired
-submissions. Contexts close and memory recovers. Capture-inclusive and
-request-inclusive wall also regress at every width. Logical c3/c5/c6/c7 use the
-packed eager route and are transport-unaffected. Evidence:
+PM4 also wins capture-inclusive wall by **3.813%/2.207%/1.080%** and complete
+request wall by **2.576%/1.200%/0.677%** at c2/c4/c8. All paired trajectories
+and all 18 natural category/heldout trajectories remain exact. Joined
+independent-c1 packed oracles cover **400/800/1,600** exact all-layer comparisons,
+and sparse retirement covers **1,160/1,160** exact rows across active widths
+**8→6→4→2→1**. Every submission retires, contexts close, and memory recovers
+within 256 KiB. Logical c3/c5/c6/c7 use packed eager and are transport-unaffected.
+Evidence and direct-AQL/calibrated-device attribution:
+[`2026-08-08-gfx1100-pm4-full-transport-attribution.json`](results/2026-08-08-gfx1100-pm4-full-transport-attribution.json).
+The superseded blocked row remains historical evidence in
 [`2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json`](results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json).
 
 The explicit PM4 encoder's c1 promotion matrix passes **19/19 exact cases**
@@ -51,8 +56,9 @@ pre/post-submit cancellation, context/session shutdown, and focused max-shape
 memory recovery:
 [`2026-08-08-gfx1100-pm4-promotion-matrix.json`](results/2026-08-08-gfx1100-pm4-promotion-matrix.json).
 Explicit `transport="pm4"` selects the stateful/local-cache encoder
-unconditionally, but package-default PM4 is now concretely blocked by the
-packed c2/c4/c8 regressions above. ROCm #6529 recreate remains optional unrun
+unconditionally. The c1/c2/c4/c8 performance blocker is resolved, so scoped
+backend-capability promotion is ready; unrelated graph families and peer
+backends must retain HIP graph. ROCm #6529 recreate remains optional unrun
 coverage rather than an evidenced in-tree fault because production retains one
 queue and does not recreate it. The superseded stateful-only evidence remains in
 [`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).
