@@ -3,9 +3,11 @@ from __future__ import annotations
 import pytest
 
 from scripts.pm4_packed_graph_bench import (
+    _compact_transport_proof,
     _context_teardown_ok,
     _paired_transport_summary,
     _validate_sample_transport,
+    build_parser,
 )
 
 
@@ -87,6 +89,27 @@ def test_validate_sample_transport_requires_canonical_retired_pm4() -> None:
     proof["local_cache_dependencies"] = False
     blockers = _validate_sample_transport(pm4, expected="pm4", steps=128)
     assert blockers == ["graph 0 did not use the canonical local-cache dependency encoder"]
+
+
+def test_packed_profile_parser_and_compaction_preserve_pm4_device_timestamps() -> None:
+    args = build_parser().parse_args(["--pm4-timestamps", "--json", "/tmp/out.json"])
+    proof = _sample("pm4", decode_seconds=1.0, capture_seconds=0.1)["graph_manifests"][0][
+        "graph"
+    ]["transport"]
+    proof["executable"].update(
+        {
+            "timestamp_duration_ns": 1234,
+            "dependency_barriers": 746,
+            "dependency_dwords": 8206,
+        }
+    )
+
+    compact = _compact_transport_proof(proof)
+
+    assert args.pm4_timestamps is True
+    assert compact["executable"]["timestamp_duration_ns"] == 1234
+    assert compact["executable"]["dependency_barriers"] == 746
+    assert compact["executable"]["dependency_dwords"] == 8206
 
 
 def test_context_teardown_accepts_native_counters_nested_in_owner_proof() -> None:

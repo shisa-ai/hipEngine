@@ -217,6 +217,7 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
             *,
             stateful_registers: bool = False,
             local_cache_dependencies: bool = False,
+            timestamps: bool = False,
         ) -> FakeExecutable:
             self.generation += 1
             calls.append(
@@ -225,6 +226,7 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
                     self.generation,
                     stateful_registers,
                     local_cache_dependencies,
+                    timestamps,
                 )
             )
             return FakeExecutable(80 + self.generation)
@@ -251,6 +253,7 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
         transport="pm4",
     )
     assert owner is not None
+    owner.timestamps = True
 
     first = create_graph_submission(
         backend="hip_gfx1100",
@@ -277,6 +280,7 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
     assert owner.provenance()["generations"] == 2
     assert owner.provenance()["stateful_registers"] is True
     assert owner.provenance()["local_cache_dependencies"] is True
+    assert owner.provenance()["timestamps"] is True
     assert owner.provenance()["context_create_ns"] >= 0
     assert owner.provenance()["last_graph_inspection_ns"] > 0
     assert owner.provenance()["last_native_instantiate_ns"] > 0
@@ -285,9 +289,9 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
     assert owner.provenance()["closed"] is True
     assert calls == [
         ("context_create",),
-        ("instantiate", 1, True, True),
+        ("instantiate", 1, True, True, True),
         ("executable_close", 81),
-        ("instantiate", 2, True, True),
+        ("instantiate", 2, True, True, True),
         ("executable_close", 82),
         ("context_close",),
     ]

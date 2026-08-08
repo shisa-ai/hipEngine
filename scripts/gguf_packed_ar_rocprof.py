@@ -439,7 +439,7 @@ def build_c3_family_census(
 
     lm_head_path = str(manifest["lm_head_decode_path"])
     if lm_head_path == "q6_rowtile_f32_logits":
-        lm_head_rows = _rows_matching(c4_rows, "q6_k_t16_gemv_rowtile_kernel")
+        lm_head_rows = _rows_matching(c4_rows, "q6_k_t16_gemv_rowtile")
         expected_lm_head_dispatches = _q6_rowtile_dispatch_count(row_count)
     elif lm_head_path == "direct_top1_rows":
         lm_head_rows = _rows_matching(c4_rows, "top1_gather")

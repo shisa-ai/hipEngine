@@ -73,7 +73,7 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         graph_exec = runtime.graph_instantiate(graph)
 
         context = NativePm4Context.create(pci_bdf=runtime.device_pci_bus_id(), gfx_arch="gfx1100")
-        executable = context.instantiate(manifest)
+        executable = context.instantiate(manifest, timestamps=True)
         with pytest.raises(NativePm4Error, match="live executables"):
             context.close()
 
@@ -107,6 +107,13 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         assert provenance["nodes"] == 1
         assert provenance["modules"] == 1
         assert provenance["pm4_dwords"] > 0
+        assert provenance["timestamp_address"] != 0
+        assert provenance["timestamp_bytes"] == 16
+        assert provenance["timestamp_frequency"] > 0
+        assert provenance["timestamp_begin"] > 0
+        assert provenance["timestamp_end"] >= provenance["timestamp_begin"]
+        assert provenance["timestamp_ticks"] > 0
+        assert provenance["timestamp_duration_ns"] > 0
         assert provenance["aql_publication"] != 0
         assert provenance["pm4_publication"] != 0
         assert provenance["aql_submissions"] == 2
