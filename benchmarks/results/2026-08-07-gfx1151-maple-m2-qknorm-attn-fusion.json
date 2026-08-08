@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-07",
+  "artifact_type": "decode_perf",
+  "performance_claim": false,
+  "status": "rejected_diagnostic",
+  "backend": "hip_gfx1151",
+  "model": "deepgrove/maple-preview-2bit-mlx",
+  "quant": "maple_ternary2",
+  "hardware": {"cpu": "AMD RYZEN AI MAX+ 395", "gpu": "Radeon 8060S Graphics", "arch": "gfx1151"},
+  "workload": "single decode step, resident context, 24 MoE layers, GQA 16Q/4KV head_dim 128, hidden 2048",
+  "change": "M2/D2 fuse per-layer qknorm_rope_kv_write + attention_decode into one kernel (maple_attention_fused_qknorm_decode_bf16). NOT promoted: opt-in via HIPENGINE_MAPLE_FUSE_QKATTN=1 (default 0).",
+  "result": {
+    "command": "PYTHONPATH=$PWD python3 /tmp/validate_m2_qkattn.py (resident runner, 30-step, 2 reps)",
+    "fused_median_us": 6442.2,
+    "unfused_median_us": 6376.6,
+    "fused_regression_pct": -1.03
+  },
+  "correctness": {
+    "gate": "real-model opt-in decode next-token sequence bit-identical to unfused (BITEXACT=True); GPU test asserts attention output + K/V cache match bit-for-bit",
+    "test": "tests/test_maple_attention_kernels.py::test_maple_fused_qknorm_attention_decode_matches_unfused_chain",
+    "bit_exact_with_unfused": true
+  },
+  "notes": [
+    "Each of the 4 q-head blocks in a GQA group redundantly writes the same K/V (self-contained, no cross-block race); the redundant write + folded ~88 us qknorm work offsets the single launch saved.",
+    "Completes the D2 fusion investigation: MoE dual+swiglu (~9% micro regression), down+weighted (~3.5%, reverted), qknorm+attention (~1% step regression) all regress on gfx1151 small-batch; none promoted; launch reduction served by hipGraph (M1)."
+  ]
+}

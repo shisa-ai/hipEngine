@@ -30,6 +30,9 @@ _PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
 _TARGET_PACKAGE_SHA256 = (
     "9cf784e41d9f77983373f60c543342cfb7659a736ce84cdc762bb2bc93ab6abf"
 )
+_POST_MERGE_PACKAGE_SHA256 = (
+    "79119c740d9c2c421bfb3c93e8aa3b9f682f0ee59c00dede08f061c8e4d6e90f"
+)
 _CANDIDATE_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_H7U_MODE"
 _SOURCE_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_MODE"
 _CANDIDATE_BLOCK = (
@@ -56,7 +59,7 @@ def _package_state() -> str:
     promoted_count = source.count(_SOURCE_BLOCK)
     assert candidate_count + promoted_count == 1
     normalized = source.replace(_CANDIDATE_BLOCK, "").replace(_SOURCE_BLOCK, "")
-    assert hashlib.sha256(normalized.encode()).hexdigest() == _TARGET_PACKAGE_SHA256
+    assert hashlib.sha256(normalized.encode()).hexdigest() == _POST_MERGE_PACKAGE_SHA256
     return "candidate" if candidate_count else "source"
 
 

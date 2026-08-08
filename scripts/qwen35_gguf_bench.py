@@ -842,6 +842,7 @@ def _run_existing_session_once(
         "rocprof_selected_region": rocprof_selected_region,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "allocation_arena": session.allocation_arena_audit(),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
@@ -1015,6 +1016,7 @@ def _run_once(
         "effective_graph_replay_decode": bool(effective_graph_replay_decode),
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
+        "allocation_arena": session.allocation_arena_audit(),
         "decode_graph_disabled_reason": decode_graph_disabled_reason,
         "timings": {
             "load_seconds": load_seconds,
@@ -1047,7 +1049,9 @@ def _decode_graph_disabled_reason(session: Any, requested: bool) -> str | None:
         return None
     if not callable(getattr(session, "capture_decode_graph", None)):
         return "capture_decode_graph_unavailable"
-    if getattr(session, "host_token_embedding_enabled", False):
+    if getattr(session, "host_token_embedding_enabled", False) and not callable(
+        getattr(session, "_device_token_embedding_weight", None)
+    ):
         return "host_token_embedding"
     return None
 
@@ -1157,8 +1161,12 @@ def _memory_summary(snapshots: dict[str, Any]) -> dict[str, Any]:
 
 def _owned_device_bytes(session: Qwen35GGUFResidentSession) -> int:
     total = 0
-    if session.runner is not None and session.runner.weights is not None:
-        for weight in session.runner.weights.weights:
+    weights = None if session.runner is None else session.runner.weights
+    arena = None if weights is None else weights.allocation_arena
+    if arena is not None:
+        total += int(arena.capacity_bytes)
+    if weights is not None:
+        for weight in weights.weights:
             for allocation in weight.allocations.values():
                 if allocation.owns_buffer:
                     total += int(allocation.buffer.nbytes)
@@ -1174,17 +1182,20 @@ def _owned_device_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any
     weights = _owned_weight_breakdown(session)
     decode_scratch = _decode_scratch_breakdown(getattr(session, "scratch", None))
     session_buffers = _session_buffer_breakdown(session)
-    total_bytes = int(weights["total_bytes"]) + int(decode_scratch["total_bytes"]) + int(session_buffers["total_bytes"])
+    logical_bytes = int(weights["total_bytes"]) + int(decode_scratch["total_bytes"]) + int(session_buffers["total_bytes"])
+    total_bytes = _owned_device_bytes(session)
     return {
         "total_bytes": total_bytes,
         "total_gib": _bytes_to_gib(total_bytes),
+        "logical_requested_bytes": logical_bytes,
+        "allocation_arena_padding_bytes": max(0, total_bytes - logical_bytes),
         "families": {
             "weights": weights,
             "decode_scratch": decode_scratch,
             "session_buffers": session_buffers,
         },
         "notes": [
-            "weights counts unique resident GGUF allocations that own their device buffer; tied aliases are not double-counted.",
+            "weights counts unique resident GGUF logical allocations; selective arena views and dedicated large owners are reported separately.",
             "decode_scratch is the persistent c=1 decode workspace, including full-attention KV cache and linear-attention recurrent state.",
             "session_buffers includes logits/lm-head temporaries, full-sequence prefill token/hidden buffers, and the bulk-prefill scratch workspace.",
         ],
@@ -1198,17 +1209,30 @@ def _owned_weight_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any
     by_allocation: dict[str, int] = {}
     total = 0
     count = 0
-    if session.runner is not None and session.runner.weights is not None:
-        for weight in session.runner.weights.weights:
+    physical_owner_bytes = 0
+    physical_owner_count = 0
+    seen_ptrs: set[int] = set()
+    weights = None if session.runner is None else session.runner.weights
+    arena = None if weights is None else weights.allocation_arena
+    if arena is not None:
+        physical_owner_bytes += int(arena.capacity_bytes)
+        physical_owner_count += 1
+    if weights is not None:
+        for weight in weights.weights:
             spec = weight.spec
             quant_key = str(spec.quant_key)
             layout = str(spec.layout)
             for allocation_name, allocation in weight.allocations.items():
-                if not allocation.owns_buffer:
+                ptr = int(allocation.buffer.ptr)
+                if ptr in seen_ptrs:
                     continue
+                seen_ptrs.add(ptr)
                 nbytes = _buffer_nbytes(allocation.buffer)
                 total += nbytes
                 count += 1
+                if allocation.owns_buffer:
+                    physical_owner_bytes += nbytes
+                    physical_owner_count += 1
                 _add_bytes(by_quant, quant_key, nbytes)
                 _add_bytes(by_layout, layout, nbytes)
                 _add_bytes(by_quant_layout, f"{quant_key}:{layout}", nbytes)
@@ -1217,6 +1241,9 @@ def _owned_weight_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any
         "total_bytes": total,
         "total_gib": _bytes_to_gib(total),
         "allocation_count": count,
+        "physical_owner_count": physical_owner_count,
+        "physical_owner_bytes": physical_owner_bytes,
+        "alignment_padding_bytes": max(0, physical_owner_bytes - total),
         "by_quant_key_bytes": by_quant,
         "by_layout_bytes": by_layout,
         "by_quant_layout_bytes": by_quant_layout,
@@ -1270,6 +1297,96 @@ def _decode_scratch_breakdown(scratch: object | None) -> dict[str, Any]:
     }
 
 
+def _bulk_prefill_scratch_census(scratch: object | None) -> dict[str, Any]:
+    """Describe physical owners and logical fields in the bulk-prefill scratch.
+
+    ``_GGUFFullAttentionPrefillScratch`` may place mutually-exclusive logical
+    fields into one liveness arena.  The ordinary tracked allocator therefore
+    reports the physically-owned bytes correctly but cannot explain which
+    row-scaled fields drove that arena.  This read-only census preserves both
+    views without treating aliased field views as additional ownership.
+    """
+
+    if scratch is None:
+        return {
+            "allocation_mode": None,
+            "rows": None,
+            "max_positions": None,
+            "physical_owner_bytes": 0,
+            "logical_field_bytes": 0,
+            "logical_alias_overhead_bytes": 0,
+            "by_field_bytes": {},
+            "allocation_offsets": {},
+            "allocation_lifetimes": {},
+            "allocation_groups": {},
+        }
+
+    head_major_names = {"head_major_key_cache", "head_major_value_cache"}
+    head_major_bytes = _sum_named_buffers(scratch, tuple(sorted(head_major_names)))
+    physical_owner_bytes = max(
+        0,
+        _sum_buffers(getattr(scratch, "buffers", ())) - head_major_bytes,
+    )
+    by_field: dict[str, int] = {}
+    attributes = vars(scratch) if hasattr(scratch, "__dict__") else {}
+    for name, value in attributes.items():
+        if name in head_major_names or name == "buffers" or name.endswith("_tensor"):
+            continue
+        if not hasattr(value, "ptr"):
+            continue
+        nbytes = _buffer_nbytes(value)
+        if nbytes > 0:
+            by_field[str(name)] = nbytes
+    by_field = dict(sorted(by_field.items(), key=lambda item: (-item[1], item[0])))
+    logical_field_bytes = sum(by_field.values())
+
+    raw_offsets = getattr(scratch, "allocation_offsets", {}) or {}
+    allocation_offsets = {
+        str(name): {"offset_bytes": int(offset), "nbytes": int(nbytes)}
+        for name, (offset, nbytes) in sorted(raw_offsets.items())
+    }
+    raw_lifetimes = getattr(scratch, "allocation_lifetimes", {}) or {}
+    allocation_lifetimes = {
+        str(name): [
+            {
+                "route": str(route),
+                "start_stage": int(start),
+                "end_stage": int(end),
+            }
+            for route, start, end in lifetimes
+        ]
+        for name, lifetimes in sorted(raw_lifetimes.items())
+    }
+    raw_groups = getattr(scratch, "allocation_groups", {}) or {}
+    allocation_groups = {
+        str(name): str(group)
+        for name, group in sorted(raw_groups.items())
+    }
+    rows = _maybe_int(getattr(scratch, "rows", None))
+    return {
+        "allocation_mode": getattr(scratch, "allocation_mode", None),
+        "rows": rows,
+        "max_positions": _maybe_int(getattr(scratch, "max_positions", None)),
+        "physical_owner_bytes": physical_owner_bytes,
+        "physical_owner_gib": _bytes_to_gib(physical_owner_bytes),
+        "logical_field_bytes": logical_field_bytes,
+        "logical_field_gib": _bytes_to_gib(logical_field_bytes),
+        "logical_alias_overhead_bytes": max(0, logical_field_bytes - physical_owner_bytes),
+        "by_field_bytes": by_field,
+        "by_field_bytes_per_row": {
+            name: (float(nbytes) / rows if rows else None)
+            for name, nbytes in by_field.items()
+        },
+        "allocation_offsets": allocation_offsets,
+        "allocation_lifetimes": allocation_lifetimes,
+        "allocation_groups": allocation_groups,
+        "notes": [
+            "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
+            "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency.",
+        ],
+    }
+
+
 def _session_buffer_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, Any]:
     decode_runtime = _sum_named_buffers(
         session,
@@ -1287,13 +1404,30 @@ def _session_buffer_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, A
     prefill_token = _sum_named_buffers(session, ("_prefill_token_buf",))
     prefill_hidden = _sum_named_buffers(session, ("_prefill_hidden_a", "_prefill_hidden_b"))
     bulk_scratch_obj = getattr(session, "_bulk_prefill_scratch", None)
-    bulk_scratch = _sum_buffers(getattr(bulk_scratch_obj, "buffers", ())) if bulk_scratch_obj is not None else 0
+    bulk_scratch_total = (
+        _sum_buffers(getattr(bulk_scratch_obj, "buffers", ()))
+        if bulk_scratch_obj is not None
+        else 0
+    )
+    head_major_kv_scratch = (
+        _sum_buffers(
+            (
+                getattr(bulk_scratch_obj, "head_major_key_cache", None),
+                getattr(bulk_scratch_obj, "head_major_value_cache", None),
+            )
+        )
+        if bulk_scratch_obj is not None
+        else 0
+    )
+    bulk_scratch = max(0, bulk_scratch_total - head_major_kv_scratch)
+    bulk_scratch_census = _bulk_prefill_scratch_census(bulk_scratch_obj)
     total = _sum_buffers(getattr(session, "_buffers", ()))
     named = {
         "decode_logits_and_lm_head": decode_runtime,
         "prefill_token_buffer": prefill_token,
         "prefill_full_sequence_hidden": prefill_hidden,
         "bulk_prefill_scratch": bulk_scratch,
+        "aotriton_head_major_kv_scratch": head_major_kv_scratch,
     }
     named["session_buffer_other"] = max(0, total - sum(named.values()))
     payload: dict[str, Any] = {
@@ -1301,10 +1435,14 @@ def _session_buffer_breakdown(session: Qwen35GGUFResidentSession) -> dict[str, A
         "total_gib": _bytes_to_gib(total),
         "by_component_bytes": named,
         "prefill_hidden_b_rows": _maybe_int(getattr(session, "_prefill_hidden_b_rows", None)),
+        "bulk_prefill_scratch_census": bulk_scratch_census,
     }
     if bulk_scratch_obj is not None:
         payload["bulk_prefill_scratch_rows"] = _maybe_int(getattr(bulk_scratch_obj, "rows", None))
         payload["bulk_prefill_scratch_capacity"] = _maybe_int(getattr(bulk_scratch_obj, "max_positions", None))
+        payload["aotriton_head_major_kv_capacity"] = _maybe_int(
+            getattr(bulk_scratch_obj, "head_major_kv_capacity", None)
+        )
     return payload
 
 

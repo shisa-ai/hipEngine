@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-08",
+  "artifact_type": "maple_p3_dense_token_tile_and_wmma_screen",
+  "status": "rejected_diagnostic",
+  "performance_claim": false,
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151"
+  },
+  "software": {
+    "tile_baseline_commit": "5232042b8",
+    "wmma_probe_baseline_commit": "c70ec1809",
+    "branch": "maple",
+    "candidate_tree_dirty": true,
+    "candidate_retained": false
+  },
+  "candidate": {
+    "scope": "dense prefill QKV and O ternary kernels only",
+    "token_tiles": [
+      8,
+      16,
+      32
+    ],
+    "unchanged_math": "Each output preserves the tile-8 packed-word/lane accumulation and 128-thread LDS reduction tree.",
+    "production_dynamic_lds_bytes": {
+      "8": 4096,
+      "16": 8192,
+      "32": 16384
+    },
+    "static_weight_row_lds_bytes": 512,
+    "direct_bf16_wmma_probe": {
+      "tile": "16 tokens x 16 output rows x K16",
+      "instruction": "v_wmma_f32_16x16x16_bf16",
+      "weight_operand": "packed ternary codes expanded exactly to BF16 {-1,0,1,2}",
+      "accumulator": "FP32",
+      "registered_for_dispatch": false
+    }
+  },
+  "protocol": {
+    "mode": "same-resident counterbalanced dirty-tree diagnostic",
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "prompt_tokens": 320,
+    "prompts": 8,
+    "repetitions": 2,
+    "samples_per_tile": 16,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "natural_and_heldout_per_category": true,
+    "warmups_per_tile": 2,
+    "order": "Rotating (8,16,32), (32,16,8), and (16,8,32) orders by prompt/repetition on one resident MapleRunner.",
+    "tile_correctness_command": "uv run --python 3.12 --extra dev python -m pytest -q tests/test_maple_ternary_kernels.py",
+    "wmma_correctness_command": "uv run --python 3.12 --extra dev python -m pytest -q tests/test_maple_ternary_kernels.py::test_maple_ternary_wmma_word_partial_matches_sequential_f32 tests/test_maple_ternary_kernels.py::test_maple_ternary_gemm_wmma_matches_exact_tile8_production_reduction",
+    "wmma_trace_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-p3-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-maple-p3-wmma-trace -- .venv/bin/python /tmp/maple_p3_wmma_trace.py",
+    "benchmark_script": "Inline same-resident screen recorded in WORKLOG.md; raw diagnostic was /tmp/maple-p3-token-tile-screen.json."
+  },
+  "correctness": {
+    "primitive_tests_passed": 14,
+    "primitive_tests_total": 14,
+    "production_inner_width": 2048,
+    "tile16_tile32_bf16_equal_to_tile8": true,
+    "screen_token_top_logit_exact": {
+      "8": "16/16 baseline",
+      "16": "16/16",
+      "32": "16/16"
+    },
+    "direct_wmma": {
+      "k16_partial_f32_mismatches": 106,
+      "k16_partial_f32_outputs": 256,
+      "production_shape": {
+        "rows": 320,
+        "in_features": 2048,
+        "out_features": 2048
+      },
+      "production_bf16_mismatches": 43,
+      "production_bf16_outputs": 655360,
+      "byte_exact_gate_passed": false,
+      "interpretation": "Native WMMA changes both the internal K16 partial association and the outer K-tile accumulation order."
+    },
+    "full_state_gate_run": false,
+    "full_state_gate_reason": "Tile 16/32 failed the non-regressive wall screen and direct WMMA failed the primitive byte-exact gate, so the expensive 18-prompt state gate was not warranted."
+  },
+  "performance": {
+    "8": {
+      "aggregate_tokens_per_second": 744.1156462301631,
+      "median_sample_tokens_per_second": 744.0373216967799,
+      "min_sample_tokens_per_second": 732.327027124607,
+      "max_sample_tokens_per_second": 754.8504204527712,
+      "paired_geomean_vs_tile8": 1.0,
+      "paired_wins_vs_tile8": 0
+    },
+    "16": {
+      "aggregate_tokens_per_second": 731.1819980059386,
+      "median_sample_tokens_per_second": 731.2361465078181,
+      "min_sample_tokens_per_second": 718.483369884423,
+      "max_sample_tokens_per_second": 739.3057464894902,
+      "aggregate_delta_percent_vs_tile8": -1.7381234072618823,
+      "paired_geomean_vs_tile8": 0.9826101424946958,
+      "paired_wins_vs_tile8": 0
+    },
+    "32": {
+      "aggregate_tokens_per_second": 571.92345311809,
+      "median_sample_tokens_per_second": 571.6233128005227,
+      "min_sample_tokens_per_second": 569.2011207652095,
+      "max_sample_tokens_per_second": 575.8785682612212,
+      "aggregate_delta_percent_vs_tile8": -23.140515050910793,
+      "paired_geomean_vs_tile8": 0.7685712784921882,
+      "paired_wins_vs_tile8": 0
+    }
+  },
+  "profiler": {
+    "status": "rejected_candidate_trace",
+    "raw_trace": "/tmp/hipengine-maple-p3-wmma-trace/gfx1151/1790963_kernel_trace.csv",
+    "raw_trace_sha256": "5980e8f90988b24592a50880e46ddfd8b5c4e2c295266ce5da39492fc75f5149",
+    "kernel_name": "maple_ternary_gemm_wmma_kernel",
+    "trace_shape": {
+      "rows": 16,
+      "in_features": 2048,
+      "out_features": 16
+    },
+    "duration_ns": 23604,
+    "workgroup_size": 32,
+    "vgpr_count": 48,
+    "sgpr_count": 128,
+    "lds_bytes": 0,
+    "scratch_bytes": 0,
+    "isa_verified_instruction": "v_wmma_f32_16x16x16_bf16",
+    "raw_code_object_sha256": "746779b70f3ffb4a32ca988e88180531b175c9200280afe071764c207b1cbc0e"
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "Tile 16 and tile 32 regress every paired sample. Direct native BF16 WMMA also fails Maple's byte-exact reduction contract at both the K16 partial and production-output boundaries.",
+    "production_action": "Restore the sole tile-8 path and remove all candidate selectors, wrappers, exports, probes, and tests before commit.",
+    "next_priority": "D0 exact one-dispatch c1 router"
+  }
+}

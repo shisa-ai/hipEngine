@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-08",
+  "artifact_type": "maple_p4_long_prefill_public_batch_retained",
+  "status": "accepted",
+  "performance_claim": true,
+  "claim_scope": "public SubmitPollTextGenerator greedy generation on Radeon 8060S/gfx1151; model load and one lazy-allocation warmup excluded; prompt admission, native prefill, exact decode/sampling, output collection, and slot reclaim included",
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2",
+    "exact_weight_bytes": 5308186624,
+    "shape": {
+      "hidden_size": 2048,
+      "vocab_size": 151936,
+      "layers": 24,
+      "experts": 256,
+      "experts_per_token": 8,
+      "sliding_window": 512
+    }
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "host": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "long_prefill_implementation_commit": "d9bff2e2d",
+    "public_admission_implementation_commit": "bcc0d037c",
+    "prefill_recorder_metadata_commit": "ccf2a8467",
+    "public_benchmark_harness_commit": "822f94e3e",
+    "long_wrap_test_commit": "b6f5d4709",
+    "staggered_reuse_test_commit": "3bf17c092",
+    "prefill_source_commit": "ccf2a84674c4baf6de719ab293a2669d580c2cf0",
+    "public_source_commit": "f030704940d030c6c53a3ce28f7ddc5f5c7141d9",
+    "publication_sources_tracked_clean": true,
+    "python": "3.12.13"
+  },
+  "mechanism": {
+    "long_prefill": "global layers remain chunk-batched; each sliding layer restores pre-chunk KVLiveSpans, batches the safe pre-wrap segment, and appends/attends post-wrap rows serially so no query observes an overwritten ring slot",
+    "public_admission": "one resident c1 runner owns immutable packed weights while a fixed-capacity MapleBatchRunner owns request-local SWA/global KV rings; prompt chunks prefill directly into their physical slot and c2/c4/c8 use the retained D1 batched path",
+    "single_active": "when exactly one request advances, its request-local K/V view runs the retained D0 c1 step rather than evaluating inactive dense rows",
+    "slot_policy": "first-free fixed physical slots with sparse masks; release/reset on rollback, cancellation, completion, and reclaim"
+  },
+  "protocol": {
+    "prefill_command": "env GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/maple_prefill_bench.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --lengths 128,320,512 --repetitions 3 --warmups 1 --continuation-steps 4 --out /tmp/maple-p4-prefill-retained.json",
+    "public_command": "env GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/maple_public_batch_bench.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --widths 1,2,4,8 --steps 64 --repetitions 3 --warmup-steps 2 --single-active-capacity 8 --out /tmp/maple-p4-public-hardened-retained.json",
+    "focused_gate_command": "env GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python -m pytest -q tests/test_maple_generation.py::test_maple_public_resident_path_matches_serial_across_swa_wrap tests/test_maple_runtime.py::test_maple_batch_prefill_admission_matches_serial",
+    "long_wrap_gate_command": "env GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python -m pytest -q 'tests/test_maple_runtime.py::test_maple_prefill_native_multichunk_continuation_gate[770]'",
+    "staggered_gate_command": "env GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python -m pytest -q tests/test_maple_generation.py::test_maple_public_resident_path_reuses_staggered_slot",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "heldout": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "prompt_count": 18,
+    "category_counts": {
+      "code": 6,
+      "general_en": 4,
+      "general_ja": 4,
+      "mixed_ja_en": 4
+    },
+    "heldout_category_counts": {
+      "code": 2,
+      "general_en": 2,
+      "general_ja": 2,
+      "mixed_ja_en": 2
+    },
+    "generated_tokens_per_request": 64,
+    "repetitions": 3,
+    "public_timing_scope": "same public scheduler protocol for c1/c2/c4/c8; prompt admission and reclaim included",
+    "prefill_timing_scope": "unchanged retained 128/320/512 P2 protocol"
+  },
+  "performance": {
+    "prefill_preservation": {
+      "baseline_artifact": "benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json",
+      "rows": [
+        {
+          "prompt_tokens": 128,
+          "baseline_aggregate_tokens_per_second": 749.175,
+          "p4_aggregate_tokens_per_second": 750.8543220961096,
+          "change_percent": 0.2241561846177076,
+          "sample_range_tokens_per_second": [
+            740.2027107036632,
+            759.8669839067293
+          ]
+        },
+        {
+          "prompt_tokens": 320,
+          "baseline_aggregate_tokens_per_second": 741.368,
+          "p4_aggregate_tokens_per_second": 741.889781262669,
+          "change_percent": 0.07038087193795839,
+          "sample_range_tokens_per_second": [
+            735.1947535247026,
+            753.1722641686672
+          ]
+        },
+        {
+          "prompt_tokens": 512,
+          "baseline_aggregate_tokens_per_second": 754.0,
+          "p4_aggregate_tokens_per_second": 754.458236242218,
+          "change_percent": 0.06077403742945631,
+          "sample_range_tokens_per_second": [
+            750.3015989636909,
+            758.5353681332898
+          ]
+        }
+      ],
+      "within_one_percent_gate": true,
+      "resident_tracked_bytes": 5355881852,
+      "after_close_bytes": 0,
+      "after_close_allocations": 0
+    },
+    "public_generation": {
+      "rows": [
+        {
+          "concurrency": 1,
+          "samples_aggregate_tokens_per_second": [
+            123.13068955732034,
+            123.2197863475601,
+            123.06690193915247
+          ],
+          "median_aggregate_tokens_per_second": 123.13068955732034,
+          "speedup_vs_public_c1": 1.0,
+          "resident_tracked_bytes": 5491773380
+        },
+        {
+          "concurrency": 2,
+          "samples_aggregate_tokens_per_second": [
+            165.6245535741644,
+            165.72311084290828,
+            165.69677285483613
+          ],
+          "median_aggregate_tokens_per_second": 165.69677285483613,
+          "speedup_vs_public_c1": 1.3456984075257716,
+          "resident_tracked_bytes": 5561734112
+        },
+        {
+          "concurrency": 4,
+          "samples_aggregate_tokens_per_second": [
+            202.19491652226642,
+            202.03775642683604,
+            202.03198031288022
+          ],
+          "median_aggregate_tokens_per_second": 202.03775642683604,
+          "speedup_vs_public_c1": 1.6408399656755153,
+          "resident_tracked_bytes": 5701655576
+        },
+        {
+          "concurrency": 8,
+          "samples_aggregate_tokens_per_second": [
+            214.788209858765,
+            214.99176832771158,
+            214.6522376678917
+          ],
+          "median_aggregate_tokens_per_second": 214.788209858765,
+          "speedup_vs_public_c1": 1.744392162757895,
+          "resident_tracked_bytes": 5981498504
+        }
+      ],
+      "single_active_in_physical_c8": {
+        "samples_aggregate_tokens_per_second": [
+          122.82650826913586,
+          122.77814767051458,
+          122.75873661364386
+        ],
+        "median_aggregate_tokens_per_second": 122.77814767051458,
+        "rate_ratio_vs_public_c1": 0.9971368479452749
+      },
+      "all_after_close_bytes": 0,
+      "all_after_close_allocations": 0
+    }
+  },
+  "correctness": {
+    "prefill_128_320_512": {
+      "passed": true,
+      "byte_exact_state_matches": 18,
+      "prompt_count": 18,
+      "token_and_logit_matches": 90,
+      "positions": 90,
+      "max_kl": 0.0,
+      "mean_kl": 0.0,
+      "top1_agreement": 1.0
+    },
+    "long_prompt": {
+      "passed": true,
+      "prompt_lengths": [
+        520,
+        770
+      ],
+      "exact_fields": [
+        "next_token",
+        "top_logit_fp32_bits",
+        "final_hidden_bf16",
+        "final_normalized_bf16",
+        "all_physical_live_key_cache_bytes",
+        "all_physical_live_value_cache_bytes",
+        "sliding_KVLiveSpans",
+        "global_KVLiveSpans",
+        "three_continuation_tokens"
+      ],
+      "external_770_state_sha256": "d37dd985391371faf840f715ebd6664ab666d9613ac2aa55d6444bd6cb0b98a3"
+    },
+    "public_generation": {
+      "passed": true,
+      "serial_oracle_trajectory_sha256": "a3db889bdaa818cff8c295a129780a993a9620002d8e24f08e9b4767c56ce60f",
+      "repeated_trajectory_sets": 15,
+      "trajectory_rows": 270,
+      "generated_token_matches": 17280,
+      "sparse_final_groups": true,
+      "all_groups_reclaimed": true,
+      "physical_widths_match": true
+    },
+    "staggered_reuse": {
+      "passed": true,
+      "description": "slot 0 completes while slot 1 remains live; a third request takes reclaimed slot 0 and all three trajectories match independent serial generation"
+    },
+    "lifecycle": {
+      "all_owners_close_to_zero": true
+    }
+  },
+  "source_artifacts": {
+    "prefill_full_sha256": "cd77a1d58da0e7ce764ace0b828bd0d1f6137d3d403022fd97fcbc7440da89da",
+    "public_full_sha256": "928ee7cf21cc6f6889c655c828591e358654c9be8ce280f8f9c1eea0e4003be9",
+    "public_harness_sha256": "7ea643005b466af7f87166518c32c23ad12c49cf2afd474d504c694846f29bed"
+  },
+  "notes": [
+    "The public c1 denominator uses the same scheduler API, warmup, prompt suite, and timing scope as c2/c4/c8; the independent serial runner is an untimed correctness oracle.",
+    "These are exact full-vocabulary affine4 rows. Approximate FlashHead is disabled.",
+    "The public owner uses fixed sparse slots and does not compact K/V between physical rows.",
+    "The 128/320/512 prefill protocol remains fixed for comparison even though native prefill now continues safely beyond SWA-512 up to configured context."
+  ]
+}

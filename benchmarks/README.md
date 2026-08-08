@@ -1,6 +1,126 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-04**
+Last updated: **2026-08-08**
+
+## Root README performance summary
+
+The root README intentionally exports only this compact retained summary. Full
+protocols, artifacts, history, rejected experiments, and platform-freshness
+records remain in the model-specific sections below.
+
+<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
+| Model / route | Hardware | Qualified workload | Prefill tok/s | Decode tok/s |
+| --- | --- | --- | ---: | ---: |
+| Qwen3.6-35B-A3B PARO W4 | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2917.732** | **115.599** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2716.648** | **92.833** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S / gfx1151 | 512 prompt / 128 decode | **1369.489** | **54.330** |
+| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
+| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
+| Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
+
+Where a row names separate prefill and decode workloads, its cells are the
+latest retained results for those explicitly named protocols, not one combined
+run.
+
+Selected parallel and speculative results:
+
+| Route | Hardware and scope | Aggregate decode | Relative result |
+| --- | --- | ---: | ---: |
+| Qwen3.6 GGUF physical c8 | W7900 direct model step | **246.872 tok/s** | **2.888x** c1 |
+| Qwen3.6 GGUF physical c8 | Radeon 8060S direct model step | **133.251 tok/s** | **2.647x** c1 |
+| Maple public c8 | Radeon 8060S, 64 tokens/request including admission and reclaim | **214.788 tok/s** | **1.744x** public c1 |
+| Qwen3.6 GGUF MTP `llama-compat` | W7900, explicit accuracy-traded route | **122.67 tok/s** | **1.2679x** own true AR |
+| Qwen3.6 GGUF NativeSpecCycle N3 | Radeon 8060S, explicit accuracy-traded route | **80.10 tok/s** | **1.4282x** own true AR |
+<!-- END TOPLINE:README_HIGHLIGHTS -->
+
+**Maple P4 retained on Radeon 8060S/gfx1151:** safe SWA-wrap orchestration
+extends exact native prefill beyond 512, and fixed-slot admission now connects
+request-local prompt K/V directly to public c1/c2/c4/c8 decode. The unchanged
+128/320/512 protocol is **750.854/741.890/754.458 tok/s**, only
+**+0.224%/+0.070%/+0.061%** from P2. All **18/18** state hashes and **90/90**
+positions remain byte/exact with KL 0; 520/770-token physical K/V, span, final-
+state, and continuation gates also match serial. Public generation reaches
+**123.131/165.697/202.038/214.788 aggregate tok/s** at c1/c2/c4/c8, or
+**1.346x/1.641x/1.744x** the same public c1 protocol. All 15 repeated 18-prompt
+trajectory sets, sparse/staggered reclaim, physical-c8 singleton behavior, and
+lifecycle are exact. Evidence:
+[`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json)
+and [`P2`](results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json).
+
+**Maple D0 exact c1 path retained/default:** the one-dispatch router
+first improves its exact rollback **139.538 -> 145.321 tok/s (+4.14%)**. With
+that route fixed, the exact wave32 affine4 head then improves group64
+**143.679 -> 153.409 tok/s (+6.77%)**, saves **0.442 ms** at the paired median,
+and wins **1,146/1,152** pairs on the complete natural+heldout suite. All
+**1,296/1,296** token/top-logit positions, **36/36** native-start/final state
+pairs, **2,592/2,592** counter checks, and tracked teardown are exact. A final
+behavior-neutral host cleanup snapshots two invariant fusion selectors once per
+step, improving fresh-process fixed-token A/B **200.279 -> 202.580 tok/s
+(+1.15%, 0.076-ms paired median, 3/4 wins)**; all four candidate processes are
+above 201 tok/s. The separate cached trace process is **199.293 tok/s / 5.018-ms
+wall / 4.550-ms kernels / 0.468-ms host gap / 271 launches**, so 200 remains
+protocol-sensitive. Evidence:
+[`D0 router`](results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json),
+[`D0 head`](results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json),
+and [`D0 selector snapshot`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json).
+
+**Maple D1 exact c2/c4/c8 head retained/default:** one block now owns one
+full-vocabulary affine4 row across all request rows, reusing immutable weights
+while replaying the original FP32 tree independently per request. Clean
+selector-unset helper throughput improves **218.818/261.099/299.181 ->
+250.481/346.365/428.063 aggregate tok/s (+14.47%/+32.66%/+43.08%)**. All nine
+measured trajectories, all **18/18** natural/category-heldout trajectories, the
+sparse final c8 group, reclaimed-slot reuse, and lifecycle are exact. Cached c8
+tracing reduces the head **10.490 -> 3.734 ms (2.809x)** and wall **25.925 ->
+19.296 ms** with the same 293 launches. Evidence:
+[`D1 row reuse`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json).
+
+| Maple retained workload | Current throughput | Exactness / scope | Artifact |
+| --- | ---: | --- | --- |
+| Public native prefill 128/320/512 | **750.854/741.890/754.458 tok/s** | 18/18 states, 90/90 positions, KL 0; <=0.224% from P2 | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
+| c1 natural+heldout continuation | **153.201 tok/s** | 18 prompts, 1,152 paired timing samples; full-head exact; -0.14% vs prior | [`D0 current`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json) |
+| Fixed-helper c2/c4/c8 decode64 | **250.481/346.365/428.063 aggregate tok/s** | exact row reuse; excludes prompt/public scheduling | [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json) |
+| Public c1/c2/c4/c8 generation64 | **123.131/165.697/202.038/214.788 aggregate tok/s** | same public protocol; admission/prefill/reclaim included; exact full head | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
+
+The fixed-capacity helper now uses exact affine4 row reuse at c=2/4/8 and
+reaches median aggregate **250.481/346.365/428.063 tok/s** at 64 tokens/request.
+Every measured and natural/heldout trajectory is exact, sparse/reclaimed slots
+pass, tracked residency is **4.951/4.958/4.973 GiB**, and close returns zero.
+These helper rows remain distinct from P4's public in-process throughput. The
+corrected pre-D1 **218.818/261.099/299.181** rows remain the helper baseline;
+the older 223.2/275.6/321.1 rows remain invalid (wrong hardware label and
+c=1-only gate).
+Evidence: [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json).
+
+The clean cached-only
+[`post-P0 phase profile`](results/2026-08-07-gfx1151-maple-p0-phase-profile.json)
+is the immutable P1 baseline: **498.442 ms / 642.000 tok/s**, with row/route
+experts at **276.150 ms**. P1's final diagnostic reaches only **254.179 ms
+(1.086x)** rather than the **<=97.708-ms (2.826x)** target; metadata is 0.444 ms
+and wider exact lane schedules regress, so scalar ternary compute is the
+recorded blocker. The clean
+[`post-P1 phase profile`](results/2026-08-07-gfx1151-maple-p1-phase-profile.json)
+freezes P2 at **478.176 ms / 669.210 tok/s** with attention at **63.993 ms**.
+The clean retained
+[`post-P2 profile`](results/2026-08-08-gfx1151-maple-p2-phase-profile.json)
+measures **439.479 ms / 728.135 tok/s** and attention **21.916 ms (2.920x,
+5.08% of kernel time)** at unchanged 730 launches. The exact P3 dense tile
+8/16/32 screen is closed at **744.116/731.182/571.923 tok/s** with tile 16/32
+at **0/16** paired wins. Direct native BF16 WMMA also fails the exact gate at
+**106/256 FP32 K16 partials** and **43/655,360 BF16 production-shape outputs**;
+production stays tile 8. D0's exact router, wave32 affine4 head, and once-per-
+step selector snapshot are retained; fixed-token A/B reaches 202.580 tok/s.
+D1's exact c2/c4/c8 affine4 row reuse and P4's long-prompt/public admission are
+also retained. The next exact compute owner requires a materially different
+non-WMMA SIMD ternary consumer; do not repeat the rejected scalar tile or direct
+WMMA schedules. Evidence:
+[`P3 rejected`](results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json),
+[`D1 retained`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json),
+and [`P4 retained`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json).
+A counterbalanced exact/leak-free
+[`c1 graph review`](results/2026-08-07-gfx1151-maple-c1-graph-review.json)
+measures only **1.0047x** (7.0661 -> 7.0329 ms), so graph remains opt-in and
+the rejected c1 head tile remains closed.
 
 **W7900 Laguna parity implementation is tabled at H8B production after the H8Q
 physical rejection.** The canonical [status report](../docs/LAGUNA-PARITY-STATUS.md)
@@ -3682,13 +3802,25 @@ moves 512/1K/4K prefill **747.764/804.150/687.676 ->
 771.027/823.624/701.042 tok/s** (**+3.11%/+2.42%/+1.94%**). All three full
 logit vectors are byte-exact, every 128-step measured decode trajectory
 matches, and aggregate decode wall is **7527.985 -> 7527.750 ms (-0.0031%)**.
-The gfx1151 backend capability now selects shared-X automatically; gfx1100
-remains on baseline pending its own transfer gate. A clean selector-unset
+The gfx1151 backend capability selected shared-X automatically at that point;
+gfx1100 subsequently received its own transfer gate. A clean selector-unset
 [`focus confirmation`](results/2026-07-13-gfx1151-gguf-prefill-gpf3a-default-focus.json)
 at promoted `431fe1e4` reproduces **774.653/823.149/701.389 tok/s** prefill and
 stable IDs. It uses four measurements in one max-4K session, so it confirms
 routing/performance; the later right-sized 1+3 publication rollup supersedes
 it for the public throughput and memory rows.
+
+The 2026-08-05 repeated-128K
+[`kernel-isolation gate`](results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json)
+retires shared-X as the gfx1151 automatic route. Conservative and exact-GDN
+profiles each complete **12/12** prefills, while restoring only shared-X
+reproduces the no-progress state on measured prefill 3. Changing only Q4T16
+selected gate+up back to baseline then completes **12/12** at measured
+**575.180-580.626 tok/s**, stable decode/tokens, full cleanup, and no host
+drain. The implicated body is
+`gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`.
+gfx1151 `auto` now uses baseline; explicit shared-X and gfx1100 policy remain
+available/unchanged while the device body is repaired.
 
 The next exact GDN refinement is promoted on gfx1151. GPF-2E removes
 prompt-sized raw Q/K/V materialization and computes one Q/K norm per shared K
@@ -3968,10 +4100,555 @@ sample above 500 (**minimum 501.698 tok/s**). Cached tracing independently
 reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 **30.658 -> 23.315 ms**. This closes the declared 500 tok/s production gate.
 
+### Local exact-model Nathan Strix Halo fork diagnostic (2026-08-04)
+
+The exact `dev-20260803-b7b85da` portable payload was run locally on the same
+Radeon 8060S against the exact
+`Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` used by hipEngine. The payload identifies
+build `b7b85da9` number 10283, Vulkan, and
+`AMD Radeon 8060S Graphics (RADV STRIX_HALO)`; all sixteen matched phase runs
+and the separate depth sweep exit successfully. Fork rows use its recommended
+`-b 1024 -ub 1024` for full-prompt tests, one built-in warmup plus five
+repetitions, and separately exercise F16 and Q8_0 KV. hipEngine rows are the
+accepted BF16 one-warmup/three-run right-sized measurements.
+
+| Workload | hipEngine BF16 prefill | Fork F16 prefill | Fork Q8 prefill | hipEngine BF16 decode | Fork F16 decode | Fork Q8 decode |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **1394.772** | 1390.978 | 1387.763 | 52.710 | **64.658** | 64.246 |
+| 4K/128 | **1472.330** | 1399.336 | 1389.530 | 55.183 | 62.648 | **63.107** |
+| 32K/128 | **1171.610** | 1102.982 | 1104.183 | 45.943 | 53.220 | **57.553** |
+| 64K/128 | **952.348** | 893.919 | 879.963 | 39.362 | 45.913 | **52.538** |
+
+hipEngine leads full-prompt prefill by **0.273%-6.536%** versus F16 KV and
+**0.505%-8.226%** versus Q8_0 KV. The fork leads tg128 decode by
+**13.528%-22.666%** with F16 KV and **14.361%-33.474%** with Q8_0 KV.
+
+| Workload | hipEngine tracked peak GiB | Fork F16 whole-device GTT peak GiB | Fork Q8 whole-device GTT peak GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | 21.480 | 20.831 | 20.832 |
+| 4K/128 | 23.007 | 21.161 | 21.253 |
+| 32K/128 | 23.654 | 21.999 | 21.630 |
+| 64K/128 | 24.392 | 22.871 | 22.239 |
+
+The fork is descriptively **0.648-2.153 GiB lower**, but this is not a strict
+allocator-memory ratio: hipEngine reports tracked/owned allocation while the
+fork is sampled from whole-device UMA GTT at 10 ms. The throughput rows are
+also a diagnostic, not a strict cross-engine performance claim: the weight file,
+hardware, and phase shapes match, but KV dtype, timing owner, and output-oracle
+protocol do not. In particular, llama-bench does not establish cross-engine
+token/logit equality.
+
+The follow-up [SH-C0 role/memory freeze](results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json)
+now measures both engines' whole-device GTT at the same 10-ms scope and profiles
+them separately. Fresh hipEngine eager decode is
+**52.857/55.389/46.004/39.419 tok/s** at 512/4K/32K/64K. Its whole-GTT peak is
+**21.916/23.552/24.204/24.943 GiB**, exceeding fork F16 by
+**1.085/2.391/2.205/2.071 GiB** and fork Q8_0 by
+**1.084/2.299/2.575/2.704 GiB**. Thus the memory gap is real rather than an
+artifact of tracked-versus-GTT scope.
+
+The [SH-M1 q1024 screen](results/2026-08-05-gfx1151-gguf-sh-m1-q1024-rejected.json)
+closes its first row-reduction hypothesis without changing production. Keeping
+all other chunk controls fixed, 4,096 -> 1,024 query rows saves
+**1.335/1.337/1.338 GiB tracked** and **1.351/1.355/1.355 GiB whole-GTT** at
+4K/32K/64K, but loses **1.603%/7.997%/11.835%** prefill and changes byte-exact
+prefill/decode logits plus resident state at every 4K+ context. Decode is within
+the declared 1% loss bound. q4096 remains default; 2,048/768 row-only retries
+are closed, and SH-M2 moves to exact liveness aliases in the current dedicated
+scratch. The collector observed unrelated untracked files, so this is a
+provenance-qualified diagnostic rather than a retainable performance claim;
+staged and unstaged tracked source were clean at `e6eb49628`.
+
+The retained [SH-M2 owner-slot result](results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json)
+keeps all 4,096 logical rows but graph-colors disjoint route/stage lifetimes into
+21 independent physical owners. At 4K/32K/64K it saves **1.4086 GiB tracked**
+and **1.4043 GiB whole-GTT** with exact full state and zero close delta. Prefill
+deltas are **+0.466%/-0.038%/+0.679%** and decode deltas are
+**-0.042%/-0.119%/+1.925%**, all inside the frozen 1% loss gate. A separate
+D->L->L->D 4K run confirms **+2.252%** prefill and the same memory saving.
+Whole-GTT becomes **22.148/22.800/23.538 GiB**, leaving **0.987/0.801/0.667
+GiB** to fork F16 at 4K/32K/64K.
+
+The [SH-K1 strict compact-KV closure](results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json)
+proves that the only unclosed 8-BF16/2-INT8 map is strict-quality-safe on
+gfx1151 but cannot stack another default memory win. A forced 65,792-token
+resident allocation passes all 10 category/train/heldout prompts plus
+`mixed_v1`: **11/11 prompts, 187/187 positions, mean/max KL
+3.344e-5/7.875e-4, and 100% aggregate/minimum-prompt top-1**, with zero
+persistent BF16 mirror and zero surviving prefill-oracle buffers. At 32K/64K,
+though, decode changes **-0.436%/-0.670%** and live ownership saves only
+**0.0620/0.1235 GiB**. The required layer-local BF16 oracle instead raises
+tracked peak **0.0640/0.1274 GiB** and whole-GTT **0.0703/0.1328 GiB**.
+Cached traces name 10 direct grouped-GQA INT8 producers at each depth, averaging
+**454.6/802.5 us** at local256, VGPR80, LDS0, scratch0. Reject default
+promotion and keep BF16 plus SH-M2 owner slots; production therefore remains
+**0.801/0.667 GiB** above fork F16 at 32K/64K.
+
+The [SH-A1 page-internal head-major decode screen](results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json)
+closes the remaining layout hypothesis without runtime plumbing. Dense,
+permuted, and stale/evicted-unreferenced page fixtures have zero copy/output-bit
+mismatches and max abs **1.49e-8** versus NumPy. The candidate is slower even
+before conversion: attention plus the unchanged reducer is only
+**0.756x/0.797x** current at 32K/64K. Charging append and the complete live-cache
+copy yields only **0.277x/0.263x**, projecting **-58.3%/-97.8%** whole-decode
+change across ten full-attention layers. Cached tracing names local256,
+LDS0/scratch0 producers and shows candidate **80 VGPR** versus current **72**.
+All transient surfaces are removed; token-major BF16 remains production.
+
+The [SH-G final recertification](results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json)
+now closes the complete declared campaign. Current-production eager decode is
+**53.446/56.116/46.489/39.750 tok/s** at 512/4K/32K/64K, diagnostically above
+the cross-day SH-C0 freeze by **1.114%/1.314%/1.055%/0.840%**. Tracked peak is
+**21.480/21.599/22.245/22.984 GiB** and whole-GTT is
+**21.916/22.148/22.800/23.538 GiB**; the retained owner slots therefore preserve
+**1.4086-GiB tracked** and **1.4043-GiB whole-GTT** savings at every 4K+ row.
+All repeated IDs and lifecycle checks pass. The exact 10+8 natural/heldout gate
+passes **1,350 token and 54,000 hidden comparisons** plus initial/final
+Conv/GDN/KV state with zero mismatches, while cached traces retain 628
+dispatches and **37 named Q5 tile8 calls per token**.
+
+Fresh prefill is **1358.015/1451.836/1150.162/940.779 tok/s**. It is
+**2.635%/1.392%/1.831%/1.215%** below the August 4 accepted hipEngine rows;
+that cross-day drift is diagnostic and does not replace each retained unit's
+same-session non-regression gate. The fresh final rates beat both fork F16 and
+Q8_0 lanes at 4K/32K/64K but lose both 512 rows. hipEngine still
+loses all four decode rows: versus fork F16 the deltas are
+**-17.281%/-10.297%/-12.670%/-12.995%**, and versus fork Q8_0 they are
+**-16.690%/-10.948%/-18.903%/-24.035%**. It also remains
+**0.696-1.085 GiB** above fork F16 and **0.895-1.376 GiB** above fork Q8_0 in
+same-scope whole-GTT. Thus the campaign retains exact own-engine decode and
+memory gains but reaches **0/4 C1, 0/4 C2, 0/4 fork-decode, and 0/4
+fork-memory rows**. The fork comparison remains diagnostic because KV dtype,
+timing owner, and a shared token/logit oracle do not align.
+
+The post-closure [SH2-M1 exact c1 host-embedding screen](results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json)
+retains the existing opt-in but does not promote it globally. At 512/4K,
+device graph/device eager/host-copy eager decode is
+**53.301/53.521/53.378** and **55.813/56.054/55.972 tok/s**. Host prefill and
+decode remain within 1% of both device owners, and complete prefill plus four
+transitions are byte exact for logits, all 40 layer outputs, 30 Conv/GDN state
+pairs, and 10 live K/V pairs. It removes exactly **0.503235 GiB** of live
+ownership; whole-GTT falls **0.443409/0.503933 GiB**. At 512, allocate-then-free
+load order leaves tracked high water at only **0.418797 GiB** saved. The env
+route stays available for exact c1 capacity, while the device-resident default
+continues to protect shared c>N, packed-AR, and MTP device-pointer contracts.
+SH2-M2 is next; this opt-in row is not a fork-parity or production-topline claim.
+
+The [SH2-M2 code-object/library residency gate](results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json)
+closes without implementation. After subtracting the sampler baseline and live
+owned bytes, the complete process-owned untracked residual is only
+**0.418588/0.531532 GiB** on device eager and **0.478414/0.530792 GiB** on the
+host stack at 512/4K. Those bounds already include every active, prefill-only,
+decode-only, never-used, driver, and runtime byte; any safely removable
+phase-exclusive subset must be smaller. Both 512 bounds miss the frozen
+**0.49-GiB-at-each-context** precondition, so no lazy loader, module unload, or
+`dlclose` experiment is admitted. Production is unchanged and SH2-M3 follows.
+
+The retained [SH2-M3 short owner-slot result](results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json)
+extends SH-M2's same 21 independent allocations to the right-sized 768-row
+class. Physical scratch falls **355,182,664 -> 69,790,760 bytes**. A
+same-source D->L->L->D 512/128 screen moves prefill/decode
+**1361.744/53.322 -> 1370.204/53.408 tok/s (+0.621%/+0.160%)**, tracked peak
+**21.479979 -> 21.214187 GiB (-0.265792)**, and whole-GTT
+**21.916004 -> 21.648426 GiB (-0.267578)**. Complete prefill and
+four-transition state is byte exact, while committed `edb151447` reproduces the
+owner bytes, memory peaks, IDs, and zero close delta. Diagnostics and capability
+denial retain dedicated owners; no single/split arena or comparison flag lands.
+
+The [SH2-D1 mixed-T16 closeout](results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json)
+leaves production unchanged. The exact actual-weight down+tail leaf moves the
+deployed 37-Q5/3-Q6 aggregate **1580.242 -> 1500.048 us/token (1.053x,
+0.080 ms saved)**, below both frozen admission gates. The full cooperative
+producer/consumer is only **0.520x** and its profiler dispatch crashes in ROCr;
+the lifecycle-correct standard queue is exact and named with **0 scratch**, but
+regresses **3927.785 -> 5317.336 us/token (0.739x, -1.390 ms)**. All transient
+kernels, wrappers, registry keys, tests, and harness code are removed. SH2-C1
+must now re-attribute a structurally different owner; this rejection does not
+end the beat-fork campaign.
+
+The [SH2-C1 cumulative checkpoint](results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json)
+refreshes clean current production at 512/128: **53.332 tok/s, 21.214187 GiB
+tracked, 21.648426 GiB whole-GTT**, exact and lifecycle-clean. SH2-M3 is
+short-class-only and later packages change no production, so SH-G's 4K+ rows
+remain current. The matrix still has **0/4 C1, 0/4 C2, 0/4 fork-F16 decode,
+and 0/4 fork-F16 whole-GTT** wins. A full tensor census selects SH2-M4:
+Q4/Q5 selected-expert T16 scale/min expansion is exactly
+**490,733,568 bytes / 0.457031 GiB**. This is a projected owner, not a result;
+current T16 remains default until bit-lossless, performance, trace, state,
+lifecycle, and measured whole-GTT gates pass.
+
+The [SH2-M4 compact selected-T16 result](results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json)
+retains the separable Q5 subset and rejects Q4 production compaction. All 37 Q5
+selected-down tensors move from 2,880-byte T16 tiles to byte-neutral 2,816-byte
+records, removing exactly **155,189,248 bytes / 0.14453125 GiB**. Matching 512
+prefill/decode changes **-0.426%/-0.459%**, tracked/whole-GTT falls
+**21.214187/21.648426 -> 21.069656/21.504063 GiB**, and 512/4K/32K/64K state is
+byte-identical to clean parent. Named compact decode/prefill kernels are
+scratch-free. Full Q4+Q5 compaction projects **+1.598%** decode, so all Q4
+selected tensors remain current T16. SH2-C2 follows; this partial memory win is
+not a campaign stop.
+
+The [SH2-C2 cumulative checkpoint](results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json)
+freshly measures committed `e39aba0e1` at every depth. 512/4K/32K/64K decode is
+**53.374/55.851/46.315/39.673 tok/s**, tracked peak is
+**21.070/21.454/22.100/22.839 GiB**, and whole-GTT is
+**21.504/22.003/22.656/23.394 GiB**. All IDs and lifecycle checks pass, and the
+compact Q5 owner reproduces its exact **0.144531-GiB** tracked reduction at all
+four depths. C1/C2/fork-F16 decode/fork-F16 whole-GTT nevertheless remain
+**0/4**.
+
+The [SH2-G fork parity recertification](results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json)
+closes that mandatory milestone but not the beat-fork objective. Fresh hipEngine
+prefill/decode is **1368.737/53.319**, **1445.181/55.895**,
+**1151.255/46.353**, and **938.924/39.644 tok/s** at 512/4K/32K/64K. Fresh
+pinned-fork F16 decode is **64.411/62.590/53.042/45.818 tok/s**; Q8_0 is
+**64.179/63.087/57.379/52.167**. All four prefill guards and the exact
+18-prompt state/lifecycle/trace gate pass, but C1/C2/fork-F16 decode/fork-F16
+whole-GTT remain **0/4**. Continue immediately to SH3-D1's complete Q8T16
+shared-expert chain, SH3-M1's runner-safe exact host embedding, and SH3-C1
+cumulative re-attribution; do not stop at SH2-G or retry compact Q4.
+
+The [SH3-D1 complete shared-expert result](results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json)
+closes that decode owner without changing production. Its CPU-gated unfused
+oracle and candidate match every gate/up, exact-BF16 SiLU, shared-down, and final
+residual-combine byte. Actual layer-0 Q8T16 weights with a 24-copy 80.2-MB
+cycling pool measure **34.719 -> 38.611 us (0.899x)** for the best 128-block
+composite; bounded 40/64/80-block schedules are slower. The named cached kernel
+is **25.287 us, 72 VGPR, 512 B LDS, 0 scratch** versus **23.482 us** summed
+fallback kernels (**0.929x**). It misses both frozen admission gates, so every
+transient surface is removed and SH3-M1 starts immediately; this rejection is
+not campaign completion.
+
+The retained [SH3-M1 runner-safe host embedding](results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json)
+removes the load-order high water and enables automatic host ownership only for
+private gfx1151 c1 sessions. Same-source 512/128 device -> host-auto
+prefill/decode is **1368.003/53.263 -> 1374.684/53.245 tok/s
+(+0.488%/-0.035%)**; 4K/128 is **1435.036/55.985 -> 1431.754/55.759
+(-0.229%/-0.403%)**. Tracked peak falls exactly **540,344,320 bytes /
+0.503235 GiB** at both depths, and external 10-ms whole-GTT falls
+**21.504063 -> 21.000130 GiB** and **22.003361 -> 21.499428 GiB**
+(**0.503933 GiB** each). Complete prefill/four-transition state, IDs, and
+teardown are byte exact; the focused policy/fallback bundle passes **62/62**.
+Shared/c>N sessions remain device resident, while graph, packed, native-row,
+MTP, and pointer-fed consumers transactionally restore the exact table once.
+SH3-C1 follows; this retained memory result is not campaign completion.
+
+The [SH3-C1 cumulative gate](results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json)
+now freshly measures the complete host-policy stack. Canonical
+512/4K/32K/64K prefill/decode is **1368.743/53.177**,
+**1436.083/55.664**, **1148.130/46.241**, and **939.441/39.602 tok/s**;
+independent right-sized tracked peak is **20.566/20.951/21.597/22.336 GiB**
+and 10-ms whole-GTT is **21.000/21.499/22.152/22.890 GiB**. All four prefill
+guards, exact IDs, zero teardown, 628-dispatch traces, and the fresh 18-prompt
+**1,350-token / 54,000-hidden** oracle pass. Fork-F16 whole-GTT is still lower
+by **0.169/0.339/0.156/0.054 GiB**, and C1/C2/fork-F16 decode/fork-F16 GTT all
+remain **0/4**. The objective therefore continues to SH4-D1: a first
+lifecycle-safe private-c1 overlap screen for the independent routed and shared
+MoE branches, whose fresh 512 trace gives a **1.066-ms/token** perfect-hide
+ceiling. This does not reopen any closed schedule, graph, KV, page-head, or
+metadata ladder.
+
+The [SH4-D1 routed/shared overlap result](results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json)
+closes the first lifecycle-safe private-c1 fork/join without changing production.
+The candidate is byte exact across a 128-token trajectory, final hidden row, all
+Conv/GDN state, and live BF16 KV. Cached tracing proves real hardware concurrency:
+queue 2 / stream 1 carries **960** shared-branch dispatches over eight tokens and
+**0.456 ms/token / 33.4%** of its **1.363-ms/token** kernel time overlaps selected
+gate/up on queue 1. Five counterbalanced same-resident 512/128 pairs nevertheless
+regress **18.811 -> 19.207 ms/token**, or **53.159 -> 52.065 tok/s (-2.058%)**.
+It misses both frozen gates, every transient surface is removed, and SH5-D1 now
+starts a genuinely different byte-neutral row-1 dense-Q8 vector/layout audit;
+this rejection is not campaign completion.
+
+The [SH5-D1 raw rowvec8 result](results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json)
+closes the audit but remains blocked from production. Pinned-fork dispatch and
+shader source establish a raw-output-row, eight-K-per-lane traversal genuinely
+distinct from hipEngine's T16 and older raw-pack8 bodies. On actual layer-0
+`2048->8192 + 2048->4096` weights, local64 improves **0.134737 -> 0.116588 ms
+(1.15566x, 15/15 wins)** and traces at **24 VGPR / 512 B LDS / zero scratch**.
+Replacing exactly 60 T16 tensors / **802,160,640 bytes** with raw allocations
+creates no sidecar and improves matched 512/128 decode **52.876 -> 54.427 tok/s
+(+2.934%, -0.539 ms/token)** at unchanged tracked peak. It also regresses
+prefill **1369.120 -> 1184.884 tok/s (-13.457%)**, while changed reduction
+preserves four top-1 tokens but not hidden/KV state. The exact-tree repair is
+only **0.779x**. Production stays Q8T16; SH6-P1 later tests the only bounded
+one-buffer repair under exact prefill and category-quality admission. This
+blocked decode win is not a topline claim or campaign completion.
+
+The [SH6-P1 raw-to-T16 bridge result](results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json)
+closes that continuation without a production route. Its GPU converter writes
+host-packer-identical Q8T16 bytes for the actual `2048->8192 + 2048->4096` pair,
+selects local64 at **0.360914 ms/pair**, and traces at **40 VGPR / 128 SGPR /
+zero scratch**. Runtime uses exactly one **26,738,688-byte** transactional owner,
+creates no persistent duplicate, preserves complete 512 prefill state byte for
+byte, and tears down cleanly. Charging 30 transforms moves matched prefill
+**1369.120 -> 1318.196 tok/s (-3.720%)**, failing the frozen 1% guard at the
+first binding row. The 4K-64K and full-quality continuation cannot repair that
+conjunction, so all SH5 model-route/env and SH6 runtime/scratch surfaces are
+removed. Production remains Q8T16; only the tested standalone leaves remain.
+
+The [SH6-C1 cumulative gate](results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json)
+then freshly measures restored production source. The process inherited a
+two-queue cap from SH4, but every profiled decode kernel remains on queue 1 /
+stream 0; this is a qualified diagnostic, not a retained performance claim.
+Canonical 512/4K/32K/64K decode is **53.153/55.832/46.196/39.579 tok/s**,
+with whole-GTT
+**21.000/21.499/22.152/22.890 GiB**. All four prefill rows stay within 1% of
+SH3-C1, every attribution process closes to zero tracked bytes, cached traces
+retain 628 dispatches/token, and the fresh exact 18-prompt oracle passes
+**1,350 token / 54,000 hidden** plus all initial/final state comparisons.
+C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. That row selected
+SH7-A1's independent one-queue gate rather than serving as its denominator.
+
+The [SH7-A1 parallel split-reducer result](results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json)
+retains the existing prepare-plus-coalesced wrapper on gfx1151 from 32K.
+Same-source serial/candidate decode moves **46.066 -> 46.785 tok/s (+1.560%,
+-0.333 ms/token)** at 32K and **39.441 -> 40.386 (+2.394%, -0.593 ms/token)**
+at 64K. The reducer itself falls **424.162 -> 109.346** and **744.973 ->
+207.485 us/token**; both named candidate kernels are scratch-free. Primitive
+NumPy correctness and all **1,296/1,296** semantic logits are exact, tracked
+peak and whole-GTT are unchanged, and every child closes to zero. Serial stays
+below 32K and under explicit opt-out. C1/fork parity remains open, so SH8-A1
+screens the remaining 72-VGPR grouped-GQA producer rather than stopping the
+campaign.
+
+The [SH8-A1 qgroup4 producer screen](results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json)
+is exact but rejected before model routing. Two four-query blocks reduce
+producer registers **72 -> 56 VGPR** while doubling K/V grid ownership. Across
+21 pairs per context, complete producer+parallel-reducer wall regresses
+**0.425068 -> 0.474481 ms/layer (0.8959x)** at 32K and **0.759873 ->
+0.858382 (0.8852x)** at 64K, with **0/42 wins** and projected
+**-0.494/-0.985 ms/token** effects. Cached producer medians also regress
+**405.676 -> 455.813 us** and **725.396 -> 820.053 us**. All transient
+surfaces are removed; production remains retained SH7. The next open backend
+transfer is SH9-D1's compact-WMMA no-read scheduler bound, not another
+producer/reducer/layout retry.
+
+The [SH9-D1 compact-WMMA no-read transfer](results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json)
+is retained on gfx1151 through 4,096 selected **prefill** rows. Corrected scope:
+rows==1 decode bypasses this helper; pp512 carries 4,096 selected rows and 40
+scalar reads per request. Complete prefill/layer/Conv/GDN/live-KV/four-step
+state is byte-exact. Unprofiled pp512 prefill is neutral at **1366.040 ->
+1366.013 tok/s (-0.002%)**, tracked/whole-GTT are identical, and every child
+closes to zero. The fully cached one-queue trace removes **44 -> 4 hipMemcpy**,
+**43 -> 3 copy kernels**, and **1,409 -> 1,369 dispatches** while all 80
+selected-WMMA launches/resources stay unchanged; marker span improves **381.308
+-> 379.572 ms (-1.736 ms)**. The subsequent
+[SH9-C1 scope audit](results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json)
+credits no decode/memory change and carries current decode at
+**53.153/55.832/46.785/40.386 tok/s** plus whole-GTT at
+**21.000/21.499/22.152/22.890 GiB**. All four parity classes remain **0/4**.
+
+The subsequent [SH10-A1 short-context attention transfer](results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json)
+is retained/default on gfx1151 through active context 1,023. Trace-first
+attribution measures the old single-row owner at **1.499680 ms/token**; reusing
+the already-registered fixed256 batch leaf at rows1 lowers the full-process role
+to **0.928096 ms/token** with identical 40-VGPR/scratch0 resources. Independent
+512/128 processes improve decode **51.541 -> 53.591 tok/s (+3.978%, -0.742
+ms/token)** while prefill remains inside guard at **-0.612%**. Complete state is
+byte-exact, tracked/whole-GTT stay **20.566421/21.000130 GiB**, lifecycle is
+clean, and context 1,024+ retains the prior fallback. Clean committed production
+measures **53.445 tok/s**; C1 and fork parity remain open.
+
+The [SH11-A1 direct-4K recheck](results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json)
+closes the parked June thread with no production change. Forced direct keeps
+prefill and top-1 IDs stable but changes all four teacher-forced decode-logit
+fingerprints and final state. It also regresses 4K/128 decode **54.572 -> 33.950
+tok/s (-37.788%, +11.131 ms/token)** with every candidate sample below every
+control; tracked/sampled memory and lifecycle are unchanged. Cached named traces
+put current split producer+reducer at **0.844 ms/transition** and direct
+context+gate at **11.889 ms (14.080x slower)**. The old speed direction does not
+survive, so no exact-emulation package is added.
+
+The [SH12-C0 eager synchronization census](results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json)
+retains one exact default-stream boundary deletion. The synchronous 8-byte token
+D2H already completes sampling, so the immediately preceding device-wide drain
+is removed while non-default streams retain explicit sync. Nine counterbalanced
+same-resident 512/128 pairs improve **53.524 -> 54.608 tok/s (+2.027%, -0.371
+ms/token)** with **9/9 wins**; independent processes are positive but overlap at
+**53.898 -> 54.132 (+0.433%, -0.080 ms/token)**. Complete state is byte-exact,
+tracked/sampled HIP-used memory and lifecycle are unchanged, and a cached trace
+removes exactly ten production synchronizations (**20 -> 10**) with unchanged
+**775** copies and **6,840** kernel launches. Clean committed production is
+**54.065 tok/s**; parity remains open.
+
+The [SH13-M1 phase-residency census](results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json)
+closes its 4K-first precondition with no production change. Current whole-GTT
+**21.499428 GiB** is **346.820 MiB** above fork F16. Exact ROCr loader snapshots
+find only **22 HSA code objects / 3.497 MiB total**, first-used as **0.051 MiB**
+at load, **2.730 MiB** at prefill, **0.716 MiB** at warmup, and zero in measured
+decode. Prefill is already within **0.719 MiB** of peak. Even every process
+shared-object virtual span plus all HSA code is an impossible **334.063-MiB**
+code-and-file-map bound, still **12.757 MiB** below the gap before eligibility.
+All post-load GTT growth, including dynamic code/cache state, is only **103.477
+MiB**. Runtime, page-table, allocator, and active mappings dominate; no loader
+churn or loader-focused 32K/64K continuation is admitted.
+
+The [SH14-C1 cumulative completion gate](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json)
+closes the ordered continuation without claiming fork parity. Fresh one-queue
+512/4K/32K/64K prefill is **1369.489/1430.215/1144.713/936.218 tok/s** and
+decode is **54.330/54.798/46.405/40.180 tok/s**; tracked peaks remain
+**20.566/20.951/21.597/22.336 GiB** and 10-ms whole-GTT remains
+**21.000/21.499/22.152/22.890 GiB**. The exact 18-prompt oracle and all
+lifecycle rows pass, but the frozen prefill guard is **3/4** and C1, C2,
+fork-F16 decode, and fork-F16 whole-GTT remain **0/4**. Whole-GTT gaps are
+**173.527/346.820/159.371/55.270 MiB** even though tracked hipEngine ownership
+is already below each fork whole-GTT row. The measured residual is therefore
+untracked runtime/page-table/allocator/active-mapping residency; all HSA code is
+only **3.497 MiB**. All admitted exact decode alternatives are retained or
+closed, so no new package is added without new structural evidence.
+
+The [SH15-M1 allocation-granularity audit](results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json)
+provides that evidence without making a performance or measured-memory claim.
+At every depth the private-c1 session owns **921 persistent allocations**;
+**732 weight allocations request 20.413 GiB** and their ordinary `hipMalloc`s
+commit **269.129 MiB** beyond requested bytes. Calibration confirms 2-MiB
+physical commits for default/fine-grained/uncached allocation modes, while the
+default async pool is worse. Rounding one 4-KiB-suballocated session owner once
+projects **236/294/300/300-MiB** savings at 512/4K/32K/64K: enough for fork
+whole-GTT parity at three depths, but still **52.820 MiB** short at 4K. This
+admits an ordinary-arena implementation screen only. A conditional, previously
+primitive-exact compact-Q4 subset over the ten model-defined full-attention
+layers would add **80 MiB** of exact byte saving, but is not admitted until the
+actual arena result and current full wall/state gates require it.
+
+The [SH15-M2 private-c1 session-arena screen](results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json)
+confirms the projected memory mechanism but rejects the implementation on its
+mandatory wall gate. Exactly **732 weight + 189 state/scratch** logical views
+use two ordinary 4-KiB-aligned owners. At 512/4K, whole-GTT falls
+**21.000130 -> 20.769661 GiB (-236 MiB)** and **21.499428 -> 21.214272 GiB
+(-292 MiB)**; 512 beats fork F16 by **62.473 MiB**, while 4K remains **54.820
+MiB** high. State/lifecycle preflight is exact, and decode improves
+**1.373%/1.648%**. Prefill nevertheless regresses **1.608%/1.809%**, beyond the
+<=1% loss limit. The stop rule skips 32K/64K, the full category continuation,
+and compact Q4; all arena runtime/test surfaces are removed and SH14 production
+allocation paths are restored.
+
+The [SH16-M1 selective-weight audit](results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json)
+uses all four immutable SH15 allocation-label censuses to preserve the alignment
+class SH15-M2 destroyed. Every **>16-MiB** weight is currently 2-MiB aligned;
+keeping those **161 owners / 21,034,278,912 bytes / 95.965% of weight bytes**
+dedicated leaves Q/QKV and selected-expert payloads unchanged. The remaining
+**571 allocations <=16 MiB** request **884,460,032 bytes** but carry **1,060
+MiB** of captured commit. One conservatively bounded 4-KiB-view owner is **844
+MiB**, projecting **216 MiB** reclaimed and fork-memory parity at 512/32K/64K.
+This is not measured GTT or a production change. It admits one default-off 512-
+first selective screen with exact fallback/lifecycle and <=1% wall stop rules;
+state packing and compact Q4 remain excluded.
+
+The [SH16-M2 retained selective arena](results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json)
+validates that narrower owner and promotes it for gfx1151 private c1. Exactly
+**571 small views / 884,460,032 requested bytes** share one **884,867,072-byte**
+owner; all **161 large weights / 21,034,278,912 bytes** and every state/scratch
+allocation remain dedicated. Whole-GTT falls **190/212/210/210 MiB** to
+**20.814583/21.292397/21.946766/22.685047 GiB** at 512/4K/32K/64K. Fresh 512
+same-source prefill/decode changes **-0.497%/+0.436%**; every four-depth wall
+and frozen-prefill guard passes, teardown is exact, and the promoted default
+passes **1,350 token plus 54,000 hidden comparisons** over all 18 primary and
+heldout prompts. Fork-F16 memory parity improves from **0/4 to 3/4**; 4K remains
+**134.820 MiB** high and fork decode remains **0/4**, so the overall objective
+continues without the rejected state arena or compact-Q4 stack.
+
+The [SH17-C0 post-SH16 residual audit](results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json)
+closes without a new run or implementation. SH16 changes pointer placement only;
+all moved K/V, output, GDN-output, shared-expert, norm, and control weights map to
+existing named roles whose exact schedule/composite alternatives are retained or
+closed. Current C1 time gaps are **0.914/0.903/1.100/1.160 ms/token**, but no new
+candidate has the required >=0.5-ms evidence. At 4K, extending through 32 MiB,
+reviving the rejected global/state arena, stacking compact Q4, or unloading code
+would still leave **94.820/54.820/54.820/134.102 MiB** respectively. No single
+exact owner closes **134.820 MiB**, so no fresh trace, duplicate matrix, or
+transient Task-66 code is admitted. Preserve SH16 and resume only on new
+external/source or separately approved system/runtime evidence.
+
+The [SH-D1 GDN-input audit](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json),
+[first DPP decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json),
+[same-layout decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json),
+and [paired-Q8T32 decision](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json)
+leave production unchanged. Same-layout candidates top out at **1.0396x**. The
+byte-neutral Q8T32 pack then pairs adjacent 544-byte records without conversion;
+its exact local256/eight-wave sibling reaches **127.90 us** median versus
+**136.19 us** production (**1.0648x**, projected **0.2487 ms/token**). It still
+remains **7.94%** slower than the **118.493-us** continuation target and misses
+1.15x. A local128 register-wide variant reaches 91 VGPR and regresses production
+**4.96%**. All transient kernels, packers, wrappers, registry keys, tests, and
+modes were removed before runtime materialization/full-model timing. GDN layout
+headroom is closed; SH-D1 advances to selected experts. This is a diagnostic
+rejection, not a retained speedup claim.
+
+The correlation trace identifies the implementation targets rather than treating
+all Q8T16 work alike. GDN input projection owns **4.113-4.166 ms/token**;
+selected gate/up plus down owns **3.912-3.925 ms/token**; full-attention core
+grows to **4.533/8.041 ms/token** at 32K/64K. The fork logger puts selected
+Q4+Q5 at **2.965-2.978 ms/token**, F16 FA at **3.401/6.390**, and Q8 FA at
+**1.930/3.595** for those long contexts. Separately, hipEngine's physically
+owned 4,096-row prefill scratch is **1.756-1.818 GiB** at 4K+; SH-M1 therefore
+screens 1,024 rows first, while SH-D1 starts with GDN input. Profiled totals are
+diagnostics, not cross-engine throughput ratios.
+
+The fork's published Q8-KV `pp512/tg32 at depth` command was also rerun with our
+exact GGUF at `-b 512 -ub 512`, three repetitions:
+
+| Existing depth | Fork's published different-model pp512 / tg32 | Exact-model local pp512 / tg32 | Local delta vs different-model row |
+| ---: | ---: | ---: | ---: |
+| 0 | 1368.45 / 60.22 | 1391.809 / 64.406 | +1.707% / +6.952% |
+| 4K | — | 1281.593 / 62.965 | — |
+| 16K | — | 1067.613 / 60.513 | — |
+| 32K | 776.18 / 53.51 | 860.787 / 57.544 | +10.900% / +7.539% |
+| 64K | 537.41 / 49.25 | 623.634 / 52.462 | +16.044% / +6.521% |
+
+The published row uses a different Q4_K_XL file, so these deltas validate the
+local payload/backend rather than claim a same-model reproduction speedup.
+See the [compact diagnostic artifact](results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json)
+for exact commands, provenance, qualifications, raw hashes, standard deviations,
+and the [upstream source row](https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/benchmarks/results/kvoff/kvoff-q8supp-results/ceil_q4kxl_q8.md).
+
 ## Platform Index
 
 | Platform | Benchmark family | Run date | Measured revision / build | Evidence status | Root README | Refresh condition |
 | --- | --- | --- | --- | --- | --- | --- |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH17-C0 post-SH16 residual audit | 2026-08-06 | clean `35a0b18b6`; read-only reconciliation of SH16 wall/GTT, immutable role traces, allocation censuses, and all closed post-SH packages; no new GPU run | **Closed/no implementation:** current decode remains **0/4** fork parity and 4K memory remains **134.820 MiB** high. Every moved family maps to a named closed role; every single allocator/code extension leaves at least **54.820 MiB**, so no new >=0.5-ms or sufficient-memory owner qualifies. [`artifact`](results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json). | No — bounded no-run admission audit | Preserve SH16; resume only with new external/source evidence or separately approved system/runtime-memory scope. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH16-M2 selective small-weight arena | 2026-08-06 | implementation `03b76724f`; clean fresh 512 control/candidate plus independent 4K/32K/64K one-warmup/three-run candidate processes; 10-ms whole-GTT; exact four-transition and promoted-default 18-prompt oracles; 26 focused tests | **Retained/default for gfx1151 private c1:** one owner for **571 <=16-MiB allocations** preserves all **161 large owners / 95.965% of bytes** and saves **190/212/210/210 MiB whole-GTT**. All wall/exact/lifecycle gates pass; fork-F16 memory parity is **3/4**, 4K remains **134.820 MiB** high, and decode parity remains **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json). | Yes — exact, measured allocation win promoted to production | Keep temporary explicit opt-out through the next cumulative policy refresh; seek new structural decode/4K-memory evidence and do not stack the rejected state arena or compact Q4. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH16-M1 selective-weight packing audit | 2026-08-06 | clean `30a530dc5`; read-only cross-check of all four SH15-M1 exact label/request/per-call-commit/pointer censuses; conservative 4-KiB-view/2-MiB-owner capacity bound | **Structural precondition passed; no production/performance/measured-memory claim:** keep **161 >16-MiB owners / 95.965% of bytes** dedicated and 2-MiB aligned; one owner for **571 <=16-MiB allocations** bounds **1,060 -> 844 MiB**, projecting **216 MiB** saved and fork parity at 512/32K/64K, not 4K. [`artifact`](results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json). | No — read-only selective-allocation projection | Run one default-off 512-first selective-owner screen; stop/remove on exactness/lifecycle failure or >1% prefill/decode loss, with no state arena or compact-Q4 stack. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH15-M2 private-c1 session arena | 2026-08-06 | implementation `d4d36e675`; default-off two-owner candidate; 30 focused tests; exact four-transition eager state oracle; independent right-sized 512/4K one-warmup/three-run wall with 10-ms whole-GTT; frozen stop-on-regression contract | **Closed/rejected; production restored:** two owners reclaim **236/292 MiB** whole-GTT at 512/4K and 512 beats fork F16 by **62.473 MiB**, but 4K remains **54.820 MiB** high. Decode improves **1.373%/1.648%** while prefill regresses **1.608%/1.809%**, failing the <=1% loss gate. Stop before 32K/64K/categories/compact-Q4; remove all arena surfaces. [`artifact`](results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json). | No — memory mechanism is real but the mandatory wall gate fails | Keep SH14 production allocation paths; do not rerun unchanged packing or stack compact Q4 onto a rejected arena. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH15-M1 allocation-granularity audit | 2026-08-06 | clean `110b8e419`; synchronized ordinary/ext/async allocation calibration; temporary per-`hipMalloc` requested/committed/origin instrumentation; independent right-sized 512/4K/32K/64K pp/tg1 initialization children | **Structural precondition passed; no production or performance claim:** all depths have **921** persistent allocations; weight mallocs commit **269.129 MiB** beyond requests. One packed owner projects **236/294/300/300-MiB** savings, crossing fork GTT at 512/32K/64K but leaving 4K **52.820 MiB** high. Async allocation is rejected; SH15-M2 ordinary arena screen is admitted. [`artifact`](results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json). | No — read-only structural audit/projection | SH15-M2 confirms the memory mechanism but fails wall; keep production unchanged and do not admit compact Q4. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH14-C1 cumulative continuation gate | 2026-08-06 | current `1f7e2f164` (runtime `8e461708e`); fresh one-queue four-depth one-warmup/three-run canonical matrix; 10-ms whole-GTT; exact 18-prompt oracle; qualified SH7/SH10-SH13 route, boundary, lifecycle, and residency evidence; immutable pinned fork `b7b85da9` F16 rows | **Gate complete; beat-fork objective not met:** decode **54.330/54.798/46.405/40.180 tok/s**, tracked/whole-GTT **20.566/21.000**, **20.951/21.499**, **21.597/22.152**, **22.336/22.890 GiB**. Exactness/lifecycle/roles pass; frozen prefill guard is **3/4**, while C1/C2/fork-F16 decode/fork-F16 GTT are **0/4**. Residual GTT is untracked runtime/page-table/allocator/active mappings, not the **3.497-MiB** complete HSA code set. [`artifact`](results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json). | No — mandatory no-claim completion gate | Preserve retained defaults. Admit no closed-family retry; further work requires new measured structural evidence or separate approval for a system/runtime-memory experiment. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH13-M1 phase-resolved code/library residency | 2026-08-06 | clean `b9d38e088`; 4K-first cached one-queue run; 1-ms whole-GTT; exact HSA loader-segment snapshots; complete process shared-object map inventory; healthy token/lifecycle | **Closed precondition; no implementation:** current **21.499428-GiB** whole-GTT is **346.820 MiB** above fork F16, while all **22** HSA code objects total only **3.497 MiB**. Prefill is within **0.719 MiB** of peak and all post-load GTT growth is only **103.477 MiB**; even every shared-object virtual span plus all HSA code is **334.063 MiB**, still below the gap before phase eligibility. Runtime/page-table/active mappings dominate. [`artifact`](results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json). | No — safe precondition audit only | SH14-C1 confirms policy failure; do not add `dlclose`/lazy loaders or run a loader-focused 32K/64K retry without new evidence. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH12-C0 default-stream sample synchronization | 2026-08-06 | implementation `8e461708e`; complete marker-qualified boundary census; one-session nine-pair plus independent-process 512/128 wall; complete state; cached HIP/kernel trace; clean committed publication | **Retained/default-stream:** remove the redundant device drain immediately before blocking token D2H while keeping non-default stream sync. Same-resident decode **53.524 -> 54.608 tok/s (+2.027%, -0.371 ms/token; 9/9 wins)**; independent decode is positive but overlapping at **53.898 -> 54.132 (+0.433%, -0.080 ms/token)**. State/memory/lifecycle are exact; trace removes **10** production sync calls with unchanged copies/launches. Clean production is **54.065 tok/s**; parity remains open. [`artifact`](results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json). | Yes — exact synchronization reduction with repeated paired impact and independent non-regression | Execute SH13-M1 4K-first phase-resolved code/library residency precondition audit; do not reopen graph replay. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH11-A1 forced direct-4K attention | 2026-08-06 | current `ddd99bfcd`; independent exact-state split/direct children; one-queue one-discard/three-run 4K/128 wall; immutable current split trace plus new cached direct trace | **Closed/rejected; production unchanged:** all four decode-logit fingerprints and final state diverge, while decode regresses **54.572 -> 33.950 tok/s (-37.788%, +11.131 ms/token)**. Named route cost is **0.844 -> 11.889 ms/transition (14.080x slower)**; memory/lifecycle are unchanged and matching top-1 IDs do not repair exactness. [`artifact`](results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json). | No — candidate fails exactness and wall; historical speed lever does not survive | Keep split threshold 1,024; add no SH11-A2 package and execute SH12-C0 decode sync/D2H census. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH10-A1 exact short-c1 fixed256 attention | 2026-08-06 | implementation `df4dd5a5d`; package-default one queue; exact 513/576/640/1,023 leaf; complete 512 state; independent one-discard/three-run 512/128 wall; cached full-process trace | **Retained/default through active context 1,023:** decode **51.541 -> 53.591 tok/s (+3.978%, -0.742 ms/token)**, prefill **-0.612%**, old -> new attention role **1.499680 -> 0.928096 ms/token**, exact complete state, unchanged **20.566421/21.000130-GiB** tracked/GTT, clean lifecycle, and unchanged 1,024+ fallback. Clean production is **53.445 tok/s**; C1/fork parity remain open. [`artifact`](results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json). | Yes — exact own-engine short-context decode performance claim | Execute SH11-A1 current direct-4K diagnostic; do not extrapolate the result beyond 1,023 or claim fork parity. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH9-C1 scope-correct cumulative audit | 2026-08-06 | hash-bound SH6-C1/SH7-A1/SH9-D1 carry-forward at `5ba0b5248`; no duplicate GPU execution | **Gate complete; objective continues:** SH9 receives no decode/memory credit. Current decode is **53.153/55.832/46.785/40.386 tok/s**, whole-GTT is **21.000/21.499/22.152/22.890 GiB**, and C1/C2/fork-F16 decode/fork-F16 memory remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json). | No — no-claim cumulative policy audit | SH10-A1 is retained; execute SH11-A1, then SH12-SH14. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH9-D1 compact-WMMA no-read prefill | 2026-08-06 | parent `5c3d9912d`; gfx1151 package cap 0->4096; exact pp512 state pair; one-queue one-discard/three-run wall/GTT; globally version-pinned cached HIP/kernel/ROCTX trace | **Retained/default through 4,096 selected prefill rows:** pp512 wall is neutral **1366.040 -> 1366.013 tok/s (-0.002%)**, state/memory/lifecycle are exact, and the trace removes **40 hipMemcpy + 40 copy dispatches / -1.736 ms span** with unchanged 80 selected-WMMA launches. Decode bypasses this helper. [`artifact`](results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json). | Yes — exact launch/D2H reduction with non-regressive wall; no decode credit | SH9-C1 is complete; execute SH10-A1 on the actual short-context private-c1 attention owner. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH8-A1 grouped-GQA qgroup4 producer | 2026-08-06 | parent `cad45d291`; transient exact qgroup4 body/wrapper/key; cached gfx1151 primitive and trace; 21 counterbalanced ten-launch pairs at 32K/64K | **Closed/rejected; production unchanged:** qgroup4 lowers **72 -> 56 VGPR** but complete producer+parallel-reducer wall regresses **0.425068 -> 0.474481 ms (0.8959x)** and **0.759873 -> 0.858382 (0.8852x)**, with **0/42 wins** and projected **-0.494/-0.985 ms/token**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json). | No — exact leaf fails both continuation alternatives | Transient surfaces removed; execute SH9-D1 compact-WMMA no-read gfx1151 transfer. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH7-A1 parallel split reducer | 2026-08-06 | parent `6464e6e45`; package-default one hardware queue; same-source env-controlled serial/candidate 32K/64K one-discard/three-run eager wall; 10-ms whole-GTT; cached kernel/HIP/ROCTX traces; NumPy primitive; exact 18-prompt semantic gate | **Retained/default from 32K:** decode **46.066 -> 46.785 tok/s (+1.560%, -0.333 ms/token)** and **39.441 -> 40.386 (+2.394%, -0.593 ms/token)**; reducer **424.162 -> 109.346** and **744.973 -> 207.485 us/token**. All 1,296 semantic logits are byte-exact; tracked peak/GTT/lifecycle are unchanged; serial remains below 32K/under opt-out. [`artifact`](results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json). | Yes — exact own-engine long-context decode performance claim | Execute SH8-A1's 72-VGPR grouped-GQA producer four-query occupancy screen; C1/fork decode and fork whole-GTT parity remain open. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH6-C1 cumulative beat-fork gate | 2026-08-06 | clean production source `b074e8054`; inherited two-queue process cap with profiled decode confined to queue 1 / stream 0; fresh four-depth canonical and right-sized attribution children; 10-ms whole-GTT; cached role traces; exact 18-prompt oracle; pinned fork `b7b85da9` comparator | **Gate complete; objective continues:** canonical decode **53.153/55.832/46.196/39.579 tok/s**, whole-GTT **21.000/21.499/22.152/22.890 GiB**, and all prefill/exact-oracle/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json). | No — diagnostic cumulative gate, not a performance claim | Execute SH7-A1's independent gfx1151 parallel split-reducer gate with a fresh package-default one-queue serial/candidate pair; keep serial below 32K and require semantic, wall, trace, memory, and lifecycle admission. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH6-P1 raw-to-T16 prefill bridge | 2026-08-06 | SH5 dependency `0dace5c1b`; converter leaf `88188232d`; exact pair-byte oracle; cached no-spill trace; transactional one-owner runtime; matched 512/128 wall/state | **Closed/rejected; production Q8T16 unchanged:** converter and complete prefill state are exact, but charged prefill regresses **1369.120 -> 1318.196 tok/s (-3.720%)**, beyond the 1% guard. Model-route/env/runtime/scratch surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json). | No — first mandatory prefill row fails | SH6-C1 is complete; retain only standalone rowvec8 and transform leaves as evidence, and rerun only if production routing changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH5-D1 raw rowvec8 dense-Q8 pair | 2026-08-06 | parent `bb81b221f`; pinned fork `b7b85da9` source attribution; actual layer-0 qkv+gate >2x-MALL cycling leaf; cached trace; byte-neutral 512/128 matched route; bounded exact-tree repair | **Closed blocked / production Q8T16 unchanged:** leaf is **1.15566x** and decode improves **52.876 -> 54.427 tok/s (+2.934%, -0.539 ms/token)** at unchanged tracked peak, but prefill regresses **13.457%** and fast reduction is not state-exact; exact repair is **0.779x**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json). | No — SH6-P1 later fails its prefill guard | Model route remains removed and SH6-C1 is complete; retain only the standalone leaf/source evidence. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH4-D1 routed/shared MoE branch overlap | 2026-08-06 | parent `cbd5bc9c7`; transient private-c1 auxiliary stream/events/2-KiB concat row; five alternating same-resident 512/128 pairs; exact hidden/Conv/GDN/KV snapshot; cached 8-token kernel/HIP/ROCTX trace | **Closed/rejected; production unchanged:** real queue-1/queue-2 overlap hides **0.456 ms/token / 33.4%** of the **1.363-ms/token** shared branch, but wall regresses **18.811 -> 19.207 ms/token (-2.058%)**. All transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json). | No — exact candidate fails both >=1% wall and >=0.5-ms/token gates | Do not retry stream overlap; execute SH5-D1 byte-neutral row-1 dense-Q8 vector/layout audit. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH3-C1 cumulative beat-fork gate | 2026-08-06 | committed `16b961a6b`; private-c1 host embedding; fresh four-depth canonical and right-sized attribution children; 10-ms whole-GTT; cached role traces; exact 18-prompt oracle; pinned fork `b7b85da9` comparator | **Gate complete; objective continues:** canonical decode **53.177/55.664/46.241/39.602 tok/s**, whole-GTT **21.000/21.499/22.152/22.890 GiB**, all four prefill and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json). | No — diagnostic cumulative gate, not a performance claim | Execute SH4-D1 private-c1 routed/shared MoE branch overlap; require real cross-queue overlap, exact fallbacks, and >=1% wall or >=0.5-ms/token saving. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH3-M1 runner-safe host embedding | 2026-08-06 | parent `8c39cda03`; loader-time private-c1 host ownership; device/auto-host 512/4K one-warmup/three-run eager A/B; BF16 KV; 10-ms whole-GTT; complete four-transition state; 62 focused tests | **Retained/default for private c1:** exact **0.503235-GiB tracked** and **0.503933-GiB whole-GTT** savings at both depths; prefill/decode deltas are **+0.488%/-0.035%** and **-0.229%/-0.403%**; state/lifecycle exact. Shared/c>N and pointer-fed graph/packed/MTP routes retain or restore device ownership. [`artifact`](results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json). | Yes — exact loader/policy/wall/GTT/state/lifecycle/fallback gates pass | SH3-C1 reproduces the policy at all four depths; rerun if token layout, loader ownership, capability, or pointer-fed fallback changes. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH3-D1 complete Q8T16 shared-expert composite | 2026-08-06 | production `2493b194b`; transient cooperative K-block scale-LDS leaf; actual layer-0 `2048 -> 512 -> 2048` weights; 24-copy 80.2-MB pool; five counterbalanced 2,000-iteration repeats; cached named trace | **Closed/rejected; production unchanged:** exact BF16 boundaries pass, but the best 128-block composite is **34.719 -> 38.611 us (0.899x)** wall and **23.482 -> 25.287 us (0.929x)** kernel-only. Trace is **72 VGPR, 512 B LDS, 0 scratch**; all transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json). | No — exact candidate fails >=1.15x and >=0.5-ms/token admission | Do not route/revive this composite; execute SH3-M1 runner-safe host embedding, then SH3-C1. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-G fork parity recertification | 2026-08-06 | hipEngine runtime `e39aba0e1` (publication-only parent `53537b05a`); fresh four-depth prefill/decode, 10-ms whole-GTT and cached role trace; exact 18-prompt oracle; pinned fork `b7b85da9` F16/Q8_0 five-repeat rows | **Milestone complete; objective continues:** hipEngine decode **53.319/55.895/46.353/39.644 tok/s** versus fork F16 **64.411/62.590/53.042/45.818**; all four prefill guards and exact correctness/lifecycle/trace gates pass, but C1/C2/fork-F16 decode/fork-F16 whole-GTT remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json). | No — qualified cross-engine diagnostic and continuation decision | Execute SH3-D1 complete shared-expert chain, SH3-M1 runner-safe host embedding, then SH3-C1; do not mark the objective complete. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C2 cumulative re-attribution | 2026-08-06 | clean `e39aba0e1`; fresh four-depth one-warmup/three-run tg128 wall; 10-ms whole-GTT; cached role trace | **Diagnostic continue:** decode **53.374/55.851/46.315/39.673 tok/s**, whole-GTT **21.504/22.003/22.656/23.394 GiB**, exact IDs/lifecycle, and compact-Q5 saving reproduced; C1/C2/fork-F16 decode/fork-F16 whole-GTT all remain **0/4**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json). | No — milestone-selection evidence, not parity | Run mandatory fresh SH2-G pinned-fork recertification; on miss, continue to frozen SH3 shared-expert and host-embedding owners. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M4 compact selected Q5 T16 metadata | 2026-08-06 | parent `70b338a0e`; actual all-256-expert Q4/Q5 leaf; one-warmup/three-run 512/128 wall; 10-ms GTT; cached production trace; clean-parent vs candidate four-depth state | **Retained/default Q5 subset:** 37 Q5 tensors save **0.144531 GiB tracked / 0.144363 GiB whole-GTT**; prefill/decode change **-0.426%/-0.459%** and complete state is byte-exact. Full Q4+Q5 is rejected at **+1.598%** projected decode, so Q4 remains current T16. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json). | Yes — exact memory/non-regression/trace/state/lifecycle gates pass for Q5 | Run SH2-C2 cumulative re-attribution immediately; do not treat the partial owner as fork parity. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-C1 cumulative re-attribution | 2026-08-06 | clean `b8989cbb4`; fresh 512/128 non-profiled+role trace+10-ms GTT; mechanically unchanged SH-G 4K+ rows; complete expert-T16 metadata census | **Diagnostic continue:** fresh 512 is **53.332 tok/s, 21.214/21.648 GiB tracked/GTT**; C1/C2/fork-F16 decode/fork-F16 GTT each remain **0/4**. Select the exact **0.457031-GiB** compact Q4/Q5 T16 metadata owner; no layout exists yet. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json). | No — re-attribution and next-owner selection only | Execute SH2-M4 under exact/perf/trace/four-depth GTT gates, then rerun SH2-C2; do not proceed to SH2-G yet. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-D1 mixed-T16 selected-MoE composite | 2026-08-06 | source `995c4743e` plus transient exact cached gfx1151 kernels; all-256-expert actual weights; 37-Q5/3-Q6 aggregate; counterbalanced HIP events; cached named traces | **Closed/rejected; production unchanged:** down+tail is only **1.053x / 0.080 ms/token** aggregate; full cooperative/standard-queue composites are **0.520x/0.739x**. Lifecycle-correct standard kernels are exact and scratch-free, but miss both admission gates. All transient surfaces removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json). | No — exact candidates fail >=1.15x and >=0.5-ms/token admission | Do not route or revive these ownership schedules; proceed immediately to SH2-C1 cumulative re-attribution. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M3 768-row scratch owner slots | 2026-08-06 | implementation `edb151447`; BF16 KV; same-source D->L->L->D one-warmup/three-run 512/128 A/B; 10-ms whole-GTT; complete byte-state children; committed checkpoint | **Retained/default on gfx1151:** 21 owner slots save **0.265792 GiB tracked** and **0.267578 GiB whole-GTT** while prefill/decode improve **0.621%/0.160%**. State/lifecycle are exact; diagnostics and capability denial retain dedicated fallback. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json). | Yes — exact memory/wall gates and committed checkpoint pass | Keep the 768-row capability default and proceed immediately to SH2-D1; no arena/comparison seam remains. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M2 code/library residency gate | 2026-08-06 | source `33875d75b`; fresh SH2-M1 device/host 512/4K cached processes; 10-ms whole-GTT minus sampler baseline and live owned/tracked bytes; exact lifecycle reused | **Closed precondition / no implementation:** complete untracked residency is at most **0.4186/0.5315 GiB** device and **0.4784/0.5308 GiB** host at 512/4K. The 512 complete-set bounds are below the required 0.49 GiB, so no phase-exclusive code/library subset can qualify. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json). | No performance claim; safe aggregate upper-bound decision | Do not add lazy-load or `dlclose` churn; proceed directly to SH2-M3 short owner slots. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH2-M1 exact c1 host embedding | 2026-08-06 | parent `ab71d0966`; BF16 KV; device graph/device eager/host-copy eager at 512/4K; one warmup plus three measurements; 10-ms whole-GTT; complete byte-state equality | **Retained exact c1 opt-in / global default blocked:** host-copy saves **0.4434/0.5039 GiB whole-GTT** and exactly **0.5032 GiB live ownership**, with all wall deltas inside 1% and exact state. Allocate-then-free high water and shared c>N/packed/MTP device-pointer fallback block global promotion. [`artifact`](results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json). | No topline replacement; exact own-engine memory/non-regression claim only | Keep the env route; run SH2-M2/M3, and revisit loader ownership only with shared-runner-safe automatic device fallback. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-G final campaign recertification | 2026-08-06 | hipEngine `915f64182`; retained Q5 tile8 + 21 scratch owner slots + bounded head-major prefill scratch; BF16 KV; four right-sized one-warmup/three-run rows; exact 18-prompt oracle; cached role/Q5 traces; Nathan fork `b7b85da9` F16/Q8_0 five-repeat rows; 10-ms whole-GTT | **Diagnostic retained; campaign closed:** hipEngine decode is cross-day **0.840%-1.314%** above SH-C0 and 4K+ tracked/whole-GTT stay **1.4086/1.4043 GiB** lower. Exact state/lifecycle passes, but final results reach **0/4 C1, 0/4 C2, 0/4 fork decode, and 0/4 fork whole-GTT** rows; prefill wins 3/4 rows against each fork lane. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json). | No new topline claim — final current-production recertification plus qualified external diagnostic | Campaign complete; retain exact Q5 tile8, owner slots, and head-major prefill scratch. Reopen only for a newly measured owner, aligned cross-engine oracle, or a new campaign. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-A1 page-internal head-major BF16 decode screen | 2026-08-06 | parent `72ba9fdd6`; transient exact converter and grouped-GQA page-head producer; complete dense/permuted/evicted-page `KVLiveSpans` oracle; 5-warmup/21-repeat 512/4K/32K/64K HIP-event component/composed wall; cached 32K/64K trace | **Diagnostic rejected; production unchanged:** attention+reducer is only **0.756x/0.797x** current at 32K/64K; append+complete-copy-inclusive is **0.277x/0.263x**, projecting **-58.3%/-97.8%** decode. Correctness is exact, but candidate raises producer VGPR **72 -> 80**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json). | No — misses both >=1.10x leaf and >=1% whole-decode gates | Candidate removed; keep token-major BF16 and proceed to SH-G final retained-campaign recertification. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-K1 strict compact-KV frontier | 2026-08-06 | commit `f9bde8190`; fixed `0-7` BF16/`8-9` per-token/head INT8 K+V; forced 65,792-token no-mirror quality allocation; complete 11-prompt category+heldout gate; one-warmup/three-run 32K/64K wall; allocator plus 10-ms GTT; cached full-process traces | **Diagnostic quality pass / default rejected:** quality is **3.344e-5 mean KL, 7.875e-4 max KL, 100% aggregate/min-prompt top-1**, but decode changes **-0.436%/-0.670%** and prefill-oracle high water raises tracked peak **0.0640/0.1274 GiB** plus whole-GTT **0.0703/0.1328 GiB**. BF16 stays default. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json). | No — repeated decode and peak-memory gates fail despite strict quality and valid direct-consumer traces | Do not repeat closed formats or this 8/2 map unless oracle lifetime changes; advance immediately to SH-A1. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-M2 exact scratch owner slots | 2026-08-06 | implementation `7b675670a`; BF16 KV; fixed q4096; one-warmup/three-run 512/4K/32K/64K eager A/B; D->L->L->D and committed 4K confirmations; 10-ms whole-GTT; complete byte-state children | **Retained/default on gfx1151:** 21 owner slots save **1.4086 GiB tracked** and **1.4043 GiB whole-GTT** at every 4K+ row. Full state and lifecycle are exact; committed 4K confirms prefill **1409.035 -> 1417.186 tok/s (+0.578%)** and decode **+0.271%**. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json). | Yes — exact memory/wall gates and committed checkpoint pass | A/B seam removed; SH-K1 later fails to add a compact-KV peak win, so retain BF16 owner slots and advance to SH-A1. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 Q6T16 LM-head tile8 closure | 2026-08-06 | parent `786422891`; transient exact cached gfx1151 object; c1/K2048/N248320; complete 417,177,600-byte resident matrix; FP32-logit/top-1 equality; cached named trace | **Diagnostic rejected; production unchanged:** tile8 reduces **72 -> 48 VGPR** with scratch0 but regresses **1.83174 -> 1.83575 ms (0.99782x, -0.218%)**. All transient surfaces are removed; SH-D1 closes **1.4868 ms/token** short of C1. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-q6-lm-head-tile8-rejected.json). | No — fails frozen leaf admission | Advance immediately to SH-M2 exact scratch aliases; do not repeat closed SH-D1 ownership schedules. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 cumulative 512 attribution checkpoint | 2026-08-06 | measured `1a4c6b9ce`, implementation `3e836edea`; one-warmup/three-run 512/128 eager plus cached 8-token kernel/HIP-API/ROCTX trace; sole tracked difference is unrelated `docs/ROCM-AI.md` | **Diagnostic continue:** exact decode is **53.535 tok/s / 18.6792 ms/token** and profiled GPU is **17.3591 ms/token**. Retained Q5 tile8 cuts selected-down **1.6028 -> 1.3933 ms/token**, but the row remains **1.4868 ms/token** short of C1 and **3.2132 ms/token** short of fork-F16 parity. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json). | No — cross-run attribution checkpoint; same-revision Q5 artifact owns the performance claim | Screen exact Q6T16 c1 lm-head tile8 under the frozen leaf gate; continue until parity or measured headroom exhaustion. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 selected-down Q5T16 tile8 | 2026-08-06 | implementation `3e836edea`; exact c1/top8/K512/N2048; 70.8-MB cycling pool; CPU Q5_K/BF16-byte gates; cached named trace; committed same-revision 512/128 A/B; 512/4K/32K/64K complete state; 18 natural/heldout prompts x3 | **Retained/default on gfx1151:** committed leaf confirms **40.855 -> 34.876 us (1.1715x / projected 0.2212 ms/token)** and committed 512/128 eager confirms **53.027 -> 53.557 tok/s (+0.998%)**, exact and lifecycle-clean. Q6 tile8 reaches only **1.0803x** and tile4 regresses; both Q6 surfaces are removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json). | Yes — exact Q5 leaf clears frozen 1.15x gate and model/natural gates pass | Run cumulative SH-D1 attribution/parity gate; do not stop the campaign. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 selected-Q4 exact tile-ownership ladder | 2026-08-06 | parent `05b2c08a3`; transient cached gfx1151 tile8/tile4 code object; local128; full c1/top8/K2048/N512 shape; 67.9-MB cycling pool; CPU Q4_K and exact-BF16 gates; cached named traces | **Diagnostic rejected; production 16-column Q4T16 unchanged:** tile8 improves **57.824 -> 50.429 us (1.1466x / projected 0.2958 ms/token)** but misses the frozen 1.15x gate by **0.292%** and the 0.5-ms alternative. Tile4 reaches only **1.0915x**. Both are exact and scratch-free; all transient surfaces are removed. [`artifact`](results/2026-08-06-gfx1151-gguf-sh-d1-selected-q4-tile-ladder-rejected.json). | No — both candidates fail predeclared leaf admission | Close selected-Q4 output ownership; advance to the **1.603-1.606-ms/token** Q5/Q6 selected-down role, then cumulative SH-D1. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-D1 GDN-input Q8T16/Q8T32 ladder | 2026-08-06 | parent `c822880b9`; transient cached gfx1151 Q8T32 code object `7cd09cfa...a85d3`; byte-neutral diagnostic packer; three-copy 80.2-MB cycling pool; exact/CPU-oracle; cached named traces | **Diagnostic rejected; production Q8T16 unchanged:** best local256 paired Q8T32+DPP+non-temporal is **127.90 us** versus **136.19 us** (**1.0648x / projected 0.2487 ms/token**), still **7.94%** above the **118.493-us** gate. Register-wide Q8T32 regresses at 91 VGPR. All transient surfaces are removed. [`audit`](results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json), [`same-layout`](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json), [`Q8T32`](results/2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json). | No — candidates fail predeclared leaf gate | Close GDN same-layout/paired-layout work and advance to the selected gate/up+down **3.912-3.925-ms/token** role, then cumulative SH-D1. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-M1 4,096-vs-1,024 query-row memory screen | 2026-08-05 | tracked-clean commit `e6eb49628` with **255 unrelated untracked paths**; BF16 KV; explicit five-surface chunk controls; independent right-sized one-warmup/three-run eager processes; 10-ms whole-GTT; byte-fingerprint state children at 512/4K/32K/64K | **Diagnostic rejected; q4096 unchanged:** q1024 saves **1.335-1.338 GiB tracked** and **1.351-1.355 GiB whole-GTT** at 4K+, but changes exact state/logits and loses **1.603%-11.835%** prefill. Decode and cleanup pass. [`artifact`](results/2026-08-05-gfx1151-gguf-sh-m1-q1024-rejected.json). | No — aggregate provenance is untracked-dirty and candidate fails exactness/prefill | Keep q4096; do not retry 2,048/768 rows. Audit exact dedicated-scratch liveness aliases, then stack with strict compact KV before claiming fork memory parity. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M SH-C0 decode-role and same-scope memory freeze | 2026-08-05 | hipEngine production `a2541162d`, role tooling `359b967fd`/`133239a4d`; Nathan fork `b7b85da9`; exact same GGUF/hardware; hipEngine one-warmup/three-run eager wall plus cached 8-token kernel/HIP-API/ROCTX trace; fork F16/Q8 Vulkan logger; both engines sampled at 10-ms whole-GTT | **Diagnostic retained:** hipEngine whole-GTT is **1.084-2.704 GiB** above the fork. GDN input is the largest short/mid exact role at **4.113-4.166 ms/token**; selected experts are **3.912-3.925 ms/token**; attention reaches **8.041 ms/token** at 64K. The 4K+ 4,096-row scratch owns **1.756-1.818 GiB**, selecting 1,024 rows for SH-M1. [`artifact`](results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json). | No — attribution and campaign target selection | Rerun after a retained SH-D1, SH-M1, or SH-A1 unit; profiled totals never replace non-profiled toplines. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M local Nathan Strix Halo fork comparator | 2026-08-04 | hipEngine accepted implementation `d5e95d1c9`, BF16 KV; Nathan fork `b7b85da9` build 10283, bundled Mesa `d18d598e2`, F16/Q8_0 KV; exact same GGUF and hardware; five fork repetitions per split phase plus three claim-protocol repetitions; explicit Vulkan/RADV backend and build gates | **Diagnostic retained, no strict cross-engine claim:** hipEngine wins all eight full-prompt prefill comparisons; the fork wins all eight tg128 decode comparisons. Fork whole-device GTT is descriptively **0.648-2.153 GiB** below hipEngine tracked peak, with non-comparable scopes. Its exact-model claim-protocol rerun exceeds the published different-model d0/d32K/d64K rows. [`artifact`](results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json). | No — external diagnostic comparator | Rerun after either engine, fork payload/toolchain, model bytes, KV policy, timing protocol, or memory scope changes; require a shared output oracle before a strict ratio. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6-35B-A3B UD-Q4_K_M head-major BF16 AOTriton prefill | 2026-08-04 | candidate parent `f8d49a25a`; TheRock HIP 7.15; BF16 KV; one warmup plus three right-sized runs at 512/4K/32K/64K, byte-exact full-model state, forced allocation denial, copy-inclusive sub-window screen, and cached kernel trace | **Accepted bounded production default:** one reusable tracked K/V pair removes AOTriton's token-major head stride through the validated 65,792-token allocation class. Same-protocol prefill moves **1395.168/1463.311/1133.272/890.033 -> 1394.772/1472.330/1171.610/952.348 tok/s (-0.028%/+0.616%/+3.383%/+7.001%)** with exact hidden/GDN/KV/logits and neutral decode. [`artifact`](results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json). | Yes for gfx1151 Qwen3.x GGUF BF16-KV AOTriton prefill through 65,792-token resident capacity | Rerun after AOTriton, KV layout/spans, scratch ownership, compiler/runtime, or capacity policy changes; require a new 128K gate before broadening. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact long-global GQA6/D32 decode | 2026-08-01 | production `5849759cf`, post-profile `8e28afdd6`; TheRock HIP 7.15; BF16 KV; byte-exact dense/evicted primitive, cached-only four-depth trace, focused 66-test gate, directional 4K/16K/64K/128K sweep, tracked-clean 16K confirmation, and 127-transition post-profile | **Accepted production default:** live16,448 exact global attention is **16.293 ms/token**, down from **86.240**. Clean d16K improves **7.732 -> 16.756 tok/s (+116.72%)**; directional d4K/d64K/d128K improve to **21.662/9.079/5.603 tok/s**, with exact trajectories/lifecycle. Post-profile global is **3.660 score + 3.371 normalize + 9.261 PV ms/token** and explains **98.081%** of the remaining device gap. [`production/profile`](results/2026-08-01-gfx1151-laguna-long-global-gqa6-dim32-retained.json). | Yes for gfx1151 gated global 48Q/8KV/D128 decode above 6,000 live slots | Context-parallelize PV/merge, then normalization, while moving 4K/16K/64K and gating 128K toward <=5-ms global. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M matched 16K decode attribution | 2026-08-01 | tracked-clean hipEngine `fc8e1e9e4`; llama.cpp Vulkan `c0bc8591e`; exact same GGUF; BF16/F16 KV; 127 cached-only rocprof transitions and final 127 Vulkan logger sections | **Accepted LC-D2 attribution:** hipEngine device union is **127.892 ms/token** versus Vulkan logged GPU **45.337 ms/token**. hipEngine global attention is **86.240 ms/token**; Vulkan's complete global FA+concurrent-output group is **3.693 ms/token**. Their **82.547-ms** gap explains **99.991%** of the complete **82.555-ms** device gap. The exact HIP reducer/PV alone costs **76.527 ms/token**, serially rescans V per query head, and reaches only **31.69 GB/s** on its six-way logical V ledger. [`profile`](results/2026-08-01-gfx1151-laguna-16k-hip-vulkan-decode-profile.json). | Yes, attribution only; clean production remains 7.735836 vs 21.728347 tok/s | Replace the full score/physical plane with an exact GQA6 context-parallel owner; require positive 4K/16K/64K direction and mandatory 128K before promotion. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Poolside Laguna S 2.1 Q4_K_M exact source-F16 projection/head/KV tile2 decode | 2026-07-31 | retained/default and tracked-clean production `a4c2c5d26`; TheRock HIP 7.15; BF16 KV; llama.cpp Vulkan source audit, global/SWA F32/BF16 byte oracle, seven same-resident p512/d128 pairs, cache-only distinct-symbol trace, and three selector-unset production repetitions | **Accepted current exact production default:** one local256 block owns two adjacent Q/K/V/gate columns and shares each BF16 activation load/conversion plus barrier while preserving both F32 FMA/reduction trees, head outputs, KV bytes, spans, and counters. All seven model pairs improve **22.886574 -> 22.994503 tok/s (+0.47158%)**. Clean production advances **22.891692 -> 23.017271 tok/s (+0.54858%, -0.238335 ms/token)**, reaching **+100.732%** over sprint start at unchanged **79,066,169,172-byte** residency. [`retention`](results/2026-07-31-gfx1151-laguna-f16-projection-tile2-retained.json), [`production`](results/2026-07-31-gfx1151-laguna-f16-projection-tile2-production.json). | Yes for gfx1151 Laguna c=1 source-F16 Q/K/V/gate projection→head/KV | gfx1100 and ordinary output projection remain one-column rollback. Re-profile the clean wall, then attack the remaining 0.616-ms Vulkan wall gap. |
@@ -4250,7 +4927,7 @@ reaches **504.631/452.733/357.083 tok/s** at 512/1K/4K and cuts router
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF fused/chain GDN prefill correctness and default selection | 2026-07-11 | correctness at clean tracked `332f01f8`; clean performance worktree `ad773eba`; TheRock HIP `7.13.60980-c76140fa27`; exact Q4_K_M fingerprint retained | **Accepted correctness / retained negative performance decision**: exact chain passes 6/6 state cases but is +5.19%/+6.70% slower in balanced 512/4K walls. Fused remains default. | Diagnostic link only | Rerun after GDN math/scheduler/chunk changes; do not retry unchanged split scheduling. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2 register-resident GDN diagnostics | 2026-07-13 | clean tree performance `31d4204d`, clean tree trajectory gate `2670ed04`, exact ordered candidate based at `cf3e8250`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Both default candidates rejected**: relaxed tree balanced 512/4K prefill improves **422.281 -> 956.765 tok/s (2.266x)** and **410.534 -> 844.847 tok/s (2.058x)**, but only **3/10** natural prompts preserve the complete fused 128-step trajectory. Exact ordered residency preserves byte identity but regresses 512/1K/4K by **12.98%/14.58%/13.50%**. `auto` remains fused. | Diagnostic link only | Test scalar-exact value columns with recurrent state resident in a 32/64-column LDS tile; require exact natural trajectories before any default/topline change. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2D scalar-exact LDS-resident GDN | 2026-07-13 | clean candidate `a6f389d2`, promoted default `5f082783`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted gfx1151-scoped default**: six-case matrix and 250/250 natural logits are exact; balanced 512/4K prefill improves **420.959 -> 753.891 tok/s (1.791x)** and **408.359 -> 687.831 tok/s (1.684x)**; decode is +0.023%. The clean automatic max-context stress gate records **751.993/804.420/688.545/589.866/504.730/372.892 tok/s** across six shapes with stable IDs. | Superseded within current GGUF rollup | Keep gfx1100 fused until an independent transfer gate. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-3A Q4T16 shared-activation prefill | 2026-07-13 | clean A/B `95d484df`, clean automatic confirmation `431fe1e4`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted gfx1151-scoped default**: BF16/FP16 fixtures and 248,320 full-model logits/shape are byte-exact; balanced 512/1K/4K prefill improves **747.764/804.150/687.676 -> 771.027/823.624/701.042 tok/s (+3.11%/+2.42%/+1.94%)**; every measured 128-step trajectory matches and aggregate decode is -0.0031%. Selector-unset focus medians reproduce **774.653/823.149/701.389 tok/s** with stable IDs. | Included in current GGUF rollup | Keep gfx1100 baseline until an independent transfer gate. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-3A Q4T16 shared-activation prefill | 2026-08-05 | clean short-context A/B `95d484df`, repeated-128K isolation at `c677e96f0`; TheRock HIP `7.15.0-0000000`; exact Q4_K_M fingerprint retained | **Retired as gfx1151 automatic route**: the earlier byte-exact 512/1K/4K win was **+3.11%/+2.42%/+1.94%**, but enabling only shared-X over the passing conservative profile reproduces the 128K no-progress state on prefill 4. The baseline-only production profile passes **12/12** prefills at **575.180-580.626 tok/s**, stable decode/tokens, and full cleanup. | [`fallback artifact`](results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json) | gfx1151 `auto` uses baseline; keep explicit shared-X only for repair/bisection. gfx1100 is unchanged. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-2E compact-scale/direct-conv GDN and right-sized rollup | 2026-07-13 | clean exact matrix `c3a065ee`, balanced A/B `ffbcc4d9`, trajectory/decode `5501aeb9`, automatic focus `b8949477`, clean measured sweep `28b45d38`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted and published on gfx1151**: clean 512/1K/4K A/B is +6.01%/+7.74%/+6.24%; the final 1+3 right-sized prefill row is **819.641/893.266/752.308/640.096/540.850/387.334 tok/s** with <=0.132% stdev/median. Six-case state and 250/250 natural logits are exact. The log-recovered 128K row discloses that the interrupted process did not serialize IDs and links those stronger independent gates. | Superseded by LCP-1/LCP-D1 | Keep gfx1100 fused; investigate later-pass 128K lifecycle no-progress separately from the calibrated performance protocol. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF GPF-5A two-wave dense Q8T16 prefill | 2026-07-14 | clean candidate `4a1fff53`, clean promoted sweep `e9baf563`, final scoped policy `6418b278`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted through 64K and published**: the clean kernel is byte-exact, uses 80 VGPR/1 KiB LDS/zero scratch, and improves the prior right-sized 512/1K/4K/32K/64K prefill row to **889.904/919.598/762.940/648.948/546.296 tok/s (+1.01% to +8.57%)** with unchanged memory. Stable same-commit 128K rejects two-wave at **-2.59%**, so package policy restores production above 65,536 tokens and carries forward the accepted **387.334 tok/s** row. | Superseded by LCP-1/LCP-D1 | Keep the env rollback and 64K ceiling for one release; validate independently on gfx1100; treat later-pass 128K no-progress as lifecycle diagnosis, not extra timing repetitions. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF LCP-1 tiled convolution and LCP-D1 long-split decode reduction | 2026-07-14 | clean focus/promotion `3ff8e2d7`/`631498dd`, clean reducer `71e61524`, final six-shape sweep `71e61524`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact Q4_K_M fingerprint retained | **Promoted and published on gfx1151**: LCP-1's clean 4K body falls **954.134 -> 49.790 ms** and its 512/4K focus is **+1.73%/+22.91%** with 82/82 exact state parts. LCP-D1 cuts the clean 128K reducer **234.714 -> 196.466 us/call (-16.30%)**. Final right-sized prefill is **906.979/929.724/946.366/778.371/636.330/433.811 tok/s** and graph decode is **49.061/51.569/52.432/43.543/37.562/28.047 tok/s**; all 18 IDs are exact, memory unchanged, and variance <=0.140%. | Superseded by LCP-2A prefill promotion | Keep LCP-1's production fallback for one release and validate gfx1100 independently; continue decode only from the measured grouped-GQA context or dense-Q8 residual. |
@@ -4425,6 +5102,18 @@ each llama.cpp backend uses five repetitions. PARO passes all six shapes. GGUF
 5% variance gate; maximum prefill/decode stdev over median is only
 **0.122%/0.028%**, and all 15 measured IDs are `9707`.
 
+The 2026-08-04 Nathan-review P0 default overlays the GGUF 512/4K/32K/64K
+cells below with independent right-sized runs from candidate parent
+`f8d49a25a`. One tracked head-major BF16 K/V pair is reused across all ten
+full-attention layers before AOTriton, while persistent paged KV is unchanged.
+Same-protocol controls move **1395.168/1463.311/1133.272/890.033 ->
+1394.772/1472.330/1171.610/952.348 tok/s**
+(**-0.028%/+0.616%/+3.383%/+7.001%**). Full hidden/GDN/KV/logit state is
+byte-exact, decode is neutral, forced allocation denial restores strided
+AOTriton, and the default is capped at the validated 65,792-token rounded
+capacity. The 1K row remains the prior July 17 publication until the next full
+six-shape refresh.
+
 **IOMMU boot note (directional, not causal):** relative to the prior published
 IOMMU-on rows, the arithmetic mean change across the 11 eligible current
 hipEngine cells is **+4.60% prefill / +6.20% decode**. GGUF 512-64K averages
@@ -4448,33 +5137,33 @@ are descriptive raw leaders rather than same-math allocator claims.
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 1298.259 | **1395.379** | 1184.628 | 1161.498 |
+| 512/128 | 1298.259 | **1394.772** | 1184.628 | 1161.498 |
 | 1K/128 | 1332.199 | **1481.943** | 1192.768 | 1154.327 |
-| 4K/128 | 977.252 | **1444.733** | 1148.155 | 1114.081 |
-| 32K/128 | 827.350 | **1132.215** | 843.252 | 873.573 |
-| 64K/128 | 690.642 | **892.663** | 632.774 | 702.742 |
+| 4K/128 | 977.252 | **1472.330** | 1148.155 | 1114.081 |
+| 32K/128 | 827.350 | **1171.610** | 843.252 | 873.573 |
+| 64K/128 | 690.642 | **952.348** | 632.774 | 702.742 |
 | 128K/128 | 498.101 | — (blocked) | 432.033 | **499.728** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **70.750** | 52.761 | 53.222 | 63.795 |
+| 512/128 | **70.750** | 52.710 | 53.222 | 63.795 |
 | 1K/128 | **65.905** | 54.658 | 53.044 | 63.391 |
-| 4K/128 | **66.728** | 55.297 | 52.338 | 61.863 |
-| 32K/128 | **53.458** | 45.983 | 45.946 | 52.286 |
-| 64K/128 | 44.793 | 39.388 | 40.353 | **45.160** |
+| 4K/128 | **66.728** | 55.183 | 52.338 | 61.863 |
+| 32K/128 | **53.458** | 45.943 | 45.946 | 52.286 |
+| 64K/128 | 44.793 | 39.362 | 40.353 | **45.160** |
 | 128K/128 | 32.615 | — (blocked) | 32.728 | **35.569** |
 
 #### Peak memory GiB
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **18.039** | 21.478 | 21.375 | 21.551 |
+| 512/128 | **18.039** | 21.480 | 21.375 | 21.551 |
 | 1K/128 | **18.051** | 21.710 | 21.387 | 21.501 |
-| 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
-| 32K/128 | **19.716** | 23.559 | 21.987 | 22.191 |
-| 64K/128 | **20.344** | 24.203 | 22.666 | 22.627 |
+| 4K/128 | **19.026** | 23.007 | 21.444 | 21.507 |
+| 32K/128 | **19.716** | 23.654 | 21.987 | 22.191 |
+| 64K/128 | **20.344** | 24.392 | 22.666 | 22.627 |
 | 128K/128 | **21.881** | — (blocked) | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
@@ -4486,7 +5175,8 @@ Use memory values for within-column context growth; small cross-column deltas
 are not allocator-efficiency claims. hipEngine load and graph capture are
 excluded from phase throughput.
 
-Artifacts: [current IOMMU-off four-column refresh and 128K blocker](results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json),
+Artifacts: [head-major BF16 AOTriton prefill promotion](results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json),
+[current IOMMU-off four-column refresh and 128K blocker](results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json),
 [preliminary 512/4K IOMMU-off diagnostic](results/2026-07-17-gfx1151-amd-iommu-off-short-context-diagnostic.json),
 [previous IOMMU-on GGUF 512-64K refresh](results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json),
 [HIP 7.13 versus 7.15 128K lifecycle diagnostic](results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json),

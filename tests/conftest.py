@@ -64,5 +64,4 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
         return
     from hipengine.kernels import registry
 
-    registry._KERNELS.clear()
-    registry._KERNELS.update(_BASELINE_KERNELS)
+    registry.restore_registry_for_tests(_BASELINE_KERNELS)

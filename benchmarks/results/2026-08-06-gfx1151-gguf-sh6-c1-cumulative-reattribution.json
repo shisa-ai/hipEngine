@@ -1,0 +1,470 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh6_c1_cumulative_reattribution",
+  "date": "2026-08-06",
+  "status": "mandatory_gate_complete_policy_failed_sh7_a1_selected",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "b074e805491f33e169102e879de6994e6a963f64",
+    "tracked_clean": true,
+    "matrix_sha256": "b9bd75517f3d8dfb79eef4756dcb7e837b497668e5347e895e45e2c5b1575c50",
+    "oracle_sha256": "76f2c85b3b25fb1ca1d46355ff9434e564ed8400d361dad6f49d9f624c6b22fb",
+    "fork_f16_sha256": "c592f314a4754356ca3c4d6d83097c6dc33508f315c9b2b985cc2eb70218fe07",
+    "fork_q8_sha256": "ce2dd546bb2d6d91052cab88833461181adb18e2db035371402642c2ef1aa147",
+    "fork_source_commit": "b7b85da9",
+    "qualification": "Current hipEngine canonical prefill/decode, right-sized GTT, and cached role traces are fresh on tracked-clean production source b074e8054 after SH6 cleanup. The process inherited GPU_MAX_HW_QUEUES=2 from the preceding overlap screen rather than the package-default cap of 1; every profiled decode dispatch nevertheless used only queue 1 / stream 0, and this artifact is a diagnostic policy decision rather than a retained performance claim. The pinned fork build/model/hardware comparator was freshly measured earlier the same day and is immutable; no duplicate fork execution is required for this post-SH6 gate."
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues_cap": 2,
+    "profiled_decode_queue_ids": [
+      1
+    ],
+    "profiled_decode_stream_ids": [
+      0
+    ],
+    "memory_domain": "whole-device amdgpu GTT",
+    "gtt_poll_ms": 10
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "canonical": "Independent right-sized process per depth; one warmup and three measured full prefill/tg128 eager runs; host token embedding auto policy active; GPU_MAX_HW_QUEUES=2 process cap inherited from the immediately preceding SH4 screen.",
+    "attribution": "Independent right-sized process per depth; one discarded full run plus three measured 128-token eager runs under 10-ms whole-GTT; separate cached-only 8-token kernel/HIP-API/ROCTX role trace. Every profiled decode kernel used queue 1 / stream 0 only despite the two-queue process cap.",
+    "correctness": "Fresh exact 18-prompt category+heldout packed-vs-serial oracle, three repeats, 24 decode steps; repeated rows exact and every tracked allocation closes.",
+    "fork": "Pinned b7b85da9 F16/Q8_0 five-repetition rows from the same exact file and hardware, freshly rerun earlier on 2026-08-06.",
+    "acceptance": "Preserve all four SH3-C1 clean-production prefill rows within 1%; match pinned-fork F16 decode and whole-GTT at every depth; exact oracle/lifecycle/trace must pass."
+  },
+  "rows": {
+    "512/128": {
+      "prompt_tokens": 512,
+      "decode_tokens": 128,
+      "canonical_current": {
+        "prefill_tok_s": 1373.5582658422513,
+        "decode_tok_s": 53.153283893634296,
+        "prefill_samples_tok_s": [
+          1371.3245925437834,
+          1373.729402792782,
+          1373.5582658422513
+        ],
+        "decode_samples_tok_s": [
+          53.03174032399456,
+          53.153283893634296,
+          53.25309093288471
+        ],
+        "final_token_ids_stable": true,
+        "host_token_embedding_enabled": true,
+        "readme_json_sha256": "044291719d59f325721b0bbc0bb7a038a4e2a0010f7b0203c3a03ff1838e09d2"
+      },
+      "attribution_current": {
+        "decode_tok_s": 52.8985036220899,
+        "decode_ms_per_token": 18.904126421875,
+        "decode_samples_tok_s": [
+          52.853453529177834,
+          52.900420122283464,
+          52.8985036220899
+        ],
+        "tracked_peak_gib": 20.566421270370483,
+        "whole_gtt_peak_gib": 21.00012969970703,
+        "whole_gtt_peak_delta_gib": 20.98273468017578,
+        "tracked_after_close_bytes": 0,
+        "all_tokens_exact": true,
+        "profiled_gpu_ms_per_token": 17.487185,
+        "dispatches_per_token": 628.0,
+        "compact_q5_calls_per_token": 37.0,
+        "raw_hashes": {
+          "baseline_child_sha256": "f96af77bdc647c5dac8bdb5f479524a245508513e03d0e02bef4a5b840d940a0",
+          "profile_child_sha256": "d30ea08b15b652c08ed5516cd92418dd55870e3b918f7d32a28c7b2c36cfb9ff",
+          "kernel_csv_sha256": "f2ddc3da8ecfc087d7dfaf68acdf670c8cf39fde5119c1a6facdea254d4972f2",
+          "marker_csv_sha256": "fdbf9d9b8f8f53c513deaed8a6375d5fa15e2ba20368e417043f30af19b47ce6",
+          "hip_api_csv_sha256": "abb38ce824eba464198365273e8acf114dc11e85853b35dda0e2648ce33c68ef"
+        }
+      },
+      "pinned_fork": {
+        "build_commit": "b7b85da9",
+        "f16": {
+          "prefill_tok_s": 1394.038255,
+          "decode_tok_s": 64.411182,
+          "whole_gtt_peak_gib": 20.830669403076172
+        },
+        "q8_0": {
+          "prefill_tok_s": 1388.628155,
+          "decode_tok_s": 64.178636,
+          "whole_gtt_peak_gib": 20.832103729248047
+        }
+      },
+      "gaps": {
+        "prefill_vs_sh3_c1_pct": 0.351824078266727,
+        "c1_target_tok_s": 58.165,
+        "c1_time_gap_ms_per_token": 1.6210433482803879,
+        "c2_target_tok_s": 64.658,
+        "fork_f16_decode_time_gap_ms_per_token": 3.2882584409159,
+        "fork_f16_whole_gtt_gap_gib": 0.16946029663085938
+      },
+      "passes": {
+        "prefill_guard": true,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      },
+      "role_ms_per_token": {
+        "gdn_input_projections": 4.1355975,
+        "selected_expert_gate_up": 2.3260843749999998,
+        "lm_head": 1.83413725,
+        "full_attention_core": 1.5765995,
+        "gdn_output_projection": 1.4533981249999999,
+        "selected_expert_down": 1.44364075,
+        "full_attention_qkv": 1.087320625,
+        "moe_router_combine": 0.986472,
+        "shared_expert_gate_up": 0.700058375,
+        "gdn_attention_core": 0.645917625,
+        "full_attention_output": 0.504432125,
+        "shared_expert_down": 0.36968049999999997,
+        "unattributed": 0.254237625,
+        "gdn_decay_projections": 0.16960862499999999
+      }
+    },
+    "4K/128": {
+      "prompt_tokens": 4096,
+      "decode_tokens": 128,
+      "canonical_current": {
+        "prefill_tok_s": 1446.8621198378146,
+        "decode_tok_s": 55.83168314062388,
+        "prefill_samples_tok_s": [
+          1452.6654893328791,
+          1446.8621198378146,
+          1444.3471144855457
+        ],
+        "decode_samples_tok_s": [
+          55.83168314062388,
+          55.84818840065929,
+          55.65604614524573
+        ],
+        "final_token_ids_stable": true,
+        "host_token_embedding_enabled": true,
+        "readme_json_sha256": "a6e88669df58a100c0331ddf535908a60900169119ad983ca86bb78af4923444"
+      },
+      "attribution_current": {
+        "decode_tok_s": 55.514643937507245,
+        "decode_ms_per_token": 18.0132651328125,
+        "decode_samples_tok_s": [
+          55.34134625816409,
+          55.64737761717763,
+          55.514643937507245
+        ],
+        "tracked_peak_gib": 20.951031260192394,
+        "whole_gtt_peak_gib": 21.499427795410156,
+        "whole_gtt_peak_delta_gib": 21.482032775878906,
+        "tracked_after_close_bytes": 0,
+        "all_tokens_exact": true,
+        "profiled_gpu_ms_per_token": 16.797525625,
+        "dispatches_per_token": 628.0,
+        "compact_q5_calls_per_token": 37.0,
+        "raw_hashes": {
+          "baseline_child_sha256": "3c70c2b09c9bdff20bf850559c19a744fa075f6a04466457ca0112f868647e9b",
+          "profile_child_sha256": "2cf8c22315a6880e7863f0b0182b973fcb62ff105c864b3623094e9d680daee5",
+          "kernel_csv_sha256": "956a35c9cd54bea0656d32c930226eefd483228537488bd712ef2b966e3caf66",
+          "marker_csv_sha256": "b3a11d287e05ea2bd1997db7dc931dc9c223d1e6faf7051ceab5d2c6637de0fc",
+          "hip_api_csv_sha256": "cc86a08c647334cf838ab4576d50c1da05ffca4cbf369e4d892f8e93ef762d3c"
+        }
+      },
+      "pinned_fork": {
+        "build_commit": "b7b85da9",
+        "f16": {
+          "prefill_tok_s": 1405.790533,
+          "decode_tok_s": 62.59014,
+          "whole_gtt_peak_gib": 21.160736083984375
+        },
+        "q8_0": {
+          "prefill_tok_s": 1389.41974,
+          "decode_tok_s": 63.086829,
+          "whole_gtt_peak_gib": 21.25318145751953
+        }
+      },
+      "gaps": {
+        "prefill_vs_sh3_c1_pct": 0.7505703251265317,
+        "c1_target_tok_s": 58.795,
+        "c1_time_gap_ms_per_token": 0.902728131722089,
+        "c2_target_tok_s": 62.648,
+        "fork_f16_decode_time_gap_ms_per_token": 1.9340197395178969,
+        "fork_f16_whole_gtt_gap_gib": 0.33869171142578125
+      },
+      "passes": {
+        "prefill_guard": true,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      },
+      "role_ms_per_token": {
+        "gdn_input_projections": 4.140605375,
+        "selected_expert_gate_up": 2.3146992500000003,
+        "lm_head": 1.83344575,
+        "gdn_output_projection": 1.444416375,
+        "selected_expert_down": 1.438385625,
+        "full_attention_qkv": 1.0868496250000002,
+        "moe_router_combine": 0.98220975,
+        "full_attention_core": 0.915193,
+        "shared_expert_gate_up": 0.702091625,
+        "gdn_attention_core": 0.6462821249999999,
+        "full_attention_output": 0.49255937499999997,
+        "shared_expert_down": 0.371964,
+        "unattributed": 0.260078625,
+        "gdn_decay_projections": 0.168745125
+      }
+    },
+    "32K/128": {
+      "prompt_tokens": 32768,
+      "decode_tokens": 128,
+      "canonical_current": {
+        "prefill_tok_s": 1149.7184744440187,
+        "decode_tok_s": 46.19619883703115,
+        "prefill_samples_tok_s": [
+          1152.0842163283176,
+          1149.3417734784425,
+          1149.7184744440187
+        ],
+        "decode_samples_tok_s": [
+          46.22703401325219,
+          46.13742540366363,
+          46.19619883703115
+        ],
+        "final_token_ids_stable": true,
+        "host_token_embedding_enabled": true,
+        "readme_json_sha256": "4bcee29d2073eca9bc0e2a9b46e94cd18b13776235f3c219ccbdbae96850af83"
+      },
+      "attribution_current": {
+        "decode_tok_s": 46.01147129317005,
+        "decode_ms_per_token": 21.7337105703125,
+        "decode_samples_tok_s": [
+          46.13302348693604,
+          45.912064031208445,
+          46.01147129317005
+        ],
+        "tracked_peak_gib": 21.597254745662212,
+        "whole_gtt_peak_gib": 22.151844024658203,
+        "whole_gtt_peak_delta_gib": 22.134449005126953,
+        "tracked_after_close_bytes": 0,
+        "all_tokens_exact": true,
+        "profiled_gpu_ms_per_token": 20.511049749999998,
+        "dispatches_per_token": 628.0,
+        "compact_q5_calls_per_token": 37.0,
+        "raw_hashes": {
+          "baseline_child_sha256": "a36daae562998d4c45c332df346d044be2690e4699334bc27341b649511c4822",
+          "profile_child_sha256": "a755069c2f6188c3a4645700ae7f72b123c7ee3e550514fda71db983b25fbef5",
+          "kernel_csv_sha256": "d8fc7e936f93e05d0905fbde690b959e3ffb15c40c8c0ae533a3a6afb4fd2380",
+          "marker_csv_sha256": "d088a4a195c4091417791ebf6cfd87252efccdb8e6c6042896d5ad1e2d8d12aa",
+          "hip_api_csv_sha256": "d70f1cdd52c750e83e5681bc0286c0da709c62e5789ef0d6b44f2696b772c65b"
+        }
+      },
+      "pinned_fork": {
+        "build_commit": "b7b85da9",
+        "f16": {
+          "prefill_tok_s": 1102.763859,
+          "decode_tok_s": 53.042021,
+          "whole_gtt_peak_gib": 21.99620819091797
+        },
+        "q8_0": {
+          "prefill_tok_s": 1103.711617,
+          "decode_tok_s": 57.378918,
+          "whole_gtt_peak_gib": 21.66986083984375
+        }
+      },
+      "gaps": {
+        "prefill_vs_sh3_c1_pct": 0.13835403611146546,
+        "c1_target_tok_s": 49.35,
+        "c1_time_gap_ms_per_token": 1.3833781441281126,
+        "c2_target_tok_s": 53.22,
+        "fork_f16_decode_time_gap_ms_per_token": 2.7938256995694175,
+        "fork_f16_whole_gtt_gap_gib": 0.15563583374023438
+      },
+      "passes": {
+        "prefill_guard": true,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      },
+      "role_ms_per_token": {
+        "full_attention_core": 4.519521375,
+        "gdn_input_projections": 4.180987624999999,
+        "selected_expert_gate_up": 2.33102025,
+        "lm_head": 1.838395125,
+        "selected_expert_down": 1.4517705,
+        "gdn_output_projection": 1.4514639999999999,
+        "full_attention_qkv": 1.094062875,
+        "moe_router_combine": 0.9899836249999999,
+        "shared_expert_gate_up": 0.70651575,
+        "gdn_attention_core": 0.653664,
+        "full_attention_output": 0.487659125,
+        "shared_expert_down": 0.374744375,
+        "unattributed": 0.26215675,
+        "gdn_decay_projections": 0.169104375
+      }
+    },
+    "64K/128": {
+      "prompt_tokens": 65536,
+      "decode_tokens": 128,
+      "canonical_current": {
+        "prefill_tok_s": 938.3634852917187,
+        "decode_tok_s": 39.578884575051916,
+        "prefill_samples_tok_s": [
+          938.314710021995,
+          938.3634852917187,
+          938.5307264011531
+        ],
+        "decode_samples_tok_s": [
+          39.578884575051916,
+          39.59468300041364,
+          39.5566670119279
+        ],
+        "final_token_ids_stable": true,
+        "host_token_embedding_enabled": true,
+        "readme_json_sha256": "c79d726cecb1ec23fca788edd9e9799a343f8fdabab9ee16ceafa154a61cf402"
+      },
+      "attribution_current": {
+        "decode_tok_s": 39.56101656982148,
+        "decode_ms_per_token": 25.27740909375,
+        "decode_samples_tok_s": [
+          39.33180472773468,
+          39.56101656982148,
+          39.57903196157139
+        ],
+        "tracked_peak_gib": 22.335795871913433,
+        "whole_gtt_peak_gib": 22.890125274658203,
+        "whole_gtt_peak_delta_gib": 22.872730255126953,
+        "tracked_after_close_bytes": 0,
+        "all_tokens_exact": true,
+        "profiled_gpu_ms_per_token": 24.082218375,
+        "dispatches_per_token": 628.0,
+        "compact_q5_calls_per_token": 37.0,
+        "raw_hashes": {
+          "baseline_child_sha256": "8a1a643fbcac2ef4aa9464b0ae9557f37788c199f4e04c5d8b6cce7de25bb93b",
+          "profile_child_sha256": "baa1e5bac23872e1fdfe173ebdad0b41d83583efed44398cc38ea7062bca1776",
+          "kernel_csv_sha256": "c11535042eb8d1640cb937e0192d888cd5858200300b74f2aeefe6d73ffc4535",
+          "marker_csv_sha256": "b23119b78024b87b2aff43cb096f3450d81e25300fb37b7d2e49a02253f0ae2c",
+          "hip_api_csv_sha256": "23db2a5b999ee2b38d2c6ea0da593ade7c09192914c558ba365e01330476b3df"
+        }
+      },
+      "pinned_fork": {
+        "build_commit": "b7b85da9",
+        "f16": {
+          "prefill_tok_s": 890.991896,
+          "decode_tok_s": 45.817862,
+          "whole_gtt_peak_gib": 22.836151123046875
+        },
+        "q8_0": {
+          "prefill_tok_s": 875.995672,
+          "decode_tok_s": 52.167178,
+          "whole_gtt_peak_gib": 22.162025451660156
+        }
+      },
+      "gaps": {
+        "prefill_vs_sh3_c1_pct": -0.1146989641343632,
+        "c1_target_tok_s": 42.419,
+        "c1_time_gap_ms_per_token": 1.6916558456792075,
+        "c2_target_tok_s": 45.913,
+        "fork_f16_decode_time_gap_ms_per_token": 3.440448360993198,
+        "fork_f16_whole_gtt_gap_gib": 0.053974151611328125
+      },
+      "passes": {
+        "prefill_guard": true,
+        "c1": false,
+        "c2": false,
+        "fork_f16_decode": false,
+        "fork_f16_whole_gtt": false
+      },
+      "role_ms_per_token": {
+        "full_attention_core": 8.069456375,
+        "gdn_input_projections": 4.191976875,
+        "selected_expert_gate_up": 2.324822,
+        "lm_head": 1.839682125,
+        "gdn_output_projection": 1.4559881250000002,
+        "selected_expert_down": 1.455851375,
+        "full_attention_qkv": 1.088868375,
+        "moe_router_combine": 0.995084,
+        "shared_expert_gate_up": 0.707577625,
+        "gdn_attention_core": 0.6539661250000001,
+        "full_attention_output": 0.491106625,
+        "shared_expert_down": 0.37227350000000003,
+        "unattributed": 0.265359375,
+        "gdn_decay_projections": 0.17020587499999998
+      }
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "status": "passed",
+    "rollup": {
+      "prompt_count": 18,
+      "primary_prompt_count": 10,
+      "heldout_prompt_count": 8,
+      "group_executions": 15,
+      "group_widths_per_repeat": [
+        4,
+        4,
+        2,
+        4,
+        4
+      ],
+      "prompt_repeat_executions": 54,
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "all_groups_passed": true,
+      "all_prompts_passed": true,
+      "repeat_deterministic": true,
+      "nondeterministic_prompts": []
+    },
+    "first_divergence": null
+  },
+  "policy": {
+    "counts_of_four": {
+      "prefill_guard": 4,
+      "c1": 0,
+      "c2": 0,
+      "fork_f16_decode": 0,
+      "fork_f16_whole_gtt": 0
+    },
+    "oracle_passed": true,
+    "lifecycle_passed": true,
+    "trace_passed": true,
+    "beat_fork_passed": false,
+    "objective_complete": false,
+    "decision": "SH6-C1 is complete, but the declared beat-fork policy fails. Do not mark the thread objective complete."
+  },
+  "next_owner": {
+    "id": "SH7-A1",
+    "name": "gfx1151 long-context parallel split-K reduction transfer",
+    "full_attention_core_ms_per_token": {
+      "32K/128": 4.519521375,
+      "64K/128": 8.069456375
+    },
+    "serial_reducer_ms_per_token": {
+      "32K/128": 0.42755175,
+      "64K/128": 0.751078625
+    },
+    "why_structurally_new": "The current gfx1151 path still serially reduces all GQA split outputs even though the independently registered prepare-plus-coalesced-output reducer is retained only on gfx1100. SH-A1 changed KV page layout and producer addressing; SH7-A1 changes only the long-context reducer ownership and does not reopen page-head, compact-KV, split-count, or online-softmax retries.",
+    "first_gate": "Run the existing CPU/primitive oracle and full semantic suite on gfx1151, then a fresh GPU_MAX_HW_QUEUES=1 same-protocol serial/candidate 32K/64K pair; the two-queue SH6-C1 row selects scope but is not the performance denominator. Continue only if 64K wall improves by >=1% or >=0.5 ms/token with finite logits, KL <=0.05, top-1 >=90%, exact IDs, cached named prepare/output traces, zero scratch spill, unchanged memory/lifecycle, and no prefill route change.",
+    "fallbacks": "Serial gated reduction remains registered and default for <32K, unsupported shapes/backends, explicit rollback, and any failed correctness/performance gate."
+  },
+  "raw": {
+    "matrix": "/tmp/hipengine-sh6-c1-20260806/current-matrix.json",
+    "oracle": "/tmp/hipengine-sh6-c1-20260806/current-natural-heldout.json",
+    "readme_directory": "/tmp/hipengine-sh6-c1-20260806/readme",
+    "fork_f16": "/tmp/hipengine-sh2-g-20260806/fork/f16-r5.json",
+    "fork_q8": "/tmp/hipengine-sh2-g-20260806/fork/q8-r5.json"
+  }
+}

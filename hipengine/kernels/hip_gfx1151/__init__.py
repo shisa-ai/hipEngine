@@ -620,12 +620,31 @@ LAGUNA_SWA_LOCAL1024 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
+# SH3-M1 admits loader-time host ownership only for private c1 sessions. Any
+# shared, c>N, graph, packed-AR, MTP, or device-token-pointer consumer retains
+# or transactionally restores the exact resident Q8_0 table.
+GGUF_HOST_TOKEN_EMBEDDING_C1 = True
+# SH16-M2 retains one bounded private-c1 owner for allocations <=16 MiB.
+# The environment selector is a temporary explicit opt-out for rollback.
+GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA = True
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
+# SH-M2 transfers the existing route/stage liveness admission to gfx1151's
+# proven compact exact GDN route. SH2-M3 extends the same independent owner-slot
+# topology to the right-sized 768-row class; diagnostics retain independently
+# owned fields and capability denial retains the existing dedicated fallback.
+GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
+GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS = 768
+GGUF_PREFILL_SCRATCH_ARENA_GROUPING = "owner_slots"
+# Nathan-review P0 exactness, copy-inclusive sub-window, and right-sized
+# 512/4K/32K/64K gates admit one reusable head-major BF16 K/V pair before
+# AOTriton. Runtime capacity remains capped at the validated 64K allocation
+# class, and env=0 or any allocation denial restores strided AOTriton exactly.
+GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
@@ -641,6 +660,9 @@ GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 8
 # reads while keeping each row's production 128-thread reduction order.
 # Physical widths below C8 remain on the established kernel.
 GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
+# Exact Qwen c1/top8 Q5T16 selected-down splits each T16 tile into two
+# eight-column owners after the gfx1151 leaf clears SH-D1 admission.
+GGUF_Q5_T16_SELECTED_QWEN_TILE8 = True
 # The same exact dynamic expert-ID pairing is retained for Q5T16 selected-down
 # only at physical C8; lower widths preserve the established kernel.
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
@@ -669,9 +691,11 @@ GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS = 4096
 # Clean LCP-1 primitive/full-state, same-stream trace, and fresh-process wall
 # gates admit the exact 32-token shared-memory convolution schedule on gfx1151.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "tile32x128"
-# Clean GPF-3A full-model 512/1K/4K evidence admits the byte-exact shared-X
-# selected-dual Q4T16 prefill schedule on gfx1151.
-GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
+# GPF-3A shared-X is byte-exact and wins at 512/1K/4K, but the controlled
+# repeated-128K split reproduces the gfx1151 queue no-progress state only when
+# this route is enabled. Keep the explicit diagnostic, and use the established
+# baseline body automatically until shared-X passes the long-context gate.
+GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "baseline"
 # LCP-4's exact router primitive and full-model gates admit the 256-thread
 # reduction geometry for BF16-hidden/F32-weight GGUF router logits on gfx1151.
 GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256
@@ -704,13 +728,20 @@ GGUF_F32_ORDERED_PREFILL_POLICIES = {}
 # actual-layer and complete-runtime transfer gate exists.
 LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {}
 LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
-# LCP-2B is admitted only on W7900/gfx1100. gfx1151 keeps the exact scalar
-# compact-WMMA row read until its independent post-merge transfer gate.
-GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
-# LCP-D2 is admitted only on W7900/gfx1100. gfx1151 keeps the serial reduction
-# until it receives an independent long-context correctness/performance gate.
-GGUF_PAGED_ATTN_PARALLEL_REDUCE = False
+# SH9-D1 independently admits LCP-2B's exact routing-independent compact-WMMA
+# row bound on gfx1151 through 4,096 selected rows. Larger shapes and explicit
+# opt-out retain the scalar total-row read.
+GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 4096
+# SH7-A1 retains LCP-D2's registered prepare-plus-coalesced split reducer on
+# gfx1151 from 32K onward after exact primitive/semantic admission and measured
+# 32K/64K wall wins. Shorter contexts and explicit opt-out keep the serial path.
+GGUF_PAGED_ATTN_PARALLEL_REDUCE = True
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
+# SH10-A1 reuses the existing exact fixed256 compact-row leaf for private-c1
+# BF16 attention below the split threshold. The rows=1 actual-shape screen is
+# F32 byte-exact and 1.56-1.65x faster at contexts 513/576/640. Context 1024+
+# keeps the established direct/split routes.
+GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT = 1023
 # Clean PARO G3/G5 physical-width and server gates certify c4/c8 with whole-row
 # full-attention execution. Diagnostic c2 row chunking changes row-local
 # numerics at these widths and must therefore remain an explicit override.
@@ -1458,13 +1489,16 @@ _GFX1151_OVERRIDES = {
 }
 _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.attention",
+    "hipengine.kernels.hip_gfx1100.attention.maple_attention",
     "hipengine.kernels.hip_gfx1100.convert",
     "hipengine.kernels.hip_gfx1100.fused",
     "hipengine.kernels.hip_gfx1100.linear",
     "hipengine.kernels.hip_gfx1100.linear_attn",
     "hipengine.kernels.hip_gfx1100.moe",
+    "hipengine.kernels.hip_gfx1100.moe.maple_moe",
     "hipengine.kernels.hip_gfx1100.norm",
     "hipengine.kernels.hip_gfx1100.quant",
+    "hipengine.kernels.hip_gfx1100.quant.maple_ternary",
     "hipengine.kernels.hip_gfx1100.rotary",
     "hipengine.kernels.hip_gfx1100.runtime",
     "hipengine.kernels.hip_gfx1100.sampling",
@@ -1554,16 +1588,23 @@ register_backend_kernels = register_gfx1151_kernels
 
 __all__ = [
     "BACKEND",
+    "GGUF_AOTRITON_HEAD_MAJOR_KV",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
+    "GGUF_HOST_TOKEN_EMBEDDING_C1",
+    "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+    "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
+    "GGUF_PREFILL_SCRATCH_ARENA_GROUPING",
+    "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
+    "GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS",
     "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
     "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
@@ -1571,6 +1612,7 @@ __all__ = [
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

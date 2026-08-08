@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-04",
+  "status": "accepted_opt_in_containment",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "summary": "Per-layer host stream drains pass the predeclared Q4_K_M containment gate: matched exact 512/4K/64K controls plus three independent 128K warmup+3 processes. The path is measurably slower and remains explicit/default-off; this does not close the underlying ROCm queue-retirement issue or unblock the default 128K publication row.",
+  "issue": "https://github.com/ROCm/ROCm/issues/6437",
+  "platform": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1
+  },
+  "source": {
+    "initial_measurement_commit": "b10a5f7d583aa447d63a5a89f824cc51729e9d82",
+    "control_64k_commit": "c98fba4e80925349bb6677e6019a97d89b319c19",
+    "long_process_commit": "db87f6d1ecac794fbe9faebca89242962ec51014",
+    "commit_delta_note": "The commits between b10a5f7d5 and db87f6d1e change only WORKLOG.md and two research documents; runtime, kernels, tests, and benchmark code are identical.",
+    "working_tree": "No staged or unstaged tracked changes; pre-existing unrelated untracked benchmark outputs were present and excluded."
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "Repeated token ID 9707"
+  },
+  "protocol": {
+    "session": "One independent right-sized resident process per control arm; three independent right-sized resident processes at 128K",
+    "workloads": [
+      "512/128",
+      "4K/128",
+      "64K/128",
+      "128K/128"
+    ],
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "decode": "Measured runs use fresh state-bound graph replay; warmup runs intentionally use eager decode",
+    "prefill": "Forced bulk prefill, bulk attention mode, WMMA prefill, GEMV decode",
+    "build": "Precomputed compiler-version file plus require-cached-build",
+    "bound": "Each process used timeout --signal=TERM --kill-after=30s 1800s",
+    "control_command_template": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 GPU_MAX_HW_QUEUES=1 uv run python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads {512/128|4K/128|64K/128} --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --prefill-queue-drain {none|layer} --compiler-version-file <precomputed> --require-cached-build --json <output>",
+    "long_command_template": "timeout --signal=TERM --kill-after=30s 1800s env HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 GPU_MAX_HW_QUEUES=1 uv run python -u scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --prefill-queue-drain layer --compiler-version-file <precomputed> --require-cached-build --json <output>"
+  },
+  "controls": {
+    "512/128": {
+      "none_prefill_tok_s_median": 1395.1679586031714,
+      "layer_prefill_tok_s_median": 1370.1811107872627,
+      "layer_vs_none_prefill_percent": -1.7909562545376456,
+      "none_decode_tok_s_median": 52.69216343039822,
+      "layer_decode_tok_s_median": 52.6904955466617,
+      "layer_vs_none_decode_percent": -0.0031653354653382593
+    },
+    "4K/128": {
+      "none_prefill_tok_s_median": 1463.3113467685341,
+      "layer_prefill_tok_s_median": 1459.7668363648993,
+      "layer_vs_none_prefill_percent": -0.24222530710653611,
+      "none_decode_tok_s_median": 55.201744121302475,
+      "layer_decode_tok_s_median": 55.20187874719073,
+      "layer_vs_none_decode_percent": 0.00024387977299866748
+    },
+    "64K/128": {
+      "none_prefill_tok_s_median": 890.0334336166908,
+      "layer_prefill_tok_s_median": 882.3478571574543,
+      "layer_vs_none_prefill_percent": -0.8635154780653354,
+      "none_decode_tok_s_median": 39.38542037555105,
+      "layer_decode_tok_s_median": 39.332496014699075,
+      "layer_vs_none_decode_percent": -0.13437551344464005
+    }
+  },
+  "long_context": {
+    "processes": [
+      {
+        "index": 1,
+        "exit_code": 0,
+        "prefill_tok_s": [
+          581.5905905684198,
+          581.7266120585255,
+          581.0217328483955
+        ],
+        "prefill_tok_s_median": 581.5905905684198,
+        "decode_tok_s": [
+          29.563603522163838,
+          29.60263912841397,
+          29.60406046694412
+        ],
+        "decode_tok_s_median": 29.60263912841397,
+        "final_token_ids": [9707, 9707, 9707],
+        "final_logits": [30.117918014526367, 30.117918014526367, 30.117918014526367],
+        "tracked_bytes_after_close": 0
+      },
+      {
+        "index": 2,
+        "exit_code": 0,
+        "prefill_tok_s": [
+          581.5946631081728,
+          582.3439823840388,
+          580.4817449200249
+        ],
+        "prefill_tok_s_median": 581.5946631081728,
+        "decode_tok_s": [
+          29.66734180001112,
+          29.674236181378216,
+          29.667276030065405
+        ],
+        "decode_tok_s_median": 29.66734180001112,
+        "final_token_ids": [9707, 9707, 9707],
+        "final_logits": [30.117918014526367, 30.117918014526367, 30.117918014526367],
+        "tracked_bytes_after_close": 0
+      },
+      {
+        "index": 3,
+        "exit_code": 0,
+        "prefill_tok_s": [
+          582.0469531949145,
+          583.3113838537759,
+          581.2698651808665
+        ],
+        "prefill_tok_s_median": 582.0469531949145,
+        "decode_tok_s": [
+          29.603724738422446,
+          29.62027291435582,
+          29.60725827614201
+        ],
+        "decode_tok_s_median": 29.60725827614201,
+        "final_token_ids": [9707, 9707, 9707],
+        "final_logits": [30.117918014526367, 30.117918014526367, 30.117918014526367],
+        "tracked_bytes_after_close": 0
+      }
+    ],
+    "completed_prefills": 12,
+    "required_prefills": 12,
+    "measured_prefill_tok_s_median_across_processes": 581.5946631081728,
+    "measured_prefill_tok_s_range": [580.4817449200249, 583.3113838537759],
+    "measured_decode_tok_s_median_across_processes": 29.60725827614201,
+    "measured_decode_tok_s_range": [29.563603522163838, 29.674236181378216]
+  },
+  "correctness": {
+    "passed": true,
+    "all_36_warmup_and_measured_runs_finite": true,
+    "all_36_warmup_and_measured_final_ids_9707": true,
+    "all_27_measured_runs_used_graph_replay": true,
+    "all_processes_tracked_bytes_after_close_zero": true,
+    "long_measured_final_logit": 30.117918014526367
+  },
+  "telemetry": {
+    "sampling_interval_seconds": 10,
+    "active_sample_definition": "GPU use >= 80%",
+    "active_samples": 295,
+    "active_power_min_w": 109.019,
+    "failure_signature_definition": "GPU use == 100%, sclk >= 2800 MHz, power <= 59 W",
+    "failure_signature_samples": 0,
+    "streams": {
+      "control_none_64k": {"samples": 38, "active_samples": 31, "active_power_median_w": 131.086},
+      "control_layer_64k": {"samples": 38, "active_samples": 31, "active_power_median_w": 132.029},
+      "layer_128k_process_1": {"samples": 99, "active_samples": 91, "active_power_median_w": 121.021},
+      "layer_128k_process_2": {"samples": 98, "active_samples": 91, "active_power_median_w": 122.083},
+      "layer_128k_process_3": {"samples": 98, "active_samples": 91, "active_power_median_w": 121.019}
+    }
+  },
+  "kernel_log": {
+    "amdgpu_or_kfd_fault_timeout_reset": false,
+    "spurious_pcie_pme_lines": 1,
+    "interpretation": "The single PME line occurred during a successful 64K no-drain warmup+3 process, which continued and cleaned up normally; it is not evidence of a causal GPU fault."
+  },
+  "decision": {
+    "containment_gate_passed": true,
+    "default_changed": false,
+    "qualified_use": "Explicit --prefill-queue-drain layer for a slower bounded-submission path when avoiding the intermittent 128K failure is more important than prefill throughput.",
+    "not_claimed": "This finite intermittent-failure matrix does not prove zero future incidence, identify root cause, close ROCm/ROCm#6437, or qualify the default no-drain 128K row.",
+    "next": "Do not restore the removed enable_lr_compute_wa workaround. The captured kernel already runs the replacement gfx1151 VGPR-size fix; keep layer drain explicit while ROCm/ROCm#6437 remains open, and rerun both queue policies only for a later named relevant stack fix."
+  },
+  "raw_sha256": {
+    "control_none_512_json": "4385e7e0a8cc17ce53debb06a87e4cfbfe1ec613fc4eda2e05d22af79248771d",
+    "control_layer_512_json": "36941365858286716361610c7a89c363ced61b76bdab8518ec130d6ec1ff3495",
+    "control_none_4k_json": "8d888ee7b8fc2ae6e718ed32b6433661259929f94e8cd419f34a739bd773c4ba",
+    "control_layer_4k_json": "7c97da1c630490e328885834ca9cd11ff4ea9f8accc29d4bbd5aabb8107fbe48",
+    "control_none_64k_json": "572dcd6065c5957d8ddb537df25523e471c50d2176bc2e25a1e28d0b07d93a6f",
+    "control_layer_64k_json": "71d1c624955a456e054a2f3e4a2ba363e9b45bedb129acd978ccb00ec7b727a8",
+    "layer_128k_process_1_json": "ecd6bedac0308a758b7b21cdd1398083685711195aef19b76eb867e6c287adc5",
+    "layer_128k_process_2_json": "1fb5ef20ab1c18010f21e030795cbae2da3af145f27c581e0f50e90e3bbda386",
+    "layer_128k_process_3_json": "17d5a7292193ba89aed17df4368b648f3c16bce342dd4a0da6bab6ca940b5aba",
+    "layer_128k_process_1_log": "5af6a3f8f27bf0a3400141166688b4f19efb8bd45108e9f6028e4c687a52d32c",
+    "layer_128k_process_2_log": "431a2dcdd368a8e23e3fdd0f74f163ae94a3cc8c8560cb31db6b87f1f1052cbe",
+    "layer_128k_process_3_log": "40054d433a7f25eb34e2bc6690fcc22f71cebcd9583e1f0796f8d2fed7ed8e30",
+    "telemetry_control_none_64k": "d1adacce554f93e2eea84b05c6039454716c393ecde6c569ec9cee26b3efdf1c",
+    "telemetry_control_layer_64k": "fd00f8e7308615f2646fba2801fcd9ee5078699c78dd8ab486e5a1a2cea701a2",
+    "telemetry_layer_128k_process_1": "4401ba5b859f2e02781ae97d1668a8fcb88423586071a7ee71f97ff4cf7ada06",
+    "telemetry_layer_128k_process_2": "2c83e0657a88baba34ec365c8f0da21053943b3e9659afbd0e89ce801e3c1f0d",
+    "telemetry_layer_128k_process_3": "972e5052673ada8d6d109c53740be26a665b1bfe82574ad28973be75a41a070e",
+    "kernel_journal": "a7c47a3f2b0d807fa3a1691d62ae8c8dca3f9a91a85c19aed1d32cde7201c88f"
+  }
+}

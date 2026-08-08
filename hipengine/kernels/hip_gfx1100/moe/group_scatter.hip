@@ -145,9 +145,10 @@ __global__ void qwen35_moe_group_compact_active_kernel(
 // caller-owned expert_start array. Stage 2 converts those counts in place to
 // starts. Stage 3 gives every active expert a workgroup and uses wave ballots
 // to preserve ascending lane order inside each expert.
+template <typename ExpertId>
 __launch_bounds__(256, 1)
 __global__ void qwen35_moe_group_count_active_parallel_kernel(
-    const int64_t* __restrict__ selected_experts,
+    const ExpertId* __restrict__ selected_experts,
     int64_t* __restrict__ expert_start,
     int64_t total_lanes,
     int64_t num_experts) {
@@ -252,9 +253,10 @@ __global__ void qwen35_moe_group_prefix_active_parallel_kernel(
   }
 }
 
+template <typename ExpertId>
 __launch_bounds__(256, 1)
 __global__ void qwen35_moe_group_scatter_active_parallel_kernel(
-    const int64_t* __restrict__ selected_experts,
+    const ExpertId* __restrict__ selected_experts,
     const float* __restrict__ routing_weights,
     const int64_t* __restrict__ expert_start,
     int64_t* __restrict__ sorted_lanes,
@@ -648,8 +650,9 @@ extern "C" int hipengine_qwen35_moe_group_compact_active_source_rows(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename ExpertId>
 int launch_qwen35_moe_group_compact_active_parallel(
-    const int64_t* selected_experts,
+    const ExpertId* selected_experts,
     const float* routing_weights,
     int64_t* expert_start,
     int64_t* active_experts,
@@ -670,7 +673,7 @@ int launch_qwen35_moe_group_compact_active_parallel(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      qwen35_moe_group_count_active_parallel_kernel,
+      (qwen35_moe_group_count_active_parallel_kernel<ExpertId>),
       dim3(static_cast<unsigned int>(num_experts)),
       dim3(256),
       0,
@@ -698,7 +701,7 @@ int launch_qwen35_moe_group_compact_active_parallel(
     return static_cast<int>(error);
   }
   hipLaunchKernelGGL(
-      qwen35_moe_group_scatter_active_parallel_kernel,
+      (qwen35_moe_group_scatter_active_parallel_kernel<ExpertId>),
       dim3(static_cast<unsigned int>(num_experts)),
       dim3(256),
       0,
@@ -729,7 +732,7 @@ extern "C" int hipengine_qwen35_moe_group_compact_active_parallel(
     int64_t total_lanes,
     int64_t num_experts,
     hipStream_t stream) {
-  return launch_qwen35_moe_group_compact_active_parallel(
+  return launch_qwen35_moe_group_compact_active_parallel<int64_t>(
       selected_experts,
       routing_weights,
       expert_start,
@@ -758,7 +761,7 @@ extern "C" int hipengine_qwen35_moe_group_compact_active_source_rows_parallel(
     int64_t num_experts,
     int64_t top_k,
     hipStream_t stream) {
-  return launch_qwen35_moe_group_compact_active_parallel(
+  return launch_qwen35_moe_group_compact_active_parallel<int64_t>(
       selected_experts,
       routing_weights,
       expert_start,
@@ -771,6 +774,34 @@ extern "C" int hipengine_qwen35_moe_group_compact_active_source_rows_parallel(
       total_lanes,
       num_experts,
       top_k,
+      stream);
+}
+
+extern "C" int hipengine_qwen35_moe_group_compact_active_i32_parallel(
+    const int32_t* selected_experts,
+    const float* routing_weights,
+    int64_t* expert_start,
+    int64_t* active_experts,
+    int64_t* active_count,
+    int64_t* sorted_lanes,
+    int64_t* sorted_experts,
+    float* sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_qwen35_moe_group_compact_active_parallel<int32_t>(
+      selected_experts,
+      routing_weights,
+      expert_start,
+      active_experts,
+      active_count,
+      sorted_lanes,
+      sorted_experts,
+      nullptr,
+      sorted_weights,
+      total_lanes,
+      num_experts,
+      1,
       stream);
 }
 

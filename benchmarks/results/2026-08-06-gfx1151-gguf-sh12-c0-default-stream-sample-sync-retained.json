@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh12_c0_default_stream_sample_sync_retained",
+  "date": "2026-08-06",
+  "status": "retained_default_stream_redundant_drain_deleted",
+  "performance_claim": true,
+  "topline_eligible": true,
+  "source": {
+    "parent_commit": "b33ffcbf262e63cc9bc63c0d0cc2d16f9709c4c1",
+    "implementation_commit": "8e461708e06e9368225e38ea53cedfbf9edc8e08",
+    "clean_publication_commit": "8e461708e06e9368225e38ea53cedfbf9edc8e08",
+    "clean_publication_staged_dirty": false,
+    "clean_publication_unstaged_dirty": false,
+    "untracked_artifacts_ignored": 256
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "mechanism": {
+    "scope": "Qwen35GGUFResidentSession private-c1 eager sampling with return_logits=false on the HIP default stream",
+    "control": "sample device-side top-1, call hipDeviceSynchronize, then synchronously copy the 8-byte token index device-to-host",
+    "retained": "sample device-side top-1, then use the immediately following synchronous 8-byte token-index D2H as the sole default-stream completion boundary",
+    "non_default_stream": "unchanged: stream_synchronize(stream) remains mandatory before the synchronous readback",
+    "kernel_math_changed": false,
+    "allocation_changed": false,
+    "graph_replay_changed": false
+  },
+  "census": {
+    "source": "marker-qualified immutable SH6-C1 512 eager trace, cross-checked against the current SH10 full-process HIP trace",
+    "canonical_per_transition_order": [
+      "required 4096-byte host-embedding H2D",
+      "production sample pre-readback hipDeviceSynchronize",
+      "required 8-byte next-token index D2H",
+      "profiler-harness-only post-step hipDeviceSynchronize"
+    ],
+    "per_layer_d2h_or_scalar_reads": 0,
+    "per_step_api_counts": {
+      "hipMemcpy": 2,
+      "hipDeviceSynchronize": 2,
+      "hipLaunchKernel": 626
+    },
+    "sh6_to_sh10_crosscheck": {
+      "hipMemcpy": [815, 775],
+      "hipDeviceSynchronize": [20, 20],
+      "hipLaunchKernel": [6840, 6840],
+      "interpretation": "The 40-copy SH9 delta is pp512 prefill-only and does not change eager decode boundaries."
+    },
+    "raw_path": "/tmp/hipengine-sh12-c0/census.json",
+    "raw_sha256": "a61fdf55d27ab8f477d5fd62af64917890a2d135d6b167f6f9d705b4dcb01219"
+  },
+  "same_resident_counterbalanced_wall": {
+    "protocol": "One resident session; one discarded control+candidate; nine counterbalanced 512/128 pairs; no graph; return_logits=false; exact repeated token 9707; candidate removes only the default-stream pre-readback drain.",
+    "control_decode_tok_s": {
+      "median": 53.52373084790759,
+      "samples": [
+        54.087166180644466,
+        53.26437638392709,
+        53.88405690858586,
+        53.03651313953654,
+        53.282568455042075,
+        53.9250310844733,
+        53.45069419855356,
+        53.52373084790759,
+        53.70747472990725
+      ]
+    },
+    "candidate_decode_tok_s": {
+      "median": 54.60847305690829,
+      "samples": [
+        54.88444398691209,
+        54.89443240981699,
+        54.60847305690829,
+        54.52116129449971,
+        53.48503764784013,
+        53.981615353896046,
+        54.73399084603764,
+        54.619302993021144,
+        54.535629781325596
+      ]
+    },
+    "delta_percent": 2.0266565723586982,
+    "decode_saving_ms_per_token": 0.3711249296875003,
+    "candidate_pair_wins": 9,
+    "pairs": 9,
+    "all_128_token_trajectories_exact": true,
+    "qualification": "This sensitive same-resident result establishes repeated impact but is not represented as an independent-process topline.",
+    "raw_path": "/tmp/hipengine-sh12-c0/sync-ab.json",
+    "raw_sha256": "5c7a3bdb001f51dfa1b6c3b46212efafe4809c1dc8978b3b88b1252db4a1d322"
+  },
+  "independent_process_wall": {
+    "protocol": "Independent legacy-predrain control and retained candidate processes; package-default one queue; private c1 eager; pp512/tg128; one discarded full run plus three measured runs; no graph; return_logits=false; exact repeated token 9707.",
+    "control": {
+      "prefill_tok_s": {
+        "median": 1358.8088658111633,
+        "samples": [1358.946177337962, 1347.2326166264963, 1358.8088658111633]
+      },
+      "decode_tok_s": {
+        "median": 53.898344418754206,
+        "samples": [53.898344418754206, 54.06045419414223, 53.146375080499546]
+      },
+      "tracked_peak_gib": 20.566421270370483,
+      "hip_used_peak_sampled_gib": 20.98271942138672,
+      "tracked_after_close_bytes": 0,
+      "final_ids": [9707, 9707, 9707],
+      "raw_sha256": "55a0d1ba790cacb53bfaa8a7f6411a231cb51aa885fbe4e967cc07c7c78ea100"
+    },
+    "candidate": {
+      "prefill_tok_s": {
+        "median": 1367.1946175031085,
+        "samples": [1367.0688077744196, 1370.0145712884846, 1367.1946175031085]
+      },
+      "decode_tok_s": {
+        "median": 54.131692275734636,
+        "samples": [54.131692275734636, 53.6230594386645, 54.45596225929484]
+      },
+      "tracked_peak_gib": 20.566421270370483,
+      "hip_used_peak_sampled_gib": 20.98271942138672,
+      "tracked_after_close_bytes": 0,
+      "final_ids": [9707, 9707, 9707],
+      "raw_sha256": "d65fee779c099c8987012804bf9a18d186c934068700c2c804d9fb277524817d"
+    },
+    "delta": {
+      "prefill_percent": 0.6171399011986267,
+      "decode_percent": 0.4329406765585908,
+      "decode_saving_ms_per_token": 0.07997915054147597,
+      "tracked_peak_gib": 0.0,
+      "hip_used_peak_sampled_gib": 0.0,
+      "all_candidate_decode_samples_above_all_control_samples": false
+    },
+    "qualification": "The independent-process row is positive but overlapping; it supports non-regression and does not inherit the paired +2.027% as its headline.",
+    "summary_sha256": "2b407eaa95eb3ce9b64472f9280ba55fde16a1dccc5726cc66d5592b8b8749f1"
+  },
+  "complete_state": {
+    "exact": true,
+    "context": 512,
+    "prefill_logits_blake2b_128": "cbf90a5996858a0ef355bcf737e6ef34",
+    "prefill_layer_outputs": 40,
+    "prefill_conv_gdn_states": 30,
+    "prefill_live_bf16_kv_states": 10,
+    "teacher_forced_transitions": 4,
+    "teacher_forced_ids": [9707, 9707, 9707, 9707],
+    "final_layer_outputs": 40,
+    "final_conv_gdn_states": 30,
+    "final_live_bf16_kv_states": 10,
+    "control_source": "SH10 retained current-production state",
+    "control_sha256": "ab1c45bf2e0b2c1c8a677bd694e8c20046905f06fe2b75ab3b8862213bc34fd4",
+    "candidate_path": "/tmp/hipengine-sh12-c0/state/candidate.json",
+    "candidate_sha256": "74f349a0cea1eae11d50a2081689616c7d42a8b04a719767be537a6559cf97e9",
+    "comparison_sha256": "c994bcd479ea0905c468fa161c502bfbd30697c55fb92f6dfb943a3a6176cb01"
+  },
+  "cached_trace": {
+    "protocol": "Fully cached 512 prompt, one warmup plus eight measured eager transitions, kernel and HIP API trace, no compiler child.",
+    "control_source": "immutable SH10 full-process trace",
+    "control": {
+      "hipDeviceSynchronize": 20,
+      "hipMemcpy": 775,
+      "hipLaunchKernel": 6840,
+      "hip_api_csv_sha256": "f600e9cf3c3beb23ac215a4bace5db7b6fe78175991d2d5150487a95363505c1"
+    },
+    "candidate": {
+      "hipDeviceSynchronize": 10,
+      "hipMemcpy": 775,
+      "hipLaunchKernel": 6840,
+      "remaining_device_synchronizations": "ten profiler-harness post-step drains",
+      "hip_api_csv_sha256": "a599b3086a127238c868fe53b855c1cbebe7ce8603fb5c8c7f95f58656555ad4",
+      "kernel_csv_sha256": "8f4cbe9b98237429c3c5135663fcf52b2f787229ac353af7155f26eebd67e7a6",
+      "profile_json_sha256": "4cbffa319650d2b30761782e05c41c2fcda7b64bc6a6684e187fe854520283f8",
+      "compiler_child_present": false
+    },
+    "production_sample_drains_removed": 10,
+    "copy_or_kernel_launch_delta": 0
+  },
+  "clean_publication": {
+    "commit": "8e461708e06e9368225e38ea53cedfbf9edc8e08",
+    "protocol": "Package-default one queue; private c1 eager; pp512/tg128; one discarded full run plus three measured runs; cached build; no graph; exact repeated token 9707.",
+    "prefill_tok_s": {
+      "median": 1367.111643259303,
+      "samples": [1367.111643259303, 1352.895489647514, 1368.0455841455478]
+    },
+    "decode_tok_s": {
+      "median": 54.06496227721788,
+      "samples": [54.06496227721788, 54.9116738264824, 53.46631872416787]
+    },
+    "tracked_peak_gib": 20.566421270370483,
+    "hip_used_peak_sampled_gib": 20.98271942138672,
+    "tracked_after_close_bytes": 0,
+    "raw_path": "/tmp/hipengine-sh12-c0/clean-publication.json",
+    "raw_sha256": "5956ee14c4e7e7b60b7ae4709fad31b47fda38eba0a9a366c3b697bde023de29"
+  },
+  "validation": {
+    "tests/test_qwen35_gguf_sample_sync.py plus tests/test_qwen35_gguf_decode_graph.py": "8 passed",
+    "compileall": "passed",
+    "git_diff_check": "passed"
+  },
+  "acceptance": {
+    "complete_census": true,
+    "removable_boundary_measured_repeatedly": true,
+    "default_stream_contract_exact": true,
+    "non_default_stream_contract_preserved": true,
+    "complete_state_exact": true,
+    "independent_process_non_regressive": true,
+    "prefill_within_one_percent": true,
+    "memory_unchanged": true,
+    "lifecycle_clean": true,
+    "cached_trace_proves_sync_reduction": true,
+    "passed": true
+  },
+  "parity_after_clean_publication": {
+    "c1_target_tok_s": 58.165,
+    "clean_decode_tok_s": 54.06496227721788,
+    "c1_time_gap_ms_per_token": 1.303797715593852,
+    "pinned_fork_f16_decode_tok_s": 64.411182,
+    "fork_f16_time_gap_ms_per_token": 2.9710128082293643,
+    "c1_passed": false,
+    "fork_f16_decode_passed": false
+  },
+  "decision": "Retain the default-stream redundant sample-drain deletion. Report the exact ten-sync trace reduction and the separately qualified wall rows without inflating the overlapping independent-process result. SH12-C0 is complete; execute SH13-M1 because decode and memory parity remain open."
+}

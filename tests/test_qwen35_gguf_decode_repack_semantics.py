@@ -11,16 +11,19 @@ def test_p10_x1_decode_repack_does_not_change_linear_attention_math() -> None:
     P10.X1 found that guarding the linear-attention ``ssm_out`` path on
     ``gguf_decode_repack_enabled()`` changed the activation contract from
     BF16-input Q8_0 GEMV to F32-input Q8T16 GEMV.  That was faster-looking but
-    not equivalent enough for MoE routing.  The later unconditional F32-input
-    route removed a redundant cast and is independent of decode-repack.  Decode
-    repack selects weight layout / kernel implementation, not the math graph.
+    not equivalent enough for MoE routing.  The current route starts from F32
+    and may use the separately selected GDN output cast; that selection remains
+    independent of decode-repack. Decode repack selects weight layout / kernel
+    implementation, not the math graph.
     """
 
     source = inspect.getsource(Qwen35GGUFFullStackRunner._run_linear_attention_attn_only)
 
     assert "gguf_decode_repack_enabled" not in source
     assert "scratch.recurrent_out.ptr" in source
-    assert "activation_dtype=GGUF_ACTIVATION_F32" in source
+    assert "ssm_out_activation_dtype = GGUF_ACTIVATION_F32" in source
+    assert "output_cast = self._gdn_decode_output_cast_fn()" in source
+    assert "activation_dtype=ssm_out_activation_dtype" in source
 
 
 def test_p10_x1_decode_repack_does_not_switch_full_attention_math() -> None:

@@ -1,0 +1,1751 @@
+{
+  "artifact_type": "maple_m5_native_prefill_recertification",
+  "correctness": {
+    "category_counts": {
+      "code": 6,
+      "general_en": 4,
+      "general_ja": 4,
+      "mixed_ja_en": 4
+    },
+    "heldout_category_counts": {
+      "code": 2,
+      "general_en": 2,
+      "general_ja": 2,
+      "mixed_ja_en": 2
+    },
+    "max_kl": 0.0,
+    "mean_kl": 0.0,
+    "passed": true,
+    "position_count": 90,
+    "prompt_count": 18,
+    "rows": [
+      {
+        "category": "code",
+        "heldout": false,
+        "id": "code_merge_intervals",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 37,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 38,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 39,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 3270,
+            "position": 40,
+            "serial_top1": 3270,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 264,
+            "position": 41,
+            "serial_top1": 264,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 38,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "ce2de6cc54c3968eee676b84a342e900ceb16f6b65c26951fa182b2583f81a27",
+          "passed": true,
+          "serial_sha256": "ce2de6cc54c3968eee676b84a342e900ceb16f6b65c26951fa182b2583f81a27"
+        },
+        "text": "Write a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code."
+      },
+      {
+        "category": "code",
+        "heldout": false,
+        "id": "code_topological_sort",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 47,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 48,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 49,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 3270,
+            "position": 50,
+            "serial_top1": 3270,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 264,
+            "position": 51,
+            "serial_top1": 264,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 48,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "c5163c5ba1a02c6a545a1a4cea25f3279a90f313d9b098726974ae8751465328",
+          "passed": true,
+          "serial_sha256": "c5163c5ba1a02c6a545a1a4cea25f3279a90f313d9b098726974ae8751465328"
+        },
+        "text": "Write a Python function topo_sort(nodes, edges) that returns a valid topological ordering or raises ValueError on a cycle. Include tests for a DAG and a cyclic graph. Return only code."
+      },
+      {
+        "category": "code",
+        "heldout": false,
+        "id": "code_lru_cache",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 44,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 45,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 46,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 4211,
+            "position": 47,
+            "serial_top1": 4211,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 44550,
+            "position": 48,
+            "serial_top1": 44550,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 45,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "06f761796bd87c7f41a284efab719873d8c18b4e3921fd12cd98e0b0dac28121",
+          "passed": true,
+          "serial_sha256": "06f761796bd87c7f41a284efab719873d8c18b4e3921fd12cd98e0b0dac28121"
+        },
+        "text": "Implement a small LRUCache class in Python with get(key) and put(key, value), using O(1) operations. Include three focused tests. Return only code."
+      },
+      {
+        "category": "code",
+        "heldout": false,
+        "id": "code_markdown_table",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 49,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 50,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 51,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 3270,
+            "position": 52,
+            "serial_top1": 3270,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 264,
+            "position": 53,
+            "serial_top1": 264,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 50,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "e7555954e2d391860649220d64d3a6321ed7bb13dbd1e46a427669a78ddbea21",
+          "passed": true,
+          "serial_sha256": "e7555954e2d391860649220d64d3a6321ed7bb13dbd1e46a427669a78ddbea21"
+        },
+        "text": "Write a Python function markdown_table(rows) where rows is a list of dictionaries. It should produce a GitHub-flavored markdown table with stable column order from first appearance. Include tests. Return only code."
+      },
+      {
+        "category": "general_en",
+        "heldout": false,
+        "id": "general_en_plan",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 36,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 37,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 38,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1855,
+            "position": 39,
+            "serial_top1": 1855,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 264,
+            "position": 40,
+            "serial_top1": 264,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 37,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "2d375044aaf920afe3590f6a0d90520a6ccef65408d559543925833c286d925d",
+          "passed": true,
+          "serial_sha256": "2d375044aaf920afe3590f6a0d90520a6ccef65408d559543925833c286d925d"
+        },
+        "text": "Create a concise but practical migration plan for moving a small Flask application from SQLite to PostgreSQL. Include risks, sequencing, and validation steps."
+      },
+      {
+        "category": "general_en",
+        "heldout": false,
+        "id": "general_en_explain",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 37,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 38,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 39,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 10339,
+            "position": 40,
+            "serial_top1": 10339,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 3170,
+            "position": 41,
+            "serial_top1": 3170,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 38,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "09bab6278874bd9777a08ecd5bb1d3a2e4d3a464744b65d6fde4509e50549d9d",
+          "passed": true,
+          "serial_sha256": "09bab6278874bd9777a08ecd5bb1d3a2e4d3a464744b65d6fde4509e50549d9d"
+        },
+        "text": "Explain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput."
+      },
+      {
+        "category": "general_ja",
+        "heldout": false,
+        "id": "general_ja_plan",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 129102,
+            "position": 54,
+            "serial_top1": 129102,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 125471,
+            "position": 55,
+            "serial_top1": 125471,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 5373,
+            "position": 56,
+            "serial_top1": 5373,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 129562,
+            "position": 57,
+            "serial_top1": 129562,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 30709,
+            "position": 58,
+            "serial_top1": 30709,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 55,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "1f7d8ceee8927581a5a4104e45b2c8a1229cb647818eef97a646b6e6bf8d55af",
+          "passed": true,
+          "serial_sha256": "1f7d8ceee8927581a5a4104e45b2c8a1229cb647818eef97a646b6e6bf8d55af"
+        },
+        "text": "\u5c0f\u898f\u6a21\u306a\u793e\u5185Python\u30c4\u30fc\u30eb\u3092\u904b\u7528\u74b0\u5883\u3078\u79fb\u884c\u3059\u308b\u305f\u3081\u306e\u5b9f\u8df5\u7684\u306a\u8a08\u753b\u3092\u65e5\u672c\u8a9e\u3067\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30ea\u30b9\u30af\u3001\u624b\u9806\u3001\u691c\u8a3c\u65b9\u6cd5\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002"
+      },
+      {
+        "category": "general_ja",
+        "heldout": false,
+        "id": "general_ja_explain",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 129102,
+            "position": 49,
+            "serial_top1": 129102,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 125471,
+            "position": 50,
+            "serial_top1": 125471,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 5373,
+            "position": 51,
+            "serial_top1": 5373,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 50230,
+            "position": 52,
+            "serial_top1": 50230,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 101504,
+            "position": 53,
+            "serial_top1": 101504,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 50,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "cf523affaedd1f03761543351f17c70105a2c3db25557266a0f95665b8d01d19",
+          "passed": true,
+          "serial_sha256": "cf523affaedd1f03761543351f17c70105a2c3db25557266a0f95665b8d01d19"
+        },
+        "text": "\u30ed\u30fc\u30ab\u30ebGPU\u3067LLM\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u304b\u3064\u5177\u4f53\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
+      },
+      {
+        "category": "mixed_ja_en",
+        "heldout": false,
+        "id": "mixed_ja_en_translate",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 71,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 72,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 73,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 62079,
+            "position": 74,
+            "serial_top1": 62079,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 279,
+            "position": 75,
+            "serial_top1": 279,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 72,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "a2176b34d1d27abacf82d4945eccfd9294accf581e598c336e9c6d6cc4b66624",
+          "passed": true,
+          "serial_sha256": "a2176b34d1d27abacf82d4945eccfd9294accf581e598c336e9c6d6cc4b66624"
+        },
+        "text": "Summarize the following Japanese note in English, then provide a short Japanese reply:\n\n\u6765\u9031\u306e\u30ea\u30ea\u30fc\u30b9\u3067\u306f\u3001\u30ed\u30b0\u51fa\u529b\u306e\u5f62\u5f0f\u5909\u66f4\u3001\u30ad\u30e3\u30c3\u30b7\u30e5\u306e\u7121\u52b9\u5316\u30aa\u30d7\u30b7\u30e7\u30f3\u3001\u305d\u3057\u3066API\u30ec\u30b9\u30dd\u30f3\u30b9\u306e\u5f8c\u65b9\u4e92\u63db\u6027\u3092\u91cd\u70b9\u7684\u306b\u78ba\u8a8d\u3057\u305f\u3044\u3067\u3059\u3002"
+      },
+      {
+        "category": "mixed_ja_en",
+        "heldout": false,
+        "id": "mixed_ja_en_review",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 78,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 79,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 80,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 3395,
+            "position": 81,
+            "serial_top1": 3395,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 279,
+            "position": 82,
+            "serial_top1": 279,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 79,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "b052c37b9ad5a64ddeee6f6f0fbb6112ddc19cd130262e898669ed0b6004ff54",
+          "passed": true,
+          "serial_sha256": "b052c37b9ad5a64ddeee6f6f0fbb6112ddc19cd130262e898669ed0b6004ff54"
+        },
+        "text": "Review this bilingual release note for clarity. Respond with English bullets, but keep Japanese product terms unchanged:\n\n\u65b0\u3057\u3044\u63a8\u8ad6\u30e2\u30fc\u30c9\u3067\u306f MTP \u3092\u6709\u52b9\u306b\u3059\u308b\u3068\u751f\u6210\u901f\u5ea6\u304c\u5411\u4e0a\u3057\u307e\u3059\u3002\u305f\u3060\u3057\u3001\u9577\u3044\u30b3\u30f3\u30c6\u30ad\u30b9\u30c8\u3067\u306f KV cache \u306e\u4f7f\u7528\u91cf\u304c\u5897\u3048\u308b\u305f\u3081\u3001\u30e1\u30e2\u30ea\u76e3\u8996\u3092\u63a8\u5968\u3057\u307e\u3059\u3002"
+      },
+      {
+        "category": "code",
+        "heldout": true,
+        "id": "heldout_code_rate_limiter",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 52,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 53,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 54,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 4211,
+            "position": 55,
+            "serial_top1": 4211,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 264,
+            "position": 56,
+            "serial_top1": 264,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 53,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "08cb82669b42e19ed797686c51ddba4e04058deee7f13e3411db7e6586ffdb4c",
+          "passed": true,
+          "serial_sha256": "08cb82669b42e19ed797686c51ddba4e04058deee7f13e3411db7e6586ffdb4c"
+        },
+        "text": "Implement a Python SlidingWindowRateLimiter with allow(key, timestamp) and an O(1)-amortized per-key window. Include focused pytest-style tests for expiry and independent keys. Return only code."
+      },
+      {
+        "category": "code",
+        "heldout": true,
+        "id": "heldout_code_interval_schedule",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 49,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 50,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 51,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 3270,
+            "position": 52,
+            "serial_top1": 3270,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 264,
+            "position": 53,
+            "serial_top1": 264,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 50,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "bdff8ea52755f43cbeef7ae581a0b867d796d97eab8ce8c00152f635fd042808",
+          "passed": true,
+          "serial_sha256": "bdff8ea52755f43cbeef7ae581a0b867d796d97eab8ce8c00152f635fd042808"
+        },
+        "text": "Write a Python function max_non_overlapping(intervals) that returns a maximum-size subset of half-open intervals. State the tie-breaking rule in a docstring and include compact tests. Return only code."
+      },
+      {
+        "category": "general_en",
+        "heldout": true,
+        "id": "heldout_general_en_incident",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 42,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 43,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 44,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 9960,
+            "position": 45,
+            "serial_top1": 9960,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 264,
+            "position": 46,
+            "serial_top1": 264,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 43,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "79fcba852327c4fe25329c52ddf323b36d81c11e42e259c4a2aaeeefbb5547f6",
+          "passed": true,
+          "serial_sha256": "79fcba852327c4fe25329c52ddf323b36d81c11e42e259c4a2aaeeefbb5547f6"
+        },
+        "text": "Draft a concise incident-response checklist for a production API whose p99 latency doubled after a deploy. Cover containment, evidence collection, rollback criteria, and follow-up."
+      },
+      {
+        "category": "general_en",
+        "heldout": true,
+        "id": "heldout_general_en_quant",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 53,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 54,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 55,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 10339,
+            "position": 56,
+            "serial_top1": 10339,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 14976,
+            "position": 57,
+            "serial_top1": 14976,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 54,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "197afec1820bcbc4cffba4c12a20f2b4c387d09a628689ee061b0391fe36021c",
+          "passed": true,
+          "serial_sha256": "197afec1820bcbc4cffba4c12a20f2b4c387d09a628689ee061b0391fe36021c"
+        },
+        "text": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support."
+      },
+      {
+        "category": "general_ja",
+        "heldout": true,
+        "id": "heldout_general_ja_migration",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 129102,
+            "position": 59,
+            "serial_top1": 129102,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 125471,
+            "position": 60,
+            "serial_top1": 125471,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 5373,
+            "position": 61,
+            "serial_top1": 5373,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 129562,
+            "position": 62,
+            "serial_top1": 129562,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 60237,
+            "position": 63,
+            "serial_top1": 60237,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 60,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "7d3656cec5514e75cbba72075d367e36b7c34d6d9ecac33e33b76c99f4a6e585",
+          "passed": true,
+          "serial_sha256": "7d3656cec5514e75cbba72075d367e36b7c34d6d9ecac33e33b76c99f4a6e585"
+        },
+        "text": "\u793e\u5185\u5411\u3051REST API\u3092\u540c\u671f\u51e6\u7406\u304b\u3089\u975e\u540c\u671f\u30b8\u30e7\u30d6\u65b9\u5f0f\u3078\u79fb\u884c\u3059\u308b\u8a08\u753b\u3092\u3001\u65e5\u672c\u8a9e\u3067\u7c21\u6f54\u306b\u4f5c\u6210\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u4e92\u63db\u6027\u3001\u76e3\u8996\u3001\u30ed\u30fc\u30eb\u30d0\u30c3\u30af\u6761\u4ef6\u3092\u542b\u3081\u3066\u304f\u3060\u3055\u3044\u3002"
+      },
+      {
+        "category": "general_ja",
+        "heldout": true,
+        "id": "heldout_general_ja_speculative",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 129102,
+            "position": 55,
+            "serial_top1": 129102,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 125471,
+            "position": 56,
+            "serial_top1": 125471,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 5373,
+            "position": 57,
+            "serial_top1": 5373,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 129562,
+            "position": 58,
+            "serial_top1": 129562,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 79072,
+            "position": 59,
+            "serial_top1": 79072,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 56,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "709d35e372cb32f9a74ec8c927261acde7660869d57317308b58dd38d98e7703",
+          "passed": true,
+          "serial_sha256": "709d35e372cb32f9a74ec8c927261acde7660869d57317308b58dd38d98e7703"
+        },
+        "text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\u304c\u5e38\u306b\u9ad8\u901f\u5316\u306b\u3064\u306a\u304c\u308b\u308f\u3051\u3067\u306f\u306a\u3044\u7406\u7531\u3092\u3001\u65e5\u672c\u8a9e\u3067\u6280\u8853\u7684\u306b\u8aac\u660e\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u53d7\u7406\u7387\u3001\u691c\u8a3c\u30b3\u30b9\u30c8\u3001\u30e1\u30e2\u30ea\u4f7f\u7528\u91cf\u306b\u89e6\u308c\u3066\u304f\u3060\u3055\u3044\u3002"
+      },
+      {
+        "category": "mixed_ja_en",
+        "heldout": true,
+        "id": "heldout_mixed_summary",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 48,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 49,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 50,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 62079,
+            "position": 51,
+            "serial_top1": 62079,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 279,
+            "position": 52,
+            "serial_top1": 279,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 49,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "86e125ce7dafc6eee84408ee653372fd6bd37346201f73842ffe5e95bec9ee61",
+          "passed": true,
+          "serial_sha256": "86e125ce7dafc6eee84408ee653372fd6bd37346201f73842ffe5e95bec9ee61"
+        },
+        "text": "Summarize this English operations note in Japanese, then give one short mitigation in English:\n\nThe cache hit rate fell after keys were namespaced by region, while database load and timeout errors increased."
+      },
+      {
+        "category": "mixed_ja_en",
+        "heldout": true,
+        "id": "heldout_mixed_review",
+        "positions": [
+          {
+            "kl": 0.0,
+            "native_top1": 1654,
+            "position": 56,
+            "serial_top1": 1654,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 1184,
+            "position": 57,
+            "serial_top1": 1184,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 311,
+            "position": 58,
+            "serial_top1": 311,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 3395,
+            "position": 59,
+            "serial_top1": 3395,
+            "token_equal": true
+          },
+          {
+            "kl": 0.0,
+            "native_top1": 279,
+            "position": 60,
+            "serial_top1": 279,
+            "token_equal": true
+          }
+        ],
+        "prompt_tokens": 57,
+        "state": {
+          "component_count": 60,
+          "mismatches": [],
+          "native_sha256": "fc3dcb1eec303ef73200895a90badc9679c64a605ce8c2c54f0440e6f28fb36f",
+          "passed": true,
+          "serial_sha256": "fc3dcb1eec303ef73200895a90badc9679c64a605ce8c2c54f0440e6f28fb36f"
+        },
+        "text": "Review the following bilingual alert for clarity. Respond with Japanese bullets while preserving English metric names:\n\np99 latency \u304c\u95be\u5024\u3092\u8d85\u3048\u3001error rate \u3082\u4e0a\u6607\u3057\u3066\u3044\u307e\u3059\u3002\u65b0\u3057\u3044 retry policy \u306e\u5f71\u97ff\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
+      }
+    ],
+    "state_matches": 18,
+    "token_matches": 90,
+    "top1_agreement": 1.0,
+    "top1_matches": 90
+  },
+  "date": "2026-08-08",
+  "hardware": {
+    "architecture": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "hipcc": {
+      "command": "hipcc --version",
+      "output": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+      "returncode": 0
+    },
+    "host": "gfx1151",
+    "rocm_smi": {
+      "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+      "output": "============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 45.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 85\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 536870912\nGPU[0]\t\t: VRAM Total Used Memory (B): 155492352\n==========================================================================================\n================================== End of ROCm SMI Log ===================================",
+      "returncode": 0
+    },
+    "rocminfo": {
+      "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|Marketing Name:|gfx'\"'\"' | head -8'",
+      "output": "Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Name:                    gfx1151                            \n  Marketing Name:          AMD Radeon 8060S Graphics          \n  Vendor Name:             AMD                                \n      Name:                    amdgcn-amd-amdhsa--gfx1151         \n      Name:                    amdgcn-amd-amdhsa--gfx11-generic",
+      "returncode": 0
+    }
+  },
+  "memory": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 5355881848,
+      "peak_allocations": 559,
+      "total_allocated_bytes": 5355881848,
+      "total_freed_bytes": 5355881848
+    },
+    "lifecycle_passed": true,
+    "resident_tracked": {
+      "active_allocations": 559,
+      "current_allocated_bytes": 5355881848,
+      "peak_allocated_bytes": 5355881848,
+      "peak_allocations": 559,
+      "total_allocated_bytes": 5355881848,
+      "total_freed_bytes": 0
+    },
+    "scope": "hipEngine-owned device allocations; excludes HIP runtime internals"
+  },
+  "model": {
+    "exact_weight_bytes": 5308186624,
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "quant": "maple_ternary2",
+    "resolved_path": "/home/lhl/.cache/huggingface/hub/models--deepgrove--maple-preview-2bit-mlx/snapshots/361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a"
+  },
+  "notes": [
+    "Public generation selects native prefill through 512 prompt tokens and serial prefill above that limit.",
+    "Fixed-shape timing rows are derived from two natural/heldout prompts per category; they are not output-quality scores.",
+    "Correctness is evaluated on unmodified natural prompts with byte-exact final hidden/normalized state, live K/V and KVLiveSpans metadata, full-logit KL, and continuation parity."
+  ],
+  "performance": {
+    "native_prefill": [
+      {
+        "aggregate_tokens_per_second": 749.1746655195432,
+        "max_sample_tokens_per_second": 760.7501145240277,
+        "median_sample_tokens_per_second": 748.7323100881063,
+        "min_sample_tokens_per_second": 734.9612779475027,
+        "prompt_tokens": 128,
+        "sample_rows": [
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 1548,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 0,
+            "seconds": 0.17175759887322783,
+            "tokens_per_second": 745.2363146650368
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 7032,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 0,
+            "seconds": 0.17087638494558632,
+            "tokens_per_second": 749.0795175750012
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 2613,
+            "prompt_id": "general_en_plan",
+            "repetition": 0,
+            "seconds": 0.16971137886866927,
+            "tokens_per_second": 754.2216724257039
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 13,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 0,
+            "seconds": 0.17012986517511308,
+            "tokens_per_second": 752.3664341251948
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 134093,
+            "prompt_id": "general_ja_plan",
+            "repetition": 0,
+            "seconds": 0.1687189971562475,
+            "tokens_per_second": 758.6578995693153
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 22243,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 0,
+            "seconds": 0.16927460907027125,
+            "tokens_per_second": 756.1677483884375
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 99887,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 0,
+            "seconds": 0.17415883508510888,
+            "tokens_per_second": 734.9612779475027
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 5612,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 0,
+            "seconds": 0.17103406181558967,
+            "tokens_per_second": 748.3889386782538
+          },
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 1548,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 1,
+            "seconds": 0.1699586440809071,
+            "tokens_per_second": 753.124389125315
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 7032,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 1,
+            "seconds": 0.17106286506168544,
+            "tokens_per_second": 748.2629263449029
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 2613,
+            "prompt_id": "general_en_plan",
+            "repetition": 1,
+            "seconds": 0.16969644092023373,
+            "tokens_per_second": 754.2880646516726
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 13,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 1,
+            "seconds": 0.17049026116728783,
+            "tokens_per_second": 750.7760215957691
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 134093,
+            "prompt_id": "general_ja_plan",
+            "repetition": 1,
+            "seconds": 0.1729499869979918,
+            "tokens_per_second": 740.098349943711
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 22243,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 1,
+            "seconds": 0.1717283339239657,
+            "tokens_per_second": 745.3633135267776
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 99887,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 1,
+            "seconds": 0.17110267002135515,
+            "tokens_per_second": 748.0888520560459
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 5612,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 1,
+            "seconds": 0.17151924199424684,
+            "tokens_per_second": 746.2719547483391
+          },
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 1548,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 2,
+            "seconds": 0.17009331588633358,
+            "tokens_per_second": 752.528101019191
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 7032,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 2,
+            "seconds": 0.1710914191789925,
+            "tokens_per_second": 748.1380458133257
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 2613,
+            "prompt_id": "general_en_plan",
+            "repetition": 2,
+            "seconds": 0.17233343003317714,
+            "tokens_per_second": 742.7461983165879
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 13,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 2,
+            "seconds": 0.17088576196692884,
+            "tokens_per_second": 749.0384133042727
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 134093,
+            "prompt_id": "general_ja_plan",
+            "repetition": 2,
+            "seconds": 0.16825498617254198,
+            "tokens_per_second": 760.7501145240277
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 22243,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 2,
+            "seconds": 0.16960290586575866,
+            "tokens_per_second": 754.7040503027258
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 99887,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 2,
+            "seconds": 0.17102554510347545,
+            "tokens_per_second": 748.4262068719398
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 5612,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 2,
+            "seconds": 0.17305485298857093,
+            "tokens_per_second": 739.6498727975777
+          }
+        ],
+        "samples": 24,
+        "serial_reference": {
+          "median_tokens_per_second": 151.03737069611083,
+          "native_over_serial": 4.9601940371889315,
+          "prompt_id": "code_merge_intervals",
+          "sample_tokens_per_second": [
+            151.3309471064966,
+            150.95534733624717,
+            151.03737069611083
+          ],
+          "samples": 3
+        }
+      },
+      {
+        "aggregate_tokens_per_second": 741.3677167688803,
+        "max_sample_tokens_per_second": 751.8353239049917,
+        "median_sample_tokens_per_second": 740.7136994218531,
+        "min_sample_tokens_per_second": 732.2613241013544,
+        "prompt_tokens": 320,
+        "sample_rows": [
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 13027,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 0,
+            "seconds": 0.42810013401322067,
+            "tokens_per_second": 747.48867046633
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 448,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 0,
+            "seconds": 0.43568096007220447,
+            "tokens_per_second": 734.4824064539499
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 504,
+            "prompt_id": "general_en_plan",
+            "repetition": 0,
+            "seconds": 0.427614483051002,
+            "tokens_per_second": 748.3376094205707
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 24,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 0,
+            "seconds": 0.43243027990683913,
+            "tokens_per_second": 740.0036835277571
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 29412,
+            "prompt_id": "general_ja_plan",
+            "repetition": 0,
+            "seconds": 0.4262629870790988,
+            "tokens_per_second": 750.7102650238307
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 53931,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 0,
+            "seconds": 0.4263278190046549,
+            "tokens_per_second": 750.5961040663548
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 9190,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 0,
+            "seconds": 0.4296867409721017,
+            "tokens_per_second": 744.7285882642041
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 7172,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 0,
+            "seconds": 0.4282350977882743,
+            "tokens_per_second": 747.2530898394804
+          },
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 13027,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 1,
+            "seconds": 0.4256251200567931,
+            "tokens_per_second": 751.8353239049917
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 448,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 1,
+            "seconds": 0.43700246000662446,
+            "tokens_per_second": 732.2613241013544
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 504,
+            "prompt_id": "general_en_plan",
+            "repetition": 1,
+            "seconds": 0.43243870604783297,
+            "tokens_per_second": 739.9892644313946
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 24,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 1,
+            "seconds": 0.433056065114215,
+            "tokens_per_second": 738.9343454076843
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 29412,
+            "prompt_id": "general_ja_plan",
+            "repetition": 1,
+            "seconds": 0.4300346940290183,
+            "tokens_per_second": 744.1260076062764
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 53931,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 1,
+            "seconds": 0.43138224398717284,
+            "tokens_per_second": 741.8015100536109
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 9190,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 1,
+            "seconds": 0.4341198708862066,
+            "tokens_per_second": 737.1235952566653
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 7172,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 1,
+            "seconds": 0.4348979510832578,
+            "tokens_per_second": 735.804800190329
+          },
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 13027,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 2,
+            "seconds": 0.4327502101659775,
+            "tokens_per_second": 739.4566021753446
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 448,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 2,
+            "seconds": 0.43588569411076605,
+            "tokens_per_second": 734.1374225479456
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 504,
+            "prompt_id": "general_en_plan",
+            "repetition": 2,
+            "seconds": 0.43146733311004937,
+            "tokens_per_second": 741.6552203232065
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 24,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 2,
+            "seconds": 0.4334480329416692,
+            "tokens_per_second": 738.2661257642935
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 29412,
+            "prompt_id": "general_ja_plan",
+            "repetition": 2,
+            "seconds": 0.43093918287195265,
+            "tokens_per_second": 742.5641777742067
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 53931,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 2,
+            "seconds": 0.43160205613821745,
+            "tokens_per_second": 741.423715315949
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 9190,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 2,
+            "seconds": 0.43506419216282666,
+            "tokens_per_second": 735.5236440148977
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 7172,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 2,
+            "seconds": 0.43517944891937077,
+            "tokens_per_second": 735.3288414575134
+          }
+        ],
+        "samples": 24,
+        "serial_reference": {
+          "median_tokens_per_second": 107.79527573470436,
+          "native_over_serial": 6.877552951332163,
+          "prompt_id": "code_merge_intervals",
+          "sample_tokens_per_second": [
+            107.79270625205719,
+            107.83195401462895,
+            107.79527573470436
+          ],
+          "samples": 3
+        }
+      },
+      {
+        "aggregate_tokens_per_second": 754.0004662502646,
+        "max_sample_tokens_per_second": 758.1571369590401,
+        "median_sample_tokens_per_second": 753.8264453856588,
+        "min_sample_tokens_per_second": 750.6044840202119,
+        "prompt_tokens": 512,
+        "sample_rows": [
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 2038,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 0,
+            "seconds": 0.6775971041060984,
+            "tokens_per_second": 755.6112576299188
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 10735,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 0,
+            "seconds": 0.680892518023029,
+            "tokens_per_second": 751.9542166311237
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 73601,
+            "prompt_id": "general_en_plan",
+            "repetition": 0,
+            "seconds": 0.6770467599853873,
+            "tokens_per_second": 756.225463675582
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 264,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 0,
+            "seconds": 0.6794076908845454,
+            "tokens_per_second": 753.5975922401007
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 63078,
+            "prompt_id": "general_ja_plan",
+            "repetition": 0,
+            "seconds": 0.6753217440564185,
+            "tokens_per_second": 758.1571369590401
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 132703,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 0,
+            "seconds": 0.6775780979078263,
+            "tokens_per_second": 755.6324526735949
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 5185,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 0,
+            "seconds": 0.680050547933206,
+            "tokens_per_second": 752.8852106009747
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 323,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 0,
+            "seconds": 0.6798316570930183,
+            "tokens_per_second": 753.1276230785254
+          },
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 2038,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 1,
+            "seconds": 0.6787092408630997,
+            "tokens_per_second": 754.3731087982547
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 10735,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 1,
+            "seconds": 0.6810911209322512,
+            "tokens_per_second": 751.7349503825482
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 73601,
+            "prompt_id": "general_en_plan",
+            "repetition": 1,
+            "seconds": 0.6778385259676725,
+            "tokens_per_second": 755.3421359003993
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 264,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 1,
+            "seconds": 0.6793536299373955,
+            "tokens_per_second": 753.6575613015896
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 63078,
+            "prompt_id": "general_ja_plan",
+            "repetition": 1,
+            "seconds": 0.6766817758325487,
+            "tokens_per_second": 756.6333515780972
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 132703,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 1,
+            "seconds": 0.677475725999102,
+            "tokens_per_second": 755.7466346782123
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 5185,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 1,
+            "seconds": 0.6802006289362907,
+            "tokens_per_second": 752.7190923076244
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 323,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 1,
+            "seconds": 0.6821168949827552,
+            "tokens_per_second": 750.6044840202119
+          },
+          {
+            "category": "code",
+            "heldout": false,
+            "next_token": 2038,
+            "prompt_id": "code_merge_intervals",
+            "repetition": 2,
+            "seconds": 0.6790492990985513,
+            "tokens_per_second": 753.995329469728
+          },
+          {
+            "category": "code",
+            "heldout": true,
+            "next_token": 10735,
+            "prompt_id": "heldout_code_rate_limiter",
+            "repetition": 2,
+            "seconds": 0.6810148269869387,
+            "tokens_per_second": 751.8191670881488
+          },
+          {
+            "category": "general_en",
+            "heldout": false,
+            "next_token": 73601,
+            "prompt_id": "general_en_plan",
+            "repetition": 2,
+            "seconds": 0.6787447868846357,
+            "tokens_per_second": 754.3336021040014
+          },
+          {
+            "category": "general_en",
+            "heldout": true,
+            "next_token": 264,
+            "prompt_id": "heldout_general_en_incident",
+            "repetition": 2,
+            "seconds": 0.6805237960070372,
+            "tokens_per_second": 752.361641141944
+          },
+          {
+            "category": "general_ja",
+            "heldout": false,
+            "next_token": 63078,
+            "prompt_id": "general_ja_plan",
+            "repetition": 2,
+            "seconds": 0.6767990060616285,
+            "tokens_per_second": 756.5022930210656
+          },
+          {
+            "category": "general_ja",
+            "heldout": true,
+            "next_token": 132703,
+            "prompt_id": "heldout_general_ja_migration",
+            "repetition": 2,
+            "seconds": 0.67804419179447,
+            "tokens_per_second": 755.1130238944638
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": false,
+            "next_token": 5185,
+            "prompt_id": "mixed_ja_en_translate",
+            "repetition": 2,
+            "seconds": 0.681463509099558,
+            "tokens_per_second": 751.3241621352901
+          },
+          {
+            "category": "mixed_ja_en",
+            "heldout": true,
+            "next_token": 323,
+            "prompt_id": "heldout_mixed_summary",
+            "repetition": 2,
+            "seconds": 0.6802390711382031,
+            "tokens_per_second": 752.6765540581214
+          }
+        ],
+        "samples": 24,
+        "serial_reference": {
+          "median_tokens_per_second": 83.85616746377312,
+          "native_over_serial": 8.991592259162118,
+          "prompt_id": "code_merge_intervals",
+          "sample_tokens_per_second": [
+            83.91202836328868,
+            83.81816109633662,
+            83.85616746377312
+          ],
+          "samples": 3
+        }
+      }
+    ]
+  },
+  "performance_claim": true,
+  "protocol": {
+    "backend": "hip_gfx1151",
+    "command": "/home/lhl/miniforge3/envs/therock/bin/python scripts/maple_prefill_bench.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --lengths 128,320,512 --repetitions 3 --warmups 1 --continuation-steps 4 --out benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json",
+    "continuation_steps": 4,
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-maple-hipcc-version.txt",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_MAPLE_PREFILL_GQA4": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1"
+    },
+    "heldout": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "lengths": [
+      128,
+      320,
+      512
+    ],
+    "native_limit": 512,
+    "qualified_protocol": true,
+    "repetitions": 3,
+    "serial_fallback_above_limit": true,
+    "shape_prompts_per_length": 8,
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "warmups": 1
+  },
+  "schema_version": 1,
+  "software": {
+    "git": {
+      "head": "9ccc6054137f207a6b47d62589982b26469e1ee9",
+      "tracked_clean": true,
+      "tracked_status": ""
+    },
+    "python": "3.12.13"
+  },
+  "status": "accepted",
+  "timestamp_utc": "2026-08-07T15:45:57.779496+00:00"
+}

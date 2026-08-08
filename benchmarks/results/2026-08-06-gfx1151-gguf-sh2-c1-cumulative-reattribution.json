@@ -1,0 +1,235 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh2_c1_cumulative_reattribution",
+  "date": "2026-08-06",
+  "status": "continue_new_owner_selected",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "b8989cbb4a88427997dd0983ec0a9522064414f8",
+    "tracked_clean": true,
+    "fresh_512_artifact_sha256": "e8ad20fb405b035aa5d4a7adf7549e7d3475e45b1a3cafd57fdffc5011ee1539",
+    "fresh_512_baseline_sha256": "f21eda884417059abf97ceee0175aa8a31ec549aad2e48fcebf17ed50133e3a3",
+    "fresh_512_trace_sha256": {
+      "kernel": "f3ab25e844ff15135efbf19962a62f23f46ccb1c83b05059c20de3d42f5e2583",
+      "hip_api": "d1b17f6245264d80ef1bb03ccb7da0e1ab12cf929e61cd7b527e7b5fe708dab4",
+      "marker": "b1e2a192918baea54bf961f30c6a573dc1d02317f711ca98607e0935a1d44c7a"
+    },
+    "carried_long_context_source": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json",
+    "carry_qualification": "SH2-M3 changes only the 768-row short scratch capability; 4K/32K/64K already use the retained 4096-row owner slots. SH2-M1 remains an opt-in, SH2-M2/D1 change no production code, and later commits are publication/docs. Therefore the committed SH-G 4K/32K/64K rows remain current-production equivalent and are not rerun."
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-device amdgpu GTT",
+    "gtt_poll_ms": 10
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "fresh_512": "one discarded full run plus three 128-token non-profiled eager runs under 10-ms whole-GTT, followed by a cached-only 8-token kernel/HIP-API/ROCTX role trace",
+    "long_context": "carry forward same-production SH-G 4K/32K/64K non-profiled and fork rows with explicit source qualification",
+    "prompt": "[9707] repeated to prompt length; attribution diagnostic only",
+    "correctness": "all fresh baseline/profile tokens exact; cached role attribution valid; lifecycle after close is zero"
+  },
+  "fresh_512": {
+    "decode_tok_s": 53.33217742505287,
+    "decode_ms_per_token": 18.7504063828125,
+    "tracked_peak_gib": 21.214187383651733,
+    "whole_gtt_peak_gib": 21.648426055908203,
+    "whole_gtt_peak_delta_gib": 21.631031036376953,
+    "profiled_gpu_ms_per_token": 17.42177275,
+    "dispatches_per_token": 628.0,
+    "scratch": {
+      "allocation_mode": "liveness_aliased",
+      "physical_owner_bytes": 69790760,
+      "owner_slot_count": 21
+    },
+    "all_tokens_exact": true,
+    "lifecycle_after_close_bytes": 0,
+    "roles_ms_per_token": {
+      "gdn_input_projections": 4.134844375,
+      "selected_expert_gate_up": 2.31523475,
+      "selected_expert_down": 1.39735625,
+      "moe_router_combine": 0.9738635,
+      "lm_head": 1.842623,
+      "full_attention_core": 1.5850285,
+      "gdn_output_projection": 1.451834375,
+      "full_attention_qkv": 1.091002375,
+      "full_attention_output": 0.502828625
+    }
+  },
+  "remaining_rows": {
+    "512/128": {
+      "source": "fresh_b8989cbb4",
+      "hipengine_decode_tok_s": 53.33217742505287,
+      "hipengine_ms_per_token": 18.7504063828125,
+      "c1_target_tok_s": 58.165,
+      "c1_tok_s_gap": 4.83282257494713,
+      "c1_time_gap_ms_per_token": 1.5579366845403442,
+      "c2_target_tok_s": 64.658,
+      "c2_tok_s_gap": 11.325822574947132,
+      "fork_f16_decode_tok_s": 64.611345,
+      "fork_f16_time_gap_ms_per_token": 3.2732483078645167,
+      "fork_q8_0_decode_tok_s": 64.15274,
+      "hipengine_whole_gtt_gib": 21.648426055908203,
+      "fork_f16_whole_gtt_gib": 20.830669403076172,
+      "fork_f16_whole_gtt_gap_gib": 0.8177566528320312,
+      "fork_q8_0_whole_gtt_gap_gib": 0.8163223266601562,
+      "c1_passed": false,
+      "c2_passed": false,
+      "fork_f16_decode_won": false,
+      "fork_f16_whole_gtt_won": false
+    },
+    "4K/128": {
+      "source": "carried_sh_g_same_production",
+      "hipengine_decode_tok_s": 56.11617211688039,
+      "hipengine_ms_per_token": 17.8201748671875,
+      "c1_target_tok_s": 58.795,
+      "c1_tok_s_gap": 2.6788278831196095,
+      "c1_time_gap_ms_per_token": 0.8119258664221292,
+      "c2_target_tok_s": 62.648,
+      "c2_tok_s_gap": 6.531827883119611,
+      "fork_f16_decode_tok_s": 62.557689,
+      "fork_f16_time_gap_ms_per_token": 1.8349296321852933,
+      "fork_q8_0_decode_tok_s": 63.014749,
+      "hipengine_whole_gtt_gib": 22.147724151611328,
+      "fork_f16_whole_gtt_gib": 21.160736083984375,
+      "fork_f16_whole_gtt_gap_gib": 0.9869880676269531,
+      "fork_q8_0_whole_gtt_gap_gib": 0.8945426940917969,
+      "c1_passed": false,
+      "c2_passed": false,
+      "fork_f16_decode_won": false,
+      "fork_f16_whole_gtt_won": false
+    },
+    "32K/128": {
+      "source": "carried_sh_g_same_production",
+      "hipengine_decode_tok_s": 46.4893797149463,
+      "hipengine_ms_per_token": 21.5102891484375,
+      "c1_target_tok_s": 49.35,
+      "c1_tok_s_gap": 2.860620285053699,
+      "c1_time_gap_ms_per_token": 1.2468646296938353,
+      "c2_target_tok_s": 53.22,
+      "c2_tok_s_gap": 6.730620285053696,
+      "fork_f16_decode_tok_s": 53.234061,
+      "fork_f16_time_gap_ms_per_token": 2.7253236354739094,
+      "fork_q8_0_decode_tok_s": 57.32598,
+      "hipengine_whole_gtt_gib": 22.800140380859375,
+      "fork_f16_whole_gtt_gib": 21.99620819091797,
+      "fork_f16_whole_gtt_gap_gib": 0.8039321899414062,
+      "fork_q8_0_whole_gtt_gap_gib": 1.170379638671875,
+      "c1_passed": false,
+      "c2_passed": false,
+      "fork_f16_decode_won": false,
+      "fork_f16_whole_gtt_won": false
+    },
+    "64K/128": {
+      "source": "carried_sh_g_same_production",
+      "hipengine_decode_tok_s": 39.74984392208257,
+      "hipengine_ms_per_token": 25.157331484375,
+      "c1_target_tok_s": 42.419,
+      "c1_tok_s_gap": 2.669156077917428,
+      "c1_time_gap_ms_per_token": 1.5829897978665954,
+      "c2_target_tok_s": 45.913,
+      "c2_tok_s_gap": 6.163156077917428,
+      "fork_f16_decode_tok_s": 45.686741,
+      "fork_f16_time_gap_ms_per_token": 3.2691429615823573,
+      "fork_q8_0_decode_tok_s": 52.326797,
+      "hipengine_whole_gtt_gib": 23.538421630859375,
+      "fork_f16_whole_gtt_gib": 22.8424072265625,
+      "fork_f16_whole_gtt_gap_gib": 0.696014404296875,
+      "fork_q8_0_whole_gtt_gap_gib": 1.3763961791992188,
+      "c1_passed": false,
+      "c2_passed": false,
+      "fork_f16_decode_won": false,
+      "fork_f16_whole_gtt_won": false
+    }
+  },
+  "closed_decode_frontier": {
+    "gdn_input_projections_ms_per_token_512": 4.134844375,
+    "selected_moe_composite_ms_per_token_512": 4.6864545,
+    "closed_packages": [
+      "SH-D1 GDN same-layout and paired-layout ladders",
+      "SH-D1 selected-Q4 and selected-down schedules",
+      "SH2-D1 mixed-T16 producer/consumer composite",
+      "SH-A1 page-internal head-major decode",
+      "SH-K1 compact-KV formats",
+      "SH graph replay"
+    ],
+    "next_unclosed_decode_roles": {
+      "lm_head_ms_per_token_512": 1.842623,
+      "full_attention_core_ms_per_token": {
+        "512": 1.5850285,
+        "4K": 0.9118,
+        "32K": 4.5326,
+        "64K": 8.0413
+      },
+      "gdn_output_projection_ms_per_token_512": 1.451834375
+    }
+  },
+  "phase_memory": {
+    "current_512_tracked_to_whole_gtt_gap_gib": 0.4342386722564697,
+    "phase_scoped_code_object_upper_bound_status": "closed below SH2-M2 precondition",
+    "token_embedding": {
+      "bytes": 540344320,
+      "gib": 0.50323486328125,
+      "actual_whole_gtt_saving_gib": {
+        "512": 0.4434089660644531,
+        "4K": 0.5039329528808594
+      },
+      "status": "exact c1 host-copy opt-in retained; global default blocked"
+    },
+    "selected_t16_metadata_expansion": {
+      "q4_tensor_count": 80,
+      "q4_raw_bytes": 12079595520,
+      "q4_t16_bytes": 12415139840,
+      "q4_exact_excess_bytes": 335544320,
+      "q5_tensor_count": 37,
+      "q5_raw_bytes": 6828326912,
+      "q5_t16_bytes": 6983516160,
+      "q5_exact_excess_bytes": 155189248,
+      "q6_tensor_count": 3,
+      "q6_exact_excess_bytes": 0,
+      "total_exact_excess_bytes": 490733568,
+      "total_exact_excess_gib": 0.45703125,
+      "cause": "Q4/Q5 T16 expands the packed 12-byte per-column scale/min metadata to direct 8-bit scale and min planes; quant payload bytes remain bit-lossless"
+    },
+    "projected_f16_whole_gtt_gap_after_compact_t16_without_host_embedding_gib": {
+      "512": 0.36072540283203125,
+      "4K": 0.5299568176269531,
+      "32K": 0.34690093994140625,
+      "64K": 0.238983154296875
+    },
+    "projected_f16_whole_gtt_gap_after_compact_t16_plus_host_embedding_gib": {
+      "512_actual_delta_stack": -0.08268356323242188,
+      "4K_actual_delta_stack": 0.02602386474609375,
+      "32K_ideal_embedding_projection": -0.15633392333984375,
+      "64K_ideal_embedding_projection": -0.264251708984375
+    },
+    "projection_qualification": "Compact-T16 bytes are exact arithmetic from all 120 expert tensor metadata records, but no compact layout exists yet. The 512/4K host deltas are measured independently and stacking is not yet measured; 32K/64K host rows use ideal raw-byte removal only. None is a parity result."
+  },
+  "decision": {
+    "c1_rows_passed": 0,
+    "c2_rows_passed": 0,
+    "fork_f16_decode_rows_won": 0,
+    "fork_f16_whole_gtt_rows_won": 0,
+    "objective_complete": false,
+    "next_owner_id": "SH2-M4",
+    "next_owner": "compact selected-expert T16 metadata",
+    "why_structurally_new": "No prior SH package changes the resident Q4/Q5 T16 scale/min representation. Repacking the existing exact metadata instead of replaying graph/KV/page-head/kernel-width ladders targets a measured 0.45703125-GiB owner and can stack with the retained exact host embedding and scratch owner slots.",
+    "acceptance": "Bit-lossless RED/GREEN pack/unpack and CPU/GPU oracles; registered compact-Q4/Q5 T16 kernels with current T16 fallback; actual 80-Q4/37-Q5 resident ownership falls by exactly 490733568 bytes; no prefill/decode regression beyond 1%; complete four-depth state/lifecycle and whole-GTT before any default promotion.",
+    "after_m4": "Rerun SH2-C1. Decode remains open; rank a fresh LM-head producer/top1 owner against a non-page-head long-context attention owner only after the memory decision."
+  },
+  "commands": {
+    "fresh_512": "PYTHONPATH=. python3 scripts/gguf_sh_c0_profile.py --workloads 512 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-sh2-c1-20260806/raw --out /tmp/hipengine-sh2-c1-20260806/current-512.json",
+    "t16_census": "GGUFReader metadata census over blk.{0..39}.{ffn_gate_exps,ffn_up_exps,ffn_down_exps}.weight using current Q4/Q5/Q6 T16 block-byte constants"
+  }
+}

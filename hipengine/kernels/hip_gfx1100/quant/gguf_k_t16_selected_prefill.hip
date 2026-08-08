@@ -52,6 +52,12 @@ constexpr int Q5_T16_MIN_OFFSET = Q5_T16_SCALE_OFFSET + Q4_SUBBLOCKS * T16_COLS;
 constexpr int Q5_T16_QL_OFFSET = Q5_T16_MIN_OFFSET + Q4_SUBBLOCKS * T16_COLS;
 constexpr int Q5_T16_QH_OFFSET = Q5_T16_QL_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
 constexpr int Q5_T16_BLOCK_BYTES = Q5_T16_QH_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 8);
+constexpr int Q5_QMICRO_T16_D_OFFSET = 0;
+constexpr int Q5_QMICRO_T16_DMIN_OFFSET = Q5_QMICRO_T16_D_OFFSET + T16_COLS * 2;
+constexpr int Q5_QMICRO_T16_META_OFFSET = Q5_QMICRO_T16_DMIN_OFFSET + T16_COLS * 2;
+constexpr int Q5_QMICRO_T16_QL_OFFSET = Q5_QMICRO_T16_META_OFFSET + 2 * Q4_SUBBLOCKS * (T16_COLS / 4) * 3;
+constexpr int Q5_QMICRO_T16_QH_OFFSET = Q5_QMICRO_T16_QL_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 2);
+constexpr int Q5_QMICRO_T16_BLOCK_BYTES = Q5_QMICRO_T16_QH_OFFSET + Q4_SUBBLOCKS * Q4_SUBBLOCK * (T16_COLS / 8);
 
 // ---- Q6T16 layout (matches hipengine/quant/gguf_t16.py) ----------------
 constexpr int Q6_T16_D_OFFSET = 0;
@@ -167,12 +173,12 @@ __device__ inline half16_t load_compact_row_half16<half_t>(
   return *reinterpret_cast<const half16_t*>(x + compact_row * in_features + k_base);
 }
 
-template <int qtype>
+template <int qtype, bool qmicro = false>
 __host__ __device__ constexpr int qtype_block_bytes() {
   if constexpr (qtype == 4) {
     return Q4_T16_BLOCK_BYTES;
   } else if constexpr (qtype == 5) {
-    return Q5_T16_BLOCK_BYTES;
+    return qmicro ? Q5_QMICRO_T16_BLOCK_BYTES : Q5_T16_BLOCK_BYTES;
   } else {
     return Q6_T16_BLOCK_BYTES;
   }
@@ -206,16 +212,32 @@ __device__ inline uint8_t q4_t16_quant(
 // Q5T16 dequant: ``col`` is the column inside the 16-col tile slab; the kernel
 // pre-loads d/dmin/scale/min once per (subblock, col) so the hot WMMA inner
 // loop only does the K-tile-local low / high nibble assembly.
+__device__ inline uint8_t qmicro_coefficient(
+    const uint8_t* __restrict__ tile,
+    int plane,
+    int subblock,
+    int col) {
+  const int record = ((plane * Q4_SUBBLOCKS + subblock) * (T16_COLS / 4)) + (col >> 2);
+  const uint8_t* __restrict__ ptr = tile + Q5_QMICRO_T16_META_OFFSET + record * 3;
+  const uint32_t word = static_cast<uint32_t>(ptr[0]) |
+                        (static_cast<uint32_t>(ptr[1]) << 8) |
+                        (static_cast<uint32_t>(ptr[2]) << 16);
+  return static_cast<uint8_t>((word >> (6 * (col & 3))) & 0x3Fu);
+}
+
+template <bool qmicro = false>
 __device__ inline uint8_t q5_t16_quant(
     const uint8_t* __restrict__ tile,
     int subblock,
     int lane32,
     int col) {
-  const uint8_t low_packed = tile[Q5_T16_QL_OFFSET +
+  constexpr int ql_offset = qmicro ? Q5_QMICRO_T16_QL_OFFSET : Q5_T16_QL_OFFSET;
+  constexpr int qh_offset = qmicro ? Q5_QMICRO_T16_QH_OFFSET : Q5_T16_QH_OFFSET;
+  const uint8_t low_packed = tile[ql_offset +
                                   (subblock * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
                                   (col >> 1)];
   const uint8_t low = (col & 1) ? (low_packed >> 4) : (low_packed & 0x0Fu);
-  const uint8_t high_packed = tile[Q5_T16_QH_OFFSET +
+  const uint8_t high_packed = tile[qh_offset +
                                    (subblock * Q4_SUBBLOCK + lane32) * (T16_COLS / 8) +
                                    (col >> 3)];
   const uint8_t high = (high_packed >> (col & 7)) & 0x01u;
@@ -258,7 +280,7 @@ bool valid_selected_k_t16_common(
 // projection output.  Lane mapping mirrors the raw Q5/Q6 selected legacy
 // kernel: lane16 indexes the column within the tile, half_id selects which
 // row-half stores from the float8 accumulator on writeback.
-template <typename scalar_t, int qtype>
+template <typename scalar_t, int qtype, bool qmicro = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
     const scalar_t* __restrict__ x,
@@ -301,7 +323,7 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
 
   const int64_t blocks_per_row = in_features / QK_K;
   const int64_t out_tiles = out_features / T16_COLS;
-  constexpr int tile_bytes = qtype_block_bytes<qtype>();
+  constexpr int tile_bytes = qtype_block_bytes<qtype, qmicro>();
 
   float8_t acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
 
@@ -351,20 +373,28 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
         }
       }
     } else if constexpr (qtype == 5) {
-      const float d_f = valid_col ? fp16_bytes_to_float(tile + Q5_T16_D_OFFSET + col_in_slab * 2) : 0.0f;
-      const float dmin_f = valid_col ? fp16_bytes_to_float(tile + Q5_T16_DMIN_OFFSET + col_in_slab * 2) : 0.0f;
+      constexpr int d_offset = qmicro ? Q5_QMICRO_T16_D_OFFSET : Q5_T16_D_OFFSET;
+      constexpr int dmin_offset = qmicro ? Q5_QMICRO_T16_DMIN_OFFSET : Q5_T16_DMIN_OFFSET;
+      const float d_f = valid_col ? fp16_bytes_to_float(tile + d_offset + col_in_slab * 2) : 0.0f;
+      const float dmin_f = valid_col ? fp16_bytes_to_float(tile + dmin_offset + col_in_slab * 2) : 0.0f;
 #if defined(__gfx1100__)
 #pragma unroll 1
 #else
 #pragma unroll
 #endif
       for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
-        const float scale_f = valid_col
-            ? d_f * static_cast<float>(tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col_in_slab])
-            : 0.0f;
-        const float min_f = valid_col
-            ? dmin_f * static_cast<float>(tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + col_in_slab])
-            : 0.0f;
+        const uint8_t scale = valid_col
+            ? (qmicro
+                   ? qmicro_coefficient(tile, 0, sb, col_in_slab)
+                   : tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col_in_slab])
+            : 0;
+        const uint8_t minv = valid_col
+            ? (qmicro
+                   ? qmicro_coefficient(tile, 1, sb, col_in_slab)
+                   : tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + col_in_slab])
+            : 0;
+        const float scale_f = d_f * static_cast<float>(scale);
+        const float min_f = dmin_f * static_cast<float>(minv);
 #pragma unroll
         for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
           const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
@@ -376,7 +406,7 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
 #pragma unroll
             for (int kk = 0; kk < 16; ++kk) {
               const int lane32 = kt * K_TILE + kk;
-              const uint8_t q = q5_t16_quant(tile, sb, lane32, col_in_slab);
+              const uint8_t q = q5_t16_quant<qmicro>(tile, sb, lane32, col_in_slab);
               b_reg[kk] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
             }
           } else {
@@ -580,7 +610,7 @@ int launch_k_t16_selected_expert_major_comp(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scalar_t, int qtype>
+template <typename scalar_t, int qtype, bool qmicro = false>
 int launch_k_t16_selected(
     const scalar_t* x,
     const int64_t* expert_start_compact,
@@ -614,7 +644,7 @@ int launch_k_t16_selected(
       static_cast<unsigned int>((out_features + 15) / 16),
       static_cast<unsigned int>(row_tiles));
   hipLaunchKernelGGL(
-      (gguf_k_t16_selected_wmma_prefill_compact_kernel<scalar_t, qtype>),
+      (gguf_k_t16_selected_wmma_prefill_compact_kernel<scalar_t, qtype, qmicro>),
       grid,
       block,
       0,
@@ -674,6 +704,30 @@ extern "C" int hipengine_##NAME##_selected_wmma_prefill_compact_fp16_fp16_out( \
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q4_k_t16, 4)
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q5_k_t16, 5)
 HIPENGINE_GGUF_K_T16_SELECTED_WMMA_EXPORT(gguf_q6_k_t16, 6)
+
+extern "C" int hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma, const int64_t* tile_expert,
+    const uint8_t* tiles, uint16_t* out, int64_t compact_rows,
+    int64_t in_features, int64_t out_features, int64_t num_experts,
+    int64_t wmma_total_rows, hipStream_t stream) {
+  return launch_k_t16_selected<uint16_t, 5, true>(
+      x, expert_start_compact, expert_start_wmma, tile_expert, tiles, out,
+      compact_rows, in_features, out_features, num_experts, wmma_total_rows,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out(
+    const half_t* x, const int64_t* expert_start_compact,
+    const int64_t* expert_start_wmma, const int64_t* tile_expert,
+    const uint8_t* tiles, half_t* out, int64_t compact_rows,
+    int64_t in_features, int64_t out_features, int64_t num_experts,
+    int64_t wmma_total_rows, hipStream_t stream) {
+  return launch_k_t16_selected<half_t, 5, true>(
+      x, expert_start_compact, expert_start_wmma, tile_expert, tiles, out,
+      compact_rows, in_features, out_features, num_experts, wmma_total_rows,
+      stream);
+}
 
 #define HIPENGINE_GGUF_K_T16_EXPERT_MAJOR_COMP_EXPORT(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_selected_expert_major_wmma_comp_bf16_bf16_out( \

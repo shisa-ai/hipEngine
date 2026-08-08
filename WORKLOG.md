@@ -203753,3 +203753,5205 @@ lifecycle for both routes: uniform refill/staggered/lockstep
 `586.4/741.4/630.5 req/s`; exact two-region `485.9/644.1/636.1 req/s`.
 These are diagnostics only. Clean exclusive B=2/4/8 publication for both
 qualified topologies follows this source commit.
+## 2026-08-05 — Pin Maple-Preview ternary model contract
+
+- Create branch `maple` for `deepgrove/maple-preview-2bit-mlx` bring-up and
+  download the official **5.31 GB** snapshot at
+  `361db5da5e74ff6fcdd852d478e1f266ce11013a` into the HF cache.
+- Add the `MapleForCausalLM` model plugin and a strict config parser for the
+  official 24-layer, hidden-2048, 16Q/4KV, SWA-512 3:1, 256-expert top-8
+  contract. Resolve partial RoPE from `layer_types` (18 SWA layers use
+  rotary-dim 64; six full-attention layers are NoPE), matching the shipped MLX
+  model rather than its unused legacy `nope_on_global_attention` field.
+- Pin checkpoint storage metadata: projection weights are 2-bit/group-128
+  ternary with per-row alpha, while embeddings and exact lm-head are affine
+  4-bit/group-64. Validation passes **16/16** focused model/import tests; Ruff,
+  pycompile, and parsing the downloaded live `config.json` are clean.
+
+## 2026-08-05 — Load official Maple packed weights on gfx1151
+
+- Add a strict exact-head manifest for **463 tensors / 5,308,186,624 bytes**.
+  Preserve MLX U32 words bit-for-bit (runtime INT32 handles), preserve BF16 raw
+  bits, ignore only the five optional `lm_head_flash.*` tensors, and reject
+  missing, unexpected, dtype-drifted, or shape-drifted storage.
+- Add structured embedding/layer/lm-head device views and failure-safe ownership,
+  plus the `maple_ternary2` quant metadata and a torch-free `tokenizer.json`
+  adapter. The adapter reproduces the official chat generation suffix ending in
+  `<|im_start|>assistant\n<think>\n`.
+- Real-model smoke on Ryzen AI MAX+ 395 / gfx1151 using
+  `materialize_maple_weights(load_maple_checkpoint('deepgrove/maple-preview-2bit-mlx'))`
+  uploads all 463 exact tensors in **5.3361 s**; observed HIP free memory moves
+  128,844,787,712 → 123,379,535,872 bytes and returns to 128,695,816,192 after
+  `free()`. Focused loader/model/materialization coverage passes **20/20**;
+  Ruff, pycompile, live tokenizer round-trip, and live BF16 raw-read checks pass.
+
+## 2026-08-05 — Establish Maple NumPy correctness oracle
+
+- Translate the HF/MLX math into a torch-free NumPy oracle: LSB-first ternary
+  and affine4 unpack/dequant, BF16 round-to-nearest-even boundaries, standard
+  RMSNorm, QK-norm plus rotate-half partial RoPE, grouped-query attention,
+  fp32 softmax/top-8/renorm routing, trained clamp-7 SwiGLU, and two-boundary
+  weighted residual combine.
+- RED-first was not possible for the initial scratch translation because the
+  oracle module predated the fixture file in this session. The first
+  hand-checkable fixture run nevertheless exposed a real rotate-half aliasing
+  error (the second half read a mutated first-half view); copy both source
+  halves before stores. All **7/7** analytic/registry fixtures now pass; Ruff
+  and pycompile are clean.
+- Required `python3 scripts/check_lineage.py --kind kernel --diff stat` is
+  currently blocked before reporting tracked families because
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. Maple kernels are
+  net-new against the published DeepGrove formulas rather than copied from that
+  missing reference, but the blocker remains recorded for the kernel handoff.
+
+## 2026-08-05 — Land Maple packed-linear gfx11 kernels
+
+- Add net-new raw-pointer kernels from the published DeepGrove storage formula:
+  generic ternary GEMV, one-launch split-weight Q/K/V, selected top-8 dual
+  gate/up and selected down, affine4 embedding, and exact affine4→FP32 head.
+  The source reads checkpoint-native U32/BF16 bytes and is aliased from
+  `hip_gfx1100` to native-compiled `hip_gfx1151` through the four-axis registry.
+- The predeclared RED test initially fails at import because no device family
+  exists. After implementation, generic/QKV/selected/embedding BF16 outputs are
+  bit-exact to the independent NumPy oracle; affine4 FP32 logits pass at
+  `atol=rtol=2e-4`. The focused CPU+GPU bundle passes **11/11**; Ruff,
+  pycompile, and build-plan/registry checks pass.
+- Prebuild `maple_ternary.so` with `/tmp/hipengine-maple-hipcc-version.txt`, then
+  run cache-only `rocprofv3 --kernel-trace` on gfx1151. The trace names
+  `maple_ternary_gemv_kernel` at grid 128/local32, VGPR32, SGPR128, LDS0,
+  scratch0, and **3,527 ns** duration. The first profiler attempt never reached
+  HIP because `/tmp` script resolution lacked `PYTHONPATH`; rerun with
+  `PYTHONPATH=$PWD` is the retained evidence.
+
+## 2026-08-05 — Land Maple KVLiveSpans attention kernels
+
+- Add the unfused attention chain under the complete `KVLiveSpans` ABI: device
+  ring-span publication; per-head direct-weight RMSNorm; SWA-only rotate-half
+  partial RoPE; same-kernel BF16 K/V append; and online-softmax grouped-query
+  decode. SWA and bounded-global policies differ only by ring capacity, while
+  nonidentity `base_offsets`, absolute `token_positions`, and `evict_mask`
+  validate every physical access.
+- The predeclared RED test initially fails at import. After implementation, all
+  metadata after a six-position wrap, Q/K output, physical K/V bytes, and GQA
+  attention output are BF16-bit exact to the NumPy oracle. Focused attention +
+  CPU coverage passes **11/11**; Ruff, pycompile, build-plan, and gfx1151
+  registry checks pass.
+- Cache-only gfx1151 tracing observes `maple_kv_span_update_kernel` at **3,326
+  ns**, `maple_qknorm_rope_kv_write_kernel` at local32/VGPR24/scratch0 and
+  **5,771 ns**, and `maple_attention_decode_kernel` at local32/VGPR16/scratch0
+  and **3,607 ns** on the tiny deterministic fixture.
+
+## 2026-08-05 — Land Maple router and MoE-tail kernels
+
+- Add the unfused selected-MoE control/tail: dense BF16 router GEMV with FP32
+  accumulation, all-256 softmax, stable top-k and selected renormalization;
+  trained clamp-7 SwiGLU; and weighted top-8 combine plus residual with both
+  BF16 boundaries. Selected gate/up and down remain the separately gated
+  checkpoint-native ternary family.
+- The predeclared RED test initially fails at import. After implementation,
+  selected IDs match exactly, fp32 router weights pass `atol=rtol=2e-6`, and
+  activation/residual outputs are BF16-bit exact. The focused MoE gate passes
+  **4/4**; Ruff, pycompile, build-plan, and gfx1151 registry checks pass.
+- Cache-only gfx1151 tracing observes router local256/VGPR8/LDS3584/scratch0 at
+  **19,156 ns**, clamp-7 local256/VGPR32/scratch0 at **2,605 ns**, and weighted
+  residual local256/VGPR16/scratch0 at **2,885 ns** on the tiny fixture.
+
+## 2026-08-05 — Run official Maple checkpoint through public hipEngine
+
+- Compose resident packed weights, direct-weight RMSNorm, fused split-weight
+  Q/K/V, KVLiveSpans attention, selected top-8 ternary experts, affine4 head,
+  and two-stage GPU argmax into a resettable c=1 runner. Token-serial prefill is
+  intentionally the correctness-first fallback; no torch or MLX is imported.
+- First official-checkpoint forward on Ryzen AI MAX+ 395 / gfx1151 uses
+  `MapleRunner.load(..., max_context=64).step(9707)`: load **6.7202 s**, step
+  **16.2230 ms**, all 151,936 logits finite over [-16.8671, 9.02136], and top
+  ID **1112**. This is an execution diagnostic, not yet an oracle verdict or
+  sustained throughput claim.
+- Public `LLM.generate_detailed()` with the exact 18-token prompt
+  `<|im_start|>user\nWrite one short sentence about maple trees.<|im_end|>...`
+  runs model auto-quant `maple_ternary2` on `hip_gfx1151` and emits 32 coherent
+  greedy tokens in **4.2466 s cold-process wall** (load + token-serial prefill +
+  decode), beginning `The user asks for a short sentence about maple trees...`
+  and ending `Maple trees are known for their vibrant autumn foliage...`.
+  Generated IDs are retained in terminal/session evidence, not committed as an
+  overfit target. The first harness call also completed generation but then
+  raised because it treated documented `LLM.generate()` strings as detailed
+  objects; rerun correctly uses `generate_detailed()`.
+- Focused public registry/fail-closed generation, model/loader/import, and
+  generic `LLM.generate()` coverage passes **42/42**; Ruff and pycompile are
+  clean. Full-model HF/NumPy parity is
+  the next correctness task rather than being implied by coherent text alone.
+
+## 2026-08-05 — Gate Maple against packed and pinned HF oracles
+
+- Add opt-in per-layer hidden capture and a two-process teacher-forced harness.
+  The first packed comparison localizes divergence to layer 3: when
+  `max_context=64` made SWA/global capacities equal, the runner skipped the
+  distinct global `KVLiveSpans` owner. Publish both owner identities and cover
+  the equal-capacity regression. The earlier top ID 1112 was therefore a
+  pre-fix execution diagnostic, not retained correctness evidence.
+- Primitive gfx1151 command covering standard RMSNorm, QK-norm+partial RoPE,
+  router, and clamp-7 SwiGLU passes **4/4**: BF16 outputs are bit exact, router
+  IDs are exact, and fp32 route weights are within one ULP. The current packed
+  18-position command
+  `python3 scripts/maple_correctness.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --token-ids <18 IDs> --oracle packed --json /tmp/maple-correctness-packed-final.json`
+  passes at max/mean KL **0.013508/0.001679**, top-1 **18/18**, device argmax
+  exact, and minimum hidden cosine **0.994289**.
+- Download pinned dense source `deepgrove/maple-preview@ac1ddd79...` (nine
+  safetensors, 18,651 tensors, 40,428,060,672-byte parameter payload). The
+  default HF cache resolves to `/data`, which had only 11 GB free despite
+  `/home` having 140 GB; stop before ENOSPC, relocate this model cache to
+  `/home/lhl/maple-hf-cache`, and resume successfully. Isolate the checkpoint's
+  required `transformers==4.57.1`; host 5.8.1 is incompatible with its
+  `ROPE_INIT_FUNCTIONS["default"]` lookup.
+- A full-resident dense load is not viable on this 128 GB UMA host: 40 GB HIP
+  allocation leaves insufficient host working memory and remains at shard 1/9
+  after 13 minutes of swap thrashing. Replace only residency: Accelerate hooks
+  mmap each routed `MapleMLP` from the original safetensors while attention,
+  router, norms, and endpoints remain on gfx1151. A tiny resident/offloaded
+  remote model is logit-bit exact; the real model loads in ~15 s with 6,144
+  expert modules offloaded.
+- The same-weight pinned-HF command (artifact has the exact invocation), using
+  `--hf-offload-experts --hf-match-packed-affine4`, passes all **18/18**
+  positions at max/mean KL **0.004719/0.000723** with exact device argmax. The
+  untouched dense-source quality diagnostic is retained as a failure rather
+  than threshold-gamed: max KL **0.149840**, top-1 **16/18**. Hybrid isolation
+  attributes the gap to intentional affine4 embedding/head quantization
+  (dense endpoints: max KL 0.033023, top-1 17/18), not the runner math.
+- Focused Maple model/loading/CPU/GPU/generation/runtime/harness bundle passes
+  **43/43**; Ruff, pycompile, JSON parse, and `git diff --check` pass. Evidence:
+  `benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json`.
+
+## 2026-08-05 — Close the Maple public inference bring-up
+
+- Completion-audit the user objective against actual artifacts rather than the
+  closed task list. Model contract, exact 463-tensor/5,308,186,624-byte loader,
+  torch-free model-ID dispatch, gfx1151 kernels, resident runner, CPU/HF gates,
+  lifecycle, docs, and atomic commits are all directly covered. The one weak
+  signal was the real public free-running generation: its prior result preceded
+  the equal-capacity global-span fix.
+- Run `python3 - <<'PY' ... LLM("deepgrove/maple-preview-2bit-mlx",
+  backend="auto", quant="auto").generate_detailed(...) ... PY` on Ryzen AI
+  MAX+ 395 / Radeon 8060S gfx1151 with the exact 18-token formatted prompt,
+  greedy sampling, and `max_tokens=128`, twice in one resident process. The
+  post-fix route resolves `hip_gfx1151` / `maple_ternary2`, emits the same 37
+  tokens/text both times, produces the coherent completed sentence “Maple trees
+  are known for their vibrant autumn foliage and are a common symbol of the
+  season.”, and stops on real EOS 151645. `LLM.close()` returns tracked current
+  allocation to zero (5,378,146,152-byte diagnostic peak, all bytes freed).
+- Cold **4.365 s** and resident-repeat **0.703 s** walls are recorded only as
+  diagnostics, not performance claims. Store generated IDs as SHA256
+  `dc7c0f61...` rather than a scoring target. Update the stale pre-fix section
+  in `docs/KERNELS.md`, add the prompt-to-artifact completion checklist to
+  `docs/MAPLE.md`, and retain
+  `benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
+
+## 2026-08-07 — M0: Maple decode rocprof profile (gfx1151)
+
+- Add `scripts/maple_profile.py` (prebuild then cached-only `rocprofv3
+  --kernel-trace` of a warm decode step, host wall from a cached rerun; CSV from
+  `-f csv`, duration = End_Timestamp - Start_Timestamp, sub-kernels
+  `__amd_rocclr_*` excluded).
+- Prebuilt all five Maple libs (ternary/attention/moe/rmsnorm/lm_head) with a
+  pinned `hipengine-maple-hipcc-version.txt`; profiled child is cache-only so it
+  never spawns hipcc. One token=9707, 4 warmup + 32 measured steps.
+- Result per decode step: **12,209 µs kernel / 12,758 µs wall (95.7% kernel,
+  4.3% host gap)** — decode is kernel-time-bound, NOT launch-bound as the plan
+  initially assumed. 271 launches/step but only ~2 µs each of overhead.
+- Hot kernels/step: **router_topk 7,807 µs (61%)** — a single 256-thread block
+  (grid 256/wg 256) serially doing all 256 experts (~362 µs/call × 24); lm_head
+  affine4 gemv **1,234 µs** (grid 19.4M/wg128); expert gate/up 822 + down 749;
+  attention 562; QKV 434; o_proj 296.
+- Reprioritize MAPLE-PERF.md: router topk (M3a) is now the #1 target, not
+  hipGraph (D1, only ~0.55 ms host gap). Artifact:
+  `benchmarks/results/2026-08-07-gfx1151-maple-decode-profile.json`.
+
+## 2026-08-07 — M3a: parallelize Maple router topk (gfx1151)
+
+- Microbench confirm (correct bf16 bits, 256 experts/2048 hidden/top8): the
+  exact single-block router is **277 µs/call** (grid 1/wg 256, 1 CU, serial
+  thread-0 top-k). M0 had attributed this to the router; here it is isolated.
+- Add `maple_router_topk_parallel_bf16`: kernel A grid=num_experts blocks × 256
+  threads computes each expert logit with a coalesced strided dot + block tree
+  reduce into a global `router_logits` scratch; kernel B (single block) does
+  max/exp/sum softmax, a parallel rank-count stable top-k (desc prob, ties by
+  ascending id), and renormalize by the selected sum.
+- Result: router **277 → 48 µs/call (5.75×)**; model decode step **12,758 →
+  6,132 µs (2.08× decode)**. Packed correctness gate passes: max_kl 0.0139
+  (vs 0.0135 baseline), top-1 18/18, passed. Parallel router top-k IDs are exact
+  vs the numpy oracle; near-zero weights may differ a few ULP (tree-reduce
+  order) but are numerically negligible and the model gate holds.
+- The exact single-block router is retained (reference/fallback); its 1-ULP
+  primitive test still passes. New
+  `test_maple_router_topk_parallel_matches_ids_and_renorm` covers the variant.
+- Added `router_logits` scratch to `MapleRuntimeBuffers`; runner uses the
+  parallel wrapper. moe tests 5/5 pass. Evidence:
+  `benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`.
+
+## 2026-08-07 — M3b: tiled affine4 lm_head explored, rejected (dead end)
+
+- Hypothesis: `maple_affine4_gemv_f32` (grid 19.4M/wg128) re-reads the 2048-wide
+  hidden vector per output row; a tiled variant (`maple_affine4_gemv_f32_tiled`,
+  8 rows/block, x loaded once into LDS) should cut lm_head wall.
+- Implemented tiled kernel + host wrapper + registry entry (uncommitted, then
+  reverted).
+- Validation on real lm_head (151,936×2048 affine4, maple-preview-2bit-mlx):
+  tiled is **bit-exact** vs eager (max abs diff 0.0 over all 151,936 logits,
+  argmax identical, all finite).
+- BUT measured **eager 1.25 ms vs tiled 1.30 ms (0.96×, no win)**. Each output
+  row still streams its full weight row (~155 MB/token @ 256 GB/s ≈ bandwidth
+  floor ~0.6 ms, and we are at 1.25 ms); reusing the 4 KB x-vector in LDS is
+  negligible. lm_head is only ~9.7% of the decode step, so this path is a dead
+  end. Reverted. Do not re-port tiled GEMV for lm_head; real wins there would
+  need FlashHead (approximate, non-default) or weight reuse across a batch (M6).
+- Next per plan: selected-expert grouping (M3c, ~12%) or batched prefill
+  (M4/M5). hipGraph (M1) is a minor ~4.3% host-gap win on c1.
+
+## 2026-08-07 — M1: whole-step hipGraph capture for Maple decode (opt-in)
+
+- Implement `MapleGraphCache` (`hipengine/runtime/maple_graph.py`): captures the
+  entire stateless decode step (24-layer loop + final norm + affine4 lm_head +
+  argmax) as one hipGraph, self-validating bit-exact on first capture.
+- Stateless-basis: the KVLiveSpans ABI passes all span metadata
+  (`live`/`token_positions`/`evict`/`row`) as DEVICE pointers read at
+  graph-execution time, so a graph captured against fixed buffer pointers stays
+  valid across tokens; the eager per-token span update + embed run as host
+  launches before each replay.
+- Key gotchas hit during bring-up: (1) every kernel in the body must be launched
+  with `stream=stream` or it silently launches on the default stream and the
+  captured graph is EMPTY; (2) validation must clear the argmax outputs before
+  the replay check, or a no-op graph vacuously matches the eager reference; (3)
+  capture must restore `hidden` before the recording phase and before the final
+  caller-stream eager rerun, or it captures/replays corrupted input.
+- Correctness: bit-exact vs eager across 120 tokens over a growing KV cache
+  (`tests/test_maple_graph_capture.py::test_maple_graph_bit_exact_vs_eager_over_growing_kv`).
+  Focused suite 43 passed.
+- Perf: kernel-bound c1 leaves only ~4% host gap; repeated interleaved benches
+  ranged 0.99–1.10× (noise-dominated, ~1.0×). Not a robust c1 win, so the graph
+  is OPT-IN (`HIPENGINE_MAPLE_GRAPH=1`) and the eager path stays default. The
+  captured graph is the reusable infrastructure for M6 batch decode, where the
+  per-token launch win compounds.
+- Evidence: `benchmarks/results/2026-08-07-gfx1151-maple-hipgraph-c1.json`.
+- Next (higher leverage than c1 hipGraph): M3c selected-expert grouping (~12%),
+  then M4/M5 batched prefill.
+
+## 2026-08-07 — M3c: grouped selected-expert dual gemv explored, rejected (dead end)
+
+- Hypothesis: `maple_selected_ternary_dual_gemv_bf16` (gate/up, grid =
+  top_k × out_features = 4096 blocks, wg 128) re-reads the 2048-wide hidden x
+  per (route,row) block; a grouped variant loading x into LDS once and looping
+  all top_k experts per output-row block should cut x global traffic.
+- Implemented `maple_selected_ternary_dual_gemv_bf16_grouped` (grid =
+  out_features blocks, x in LDS, per-route tree reduce). Bit-exact vs eager on
+  synthetic real-shape data (gate and up maxdiff 0.0, all finite).
+- Measured (num_experts=256, top_k=8, in=2048, out=512): eager 0.041 ms vs
+  grouped 0.059 ms (**0.69×, no win**). x is only 4 KB and already L2-cached, so
+  the redundant reads were NOT the bottleneck; the eager 4096-block shape
+  parallelizes the 40-CU machine better than the serialized per-block route
+  loop. Reverted (uncommitted). Do not re-port grouped GEMV for c1 selected
+  experts.
+- Updated decode profile to post-M3a state: wall 6,038 µs, kernel 5,492 µs,
+  host gap 545 µs (90.1% kernel), 295 launches. Top kernels now: affine4 lm_head
+  1,236 µs (22.5%), selected dual 848 µs (15.4%), selected down 745 µs (13.6%),
+  router softmax_topk 722 µs (13.2%), router logits 382 µs (7.0%), attention
+  563 µs (10.2%).
+- Conclusion: lm_head and selected-expert are weight-bandwidth bound on c1 —
+  per-GEMV shaping (tiled/grouped) does not help. The lever is weight reuse
+  across a batch: M4/M5 batched prefill and M6 batch decode. Router kernel B
+  (softmax/topk, 722 µs) is the one remaining c1 kernel-shape target.
+
+## 2026-08-07 — M4/P1: batched ternary GEMM primitive (groundwork)
+
+- Add `maple_ternary_gemm_bf16` kernel (P1): computes `out[t, r] = x[t,:] ·
+  ternary(W[r,:]) * alpha[r]` for t in [0, rows), r in [0, out_features). One
+  block owns one output row and an 8-row token tile; loads that weight row into
+  LDS once and reuses it across the tile (the core prefill weight-reuse win vs
+  the c1 GEMV, which re-reads the weight row per token). Same word-strided
+  thread + lane-loop + tree-reduce accumulation order as
+  `maple_ternary_gemv_kernel`.
+- Correctness: bit-exact vs the per-row GEMV and the CPU `ternary_gemv` oracle
+  (new `test_maple_ternary_gemm_batched_matches_cpu_oracle`, 13 rows spanning
+  two 8-token tiles). 5/5 ternary kernel tests + focused bundle pass; ruff clean.
+- Microbench (in=2048, out=4096, 32 rows): batched GEMM 0.447 ms vs 32× GEMV
+  0.515 ms (**1.15×** in isolation). This is a PRIMITIVE-level result, not a
+  model-level prefill claim — the full batched prefill path (batched QKV /
+  attention / o_proj / grouped-MoE / chunked wiring) is not yet built, so M4
+  stays open. The kernel is retained as tested groundwork for P1.
+
+## 2026-08-07 — M5/P2: batched causal prefill attention primitive
+
+- Add `maple_attention_prefill_kernel` (P2): grid `(q_heads x T)`, one block
+  per (head, row); each block runs the same online-softmax scan as the decode
+  kernel over the causal prefix `[0, row]` against a dense `[seq, kv_heads,
+  head_dim]` key/value cache (positions already qknorm+RoPE'd). Reads a
+  q-only `[T, q_heads*head_dim]` buffer.
+- Wrapper `maple_attention_prefill_bf16` + registry key
+  `("maple_attention_prefill", "gqa_causal_bf16")`.
+- Correctness: new `test_maple_prefill_attention_matches_causal_oracle` is
+  bit-exact vs the `attention_decode` CPU oracle across all 5 causal rows
+  (GQA grouping head//group matches). 6/6 attention + 16/16 maple kernel tests
+  pass; ruff clean.
+- Debug note: the kernel's q buffer is indexed with row stride
+  `q_heads*head_dim` (dense q-only); the test must supply a q-only buffer, not
+  the padded `q_size+2*kv_size` decode-style layout (which shifts row 1+ reads
+  into kv-padding). The test assertion also needed `out.reshape(-1)` because
+  `np.array_equal` is shape-strict and `out` is `[T, q_heads*head_dim]`.
+
+## 2026-08-07 — M4/P1: batched QKV ternary GEMM primitive
+
+- Add `maple_ternary_qkv_gemm_kernel` (P1): computes the full
+  `[rows, q_features + 2*kv_features]` qkv buffer from the q/k/v ternary
+  projections of a `[rows, in]` input. Grid is (total_output_rows x 8-token
+  tiles); each block owns one output row (selecting q/k/v weight+alpha and the
+  matching `[q|k|v]` column offset) and loads that weight row into LDS once,
+  reusing it across the 8-token tile — same weight-reuse structure as
+  `maple_ternary_gemm_bf16`.
+- Wrapper `maple_ternary_qkv_gemm_bf16` + registry key
+  `("maple_ternary_qkv", "fused_split_weights_gemm")`.
+- Correctness: new
+  `test_maple_ternary_qkv_gemm_batched_matches_oracle` is bit-exact vs 3x CPU
+  `ternary_gemv` per row (13 rows spanning two 8-token tiles). 6/6 ternary
+  kernel tests pass; ruff clean.
+- This is a P1 primitive for the bulk prefill path (batched QKV projection);
+  the full `prefill_native` (batched qknorm+KV append, batched router, grouped
+  MoE, chunked wiring) is still to be built, so M4/M5 stay open.
+
+## 2026-08-07 — M5/P2: batched qknorm+RoPE+KV write primitive
+
+- Add `maple_qknorm_rope_kv_write_batched_kernel` (P2): grid (total_heads x T),
+  block (head, row) qknorm-normalizes that head for row, applies partial RoPE at
+  absolute position = start+row, writes normalized q back into the q-region of
+  qkv[row] (layout [T, q_size+2*kv_size]), and writes k/v into the shared
+  KVLiveSpans ring physical slots — same ABI as the decode write, so prefill and
+  decode share one cache.
+- Wrapper `maple_qknorm_rope_kv_write_batched_bf16` + registry key
+  `("maple_qknorm_rope_kv_write", "partial_rotate_half_batched_bf16")`.
+- Correctness: new
+  `test_maple_qknorm_rope_kv_write_batched_matches_oracle` is bit-exact vs the
+  per-row `qk_norm_rope` oracle across 5 rows (positions start..start+4 written
+  into ring physical slots). 7/7 attention kernel tests pass; ruff clean.
+- Note: test caught a real footgun — kernel and oracle must share one bf16
+  weight source, and value writes are fp32 (not uint16) before bf16 conversion.
+
+## 2026-08-07 — M5/P2: ring-aware batched prefill attention primitive
+
+- Add `maple_attention_prefill_ring_kernel` (P2, shared-cache variant): same
+  online-softmax causal scan as `maple_attention_prefill_kernel`, but reads the
+  KV cache through the KVLiveSpans ring (logical slot -> base_offsets[logical]
+  physical slot), so it consumes the output of
+  `maple_qknorm_rope_kv_write_batched_kernel` and shares one cache with decode.
+  Grid (q_heads x T); block (qh, row) attends to absolute positions
+  [start, start+row]. q-only [T, q_size] qkv.
+- Wrapper `maple_attention_prefill_ring_bf16` + registry key
+  `("maple_attention_prefill", "gqa_causal_ring_bf16")`.
+- Correctness: new
+  `test_maple_prefill_attention_ring_matches_causal_oracle` is bit-exact vs the
+  `attention_decode` oracle across 5 rows read through the ring. 8/8 attention
+  kernel tests pass; ruff clean.
+- This completes the attention half of a prefill layer chain:
+  QKV GEMM -> batched qknorm ring write -> ring prefill attention -> o_proj
+  GEMM. The MoE half (batched router + grouped MoE) and the prefill_native
+  wiring remain.
+
+## 2026-08-07 — M5/P3: batched router over T rows primitive
+
+- Add `maple_router_logits_batched_kernel` (grid (num_experts, T)) +
+  `maple_router_softmax_topk_batched_kernel` (grid T): the two-kernel parallel
+  router extended with a row dimension. logits_out is [T, num_experts];
+  selected_experts / selected_weights are [T, top_k]. Same softmax/top-k
+  rank-count logic per row as the c1 parallel router.
+- Wrapper `maple_router_topk_parallel_batched_bf16` + registry key
+  `("maple_router_topk", "bf16_fp32_parallel_grid_batched")`.
+- Correctness: new
+  `test_maple_router_topk_parallel_batched_matches_ids_and_renorm` — IDs exact
+  vs the `router_topk` oracle across 5 rows, weights allclose, each row sums ~1.
+  6/6 moe + 20/20 maple kernel tests pass.
+- MoE-half prefill chain now has the router; grouped MoE over rows (P3) and the
+  prefill_native wiring remain.
+
+## 2026-08-07 — M5/P4: batched affine4 embed primitive
+
+- Add `maple_affine4_embed_batched_kernel` (P4): embeds T token IDs into a
+  [T, hidden] buffer. Grid is T blocks, one block per token row. Same affine4
+  group-64 dequant as the single-token embed.
+- Wrapper `maple_affine4_embed_batched_bf16` + registry key
+  `("maple_affine4_embed", "group64_batched")`.
+- Correctness: new `test_maple_affine4_embed_batched_matches_oracle` is
+  bit-exact vs `dequantize_affine4` for 6 token IDs. 7/7 ternary tests pass;
+  ruff clean.
+
+## 2026-08-07 — M5/P3: batched selected-expert dual GEMV primitive
+
+- Add `maple_selected_ternary_dual_gemv_batched_kernel` (P3, gather-based
+  grouped MoE): grid (out_features, top_k, T), block (outrow, slot, row)
+  projects x[row] with expert = selected_ids[row, slot]'s gate/up weight rows,
+  writing a_out/b_out as [T, top_k, out_features].
+- Wrapper `maple_selected_ternary_dual_gemv_batched_bf16` + registry key
+  `("maple_selected_ternary_dual", "row_alpha_batched")`.
+- Correctness: new
+  `test_maple_selected_ternary_dual_gemv_batched_matches_oracle` is bit-exact
+  vs per-(row,slot) `ternary_gemv` for 5 rows x top-2. 8/8 ternary tests pass;
+  ruff clean.
+
+## 2026-08-07 — M5/P3: batched selected-expert down GEMV + weighted residual
+
+- Add `maple_selected_ternary_gemv_batched_kernel` (P3): single-projection
+  gather over (T, top_k) entries, grid (out, top_k, T), x is the swiglu output
+  [T, top_k, in]. Wrapper `maple_selected_ternary_gemv_batched_bf16` +
+  `("maple_selected_ternary", "row_alpha_batched")`.
+- Add `maple_weighted_residual_batched_kernel` (P3): combines T rows' top-k
+  expert outputs into the residual, same two-bf16-boundary rounding order as
+  the c1 kernel. Wrapper `maple_weighted_residual_batched_bf16` +
+  `("maple_weighted_residual", "two_bf16_boundaries_batched")`.
+- Correctness: both bit-exact vs their CPU oracles over 5 rows (per-entry
+  `ternary_gemv`, per-row `weighted_residual`). 16/16 maple kernel tests pass.
+- This completes the MoE-half prefill chain: batched router -> batched dual
+  gate/up -> swiglu -> batched down -> batched weighted residual. Remaining:
+  batched rmsnorm/add_rmsnorm, batched final norm+lm_head, and prefill_native
+  wiring + measured artifact.
+
+## 2026-08-07 — M5/P4: batched affine4 lm_head GEMM primitive
+
+- Add `maple_affine4_gemv_batched_kernel` (P4): out[T, out] = x[T, in] x
+  affine4 W. Grid (out_features, T); block (row_idx, t) projects input row t
+  with output row row_idx's affine4 weights.
+- Wrapper `maple_affine4_gemv_batched_f32` + registry key
+  `("maple_affine4_gemv", "group64_batched")`. Row-wise argmax over
+  [T, vocab] is already covered by `argmax_f32_rows_i32`.
+- Correctness: new `test_maple_affine4_gemv_batched_matches_oracle` matches
+  per-row `affine4_gemv_f32` oracle over 5 rows. 10/10 ternary tests pass;
+  ruff clean.
+- This completes the full prefill primitive set (embed, QKV GEMM, qknorm ring
+  write, ring attention, o_proj GEMM, router, dual/down/weighted-residual MoE,
+  lm_head GEMM, row argmax). Remaining: `prefill_native` wiring + measured
+  prefill tok/s artifact.
+
+## 2026-08-07 — M5/P4: batched KV span publish primitive
+
+- Add `maple_kv_span_update_batched_kernel` (P4): one block per position row,
+  publishes positions [start, start+rows) valid in the ring; block 0 updates
+  live_counts and row_positions.
+- Wrapper `maple_kv_span_update_batched` + registry key
+  `("maple_kv_span_update", "sliding_ring_batched")`.
+- Correctness: new `test_maple_kv_span_update_batched_publishes_range` checks
+  live/row/positions/evict for start=3, rows=4. 9/9 attention tests pass;
+  ruff clean.
+
+## 2026-08-07 — M2/D2: fuse Maple MoE gate/up + clamped SiLU (dual+swiglu)
+
+- Add `maple_moe_dual_swiglu_bf16` (quant plugin): one kernel replaces
+  `maple_selected_ternary_dual_gemv_bf16` + `maple_clamped_swiglu_bf16`,
+  computing gate/up with the same FP32 block reduce + bf16 scaling, then the
+  same clamp-7 swiglu, writing a single `[top_k, intermediate]` buffer.
+  Bit-exact with the unfused chain. Wired into the c1 decode path behind
+  `HIPENGINE_MAPLE_FUSE_MOE=1` (default; `=0` keeps the unfused chain).
+- Correctness: new `test_maple_moe_fused_dual_swiglu_matches_unfused_chain`
+  asserts fused intermediate == unfused dual+swiglu intermediate bit-for-bit on
+  gfx1151. Real-model packed-oracle max/mean KL and top-1 are identical between
+  fused and unfused (max_kl 0.4626542322267913, mean 0.053982395728220854,
+  top-1 1.0 on the 12-pos prompt). 37/37 maple tests pass; ruff clean.
+- Perf: fused decode 295→271 launches/step (24, one per MoE layer) and drops
+  the gate/up `[8,4096]` intermediate round-trips. Interleaved eager A/B/A/B
+  median wall ≈ +0.8% (faster, within AR variance); validate script ≈ -2.3%.
+  Launch-count and intermediate-memory reduction retained even though same-
+  session AR variance hides the headline wall ratio.
+- **Rejected:** fused down gemv + weighted residual (`maple_moe_down_weighted_...`)
+  was built, verified bit-exact, but regresses decode ~3.5% (serializing the 8
+  selected experts per output row loses the parallel-expert down grid + stride-8
+  weight reads). Reverted kernel+wrapper; see `docs/REFACTOR.md`.
+- ROCm: `python3 scripts/maple_profile.py --prebuild` (cached) then `--profile`
+  on gfx1151 Radeon 8060S. Update `docs/MAPLE-PERF.md` D2 status + M2 row.
+- **Final call: NOT promoted as default.** The fused kernel is ~9% slower per MoE layer
+  than the unfused dual+swiglu pair (interleaved micro-benchmark 229.7 vs 210.7 us). In
+  eager mode the launch savings offset it (step wall neutral), but in the hipGraph path
+  (M1/M6) launches are already amortized so the fusion would regress ~1.4%. Kept opt-in via
+  `HIPENGINE_MAPLE_FUSE_MOE=1` (default 0); blocker recorded in `docs/REFACTOR.md`.
+
+## 2026-08-07 — M6/D5 batch decode scoping (OPEN)
+
+- MAPLE-PERF.md D5 milestone table updated: M0-M5 done; M6 marked OPEN.
+- Finding: the M4/M5 batched kernels implement single-sequence causal
+  processing (row r attends a shared [start, start+r] prefix), not independent
+  per-request KV spans, so they do not directly give correct c>1 decode of
+  independent requests. Batch decode needs (a) multi-row ternary decode GEMMs
+  (batched GEMM primitives cover the linear/FFN side), (b) a batched GQA
+  attention + KV append kernel reading per-row KVLiveSpans, and (c) a
+  continuous-batching owner loop. Each is a focused follow-up.
+
+## 2026-08-07 — M2/D2: fused qknorm+attention decode (opt-in, ~1% regression)
+
+- Add `maple_attention_fused_qknorm_decode_bf16` (attention plugin): one kernel
+  per q-head block does (1) QK-norm+RoPE the current Q, (2) QK-norm+RoPE+KV-write
+  the current K/V for the head's kv_head (redundant across the 4-block group so
+  each block is self-contained, no cross-block race), (3) the online-softmax
+  attention scan. Bit-exact with the unfused qknorm_rope_kv_write +
+  attention_decode chain.
+- Correctness: new `test_maple_fused_qknorm_attention_decode_matches_unfused_chain`
+  asserts attention output + K/V cache match bit-for-bit. Real-model opt-in decode
+  is bit-exact (BITEXACT=True) but ~1% slower (interleaved eager 6442 vs 6377 us).
+- Wired behind `HIPENGINE_MAPLE_FUSE_QKATTN=1` (default 0); blocker in
+  `docs/REFACTOR.md`. 38/38 maple tests pass; ruff clean.
+- This completes the D2 fusion investigation across all named composites: MoE
+  dual+swiglu (~9% micro regression), down+weighted (~3.5%, reverted), and
+  qknorm+attention (~1% step regression) all regress on gfx1151 small-batch, so
+  none is promoted; launch reduction is served by hipGraph (M1).
+
+## 2026-08-07 — M6/D5: batch decode c>1 + continuous batching (retained)
+
+- Add batched per-request decode primitives: `maple_qknorm_rope_kv_write_batched_decode_bf16`
+  (per-row QK-norm+RoPE+KV write) and `maple_attention_decode_batched_bf16`
+  (per-row GQA attention decode), each with a batch grid dimension and per-row
+  `KVLiveSpans` (live_counts/row_positions). Bit-exact vs running the c1 kernels
+  per row.
+- Key ABI decision: `row_base_offsets[row]` decouples the per-request arena base
+  from `row_positions[row]` (local RoPE position). Without it requests got global
+  RoPE phases and c=4/8 diverged from serial (c=2 matched only by coincidence).
+- `MapleBatchRunner.batch_step(ids)` runs c requests through the full batched
+  ternary chain (embed, QKV GEMM, attention, MoE, lm_head) in a shared identity
+  arena where request r owns arena range [r*per_capacity, +per_capacity).
+- `MapleContinuousBatcher` = fixed-batch owner loop: admission (submit), decode
+  rounds (step), slot reclaim (reset_request); mirrors GGUF/PARO pattern.
+- Correctness: batch decode bit-exact vs c independent serial `MapleRunner.step`
+  on the real checkpoint for c=2/4/8 (test parametrized c=2,4); continuous
+  batcher matches serial autoregressive.
+- Retained c2/c4/c8 rows on gfx1151 (W7900), 64 tok/request:
+  c=2 223.2, c=4 275.6, c=8 321.1 tok/s aggregate.
+  Artifact: `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode.json`.
+- Commits: e5587b1b0 (kernels), 5d324031d (MapleBatchRunner),
+  1f26e8bdd (RoPE/arena decouple fix).
+## 2026-08-04 — Repair the post-merge repository-wide failure set
+
+- The required exclusive baseline `uv run pytest -q --tb=short` completes with
+  **67 failing nodes**. They reduce to stale post-merge contracts rather than
+  67 independent runtime defects: 23 superseded H6 scratch/variant guards, six
+  historical source-hash guards, nine registry-scope assertions, two Laguna
+  materialization expectations, 14 gfx1100 code objects launched on gfx1151,
+  three benchmark/router/root follow-on failures, and ten stale or stateful
+  Qwen GGUF/PARO fixtures. The Laguna root probe passes alone; its broad-run
+  failure follows the invalid-device-function launches in the same process.
+- Refresh the historical guards without changing their archived artifacts:
+  retain the artifact-time hashes and add explicit post-merge hashes for the
+  later gfx1151/Laguna owners. Include the merged 768-byte MoE completion plane
+  (`104,370,976` MoE bytes and `600,142,624` total prefill bytes), and select
+  the current H6T fused-add IQ3 fallback in the H6C/H6L historical tests.
+  Registry exclusion tests now assert that the candidate key itself is absent
+  while allowing independently qualified gfx1151 keys from collection-time
+  registration.
+- Make GPU test builds target the detected device rather than hard-coded
+  `gfx1100`. Pin the tiny Q6 materialization case to its intended non-planar
+  qmicro fallback, include current gfx1151 auxiliary sidecars in resident-byte
+  and allocation accounting, and update synthetic resident sessions for the
+  target-scratch and compact-position owners. The real MoE graph test now uses
+  pytest-scoped environment changes and explicitly disables the incompatible
+  MoE-tail-next-RMS fusion, removing its leak into later tests.
+- Focused repair evidence covers every original failure class: the 49-node
+  non-GPU last-failed bundle reaches 46 pass with only three sequential hash
+  guards left, then those three pass after adding the explicit post-merge
+  hashes; `tests/test_laguna_gguf_materialize_gpu.py` passes **2/2**;
+  the two MoE-tail GPU files pass **18/18** on detected `gfx1151`; the real
+  graph test followed immediately by its formerly contaminated routing file
+  passes **4/4**; and the real Laguna root probe passes **1/1**. `compileall`,
+  `git diff --check`, and conflict-marker checks pass. Ruff is not installed in
+  either the project or `therock` environment, so no Ruff result is claimed.
+- A final `pytest --lf` found an empty last-failed cache and therefore began a
+  redundant full run; stop it at 13% with no failures instead of violating the
+  required approval gate for another multi-minute broad run. Per the focused
+  repair rule, the original complete broad baseline plus repaired failing-node
+  evidence is retained; a second full-suite-green claim remains intentionally
+  unmade pending explicit approval.
+
+## 2026-08-04 — Add a bounded gfx1151 Q4_K_M prefill-drain diagnostic
+
+- Online/GitHub triage finds the dedicated report
+  [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437) still open in
+  `status: triage` with no AMD response. Related CWSR/MES reports do not provide
+  a directly transferable application workaround: `amdgpu.cwsr_enable=0` is a
+  broad historical mitigation, while the captured 0x88 failure is a silent
+  active/non-empty AQL queue with 32 unread packets and no fault/reset.
+- The strongest new fixed-stack lead is upstream Linux
+  `1fb710793ce2619223adffaf981b1ff13cd48f17`, whose stated purpose is enabling
+  MES `lr_compute_wa` to prevent hangs on long compute jobs. The exact CachyOS
+  source commit `0e558f948dfe28b50d2eb9ddda58900d7de01aac` used by installed
+  `7.1.3-2-cachyos` sets `oversubscription_timer=50` but has no
+  `enable_lr_compute_wa` assignment. MES 0x88 exceeds the patch's gfx11 minimum
+  0x7f check. Treat this as the leading kernel A/B candidate, not root-cause
+  proof.
+- Add default-off `Qwen35GGUFResidentSession.prefill_queue_drain` and
+  `qwen35_readme_sweep.py --prefill-queue-drain none|chunk|layer`. `layer`
+  performs a real `hipStreamSynchronize` after each model layer, bounding the
+  observed two-layer host-submission lead; `chunk` provides a cheaper outer-
+  chunk comparison. The default path remains byte-for-byte scheduling-equivalent
+  with no added synchronization.
+- RED/GREEN coverage validates mode normalization/rejection, selected-boundary
+  calls, two actual layer-loop drains, CLI forwarding, and artifact provenance.
+  A real smoke first exposed a separate stale harness contract: the README sweep
+  omitted newly required `roctx` and `rocprof_selected_region` keywords when
+  calling `_run_existing_session_once`. Add disabled-region forwarding and an
+  AST/signature guard so future helper changes fail in the suite. The focused
+  queue-drain/bulk-prefill/flight-recorder/signature bundle passes **38/38**;
+  the runner/readme bundle passes with **14 passed / 9 local-model skips**.
+- Matched real gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M `512/1` processes on HIP
+  7.15, BF16 KV, `GPU_MAX_HW_QUEUES=1`, eager decode, and cached builds both
+  exit 0 with finite logits and exact final token/logit `9707` /
+  `28.245166778564453`. Layer drain changes prefill
+  **1297.739 -> 1211.852 tok/s (-6.62%)**; decode is
+  **52.664 -> 52.467 tok/s**. This is diagnostic-only plumbing/cost evidence,
+  not a performance claim and not 128K stability evidence. Artifact:
+  `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-smoke.json`.
+- The predeclared containment gate remains exact 512/4K/64K controls plus at
+  least three independent 128K warmup+3 processes. It exceeds five minutes and
+  is not started without explicit approval. Prefer an updated-kernel
+  `enable_lr_compute_wa` A/B before treating host drains as production policy.
+
+## 2026-08-04 — Audit Hipfire Redline for a minimum gfx1151 dispatch step
+
+- Review `warpfront/hipfire` `redline@a373c688` and
+  `codex/gfx1151-redline-mq4r@661cb5d6` read-only. Hipfire attributes the
+  retained-PM4/Redline design and implementation to Kaden Schutt. The product
+  path keeps public ROCr/HSA resource ownership and replaces hundreds of
+  per-dispatch AQL publications with one vendor packet referencing a retained
+  PM4 indirect buffer only after artifact, kernarg, shadow-state, fault, and
+  repeated-speed gates.
+- Upstream-reported gfx1201 HipGraph -> retained-PM4 medians are
+  **363.682 -> 392.248 tok/s (+7.855%)** for Qwen3.5 0.8B,
+  **97.727 -> 98.775 (+1.073%)** for Qwen3.5 9B, and
+  **165.839 -> 178.320 (+7.526%)** for Qwen3.6 A3B. Its direct public-AQL
+  packet route is neutral versus HipGraph. These are upstream results, not
+  locally reproduced hipEngine claims.
+- Automatic Redline admission remains deliberately gfx12-only. The gfx1151
+  branch adds seven kernel/fusion and PM4-ABI experiments but does not widen
+  that predicate or publish a certified gfx1151 PM4 product A/B. The smallest
+  selection change (`871a47cc`, Q8 tile32) is exact-shape and conditional on
+  the Radiowave experiment flag; it is not evidence for a generic transport
+  promotion.
+- Do not implement a retained-PM4 route in hipEngine now. Current gfx1151
+  Q4_K_M graph replay improves matched wall only **+1.00%/+0.86%/+0.36%** at
+  512/4K/bounded-128K, below PLAN's `>~3%` trigger for another dispatch lever.
+  The unresolved non-retiring AQL queue failure further makes new low-level
+  queue ownership premature. A future rung starts shadow-only and single-queue,
+  then requires exact artifact/kernarg identity, 15-position logits/state/KV
+  parity, timeout/fault fallback, and two independent `>1.03x` samples versus
+  HipGraph before registry admission.
+- No Hipfire source was modified: this repository's `AGENTS.md` designates
+  external reference repositories read-only. Implementing inside Hipfire needs
+  a task rooted in that repository; the evidence above does not yet justify
+  such a promotion anyway.
+
+## 2026-08-04 — Close the post-merge repository suite under focused repair
+
+- With explicit approval for full validation, run `uv run pytest -v
+  --tb=short`. The first complete run collects 8,463 tests and finishes in
+  1,527.85 seconds with **8,372 passed / 89 skipped / 2 failed**. The failures
+  are isolated to a stale `docs/REFACTOR.md` H8B source-pin hash and the real
+  Laguna root probe resolving an exact gfx1151 Q6 linear request to the CPU
+  fallback.
+- The first root cause is test teardown restoring `_KERNELS` without clearing
+  the resolver cache or advancing its generation. Add the test-only
+  `restore_registry_for_tests()` API with normal mutation semantics, route the
+  pytest fixture through it, add a RED/GREEN cached-fallback regression, and
+  refresh the intentional post-merge docs hash.
+- Because this changes shared suite teardown, run the complete suite a second
+  time. It collects 8,464 tests and finishes in 1,528.36 seconds with **8,374
+  passed / 89 skipped / 1 failed**. The H8B guard is green and every other test
+  passes; only the real Laguna root probe still fails.
+- The remaining exact-key failure is independent of cache restoration:
+  `_ensure_embedding_kernel_registered()` and
+  `_ensure_linear_kernel_registered()` incorrectly treated a resolvable CPU
+  fallback as proof that the requested backend key was installed. Switch both
+  lazy-registration guards to exact `is_registered()` checks. Tighten the
+  existing gfx1151 test with registered CPU fallbacks so it is RED before the
+  fix and requires exact embedding and Q6-T16 linear registrations afterward.
+- Final focused evidence is **12/12** for the registry/H8B/root-probe nodes and
+  **97/97** for the complete affected gfx1151 backend, GGUF linear/embedding
+  dispatch, dispatch-cache, and real Laguna root-probe bundle. Per the focused
+  repair rule, do not spend another 25 minutes on a third broad run: the last
+  complete run establishes all other 8,374 tests and the complete affected
+  bundle establishes the isolated repair.
+
+## 2026-08-04 — Review Photon 2 generated decode for gfx11 transfer
+
+- Review the Photon 2 launch post, public Kestrel
+  `1b23055df49b13feff65f960baa02d46d44e9641`, and the public Python runtime and
+  catalog in `kestrel-kernels==0.4.9`; do not inspect or reproduce packaged
+  device code. The launch chart reports H100 system-level Photon/vLLM ratios
+  from **1.01x to 2.33x** at C1/C2/C4/C8 and fresh-process-to-first-inference
+  wins for every disclosed model. Exact commands, absolute rates,
+  checkpoint/precision details, and raw samples are not published, so none of
+  these are AMD or isolated-megakernel claims.
+- Source inspection separates the Moondream persistent instruction-tape path
+  from the generalized Qwen/Gemma generated-decode runtime. The latter ships 24
+  usable H100 programs across six dense model shapes and C1/C2/C4/C8. Its
+  transferable design is the compiler-emitted contract: physical weight
+  recipes, named ABI, explicit carried-state forms, dynamic active rows within
+  fixed capacities, direct paged-KV ownership, exact artifact matching, and
+  measured native fallback.
+- Do **not** port Photon or begin a whole-model gfx1100/gfx1151 persistent
+  megakernel. The compiler is proprietary, the binaries are CUDA `sm90`, the
+  public host is Torch-based, and current local evidence remains controlling:
+  gfx1100's AR-faithful persistent barrier sweep showed only **1.08-1.27x**
+  opportunity for 3-12 MiB fresh-weight stages and regression beyond cache,
+  while its fused PARO FFN was **2.66x slower** than production. Current
+  gfx1151 graph replay is only **+1.00%/+0.86%/+0.36%** and the non-retiring AQL
+  queue risk remains open.
+- Retain current registered eager/`hipGraph` owners and `KVLiveSpans`. Borrow
+  Photon's low-concurrency/cold-start benchmark lens now. Reopen an AMD-native
+  generated-decode descriptor plus one bounded subgraph only after profiling
+  attributes more than approximately 3% of wall to removable dispatch,
+  state-layout conversion, or intermediate traffic; require the normal
+  registry, fallback, complete-state/KV, correctness, startup, and repeated
+  server-wall gates.
+- Publish the full evidence, technique matrix, staged recommendation, and
+  licensing boundary in `docs/PHOTON2.md`. Although the launch post labels the
+  engine Apache 2.0, reviewed Kestrel Git/PyPI 0.5.0 carries no license file or
+  package license metadata; independently implement concepts only and await an
+  explicit upstream license before any source reuse.
+
+## 2026-08-04 — Review Nathanw1014 Strix Halo llama.cpp for gfx1151 GGUF
+
+- Review the user-facing `Nathanw1014/strix-halo-llamacpp@b166a56e`, releases
+  `v0.1` through `v0.4` plus the compile-only `dev-20260803-b7b85da`, the
+  vendored evidence pack, and the per-concern branches in
+  `Nathanw1014/llama.cpp` through `strix-halo-vulkan@b7b85da`. Treat commit
+  mechanisms and upstream measurements separately; no Nathan speedup is a
+  locally reproduced hipEngine claim.
+- The highest-priority transferable gap is a bounded head-contiguous BF16 K/V
+  prefill scratch A/B before AOTriton at 32K/64K. hipEngine currently presents
+  token-major/head-interleaved paged BF16 K/V through strides, the same layout
+  class Nathan's RADV f16-contiguize pass fixes. Start with one reusable
+  per-layer scratch and include copy wall/memory; do not change persistent
+  `KVLiveSpans` layout first.
+- Do not port the quantized-KV or MMID patches mechanically. hipEngine already
+  uses a grouped-GQA INT8 decode producer keyed by `(kv_head, split)`, normal
+  quantized-KV prefill bridges through temporary BF16/AOTriton storage, and MoE
+  prefill builds count/prefix/stable compact rows, active experts, and tile maps.
+  Laguna gfx1151 selects the parallel row compactor. Existing BF16/FP16
+  activations, wave32 HIP kernels, shape-qualified tiles, and measured 256-row
+  chunk policy also supersede Vulkan F16B/wave/tile and generic ubatch knobs.
+- Keep Nathan's P-load/Psh/subgroup shader edits as Vulkan/AOTriton-reference
+  material only. Preserve the scale-cache, TILE16, and scalar-int MMID results as
+  negative evidence; the scale cache was later disabled after -4% to -20%
+  regressions.
+- DeepSeek V4 lightning indexer, indexed sparse FA, gather-to-compact decode,
+  fused hyper-connections, F16 indexer cache, and small-B O-projection copy are
+  valid future-model references, not Qwen3.6/Laguna changes. A future DSv4 port
+  must use new model/layer/quant/variant registrations, CPU oracles, and unfused
+  fallbacks over `KVLiveSpans`.
+- Nathan's Vulkan byte-capped submission is not portable to HIP. The analogous
+  hipEngine layer/chunk drains already exist as default-off diagnostics. For the
+  repeated-128K stall, keep the updated-kernel MES `lr_compute_wa` A/B ahead of
+  application batching or drain promotion; one passing 128K process is not
+  lifecycle closure.
+- Publish the source-linked matrix, current-code comparison, candidate design,
+  RED/GREEN/perf gates, and final priorities in
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md`. This is a docs/research unit; no GPU run,
+  benchmark rollup, or architecture plan change is claimed.
+
+## 2026-08-04 — Completion-audit the Nathan gfx1151 review
+
+- Map the objective to the committed release audit, source-linked applicability
+  matrix, hipEngine current-code comparison, candidate design/gates, and final
+  priorities. GitHub's release API still exposes exactly `v0.1`-`v0.4` plus the
+  compile-only `dev-20260803-b7b85da`; all nine local links resolve.
+- Verify all 33 pinned Nathan source/tree/commit links against clean local clones,
+  including their commit objects, file objects, and cited line ranges. Reinspect
+  the active hipEngine AOTriton strides, layer-local INT8 BF16 prefill oracle,
+  grouped-GQA producer, parallel MoE compactor/tile map, gfx1151 256-row policy,
+  and MES `lr_compute_wa` stall evidence.
+- The audit found one weakly explicit item in Nathan's README: the Vulkan FA
+  scratch capacity/fallback pair (`e21d01e`, `8a2c6b2`). Add it to the runtime
+  matrix and candidate gates. Transfer only bounded tracked allocation plus an
+  exact existing-path fallback; gfx1151 is UMA, so do not port the discrete-VRAM
+  reserve heuristic or Vulkan storage-buffer limit. Clarify that the proposed K
+  and V scratch pair is shared across full-attention layers, not duplicated per
+  layer.
+- Re-read the updated review and run docs-only link/coverage checks. No GPU run
+  or benchmark claim is part of this completion audit.
+
+## 2026-08-04 — Qualify gfx1151 Q4_K_M per-layer drain containment
+
+- With explicit approval for the long gate, run one independent right-sized
+  process for each matched `none`/`layer` 512/128, 4K/128, and 64K/128 arm,
+  then three independent `layer` 128K/128 processes. Every process uses one
+  discarded warmup plus three measured repetitions, graph-replay decode for
+  measured runs, cached builds, BF16 KV, bulk prefill, and
+  `GPU_MAX_HW_QUEUES=1`; every process is bounded by 1,800 seconds. Preserve
+  ten-second telemetry for both 64K arms and all three long processes.
+- All six control processes pass exactly. Matched none -> layer prefill medians
+  are **1395.168 -> 1370.181 tok/s (-1.791%)** at 512,
+  **1463.311 -> 1459.767 (-0.242%)** at 4K, and
+  **890.033 -> 882.348 (-0.864%)** at 64K. Decode changes
+  **-0.003%/+0.000%/-0.134%**. This is a small but measurable prefill cost, not
+  a performance win.
+- All three independent 128K warmup+3 processes exit 0, completing **12/12**
+  long prefills. Their measured prefill medians are
+  **581.591/581.595/582.047 tok/s** and decode medians are
+  **29.603/29.667/29.607 tok/s**. Across all nine measured long repetitions,
+  prefill spans **580.482-583.311 tok/s**, every final ID is **9707**, every
+  final logit is finite and identical at **30.117918014526367**, measured graph
+  replay is effective, and every process returns tracked allocation to zero.
+- Across the two 64K plus three 128K telemetry streams, **295** samples at
+  least 80% activity have a minimum working power of **109.019 W** and zero
+  samples match the historical `100% / >=2.8 GHz / <=59 W` failure signature.
+  The kernel journal contains no amdgpu/KFD fault, timeout, or reset. One
+  `PME: Spurious native interrupt!` occurs during the successful 64K no-drain
+  control, which continues through warmup+3 and cleanup; this further weakens
+  the PME event as a causal trigger.
+- Benchmark provenance spans `b10a5f7d5`, `c98fba4e8`, and `db87f6d1e` because
+  three unrelated documentation commits land during the serial 72-minute
+  matrix. `git diff b10a5f7d5..db87f6d1e` contains only `WORKLOG.md`,
+  `docs/PHOTON2.md`, and `docs/STRIX-HALO-LLAMACPP-REVIEW.md`; runtime, kernels,
+  tests, and benchmark code are identical throughout.
+- Qualify `--prefill-queue-drain layer` as an explicit slower containment path,
+  but keep default `none`, the upstream issue, and the default repeated-128K
+  publication block open. A finite intermittent-failure matrix cannot prove
+  zero future incidence, and the measured short/medium cost fails the existing
+  non-regressive default-promotion criterion. Prefer the fixed-kernel MES
+  `enable_lr_compute_wa` A/B for true closure.
+- Compact diagnostic evidence:
+  `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json`.
+  It is explicitly non-topline and makes no performance claim, so benchmark
+  README/changelog rollups are unchanged.
+
+## 2026-08-04 — Start Nathan-review priority execution
+
+- Execute `docs/STRIX-HALO-LLAMACPP-REVIEW.md` in priority order. Priority 1 is
+  the copy-inclusive head-contiguous BF16 K/V AOTriton screen; preserve the
+  strided AOTriton and native paged fallbacks and do not change persistent
+  `KVLiveSpans` storage first. GPU preflight is clear on Radeon 8060S/gfx1151,
+  HIP 7.15; no benchmark or profiler process was active before the baseline.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` cannot complete
+  because this machine no longer has the manifest paths
+  `/home/lhl/amd-gpu-tuning/{nano-vllm-amd,reference/atlas}`. The narrow
+  `--file '*paged*'` query selects zero manifest sources. This candidate is a
+  net-new in-tree layout copy using the already reviewed Nathan commit evidence,
+  not a parent-kernel port; no missing external source body will be copied.
+- Freeze the missing 32K control at tracked-clean `f8d49a25a`, BF16 KV,
+  `GPU_MAX_HW_QUEUES=1`, gfx1151, hermetic TheRock HIP, cached builds, one
+  discarded warmup plus three measured persistent-session resets:
+  `scripts/qwen35_readme_sweep.py --engine gguf --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend
+  hip_gfx1151 --workloads 32K/128 --warmup-runs 1 --measured-runs 3
+  --warmup-decode-tokens 1 --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode
+  --graph-replay-decode --prefill-queue-drain none --require-cached-build`.
+  Measured prefill is **1133.283/1133.272/1132.438 tok/s**, median
+  **1133.272**; decode median is **45.934 tok/s**; owned peak is
+  **23.591 GiB**. Raw JSON/log remain under
+  `/tmp/hipengine-nathan-headmajor/`. Existing same-protocol controls in the
+  layer-drain artifact supply 512/4K/64K medians
+  **1395.168/1463.311/890.033 tok/s**.
+
+## 2026-08-04 — Head-major AOTriton candidate through the 32K gate
+
+- RED collection failed on the absent copy exports. GREEN adds registry keys
+  `paged_kv_copy/bf16/{head_major_spans,head_major_dense_prefix_spans}` over a
+  raw-pointer HIP K/V gather. The generic body consumes `KVLiveSpans` page/live
+  metadata and follows permuted physical pages; the dense body is admitted only
+  from the bulk scratch owner's known identity table. One tracked BF16 K/V pair
+  is shared across layers, capped at 512 MiB total, and both cap denial and HIP
+  allocation failure select the existing strided AOTriton path. Persistent
+  paged KV and native attention are unchanged.
+- Primitive lengths `1/255/256/257`, two heads, permuted pages, sentinel tails,
+  and dense-vs-generic comparisons are byte-exact. A shared-runner real-model
+  512-token A/B matches token, selected-logit bits, all logits, all 40 layer
+  outputs, all 30 Conv/GDN states, and all ten K/V prefixes. A separately run
+  one-byte cap denial allocates no head-major buffer and matches the same full
+  state. Focused kernel/runtime/policy validation reports **39 passed**.
+- Same-protocol right-sized full-model candidate medians versus controls are:
+  512 **1395.168 -> 1394.772 tok/s (-0.028%, neutral)**, 4K
+  **1463.311 -> 1472.330 (+0.616%)**, and 32K **1133.272 -> 1171.610
+  (+3.383%)**. Decode is unchanged within noise. Tracked head-major scratch is
+  **1.5/8.9/67.6 MB** at the rounded 768/4352/33024-token capacities; 32K owned
+  peak rises **23.591 -> 23.654 GiB**. Every measured row emits stable token
+  `9707` and finite identical per-shape final logits.
+- The five-repeat production-shape AOTriton sub-window screen is output-bit
+  exact. Strided -> copy-inclusive head-major medians at 512/4K/32K/64K are
+  **0.356 -> 0.363 ms (0.981x)**, **13.275 -> 12.769 ms (1.040x)**,
+  **179.441 -> 154.983 ms (1.158x)**, and **382.542 -> 315.417 ms
+  (1.213x)**; standalone copies cost **0.011/0.126/1.164/2.233 ms**.
+  Cached `rocprofv3 --kernel-trace` records 12 expected
+  `qwen35_copy_paged_kv_bf16_to_head_major_kernel<true>` launches (local256,
+  VGPR16, scratch0) and 20 AOTriton `attn_fwd` launches with plausible duration.
+- Raw artifacts/logs remain under `/tmp/hipengine-nathan-headmajor/`. The
+  required right-sized 64K warmup+3 process is estimated at 5.5-6 minutes, so it
+  is paused for the mandatory explicit approval before the promotion decision.
+
+## 2026-08-04 — Promote bounded gfx1151 head-major AOTriton KV
+
+- After explicit approval, the independent right-sized 64K warmup plus three
+  measured runs completed normally. Candidate prefill is
+  **952.766/952.348/952.190 tok/s**, median **952.348**, versus the frozen
+  same-protocol **890.033** control (**+7.001%**). Decode is **39.362 tok/s**
+  versus **39.385** (**-0.059%, neutral**). All rows emit token `9707` with
+  identical finite final logit `30.0891914368`. The resident head-major pair is
+  **134,742,016 bytes** at rounded capacity **65,792**, moving tracked peak
+  **24.267 -> 24.392 GiB**.
+- Promote the path as gfx1151's backend capability through only that validated
+  capacity class. `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV=0`, a tighter token or
+  byte cap, registry miss, allocation denial, gfx1100, and larger resident
+  capacity all retain strided AOTriton; native paged attention remains the
+  short-context fallback. The boolean rollback and capacity controls are
+  tracked in `docs/REFACTOR.md`, and the new four-axis copy keys plus trace are
+  catalogued in `docs/KERNELS.md`.
+- The accepted evidence packet is
+  `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`.
+  `benchmarks/README.md` now overlays the qualified 512/4K/32K/64K gfx1151
+  cells and adds a platform-index row; `benchmarks/CHANGELOG.md` records the
+  same-protocol old-to-new curve. Raw hashes pin the control/candidate/state/
+  denial/sub-window/profile files under `/tmp/hipengine-nathan-headmajor/`.
+- Post-promotion validation passes: JSON parse, `py_compile`, benchmark README
+  write/check sync, and `git diff --check`; focused head-major/paged-write/
+  registry/benchmark-runner/full-attention/chunked-prefill/AOTriton-stream/
+  INT8-KV/asymmetric-KV files report **61 passed, 15 skipped**. The skips are
+  existing fixture/model availability guards; all 13 dedicated head-major tests
+  run and pass with HIP available.
+
+## 2026-08-04 — Reject the superseded MES `lr_compute_wa` A/B
+
+- Follow-up upstream chronology invalidates the earlier recommendation to patch
+  `enable_lr_compute_wa`. Linux `1fb710793ce2` introduced that workaround, but
+  `6b0d812971370c64b837a2db4275410f478272fe` says it did not fully fix gfx1151,
+  could destabilize other products with newer GC microcode, and removes it.
+  Upstream identifies `b42f3bf9536c9b710fd1d4deb7d1b0dc819dc72d`, which
+  raises gfx1151 KFD VGPR accounting to `0x60000` bytes/CU, as the actual fix.
+- The exact captured CachyOS source
+  `0e558f948dfe28b50d2eb9ddda58900d7de01aac` contains gfx1151 in that corrected
+  branch and intentionally omits the removed MES workaround. The running
+  `7.1.3-2-cachyos` KFD topology reports `gfx_target_version=110501`, 40 CUs,
+  and `cwsr_size=19185664`; this exactly matches corrected 384-KiB/CU
+  accounting and not the old `13942784`-byte result. The repeated-128K stall
+  therefore occurred with the actual upstream fix active.
+- Reject restoring or A/B-testing `lr_compute_wa`; doing so would test an
+  upstream-removed, incompletely effective, potentially destabilizing path.
+  `checkupdates` shows CachyOS `7.1.6-1` is available and static source audit
+  confirms the same corrected-VGPR/no-workaround state, but a 7.1.3 -> 7.1.6
+  upgrade would be a broad system screen rather than the proposed causal A/B.
+  No package install, privileged change, reboot, or >5-minute benchmark was run.
+- Correct `docs/DEBUG-GFX1151-STALL.md`, the Nathan review and final priority
+  list, `docs/ROOFLINE.md`, `docs/REFACTOR.md`, and both layer-drain diagnostic
+  artifacts. Keep exact layer drain as explicit slower containment while
+  ROCm/ROCm#6437 remains open; reserve the default-path three-process gate for a
+  later named relevant stack fix or an explicitly approved broad kernel screen.
+- The narrow benchmark provenance/README guard initially exposed a stale
+  post-head-major assertion: it still expected every gfx1151 GGUF cell from the
+  July base artifact. Teach the guard to overlay the accepted August head-major
+  artifact for its 512/4K/32K/64K prefill, decode, and peak-memory cells and to
+  require the canonical scoreboard's artifact link. The focused bundle now
+  passes **14/14**; both diagnostic JSON files parse and `git diff --check`
+  passes.
+
+## 2026-08-04 — Freeze grouped-GQA and MoE structural contracts
+
+- Audit finds MoE coverage already stronger than the Nathan-review maintenance
+  requirement. `test_qwen35_moe_group_scatter_plan.py` checks serial/parallel
+  stable expert starts, ascending active-expert IDs, stable lane and source-row
+  order, sorted weights, 32/64 tile starts/maps, and active-prefix behavior.
+  H7U adds one/all/uneven/repeated/tail routing, natural M512 tile-map/packed-
+  hidden repeat/lifecycle parity, physical resource/source guards, and a pinned
+  47-count + 47-prefix + 47-scatter / zero-serial / 47-gather trace contract.
+- Grouped-GQA INT8 had exact CPU-oracle smoke and retained profiler evidence but
+  no direct source/launch guard. Add
+  `test_int8_gqa_splitk_producer_grid_is_owned_by_kv_head`, freezing
+  `blockIdx.x -> kv_head`, `q_base=kv_head*q_per_kv`, eight-Q-head inner loops,
+  KV-head scale offsets, and `dim3(num_kv_heads,num_splits)` launch ownership.
+  RED-first is inapplicable because this is a regression guard for existing
+  behavior, not a math or implementation change.
+- Fresh cached gfx1151 INT8 GQA smoke passes FP32-scale context 64, unaligned
+  384/128 three-split, and FP16-scale page-boundary context 520 with direct max
+  abs **<=2.98e-08**, FP16-gated **1.53e-05**, and BF16-gated **1.49e-08**.
+  Cached `rocprofv3 --kernel-trace` names the expected producer: FP32 scale runs
+  twice at global grids `(512,1,1)/(512,3,1)`; FP16 scale runs three times at
+  `(512,3,1)`. Global X is exactly two KV heads times local256, not 16 Q heads
+  times local256. Both use local256, VGPR80, SGPR128, LDS0, scratch0, with
+  positive **22.603-273.714 us** durations. Raw smoke/trace SHA-256 are
+  `6e4f385d...57094` / `5aa6687d...bbea` under
+  `/tmp/hipengine-nathan-structural/`.
+- The combined attention/MoE/H7U run completed with **25 passed / 1 stale source-
+  hash failure**. The sole failure was the accepted head-major AOTriton package
+  capability changing `hip_gfx1151/__init__.py`, orthogonal to H7U. Refresh that
+  post-merge expected hash with an explanatory comment; the full H7U file then
+  passes **9/9**, and its source-default trace/owner guard passes **3/3**. The
+  earlier combined run already established every other node green, so no
+  redundant broad rerun is needed under the focused-repair rule.
+
+## 2026-08-04 — Retain the quantized-KV BF16 prefill bridge
+
+- Current-source audit confirms the speed/capacity split is still correctly
+  enforced. PARO `auto` selects `oracle_bf16` below 224 Ki prompt rows and on
+  larger-memory systems even above that threshold; `streaming_direct` requires
+  both a very-long prompt and memory pressure, or an explicit diagnostic env
+  override. GGUF retained INT8 prefill separately writes layer-local BF16
+  attention-oracle K/V and retained INT8 K/V; pure/no-mirror GGUF INT8 remains
+  quality-gated and non-default.
+- Extend the existing GGUF INT8 scratch-policy regression test to carry an
+  admitted head-major K/V pair through
+  `_full_attention_prefill_scratch_for_layer()`, then resolve it through
+  `_gguf_aotriton_head_major_buffers()`. This freezes that the layer-local BF16
+  oracle consumes the bounded gfx1151 head-major AOTriton path promoted earlier,
+  rather than silently dropping back to strided K/V. RED-first is inapplicable:
+  this is a structural guard for already-correct retained behavior, not new
+  math or a route change.
+- Fresh gfx1151 validation passes the direct streaming INT8 primitive against
+  its NumPy quantized-attention oracle and all dedicated head-major gates. The
+  retained GPU1 performance artifact remains decisive: direct streaming moved
+  128K/128 prefill **1020.723 -> 23.425 tok/s (-97.7%)** and required
+  **5595.289 s** for that one prefill. No >5-minute rerun is warranted without a
+  direct-kernel implementation change; no performance claim or benchmark
+  rollup changes.
+- Validation: host INT8 route/policy/artifact helpers **38 passed**; gfx1151
+  direct-INT8 plus head-major primitive bundle **14 passed**; runtime
+  KV-dispatch/plan/layout bundle **178 passed**; GGUF full-attention/INT8/head-
+  major bundle **34 passed, 2 fixture skips**; `py_compile` and
+  `git diff --check` pass. `scripts/check_lineage.py --kind kernel --diff stat`
+  cannot complete because the configured external Atlas reference directory is
+  absent; no kernel was added or ported in this unit.
+
+## 2026-08-04 — Defer DeepSeek V4 at the model-admission gate
+
+- Repository and local-asset audit finds no approved bounded implementation unit:
+  `registered_models()` contains only Laguna, Moonshine, Qwen3.5/3.6, and toy
+  plugins; `hipengine/models/`, tests, and `pyproject.toml` contain no DeepSeek
+  plugin/dependency; `/home/lhl/models` and the Hugging Face cache contain no
+  DeepSeek V4 checkpoint/config. Old DeepSeek vocab/conversion helpers under
+  llama.cpp source snapshots are not model weights or an oracle. `PLAN.md` uses
+  antirez `ds4` only as a host-design reference and does not list DeepSeek V4 in
+  the phase model table.
+- Existing `q8_1_ds4*` registry/kernel names are llama.cpp DS4 activation-record
+  geometry, not evidence of a DeepSeek V4 model implementation. Reusing those
+  strings as a model route would conflate independent concepts and violate the
+  four-axis plugin boundary.
+- Preserve Nathan's source commits, but defer code. The documented first approved
+  unit is CPU-first: pin checkpoint/config/tokenizer and authoritative semantics;
+  register a metadata-only model plugin; add CPU oracles for indexer/top-k,
+  indexed attention, gather/padding, and hyper-connections; separate main KV
+  from mandatory F16 indexer-key cache roles under `KVLiveSpans`; then add sparse
+  and fused registered kernels beside dense/unfused fallbacks. Small-B copies
+  require a copy-inclusive B2/B4 trace.
+- Update priority 5 to completed/deferred. No production code, dependency,
+  checkpoint download, GPU run, or performance claim is justified. Validation is
+  the clean registry/asset/source audit plus an end-to-end reread of the review
+  document and `git diff --check`.
+
+## 2026-08-04 — Revalidate Nathan-review no-action decisions
+
+- Re-audit the final rejected/backend-specific set after completing the higher-
+  priority experiments. No premise changed: the production consumer remains
+  precompiled AOTriton rather than Nathan's GLSL P/Psh loop; gfx1151 retains its
+  same-device 256-row linear/MoE profile and shape/memory-selected full-attention
+  chunks; independently admitted T16/WMMA/integer variants do not make Nathan's
+  regressive Vulkan scale-cache, TILE16, or scalar-int implementations portable;
+  and a HIP package still has no RADV/Mesa distribution surface. The pinned dev
+  release remains compile/container-smoke evidence only.
+- Reject a persistent head-major KV rewrite on measured economics rather than
+  only invasiveness. At 64K, the accepted scratch artifact measures the copy at
+  **2.233 ms**, **0.708%** of the **315.417-ms** copy-inclusive attention
+  sub-window. Charging that copy to all ten Qwen3.6 full-attention layers is
+  **22.329 ms**, only **0.032%** of the measured **68.815-s** full prefill. This
+  removable wall is far below the risk of changing every paged writer, decode
+  reader, compactor, graph, and `KVLiveSpans` consumer.
+- Mark priority 6 completed/revalidated with no implementation or new benchmark.
+  Validation: recalculate both percentages directly from the accepted JSON,
+  inspect the live AOTriton/head-major dispatch, gfx1151 256-row profile, and
+  registry-qualified T16/WMMA paths; reread the review end-to-end; `git diff
+  --check` passes.
+
+## 2026-08-04 — Close the Nathan priority-list execution audit
+
+- Map every action to implementation/disposition, tests, benchmark or source
+  gate, retained artifact/docs, and atomic commit in the review's new completion
+  table. Priorities 1-6 resolve respectively to retained, rejected, guarded,
+  retained, deferred, and revalidated-no-action; there is no unassigned item.
+- The closure audit caught stale pre-execution wording in the review itself.
+  Update the decision type, executive framing, applicability rows for head-major
+  scratch/persistent KV/grouped GQA/MoE/ubatch/bounded allocation, and the
+  experiment hypothesis/promotion result so the matrix no longer calls a
+  promoted default an unmeasured gap.
+- Machine-check the accepted artifact status/action/scope and exact four deltas;
+  benchmark README/changelog publication; presence of the three new regression
+  guards; tracked evidence paths; and ancestry of execution commits
+  `d5e95d1c9`, `b8909a22b`, `849b680b9`, `a8d64d3b9`, `09a262bd1`, and
+  `788b87f77`. Result: **PASS**. The updated review was then read end-to-end and
+  passes execution-state consistency plus `git diff --check`.
+- Do not redundantly rerun completed expensive GPU gates after docs/test-only
+  follow-ups. The completion table preserves their exact results and applies the
+  focused-repair rule. Future repeated-128K work requires a named stack fix;
+  future DeepSeek V4 work requires explicit model admission, neither is open
+  work under this action list.
+
+## 2026-08-04 — Measure Nathan's fork on the exact local GGUF and hardware
+
+- Use the exact published `dev-20260803-b7b85da` portable payload rather than a
+  local compiler-drift rebuild. Manifest provenance is llama.cpp source
+  `b7b85da9c4a9fdeb3cab51030a40d1552270f272`, Mesa `d18d598e2`, libdrm
+  2.4.133, and shaderc v2026.3-dev `49a8724d`; archive SHA-256 is
+  `1449e4f6...66d` and `llama-bench` is `a5923323...c4`. The payload reports
+  build `b7b85da9` number 10283, backend Vulkan, and
+  `AMD Radeon 8060S Graphics (RADV STRIX_HALO)`. A p128/tg8 smoke reaches
+  **885.817/63.540 tok/s**, proving this is not the historical silent CPU
+  fallback.
+- Run `scripts/llamacpp_bench_with_peak.py` on
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` with 512/128, 4K/128,
+  32K/128, and 64K/128 split phases; `-ngl 99 -fa 1 -dev Vulkan0 -b 1024
+  -ub 1024`; one llama-bench warmup plus five repetitions; separate F16 and
+  Q8_0 K/V; and 10-ms whole-device `card1` UMA-GTT sampling. Compare against
+  today's accepted hipEngine BF16 one-warmup/three-run right-sized artifact.
+- F16 fork prefill/decode is **1390.978/64.658**, **1399.336/62.648**,
+  **1102.982/53.220**, and **893.919/45.913 tok/s**. hipEngine prefill
+  **1394.772/1472.330/1171.610/952.348** leads by
+  **0.273%/5.216%/6.222%/6.536%**; fork decode leads by
+  **22.666%/13.528%/15.841%/16.642%**.
+- Q8_0 fork prefill/decode is **1387.763/64.246**, **1389.530/63.107**,
+  **1104.183/57.553**, and **879.963/52.538 tok/s**. hipEngine prefill leads
+  by **0.505%/5.959%/6.107%/8.226%**; fork decode leads by
+  **21.885%/14.361%/25.273%/33.474%**. All sixteen phase processes exit zero
+  with the expected backend/build identity.
+- Fork F16 whole-device GTT peaks are **20.831/21.161/21.999/22.871 GiB**;
+  Q8_0 is **20.832/21.253/21.630/22.239 GiB**. Those are descriptively
+  **0.648-2.153 GiB** below hipEngine's **21.480/23.007/23.654/24.392-GiB**
+  tracked peaks, but the scopes differ and are not an allocator-memory ratio.
+- Reproduce the fork's published Q8 `pp512/tg32 at depth` protocol with the
+  exact local GGUF: `-b 512 -ub 512 -p 512 -n 32 -d
+  0,4096,16384,32768,65536 -r 3`. The corrected run exits zero in 149.323 s
+  at **1391.809/64.406**, **1281.593/62.965**, **1067.613/60.513**,
+  **860.787/57.544**, and **623.634/52.462 tok/s**. At d0/d32K/d64K this is
+  **+1.707%/+6.952%**, **+10.900%/+7.539%**, and
+  **+16.044%/+6.521%** versus the fork's published different-model Q4_K_XL
+  row. This validates the payload/backend, not a same-model reproduction
+  speedup. The first temporary helper launch exited 126 before any GPU work
+  because the file lacked an executable bit; invoking it through Python fixed
+  the harness.
+- Keep the comparison `diagnostic_retained`, `performance_claim=false`, and
+  non-topline: hardware, exact weight bytes, and split phase shapes match, but
+  BF16/F16/Q8 KV, timing ownership, memory scopes, and cross-engine output
+  oracle do not. Raw F16/Q8/depth JSON SHA-256 are respectively
+  `9786a932...db2a`, `f5efb6ff...111c`, and `b03f82e3...580e` under
+  `/tmp/hipengine-nathan-fork-compare/`; compact retained evidence is
+  `benchmarks/results/2026-08-04-gfx1151-nathan-fork-q4km-matched-comparison.json`.
+
+## 2026-08-04 — Publish the qualified Nathan fork comparison
+
+- Add the diagnostic artifact, a dedicated benchmark-rollup section and platform
+  row, a changelog entry, and the locally measured section/updated dev-release
+  wording in `docs/STRIX-HALO-LLAMACPP-REVIEW.md`. Do not export this row to the
+  root topline because its explicit cross-engine qualifications remain binding.
+- Machine validation reparses the compact artifact, requires all 17 fork return
+  codes to be zero, verifies every matched prefill/decode direction, validates
+  all three positive overlap-depth comparisons, rehashes all raw JSON, checks
+  every new relative link, and confirms all four publication files reference
+  the artifact: **PASS**. `python3 -m json.tool`, `git diff --check`, and
+  `python3 scripts/sync_benchmark_readme.py --check` also pass; the review was
+  reread end-to-end. No code or kernel changed, so no pytest/GPU rerun is
+  applicable beyond the completed benchmark processes themselves.
+
+## 2026-08-04 — Open exact GGUF decode/memory campaign from fork result
+
+- Split the local exact-model comparator in
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md` into independent prefill, decode, and
+  descriptive-memory tables. hipEngine retains every prefill lead
+  (**0.273%-8.226%**); the fork retains every F16/Q8 decode lead
+  (**13.528%-33.474%**); and its whole-GTT peak is descriptively
+  **0.648-2.153 GiB** below hipEngine tracked peak under explicitly different
+  scopes.
+- Reattribute the result before proposing ports. Fork F16 decode is only
+  **1.268%-1.787%** above the prior vanilla Vulkan lane across the four rows,
+  so most of the BF16/F16 gap is not Nathan-specific. Fork Q8_0 is neutral
+  through 4K but improves **8.142%/14.430%** over fork F16 at 32K/64K and saves
+  **0.632 GiB** at 64K, isolating long-context KV bandwidth.
+- Anchor short/mid work to the retained hipEngine profile: dense Q8T16,
+  selected-MoE T16, and Q6T16 lm-head own **14.628/14.588 ms/token** or
+  **76.1%/80.6%** of 512/4K GPU wall. Anchor memory work to the non-KV jump:
+  tracked peak rises **21.480 -> 23.007 GiB** from 512 to 4K while BF16 KV
+  grows only about **0.068 GiB**, and current full-attention query scratch uses
+  4,096 rows at 4K/32K/64K.
+- Open the ordered SH campaign: C0 matched per-role and memory-scope attribution;
+  D1 exact row-1 weight-kernel redesign; M1 4096/2048/1024/768 scratch/lifetime
+  Pareto; K1 strict layer-adaptive compact KV; A1 gated page-internal head-major
+  decode micro-screen; and G retained multi-prompt recertification. The first
+  cumulative gate closes half the F16 time gap at
+  **58.076/58.679/49.314/42.386 tok/s**; the end target matches fork F16 at
+  **64.658/62.648/53.220/45.913 tok/s** while preserving prefill within 1%.
+- Freeze negative retries: no MMID prefill port for c1 decode, closed thread/
+  chunk/register-tile/d-scale/launch-only sweeps stay closed, pure all-layer
+  INT8/Q8_0/block16/K-only is not an exact default, and no persistent cache
+  rewrite precedes the bounded decode-layout screen. Registry, torch-free,
+  `KVLiveSpans`, unfused-fallback, complete quality, and anti-gaming rules remain
+  mandatory.
+- Documentation-only validation: recompute every derived delta/time target from
+  the retained comparator and decode-profile artifacts; confirm all relative
+  links resolve; reread the changed review end-to-end; and pass
+  `git diff --check`. No kernel/runtime changed, so no GPU or pytest rerun is
+  applicable.
+
+## 2026-08-04 — Add conservative gfx1151 prefill-kernel isolation profile
+
+- Reconstruct the first repeated-128K failure chronology before changing the
+  device path. There is no proven lifecycle-safe repeated-128K application
+  revision: the first full repetition campaign completed three measured
+  prefills and then stalled, and its retry stalled during the second measured
+  prefill. The first-failure route predates LCP-1 convolution, device metadata,
+  the 128-thread router, Q8 four-wave long-context admission, and head-major
+  AOTriton K/V. Its promoted application changes were exact LDS/direct GDN and
+  Q4 selected-prefill shared-X.
+- Add `qwen35_readme_sweep.py --prefill-kernel-profile conservative` as a
+  fail-closed, GGUF-only diagnostic. It records and applies unfused exact GDN
+  `chain`, baseline Q4 selected prefill, baseline linear-attention convolution,
+  512-thread router selection, and host metadata. It leaves queue drain at
+  `none`, so it changes device-kernel selection without bounding host
+  submission. Conflicting environment overrides abort instead of weakening
+  provenance.
+- RED: the new focused profile contract produced **5 expected failures** before
+  the helper/CLI existed. GREEN: `uv run pytest -q
+  tests/test_qwen35_prefill_kernel_profile.py
+  tests/test_qwen35_prefill_queue_drain.py` passes **13/13**;
+  `python3 -m py_compile scripts/qwen35_readme_sweep.py` and
+  `git diff --check` pass. `scripts/check_lineage.py --kind kernel --diff stat`
+  remains blocked only by the already-recorded absent external Atlas checkout;
+  this unit ports no kernel. No GPU lifecycle claim is made before the approved
+  three-independent-process 128K gate.
+
+## 2026-08-04 — Qualify conservative 128K isolation and open split profiles
+
+- Prebuild the conservative path outside evidence runs, then pass a cache-only
+  512 warmup+3 control at measured **449.998-450.517 tok/s** and a cache-only
+  64K warmup+1 control at **385.923/385.708 tok/s**. Both use one hardware
+  queue, chunk flight recording, no host drain, exact selector provenance, and
+  full tracked-allocation cleanup. The 64K control establishes that the slower
+  unfused route still fits a bounded 128K lifecycle gate.
+- Run three independent cache-only Q4_K_M `128K/128` processes with one warmup,
+  three measured repetitions, chunk flight recording, no queue drain,
+  `GPU_MAX_HW_QUEUES=1`, and a 1,800-second process-group bound. All **12/12**
+  prefills complete. Measured prefill spans **306.824997-307.682727 tok/s** and
+  decode **29.630808-29.657539 tok/s**; every run is finite with final token
+  9707 and identical final logit `29.97690773010254`; each process returns
+  tracked allocation to zero. Captured kernel journals contain no matching
+  amdgpu/KFD fault, timeout, or reset. Raw JSON/log/flight/telemetry/journal
+  evidence is under `/tmp/hipengine-gfx1151-kernel-isolation.jSbQCW/`; JSON
+  SHA-256 prefixes are `e546048d`, `e6a8892c`, and `661e50bf`.
+- Interpret this only as elimination evidence: disabling exact GDN, Q4 shared-X,
+  and later convolution/dispatch changes avoids the observed failure across the
+  predeclared gate, but does not name the necessary route. Add fail-closed
+  `gdn_exact` and `q4_shared_x` profiles that start from the conservative map
+  and restore exactly one family. RED is **2 expected failures** before support;
+  GREEN focused profile plus queue-drain coverage passes **15/15**, pycompile
+  and diff checks pass. Run the same independent 128K gate for both profiles
+  before choosing a fallback.
+
+## 2026-08-05 — Isolate repeated-128K stall to Q4 shared-X
+
+- Run the predeclared split gate with one hardware queue, chunk flight
+  recording, no host drain, cached builds, and the exact Q4_K_M model.
+  `gdn_exact` passes three independent warmup+3 processes, completing all
+  **12/12** 128K prefills at measured **575.083-580.002 tok/s** with normal
+  decode and cleanup. This eliminates exact GDN as an individually necessary
+  cause under the controlled profile.
+- `q4_shared_x` passes its 512 warmup+3 control at measured
+  **456.176-456.849 tok/s**, then reproduces the target state on measured
+  prefill 3 of the first 128K process after the warmup and two measured passes
+  completed at **308.858/308.825/308.952 tok/s**. The flight cursor freezes at
+  submitted sequence 4946 versus completed 4887 (59 unretired submissions),
+  with the last retired chunk `[81920,86016)` and host submission in
+  `[86016,90112)`. Telemetry is the historical 100%-active, approximately
+  2.9-GHz, low-power signature. The 1,800-second process bound exits 124; the
+  GPU returns idle, and the captured kernel journal has no matching GPU fault,
+  timeout, or reset.
+- Preserve the live snapshot under
+  `/tmp/hipengine-gfx1151-kernel-isolation.jSbQCW/q4-shared-x-128k-1-stall/`,
+  including identical before/after cursors, task stacks/waits, KFD
+  MQD/HQD/RLS, amdgpu VM/fence state, telemetry, and checksums. Source and
+  registry mapping show that the one changed Q4 key resolves the BF16 model to
+  `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`;
+  selected-down and all GDN/attention routes are unchanged.
+- Add fail-closed `--prefill-kernel-profile q4_baseline`, which sets only
+  `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=baseline` and otherwise inherits
+  current gfx1151 package defaults. RED is one expected focused failure before
+  support; GREEN profile plus queue-drain coverage passes **16/16**. Run its
+  same three-process 128K gate before changing the gfx1151 automatic route.
+
+## 2026-08-05 — Retain gfx1151 Q4 baseline fallback
+
+- Pass the production-shaped `q4_baseline` control at 512 warmup+3 with exactly
+  one selector recorded; measured prefill is **1356.808-1360.856 tok/s**,
+  decode is stable, final IDs are 9707, and tracked allocation returns to zero.
+- Run three independent cache-only `128K/128` warmup+3 processes with one
+  hardware queue, chunk flight recording, no host drain, current package
+  defaults except Q4 baseline, and a 1,800-second process bound. All **12/12**
+  prefills complete. Across nine measured runs, prefill is
+  **575.180-580.626 tok/s** (median **578.883**), decode is
+  **29.623-29.686 tok/s** (median **29.650**), every final token is 9707, every
+  final logit is `30.117918014526367`, and each session frees all tracked
+  allocations. The 295 telemetry samples contain 277 active samples and zero
+  historical failure-signature samples; kernel journals contain no matching
+  amdgpu/KFD fault, timeout, or reset.
+- Treat this as a controlled route-level cause, not an overclaim about the
+  internal defect: shared-X is the only changed registry function in the
+  reproducing arm, mapping the BF16 model to
+  `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`.
+  Compared with baseline, that body moves the two-output-half loop inside the K
+  loop, keeps two WMMA accumulator arrays live, and shares one activation
+  fragment. The matrix cannot distinguish device-code, compiler, firmware, or
+  runtime handling of that body.
+- RED: change the automatic resolver and architecture-policy assertions to
+  require gfx1151 baseline; both fail against the shared-X package constant.
+  GREEN: set only `hip_gfx1151.GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE` to
+  `baseline`; the focused resolver/backend/profile/Q4T16 primitive bundle
+  passes **56/56**. A selector-unset 512 warmup+1 integration smoke then passes
+  at **1357.667 prefill / 52.927 decode tok/s**, token 9707, and zero tracked
+  bytes after close. Do not repeat the equivalent 45-minute 128K gate merely to
+  replace the explicit selector with the tested package constant.
+- Keep gfx1100 automatic shared-X and the explicit gfx1151 `shared_x`
+  diagnostic unchanged. Record the retained fallback and complete causal/raw
+  hashes in
+  `benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json`;
+  update the benchmark rollup, changelog, kernel catalog, stall runbook, and
+  refactor ledger in the same logical unit.
+
+## 2026-08-05 — Report isolated gfx1151 trigger to AMD
+
+- Update ROCm/ROCm#6437 as the issue author with the controlled four-arm 128K
+  matrix, frozen AQL retirement cursor, telemetry signature, exact shared-X
+  registry/host/device symbols, passing baseline fallback, and the limitation
+  that route-level isolation does not yet distinguish device code, compiler,
+  firmware, or runtime/MES behavior.
+- Ask AMD whether the two-live-WMMA-accumulator/shared-activation pattern
+  matches a known gfx1151 erratum and which next artifact would be most useful.
+  The verified public comment is
+  https://github.com/ROCm/ROCm/issues/6437#issuecomment-5186301232.
+
+## 2026-08-05 — Add SH-C0 role and memory attribution tooling
+
+- Audit the existing GGUF profilers before changing runtime behavior. The
+  synchronized decode-step trace already supplies symbol families, resources,
+  dispatches, and host/device wall, but symbols cannot distinguish full-attn
+  Q/K/V/O, GDN projections, selected experts, or shared experts. The GGUF bench
+  already supplies tracked/owned weight, decode-scratch, KV, and coarse session
+  components, while its bulk-prefill arena fields/lifetimes and continuous
+  whole-GTT peak were not exposed. The Vulkan perf-log parser is sufficient for
+  separate fork F16/Q8 operation controls.
+- Extend `scripts/gguf_decode_rocprof.py` with profiler-only nested ROCTX role
+  wrappers. They do not synchronize or alter launch arguments. `rocprofv3`
+  now captures HIP API rows and joins host role ranges to asynchronous kernel
+  rows by `Correlation_Id`, resolving full-attention QKV/output, GDN input/
+  decay/output, selected gate-up/down, shared gate-up/down, attention core,
+  router/combine, and lm-head ownership. Child artifacts now include the
+  existing GGUF tracked/owned memory snapshots.
+- Add `scripts/gguf_sh_c0_profile.py`, which runs fresh per-context non-profiled
+  eager baselines under the existing 10-ms sysfs GTT sampler and independent
+  cached-only kernel+HIP-API+ROCTX profiles. It reports non-profiled wall,
+  profiled host-minus-device wall, roles, kernel resources, owned components,
+  complete commands/hashes, and exact token checks for 512/4K/32K/64K.
+- Extend the bulk-prefill memory census with physical owner bytes, logical field
+  sizes, row scaling, liveness-arena offsets, and route/stage lifetimes while
+  keeping head-major K/V separately attributed. Aliased logical views are
+  explicitly not counted as additional physical residency.
+- RED: the focused tests failed collection on the missing role/correlation and
+  scratch-census contracts. GREEN: `python3 -m py_compile` passes for all three
+  changed scripts; the profiler/memory/Vulkan-summary bundle passes **133/133**;
+  and `git diff --check` passes.
+- Run a cached gfx1151 8-token/1-step mechanical smoke through the new complete
+  parent. It attributes **583/628** decode-window kernels, reports
+  **16.291 ms/token** GPU kernel wall, **45.435 tok/s** non-profiled wall, and
+  **21.650 GiB** whole-GTT peak. This is tooling validation only, not a retained
+  performance row; raw output is under `/tmp/hipengine-sh-c0-smoke*`.
+
+## 2026-08-05 — Complete SH-C0 per-role resource rows
+
+- Preserve each role's exact kernel-family set plus observed VGPR and scratch
+  values in the correlation summary, completing the campaign's per-role
+  duration/dispatch/resource contract without changing capture or generation.
+- RED: the focused nested-role fixture lacked `kernel_families`, `vgpr_counts`,
+  and `scratch_sizes`. GREEN: `tests/test_gguf_decode_rocprof.py` passes **8/8**,
+  pycompile and `git diff --check` pass.
+
+## 2026-08-05 — Freeze SH-C0 decode roles and same-scope memory
+
+- Run the clean tracked-source gfx1151 matrix with:
+  `PYTHONPATH=. python3 scripts/gguf_sh_c0_profile.py --workloads 512 4K
+  32K 64K --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root
+  /tmp/hipengine-sh-c0-20260805 --out
+  /tmp/hipengine-sh-c0-20260805.json`. Each context uses one discarded full
+  run, three non-profiled 128-token eager runs, a separate cached-only 8-token
+  kernel/HIP-API/ROCTX trace, one hardware queue, and 10-ms whole-GTT sampling.
+- Fresh non-profiled decode is
+  **52.857/55.389/46.004/39.419 tok/s** at 512/4K/32K/64K. All generated IDs
+  remain 9707. Profiled kernel totals are
+  **17.596/16.950/20.613/24.106 ms/token**, with **4,664/5,024** dispatches
+  role-attributed at every context; same-profile host-minus-kernel is
+  **4.658/3.985/2.161/2.042 ms/token** and remains profiler-only.
+- hipEngine whole-GTT peaks are **21.916/23.552/24.204/24.943 GiB** versus
+  tracked **21.480/23.007/23.654/24.392 GiB**. Against the existing matched fork
+  samples, same-scope hipEngine-minus-fork is
+  **+1.085/+2.391/+2.205/+2.071 GiB** for F16 and
+  **+1.084/+2.299/+2.575/+2.704 GiB** for Q8_0. The memory gap is therefore not
+  a tracked-versus-GTT artifact.
+- Run the pinned fork `b7b85da9` separately for F16 and Q8_0 at all four depths
+  with `GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1
+  /tmp/hipengine-nathan-fork-compare/vulkan/llama-bench -m <exact GGUF> -ngl
+  99 -fa 1 -ctk <dtype> -ctv <dtype> -b 1024 -ub 1024 -p 0 -n 128 -d
+  <depth> -r 1 -o json -dev Vulkan0`; retain only the final 128 sections with
+  `scripts/llamacpp_vulkan_perf_summary.py`. All eight runs report build
+  `b7b85da9`/10283, Vulkan/RADV STRIX_HALO, and the requested KV dtype.
+- hipEngine dense Q8 roles total **8.384-8.429 ms/token** versus fork logged
+  dense Q8 **7.507-7.562**; selected gate/up+down total **3.912-3.925** versus
+  fork selected Q4+Q5 **2.965-2.978**. The largest exact short/mid leaf is GDN
+  input at **4.113-4.166 ms/token**, selecting it for SH-D1 before the selected
+  pair. BF16 full-attention is **4.533/8.041 ms/token** at 32K/64K versus fork
+  **3.401/6.390**; fork Q8 falls to **1.930/3.595**. SH-A1 remains ordered after
+  D1 but is now materially admitted at long context.
+- The physically owned 4,096-row bulk-prefill scratch is
+  **1.756/1.785/1.818 GiB** at 4K/32K/64K. A 1,024-row screen is the first SH-M1
+  candidate because linear sizing predicts **1.32-1.36 GiB** saved; 2,048 rows
+  cannot reliably clear the 1-GiB campaign gate. Prediction is not a retained
+  memory claim until the four-context copy-inclusive prefill screen passes.
+- Publish compact diagnostic
+  `benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json` and update
+  the Strix Halo review, benchmark diagnostic rollup, and changelog. Raw traces
+  and fork logs remain under `/tmp/hipengine-sh-c0-20260805/` and
+  `/tmp/hipengine-nathan-sh-c0-perf/`.
+
+## 2026-08-05 — Audit the SH-M1 1,024-row screen
+
+- Trace the exact SH-C0 construction path before changing policy. The GGUF
+  resident session resolves the generic `PrefillConfig` without a target-arch
+  argument, so current 4K/32K/64K publication uses linear/MoE/post/RoPE chunks
+  of 1,024 and a full-attention query chunk of 4,096. `_prefill_scratch_rows()`
+  sizes the one shared bulk owner to the maximum layer chunk, explaining the
+  measured 4,096-row **1.756-1.818 GiB** allocation. The later PARO-only gfx1151
+  256-row architecture profile is not active in this GGUF session and must not
+  be silently folded into the memory A/B.
+- The production runner and `scripts/qwen35_gguf_bench.py` already expose the
+  required exact control. SH-M1 can hold linear/MoE/post/RoPE at 1,024 and vary
+  only `full_attn_query_chunk_size=4,096 -> 1,024`; no new kernel, dispatch
+  branch, or runtime ABI is needed for the first screen. Explicitly setting all
+  five fields is mandatory because any one non-zero manual field disables the
+  auto policy; setting only the query field would accidentally leave the other
+  layers unchunked.
+- Existing tiny-model chunk coverage proves only an 8-row/4-row KL check. It is
+  insufficient for promotion. Add a fail-closed SH-M1 A/B that verifies exact
+  full-model prefill logits/trajectory and resolved scratch rows, then run fresh
+  right-sized one-warmup/three-measurement processes under the 10-ms whole-GTT
+  sampler. The binding promotion gate remains exact state, decode neutrality,
+  at least **1.0 GiB** lower 4K+ tracked peak, and no more than **1%** prefill
+  loss at 512/4K/32K/64K.
+- Do not treat the 2026-06 gfx1100/Q4_K_S 2,048-row rejection as this screen: it
+  used a different GPU, quant file, and pre-head-major runtime and changed the
+  final token. It remains cautionary correctness evidence, while the review
+  explicitly admits the later gfx1151/Q4_K_M 1,024-row experiment.
+
+## 2026-08-05 — Assess ROCm.AI for hipEngine
+
+- Review the ROCm.AI landing page and the linked Core SDK 7.14, AMD Skills,
+  Hyperloom, library, profiling, quantization, deployment, and developer
+  offerings against hipEngine's gfx1100/gfx1151 targets, torch-free runtime,
+  plugin registry, kernel ABI, and benchmark evidence policy. Prefer AMD/ROCm
+  documentation and repositories, and record moving-repository `HEAD` values
+  for the agentic/kernel projects inspected.
+- Publish `docs/ROCM-AI.md` as the source-backed decision record. The immediate
+  recommendations are version-complete TheRock manifests, direct hipBLASLt
+  offline-tuning experiments, deeper cached-child `rocprofv3` evidence, and
+  AMD SMI metadata. Bounded pilots are TraceLens ROCprof analysis, AITER Opus
+  device-only compilation, ROCm Systems Profiler host-gap attribution, and a
+  Quark importer fixture.
+- Keep AITER/CK/rocWMMA target-qualified and experimental on gfx11; do not add
+  AITER as a runtime dependency. Reject current end-to-end Hyperloom and broad
+  AMD Skills installation because their validated hardware/framework contracts
+  do not match hipEngine. Keep vLLM/SGLang as exact-version external baselines,
+  not architecture templates or correctness oracles.
+- Read-only local inventory confirms a working gfx1151 development stack: HIP
+  7.15.0/AMD Clang 23, `rocprofv3` 1.3.2, AMD SMI 26.5.0, ROCm SDK wheel
+  `7.15.0a20260711`, and 120.00 GB visible GTT. This is environment inventory,
+  not a performance measurement; the reviewed public production baseline is
+  ROCm 7.14.0.
+- Docs-only validation: re-read the 954-line analysis end to end, resolve and
+  verify the TraceLens ROCprof path, verify every local Markdown target, probe
+  all 63 distinct external URLs (AMD product pages intermittently reject or
+  time out under automated `curl`; they were reviewed through the browser),
+  and run `git diff --check`. No GPU benchmark or performance claim is made.
+
+## 2026-08-05 — Implement the SH-M1 fail-closed screen
+
+- Add `scripts/gguf_sh_m1_screen.py`. The parent launches independent
+  right-sized gfx1151 Q4_K_M processes for the 4,096-row control and 1,024-row
+  candidate, explicitly fixing all five chunk surfaces, retaining WMMA prefill,
+  GEMV eager decode, one warmup/three measurements, cached builds, one hardware
+  queue, and 10-ms whole-GTT sampling. It validates resolved scratch rows,
+  exact expected tokens, allocator reclamation, and the campaign's >=1-GiB /
+  <=1% prefill/decode promotion gates before classifying the result.
+- Add correctness-only state children that compare byte fingerprints for full
+  prefill logits, final prompt hidden/layer/Conv/GDN/live-BF16-KV state, a
+  fixed-input decode-logit trajectory, and final decode state at every requested
+  context. State-child timing is explicitly excluded from performance evidence.
+- RED: `tests/test_gguf_sh_m1_screen.py` failed collection because the screen did
+  not exist. GREEN: the screen/benchmark metadata/ROCTX bundle passes **10/10**;
+  the screen plus head-major bundle passes **18/18**; pycompile/compileall and
+  `git diff --check` pass. Ruff/Black/pyflakes are not installed in this env.
+- Run cached gfx1151 Q4_K_M mechanical smokes. The 512-row candidate state child
+  resolves a 768-row right-sized scratch, reports finite prefill/decode state,
+  and fingerprints all ten full-attention K/V layers. A separate 512/1
+  benchmark validates the real child schema and lifecycle at **1,272.483
+  prefill tok/s**, **52.538 decode tok/s**, and **21.480 GiB** tracked peak.
+  These are tooling smokes only, not retained performance rows. A prompt-8
+  native-attention attempt exposed the existing cached native-wrapper signature
+  mismatch (`split_partial_out_ptr`); the production AOTriton 512+ lane passes.
+
+## 2026-08-05 — Repair SH-M1 outer-chunk state capture
+
+- The first complete SH-M1 attempt finished all eight one-warmup/three-measured
+  performance children, then stopped before artifact assembly: the 4,096-row
+  state child requested the all-row FP32 verifier seed at 32K, while production
+  outer chunking intentionally rejects that capture because it retains only one
+  prefill chunk at a time. No performance or GTT result is retained from this
+  incomplete attempt; raw benchmark children remain under
+  `/tmp/hipengine-sh-m1-20260805/`.
+- RED: focused coverage lacked a post-prefill seed replay and failed on the
+  missing helper. GREEN: the correctness-only child now runs normal chunked
+  prefill with layer capture, then replays output norm for the retained final
+  pre-output-norm row to populate the one-row FP32 seed. This changes no
+  Conv/GDN/KV state and remains outside every timing window.
+- Focused tests pass **5/5**. Cached gfx1151 Q4_K_M outer-chunk smokes pass for
+  both policies: q4096 at 32K and q1024 at 4K report finite logits/state, the
+  expected 4,096/1,024 scratch rows, a populated replayed seed, and all ten
+  full-attention K/V fingerprints. The isolated 4,097/q4096 edge hit an
+  existing `hipMemcpy` invalid-argument boundary; the exact publication shapes
+  32K/q4096 and 4K/q1024 pass and are the scoped repair evidence.
+
+## 2026-08-05 — Reject SH-M1 q1024 and select exact liveness aliases
+
+- Run the complete repaired screen with `PYTHONPATH=. python3
+  scripts/gguf_sh_m1_screen.py screen --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --workloads 512 4K 32K 64K
+  --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1
+  --measured-runs 3 --state-decode-steps 4 --gtt-interval-ms 10
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root
+  /tmp/hipengine-sh-m1-20260805-rerun --out
+  /tmp/hipengine-sh-m1-20260805-rerun.json` on gfx1151, BF16 KV, one hardware
+  queue, cached builds, and explicit 1,024-row linear/MoE/post/RoPE controls.
+- q4096 -> q1024 tracked peak is **21.480 -> 21.480**, **23.007 -> 21.672**,
+  **23.654 -> 22.317**, and **24.392 -> 23.054 GiB** at 512/4K/32K/64K.
+  Whole-GTT is **21.916 -> 21.916**, **23.552 -> 22.201**,
+  **24.204 -> 22.849**, and **24.943 -> 23.587 GiB**. Thus q1024 clears the
+  >=1-GiB memory target at 4K+ and both legs reclaim tracked allocation exactly.
+- Reject q1024 on two independent blockers. Prefill changes
+  **1359.472 -> 1360.721 (+0.092%)**, **1438.860 -> 1415.795 (-1.603%)**,
+  **1154.435 -> 1062.115 (-7.997%)**, and **931.596 -> 821.344 (-11.835%)**;
+  decode remains within the 1% loss bound. Byte-fingerprint state is exact only
+  at 512. At 4K+, prefill/final logits and state differ, including the first
+  layer-output divergence at full-attention layer 3, 37 changed prefill layer
+  outputs, 54 Conv/GDN parts, 18 later K/V parts, and the first fixed-input
+  decode logit row despite stable sampled ID 9707.
+- Aggregate provenance is diagnostic because the canonical collector records
+  **255 unrelated untracked paths**; staged and unstaged tracked source are
+  clean at `e6eb49628`. Make no performance/topline claim. Publish compact
+  diagnostic `benchmarks/results/2026-08-05-gfx1151-gguf-sh-m1-q1024-rejected.json`
+  and update the review, benchmark diagnostic rollup, and changelog.
+- Keep q4096 and close 2,048/768 row-only retries: 2,048 cannot clear 1 GiB and
+  deeper slicing is already exactness/performance-negative. The scratch remains
+  `dedicated`; select SH-M2 to alias proven-mutually-exclusive 4,096-row fields,
+  starting with 256-MiB `moe_down_out_f32` and 128-MiB `conv_out`,
+  `linear_qkv_f32`, and `moe_down_out`, then stack any exact saving with strict
+  compact KV. q1024 alone would still remain **0.716-1.040 GiB** above fork F16
+  and **0.948-1.348 GiB** above fork Q8_0 at 4K+.
+
+## 2026-08-05 — Select SH-D1 exact GDN-input DPP reduction
+
+- Resume the complete Strix Halo campaign at SH-D1 rather than treating SH-M1
+  closure as campaign completion. SH-C0 shows the row-1 Q8T16
+  `attn_qkv[2048->8192] + attn_gate[2048->4096]` pair runs once in each of 30
+  linear-attention layers and owns **4.113-4.166 ms/token** across
+  512/4K/32K/64K (**137.104-138.868 us/call**).
+- Run the cached gfx1151 three-copy cycling leaf with an 80.2-MB weight pool,
+  80 warmups, and 400 measured launches. Production is **135.16 us/call** and
+  **197.8 GB/s** effective matrix reads. Exact command and raw hash are frozen
+  in
+  `benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json`.
+- Extract the active gfx1151 code object outside profiling. The named BF16
+  dual-split body is 4,608 bytes, 50 VGPR / 29 SGPR, 256 B LDS, zero private
+  bytes/spills, and already uses three `global_load_b128` plus one d16 load.
+  Its remaining exact communication seam is the 16-column wave tree: **80
+  `ds_bpermute_b32`**, **67 `s_waitcnt`**, and one barrier.
+- Select a separately registered exact permlanex16/DPP-add sibling. It must
+  preserve the existing Q8T16 allocation, 128-thread/four-wave K partition,
+  every FMA, lane-0 LDS publication, one barrier, serial wave0..3 accumulation,
+  BF16 bytes, ABI, and production fallback. The candidate must emit 16
+  permlanex16 plus 64 direct DPP adds and zero bpermutes, remain spill-free, and
+  match production bytes plus the CPU GGUF Q8_0 oracle.
+- Freeze the continuation gate before implementation: the cycling leaf must be
+  **<=118.493 us** to project >=0.5 ms/token saving; **<=117.530 us** clears the
+  independent 1.15x rule. Only then run natural-prompt full state and the
+  512/4K/32K/64K model matrix. Non-temporal loads and a byte-neutral paired
+  Q8T32 layout are deferred until this same-layout reduction is measured.
+- Broad lineage reporting is mechanically blocked by absent manifest checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; the relevant pinned
+  `llama.cpp-hip` MMQ source is clean at `1ebf790cd`. No external body is being
+  ported; the exact DPP mechanism is already independently validated in-tree.
+
+## 2026-08-06 — Reject the SH-D1 exact GDN DPP leaf
+
+- RED collection first failed because the selected DPP wrapper did not exist.
+  Implement a transient separately registered BF16 Q8T16 dual-split sibling
+  that preserves the production K/FMA/LDS/barrier/serial-sum order and changes
+  only the 16/8/4/2/1 wave peer transport. Focused gfx1151 coverage passes
+  **4/4**: registry resolution, production BF16-byte identity, and CPU GGUF
+  Q8_0 oracle checks at 32->16+32, 256->64+128, and the full
+  2048->8192+4096 Qwen shape.
+- The code object clears every physical gate: 2,976 bytes, 50 VGPR / 32 SGPR,
+  256 B LDS, zero private bytes/spills, **16 `v_permlanex16_b32` + 64 direct
+  `v_add_f32_dpp`**, zero `ds_bpermute_b32`, 20 waitcnts, unchanged 16+16
+  FMA instructions, and one barrier. A cached-only `rocprofv3 --kernel-trace`
+  records two dispatches under the expected DPP kernel name, local128,
+  grid98,304 threads, and zero scratch; profiler timings are launch proof only.
+- Run three order-balanced cycling pairs with the exact frozen protocol: row 1,
+  2048->8192+4096, three 26.739-MB weight copies (80.2 MB), one hardware queue,
+  80 warmups, and 400 measured launches per variant. Production is
+  **135.02/135.92/135.20 us**; DPP is **132.61/132.84/132.77 us**. Median
+  speedup is only **1.0183x**, and the **2.43-us** saving projects to
+  **0.0729 ms/token** over 30 calls.
+- Reject before full-model timing. The 132.77-us median is **12.05% slower**
+  than the predeclared 118.493-us >=0.5-ms/token continuation gate and also
+  misses the independent 117.530-us 1.15x gate. Remove the transient kernel,
+  wrapper, registry key, focused test, and microbench mode; production is byte-
+  for-byte unchanged. Publish diagnostic
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-dpp-rejected.json`.
+- Continue the campaign rather than closing SH-D1: screen same-layout non-
+  temporal Q8T16 loads next, consider byte-neutral paired Q8T32 only if the
+  residual justifies its materializer/runtime cost, then complete selected-
+  expert and cumulative decode work before SH-M2/SH-K1/SH-A1/SH-G.
+
+## 2026-08-06 — Reject the SH-D1 GDN same-layout ladder
+
+- RED collection fails before a non-temporal wrapper exists. Implement two
+  transient four-axis siblings over the unchanged Q8T16 allocation: one keeps
+  three 16-byte scale/weight payload reads and emits gfx1151 `slc dlc`; the
+  second stacks those reads with the already exact 16-permlanex16/64-direct-DPP
+  peer tree. Both preserve production K/FMA/LDS/barrier/output association.
+- GREEN focused coverage passes **7/7** across both siblings: registry keys,
+  production BF16-byte identity, and CPU GGUF Q8_0 oracles at 32->16+32,
+  256->64+128, and 2048->8192+4096. Cached traces name each expected local128 /
+  grid98,304-thread kernel twice with zero scratch.
+- The non-temporal body is 3,356 bytes, 51 VGPR / 31 SGPR, 256 B LDS, zero
+  spills/private bytes, three `global_load_b128 ... slc dlc`, the original 80
+  bpermutes, and 62 waitcnts. The stacked body is 2,992 bytes at the same
+  resources and replaces that tree with 16 permlanex16 + 64 DPP adds, zero
+  bpermutes, and 20 waitcnts. Both retain the original 16+16 FMA instructions.
+- Run three order-balanced cycling triples with row 1, 2048->8192+4096, three
+  26.739-MB weight copies, one queue, 80 warmups, and 400 measured launches.
+  Production is **135.44/135.26/135.23 us**; non-temporal is
+  **130.82/131.56/131.64 us**; stacked is **130.11/130.83/129.85 us**.
+- Reject both before full-model timing. The best stacked median is only
+  **1.0396x**, saving **5.15 us/call** and projecting **0.1545 ms/token**. At
+  **130.11 us**, it remains **9.80%** slower than the frozen 118.493-us gate
+  and misses 1.15x. Remove both kernels, wrappers, registry keys, test, and
+  microbench modes; production is unchanged. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-samelayout-rejected.json`.
+- Same-layout communication/cache-policy headroom is exhausted. Continue SH-D1
+  with a bounded byte-neutral paired-Q8T32 first-object screen; if it cannot
+  reach leaf admission, close GDN layout work and move immediately to selected
+  experts rather than stopping the overall campaign.
+
+## 2026-08-06 — Reject paired Q8T32 and close SH-D1 GDN layout work
+
+- RED collection fails before Q8T32 wrappers exist. Build a diagnostic byte-
+  neutral packer that pairs adjacent Q8T16 scales and each K lane's q payload
+  into 1,088-byte T32 records without numeric conversion. Register three
+  transient `gguf_q8_0_t32_v1` first objects: local256 cached two-team,
+  local256 non-temporal+DPP two-team, and local128 register-wide
+  non-temporal+DPP. No production materializer or dispatch is added.
+- GREEN focused coverage passes **10/10**. Every body matches production BF16
+  bytes and the CPU GGUF Q8_0 oracle at 32->32+64, 256->64+128, and full
+  2048->8192+4096; packed T32 bytes equal T16 bytes exactly. Cached traces name
+  all three expected kernels with zero scratch.
+- Physical results: cached local256 is 3,316 bytes / 51 VGPR; stacked local256
+  is 3,064 bytes / 53 VGPR with three `global_load_b128 ... slc dlc`, 16
+  permlanex16, 64 DPP adds, zero bpermutes, and 19 waitcnts. The register-wide
+  local128 body is 5,368 bytes / **91 VGPR**, doubles the vector/FMA/DPP work,
+  and regresses production **4.96%** (**142.67 vs 135.93 us**), closing it.
+- Run three order-balanced row-1 cycling triples with the frozen 80.2-MB pool,
+  80 warmups, and 400 launches. Production is **136.25/136.19/135.79 us**;
+  cached Q8T32 is **130.79/130.89/131.23 us**; stacked Q8T32 is
+  **127.77/128.96/127.90 us**.
+- Reject before runtime/full-model work. Best median is **127.90 us / 1.0648x**,
+  saving **8.29 us/call** and projecting **0.2487 ms/token**, but remains
+  **7.94%** slower than the frozen 118.493-us gate and misses 1.15x. Remove all
+  transient kernels, diagnostic packer, wrappers, registry keys, tests, and
+  microbench modes; production stays Q8T16. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-gdn-q8t32-rejected.json`.
+- GDN same-layout and byte-neutral paired-layout headroom is exhausted under the
+  predeclared gate. Continue the campaign immediately at the measured selected
+  gate/up+down role (**3.912-3.925 ms/token**), then cumulative SH-D1,
+  SH-M2/SH-K1/SH-A1/SH-G.
+
+## 2026-08-06 — Select SH-D1 Qwen selected-Q4 tile8 first object
+
+- The c=1 Qwen selected gate/up owner is the next measured leaf: **2.309-2.319
+  ms/token** across 40 MoE layers. Its exact fused-SiLU Q4T16 body launches
+  local128 over eight selected experts and 16 columns, but holds 16 gate plus
+  16 up accumulators and profiles at **200 VGPR**.
+- Screen one materially different, exact gfx1151-local ownership shape before
+  changing runtime dispatch: split every resident T16 tile into two independent
+  eight-column workgroups, use adjacent-column packed-Q/coefficient loads, keep
+  the production 128-thread K partition, wave and wave0..3 reduction order,
+  BF16 gate/up round trips, SiLU expression, allocation, and fallback. This is
+  the exact analogue of the previously retained Laguna tile8/coefficient
+  mechanism, specialized to Qwen's c1/top8/K2048/N512 shape; it is not a new
+  format or prompt-conditioned policy.
+- Freeze the continuation rule from SH-D1: require BF16-byte identity to the
+  production fused owner, the CPU Q4_K oracle, a named cached trace with zero
+  scratch/spill, and either **>=1.15x** leaf speedup or **>=0.5 ms/token**
+  projection before any full-model run. Use an order-balanced >2x-MALL cycling
+  pool so the screen charges the eight selected experts' complete gate/up
+  matrix traffic.
+- ROCm/gfx1151 is healthy. The required broad lineage command remains
+  mechanically blocked before any diff by absent optional checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; this candidate reuses only the
+  in-tree exact T16 mechanism and copies no external body.
+- RED collection fails on the absent Qwen wrapper. The first exact tile8 object
+  then passes registry, BF16-byte identity, and CPU Q4_K coverage. Its first
+  immutable 3x400, 80-warmup, order-balanced, 67.9-MB cycling screen measures
+  production **57.824 us** and tile8 **50.429 us**: **1.14664x**, saving
+  **7.395 us/call** and projecting **0.2958 ms/token**. Output hashes are
+  identical, but it misses the frozen 1.15x gate by **0.292%** and the 0.5-ms
+  alternative.
+- Do not rerun tile8 seeking favorable noise. Because the miss is narrow and
+  the ownership ladder still has one materially distinct exact point, screen
+  tile4 once under the same immutable protocol. Tile4 halves the tile8 live
+  accumulator set again while doubling independent output workgroups; reject
+  the whole Qwen selected-Q4 ownership ladder if it also misses admission.
+- Tile4 is exact but clearly worse: production **57.754 us** versus candidate
+  **52.915 us**, only **1.09145x**, saving **4.839 us/call** and projecting
+  **0.1936 ms/token**. Cached traces name both candidates. Production is
+  local128 / grid32x8 / 200 VGPR / 1,024 B LDS / scratch0; tile8 is grid64x8 /
+  **72 VGPR** / 512 B LDS / scratch0; tile4 is grid128x8 / **40 VGPR** / 512 B
+  LDS / scratch0. Lower register pressure cannot repay the extra workgroups.
+- Reject before runtime/full-model work and remove both kernels, C ABI wrappers,
+  four-axis keys, tests, and the transient microbench. Production source is
+  restored byte-for-byte. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-q4-tile-ladder-rejected.json`.
+  The exact selected-Q4 ownership ladder is exhausted under the frozen gate.
+- Continue the campaign immediately at selected Q5/Q6 down (**1.603-1.606
+  ms/token**), then cumulative SH-D1 and SH-M2/SH-K1/SH-A1/SH-G; this rejection
+  is not a campaign stopping point.
+
+## 2026-08-06 — Select SH-D1 Qwen selected-down tile8 first object
+
+- The next frozen family is the exact Qwen c1/top8 selected down projection:
+  Q5T16 owns 37 of 40 MoE layers and Q6T16 owns three, together measuring
+  **1.603-1.606 ms/token**. Production launches one local128 workgroup per
+  16-column tile and selected row at K512/N2048, keeps 16 F32 accumulators, and
+  profiles at 96/128 VGPR across the family with zero scratch; the final Q5
+  control trace reports 128 VGPR.
+- Screen one shared exact ownership mechanism for both quant siblings: split
+  each resident T16 tile into independent eight-column workgroups while
+  preserving the production 128-thread K ownership, FMA order, wave32 tree,
+  serial wave-0..3 reduction, BF16 store, bytes, allocation, and direct selected
+  ABI. This is the remaining byte-neutral ownership point suggested by the
+  selected-Q4 result; it does not repeat the closed approximate q8_1/dp4a,
+  raw/X8, duplicate-expert C8, compact scheduler, or launch-shape screens.
+- Freeze the same SH-D1 continuation gate before implementation: each quant
+  leaf must be CPU-oracle correct, BF16-byte exact to production, four-axis
+  resolvable, named in a cached trace with zero scratch/spill, and improve
+  **>=1.15x** or project **>=0.5 ms/token** before runtime/full-model work.
+  Measure immutable 3x400 order-balanced HIP-event samples while cycling
+  disjoint selected-expert matrices over more than twice the 32-MiB MALL.
+- ROCm/gfx1151 is healthy. The required broad lineage check is mechanically
+  blocked before diff by absent optional checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; no external device body is being
+  copied. RED should fail collection on the intentionally absent Q5/Q6 tile8
+  wrappers before the shared implementation lands.
+- RED fails collection on the absent wrappers. GREEN passes the full
+  K512/N2048/top8 CPU Q5/Q6 oracles and byte-compares each candidate to the
+  production direct owner. The immutable first tile8 screen selects Q5:
+  production **40.903 us** versus **34.925 us**, **1.17120x**, projecting
+  **0.2212 ms/token** across 37 layers. Q6 tile8 reaches only **41.534 ->
+  38.448 us / 1.08027x / 0.0093 ms/token**, so its final tile4 ownership point
+  is screened once and regresses **41.794 -> 44.817 us / 0.93254x**.
+- Retain only Q5 tile8. The final source-shaped Q5 rerun confirms production
+  **40.815 us** versus tile8 **34.865 us**, **1.17067x**, saving **5.950
+  us/call** and projecting **0.2202 ms/token**. Remove both Q6 C ABI wrappers,
+  registry keys, Python exports, and tests; Q6 remains on the production
+  16-column body. The Q5 four-axis key is
+  `moe_linear/gguf_q5_k_t16_v1/selected_t16_qwen_tile8_gemv_decode_bf16_bf16_out`.
+- Cached-only tracing names Q5
+  `qk_t16_selected_qwen_tile_gemv_kernel<unsigned short,5,8>` at local128,
+  grid256x8, **56 VGPR**, 128 SGPR, 512 B LDS, and scratch0 versus production
+  grid128x8 / 128 VGPR / 512 B LDS / scratch0. No compiler spawned under the
+  profiler.
+- The gfx1151 capability defaults Q5 tile8 only at the exact c1/top8
+  K512/N2048 shape; gfx1100 and every shape/quant miss keep the existing
+  direct owner. `HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8=0` is the temporary
+  rollback. Q5 and Q6 allocations, residency, and prefill paths are unchanged.
+- Final-code 512/128 eager one-warmup/three-run control **52.912/52.881/52.805
+  tok/s** (median **52.881**) versus candidate **53.413/53.389/53.444 tok/s**
+  (median **53.413**): **+1.007%**, saving **0.1885 ms/token**, with every
+  candidate sample above every control sample, 128/128 exact IDs each run, and
+  zero tracked close bytes.
+- The independent state children are byte-identical in their complete payload
+  at **512/4K/32K/64K**: prefill logits/hidden/layer/Conv/GDN/live BF16-KV,
+  four fixed-input decode transitions, and final state all match. The natural
+  category+heldout oracle also passes all **18 prompts x3**, comparing **1,350
+  tokens** and **54,000 layer-hidden rows** with zero initial/final-state or
+  hidden mismatch and deterministic repeats.
+- Publish the retained Q5 and rejected Q6 decision in
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json`.
+  Continue SH-D1 immediately with cumulative attribution/parity headroom; this
+  retained leaf is not the campaign stopping point.
+
+## 2026-08-06 — Publish SH-D1 Q5 tile8 committed checkpoint
+
+- Committed the retained exact gfx1151 Q5T16 tile8 default as `3e836edea`,
+  explicitly excluding the unrelated concurrent `docs/ROCM-AI.md` edit. The
+  targeted selected-T16/routing/backend bundle passes **151 tests**, pycompile
+  and JSON validation pass, and `git diff --check` is clean.
+- Re-ran the immutable >2x-MALL leaf from the committed source with cached
+  builds: production **40.855 us**, tile8 **34.876 us**, **1.17146x**, exact
+  BF16 bytes, and projected **0.22125 ms/token** saving across 37 Q5 layers.
+  Raw SHA-256 is `28c96f66af0b8792521e60de7a644c68aa8438a664265fec74018cfbd49895ba`.
+- Re-ran the independent one-warmup/three-measurement 512/128 A/B at the same
+  commit. Control samples are **53.035/53.027/52.977 tok/s** (median
+  **53.027**); architecture-default tile8 samples are
+  **53.528/53.573/53.557 tok/s** (median **53.557**), a **+0.998%** win and
+  **0.18636 ms/token** saving. Every sample is exact and tracked close bytes
+  are zero; raw hashes are `83fc6978...8e68` and `d70a2270...3539`.
+- The source recorder remains globally dirty only because the shared tree has
+  unrelated `docs/ROCM-AI.md` plus pre-existing untracked benchmark files.
+  Runtime, kernel, benchmark, and test sources match `3e836edea`; the artifact
+  records this precise qualification rather than claiming a globally clean
+  worktree. Advance immediately to cumulative SH-D1 attribution/parity.
+
+## 2026-08-06 — Refresh cumulative SH-D1 512 attribution
+
+- Ran the SH-C0 role collector at measured commit `1a4c6b9ce` for the 512/128
+  row only: one discarded warmup plus three eager measurements, a cached-only
+  eight-token `rocprofv3` kernel/HIP-API/ROCTX role trace, and 10-ms whole-GTT.
+  The sole tracked source difference is unrelated `docs/ROCM-AI.md`; runtime,
+  kernel, benchmark, and test sources match the commit.
+- Exact eager samples are **53.535/53.501/53.549 tok/s** (median **53.535**) or
+  **18.6792 ms/token**. Tracked peak/close are **21.4800 GiB / 0 B** and
+  whole-GTT peak is **21.9160 GiB**, unchanged from SH-C0 at this shape.
+- Profiled GPU falls **17.5958 -> 17.3591 ms/token (-0.2367 ms)** versus SH-C0.
+  Selected-down falls **1.6028 -> 1.3933 ms/token (-0.2095 ms)**, directly
+  confirming the retained Q5 leaf. The other leading roles remain GDN input
+  **4.1132 ms**, selected Q4 gate/up **2.3154 ms**, Q6 lm-head **1.8310 ms**,
+  full-attention core **1.5809 ms**, and GDN output **1.4465 ms**.
+- Cumulative SH-D1 still fails both stop targets: current **18.6792 ms/token**
+  is **1.4868 ms/token** short of C1 and **3.2132 ms/token** short of fork-F16
+  parity. GDN input and selected-Q4 exact ladders are closed; prior dense-Q8
+  col8 and LM-head tile-max evidence is below admission. The next materially
+  open leaf is exact Q6T16 c1 LM-head tile8 at K2048/N248320.
+- Freeze its gate before implementation: full FP32 logits/top-1 exact, named
+  cached scratch-free trace, complete resident matrix traffic, and either
+  **>=1.15x** projection speedup or **>=0.5 ms/token** projection before any
+  full-model route. Publish the checkpoint as
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-cumulative-512-checkpoint.json`.
+
+## 2026-08-06 — Reject Q6T16 LM-head tile8 and close SH-D1
+
+- RED collection fails on the intentionally absent dense-Q6 tile8 wrapper.
+  The transient exact implementation splits each 16-column T16 tile into two
+  independent eight-column local128 workgroups while preserving every FP32
+  logit's K/FMA/wave32/serial-wave/store order. GREEN passes all **9** focused
+  Q6T16 tests, including exact production bits and the CPU Q6_K oracle.
+- The immutable actual-model leaf charges the complete **417,177,600-byte**
+  K2048/N248320 resident matrix per launch (**12.43x** assumed 32-MiB MALL),
+  with 5 warmups, 11 counterbalanced pairs, and 8 launches/sample. Production
+  is **1.831744 ms**; tile8 is **1.835747 ms**, **0.99782x / -0.218%**, losing
+  **0.004003 ms/token**. Full logits and top-1 are exact at token **142091**.
+- Cached-only tracing names production at local128/grid1,986,560/VGPR72 and
+  tile8 at local128/grid3,973,120/**VGPR48**; both use 128 SGPR, 512 B LDS, and
+  scratch0. No compiler spawned under profiling. The trace's one cold pair is
+  structural only; the 11-pair HIP-event screen owns the rejection.
+- Reject before runtime/full-model work under the predeclared **1.15x or 0.5
+  ms/token** gate. Remove the candidate body, C ABI wrapper, Python wrapper,
+  registry key, test, and microbench; the three production Q6 files are restored
+  byte-for-byte. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-q6-lm-head-tile8-rejected.json`.
+- Close SH-D1 with one retained exact Q5 leaf and explicit failure to reach
+  parity. GDN input, selected-Q4/Q6, Q6 LM-head, and dense-Q8 ownership ladders
+  are now retained or below admission. Cumulative 512 remains **53.535 tok/s**,
+  **1.4868 ms/token** short of C1 and **3.2132 ms/token** short of fork F16.
+  Attention/layout remains assigned to SH-A1. Continue immediately to SH-M2,
+  then SH-K1/SH-A1/SH-G; this closes only SH-D1, not the campaign.
+
+## 2026-08-06 — Remove completed SH-D1 Q5 comparison seam
+
+- The removal trigger recorded in `docs/REFACTOR.md` is satisfied: Q5 tile8 has
+  committed same-revision publication, complete exact state/natural gates, and
+  cumulative SH-D1 attribution. Remove
+  `HIPENGINE_GGUF_Q5_T16_SELECTED_QWEN_TILE8` and its env branch rather than
+  carrying a stale default-off experiment surface.
+- gfx1151 backend capability plus exact c1/top8/K512/N2048 shape gates now own
+  tile8 dispatch. gfx1100 and all quant/shape misses retain the exact 16-column
+  direct fallback; the primitive remains available for oracle and peer-backend
+  use. Update the routing test to cover capability/default and peer fallback,
+  and remove the completed `docs/REFACTOR.md` ledger entry.
+
+## 2026-08-06 — SH-M2 exact scratch-liveness topology screens
+
+- Built the complete route/stage lifetime map for the 4,096-row production
+  scratch and transferred the existing exact compact-route arena admission to
+  gfx1151. Diagnostics, unvalidated routes, and a disable-only A/B control keep
+  dedicated owners. Static physical scratch initially fell **1.7556 -> 0.3044
+  GiB**, saving **1.4513 GiB** without changing any logical field shape.
+- The initial single-arena 64-KiB placement saved the full tracked amount and
+  had exact state/trajectory plus zero close delta, but 4K prefill was
+  **1438.766 -> 1421.195 tok/s (-1.221%)**. A bounded 0..16-MiB architecture-
+  local color screen selected 16 KiB. Right-sized rows below 4,096 remain
+  dedicated after a 512 candidate lost **1.154%** for only **0.274 GiB**.
+- Candidate-first/control-second exposed the 4K order confound that the first
+  control-first run hid: **1409.238 vs 1438.940 tok/s (-2.064%)**, versus
+  **-0.430%** in the first order. Stop the long matrix rather than averaging
+  the single arena into a pass.
+- Split route-local attention and common post-attention fields into independent
+  arenas. Static scratch becomes **596,668,456 bytes (0.556 GiB)**. A fresh
+  D->L->L->D 4K screen records controls **1433.960/1423.202** and candidates
+  **1405.200/1421.799 tok/s**; order-balanced medians are **1428.581 ->
+  1413.499 (-1.056%)**. Decode is **+0.208%** and tracked peak saves **1.2000
+  GiB**, but the predeclared <=1% wall guard fails by 0.056 percentage point.
+- Do not round the miss into a win or repeat the same placement. Screen the last
+  general exact topology once: graph-color mutually exclusive fields into
+  separate allocator-owned slots rather than contiguous subranges. Static
+  accounting predicts **0.3423 GiB** active slots before small metadata, still
+  about **1.41 GiB** below dedicated while removing large-arena address/color
+  coupling. If this owner-slot topology misses, reject SH-M2 and advance to
+  SH-K1 rather than tuning against the four publication lengths.
+- Owner-slot RED fails at the intentionally absent topology; GREEN passes the
+  focused scratch/screen/backend bundle. After rejected color-surface cleanup
+  and the telemetry assertion, the final focused bundle passes **35 tests**.
+  The owner assignment preserves each field's
+  exact byte size, gives overlapping lifetimes distinct allocations, and reuses
+  one owner only across proven-disjoint route/stage intervals.
+- The fresh D->L->L->D 4K screen clears the wall gate: dedicated prefill legs
+  **1434.217/1395.568** and liveness legs **1445.956/1447.544 tok/s** give
+  order-balanced medians **1414.892 -> 1446.750 (+2.252%)**. Decode is
+  **+0.043%** and tracked peak is **23.0074 -> 21.5988 GiB**, saving **1.4086
+  GiB**. Advance to the complete 512/4K/32K/64K exact-state, wall, allocator,
+  and 10-ms whole-GTT matrix; this 4K screen is not publication by itself.
+- The complete matrix passes every frozen gate. 512 remains dedicated and moves
+  prefill/decode **+0.035%/-0.025%** with no memory change. At 4K/32K/64K,
+  owner slots move prefill **+0.466%/-0.038%/+0.679%** and decode
+  **-0.042%/-0.119%/+1.925%**. Tracked/owned peak falls exactly **1.408568
+  GiB** and simultaneous 10-ms whole-GTT falls **1.404297 GiB** at every 4K+
+  row. All processes return tracked bytes exactly to baseline.
+- Independent state children match their complete payload at 512/4K/32K/64K:
+  prefill FP32 logits, hidden/layer/Conv/GDN/live-BF16-KV state, four fixed-input
+  decode transitions, and final state are byte-identical. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json`.
+- Remove the rejected contiguous-color and attention/common split runtime paths
+  before publication; retain only the existing gfx1100 single-arena fallback and
+  the selected gfx1151 owner slots. The disable-only same-revision control stays
+  only through a committed checkpoint under its `docs/REFACTOR.md` trigger.
+- SH-M2 reduces same-scope whole-GTT to **22.148/22.800/23.538 GiB** at
+  4K/32K/64K, still **0.987/0.801/0.667 GiB** above fork F16. Do not claim
+  memory parity; advance to SH-K1 immediately after checkpoint/seam cleanup.
+- Validation: the system-python broad run is invalid at collection because that
+  environment lacks FastAPI. `uv run pytest -q` reaches 100% with only seven
+  frozen Laguna H7U/H8A/H8B source-hash assertions failing; all other collected
+  nodes pass. Those hashes were mechanically stale after SH-D1 added the Q5
+  primitive to shared gfx11 packages and SH-M2 added the gfx1151 capability.
+  Refresh only the normalized/post-merge hashes, then rerun exactly the seven
+  failing nodes: **7 passed**. `check_fixtures.py`, registry/cpu-fixture/add-plan
+  smokes, pycompile, JSON validation, and `git diff --check` all pass. Per the
+  focused-repair rule, do not repeat the completed broad suite.
+
+## 2026-08-06 — SH-M2 committed default checkpoint
+
+- Commit `7b675670a` retains gfx1151 owner-slot scratch coloring and the complete
+  full-matrix artifact. A committed one-warmup/three-run 4K same-revision A/B
+  reproduces dedicated **1409.035** versus owner slots **1417.186 tok/s**
+  prefill (**+0.578%**) and **55.871 -> 56.023 tok/s** decode (**+0.271%**).
+- Tracked saving remains **1.408568 GiB**, 10-ms whole-GTT saving remains
+  **1.404297 GiB**, complete 4K prefill/state/four-transition/final-state
+  fingerprints are byte-identical, and both processes close at zero tracked
+  bytes. The sole tracked difference during measurement is unrelated
+  `docs/ROCM-AI.md`; raw aggregate SHA-256 is `5345980c...ef20`.
+- The `docs/REFACTOR.md` removal trigger is now satisfied. Remove the disable-
+  only environment seam and transient SH-M2 A/B harness/tests, retain package-
+  owned owner slots plus dedicated diagnostic/peer fallbacks, commit the cleanup,
+  then close Task #29 and advance immediately to SH-K1.
+
+## 2026-08-06 — Close SH-M2 comparison seam
+
+- Remove the disable-only
+  `HIPENGINE_GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS` runtime branch, its transient
+  full-matrix screen, its screen-policy tests, and the satisfied refactor-ledger
+  entry. The retained production path is now owned only by the gfx1151 package
+  capability, exact compact-GDN route, fixed 4,096-row class, and diagnostic
+  guards; dedicated owners remain the required short-row, diagnostic,
+  unvalidated-route, and peer-backend fallback.
+- Update the retained artifact and rollup to distinguish the historical
+  same-revision control from current production, and refresh the mechanical
+  post-merge `docs/REFACTOR.md` source hash after deleting the completed entry.
+- Cleanup validation: `uv run pytest -q
+  tests/test_qwen35_gguf_prefill_scratch_liveness.py
+  tests/test_gfx1151_backend.py tests/test_laguna_h8b_source_default.py` passes
+  **32 tests**; runner pycompile, retained-artifact JSON parsing,
+  `docs/REFACTOR.md` SHA-256, and `git diff --check` pass. This closes SH-M2
+  only; continue the campaign immediately with SH-K1.
+
+## 2026-08-06 — Harden SH-K1 fixed-policy quality audit
+
+- Audit the existing compact-KV frontier before measurement. The admitted
+  per-token/head K+V format keeps full-attention indices `0-7` BF16 and `8-9`
+  INT8 for long sessions. After the layer-local prefill-oracle repair, that map
+  passed the historical W7900 `128K/128` gate at mean KL **0.01448** and
+  **96.124%** top-1 with no persistent BF16 mirror. Every materially broader
+  suffix or format is already closed: three-layer prefix 7 and non-contiguous
+  `{5,8,9}`/`{6,8,9}` K+V maps fail, key-only prefix 6 fails and prefix 7 saves
+  less than the 2-layer K+V map, block16 fails even the forced-long 4K row, and
+  tail-four Hadamard group32 is quality-clean but loses repeated decode and
+  allocator high water. Do not repeat those rows under SH-K1.
+- Extend `scripts/qwen35_native_mixed_kv_suite.py` with an explicit resident
+  capacity, a no-BF16-mirror requirement, and exact expected BF16/INT8
+  full-attention index expressions. The generic GGUF layout audit now checks
+  the complete fixed-layer partition, storage layout, scale granularity,
+  persistent mirror bytes, and released layer-local oracle buffers for both
+  uniform INT8 and tail-four policies. This closes the old loophole where a
+  short mirrored `int8_per_token_head` run could pass quality without proving
+  compact storage.
+- RED failed at collection on the absent layer-index parser. GREEN:
+  `uv run pytest -q tests/test_qwen35_native_mixed_kv_suite.py --tb=short`
+  passes **6 tests**; pycompile and `git diff --check` pass. The project
+  environment has no `ruff` executable, so the attempted `uv run ruff check`
+  was unavailable rather than a source failure.
+- Required lineage preflight is mechanically blocked before any source audit:
+  the manifest roots `/home/lhl/amd-gpu-tuning/reference/atlas` and
+  `/home/lhl/amd-gpu-tuning/nano-vllm-amd` are absent. No external code is
+  ported in this unit; the existing in-tree writer/direct grouped-GQA consumer
+  remains unchanged. Proceed to the gfx1151 no-mirror full category+heldout
+  quality gate for the fixed 8/2 map.
+
+## 2026-08-06 — Close SH-K1 strict compact-KV frontier
+
+- Run the committed 10-prompt category/train/heldout corpus plus `mixed_v1`
+  against BF16 with a forced **65,792-token** resident allocation, 4K prompt,
+  16 teacher-forced decode steps, no persistent BF16 mirror, and exact expected
+  full-attention indices. The fixed `0-7` BF16 / `8-9` per-token/head INT8 K+V
+  map passes **11/11 prompts, 187/187 positions, mean KL 3.344e-5, max KL
+  7.875e-4, 100% aggregate top-1, and 100% minimum-prompt top-1**. The layout
+  audit records zero mirror bytes and zero surviving layer-local oracle buffers.
+  Raw quality SHA-256 is `47a2763b...a1c15`.
+- Compare the candidate at the required long shapes against the committed SH-M2
+  BF16 owner-slot production rows. At 32K, prefill/decode change
+  **+0.032%/-0.436%**; at 64K they change **-0.057%/-0.670%**. All three runs
+  at each depth are finite, keep token 9707, and close at zero tracked bytes.
+- The candidate reduces live owned memory only **0.0620 GiB at 32K** and
+  **0.1235 GiB at 64K**. The layer-local BF16 prefill-oracle pair raises
+  candidate transient high water by **0.1260/0.2510 GiB**, so tracked peak
+  regresses **+0.0640/+0.1274 GiB** and simultaneous 10-ms whole-GTT regresses
+  **+0.0703/+0.1328 GiB**. The map is strict-quality-safe but neither a repeated
+  decode win nor a peak-memory win.
+- The installed `libroctx64.so` lacks `roctxProfilerResume/Pause`, so stop the
+  selected-region profiler attempt before treating its empty output as evidence.
+  Cached full-process traces are valid because the grouped-GQA INT8 symbol is
+  decode-only. Both traces record exactly **10 producer launches** (two compact
+  layers times one warmup plus four measured transitions), local256, VGPR80,
+  LDS0, scratch0. Mean producer duration is **454.6 us at 32K** with 129 splits
+  and **802.5 us at 64K** with 257 splits. Trace SHA-256 values are
+  `833b4acc...1500c` and `22f3c5f5...20fa6`.
+- Primitive/runtime validation passes: writer **4/4** exact cases, decode
+  **3/3** CPU-reference cases with max abs <=`2.98e-08`, layer accuracy at
+  contexts 64/520, all seven committed CPU fixtures, and **237 focused tests**
+  spanning KV dispatch/policy/spans, GGUF policy, memory audit, E2E fixture,
+  mixed-KV, and resident layout. A first smoke-summary helper referenced a stale
+  JSON key and exited after the already-passing writer/decode commands; the
+  corrected parser confirms the accepted primitive artifact. No product code
+  changed in this measurement/publication unit.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-k1-compact-kv-closed.json` and
+  update the review, GGUF status, benchmark rollup, and changelog. Reject default
+  promotion, retain BF16 KV plus SH-M2 owner slots, preserve the existing
+  guarded/explicit hybrid without a speed/memory claim, and do not repeat this
+  map or closed formats unless the prefill-oracle lifetime materially changes.
+  Production remains **0.801/0.667 GiB** above fork F16 whole-GTT at 32K/64K.
+  Continue immediately to SH-A1; this closes only SH-K1, not the campaign.
+
+Commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+  .venv/bin/python scripts/qwen35_native_mixed_kv_suite.py \
+  --engine gguf --backend hip_gfx1151 \
+  --gguf-model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --paro-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --prompt-length 4096 --decode-steps 16 \
+  --candidate-kv-storage int8_per_token_head --kl-threshold 0.05 \
+  --top1-threshold 0.9 --max-sequence-length 65792 \
+  --require-no-bf16-mirror --expected-bf16-full-layers 0-7 \
+  --expected-int8-full-layers 8,9 \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-sh-k1-quality-f9bde8190.json
+
+# Independent one-warmup/three-run 32K and 64K candidates with the same
+# production q4096/chunk policy, --kv-storage int8_per_token_head, cached build,
+# GPU_MAX_HW_QUEUES=1, and scripts.gguf_sh_m1_screen._run_with_gtt_sampler at 10 ms.
+
+rocprofv3 --kernel-trace -d <trace-dir> -o sh-k1-<context> -f csv -- \
+  env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-sh-k1-hipcc-version.txt \
+  HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-sh-k1-hipcc-version.txt \
+  PYTHONPATH=. .venv/bin/python scripts/qwen35_gguf_bench.py \
+  --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --quant gguf_q4_k_m --token-id 9707 --prompt-length <32768|65536> \
+  --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 0 \
+  --measured-runs 1 --persistent-session --force-bulk-prefill \
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode \
+  --no-graph-replay-decode --prefill-linear-chunk-size 1024 \
+  --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 \
+  --prefill-full-attn-post-chunk-size 1024 \
+  --prefill-full-attn-rope-chunk-size 1024 --prefill-chunk-autotune \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --kv-storage int8_per_token_head \
+  --kv-scale-dtype fp16 --kv-scale-granularity per_token_head --json <output>
+
+uv run pytest -q tests/test_kv_dispatch.py tests/test_kvcache_policy.py \
+  tests/test_kvcache_spans.py tests/test_qwen35_bench_memory_audit.py \
+  tests/test_qwen35_gguf_int8_kv_policy.py \
+  tests/test_qwen35_kv_e2e_fixture_gate.py \
+  tests/test_qwen35_native_mixed_kv_suite.py \
+  tests/test_qwen35_resident_batch_layout.py --tb=short
+.venv/bin/python scripts/check_fixtures.py
+```
+
+## 2026-08-06 — Close SH-A1 page-internal head-major decode screen
+
+- Freeze the bounded prerequisite before any persistent-cache rewrite: compare
+  current BF16 `[physical_block, token, kv_head, D]` against page-internal
+  `[physical_block, kv_head, token, D]` using the production Qwen shape
+  (16 Q heads, 2 KV heads, D256, block/split 256). The transient converter
+  consumes complete `KVLiveSpans` base/count/position/eviction metadata. The
+  candidate grouped-GQA producer changes only K/V physical addressing and uses
+  the unchanged BF16 sigmoid-gated reducer. No runner, graph, compactor, or
+  persistent writer plumbing is changed.
+- Follow RED/GREEN. RED is **2 expected collection failures** because the
+  bounded screen module does not exist. GREEN is **2 passed**, including native
+  dense `[0,1,2]`, permuted `[2,0,3]`, and stale/evicted-unreferenced
+  `[4,0,3]` page maps at context 513. Every copy and current-versus-candidate
+  BF16 output has zero bit mismatches; max absolute error versus NumPy is
+  **1.49e-8**. The timed 512/4K/32K/64K outputs are also byte-exact.
+- Run five warmups and 21 HIP-event repetitions for append, page conversion,
+  current attention+reducer, candidate attention+reducer, and both complete
+  composed scopes. The candidate loses before conversion: current versus page-
+  head attention+reducer is **0.0650 -> 0.1131 ms (0.575x)** at 512,
+  **0.0693 -> 0.1196 ms (0.579x)** at 4K, **0.4563 -> 0.6033 ms (0.756x)**
+  at 32K, and **0.8406 -> 1.0554 ms (0.797x)** at 64K.
+- Charge the same current append and the complete live-cache copy as required.
+  Current versus candidate composed wall is **0.0669 -> 0.1094 ms (0.612x)**,
+  **0.0718 -> 0.1722 ms (0.417x)**, **0.4593 -> 1.6606 ms (0.277x)**, and
+  **0.8421 -> 3.1988 ms (0.263x)**. Across ten full-attention layers, the
+  32K/64K result projects **-58.3%/-97.8%** whole decode rather than the
+  required >=1% saving. It fails the >=1.10x leaf gate by a wide margin.
+- Cached full-process `rocprofv3` tracing names six current and six candidate
+  producers plus six copies and twelve shared reducers across the 32K/64K
+  child. Both producers are local256/LDS0/scratch0; current uses **72 VGPR** and
+  candidate **80 VGPR**. The converter is local256/VGPR16/LDS0/scratch0.
+  Profile CSV SHA-256 is `98e0a71e...cf46`; screen JSON is
+  `565d61a8...f403`; the combined transient source hash is
+  `78c8cfac...fd74`.
+- Reject runtime plumbing. Hash then remove the page converter, page-head
+  producer, wrappers, registry keys, screen, and RED/GREEN test. Production
+  attention/KV sources return byte-for-byte to parent `72ba9fdd6`. Post-removal
+  validation passes **23 tests** across the existing head-major/paged-attention
+  plan files plus the `qwen35-paged-attn-gqa-hip` smoke (GQA max abs
+  `8.2e-08`, parallel gated BF16 mismatches zero), JSON parsing, and
+  `git diff --check`.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-a1-page-head-decode-rejected.json`
+  and update the review, GGUF status, benchmark rollup, and changelog. Keep
+  token-major BF16 KV plus the current grouped-GQA producer/reducer. The full
+  persistent head-major rewrite remains closed. Advance immediately to SH-G;
+  SH-A1 closes only this package, not the campaign.
+
+Commands:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  PYTHONPATH=. .venv/bin/python \
+  scripts/qwen35_page_internal_head_major_decode_screen.py \
+  --contexts 512,4096,32768,65536 --warmups 5 --repetitions 21 \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-sh-a1-page-head-screen.json
+
+HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace \
+  -d /tmp/hipengine-sh-a1-rocprof -o sh-a1 -f csv -- \
+  env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python \
+  scripts/qwen35_page_internal_head_major_decode_screen.py \
+  --contexts 32768,65536 --warmups 0 --repetitions 1 --skip-oracles \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build --json /tmp/hipengine-sh-a1-profile-child.json
+
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_qwen35_paged_kv_head_major.py \
+  tests/test_qwen35_paged_attn_decode_plan.py --tb=short
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
+  .venv/bin/python scripts/smoke.py --mode qwen35-paged-attn-gqa-hip \
+  --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt \
+  --require-cached-build
+```
+
+## 2026-08-06 — Launch SH-G final retained-campaign recertification
+
+- SH-A1 is committed as `915f64182`; all SH-C0/D1/M1/M2/K1/A1 packages are
+  decided and SH-G is the only remaining campaign task. Freeze the final
+  production lane at BF16 KV, retained gfx1151 Q5 tile8 selected-down, SH-M2
+  21-owner scratch slots, token-major paged KV, and the bounded head-major
+  AOTriton prefill scratch.
+- Reuse existing protocol owners rather than add benchmark-only runtime code:
+  four independent right-sized `qwen35_readme_sweep.py` processes provide
+  one-warmup/three-measurement prefill plus eager decode wall; the SH-C0 parent
+  provides independent one-warmup/three-measurement eager decode, tracked/owned
+  allocation, 10-ms whole-GTT, and cached kernel/HIP-API/ROCTX role traces at
+  512/4K/32K/64K; `gguf_packed_ar_category_oracle.py` reruns the exact 10+8
+  natural/category-heldout, 24-transition, three-repeat gate.
+- At this campaign milestone, rerun the pinned Nathan fork `b7b85da9` F16 and
+  Q8_0 split comparator with its built-in warmup plus five repetitions, the
+  exact 22,663,387,424-byte GGUF, `-b/-ub 1024`, and 10-ms whole-GTT. The
+  portable archive and real `bin/llama-bench` still hash to
+  `1449e4f6...cd66d` and `a5923323...c4`; the public launcher is intentionally
+  a symlink to the separately hashed `_run` environment wrapper.
+- Keep the final external row diagnostic: exact weights, hardware, split shapes,
+  and whole-GTT scope align, but BF16/F16/Q8_0 KV, timing ownership, and a shared
+  cross-engine token/logit oracle still do not. Raw evidence is isolated under
+  `/tmp/hipengine-sh-g-20260806/`; the sole tracked worktree difference at
+  launch is unrelated `docs/ROCM-AI.md`.
+
+## 2026-08-06 — Complete SH-G and close the Strix Halo campaign
+
+- Run the frozen final matrix sequentially on the Radeon 8060S with:
+  `bash /tmp/run_hipengine_sh_g_20260806.sh`. `bg-38` exits 0 after all stages:
+  SH-C0 current-production wall/allocator/GTT/trace, four right-sized README
+  rows, the exact natural/heldout gate, and fresh pinned-fork F16 and Q8_0
+  sweeps. Stage timestamps are 07:18:55-08:15:10 JST; no process fallback,
+  cache rebuild, overlap, or lifecycle failure occurs.
+- Final hipEngine BF16 current-production rows at 512/4K/32K/64K are:
+  prefill **1358.015/1451.836/1150.162/940.779 tok/s**, eager decode
+  **53.446/56.116/46.489/39.750 tok/s**, tracked peak
+  **21.480/21.599/22.245/22.984 GiB**, and 10-ms whole-GTT
+  **21.916/22.148/22.800/23.538 GiB**. Decode is diagnostically
+  **+1.114%/+1.314%/+1.055%/+0.840%** versus the cross-day SH-C0 rows, or
+  **0.208-0.234 ms/token** lower. The retained SH-M2 delta remains exactly
+  **-1.4086 GiB tracked / -1.4043 GiB whole-GTT** at 4K+; the same-revision
+  SH-D1/SH-M2 artifacts, not this cross-day refresh, own those accepted A/B
+  claims.
+- The fresh hipEngine prefill rows are
+  **-2.635%/-1.392%/-1.831%/-1.215%** versus the August 4 accepted hipEngine
+  rows. Treat this as cross-day drift, not a failed same-session promotion
+  guard. Against the fresh fork runs, hipEngine prefill wins 4K/32K/64K and
+  loses 512 for both F16 and Q8_0. hipEngine loses every decode row:
+  **-17.281%/-10.297%/-12.670%/-12.995%** versus fork F16 and
+  **-16.690%/-10.948%/-18.903%/-24.035%** versus fork Q8_0. It also remains
+  **+1.085/+0.987/+0.804/+0.696 GiB** above fork F16 and
+  **+1.084/+0.895/+1.170/+1.376 GiB** above fork Q8_0 in same-scope whole-GTT.
+  These are diagnostics: weights, hardware, split shapes, and GTT scope match,
+  but KV dtype, timing owner, and a shared cross-engine token/logit oracle do
+  not.
+- Correctness and execution evidence pass: all repeated IDs are exact; all four
+  processes return tracked bytes to zero; the 10+8 prompt, 54-execution oracle
+  passes **1,350 token comparisons**, **54,000 hidden comparisons**, and every
+  initial/final Conv/GDN/KV state comparison with zero mismatches. Cached traces
+  retain **628 dispatches/token**, **4,664 role-attributed dispatches**, and
+  **37 named selected-Q5 tile8 calls/token** at local128, VGPR56, LDS0,
+  scratch0 at every depth. The 4K+ census resolves the expected 21 liveness
+  owners; 512 correctly remains dedicated.
+- Compose the compact packet with:
+  `python3 -m py_compile /tmp/compose_hipengine_sh_g.py` and
+  `python3 /tmp/compose_hipengine_sh_g.py`. Independently replay all eight raw
+  SHA-256 values, four trace CSV hashes, exact counters, allocator modes,
+  row arithmetic, and document references; run `python3 -m json.tool` and
+  `git diff --check`. All pass. Composer stderr is empty
+  (`e3b0c442...b855`); final artifact SHA-256 is
+  `81d9e5607acac5524e108fd575d30dd3e6838f3e39da0f35ec81b28f977d438b`:
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json`.
+  No additional pytest is required for this docs/artifact-only publication;
+  the raw final matrix includes the production exact-state gate and cached
+  execution traces.
+- Final decision: all SH-C0/D1/M1/M2/K1/A1/G packages are decided. Retain the
+  bounded head-major BF16 prefill scratch, exact gfx1151 selected-Q5 tile8, and
+  exact 21-owner scratch aliases. Keep q4096 and token-major BF16 KV; reject the
+  measured compact-KV default and page-head decode rewrite. The campaign closes
+  with **0/4 C1, 0/4 C2, 0/4 fork-decode, and 0/4 fork-whole-GTT** rows, not
+  with a parity claim. Publication updates
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md`, `docs/GGUF.md`,
+  `benchmarks/README.md`, and `benchmarks/CHANGELOG.md`; unrelated
+  `docs/ROCM-AI.md` and untracked benchmark outputs remain untouched.
+
+## 2026-08-06 — Launch post-SH-G beat-fork continuation
+
+- Preserve SH-G as the closed, immutable Campaign-2 decision, but keep the
+  higher-level thread objective active: final production has **0/4 fork-decode
+  and 0/4 fork-whole-GTT wins**. Task #33 replays the compact SH-G/SH-C0
+  arithmetic and audits prior closed owners rather than rerunning any package.
+- Remaining hipEngine-versus-fork-F16 decode time gaps at 512/4K/32K/64K are
+  **3.233/1.835/2.725/3.269 ms/token**; gaps to C1 are
+  **1.518/0.812/1.247/1.583 ms/token**. Final selected Q4 gate/up, selected
+  down, and router/combine own about **4.689 ms/token** at 512. The only
+  unclosed exact decode family with enough Amdahl is P10.D1: a new mixed
+  Q4T16 producer -> exactly rounded SiLU intermediate -> output-tiled
+  Q5T16/Q6T16 down -> route-weight combine/residual composite. The existing
+  raw-Q4 megakernel is explicitly excluded because it accepts neither the
+  deployed mixed layout nor enough c1 blocks.
+- Freeze SH2-D1's first gate before implementation: registered unfused fallback,
+  complete BF16/CPU-oracle equality, actual-weight timing, named cached trace,
+  zero spills, and **>=1.15x or >=0.5-ms/token projected saving** before
+  full-model routing. Reaching C1 from this owner alone requires approximately
+  **1.479x/1.209x/1.362x/1.510x** across the four contexts. If a retained exact
+  sub-window win does not reach C2, cumulative re-attribution continues; the
+  thread does not close.
+- Memory census identifies the full raw-Q8 family as only
+  `root.token_embedding`: **540,344,320 bytes / 0.503 GiB**. Ideal removal still
+  leaves whole-GTT gaps of **0.582/0.484/0.301/0.193 GiB** versus fork F16, so
+  host embedding alone cannot claim parity. The existing exact host-copy path
+  must be re-screened on current gfx1151 against both admitted graph and eager
+  owners; the old gfx1100 128K **11.141 tok/s** result remains a blocker, not a
+  transferable result.
+- Full-table mapped-host embedding is not currently admitted: shell soft and
+  hard memlock are both **8 MiB**, far below 540,344,320 bytes. Do not change
+  system limits silently. The same-file memory stack instead screens current
+  host-copy behavior, then requires at least **0.49 GiB** measured
+  phase-exclusive code-object/library GTT before lazy/deferred ownership, plus a
+  separately exact 768-row owner-slot map. Scaling the existing interval map
+  projects **157,138,758 bytes / 0.146 GiB** at 768 rows; this is a hypothesis,
+  not a result.
+- Add Campaign 3 / SH2-C0,M1,M2,M3,D1,C1,G to
+  `docs/STRIX-HALO-LLAMACPP-REVIEW.md`, and mark P10.D1 post-SH-G admitted in
+  `docs/GGUF.md`. Freeze the compact no-performance-claim audit at
+  `benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json`.
+  HIP/gfx1151 health passes. `python3 scripts/check_lineage.py --kind kernel
+  --diff stat` remains blocked because the read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent; this is not a
+  green lineage verdict.
+
+## 2026-08-06 — SH2-M1 current-gfx1151 host-embedding screen
+
+- Execute Task #34 on Radeon 8060S/gfx1151 at clean runtime/kernel source
+  `ab71d0966` (the sole tracked measurement-time difference is unrelated
+  `docs/ROCM-AI.md`). Use the exact
+  `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, BF16 KV, fixed five-surface
+  q4096, `GPU_MAX_HW_QUEUES=1`, cached builds, one discarded warmup plus three
+  runs, and 10-ms whole-GTT. The matrix is device graph, device eager, and
+  existing `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=1` eager at 512/128 and
+  4K/128; exact commands and raw hashes are in the compact artifact.
+- At 512, graph/eager/host decode is
+  **53.301/53.521/53.378 tok/s** and prefill is
+  **1357.517/1358.810/1359.968 tok/s**. Host versus device eager changes
+  prefill **+0.085%** and decode **-0.267%**; versus graph it changes
+  **+0.181%/+0.144%**. Whole-GTT is
+  **21.916279/21.916004/21.472595 GiB**, so host saves
+  **0.443409 GiB** versus eager.
+- At 4K, graph/eager/host decode is
+  **55.813/56.054/55.972 tok/s** and prefill is
+  **1435.046/1432.994/1435.513 tok/s**. Host versus device eager changes
+  prefill **+0.176%** and decode **-0.147%**; versus graph it changes
+  **+0.033%/+0.285%**. Whole-GTT is
+  **22.147999/22.147724/21.643791 GiB**, so host saves
+  **0.503933 GiB** versus eager. All six legs return tracked bytes to zero and
+  retain exact repeated-token edge IDs.
+- The separate device/host state children use one q4096 session for 512 and 4K.
+  Prefill FP32 logits plus prefill/final hidden, all 40 layer outputs, 30
+  Conv/GDN state pairs, 10 live BF16 K/V pairs, and the four-transition
+  trajectory match byte for byte at both contexts. Live owned memory falls
+  exactly **540,344,320 bytes / 0.503235 GiB**. At 512 the current path first
+  materializes then frees the device table, so allocator high water falls only
+  **0.418797 GiB**; 4K's later scratch high water exposes the full
+  **0.503235-GiB** tracked saving.
+- Decision: retain the existing exact c1 env route and overturn the old gfx1100
+  throughput extrapolation for current gfx1151, but do not make it the global
+  default. Shared c>N, packed AR, and MTP still require device-token-pointer
+  embedding, and no shared-runner-safe automatic fallback/load-time ownership
+  policy exists. This is an exact own-engine memory/non-regression claim, not a
+  production-topline or fork-parity claim. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json`
+  (SHA-256 `4b30080a362b07fbe35a5b9f042bd9d7db8470357454fed0b4349a2308cc847a`)
+  and update the benchmark rollup/changelog, campaign review, and refactor
+  ledger. No pytest is needed for this benchmark/docs-only unit; JSON replay,
+  state equality, raw hashes, and `git diff --check` are the gates.
+- Collector note: an initial persistent `qwen35_gguf_bench.py` graph attempt
+  correctly failed because cumulative reuse exceeded its declared 128-step
+  window. Two subsequent completed child runs stopped only in one-off collector
+  schema parsing. The final resumable collector reran every leg whose GTT sample
+  had not been checkpointed; no failed/parser-only timing is retained.
+
+## 2026-08-06 — Close SH2-M2 code-object/library residency precondition
+
+- Task #35 requires at least **0.49 GiB** of phase-exclusive code-object/library
+  GTT at both 512 and 4K before any lazy loader, module unload, or `dlclose`
+  implementation. Reuse the fresh, cached-only, lifecycle-clean SH2-M1
+  processes rather than perturbing them with unload behavior. For each route,
+  subtract the 10-ms sampler baseline and live owned bytes from whole-GTT peak;
+  this residual is a conservative upper bound over *all* active, prefill-only,
+  decode-only, never-used, runtime, driver, and page-table bytes outside
+  hipEngine ownership.
+- Device eager residual is **0.418588 GiB** at 512 and **0.531532 GiB** at 4K.
+  The host-embedding stack residual against live ownership is
+  **0.478414/0.530792 GiB**. Thus even the complete 512 sets miss 0.49 GiB by
+  **0.071412/0.011586 GiB**, respectively. A phase-exclusive code/library
+  subset cannot be larger than its complete set, so the frozen two-context
+  precondition is mathematically impossible.
+- Close SH2-M2 without implementation or another GPU run. No unsafe unload,
+  compiler invocation, correctness exposure, or production change is justified.
+  Reused SH2-M1 state/lifecycle remains exact and every process returns tracked
+  bytes to zero. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m2-code-residency-closed.json`
+  (SHA-256 `9604f2abe034967a213e3e7ee2677a1020d40f4efac9034ce96ba8d5d2848e29`),
+  update the campaign/benchmark rollups, and proceed directly to SH2-M3's
+  separately exact 768-row owner slots.
+
+## 2026-08-06 — Implement SH2-M3 768-row scratch owner slots
+
+- RED first: change the short gfx1151 scratch contract to require the same 21
+  independent owner slots at 768 rows and change the backend capability gate to
+  `768`. The focused gate fails exactly at the old production behavior:
+  `test_gfx1151_right_sized_short_scratch_uses_owner_slots` observes
+  `allocation_mode='dedicated'`. Lower only
+  `GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS` from 4096 to 768; keep the existing
+  route/stage interval map, independent allocator owners, compact exact GDN
+  admission, and dedicated diagnostic/unvalidated fallback unchanged.
+- GREEN unit gate:
+  `uv run pytest -q tests/test_qwen35_gguf_prefill_scratch_liveness.py
+  tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys`
+  passes **9/9**. The synthetic 768-row census changes physical scratch
+  **355,182,664 -> 69,790,760 bytes**, retains 21 owner slots, keeps overlapping
+  lifetimes on distinct pointers, and explicitly proves that F32 diagnostics
+  retain the full dedicated **355,182,664-byte** fallback.
+- Run a same-source external comparison seam (never added to production) in
+  D->L->L->D order. Each leg uses the exact Q4_K_M file, BF16 KV, fixed q4096
+  controls with a right-sized 768-row owner, one discarded warmup plus three
+  512/128 eager measurements, cached builds, and 10-ms whole-GTT. Dedicated
+  medians are **1361.744 prefill / 53.322 decode tok/s**; owner-slot medians are
+  **1370.204 / 53.408**, changes of **+0.621%/+0.160%**. Tracked peak falls
+  **21.479979 -> 21.214187 GiB (-0.265792)** and whole-GTT falls
+  **21.916004 -> 21.648426 GiB (-0.267578)**. Both owner legs report exactly
+  **69,790,760** physical scratch bytes and all four processes reclaim tracked
+  bytes.
+- Separate 768-row state children compare dedicated and owner-slot allocation
+  after 512-token bulk prefill and four fixed-input transitions. FP32 logits,
+  hidden seed, all 40 layer outputs, 30 Conv/GDN state pairs, 10 live BF16 K/V
+  pairs, complete trajectories, and final state are byte-identical and finite.
+  Raw aggregate is `/tmp/hipengine-sh2-m3-20260806/run-evidence.json` SHA-256
+  `7bf72760e01143e41d18d96d0f4a83e230e3ba64d0e192d5c33e447c1d0cda7d`.
+  Retain the 768-row capability and commit the code/test unit; run one
+  committed-source confirmation before publishing SH2-M3 and closing Task #36.
+- Implementation commit `edb151447` is followed immediately by the same cached
+  production command with no comparison wrapper. It records
+  **1364.442 prefill / 53.293 decode tok/s**, **21.214187 GiB tracked**,
+  **21.648426 GiB whole-GTT**, `liveness_aliased`, exactly **69,790,760**
+  scratch-owner bytes, stable `9707` IDs, and zero tracked bytes after close.
+  This reproduces the retained memory/lifecycle result and stays within 1% of
+  the same-source dedicated medians.
+- Publish the retained production-default result at
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m3-short-owner-slots-retained.json`
+  (SHA-256 `70c81e13e50c140fdad1fecf92c93020f3c2fe9e8c4dbef63cc7a26f433ae901`),
+  update `docs/GGUF.md`, the Strix campaign table, benchmark rollup/changelog,
+  and correct the capability comment to say *capability* denial rather than
+  implying an allocation-exception fallback. SH2-M3 is complete; proceed to
+  SH2-D1 without stopping the campaign.
+
+## 2026-08-06 — Consolidate the ROCm.AI adoption inventory
+
+- Expand `docs/ROCM-AI.md` with a tree-state inventory of seven actively or
+  partially used surfaces and sixteen not-yet-used or intentionally deferred
+  surfaces. Each row records current evidence, the remaining gap, and a
+  P0/P1/P2 or deferred disposition rather than treating upstream availability
+  as an integration.
+- The recommended sequence is normalized ROCm/AMD SMI provenance, standardized
+  counter availability and capture, an offline hipBLASLt tuner comparison, and
+  one disposable TraceLens trial. Opus/HSACO, Systems Profiler, and Quark stay
+  question-driven follow-ups; multi-GPU, paging, QoS, and deployment stacks
+  remain conditional.
+- This is a docs/process unit with no performance claim or runtime change. The
+  complete 1,007-line document was reread; all relative Markdown link targets
+  exist, and `git diff --check` passes.
+
+## 2026-08-06 — Start SH2-D1 mixed-T16 selected-MoE composite
+
+- Task #37 starts from the frozen post-SH audit, not the rejected raw-Q4
+  eight-block megakernel. The production selected chain is Q4T16 gate/up with
+  an exact BF16 SiLU boundary, then 37 Q5T16 and three Q6T16 down layers, then
+  route-weight/shared-gate/residual combine. Existing Q4 producer and Q5 tile8
+  remain the registered exact primitives/fallback.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is blocked before
+  any diff by the already-recorded missing optional
+  `/home/lhl/amd-gpu-tuning/reference/atlas`. HIP is healthy and `rocminfo`
+  reports gfx1151. This is an in-tree producer/consumer ownership change; no
+  external kernel body is copied, and the blocked lineage command is not
+  treated as green.
+- Freeze the first bounded leaf as a registered Qwen c1/top8 output-tiled down
+  producer plus last-producer tail. Each route keeps the current local128 K/FMA,
+  wave32 tree, ordered wave-0..3 sum, and BF16 store. A per-output-tile
+  completion counter lets the last producer replay route 0..7 FMA order, round
+  the selected aggregate to BF16, and then reproduce the existing shared-gate
+  plus residual tail. Q5 retains the deployed eight-column owner; Q6 retains
+  the deployed 16-column owner. The unfused registered down plus registered
+  combine chain remains fallback.
+- RED adds Q5/Q6 production-byte, CPU-down-oracle, registry, and reusable-counter
+  coverage. `uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py -k
+  sh2_d1_mixed_t16_output_tiled_tail --tb=short` fails collection on the absent
+  `gguf_q5_k_t16_selected_qwen_output_tiled_tail_gemv_bf16_bf16_out`, exactly
+  before implementation. Continue only through byte-exact GREEN, a cached named
+  trace with zero scratch, and the frozen >=1.15x or >=0.5-ms/token actual-weight
+  composite leaf gate before model routing.
+
+## 2026-08-06 — SH2-D1 first output-tiled tail leaf is exact but below gate
+
+- GREEN after implementation: the focused Q5/Q6 production-byte, CPU-down,
+  registry, completion-reset, and immediate same-counter-reuse gate passes 2/2.
+  The candidate preserves the Q5 tile8 and Q6 tile16 local128/FMA/wave trees,
+  publishes the same BF16 down slab, and reproduces the registered ordered
+  route-weight/shared-gate/residual tail byte for byte.
+- The immutable actual-file screen uses sampled model fingerprint
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`,
+  Q5 layer 0, Q6 layer 34, all 256 experts in 32 deterministic top-8 groups,
+  D->C/C->D counterbalanced HIP events, and the deployed 37-Q5/3-Q6 mix. Q5
+  moves **39.027 -> 37.529 us (1.040x)** and Q6 **45.414 -> 37.162 us
+  (1.222x)**. The aggregate is only **1580.242 -> 1500.048 us/token =
+  1.053x / 0.080 ms saved**, below both the frozen `1.15x` and `0.5 ms/token`
+  gates. Do not route this epilogue-only schedule.
+- Cached `rocprofv3 --kernel-trace` confirms the exact expected
+  `qk_t16_selected_qwen_output_tiled_tail_gemv_kernel` Q5/Q6 symbols. Q5 uses
+  56 VGPR / 512 B LDS / **0 scratch**; Q6 uses 96 VGPR / 512 B LDS /
+  **0 scratch**. Raw screen/trace are under
+  `/tmp/hipengine-sh2-d1-first-leaf{.json,-trace/}`; profiler timing is
+  diagnostic only and the event medians above decide the leaf.
+- This does not close Task #37. Advance from down-tail-only ownership to the
+  actual P10.D1 premise: a bounded persistent cooperative launch that runs the
+  current Q4T16 dual+SiLU producer, grid-synchronizes at the exact BF16 slab,
+  runs the Q5/Q6T16 output-tiled consumer, and grid-synchronizes before the
+  ordered combine tail. Preserve one-block-per-output arithmetic inside each
+  phase and keep the registered three-launch chain as fallback.
+
+## 2026-08-06 — Close SH2-D1 mixed-T16 composite without production change
+
+- Full-composite RED fails collection exactly on the absent cooperative wrapper;
+  transient GREEN then passes Q5/Q6 production-byte and CPU gate/up/down oracles.
+  Across the actual model's all-256-expert permutation, complete intermediate,
+  down, and tail BF16 bytes match the registered three-launch chain.
+- The first true cooperative persistent grid is decisively negative: Q5/Q6 move
+  **97.393/103.680 -> 190.436/160.484 us**, giving a deployed 37/3 aggregate
+  **3914.597 -> 7527.590 us/token (0.520x, -3.613 ms)**. Its required cached
+  `rocprofv3` trace also SIGSEGVs in
+  `rocr::HSA::hsa_signal_store_screlease`; this is a hard trace-gate failure,
+  not accepted missing evidence.
+- A standard-grid eight-column-Q4 dynamic producer/consumer queue restores a
+  profileable single launch. The first queue screen is invalid for retention
+  because block 0 can reset counters before unscheduled blocks enter. Add an
+  all-block arrival counter and launch exactly the occupancy-reported grid;
+  repeated same-counter correctness remains byte exact. The lifecycle-correct
+  result is still negative: Q5 **97.694 -> 133.319 us (0.733x)**, Q6
+  **104.371 -> 128.182 (0.814x)**, and aggregate **3927.785 -> 5317.336
+  us/token (0.739x, -1.390 ms)**.
+- Final cached named trace confirms
+  `qk_t16_selected_qwen_mixed_q4_queued_tail_gemv_kernel`: Q5 is **93,374 ns,
+  104 VGPR, 512 B LDS, 0 scratch**, Q6 **87,243 ns, 112 VGPR, 512 B LDS,
+  0 scratch**. The trace is mechanically green but cannot rescue the negative
+  event gate. CSV SHA-256 is
+  `a402d25b33c1e548edf87fd57abaca3cbcc76de157a3bdfc5d03deb04ee5fcf6`.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-d1-mixed-t16-composite-closed.json`,
+  update the campaign/GGUF/benchmark rollups, and remove every transient kernel,
+  wrapper, registry key, test, and harness. Production returns exactly to the
+  registered Q4T16 + Q5/Q6T16 + combine chain. SH2-D1 is complete/rejected;
+  continue immediately to SH2-C1 cumulative re-attribution rather than ending
+  the beat-fork objective.
+
+## 2026-08-06 — SH2-C1 selects compact selected-expert T16 metadata
+
+- Run a fresh current-commit 512/128 non-profiled wall/whole-GTT process plus
+  cached 8-token kernel/HIP-API/ROCTX role trace. Do not replay the >5-minute
+  four-depth matrix: SH2-M3 changes only the 768-row short class, SH2-M1 is an
+  opt-in, and SH2-M2/D1 change no production code, so committed SH-G
+  4K/32K/64K remains mechanically current.
+- Clean `b8989cbb4` records **53.332177 tok/s**, **18.750406 ms/token**,
+  **21.214187 GiB tracked**, **21.648426 GiB whole-GTT**, exact tokens, clean
+  teardown, 628 dispatches/token, and **17.421773 ms/token** profiled GPU. This
+  exactly reproduces the retained **69,790,760-byte** short scratch owner and
+  the expected **0.267578-GiB** whole-GTT reduction versus SH-G's dedicated
+  short owner.
+- Remaining C1 time gaps at 512/4K/32K/64K are
+  **1.558/0.812/1.247/1.583 ms/token**. C1, C2, fork-F16 decode, and fork-F16
+  whole-GTT each remain **0/4**; current F16 GTT gaps are
+  **0.818/0.987/0.804/0.696 GiB**. The higher-level objective is not complete.
+- Fresh 512 roles are GDN input **4.135 ms**, selected gate/up/down/router
+  **2.315/1.397/0.974 ms**, LM head **1.843 ms**, full-attention core
+  **1.585 ms**, and GDN output **1.452 ms**. GDN input and selected-MoE
+  ownership are closed by SH-D1/SH2-D1, while graph/KV/page-head retries remain
+  prohibited.
+- Census all 120 selected expert tensors. The 80 Q4 gate/up T16 tensors expand
+  packed scale/min metadata by exactly **335,544,320 bytes**; the 37 Q5 down
+  tensors add **155,189,248**; three Q6 tensors add zero. Select SH2-M4 to
+  bit-losslessly compact this structurally new **490,733,568-byte /
+  0.45703125-GiB** resident owner with current T16 registered fallback.
+  Stacking with host embedding is only arithmetic until measured: projected
+  F16 GTT residual is **-0.083/+0.026 GiB** at measured-delta 512/4K, while
+  32K/64K use ideal embedding bytes and are not evidence.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c1-cumulative-reattribution.json`;
+  wire Task #40 SH2-M4 -> Task #41 SH2-C2 -> Task #39 SH2-G. SH2-C1 is a
+  diagnostic decision, not a performance or parity claim.
+
+## 2026-08-06 — Start SH2-M4 compact selected T16 metadata
+
+- ROCm is healthy on the Framework Strix Halo (`gfx1151`). The required broad
+  kernel-lineage audit remains mechanically blocked only by the absent
+  read-only `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; this is an
+  in-tree T16 layout evolution, not an external port.
+- Freeze a byte-neutral compact representation: preserve T16's FP16 `d/dmin`
+  and quant planes, but replace the expanded 8-bit scale/min planes with exact
+  four-column 24-bit records. Q4 reuses the retained host qmicro oracle; Q5
+  adds the corresponding 2,816-byte tile. Current 2,368/2,880-byte T16 stays
+  registered as fallback.
+- RED: `uv run pytest -q tests/test_gguf_t16_repack.py` fails collection on the
+  absent Q5 compact constants/materializer. The test also requires registered
+  `gguf_q4_k_qmicro_t16_v1` and `gguf_q5_k_qmicro_t16_v1` plugin keys, exact
+  raw-byte roundtrip, exact dequant equivalence, and byte-neutral storage.
+- GREEN: the Q5 compact transform converts expanded T16 metadata to the same
+  independently decodable 24-bit quartet records while preserving d/dmin,
+  low-nibble, and high-bit planes. Its 2,816-byte tile equals sixteen raw
+  176-byte Q5_K blocks; inverse reconstruction and dequantized values are
+  exact. Both compact layouts now have four-axis quant plugin keys while legacy
+  T16 remains untouched. Focused Q4/Q5 host validation passes **34/34**.
+
+### SH2-M4 device and actual-weight admission
+
+- Add registered exact compact Q4 selected dual/SILU decode, Q5 selected-down
+  decode, and Q4/Q5 compact WMMA prefill wrappers while retaining every legacy
+  T16 key as fallback. Focused BF16/FP16 GPU byte/CPU-reference coverage passes;
+  the current post-route focused bundle passes **18/18**.
+- Cached `rocprofv3 --kernel-trace` passes all four representative compact
+  routes. Direct compact Q4 is **31,379 ns, 176 VGPR, 1,024 B LDS, 0 scratch**;
+  direct compact Q5 is **121,909 ns, 56 VGPR, 512 B LDS, 0 scratch**. Compact
+  Q4 WMMA is **44,483 ns, 56 VGPR, 0 LDS/scratch** and compact Q5 WMMA is
+  **30,578 ns, 72 VGPR, 0 LDS/scratch**. Trace CSV SHA-256 is
+  `391d2c959f7b7c0d1ebb2ed7b25b328007423d439e17058419ababe28c9cf576`.
+- Freeze `scripts/gguf_sh2_m4_compact_t16_leaf.py` against the actual
+  22,663,387,424-byte Qwen3.6 GGUF. The deterministic permutation covers all
+  256 experts in 32 top-8 groups. Current and compact outputs are BF16-bit
+  exact and the byte census reproduces **490,733,568 bytes / 0.45703125 GiB**.
+- The full Q4+Q5 leaf misses the frozen <=1% decode gate: Q4 is
+  **36.740 -> 42.543 us (+5.803 us/call)**, Q5 is
+  **25.850 -> 27.676 us (+1.826 us/call)**, projecting
+  **+0.299674 ms/token / +1.598%** at the deployed 40-Q4/37-Q5 call mix.
+  Two bounded unpack schedules remain exact but worsen the projection to
+  **+2.494%** (preload all metadata) and **+3.239%** (wave broadcast), matching
+  the already-closed qmicro/tile-ladder failure modes. Restore the best
+  per-block LDS expansion; do not route compact Q4.
+- Split the separable owner rather than discard an exact retainable win. Q5
+  alone removes **155,189,248 bytes / 0.14453125 GiB** and projects only
+  **+0.067559 ms/token / +0.360%**. RED for default Q5 materialization fails on
+  the absent compact layout; GREEN plans all 37 selected Q5 down tensors as
+  `gguf_q5_k_qmicro_t16_v1`, leaves all 80 Q4 tensors on legacy T16, and maps
+  decode/prefill through four-axis registry keys. CPU materializer/resolver
+  coverage passes **15/15**. Full state, prefill/decode wall, whole-GTT, and
+  lifecycle gates remain pending before this partial owner can be retained.
+
+### SH2-M4 Q5 retention closeout
+
+- The first `gguf_sh_c0_profile.py` preflight fails before model load because
+  its default `.venv` ROCTX SDK path is absent. Re-run with the explicit
+  TheRock `librocprofiler-sdk-roctx.so.1`; the full 512 wall/GTT/trace process
+  then passes. This is a tooling-path correction, not a changed protocol.
+- Fresh Q5-compact 512/128 is **52.983235 tok/s**, all tokens exact, versus the
+  SH2-C1 **53.332177 tok/s (-0.654%)**. Profiled GPU is **17.447772 ms/token**.
+  Tracked ownership falls **21.214187 -> 21.069656 GiB** (exactly
+  **155,189,248 bytes**) and whole-GTT falls **21.648426 -> 21.504063 GiB**
+  (**155,009,024 bytes** sampled). Before-close ownership is 22,623,371,008
+  bytes and tracked after close is zero.
+- Matching qwen sweep prefill/decode moves **1372.347/53.383 ->
+  1366.497/53.138 tok/s (-0.426%/-0.459%)**, both inside the frozen 1% gate,
+  with stable exact token 9707. Raw sweep SHA-256 is
+  `33bdf217...a709`; fresh wall/GTT artifact SHA-256 is `b97d32ba...b810`.
+- The production trace names exactly **333**
+  `q5_k_qmicro_t16_selected_gemv_kernel<uint16_t,8>` calls at median
+  **35,427 ns, VGPR56, LDS512, scratch0** and exactly **37**
+  `gguf_k_t16_selected_wmma_prefill_compact_kernel<uint16_t,5,true>` calls at
+  median **1,489,917 ns, VGPR72, LDS0, scratch0**. CSV SHA-256 is
+  `66a91c5d5fa7c5130f26919b201260600ed6a9bfc971af94c37b8895d83c1b15`.
+- Run clean-parent `70b338a0e` and candidate state children in isolated
+  worktrees at **512/4K/32K/64K**, four fixed-input transitions each. FP32
+  prefill logits, hidden/layer/Conv/GDN/live-BF16-KV prompt state, trajectory,
+  and final state are byte-identical and finite at every depth. Baseline/
+  candidate JSON SHA-256 values are `3e4abeca...ebeb` / `5e859e17...77dd`.
+  Remove the temporary baseline worktree after comparison.
+- Affected CPU dispatch/materializer coverage passes **76/76**; post-restore
+  compact GPU coverage passes **18/18** and the selected GEMV build hash returns
+  to the first/best `08f78adef7812de5` object. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json`.
+  Retain Q5 compact metadata as default, keep Q4 legacy T16 in production, and
+  proceed immediately to SH2-C2 rather than stopping the campaign.
+
+## 2026-08-06 — SH2-C2 cumulative re-attribution requires SH2-G
+
+- Run the full four-depth SH-C0 wall/GTT/role protocol on clean committed
+  `e39aba0e1`, one independent right-sized process per depth, one discarded
+  complete run plus three 128-token measurements, 10-ms whole-GTT sampling, and
+  a separate cached-only 8-token kernel/HIP-API/ROCTX trace. Matrix SHA-256 is
+  `6d8809bc8ebb7f8ca65a4b5918d76056f803b435a8afd42fdeb252012f4c1e7c`.
+- Fresh 512/4K/32K/64K decode is
+  **53.3740827/55.8512342/46.3147855/39.6730649 tok/s**. Tracked peak is
+  **21.069656/21.454266/22.100490/22.839031 GiB** and whole-GTT is
+  **21.504063/22.003361/22.655777/23.394058 GiB**. Every baseline/profile token
+  is exact, tracked ownership returns to zero, and each trace has 628
+  dispatches/token.
+- Compact Q5 runs 37 times/token at **35.322/35.409/35.589/35.905 us/call**
+  with zero scratch. Its exact **155,189,248-byte / 0.14453125-GiB** tracked
+  saving reproduces at every depth. This is retained production evidence, not a
+  new speed claim.
+- The frozen SH-G fork comparator still yields **0/4 C1, 0/4 C2, 0/4 F16
+  decode, 0/4 F16 whole-GTT**, and also 0/4 Q8_0 decode/GTT. F16 decode time
+  gaps are **3.259/1.919/2.806/3.318 ms/token** and whole-GTT gaps are
+  **0.673/0.843/0.660/0.552 GiB**. The higher-level beat-fork objective remains
+  open; a fresh pinned-fork rerun is mandatory at SH2-G.
+- Freeze post-milestone owners rather than reopening closed ladders. Prospective
+  SH3-D1 is the complete Q8T16 shared-expert gate/up -> exact BF16 SiLU -> down
+  -> residual producer/consumer chain, owning **1.061-1.075 ms/token**, with a
+  RED CPU oracle and >=1.15x or >=0.5-ms projected admission gate. Prospective
+  SH3-M1 is a runner-safe exact **540,344,320-byte** host embedding policy that
+  preserves c>N, packed AR, MTP, graph, and device-pointer fallbacks.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-c2-cumulative-reattribution.json`.
+  This checkpoint selects SH2-G; if SH2-G misses policy, extend the campaign to
+  the frozen SH3 owners rather than marking the thread complete.
+
+## 2026-08-06 — SH2-G recertified; beat-fork objective advances to SH3
+
+- Reuse the fresh clean `e39aba0e1` SH2-C2 attribution matrix as the hipEngine
+  wall/GTT/role half because `53537b05a` changes publication files only. Run
+  fresh independent prefill/decode rows and the required pinned-fork
+  `b7b85da9` build-10283 F16 then Q8_0 split-phase matrix at 512/4K/32K/64K,
+  built-in warmup plus five repetitions, `-b/-ub 1024`, and 10-ms whole-GTT.
+  The payload remains hash-identical: `llama-bench` SHA-256
+  `a5923323...50877c4`.
+- Fresh hipEngine prefill/decode is **1368.737/53.319**,
+  **1445.181/55.895**, **1151.255/46.353**, and **938.924/39.644 tok/s**.
+  Pinned-fork F16 decode is **64.411/62.590/53.042/45.818 tok/s**; Q8_0 is
+  **64.179/63.087/57.379/52.167**. All four prior-production prefill guards
+  pass and hipEngine wins fresh fork prefill at 4K/32K/64K, but C1, C2,
+  fork-F16 decode, and fork-F16 whole-GTT each remain **0/4**.
+- F16 decode deficits are **17.135%/10.767%/12.683%/13.411%** and hipEngine
+  whole-GTT remains **0.673/0.843/0.660/0.558 GiB** higher. The Q8_0 lane is
+  also 0/4 decode/GTT and remains approximate diagnostic evidence.
+- Freshly run the canonical ten prompts plus eight category heldouts, three
+  repeats, c4+c4+c2 and c4+c4. All **1,350 token**, **54,000 hidden**, and
+  initial/final Conv/GDN/live-BF16-KV state comparisons pass; repeated rows are
+  deterministic, tracked ownership closes to zero, and cached compact-Q5 role
+  traces remain valid. Raw F16/Q8/oracle SHA-256 values are
+  `c592f314...18fe07` / `ce2dd546...1aa147` / `eccb1576...95bda5`.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh2-g-fork-parity-recertification.json`
+  (SHA-256 `9b33a8c9...f5536e1`). SH2-G is complete, but policy and the thread
+  objective are not. Continue immediately to SH3-D1's complete Q8T16
+  shared-expert chain, then SH3-M1's runner-safe exact 540,344,320-byte host
+  embedding and SH3-C1 cumulative re-attribution; do not stop at this milestone.
+
+## 2026-08-06 — SH3-D1 exact shared-expert composite rejected; advance to SH3-M1
+
+- Start from clean production `2493b194b`. ROCm is healthy on gfx1151. The
+  required `python3 scripts/check_lineage.py --kind kernel --diff stat` remains
+  blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent; this is
+  recorded as a blocker, not a green lineage verdict. The deployed 40-layer
+  owner is Q8T16 gate/up + exact BF16 SiLU + Q8T16 down, measured freshly at
+  **1.061-1.075 ms/token** before this experiment.
+- Write the CPU/unfused boundary oracle first. RED is the expected collection
+  failure for the absent candidate module; GREEN passes **2/2** after adding a
+  transient registered cooperative leaf. The candidate preserves the production
+  128-thread/four-wave reduction order, publishes each K-block's 16 scales
+  through wave-private LDS, and retains observable gate/up, BF16-SiLU
+  intermediate, shared-down, and final routed/shared-gate/residual buffers.
+  All four candidate/control arrays are byte-identical; the CPU-reference
+  correctness gate is therefore KL 0 and top-1 100% at the final boundary.
+- Run actual `blk.0.ffn_{gate,up,down}_shexp.weight` Q8_0 payloads at the
+  production `2048 -> 512 -> 2048`, top-8 shape with 24 rotating copies
+  (**80,216,064 bytes**, above twice the cache estimate), 200 warmups, 2,000
+  iterations, five counterbalanced repeats. The four-kernel fallback is
+  **34.719371 us** median. The 128-block composite is **38.611470 us / 0.8992x**,
+  projecting **-0.155684 ms/token** across 40 layers. The bounded occupancy
+  audit closes 40/64/80 blocks at **0.4438x/0.7545x/0.7491x**; no candidate
+  reaches either >=1.15x or >=0.5-ms/token admission.
+- Prebuild outside profiling and run a cached-only `rocprofv3 --kernel-trace`
+  child. The named composite has median **25.287 us, VGPR72, SGPR128, LDS512,
+  scratch0**, versus **23.482 us** summed median gate/up + SiLU + down + combine
+  kernels (**0.9286x**). Rocprof emits the complete 27-row CSV and then reports a
+  teardown SIGSEGV in `rocr::HSA::hsa_signal_store_screlease`; record that fault
+  explicitly rather than claiming a clean profiler exit. Independent exactness
+  and counterbalanced wall screens complete successfully. CSV SHA-256 is
+  `37395573...2faeb1`; grid-sweep JSON is `3c0c5659...d543`.
+- Reject before model routing and remove every transient `.hip`, wrapper,
+  registry key, test, and `/tmp` harness surface from the tracked tree. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-d1-shared-expert-composite-rejected.json`
+  (SHA-256 `84ffd3b6...e74d9`).
+  Production remains unchanged. SH3-D1 is complete, but the beat-fork objective
+  is not; proceed immediately to SH3-M1's runner-safe exact 540,344,320-byte
+  host-embedding policy, then SH3-C1.
+
+## 2026-08-06 — SH3-M1 runner-safe host embedding retained; advance to SH3-C1
+
+- Start from parent `8c39cda03`. Freeze the contract before implementation:
+  loader-time deferral must create no token-table device allocation; automatic
+  admission is gfx1151/private/c1 only; shared and c>N sessions remain device
+  resident; graph, packed AR, native rows, MTP, non-default streams, and device
+  token pointers restore an exact resident table; failed restoration leaves the
+  host route usable. RED is the expected collection failure for the absent
+  placement resolver and deferral API.
+- Add `GGUF_HOST_TOKEN_EMBEDDING_C1` as a backend capability, an allocation-free
+  `deferred_device_slots` materializer seam, and private-c1 placement resolution
+  before full-model load. The runner retains the validated raw-Q8_0 spec plus a
+  GGUF memmap; indexed/cached host Q8_0 dequantization writes exact BF16 hidden
+  rows. Pointer-fed consumers use a lock-protected one-shot materializer and
+  replace runner ownership only after the complete 540,344,320-byte upload
+  succeeds. The old device allocation and embedding kernel remain the fallback.
+- Focused policy/materializer/graph/packed/native-MTP/backend validation:
+  `python3 -m pytest -q tests/test_qwen35_gguf_host_token_embedding.py
+  tests/test_qwen35_gguf_materialize_helpers.py
+  tests/test_qwen35_gguf_decode_graph.py tests/test_gguf_packed_decode_graph.py
+  tests/test_gguf_native_spec_cycle.py tests/test_gfx1151_backend.py
+  tests/test_qwen35_gguf_bench_metadata.py` -> **62 passed**. A real loader
+  smoke proves `root.token_embedding` has zero device allocations and the host
+  view is exactly 540,344,320 bytes; close returns tracked ownership to zero.
+  Explicit graph capture begins host-owned, restores exactly one device table,
+  replays successfully, and also closes to zero. Actual-table host gather is
+  byte exact and costs about **0.14/0.92 ms** for repeated 512/4K IDs and
+  **2.5/22.2 ms** for 512/4K unique IDs.
+- Run the frozen final device-versus-auto-host matrix as independent cached
+  processes with `GPU_MAX_HW_QUEUES=1`, BF16 KV, eager decode, one warmup plus
+  three measured 128-token runs, and external 10-ms whole-GTT sampling. The
+  canonical command is `scripts/qwen35_readme_sweep.py --engine gguf --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --backend
+  hip_gfx1151 --workloads <512|4096>/128 --token-id 9707 --warmup-decode-tokens
+  1 --warmup-runs 1 --measured-runs 3 --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk` plus the five explicit 4,096-row chunk
+  controls, `--no-graph-replay-decode --use-wmma-prefill --use-gemv-decode
+  --kv-storage bf16 --prefill-queue-drain none`, precomputed hipcc version, and
+  `--require-cached-build`. Device legs set
+  `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0`; candidate legs leave the selector
+  unset and record reason `gfx1151_private_c1_auto`.
+- Same-source 512 device -> host-auto prefill/decode is
+  **1368.003260/53.263386 -> 1374.683897/53.244944 tok/s
+  (+0.488349%/-0.034625%)**. Tracked peak is
+  **21.069656 -> 20.566421 GiB**, exactly **540,344,320 bytes / 0.503235 GiB**,
+  and whole-GTT is **21.504063 -> 21.000130 GiB (-0.503933 GiB)**. All three
+  final IDs are 9707 and both close deltas are zero.
+- Same-source 4K device -> host-auto prefill/decode is
+  **1435.035984/55.984971 -> 1431.753964/55.759385 tok/s
+  (-0.228706%/-0.402940%)**. Tracked peak is
+  **21.454266 -> 20.951031 GiB**, the same exact allocation saving, and
+  whole-GTT is **22.003361 -> 21.499428 GiB (-0.503933 GiB)**. IDs and teardown
+  are exact. Both workload pairs satisfy the frozen <=1% wall gate.
+- Run independent state children at 512/4K, q4096, and four fixed-input eager
+  transitions with `scripts/gguf_sh_m1_screen.py state-child`. Device versus
+  auto-host FP32 prefill logits, all 40 layer outputs, 30 Conv/GDN state pairs,
+  10 live BF16-KV pairs, trajectories, and final state are byte-identical and
+  finite. Raw benchmark SHA-256 values are `636db0b2...ed9`,
+  `260e4262...ab4`, `1e6925d2...e10`, and `6c3317f7...59c`; state children are
+  `1c065bbf...398` and `7bd4acc0...e5a` under
+  `/tmp/hipengine-sh3-m1-20260806-final/`.
+- Collector provenance: an earlier in-progress matrix was stopped after the
+  indexed unique-token gather changed source, so none of those mixed-source
+  rows is retained. The frozen rerun preserved each child and its GTT sample;
+  its first collector pass stopped only because the canonical sweep labels
+  `4096/128` as `4K/128`. Checkpoint continuation ran only the missing 4K-host
+  and state children. No benchmark/runtime failure is retained.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-m1-runner-safe-host-embedding-retained.json`
+  (SHA-256 `b538a1c5...2268`). Retain/default the private gfx1151 c1 policy;
+  preserve device ownership for wider/shared sessions and transactional
+  fallback for every pointer-fed path. SH3-M1 is complete, but the beat-fork
+  objective is not; proceed immediately to SH3-C1 cumulative re-attribution.
+
+## 2026-08-06 — SH3-C1 cumulative gate complete; activate SH4-D1
+
+- Freeze committed source `16b961a6bf54ae8e5f7f08f741cb1144edbe72cc` and
+  rerun all four depths because the private-c1 host policy changes every process.
+  Independent attribution children use `scripts/gguf_decode_rocprof.py
+  --child-mode baseline --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompt-token-id 9707 --prompt-length <512|4096|32768|65536> --steps 128
+  --warmup-steps 1 --benchmark-warmups 1 --repetitions 3
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached`,
+  each under an external 10-ms whole-GTT sampler. Cached-only role children use
+  the same script under `rocprofv3 --kernel-trace --marker-trace --hip-trace`
+  with eight measured steps. Aggregate matrix SHA-256 is
+  `40e5cbd8...19e4e`.
+- Fresh attribution decode at 512/4K/32K/64K is
+  **53.084/55.430/46.120/39.577 tok/s**. Tracked peak is
+  **20.566421/20.951031/21.597255/22.335796 GiB** and whole-GTT is
+  **21.000130/21.499428/22.151844/22.890125 GiB**. Every repeated ID is 9707,
+  every child closes tracked ownership to zero, every cached trace has 628
+  dispatches/token, and compact Q5 remains named 37 times/token.
+- Run the canonical publication rows with `scripts/qwen35_readme_sweep.py
+  --engine gguf --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+  --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <depth>/128
+  --token-id 9707 --warmup-runs 1 --measured-runs 3
+  --warmup-decode-tokens 1 --force-bulk-prefill
+  --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode
+  --no-graph-replay-decode --prefill-queue-drain none
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt
+  --require-cached-build`. Prefill/decode is
+  **1368.742699/53.176970**, **1436.083305/55.664167**,
+  **1148.129990/46.241048**, and **939.441014/39.602195 tok/s**. Every
+  prefill row is within 1% of SH2-G and all final IDs are stable. Raw SHA-256
+  values are `ed824d16...100`, `184bf684...f99`, `55403480...9ea2`, and
+  `cfd75294...98f7b`.
+- Run `/home/lhl/miniforge3/envs/therock/bin/python3
+  scripts/gguf_packed_ar_category_oracle.py --model
+  /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldouts
+  benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --decode-steps 24
+  --repeats 3 --group-size 4 --compiler-version-file
+  /tmp/hipengine-hipcc-version.txt --require-cached-build`. Result: **18/18
+  prompts**, 1,350 token comparisons, 54,000 hidden comparisons, zero hidden or
+  initial/final state mismatches, deterministic repeats; artifact SHA-256
+  `c6380660...fc4a`.
+- Apply the unchanged strict policy against the same-day pinned fork
+  `b7b85da9`. Canonical hipEngine decode misses F16 at all four depths and
+  C1/C2 each remain **0/4**. Host ownership narrows hipEngine-minus-fork F16
+  whole-GTT to **0.169460/0.338692/0.155636/0.053974 GiB**, but parity remains
+  **0/4**. Prefill/correctness/lifecycle/trace pass; therefore SH3-C1 is complete
+  while the beat-fork objective remains open.
+- Fresh 512 role attribution measures selected gate/up+down at
+  **3.754181 ms/token** and the independent shared gate/up+down branch at
+  **1.065863 ms/token**. Select **SH4-D1**, a structurally new private-gfx1151-c1
+  eager screen that forks after router completion, leaves selected work on the
+  caller stream, runs the complete shared branch on a nonblocking auxiliary
+  stream, and joins before the existing exact combine. Shared/c>N, graph,
+  packed AR, MTP, diagnostics, unsupported backends, and any scratch conflict
+  remain serial. Require exact state/fallbacks, a cached trace proving real
+  cross-queue overlap, and >=1% whole-wall or >=0.5-ms/token saving without
+  >1% prefill loss.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh3-c1-cumulative-reattribution.json`
+  (SHA-256 `96aa2686...97b1e`). SH3-C1 is a diagnostic cumulative gate, not a
+  performance claim and not campaign completion; proceed immediately to SH4-D1.
+
+## 2026-08-06 — SH4-D1 branch overlap rejected; activate SH5-D1
+
+- Freeze the SH4-D1 contract before routing: gfx1151/private-c1/ordinary eager/
+  default-stream only; fork after router completion; complete shared branch on a
+  nonblocking auxiliary stream; selected branch on caller stream; join before
+  the unchanged combine. Prefill, graph, packed AR, MTP/verifier, diagnostics,
+  shared/c>N, peer backends, and nondefault streams remain serial. Lazy session
+  ownership must clean up stream, two disable-timing events, and one dedicated
+  2-KiB concat row transactionally, including partial allocation failure.
+- Add RED/GREEN fake-HIP contracts, then implement the default-off screen. The
+  dedicated concat row removes the active selected/shared `ffn_gate_up` conflict.
+  `python3 -m pytest tests/test_gfx1151_backend.py
+  tests/test_qwen35_gguf_moe_branch_concurrency.py -q` passes **28/28**. A
+  real-HIP teacher-forced child passes four transitions against fresh serial
+  prefixes, matching final hidden, all Conv/GDN state, live BF16 KV, and token
+  trajectory exactly (SHA-256 `08ba4675...376b`).
+- Run one resident serial/candidate warmup and five counterbalanced 512/128 pairs
+  from `/tmp/sh4_d1_ab.py`. Serial samples are
+  **18.802768/18.860602/18.812951/18.797576/18.811444 ms/token**; candidate is
+  **19.187101/19.206655/19.220771/19.187782/19.231909**. Medians are
+  **18.811444 -> 19.206655 ms/token**, or **53.159130 -> 52.065287 tok/s
+  (-2.057677%, +0.395211 ms/token regression)**. The first complete 128-step
+  trajectory/final BF16 hidden/30 Conv-GDN/10 live-KV-pair snapshot is byte
+  exact. Raw SHA-256 is `82675d99...705a`.
+- Prebuild outside profiling and run a cached-only eight-token
+  `rocprofv3 --kernel-trace --marker-trace --hip-trace` child. The timed windows
+  retain **5,024 dispatches / 628 per token**: **4,064** caller dispatches use
+  queue 1 / stream 0, while **960** shared gate-up/SiLU/down dispatches use queue
+  2 / stream 1. Timestamp intersection proves **189** auxiliary kernels and
+  **0.455550 ms/token** overlap selected gate/up, **33.420%** of the
+  **1.363092-ms/token** auxiliary kernel sum. Thus concurrency is real but
+  incomplete; queue/event overhead and bandwidth contention still lose wall.
+  Kernel/marker/HIP CSV SHA-256 values are `06341b04...ee8`,
+  `6c8ab3f8...130f`, and `fc400415...d90`.
+- Reject because neither >=1% wall nor >=0.5-ms/token saving passes. Remove every
+  transient bridge, capability, policy, scratch, routing, and test surface; final
+  production at parent `cbd5bc9c7` remains the exact serial chain. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh4-d1-moe-branch-overlap-rejected.json`
+  (SHA-256 `18f636f4...0603`).
+- The beat-fork objective remains open. Do not retry stream overlap or the closed
+  graph/KV/page-head/metadata/schedule ladders. Activate **SH5-D1**, first auditing
+  current and pinned-fork row-1 dense-Q8 arithmetic/layout and then admitting
+  only an actual-weight `2048 -> 8192` plus `2048 -> 4096` byte-neutral vector/
+  layout leaf. Require CPU-oracle correctness, cached no-spill execution, no
+  duplicate resident weights, and >=1.15x or >=0.5-ms/token projected saving
+  before model routing; preserve current Q8T16 prefill and exact fallback.
+
+## 2026-08-06 — SH5-D1 raw rowvec8 closes blocked; activate SH6-P1
+
+- Audit pinned fork `b7b85da9`: `dst->ne[1] == 1` dispatches through
+  `ggml_vk_mul_mat_vec_q_f16`, and `GGML_TYPE_Q8_0 + F16` resolves to
+  `mul_mat_vec_q8_0_f16_f32`. The generated quant shader uses raw output-major
+  34-byte Q8_0 blocks, one workgroup per output row, eight contiguous K values
+  per lane, and one scalar subgroup reduction. hipEngine already has raw
+  local256 one-output/scalar-K and raw local128 eight-output/eight-K kernels;
+  neither duplicates the missing local64 one-output/eight-K geometry. The
+  required `scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+- Add RED/GREEN CPU-oracle, wrapper, registry, materialization, dispatch, and
+  no-sidecar contracts for a combined split-output
+  `attn_qkv[2048->8192] + attn_gate[2048->4096]` raw rowvec8 leaf. Enabling
+  `HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR=1` replaces exactly **60** linear-attention
+  Q8T16 tensors / **802,160,640 bytes (0.747070 GiB)** with one raw allocation
+  each, creates no sidecars, and leaves all other Q8T16 owners unchanged.
+  Rows>1 use the existing raw WMMA prefill and disabling the option restores
+  production Q8T16.
+- Run the frozen actual-weight leaf with three pair copies / **80,216,064
+  bytes**, greater than twice 32-MiB MALL, 18 warmups, 15 counterbalanced
+  samples, and 64-launch HIP-event bursts. Production Q8T16 median is
+  **0.134737 ms**; local64 is **0.116588 ms**, or **1.15566x / 0.018148 ms
+  saved**, with **15/15** wins. Actual outputs differ by at most one BF16 code
+  and pass the independent CPU Q8_0 oracle. Raw result SHA-256 is
+  `8748bb42...6cea`.
+- Prebuild outside profiling and run cached `rocprofv3 --kernel-trace` over one
+  actual pair. The named rowvec8 body uses local64 / grid786432,
+  **24 VGPR, 128 SGPR, 512 B LDS, 0 scratch**, and a plausible 138.939-us
+  profiled duration. Kernel/agent CSV SHA-256 values are
+  `bbca581a...8cfa3` and `451e2511...6078`.
+- Run independent persistent-session one-warmup/three-run 512/128 eager
+  baseline/candidate children with cached builds, forced bulk prefill, WMMA
+  prefill, GEMV decode, and the retained private-c1 host embedding. Median
+  prefill/decode moves **1369.120/52.876 -> 1184.884/54.427 tok/s**. Decode
+  improves **+2.9337% / 18.9121 -> 18.3731 ms/token (-0.5390 ms)** at unchanged
+  **20.566421-GiB** tracked peak, but prefill regresses **-13.4565%**. Raw
+  hashes are `f5353efa...6109` and `11e04c39...b4a7c`.
+- Independent 512 prefill plus four fixed-input eager transitions confirms
+  prefill logits, all 40 layer outputs, 30 Conv/GDN state pairs, ten live BF16
+  KV pairs, and prefill hidden are byte-identical. All four candidate transitions
+  preserve top-1 token 9707, but logits, hidden, recurrent, and KV state diverge
+  because local64 changes the FP32 reduction tree. State SHA-256 values are
+  `8adff28c...49b6` and `13745120...717`.
+- Apply one bounded exactness repair: emulate the production 128 logical K
+  lanes with two virtual lanes per local64 thread. It restores production-T16
+  BF16 output but slows local64 to **0.173478 ms / 0.7786x**. The fast local128
+  sibling reaches **0.117878 ms / 1.1458x**, below the frozen 1.15x gate and
+  still differs by two BF16 codes. Remove the exact-tree specialization. Exact
+  screen SHA-256 is `8f978d60...abeb`.
+- Final focused command:
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt
+  python3 -m pytest tests/test_gguf_q8_0_pack8_gemv_decode.py
+  tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_materialize_helpers.py
+  tests/test_qwen35_gguf_materialize.py -q` exits zero with **104 passed, 21
+  skipped**. JSON syntax, `git diff --check`, and scoped validation pass.
+- Close SH5-D1 as **blocked from production**, not rejected source evidence and
+  not campaign completion. Production remains Q8T16. Retain the kernel and
+  explicit default-off model route only as SH6-P1's dependency. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json`
+  (SHA-256 `13af8147...0185`).
+- Activate **SH6-P1**: build one GPU raw-Q8_0 -> host-packer-identical Q8T16 pair
+  converter with one reusable <=**26,738,688-byte** scratch owner, then charge
+  converter + existing T16 WMMA at 512/4K/32K/64K. Require exact prefill state,
+  <=1% prefill loss at every depth, no persistent duplicate weights, cached
+  no-spill converter execution, transactional fallback/lifecycle, and the
+  complete natural/category KL/top-1 gate for changed decode arithmetic. Remove
+  the SH5 model route on failure; on pass promote through a gfx1151 capability
+  and proceed to SH6-C1. The whole beat-fork campaign remains active.
+
+## 2026-08-06 — SH6-P1 raw-to-T16 converter leaf is GREEN
+
+- Establish RED first with `tests/test_gguf_q8_0_raw_to_t16.py`: collection
+  fails because the converter module does not exist. Add a four-axis
+  `layout_transform/gguf_q8_0/raw_pair_to_t16` wrapper and a combined-grid HIP
+  body. One workgroup stages one 16-output x 32-K raw slab, transposes bytes,
+  and writes the exact Q8T16 record; there is no dequantization or arithmetic.
+- The production `2048 -> 8192` QKV plus `2048 -> 4096` gate pair requires
+  exactly **26,738,688 bytes**, matching the frozen one-owner cap. GPU output is
+  byte-identical to `repack_gguf_q8_0_tile16` for both tensors at local64/128/256.
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt
+  python3 -m pytest tests/test_gguf_q8_0_raw_to_t16.py -q` passes **6/6**.
+- Screen three raw pair copies / **80,216,064 bytes** with nine counterbalanced
+  HIP-event samples. local64/128/256 medians are **0.360914/0.401951/0.502646
+  ms per pair**; retain local64 for runtime admission. Raw screen SHA-256 is
+  `c2c594f4...9754`.
+- Prebuild outside profiling and run a cached-only production-pair
+  `rocprofv3 --kernel-trace`. The expected named local64 body launches with
+  grid 3,145,728 workitems, **40 VGPR, 128 SGPR, 0 scratch**, and profiled
+  duration 0.770256 ms. Kernel/agent CSV SHA-256 values are
+  `d8b5f78f...dc4` and `451e2511...6078`.
+- This closes only the mechanical leaf. The measured **0.360914 ms x 30 =
+  10.827 ms** serial conversion floor already makes the <=1% 512 prefill gate
+  demanding; SH6-P1 still proceeds to one-owner transactional runtime routing,
+  exact prefill state, and the binding wall gate before any quality promotion.
+
+## 2026-08-06 — SH6-P1 exact bridge rejected at 512 prefill; activate SH6-C1
+
+- Complete the phase-exclusive runtime screen on SH5's byte-neutral raw-Q8
+  representation. The registered `layout_transform/gguf_q8_0/raw_pair_to_t16`
+  leaf remains host-packer-byte-exact for both production tensors, and the
+  cached gfx1151 trace remains local64 / 40 VGPR / 128 SGPR / zero scratch.
+  Runtime uses one exactly **26,738,688-byte** transactional owner, no persistent
+  duplicate, allocation-denial fallback to raw WMMA, and clean teardown.
+- Independent 512 prefill plus the full 40-layer/30 Conv-GDN/10 live-KV state
+  oracle is byte exact. State hashes are production
+  `8adff28c...49b6` and bridge `16ff5eb2...6565`; the differing aggregate file
+  hash reflects route metadata rather than numerical state.
+- Run the frozen one-warmup/three-run 512/128 gate. Baseline prefill/decode
+  medians are **1369.120/52.876 tok/s**; the charged bridge is
+  **1318.196/54.488 tok/s**. Decode improves **+3.047%**, but prefill regresses
+  **-3.720%** (**+3.863% wall**) and fails the required <=1% first row. Tracked
+  peak increases by the exact scratch owner, **20.566421 -> 20.591324 GiB**, and
+  all measured closes return tracked ownership to zero. Raw result hashes are
+  `f5353efa...6109` and `35ad6444...4b66`.
+- Stop 4K/32K/64K and complete natural/category continuation: the frozen
+  admission is a conjunction and the already-failed 512 row cannot be repaired
+  by later rows. This is policy-compliant early stopping, not a quality waiver
+  or performance promotion.
+- Apply the predeclared failure cleanup. Remove
+  `HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR`, raw replacement materialization, model
+  dispatcher selection, runtime transform-plus-T16 bridge, cached bridge
+  libraries, session scratch ownership, and candidate-only route tests. Restore
+  Q8T16 as the sole covered production resident/dispatch. Retain only the
+  independently tested standalone SH5 rowvec8 and SH6 byte-transform leaves as
+  source evidence.
+- Final focused command:
+  `HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt
+  python3 -m pytest tests/test_gguf_q8_0_raw_to_t16.py
+  tests/test_gguf_q8_0_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py
+  tests/test_qwen35_gguf_prefill_scratch_liveness.py
+  tests/test_qwen35_gguf_materialize_helpers.py
+  tests/test_qwen35_gguf_materialize.py -q` exits zero with **116 passed, 20
+  skipped**. Artifact JSON parsing, Python compileall, and `git diff --check`
+  pass.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json`
+  (SHA-256 `fc3a66b1...9dfc`). SH6-P1 is complete/rejected with production
+  unchanged. Activate mandatory **SH6-C1** clean-production four-depth
+  re-attribution; campaign completion remains forbidden while fork parity is
+  open.
+
+## 2026-08-06 — SH6-C1 cumulative gate complete; activate SH7-A1
+
+- Freeze tracked-clean production source
+  `b074e805491f33e169102e879de6994e6a963f64` after SH6 cleanup. The process
+  inherited `GPU_MAX_HW_QUEUES=2` from the preceding overlap screen rather than
+  the package-default cap of 1; all profiled decode dispatches still use only
+  queue 1 / stream 0. Keep this explicit qualification because SH6-C1 is a
+  diagnostic policy decision, not a retained performance claim. Run independent
+  right-sized one-discard/three-measurement eager attribution plus 10-ms
+  whole-GTT and cached eight-token kernel/HIP/ROCTX traces at 512/4K/32K/64K.
+  Decode is
+  **52.899/55.515/46.011/39.561 tok/s**, tracked peak is
+  **20.566/20.951/21.597/22.336 GiB**, whole-GTT is
+  **21.000/21.499/22.152/22.890 GiB**, and every child closes to zero tracked
+  bytes. All traces retain 628 dispatches/token.
+- Fresh canonical one-warmup/three-measurement prefill/decode is
+  **1373.558/53.153**, **1446.862/55.832**, **1149.718/46.196**, and
+  **938.363/39.579 tok/s**. Prefill changes **+0.352%/+0.751%/+0.138%/-0.115%**
+  versus SH3-C1, so all four frozen 1% guards pass. Every run retains exact ID
+  9707.
+- The fresh exact category+heldout oracle passes 18/18 prompts, 54 prompt
+  executions, 1,350 token comparisons, 54,000 layer-hidden comparisons, and all
+  initial/final Conv/GDN/KV state comparisons with zero mismatches and
+  deterministic repeats. Oracle SHA-256 is recorded in the compact artifact.
+- Apply the unchanged comparator: C1, C2, pinned-fork F16 decode, and pinned-fork
+  F16 whole-GTT each remain **0/4**. F16 decode time deficits are
+  **3.288/1.934/2.794/3.440 ms/token**, and same-scope GTT gaps are
+  **0.169/0.339/0.156/0.054 GiB**. SH6-C1 is complete, but the beat-fork
+  objective is not.
+- Fresh long-context role traces measure full-attention core at
+  **4.5195/8.0695 ms/token** and its serial grouped-GQA split reducer alone at
+  **0.4276/0.7511 ms/token** for 32K/64K. Select **SH7-A1**, an independent
+  gfx1151 gate for the existing registered prepare-plus-coalesced parallel
+  reducer retained on gfx1100. This changes reduction ownership only; it does
+  not reopen page-head, compact-KV, split-count, or online-softmax retries.
+  Require CPU and 18-prompt semantic correctness, then a fresh
+  package-default `GPU_MAX_HW_QUEUES=1` serial/candidate 32K/64K pair; the
+  qualified SH6-C1 rows select scope but are not the performance denominator.
+  Require >=1% or >=0.5-ms/token 64K wall saving, cached named scratch-free
+  kernels, unchanged memory/lifecycle, and serial fallback below 32K.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh6-c1-cumulative-reattribution.json`
+  (SHA-256 `8e0a0aa6...d7797`). This is a cumulative diagnostic, not a retained
+  performance claim or campaign completion.
+
+## 2026-08-06 — Retain SH7-A1 parallel split reducer; activate SH8-A1
+
+- Audit the existing gfx1100 LCP-D2 wrapper, raw-pointer registry key, serial
+  fallback, gfx1151 package capability, runtime threshold, tests, and kernel
+  catalog before changing dispatch. `scripts/check_lineage.py --kind kernel
+  --diff stat` remains blocked by the already-recorded absent read-only Atlas
+  checkout; this is not treated as a green lineage result. Add RED contracts
+  proving gfx1151 uses serial reduction at active context 32K-1 and the
+  registered parallel wrapper at 32K, then flip only the package capability.
+- Primitive admission uses the existing cached gfx1151 GQA smoke at 8,448
+  tokens / 33 splits / 16 query heads / 2 KV heads / head-dim 256. The parallel
+  path has **0 BF16 mismatches / max abs 0** versus NumPy; the serial path differs
+  by one BF16 code (`max_abs=0.000122`). The focused backend/registry/dispatch
+  bundle exits zero with **40/40 passed**.
+- Run `/tmp/sh7_parallel_reduce_semantic.py` under one hardware queue and forced
+  split coverage. All 18 category+heldout prompts, three repeats, and 24 matched
+  decode steps pass: **1,296/1,296 byte-exact logits, mean/max KL 0, top-1 100%**,
+  deterministic repeats, and tracked ownership returns to baseline. Raw semantic
+  SHA-256 is `964a5e9a...aac8`.
+- Run the binding fresh package-default `GPU_MAX_HW_QUEUES=1` same-source pair
+  via `scripts/gguf_sh_c0_profile.py`, with serial env 0 followed by candidate
+  env 1, independent right-sized 32K/64K processes, one discarded 128-token run,
+  three measurements, 10-ms whole-GTT, and cached eight-token kernel/HIP/ROCTX
+  traces. At 32K, serial **21.7080 ms/token / 46.066 tok/s** becomes candidate
+  **21.3746 / 46.785** (**+1.560%, -0.3334 ms/token**). At 64K, serial
+  **25.3541 / 39.441** becomes **24.7614 / 40.386** (**+2.394%, -0.5928
+  ms/token**), clearing both the 1% and 0.5-ms alternatives. All repeated IDs
+  remain exact.
+- Tracked peaks are byte-identical at **21.597255/22.335796 GiB** and every
+  process closes to zero. Whole-GTT is unchanged at
+  **22.151844/22.890125 GiB**. The decode-only route cannot enter prefill;
+  threshold contracts preserve serial below 32K and explicit opt-out.
+- Cached queue-1/stream-0 traces replace serial reduction
+  **424.162 -> 109.346 us/token** at 32K and **744.973 -> 207.485 us/token** at
+  64K. The prepare/output pair uses **24/16 VGPR**, **1 KiB LDS**, and zero
+  scratch. Total profiled GPU time drops **20.6845 -> 20.2161** and
+  **24.0704 -> 23.5503 ms/token**.
+- Retain `GGUF_PAGED_ATTN_PARALLEL_REDUCE=True` for gfx1151 from 32K and retain
+  serial fallback. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh7-a1-parallel-split-reducer-retained.json`
+  (SHA-256 `5ccd2453...e9fc`) plus the review, GGUF, kernel-catalog, scoreboard,
+  and changelog updates. This is an exact own-engine performance claim.
+- The objective remains open. Candidate 32K/64K is still **1.111/1.187
+  ms/token** short of C1 and **2.522/2.936 ms/token** short of pinned-fork F16;
+  whole-GTT does not move. Select **SH8-A1**, a structurally new producer
+  occupancy screen: the 72-VGPR grouped-GQA producer now owns
+  **4.037/7.212 ms/token**. Compare exact eight-query ownership with a
+  four-query-group sibling that duplicates K/V reads but lowers register
+  pressure. Require exact per-head order and >=1.10x producer speed or >=0.5-ms
+  projection before full-model routing; do not reopen reducer, split-count,
+  page-layout, compact-KV, raw-Q8, or overlap retries.
+
+## 2026-08-06 — Reject SH8-A1 qgroup4 producer; activate SH9-D1
+
+- Start from retained SH7 commit `cad45d291`. ROCm is healthy on gfx1151.
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` remains blocked
+  by the absent read-only Atlas checkout and is not treated as a green verdict.
+  Audit the local256 grouped-GQA producer: one block owns each `(kv_head,
+  split)`, shares K/V across all eight query heads, compiles at 72 VGPR, and
+  owns **4.037/7.212 ms/token** at 32K/64K after SH7.
+- Add a RED registry contract for a transient qgroup4 wrapper/key; it fails only
+  because the candidate is absent. Implement a template-preserving sibling with
+  two four-query blocks per KV head, the same per-head dot/value accumulation
+  order, unchanged partial ABI and retained parallel reducer. GREEN registry
+  passes and a cached gfx1151 build succeeds.
+- Extend the existing 8,448-token / 33-split / 16-query / 2-KV primitive while
+  the candidate exists. qgroup4 is byte-exact versus both NumPy and retained SH7:
+  **0 BF16 mismatches, max abs 0** through complete `KVLiveSpans`. Primitive log
+  SHA-256 is `e5fc7a0d...e9e4d`.
+- Run 21 counterbalanced pairs of ten complete producer+parallel-reducer HIP
+  launches at actual 129/257-split shapes under one hardware queue. At 32K,
+  control **0.425068 ms/layer** becomes qgroup4 **0.474481 ms (0.8959x,
+  +11.625%)**. At 64K, **0.759873 -> 0.858382 ms (0.8852x, +12.964%)**.
+  The candidate wins **0/42** pairs and projects **-0.494/-0.985 ms/token**
+  over ten full-attention layers, opposite both frozen continuation gates.
+- Cached `rocprofv3` confirms the intended mechanism rather than a spill:
+  qgroup4 lowers **72 -> 56 VGPR**, keeps local256 and scratch0, and doubles
+  grid X **512 -> 1,024**. Producer medians still regress
+  **405.676 -> 455.813 us** at 32K and **725.396 -> 820.053 us** at 64K;
+  duplicated K/V traffic dominates the occupancy gain. Trace SHA-256 is
+  `77dcb38a...d841`.
+- Stop before model semantic/wall/memory work per the leaf gate. Remove the
+  transient HIP body/C wrapper, Python wrapper/symbol/key/export, smoke
+  extension, and RED/GREEN assertion. Production source is byte-clean against
+  `cad45d291`; the retained 40-test backend/registry/dispatch bundle passes.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh8-a1-qgroup4-producer-rejected.json`
+  (SHA-256 `605b2d2b...3ee9`). This is exact negative evidence, not a performance
+  claim.
+- Select **SH9-D1**, an explicit open package transfer: gfx1100 LCP-2B admits a
+  routing-independent compact-WMMA static upper bound through 4,096 selected
+  rows, while gfx1151 remains at zero. Private-c1 uses eight selected rows, so
+  the path can remove exactly 40 scalar `wmma_total` D2H synchronizations/token
+  without changing selected kernels. Require bound/fallback RED/GREEN, exact
+  state, cached HIP/ROCTX proof, and same-source wall non-regression; do not
+  reopen the closed attention producer subdivision.
+
+## 2026-08-06 — Retain SH9-D1 compact-WMMA no-read prefill transfer
+
+- Correct the SH8 handoff before implementation: `_run_post_attention_moe_rows`
+  is called only for `rows > 1`; rows==1 decode dispatches
+  `_run_post_attention_moe_c1` first. The binding private single-request pp512
+  prefill has **512 x top-k 8 = 4,096 selected rows** and 40 MoE layers. SH9 can
+  remove 40 scalar reads per request, not 40 reads/token, and receives no decode
+  parity credit.
+- Audit gfx1100 LCP-2B: the shared runtime already proves the exact
+  routing-independent bound `A + floor((S-A)/16)` tiles, initializes unused
+  tile ids to `-1`, retains scalar fallback above scope/capacity, and has no
+  backend branch. gfx1151 differs only by package capability `0` versus
+  gfx1100 `4096`. The 4,096-row / 256-expert bound is **496 tiles / 7,936 padded
+  rows** inside the 8,192-row scratch capacity. Lineage checking remains blocked
+  by the absent read-only Atlas checkout and is not a green verdict.
+- Add RED contracts requiring gfx1151 package/default scope `4096`, in-scope
+  no-read routing, and an explicit below-bound scalar fallback. RED has exactly
+  three held-zero failures while fallback passes. Flip only
+  `hipengine/kernels/hip_gfx1151/__init__.py` to `4096`; focused GREEN passes.
+- The historical LCP-2B four-file bundle establishes **62 passed / 9 skipped**
+  plus two pre-existing hidden-seed fixture failures from the retained host
+  embedding policy. Repair only those synthetic resident-token fixtures; the
+  two failed nodes and full changed file pass **2/2** and **21/21**. Commit this
+  separate test-only unit as `5c3d9912d`; combined evidence is effectively
+  **64 passed / 9 skipped** without repeating the broad bundle.
+- Run independent pp512 scalar/no-read state children with identical 1,024-row
+  query/chunk policy. Their complete `contexts` objects are byte-identical:
+  prefill logits, all layer outputs, Conv/GDN/live BF16-KV checkpoints, four
+  fixed-input decode logits, and final state; outputs are finite and prefill
+  logits have BLAKE2b-128 `cbf90a5996858a0ef355bcf737e6ef34`. The first parent
+  harness placed `env -u` incorrectly after assignments, so only its completed
+  scalar child is reused; the candidate completes on retry. A summary-only
+  lookup of nonexistent `sha256` then fails after the exact assertion; compose
+  from the actual `blake2b_128` field without rerunning either child.
+- Run one-queue independent one-discard/three-run pp512/128 wall/GTT legs with
+  retained host embedding. Scalar -> no-read prefill is **1366.040159 ->
+  1366.013087 tok/s (-0.001982%, neutral)**. Decode diagnostic moves
+  **52.996977 -> 53.145684 (+0.2806%)** but is uncredited because SH9 is not on
+  decode. Tracked peak is identical at **20.566421270 GiB**, whole-GTT peak is
+  identical at **21.000129700 GiB**, IDs are all 9707, and all eight
+  warmup/measured closes return tracked bytes to zero.
+- Reject two initial profiler outputs: lazy registry wrappers probed/spawned
+  compiler children because the process-wide compiler-version file was absent;
+  session-local compiler text was insufficient. Set
+  `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt`, prebuild
+  outside rocprof, then run the complete scalar/no-read script a second time and
+  prove **zero build-cache files changed** before the final trace.
+- The qualified cached one-process HIP/kernel/ROCTX trace contains no compiler
+  child. Scalar -> no-read removes **44 -> 4 `hipMemcpy`**, **43 -> 3
+  `__amd_rocclr_copyBuffer`**, and **1,409 -> 1,369 dispatches**. All **80**
+  selected-WMMA launches and 40 tile maps remain, queue/stream stay **1/0**, and
+  selected resources remain **48/72 VGPR, 128 SGPR, LDS0, scratch0**. Selected
+  time is flat **148.960350 -> 149.069559 ms (+0.073%)**, while marker span
+  improves **381.307544 -> 379.571817 ms (-1.735727 ms)**. Trace hashes are
+  marker `07851562...59b5`, HIP `f2be9ce4...c836`, kernel
+  `1780054d...61c6`.
+- Retain gfx1151 package cap 4,096 under the project's exact launch/D2H
+  reduction policy; `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0`
+  remains rollback and larger/capacity-denied shapes remain scalar. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh9-d1-compact-wmma-no-read-retained.json`
+  (SHA-256 `8cfc967b...e630`) and activate **SH9-C1** to carry decode/memory rows
+  unchanged, correct the campaign scope everywhere, and select the next genuine
+  decode owner rather than treating this prefill result as fork progress.
+
+## 2026-08-06 — Close SH9-C1 and extend the Strix Halo campaign
+
+- Close SH9-C1 without duplicate GPU work. SH9-D1 is mechanically prefill-only,
+  SH7-A1 is the only post-SH6 retained decode change, and neither changes
+  memory. Hash-bound carry-forward therefore gives current 512/4K/32K/64K
+  decode **53.153/55.832/46.785/40.386 tok/s** and whole-GTT
+  **21.000/21.499/22.152/22.890 GiB**. C1, C2, fork-F16 decode, and fork-F16
+  whole-GTT remain **0/4**; the higher-level objective is not complete.
+- Audit two external review packets against source and existing evidence. Their
+  strongest lead survives with a mechanism correction: private-c1 eager below
+  1,024 uses fixed-256-thread
+  `qwen35_paged_full_attn_decode_context_tensor_kernel` over 16 q-head blocks,
+  not the compact/batched `context_tensor_batch_kernel<true,2>`. The actual c1
+  owner has only an old 128-thread arithmetic-changing rejection and no
+  gfx1151 exact address-hoist/packed-load leaf. Add SH10-A1 with a trace-first,
+  exact-order gate.
+- Add SH11-A1 to remeasure June's faster-but-divergent direct 4K route on the
+  current exact model; drift remains a hard promotion blocker. Add SH12-C0 for
+  a complete decode sync/D2H census independent of SH9. Add SH13-M1 as a
+  4K-first phase-resolved code-residency precondition audit under the smaller
+  current memory gaps. Add mandatory SH14-C1 cumulative completion after all
+  four packages; do not stop after one leaf.
+- Do not add the withdrawn raw lm-head leaf, post-SH9 graph replay, or the
+  proposed SH3-M1+SH-K1 stack. SH9 removes no decode boundary; graph replay is
+  still about 1% and below the >3% host/C++ trigger. SH-K1 already loses decode
+  and raises whole-GTT **0.0703/0.1328 GiB** at 32K/64K; host embedding shifts
+  control and candidate equally. SH3-M1 already removes the full 0.503-GiB
+  private-c1 device embedding, so a memlock change is a separate system/graph
+  decision rather than another memory saving.
+- Publish the no-claim audit at
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh9-c1-scope-correct-completion-audit.json`
+  (SHA-256 `d2b5a81d...2c17`) and update the campaign package table/guardrails.
+- Publication follow-up adds the same no-claim carried matrix and SH10-SH14
+  order to `docs/GGUF.md`, `benchmarks/README.md`, and
+  `benchmarks/CHANGELOG.md`; no metric is remeasured or promoted by this docs
+  sync.
+
+## 2026-08-06 — SH10-A1 short-context c1 attention trace and RED
+
+- Confirm tracked production source is clean at `0bf635424`, ROCm loads, and the
+  active device is gfx1151. Kernel lineage remains blocked by the absent
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; this is not a green
+  verdict and no external source is copied.
+- Reuse the immutable cached SH6-C1 512 trace because SH7-SH9 and the audit docs
+  do not change this kernel. It contains **90** true private-c1 calls (10 full-
+  attention layers x warmup+8 tokens) to
+  `qwen35_paged_full_attn_decode_context_tensor_kernel`: median **150.042 us**,
+  sum **1.501 ms/token**, local256/grid16, **40 VGPR, 128 SGPR, LDS0,
+  scratch0**. CSV SHA-256 is `f2ddc3da...72f2`.
+- Before writing a new device body, screen the already-landed compact fixed256
+  batch leaf at `rows=1`. A 32-copy / 50,331,648-byte cycling screen over
+  actual 513/576/640 contexts is F32 byte-exact to production, within
+  **1.86e-8** of NumPy, wins all **63/63** pairs, and moves medians
+  **127.909 -> 81.848 us (1.563x)**,
+  **162.483 -> 98.894 (1.643x)**, and
+  **193.449 -> 117.334 (1.649x)**. Raw JSON SHA-256 is
+  `456b83fc...c091`.
+- A cached-only one-launch trace names production and candidate at identical
+  local256/grid16, **40 VGPR, 128 SGPR, LDS0, scratch0**; representative
+  durations are **120.947 -> 73.257 us** at context640. Trace SHA-256 is
+  `86aa32e4...a6bc`, and no compiler child appears.
+- Add RED routing contracts: gfx1151 context512 must resolve the existing
+  `context_batch` plugin while gfx1100 remains direct, the unfused gate remains,
+  and active context1024 under a raised split threshold must fall back to the
+  direct owner. RED fails only the new gfx1151 context512 assertion; the 1,024
+  fallback already passes. Implement only a package-scoped dispatch transfer,
+  not a new HIP kernel.
+- GREEN adds gfx1151 capability
+  `GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT=1023`. The runner resolves the existing
+  `paged_attn_decode/w4_paro/bf16_context_batch_c1_exact_spans` plugin once and
+  calls it with rows1 only through that cap. gfx1100, context1024+, default split
+  routing, INT8-without-mirror, and all unsupported paths keep their prior
+  owners; the separate BF16 gate remains unfused and unchanged.
+- Independent control/candidate state children at 512 have byte-identical
+  complete `contexts`: prefill logits (`cbf90a59...6ef34`), 40 layer outputs,
+  30 Conv/GDN pairs, 10 live BF16-KV pairs, four teacher-forced logits/IDs, and
+  final state. State hashes are control `a3cb5078...aa05`, candidate
+  `ab1c45bf...34fd`, comparison `c626e04f...aff8`.
+- The context1023 / 64-MiB cycling boundary leaf is also exact with NumPy max
+  abs **1.49e-8** and improves **305.624 -> 187.923 us (1.626x, 21/21
+  wins)**. Structural GREEN proves context1024 falls back direct when the split
+  threshold is raised, while the default threshold selects split at that point.
+  Boundary JSON SHA-256 is `b0eb95cf...f00e`.
+- One-queue independent one-warmup/three-measurement 512/128 processes move
+  control -> candidate decode **51.541 -> 53.591 tok/s (+3.978%, -0.7422
+  ms/token)**; every candidate sample exceeds every control sample. Prefill
+  **1365.551 -> 1357.196 tok/s (-0.612%)** stays inside the 1% guard. Tracked
+  peak is identical at **20.566421 GiB**, candidate whole-GTT reproduces the
+  unchanged control/SH9 **21.000130 GiB**, IDs are all 9707, and all eight
+  warmup/measured closes return tracked bytes to zero. A summary-only parser
+  accessed a nonexistent close key after the completed control process; repair
+  the parser and reuse that completed child rather than rerunning it. Wall
+  summary SHA-256 is `e0e34a47...8d01`.
+- The final cached full-process candidate trace contains **90** expected batch
+  calls and zero old context calls. Over the eight measured tokens it costs
+  **0.928096 ms/token** versus the immutable control kernel's **1.499680
+  ms/token**, saving **0.571584 ms/token** on device. Candidate resources stay
+  local256/grid16, **40 VGPR, 128 SGPR, LDS0, scratch0**, queue1/stream0. Kernel
+  CSV SHA-256 is `504c036d...f537`; no compiler child appears.
+- GREEN validation: changed dispatch file **10 passed**; gfx1151 backend plus
+  paged-attention registry/primitive bundle **32 passed**; KV dispatch **6
+  passed**; focused compileall passes. Retain the package-scoped transfer,
+  commit source, then run one clean
+  publication row before updating the artifact and rollups. C1 remains open.
+
+## 2026-08-06 — Publish retained SH10-A1 and activate SH11-A1
+
+- Commit the implementation and its validation record as `df4dd5a5d`. A clean
+  package-default publication process at that commit measures prefill
+  **1357.791 tok/s** and decode **53.445 tok/s** from three samples, with
+  **20.566421 GiB** tracked peak, repeated ID 9707, and all four warmup/measured
+  closes at zero. Raw SHA-256 is `b2930f12...8e18`.
+- Against the frozen 512 C1 target, clean production remains **1.518366
+  ms/token** short; against pinned-fork F16 **64.411 tok/s**, it remains
+  **3.185582 ms/token** short. This is an exact own-engine win, not fork parity.
+  Whole-GTT and the paired control/candidate claim remain those of the qualified
+  independent A/B; do not substitute the clean row as its denominator.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh10-a1-short-c1-fixed256-retained.json`
+  (SHA-256 `0cf6724e...8f710`) and update the campaign review, GGUF guide,
+  benchmark scoreboard, and changelog. SH10-A1 is complete; activate SH11-A1's
+  bounded current-model direct-4K diagnostic because the higher-level objective
+  remains open.
+
+## 2026-08-06 — Close SH11-A1 current direct-4K diagnostic
+
+- Confirm tracked source clean at `ddd99bfcd`, ROCm/gfx1151 alive, and the env
+  selector resolves threshold 1,024 to split at 4K while explicit 8,192 resolves
+  direct there and split at 8,192. The required lineage check remains blocked by
+  the absent read-only Atlas checkout; no external code is copied.
+- Run independent cached 4K state children for production split and forced
+  direct. Complete prefill logits/state are byte-identical. Every one of four
+  teacher-forced decode-logit fingerprints differs, however, and final state
+  diverges from full-attention layer 3 onward: **37/40 layer outputs, 27/30
+  Conv/GDN states, and 9/10 live-KV layers** mismatch. Both routes happen to
+  predict 9707 at all four transitions; do not re-anchor correctness to those
+  unchanged top-1 IDs. State hashes are split `2d65b718...e8df`, direct
+  `8852c117...dcac`, comparison `6665e2f4...b886`.
+- Independent one-queue one-discard/three-run 4K/128 wall moves split -> direct
+  decode **54.571522 -> 33.949773 tok/s (-37.788480%, +11.130702
+  ms/token)**; every direct sample loses to every split sample. Prefill changes
+  **1429.615950 -> 1437.311624 tok/s (+0.538304%)**. Tracked peak is identical
+  at **20.951031 GiB**, phase-sampled HIP-used peak is identical at
+  **21.482018 GiB**, IDs are all 9707, and both processes close to zero. A
+  summary-only parser used obsolete `summaries` keys after both children
+  completed; repair the summary from `summary_by_workload` without rerunning.
+  Summary SHA-256 is `9e242dc8...218f`.
+- Reuse SH6-C1's immutable current 4K split trace rather than duplicating it:
+  subsequent packages change only >=32K reduction, pp512 prefill, or <1,024
+  direct dispatch. Across one warmup plus eight measured transitions, 90 grouped
+  split producers plus 90 fused reducers total **0.844368 ms/transition**;
+  kernel CSV SHA-256 is `956a35c9...af66`.
+- Run one new fully cached forced-direct trace. Ninety direct context calls plus
+  ninety gate calls total **11.888774 ms/transition**, **14.080x** the split
+  route; context median is **1191.115 us/call** at 40 VGPR/128 SGPR/scratch0.
+  The **+11.044406-ms** device delta explains the **+11.130702-ms** wall loss.
+  Kernel/HIP/profile hashes are `7db2dd62...763e`, `1b3597db...64d`, and
+  `8e08caf2...9742`; `require_cached` passes with no compiler child.
+- Close SH11-A1 rejected with no source change. The June Q4_K_S speed direction
+  does not survive the current exact Q4_K_M model/stack: direct is both
+  arithmetic-invalid and **37.8% slower**, so no SH11-A2 exact-emulation package
+  is admitted. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh11-a1-direct-4k-rejected.json`
+  (SHA-256 `4ce96103...a4b8`) and activate SH12-C0's complete private-c1 eager
+  synchronization/D2H census.
+
+## 2026-08-06 — Retain SH12-C0 default-stream sample drain deletion
+
+- Complete the marker-qualified private-c1 eager boundary census from the
+  immutable SH6-C1 512 trace and cross-check it against current SH10. Each
+  canonical `return_logits=False` transition has one required 4-KiB host-
+  embedding H2D, one explicit device drain before sampling readback, one
+  required 8-byte token-index D2H, and one profiler-harness-only post-step
+  drain. There are no per-layer D2H/scalar reads. SH6 -> SH10 changes
+  `hipMemcpy` **815 -> 775** while `hipDeviceSynchronize` remains **20** and
+  launches remain **6,840**, confirming SH9's 40-copy reduction is prefill-only.
+  Census JSON SHA-256 is `a61fdf55...1219`.
+- Remove only the eager default-stream `device_synchronize()` immediately before
+  `_read_sample()`: its first operation is a synchronous 8-byte D2H and is
+  already the required completion boundary. Preserve explicit
+  `stream_synchronize(stream)` for every non-default stream. Add CPU contracts
+  for both call sequences.
+- A one-session, one-discard, nine-counterbalanced-pair 512/128 screen moves
+  decode **53.524 -> 54.608 tok/s (+2.027%, -0.371 ms/token)** with **9/9 pair
+  wins** and identical 128-token trajectories. Raw SHA-256 is
+  `5c7a3bdb...d322`. Treat this as the sensitive paired measurement, not an
+  independent-process topline.
+- Independent one-discard/three-run control/candidate processes are positive but
+  overlap: decode **53.898 -> 54.132 tok/s (+0.433%, -0.080 ms/token)** and
+  prefill **1358.809 -> 1367.195 (+0.617%)**. Tracked and phase-sampled HIP-used
+  peaks are identical at **20.566421/20.982719 GiB**, final IDs remain 9707,
+  and both closes return to zero. Summary SHA-256 is `2b407eaa...9f1`; do not
+  advertise the paired +2.027% as an independent-process gain.
+- Complete prefill plus all 40 layer outputs, 30 Conv/GDN state pairs, 10 live
+  BF16-KV pairs, four teacher-forced logits/IDs, and final state remain byte-
+  exact. Candidate/comparison SHA-256 values are `74f349a0...97e9` and
+  `c994bcd4...cb01`.
+- A final fully cached 512/8 HIP/kernel trace removes exactly the ten production
+  sample drains: `hipDeviceSynchronize` **20 -> 10**, while `hipMemcpy` stays
+  **775** and kernel launches stay **6,840**. The remaining ten drains belong to
+  the profiling harness. HIP/kernel/profile hashes are
+  `a599b308...5ad4`, `8f4cbe9b...e7a6`, and `4cbffa31...3f8`; no compiler child
+  appears.
+- GREEN validation: sample-sync plus decode-graph bundle **8 passed**; focused
+  compileall and `git diff --check` pass. Retain this exact redundant-boundary
+  deletion as a default-stream launch/synchronization reduction with unchanged
+  memory; SH13-M1 remains next because the campaign objective is open.
+
+## 2026-08-06 — Publish retained SH12-C0 and activate SH13-M1
+
+- Commit the source/test/validation unit as `8e461708e`. A clean package-default
+  one-warmup/three-measurement 512/128 process at that commit records prefill
+  **1367.112 tok/s**, decode **54.065 tok/s**, **20.566421-GiB tracked** and
+  **20.982719-GiB phase-sampled HIP-used** peaks, repeated token 9707, and zero
+  tracked bytes after close. Raw SHA-256 is `5956ee14...de29`.
+- Clean production remains **1.303798 ms/token** short of C1 and **2.971013
+  ms/token** behind pinned fork F16. The accepted claim is the exact redundant-
+  synchronization reduction plus separately qualified paired and independent
+  wall rows, not an inflated +2.027% independent-process headline.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh12-c0-default-stream-sample-sync-retained.json`
+  (SHA-256 `a2c8a0b3...a417`) and update the campaign review, GGUF guide,
+  benchmark scoreboard, and changelog. SH12-C0 is complete; activate SH13-M1's
+  4K-first phase-resolved code/library residency precondition audit because
+  decode and fork whole-GTT parity remain open.
+
+## 2026-08-06 — Close SH13-M1 4K code/library residency precondition
+
+- Start from tracked-clean `b9d38e088` with ROCm/gfx1151 alive. SH7-SH12 do not
+  change 4K memory ownership, so current **21.499428-GiB** whole-GTT remains
+  **346.820 MiB / 0.338692 GiB** above pinned fork F16 **21.160736 GiB**.
+  SH2-M2's old aggregate **0.531-GiB** 4K residual is larger than this reduced
+  gap, so SH13 requires real phase attribution rather than reusing the old bound.
+- Use a read-only `/tmp` collector around one right-sized cached-only 4K/128
+  private-c1 eager process. Poll whole-card GTT every 1 ms and call ROCr's
+  `hsa_ven_amd_loader_query_segment_descriptors` at load, reset, prefill,
+  warmup, decode, close boundaries. That API reports the complete self-
+  consistent HSA loaded-segment set with exact bytes and source mappings. Also
+  inventory all process shared-object virtual spans; do not equate host virtual
+  mappings with GTT.
+- The first completed process established the exact total-code bound, but the
+  wrapper patched only the parent snapshot alias and omitted inner prefill/
+  decode labels. Preserve its phase/run hashes `49ad7cf1...6031` and
+  `3f093096...dfd2`, patch both aliases, and rerun only the same sub-five-minute
+  4K diagnostic. The corrected phase/run/summary hashes are
+  `ae28759d...63ac`, `7008c3b9...ac6a`, and `45e0ebaa...530d`. Both processes
+  reproduce **21.499428 GiB** and **3.496853 MiB** total HSA code.
+- Corrected phase peaks are **21.398376 GiB after load**, **21.498726 after
+  prefill**, and **21.499428 after one warmup decode**; measured tg128 stays
+  exactly flat. Prefill is therefore within **0.71875 MiB** of request high-
+  water. Even unlimited post-prefill reclamation cannot save more than that
+  difference because the prefill peak has already occurred.
+- HSA first-use is only **0.050781 MiB load**, **2.729586 MiB prefill**,
+  **0.716486 MiB warmup decode**, and **0 measured decode**. All **22** code
+  objects total **3.496853 MiB**, missing the gap by **343.323460 MiB**.
+  Decode-only Q8T16 GEMV code is already naturally deferred until warmup.
+- Load adds only two still-active JIT mappings (`lm_head`, `runtime_state`) plus
+  **0.050781 MiB** HSA code. From after load through request peak, *all* extra
+  whole-GTT—not just mapped/code bytes—is **103.476562 MiB**, still **243.343750
+  MiB** below the fork gap. This separately contains dynamically allocated
+  AOTriton/cache/library state that host virtual-span accounting cannot measure.
+- The complete process has **83 shared objects / 330.566406 MiB** of host virtual
+  mappings, including active Python, ROCm, AOTriton, and all JIT libraries.
+  Adding every mapped byte to every HSA segment deliberately double-counts code
+  and is not a GTT estimate; even that impossible **334.063259-MiB** upper bound
+  remains **12.757053 MiB** below the fork gap before phase eligibility.
+- The measured **0.531002-GiB untracked peak residual** therefore contains only
+  **0.003415 GiB HSA code** and **0.527587 GiB** of runtime, allocator/page-
+  table, and active-model mapping state. Post-close GTT delta is separately
+  **0.245705 GiB**. Do not mislabel either residual as unloadable code.
+- Close SH13-M1 with no `dlclose`, lazy-loader, production source, 32K, or 64K
+  work. The diagnostic process is healthy at **1408.589 prefill / 55.479 decode
+  tok/s**, token 9707, finite logits, and zero tracked bytes after close; timing
+  is not promoted. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh13-m1-phase-code-residency-closed.json`
+  (SHA-256 `481f53ba...1090`) and activate mandatory SH14-C1.
+
+## 2026-08-06 — Close SH14-C1 cumulative continuation gate
+
+- Start from tracked-clean `1f7e2f164` with ROCm/gfx1151 alive; production
+  runtime remains SH12 implementation `8e461708e` because SH12 publication and
+  SH13 change only benchmark/docs/worklog files. Run one independent right-sized
+  process per 512/4K/32K/64K depth with package-default one queue, one full
+  warmup plus three measured pp/tg128 eager runs, cached builds, host embedding,
+  and 10-ms whole-card GTT polling. The resumable `/tmp` harness is
+  `/tmp/run_sh14_c1_matrix.py`; matrix SHA-256 is `c734a6b1...b13c`.
+- Fresh prefill is **1369.489/1430.215/1144.713/936.218 tok/s** and decode is
+  **54.330/54.798/46.405/40.180 tok/s**. Tracked peak remains
+  **20.566421/20.951031/21.597255/22.335796 GiB**, phase-sampled HIP-used is
+  **20.982719/21.482018/22.134434/22.872715 GiB**, and whole-GTT is exactly
+  **21.000130/21.499428/22.151844/22.890125 GiB**. All three measured IDs at
+  every depth are 9707, tracked bytes after each process close are zero, and
+  final whole-GTT is within **0.000042 GiB** of its process baseline.
+- Against the frozen SH6 prefill rows, changes are
+  **-0.296%/-1.151%/-0.435%/-0.229%**: the guard is **3/4**, with 4K missing by
+  0.1506 percentage points. Do not rerun or hide this no-claim gate result; the
+  decode/memory objective already fails independently.
+- Run the established current-production exact gate with package-default one
+  queue:
+  `GPU_MAX_HW_QUEUES=1 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_BACKEND=hip_gfx1151 python3 scripts/gguf_packed_ar_category_oracle.py
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldouts
+  benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --decode-steps 24
+  --repeats 3 --group-size 4 --compiler-version-file
+  /tmp/hipengine-hipcc-version.txt --require-cached-build --json
+  /tmp/hipengine-sh14-c1-20260806/current-natural-heldout.json`.
+  All **18/18** prompts, **1,350** token comparisons, **54,000** hidden
+  comparisons, initial/final state checks, and deterministic repeats pass;
+  oracle SHA-256 is `7168efc1...0d57`.
+- Carry the immutable pinned fork `b7b85da9` F16 five-repeat rows and qualified
+  role traces rather than duplicating either. SH10 supplies the changed 512
+  fixed256 symbol (**0.928096 ms/token**), SH11 the unchanged 4K split route
+  (**0.844368 ms/transition**), SH7/SH8 the current long producer/reducer, and
+  SH12 proves zero kernel/copy-count change while deleting the host drain. All
+  other device roles carry from SH6 because SH7-SH13 do not change them.
+- C1 gaps remain **1.214/1.241/1.286/1.314 ms/token** and fork-F16 decode gaps
+  **2.881/2.272/2.696/3.062 ms/token**. C1, C2, fork-F16 decode, and fork-F16
+  whole-GTT are each **0/4**. Whole-GTT gaps are
+  **173.527/346.820/159.371/55.270 MiB**.
+- Tracked hipEngine ownership alone is already
+  **0.264/0.210/0.399/0.500 GiB below** each fork whole-GTT row, while current
+  tracked-to-GTT residual is **0.434/0.548/0.555/0.554 GiB**. Therefore the
+  remaining memory parity gap belongs to untracked runtime/page-table/allocator/
+  active-mapping residency, not a measured reclaimable code object; SH13 bounds
+  the complete HSA code set at only **3.497 MiB**. Decode traces still name GDN
+  input, selected experts, lm-head, and context-dependent attention, but every
+  admitted exact alternative in this review is retained or closed by a measured
+  stop rule. Admit no new package without new structural evidence or separate
+  approval for a system/runtime-memory experiment.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json`
+  (SHA-256 `c0d71824...654b`) and update the campaign review, GGUF guide,
+  benchmark rollup, and changelog. SH14-C1 is complete; the beat-fork thread
+  objective is not achieved and must not be marked complete.
+
+## 2026-08-06 — Admit SH15-M2 from allocation-granularity evidence
+
+- Resume the active beat-fork objective from clean `110b8e419`; the live task
+  list is empty despite stale notification snapshots naming SH7. Do not rerun
+  SH7 or another closed kernel family. SH14's tracked ownership is already below
+  fork whole-GTT at every depth, so test whether allocator physical commit—not
+  requested model bytes—owns the residual.
+- Fresh synchronized calibration with ordinary `hipMalloc` proves a minimum
+  **2-MiB** physical commit: one byte commits 2 MiB, while 64 small allocations
+  share one backing chunk. Therefore summing one rounded chunk per allocation is
+  invalid. `hipExtMallocWithFlags` default/fine-grained/uncached modes retain the
+  same granularity. The default `hipMallocAsync` pool is rejected: a
+  **67,108,928-byte** screen commits **283,189,248 bytes** and retains
+  **148,971,520 bytes** after free plus `hipMemPoolTrimTo(0)`.
+- Use temporary `/tmp` `sitecustomize` instrumentation only. It brackets every
+  production `hipMalloc` with `hipMemGetInfo`, records pointer/request/origin,
+  and leaves allocation/copy/free behavior unchanged. Run independent
+  right-sized cached package-default private-c1 pp/tg1 children at
+  512/4K/32K/64K. Raw hashes are `1e9d792d...afe3`, `f78b46d4...bb6c`,
+  `d9450653...341e`, and `3d05a731...779a`. Every child has token 9707 and
+  returns tracked bytes to zero; timings receive no performance credit because
+  instrumentation perturbs load.
+- Every depth has exactly **921** persistent allocations. The invariant weight
+  family is **732 allocations / 21,918,738,944 requested bytes**; its mallocs
+  commit **22,187,868,160 bytes**, an exact **269,129,216-byte** excess.
+  Non-`hipMalloc` after-load residency is independently constant at
+  **148,975,616 bytes** across all four processes.
+- Replacing all persistent requests with one ordinary 4-KiB-suballocated owner
+  rounded once to 2 MiB projects malloc-commit savings of
+  **236/294/300/300 MiB** at 512/4K/32K/64K. Against SH14's pinned fork gaps,
+  arena-only margins become **-62.473/+52.820/-140.629/-244.730 MiB**: it can
+  cross three rows but not 4K. This is a mechanical admission projection, not a
+  measured candidate result.
+- Preserve a conditional exact byte stack rather than silently reopening all
+  Q4 metadata. SH2-M4 proves compact Q4 primitive bytes exactly and measures
+  **+5.802873 us/layer**. The model-defined ten full-attention layers contain
+  two selected-Q4 tensors each; restricting the representation to that class
+  saves exactly **80 MiB** and projects **+0.058029 ms/token**. Arena plus that
+  class projects fork-memory margins
+  **-142.473/-27.180/-220.629/-324.730 MiB**. Do not implement it unless the
+  actual 4K arena remains above fork and then only under fresh exact-state,
+  <=1% prefill/decode, trace, fallback, GTT, and lifecycle gates.
+- Publish the no-claim structural artifact
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m1-allocation-granularity-audit.json`
+  (SHA-256 `25c65a15...bde8c`). SH15-M1 passes its implementation precondition
+  and admits SH15-M2's bounded private-c1 ordinary session arena. Production is
+  unchanged and the beat-fork objective remains active.
+
+## 2026-08-06 — SH15-M2 private-c1 arena implementation and first exact smoke
+
+- Implement a default-off, gfx1151-package-gated private-c1 candidate using two
+  ordinary `hipMalloc` owners: one metadata-planned weight arena and one
+  replay-planned state/scratch arena. All subviews are 4-KiB aligned; memory
+  stats track only physical owners. Shared runners, c>N, unsupported weight
+  layouts, and owner-allocation denial retain dedicated allocations. Add the
+  temporary flag/removal trigger to `docs/REFACTOR.md`.
+- RED/GREEN unit coverage proves aligned capacity/overflow/single-free
+  accounting, non-owning materialization, exact weight sizing, unsupported and
+  denied fallback, private-c1 admission, and the four-depth state plan. The
+  metadata-only plans reproduce SH15-M1 exactly: **732 weights /
+  21,918,738,944 requested bytes** and **189 state/scratch requests /
+  164,287,744, 577,259,576, 1,271,136,760, 2,064,139,256 bytes** at canonical
+  512/4K/32K/64K+tg128 capacities.
+- A real cached 512/1 candidate smoke activates exactly **732 + 189 logical
+  allocations** behind **two physical tracked owners** of **21,919,145,984 +
+  164,478,976 bytes**. Token 9707 is stable, phase-sampled HIP used is
+  **20.752251 GiB** versus SH14's **20.982719 GiB** (about **236 MiB** lower,
+  matching projection), and tracked ownership closes **22,083,624,960 -> 0
+  bytes**. Timing receives no claim from this one-run smoke.
+- Mandatory eager state oracle command with
+  `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1` passes all four transitions:
+  repeated token/greedy stream, hidden rows, all Conv/GDN state, and live KV
+  prefixes are byte-exact against fresh serial-prefix recomputation; artifact
+  `/tmp/hipengine-sh15-m2-eager-oracle.json` (SHA-256
+  `67aa42fa...0506`).
+- Final focused admission validation passes **30 tests** across memory,
+  materialization, arena planning, route/fallback, and host-embedding coverage;
+  the six changed Python modules compile. The optional `ruff` executable is not
+  installed in this environment, so no lint result is claimed. Continue to
+  canonical wall/GTT and full 18-prompt exact gates before retention.
+
+## 2026-08-06 — Reject SH15-M2 private-c1 session arena on wall gate
+
+- Freeze the default-off implementation as clean commit `d4d36e675` after 30
+  focused tests, six-module compile, real 512/tg1 two-owner lifecycle smoke, and
+  the byte-exact four-transition eager hidden/Conv/GDN/KV oracle. The clean
+  candidate uses exactly **732 weight + 189 state/scratch logical views** behind
+  ordinary owners of **21,919,145,984 + 164,478,976 / 577,441,792 bytes** at
+  512/4K. Harness `/tmp/run_sh15_m2_matrix.py` SHA-256 is
+  `800fda15...b553`.
+- Run independent right-sized package-default one-queue 512/4K processes with
+  `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1`, one full warmup, three measured
+  pp/tg128 eager repetitions, cached builds, and simultaneous 10-ms whole-GTT
+  sampling. All six final IDs are 9707; both tracked and whole-GTT ownership
+  return to baseline. Raw hashes are `a9bd9419...0216` and
+  `9275d6d3...f1ab`; partial-matrix hash is `1aef30ff...59c34`.
+- The allocator mechanism is real. At 512, phase-sampled HIP used and whole-GTT
+  both fall exactly **236 MiB** to **20.752251/20.769661 GiB**, putting
+  hipEngine **62.473 MiB below** pinned fork F16 whole-GTT. At 4K they fall
+  exactly **292 MiB** to **21.196861/21.214272 GiB**, still **54.820 MiB
+  above** fork F16. Physical owner padding raises tracked peaks only
+  **0.571/0.562 MiB**.
+- Reject retention because canonical prefill regresses
+  **1369.489 -> 1347.470 tok/s (-1.608%)** at 512 and
+  **1430.215 -> 1404.341 (-1.809%)** at 4K, failing the declared <=1% loss
+  guard twice. Decode improves **54.330 -> 55.076 (+1.373%)** and
+  **54.798 -> 55.700 (+1.648%)**, but cannot waive prefill. Stop without a
+  favorable rerun before 32K/64K, the expensive 18-prompt continuation, or the
+  conditional 80-MiB compact-Q4 stack.
+- Remove the environment switch, gfx1151 capability, generic arena primitive,
+  materializer/session planners, allocator routing, benchmark telemetry, and
+  candidate tests. The reverted runtime/test files are byte-identical to
+  `d4d36e675^` (the SH15-M1 production parent). Publish the no-claim rejection
+  artifact
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh15-m2-private-c1-session-arena-rejected.json`
+  (SHA-256 `206205ac...0f36`). Focused post-removal validation passes **19
+  tests** plus six-module compile, and production contains no remaining arena
+  flag/planner symbols. SH15-M2 is closed; no packing was retained, so
+  the conditional post-packing cumulative gate is not applicable. The
+  beat-fork objective remains unmet.
+
+## 2026-08-06 — Admit SH16-M2 selective small-weight arena screen
+
+- Continue from clean `30a530dc5` without rerunning stale SH8 or the rejected
+  SH15 global arena. Re-analyze all four immutable SH15-M1 raw allocation
+  censuses by exact label, request, immediate `hipMemGetInfo` commit delta, and
+  pointer alignment. Raw hashes remain `1e9d792d...afe3`,
+  `f78b46d4...bb6c`, `d9450653...341e`, and `3d05a731...779a`; every depth
+  has the identical **732-label / 21,918,738,944-requested /
+  22,187,868,160-captured-commit-byte** weight inventory.
+- The SH15-M2 distinction is mechanical. Every one of the **161 allocations
+  larger than 16 MiB** is 2-MiB aligned at all four depths. They contain
+  **21,034,278,912 bytes / 95.965%** of requested weight bytes and include Q/QKV,
+  selected-expert, and every other large bandwidth payload. A selective policy
+  leaves those owners and all state/scratch allocations dedicated instead of
+  changing all 921 addresses as SH15-M2 did.
+- The complementary **571 allocations <=16 MiB** request **884,460,032 bytes**
+  but are assigned **1,111,490,560 bytes / 1,060 MiB** by the captured commit
+  sequence. Conservatively summing one 4-KiB-rounded view per allocation and
+  rounding the single owner once to the measured 2-MiB physical granularity is
+  **884,998,144 bytes / 844 MiB**, projecting **226,492,416 bytes / 216 MiB**
+  reclaimed. Projected fork-F16 margins become
+  **-42.473/+130.820/-56.629/-160.730 MiB** at 512/4K/32K/64K.
+- The <=2-MiB class saves only 110 MiB and projects parity only at 64K. Extending
+  through 32 MiB saves 256 MiB but adds hot Q/QKV input payloads for only 40 MiB
+  more. Select <=16 MiB as the smallest power-of-two class projected to clear
+  512/32K/64K while preserving all Q/QKV and selected-expert owners. This is a
+  generic size/package/private-c1 policy, never prompt/token conditioned.
+- This remains a projection, not measured GTT: immediate per-call deltas assign
+  shared backing to the call that first commits it. The capacity bound is
+  conservative, but only an actual owner can claim memory or wall. Admit
+  SH16-M2 default-off and start at 512 with exact metadata planning,
+  state/lifecycle/fallback/accounting, actual GTT, and <=1% prefill/decode stop
+  rules. Keep >16-MiB, state, shared/c>N, unsupported, and denial paths
+  dedicated; do not stack compact Q4 or the rejected state arena.
+- Analysis script `/tmp/analyze_sh16_m1_selective_weight_arena.py` SHA-256 is
+  `0097a66c...03bc`; analysis JSON SHA-256 is `51b37cd2...744e`. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m1-selective-weight-packing-audit.json`
+  (SHA-256 `21f23f2b...1428`). Production is unchanged and the objective remains
+  active.
+
+## 2026-08-06 — SH16-M2 selective small-weight arena implementation
+
+- Add a default-off, gfx1151-capability-gated private-c1 route under
+  `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=1`. Exact metadata planning
+  creates one 4-KiB-view owner only for allocations <=16 MiB; the hybrid
+  allocator keeps all larger weights on ordinary owning `hipMalloc`. Shared
+  runners, c>N, unsupported layouts, and owner denial remain fully dedicated.
+  No state/scratch or compact-Q4 path is included.
+- RED collection fails only on the absent arena primitive, selective plan, and
+  route resolver. GREEN passes **26 focused tests** covering aligned one-owner
+  accounting, borrowed-view materialization, exact 571/161 model planning,
+  unsupported-layout fail-closed behavior, owner denial, private-shape policy,
+  and runner propagation. The six changed Python modules compile and
+  `git diff --check` is clean.
+- A cached one-queue 512/tg1 lifecycle smoke exercises the actual hybrid owner:
+  **571 selected views / 884,460,032 requested bytes** share one
+  **884,867,072-byte** owner, while all **161 dedicated allocations /
+  21,034,278,912 bytes** remain 2-MiB aligned. Token 9707 is stable, the
+  physical weight-owner count is **162**, and tracked ownership closes exactly
+  **22,083,433,728 -> 0 bytes**. Phase snapshots report **20.755966 GiB** HIP
+  used after load and **20.797173 GiB** at the sampled peak; this one-run smoke
+  makes no timing claim. Artifact
+  `/tmp/hipengine-sh16-m2-smoke-final.json` has SHA-256
+  `ee326a37...359a5`.
+- Because the first state-oracle artifact predated the final accounting edits,
+  rerun the mandatory oracle once against the live candidate. All four repeated
+  token/greedy transitions, hidden rows, Conv/GDN state, and live KV prefixes
+  are byte-exact against fresh serial-prefix recomputation. Artifact
+  `/tmp/hipengine-sh16-m2-eager-oracle-final.json` has SHA-256
+  `0c67aba7...35db`. The candidate is ready to freeze before canonical 512
+  actual-GTT and wall screening; no 4K/32K/64K or category gate is admitted
+  unless the 512 <=1%-loss stop rule passes.
+
+## 2026-08-06 — Retain SH16-M2 selective small-weight arena
+
+- Freeze the validated default-off implementation as commit `03b76724f`. A
+  fresh tracked-clean same-source 512 control/candidate pair reproduces control
+  whole-GTT **21.000130 GiB** and measures candidate **20.814583 GiB (-190
+  MiB)**. Prefill changes **1371.967 -> 1365.143 tok/s (-0.497%)** and decode
+  **54.990 -> 55.230 (+0.436%)**; exact IDs, 571/161 identity, and tracked/GTT
+  lifecycle all pass. Harness `/tmp/run_sh16_m2_512_ab.py` has SHA-256
+  `95baac44...18ae`; aggregate SHA-256 is `87e60036...1ca9`.
+- Continue sequentially under the frozen stop rule. At 4K/32K/64K, candidate
+  prefill is **1438.288/1146.100/938.524 tok/s** and decode is
+  **55.829/46.809/40.430 tok/s**; changes versus SH14 are
+  **+0.564/+0.121/+0.246%** and **+1.883/+0.870/+0.622%**. Whole-GTT falls
+  **212/210/210 MiB** to **21.292397/21.946766/22.685047 GiB**. Harness
+  `/tmp/run_sh16_m2_remaining_matrix.py` has SHA-256 `a6997589...2afd`;
+  aggregate SHA-256 is `df55326a...13f7`.
+- All four frozen prefill and <=1% wall guards pass. Fork-F16 memory parity is
+  now **3/4**: candidate margins are **-16.473/+134.820/-50.629/-154.730 MiB**
+  at 512/4K/32K/64K. Fork decode remains **0/4**, so overall parity is not
+  claimed. The selected owner adds only **0.388 MiB** tracked alignment padding
+  and preserves all 161 large 2-MiB-aligned owners plus all state/scratch.
+- Promote the selector to the gfx1151 private-c1 default with explicit env
+  opt-out. With the flag deliberately unset, the full 18-prompt primary+heldout
+  oracle passes **1,350 token / 54,000 hidden comparisons**, exact initial/final
+  state, and deterministic repeats (SHA-256 `1e195bd9...129b`). Focused
+  post-promotion validation remains **26/26**.
+- Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh16-m2-selective-small-weight-arena-retained.json`
+  (SHA-256 `f3a5b544...11aae`). Keep no SH15 state arena or compact-Q4 stack;
+  4K memory and all four decode rows still require separately admitted new
+  structural evidence.
+
+## 2026-08-06 — Close SH17-C0 post-SH16 residual admission audit
+
+- Start from clean retained production `35a0b18b6` and do not duplicate the
+  completed four-depth/category gates. Reconcile SH16 wall/GTT against SH14's
+  immutable role attribution, SH15/SH16 allocation censuses, and every closed
+  SH-D1/SH7-SH13 package.
+- Current decode is **55.230/55.829/46.809/40.430 tok/s**. Gaps to C1 are
+  **0.914/0.903/1.100/1.160 ms/token** and gaps to fork F16 are
+  **2.581/1.935/2.511/2.908 ms/token**. SH16 changes only pointers: all moved
+  K/V, attention-output/gate, SSM-output, shared-expert, norm, and control
+  families map to named roles. Device bodies, dispatch, launch counts, and
+  arithmetic are unchanged, and their exact schedule/composite alternatives are
+  already retained or closed. A fresh trace could only remeasure cache-color
+  redistribution, not admit a new >=0.5-ms algorithmic owner; skip it.
+- The 4K whole-GTT remainder is **134.820 MiB**. Extending <=16 -> <=32 MiB
+  projects only 40 MiB more and leaves **94.820 MiB**. Replacing SH16 with the
+  rejected global/state arena or stacking compact Q4 adds 80 MiB and still
+  leaves **54.820 MiB**; SH13 code unload can remove at most **0.719 MiB** from
+  peak. No evidence-backed single owner closes the row, and combining rejected
+  components is not a new admissible package.
+- Close conditional Task #66 without implementation or transient files. Publish
+  `benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json`
+  (SHA-256 `65e344f4...bb50`). Preserve SH16; the higher-level objective remains
+  active but requires genuinely new source/hardware/runtime evidence or a
+  separately approved system-memory scope.
+
+## 2026-08-07 — Close SH18-C0 external review-synthesis compound audit
+
+- Reconcile the user-provided review without repeating any completed SH9-SH17
+  benchmark. Its SH9 prefill-only correction is already carried by SH9-C1;
+  SH10-A1 through SH14-C1 are complete; and its decode/GTT snapshot predates
+  retained SH16. Current production remains **55.230/55.829/46.809/40.430
+  tok/s** and **20.814583/21.292397/21.946766/22.685047-GiB** whole-GTT, with
+  fork-F16 memory parity at three of four depths.
+- Audit the only new proposal: stack exact GDN Q8T16 non-temporal+DPP
+  (**0.1545 ms/token**), selected-Q4 tile8 (**0.295794 ms/token**), and
+  selected-down output-tiled tail (**0.080193 ms/token**). The roles do not
+  overlap and all are c1-decode-only, so the historical projection sums to
+  **0.530488 ms/token**.
+- The stack fails the synthesis's own compatibility precondition after SH2-M4.
+  The old tail's 37-layer Q5 component (**0.055439 ms/token**) is keyed to
+  expanded `gguf_q5_k_t16_v1`, uses `Q5_T16_BLOCK_BYTES` and direct scale/min
+  byte planes, and assumes **2,880-byte** tiles. Production materializes all 37
+  Q5 downs as `gguf_q5_k_qmicro_t16_v1`, **2,816-byte** tiles whose 24-bit
+  metadata records are unpacked into LDS before the existing tile8 arithmetic.
+  Only the three legacy-Q6 layers (**0.024754 ms/token**) transfer directly.
+- The compatible GDN + Q4 + Q6-tail subset is therefore **0.475049 ms/token**,
+  **0.024951 ms/token** below the 0.5-ms admission floor. A qmicro-aware tail
+  would be a new leaf with different metadata transport/resources and cannot
+  inherit the old projection. Under the review's explicit compatibility-first
+  rule, close without transient code, individual microbench reruns, or a
+  full-model A/B.
+- Narrow lineage checks select no tracked external source for either in-tree
+  family; the broad check remains blocked by the absent optional Atlas checkout.
+  Publish
+  `benchmarks/results/2026-08-07-gfx1151-gguf-sh18-c0-review-synthesis-compound-audit.json`
+  (SHA-256 `21a0301d...be279`). Production is unchanged; resume Task #67's
+  read-only Nathan-fork source refresh.
+
+## 2026-08-07 — Close SH19-C0 post-pinned Nathan-fork source refresh
+
+- Refresh authoritative refs beyond pinned Vulkan payload `b7b85da9`. Current
+  `strix-halo-vulkan` is `6e7b355`: **50 commits** total, comprising one
+  upstream integration merge, **46 generic upstream non-merges**, and three
+  fork-local commits. Evidence-pack tip is `b6ab6842`; latest dev release
+  `dev-20260806-6e7b355` is explicitly compile/container-smoke only because its
+  publisher has no gfx1151 CI benchmark or correctness run.
+- The fork-local performance delta is `30d8bb02`, four Qwen3.6 pp2048 Vulkan
+  **prefill** changes: tiled transposed CONCAT, `MUL_MAT_ID` scale epilogue,
+  SiLU/multiply fusion, and workgroup tuning. `624217d` only closes an `ne[3]`
+  correctness hole and `6e7b355` adds MMQ boundary tests. The evidence pack says
+  decode is unchanged within +/-0.6%; none changes persistent Qwen allocations.
+- Also inspect new HIP `strix-halo-fullstack` tip `b6c5f8f`. Its GDN special
+  routes require `n_tokens >= 2048`; expert MMQ and BF16 stream-K attention are
+  multi-row prefill; sparse DK512/indexer work is DeepSeek V4-only. The c1-like
+  two-wave MMVQ/Q8_1-cache path consumes raw GGML rows and lossy Q8_1
+  activations, not exact BF16-input T16/qmicro production. Existing local
+  Q8_1/dp4a, raw-row, 64-thread, exact-tree, and prefill-bridge screens already
+  close that family. Do not repeat them.
+- Reject the apparent fullstack 512-thread MMQ signal outright: `b6c5f8f`
+  proves extra waves indexed rows and `sum[]` out of bounds. Once repaired, 512
+  threads measure **1654 tok/s** versus **1664** for 256 on the publisher's
+  Qwen3.6 pp2048 route. This is correctness evidence, not transferable speed.
+- Review all 46 generic commits. Dynamic scheduler arrays remove a host crash,
+  indexer-cache scoping is DeepSeek V4-only, MTP fit changes estimation only,
+  large-Q6 routing is OpenCL-only, and the remaining backend/model/UI/vendor
+  changes expose no exact Qwen3.6 c1 or GTT owner.
+- No source delta demonstrates **>=0.5 ms/token** exact c1 saving or removes the
+  remaining **134.820 MiB** at 4K. Skip GPU reruns and implementation under the
+  frozen admission policy. Publish
+  `benchmarks/results/2026-08-07-gfx1151-gguf-sh19-c0-post-b7b85da-upstream-refresh.json`
+  (SHA-256 `9ce59b19...1ad1`). Production remains SH16; future reopening
+  requires new exact c1 evidence, a demonstrated sufficient allocation owner,
+  or approved system-memory scope.
+
+## 2026-08-07 — Repair Maple native-prefill publication and chunk continuation
+
+- RED-first review found three publication bugs in the M5 path: the public
+  generator still called serial `prefill()`, `prefill_native()` returned the
+  first prompt position plus an uninitialized `top_logit`, and a 260-token
+  two-chunk prompt produced token **3422** versus serial **291**. The primitive
+  RED fixture confirmed that ring prefill attention ignored all positions from
+  prior chunks.
+- Change `maple_attention_prefill_ring_kernel` to scan the complete live causal
+  prefix ending at `start + row`, not merely the rows in the current chunk.
+  Bound native prefill to one 512-position sliding-window capacity because
+  append-all-then-attend can overwrite still-live SWA prefix slots beyond that
+  frontier; public generation uses native prefill through 512 and the exact
+  serial fallback above it.
+- Validate every prompt token and require `chunk_size` in `[1, 256]` before a
+  GPU launch. Row-wise argmax now publishes values as well as IDs, and the
+  returned `MapleStepResult` reports the final prompt position and initialized
+  top logit.
+- GREEN gates: six public-generation/bounds tests, the corrected prefix-aware
+  attention primitive, the 12-token real-checkpoint seed+continuation gate, and
+  the 260-token multi-chunk plus three-decode-step continuation gate all pass;
+  the focused Maple generation/attention/prefill bundle is **19 passed**. A
+  separate three-prompt English/math/Japanese gate preserves each native-vs-
+  serial seed and two subsequent decode tokens.
+- Public `LLM.generate_detailed()` on the canonical 18-token formatted Maple
+  prompt still emits the same coherent 37-token text and real EOS 151645 after
+  native-prefill promotion. Tracked ownership is **5,555,965,800 bytes** while
+  resident and returns to zero on close; timing is diagnostic pending the
+  corrected M5/M6 recertification.
+- Cached `rocprofv3 --kernel-trace` names
+  `maple_attention_prefill_ring_kernel` at **6,452 ns**, VGPR16, LDS0,
+  scratch0 on Radeon 8060S/gfx1151. Raw profiler output remains under `/tmp`.
+
+## 2026-08-07 — Harden Maple M6 batch rings and scheduler lifecycle
+
+- RED-first batch audit reproduced all four review failures: out-of-range token
+  IDs reached scratch access, request-reset copies targeted each buffer base
+  instead of the reclaimed device slice, `max_new=0` was admitted, and wrapped
+  positions wrote outside their request-local ring. The corrected primitive
+  fixture failed its old K-cache destination before implementation.
+- Add `MapleBatchSpanOwner` with disjoint request-local modulo addressing,
+  offset-correct reset copies, and sparse publication. Batch decode now owns
+  separate SWA (`min(per_capacity, 512)`) and global (`per_capacity`) span/KV
+  arenas per layer; both QK/RoPE/KV write and attention derive the per-request
+  capacity from the full arena and never wrap into an adjacent request.
+- `batch_step()` validates every token, validates active-mask shape, leaves
+  inactive positions unchanged, returns `-1` for masked rows, and advances only
+  active requests. `MapleContinuousBatcher` rejects non-positive lengths and
+  invalid seeds, permits partially occupied rounds, and resets both capacity
+  classes when reclaiming a slot.
+- Real pinned-checkpoint gates pass for c=2/4/**8** versus a reused serial c1
+  runner, including zero tracked allocations after close. A c=2 **514-step**
+  sequence is token-exact across the SWA-512 wrap. The continuous scheduler is
+  exact for uneven 2/5/3-token requests across one deliberately sparse round
+  and slot-0 reuse. Focused supporting gates: wrapped batched primitive pass;
+  Maple attention/graph bundle **11 passed, 3 skipped** (cache-path skips);
+  public/model/loading/correctness static bundle **22 passed**.
+- Cache-only gfx1151 tracing observes
+  `maple_qknorm_rope_kv_write_batched_decode_kernel` at **3,967 ns**, VGPR24,
+  and `maple_attention_decode_batched_kernel` at **20,197 ns**, VGPR16; both
+  report LDS0/scratch0 on the c=3 wrapped fixture. Raw trace stays under `/tmp`.
+- Scope is explicit: `MapleBatchRunner` plus `MapleContinuousBatcher` is a
+  corrected fixed-capacity runtime/benchmark helper. It is not yet connected to
+  hipEngine's public generation scheduler or production server admission path.
+
+## 2026-08-07 — Recertify Maple M5/M6 on Radeon 8060S
+
+- Commit qualified harnesses first through clean tracked revision
+  `cc0a4e43983993c58e3e07b924fd010af6b5bd59`. Both captures resolve the pinned
+  5,308,186,624-byte deployment checkpoint at revision
+  `361db5da5e74ff6fcdd852d478e1f266ce11013a`, capture actual rocminfo/rocm-smi/
+  hipcc output, and run with `GPU_MAX_HW_QUEUES=1`,
+  `HIPENGINE_HIP_ARCH=gfx1151`, and the precomputed compiler-version file.
+- Exact M5 command: `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3
+  scripts/maple_prefill_bench.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --lengths
+  128,320,512 --repetitions 3 --warmups 1 --continuation-steps 4 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-m5-native-prefill-recertified.json`.
+- M5 accepted public-path native prefill at **339.890/326.573/317.488 tok/s**
+  aggregate for 128/320/512, with narrow sample ranges
+  **337.300-341.801 / 325.396-328.104 / 315.630-319.462 tok/s**. Matched serial
+  references are **148.180/106.639/83.257 tok/s**, so native is
+  **2.294x/3.062x/3.813x**. All 18 natural+heldout code/general-English/
+  general-Japanese/mixed prompts and 90 seed/continuation positions are exact:
+  max/mean KL **0/0**, top-1 **90/90**, and generated-token **90/90**. Tracked
+  residency is **5,511,879,016 bytes (5.133 GiB)** and close returns zero. The
+  public native route is qualified only through 512; longer prompts retain the
+  serial fallback. Artifact SHA-256: `b08e52a8...03f53`.
+- Exact M6 command: `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3
+  scripts/maple_batch_decode_bench.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --steps 64
+  --repetitions 3 --warmup-steps 8 --natural-gate-steps 8 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
+- Corrected M6 c=2/4/8 medians are **218.818/261.099/299.181 aggregate tok/s**,
+  with ranges **218.502-219.247 / 260.780-261.361 / 299.078-299.416**. Every
+  trajectory in every measured repetition equals c1; all 18 natural-derived
+  category/heldout seeds pass eight steps, including the sparse final c=8 group.
+  Tracked residency is **4.951/4.958/4.973 GiB** and every close returns zero.
+  Versus the invalid 223.240/275.630/321.100 rows this is
+  **-1.98%/-5.27%/-6.83%**, the honest cost of request-local SWA/global rings,
+  exact reset, and qualified repeated gating. Artifact SHA-256:
+  `34f9467f...ab604`.
+- Mark the old M6 artifact invalid rather than silently overwriting history: it
+  combined W7900 with impossible gfx1151, gated only c=1, omitted repeat/
+  provenance/lifecycle/category evidence, and called an unintegrated helper a
+  server. The corrected M6 claim is explicitly fixed-capacity resident decode;
+  public prompt batching and server admission remain open.
+
+## 2026-08-07 — Reprofile corrected Maple paths and select the next owner
+
+- Add and commit a cache-checked three-phase profiler, then repair singleton
+  family classification before the retained capture. Clean revision
+  `4ca05d8dbdd2c198c49e245119b99caaeefd3508` prebuilds all five Maple JIT
+  libraries outside `rocprofv3` with a pinned compiler-version file; every
+  profiled child resolves those exact cached artifacts.
+- Exact command: `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 python3
+  scripts/maple_phase_profile.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --version-file /tmp/hipengine-maple-hipcc-version.txt
+  --raw-root /tmp/hipengine-maple-phase-profile-20260807 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-corrected-phase-profile.json`.
+- Public native prefill320 is **982.015 ms wall / 975.347 ms kernel**, only
+  **6.668 ms (0.68%)** host gap, **590 launches/request**, and **325.861 tok/s**
+  in the profiled request. Kernel shares: affine4 lm-head **49.90%**, selected
+  gate/up **15.60%**, selected down **12.50%**, QKV **7.57%**, attention
+  **6.46%**, and O projection **5.00%**.
+- Autoregressive c1 is **6.118 ms wall / 5.035 ms kernel**, **1.082 ms (17.69%)**
+  host gap, **295 launches/token**, and **163.459 tok/s** diagnostic. Its shares
+  are lm-head **28.75%**, router top-k **14.34%**, gate/up **12.12%**, down
+  **10.42%**, attention **10.40%**, and router logits **7.67%**.
+- Fixed-helper c8 is **27.256 ms wall / 25.337 ms kernel**, **1.919 ms (7.04%)**
+  host gap, **293 launches/batch**, and **293.514 aggregate tok/s** diagnostic.
+  Its shares are lm-head **46.52%**, gate/up **16.30%**, down **13.37%**, QKV
+  **8.12%**, and O projection **5.63%**.
+- Select the **rows>1 exact affine4 lm-head** as the next performance owner. The
+  current `(vocab, rows)` body rereads the complete **166.922-MiB** packed
+  weight+scale+bias payload for every row and sustains only **115-121 GB/s**
+  effective traffic. A row-tiled consumer can reuse each weight row across
+  prompt/c8 rows. Keep c1 on the proven singleton: its prior tile was a 0.96x
+  dead end. Do not use FlashHead, token-conditioned branches, or fixed-prompt
+  scoring. Artifact SHA-256: `6bd92a26...5b362`; raw traces remain in `/tmp`.
+
+## 2026-08-07 — Rewrite the Maple overview around current evidence
+
+- Replace the stale bring-up-only `docs/MAPLE.md` with a current standalone
+  overview: distinguish the BF16 source/oracle from the 5.31-GB official 2-bit
+  deployment checkpoint; summarize the 20B-A1B architecture, exact packed
+  formats, public c1/native-prefill contract, fixed-capacity batch-helper scope,
+  correctness gates, reproduction commands, and known limits.
+- Publish the corrected Radeon 8060S tables directly in the overview: M5
+  prefill **339.890/326.573/317.488 tok/s**, c1 profile diagnostic **163.459
+  tok/s**, M6 helper **218.818/261.099/299.181 aggregate tok/s**, checkpoint
+  **4.944 GiB**, public max-context-512 residency **5.133 GiB**, default-4K
+  diagnostic residency **5.174 GiB**, c2/c4/c8 helper residency
+  **4.951/4.958/4.973 GiB**, and zero tracked ownership after close.
+- Carry the profile conclusion into the overview without turning it into a new
+  performance claim: exact rows>1 affine4 lm-head weight reuse is next; the
+  rejected c1 tile and approximate FlashHead stay out. Update the generator
+  class docstring so source documentation no longer calls all prefill serial.
+- Documentation validation only: re-read `docs/MAPLE.md` end-to-end, verify all
+  linked artifacts/paths and key claims, run the focused generator tests, and
+  run Markdown/diff/WORKLOG checks. No additional GPU benchmark is needed for
+  this docs unit; all displayed values come from committed accepted artifacts.
+
+## 2026-08-07 — Review all Maple work and correct the optimization roadmap
+
+- Synchronize before review: fetch `origin/main` and `origin/maple`, confirm no
+  incoming Maple commits, then push the complete 100-commit local series.
+  Local HEAD, tracking ref, and remote `maple` all resolve to
+  `9b3e45f10157f5788709c9107098679dfeb6b1bd` before this review unit.
+- Audit DeepGrove's authoritative MLX implementation at
+  `mlx-lm-deepgrove@eba96c16158f032821b0bf374ea1421cfddef0a9` plus the pinned
+  deployment config. The published M4 table is **169 tok/s exact/default**,
+  **218 tok/s approximate FlashHead**, and **1075 tok/s prefill**; the headline
+  218 is not an exact dense-head result. FlashHead probes 512 of 4,748 clusters,
+  or 16,384/151,936 vocabulary rows plus three forced controls. The upstream
+  table omits workload lengths, repeats, and software versions, so it is
+  directional rather than a cross-device benchmark. Marketing says 131,072
+  context while the pinned config says `max_position_embeddings=128000`.
+- Identify the primary prefill scheduling bug from source plus the accepted
+  profile: `prefill_native()` executes final norm, the full exact head, and
+  row-wise argmax after every chunk for every row, but consumes only the last
+  row. The measured prefill320 head+argmax is **487.969 ms**. Replacing it with
+  the measured c1 tail projects **982.015 -> 495.501 ms** and **325.861 ->
+  645.811 tok/s**, while eliminating about **148.8 MiB** of all-row
+  logit/argmax scratch. This is a measured-bucket projection, not a retained
+  speed result.
+- Correct the second classification error: Maple's batched expert grid is
+  `(output, route, row)` and rereads expert weights per assignment. It is a
+  correct row/route-gather bring-up path, not grouped MoE. DeepGrove sorts >=64
+  assignments by expert, and hipEngine already has device count/prefix/scatter
+  machinery in GGUF/PARO. After final-row tail selection, the measured
+  **274.073-ms** expert family must reach **<=98.572 ms (2.780x)** for a
+  profile-based 1000 tok/s target with other buckets fixed.
+- Record later exact owners rather than tuning blindly: current prefill
+  attention assigns one block per `(query head,row)`, rereads every KV stream
+  for four GQA heads, and barriers per key; transfer qrow/GQA reuse or evaluate
+  AOTriton only after P0/P1 reprofile. QKV+O consume **122.555 ms** and use an
+  unswept fixed eight-row weight tile; sweep exact 8/16/32 before WMMA.
+- Recheck c1 graph on the corrected path with six independent processes in
+  counterbalanced eager/graph/graph/eager/eager/graph order, each 4 warmup + 128
+  measured positions under `GPU_MAX_HW_QUEUES=1`. Eager trial medians are
+  **7.1434/7.0661/7.0315 ms**; graph is **7.0657/7.0329/7.0066 ms**. The
+  median-of-medians change is only **1.00473x (+0.473%, 0.0332 ms)**. IDs and
+  top-logit hashes match; every graph reports capture=1/replay=131/reject=0;
+  each runner buffer owner is empty after close. Keep graph opt-in. Artifact:
+  `benchmarks/results/2026-08-07-gfx1151-maple-c1-graph-review.json`, SHA-256
+  `b53b364c7894792df9be1f96d53a4cf41e8ff30bf14d8ca05599fe9d588235a1`;
+  its temporary child source is pinned in the artifact by SHA-256
+  `42a75f83555d48161fc5d62815c020150c7e3491da6df24d1becb6ae79c7df7a`.
+- Exact c1 is already within 3.3% of DeepGrove's published M4 exact number. The
+  corrected trace's kernel-only roof is **198.591 tok/s**, so graph alone cannot
+  reach 200. Exact 200 needs **1.118 ms** total saving; exact 218 needs
+  **1.531 ms**. Prioritize DeepGrove's one-dispatch last-threadgroup router
+  pattern, then a materially different affine4 head layout. Treat FlashHead as
+  a separate opt-in approximate/quality-gated track. For c2/c4/c8, rows>1
+  affine4 weight reuse remains valid because every active request needs logits.
+- Update `docs/MAPLE.md` and `docs/MAPLE-PERF.md` with the exact-vs-FlashHead
+  comparison, corrected P0/P1 ordering, quantitative ceilings, and later
+  attention/dense/decode work. Remove duplicated/stale MAPLE-PERF planning,
+  correct the false claim that M6 reuses the c1 graph, correct runtime/kernel
+  comments that called gather MoE grouped, and collapse contradictory
+  default-1/default-0 Maple fusion entries in `docs/REFACTOR.md`. Update the
+  benchmark README/changelog to supersede the stale all-row prefill-head action
+  and retain the graph review as a diagnostic without changing topline rows.
+- Immediate next implementation is **P0 final-row-only prefill tail**, gated by
+  byte-exact hidden/KV state, seed/top-logit, and continuation on all 18
+  natural+heldout prompts. Then implement true expert-major compact ternary MoE.
+  No production performance row changes in this review unit, so benchmark
+  topline rows remain unchanged.
+- Validation: re-read both Maple documents end to end; relative Markdown links,
+  JSON parsing, `git diff --check`, and the WORKLOG conflict check pass;
+  `/home/lhl/miniforge3/envs/therock/bin/python3 -m pytest
+  tests/test_benchmark_readme_sync.py -q --tb=short` passes **6/6**. Runtime and
+  HIP edits are comments only, with no kernel/math/dispatch change, so this
+  docs/review unit does not repeat the already-qualified GPU suites.
+
+## 2026-08-07 — Maple P0 final-row-only native-prefill tail
+
+- Contract before implementation: preserve every batched layer, hidden row, and
+  `KVLiveSpans` write, but skip final norm/head/argmax for intermediate chunks
+  and run the proven c1 tail exactly once on the final row of the final chunk.
+  Reuse resident c1 logits/argmax buffers and remove the public runner's all-row
+  tail scratch. The serial runner is the independent model/state oracle.
+- RED command:
+  `/home/lhl/miniforge3/envs/therock/bin/python3 -m pytest
+  tests/test_maple_runtime.py::test_maple_prefill_buffers_exclude_all_row_sampling_scratch
+  tests/test_maple_runtime.py::test_maple_prefill_native_samples_only_the_final_row
+  -q --tb=short` -> **2 failed** as intended: `_PrefillBuffers` still owns
+  all-row logits/argmax allocations and `prefill_native()` still launches
+  `maple_affine4_gemv_batched_f32` after each chunk.
+- GREEN implementation splits public `_PrefillBuffers` from batch-only
+  `_BatchBuffers`, retains all-row head scratch only for c>1, and runs
+  final-row RMSNorm + `maple_affine4_gemv_f32` + `argmax_f32` once after the
+  final chunk. The focused two-node RED set is now **2/2 passing**; adding the
+  invalid-input node gives **3/3**. Existing real-checkpoint short and
+  260-token multichunk continuation nodes pass **2/2** under cached-only
+  gfx1151 execution.
+- Strengthen `scripts/maple_prefill_bench.py` so the M5 gate now compares the
+  serial/native final hidden and normalized bytes, each layer's complete live
+  K/V prefix, and both device `KVLiveSpans` metadata sets in addition to full
+  logits and continuations. A dirty-tree state smoke over all 18 natural plus
+  heldout prompts passes **18/18 state hashes**, **36/36 tokens/top-1**, and
+  max/mean KL **0/0**. Its one-repeat 128 diagnostic is **697.490 tok/s**; the
+  artifact is intentionally `rejected` because tracked cleanliness and the
+  full 128/320/512 x3 protocol are reserved for the committed run. The harness
+  now mechanically marks only `(128,320,512)`, >=3 repeats, >=1 warmup, and >=4
+  continuation steps as a qualified protocol.
+- Focused runtime bundle after GREEN:
+  `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 ... python3 -m pytest
+  tests/test_maple_runtime.py -q --tb=short` -> **16 passed**. This includes
+  c1 native prefill, multichunk continuation, c2/c4/c8 decode, 514-step SWA
+  wrap, sparse reclaim, and lifecycle coverage.
+- Before the clean recertification, extend the M5 artifact environment capture
+  to include `HIPENGINE_COMPILER_VERSION_FILE` and
+  `HIPENGINE_REQUIRE_CACHED_BUILD`; the exact benchmark can therefore prove it
+  used the prebuilt compiler identity and cached-only kernel libraries.
+- Clean committed recertification at `364d7183e81d117e32b56bb58b44bc250be7df98`:
+  `GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. ... python3
+  scripts/maple_prefill_bench.py --model deepgrove/maple-preview-2bit-mlx
+  --backend hip_gfx1151 --suite
+  benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout
+  benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --lengths 128,320,512
+  --repetitions 3 --warmups 1 --continuation-steps 4 --out
+  benchmarks/results/2026-08-07-gfx1151-maple-p0-final-row-prefill-retained.json`
+  -> **accepted**. Aggregate 128/320/512 prefill is
+  **700.643/649.280/614.874 tok/s**, versus corrected prior
+  **339.890/326.573/317.488** (**+106.14%/+98.82%/+93.67%**) and same-run serial
+  **147.082/105.871/82.608** (**4.764x/6.133x/7.443x**). Each shape has 24
+  samples; ranges are **690.952-707.692 / 644.680-653.821 /
+  610.327-620.205 tok/s**.
+- Binding correctness/lifecycle passes: **18/18** natural+heldout state hashes
+  match across 60 components/prompt (final hidden/normalized, 24 layer K/V
+  pairs, and both five-buffer span sets); max/mean KL **0/0**, top-1/token
+  **90/90**, tracked close **0 bytes / 0 allocations**. Max-context-512 tracked
+  residency falls exactly **5,511,879,016 -> 5,355,836,776 bytes
+  (-156,042,240 bytes / -148.813 MiB)**. Artifact SHA-256:
+  `e8a96b69c040ef16649e223d950b9100323228942064c3d108a8a727b4f60b1e`.
+- P0 is retained/default. Update `docs/MAPLE.md`, `docs/MAPLE-PERF.md`, and the
+  benchmark rollups; next action is a clean post-P0 prefill320 profile before
+  implementing P1 expert-major compact ternary MoE.
+- Publication validation: artifact JSON/status/protocol/state/lifecycle
+  assertions pass, all changed relative Markdown links resolve,
+  `tests/test_benchmark_readme_sync.py -q --tb=short` passes **6/6**, and
+  diff/WORKLOG checks are clean.
+
+## 2026-08-07 — Maple P1 expert-major compact MoE
+
+- Start from retained P0 `a9be9f310`. Before any new kernel work, re-read the
+  Maple catalog in `docs/KERNELS.md` and run
+  `python3 scripts/check_lineage.py --kind kernel --diff stat`. The audit is
+  blocked before reporting any lineage by the manifest's absent read-only
+  `/home/lhl/amd-gpu-tuning/reference/atlas` checkout; no external source is
+  copied and P1 will reuse in-tree generic group-scatter infrastructure.
+- Correct the profile harness before the binding post-P0 trace: every
+  `rocprofv3` child now forces and records
+  `HIPENGINE_REQUIRE_CACHED_BUILD=1` in addition to the precomputed compiler
+  version file, so profiling cannot silently invoke `hipcc`.
+- Clean committed post-P0 profile at `ddc9874d7` measures prefill320 at
+  **498.442 ms/request / 492.866 ms kernel / 642.000 tok/s**, with **586**
+  launches and a **1.12%** host gap. The unchanged row/route-gather gate/up and
+  down kernels consume **152.842 + 123.309 = 276.150 ms**, or **56.03%** of
+  kernel time. Holding other work fixed, the 1000-tok/s target therefore
+  requires this family to reach **<=97.708 ms (2.826x)**. Publish the accepted
+  diagnostic as
+  `benchmarks/results/2026-08-07-gfx1151-maple-p0-phase-profile.json`; no
+  production throughput row changes. P1 now has a frozen implementation gate.
+- RED adds two GPU contracts: int32 routes must produce the same stable
+  expert starts/active list/sorted lanes/experts/weights as the CPU stable sort,
+  and expert-major gate/up/down must preserve every row/route BF16 output bit.
+  The focused run fails **2/2** on the intentionally absent wrappers. GREEN
+  templates the existing generic parallel count/prefix/scatter bodies over the
+  selected-ID type, registers the int32 ABI, and adds Maple grouped consumers
+  that stage one expert/output weight row and write directly to the original
+  flattened lane. The focused tests and full Maple packed-kernel file pass
+  **2/2** and **13/13**.
+- Wire P1 only into public native prefill. `_PrefillBuffers` owns fixed-capacity
+  starts/active/sorted metadata; `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE=0`
+  preserves the old gather chain. c1 and M6 remain unchanged. The combined
+  Maple kernel/runtime bundle passes **30/30**, including short and multichunk
+  real-checkpoint continuation, c2/c4/c8, SWA wrap, sparse reclaim, and close.
+  Generic group-scatter planning passes **8/8**. The H7U bundle has **8**
+  semantic tests pass and one expected frozen-source hash failure; update only
+  the two legitimately extended group-scatter hashes plus a pre-existing stale
+  gfx1151 package hash, then the failing contract passes focused.
+- Dirty-tree full M5 state gate passes all **18/18** natural+heldout state
+  hashes, **90/90** tokens/top-1, KL **0**, and exact lifecycle close. Its
+  one-repeat 128 diagnostic is **728.726 tok/s** and remains mechanically
+  `rejected` because the tree/protocol are unqualified. Artifact
+  `/tmp/maple-p1-dirty-state-gate.json` SHA-256 is
+  `569a3a79...d2182d`.
+- Profile before further tuning. The one-lane grouped schedule changes gate/up
+  **152.842 -> 155.228 ms** (slower), down **123.309 -> 98.950 ms**, and adds
+  only **0.444 ms** metadata, for expert-family **276.150 -> 254.179 ms
+  (1.086x)**. Traced prefill320 changes **498.442 -> 476.730 ms / 642.000 ->
+  671.239 tok/s (1.046x)**. Exact simultaneous 2-/4-lane workgroups regress to
+  **629.888/553.040 tok/s** in the same synthetic screen; separate dual passes
+  regress to **614.154**, and a down-only lane2 schedule reaches **661.010**.
+  Keep lane1. The final trace names dual `<128,1>` at VGPR72/LDS1024 and down
+  `<32,1>` at VGPR48/LDS512, both scratch0. Dirty diagnostic artifact
+  `/tmp/hipengine-maple-p1-final-dirty-profile.json` SHA-256 is
+  `ed7ae285...9b972`; it makes no retained claim.
+- P1 therefore yields an exact non-regressive partial win but misses the frozen
+  **<=97.708-ms / 2.826x** gate. The measured blocker is scalar ternary
+  unpack/dot/reduction—especially dual gate/up—not route compaction or remaining
+  weight rereads. Commit the validated implementation before clean qualified
+  recertification; a materially different matrix/SIMD contraction belongs in
+  later P1 follow-up rather than another grouped-lane geometry sweep.
+- Freeze implementation commit `12106b8a4`, push it, and run the binding clean
+  cached-only M5 protocol at that revision. The artifact is **accepted**:
+  qualified 128/320/512 throughput is **726.421/679.632/650.745 tok/s**, versus
+  retained P0 **700.643/649.280/614.874** (**+3.679%/+4.675%/+5.834%**), and
+  same-run serial **148.445/106.501/83.131** (**4.894x/6.381x/7.828x**).
+  Sample ranges are **715.706-733.806 / 674.384-685.617 /
+  648.157-653.655 tok/s**.
+- Binding correctness remains **18/18** natural+heldout state hashes, **90/90**
+  tokens/top-1, and max/mean KL **0/0**. Fixed P1 metadata increases tracked
+  max-context-512 ownership exactly **5,355,836,776 -> 5,355,881,848 bytes
+  (+45,072 bytes / 0.043 MiB)**; close is **0 bytes / 0 allocations**. Publish
+  `benchmarks/results/2026-08-07-gfx1151-maple-p1-expert-major-prefill-retained.json`,
+  SHA-256 `4fab10a99a5733e434f638fbd1a33d64ab5754f8e6ae9ebdc01fa2e8a4233608`.
+- P1 is retained/default as an exact non-regressive win, but the 2.826x expert
+  target is not claimed. Mark P1 done with the scalar-consumer blocker and make
+  P2 GQA/query-row attention the active optimization. A future P1b may revisit
+  matrix/SIMD ternary contraction; the rejected grouped-lane geometries stay
+  closed.
+
+## 2026-08-08 — Maple P2 exact qrow/GQA prefill attention
+
+- Start from clean retained P1 evidence commit `ed25308eb`. ROCm is alive on
+  Radeon 8060S/gfx1151. The broad kernel-lineage command is blocked by the
+  already-absent optional `/home/lhl/amd-gpu-tuning/reference/atlas` checkout;
+  the narrow Maple-attention query selects no tracked external source. No
+  external file is copied. The in-tree Laguna qrow family is an arithmetic and
+  scheduling reference only.
+- Run the clean cached-only corrected phase profiler with one hardware queue,
+  precomputed compiler version, and `HIPENGINE_REQUIRE_CACHED_BUILD=1`.
+  Post-P1 prefill320 is **478.176 ms/request / 472.321 ms kernel / 669.210
+  tok/s**, **730 launches**, and a **1.22%** host gap. Attention is **63.993 ms
+  (13.55% of kernel time)** across 48 chunk/layer calls. QKV+O is **124.379
+  ms**. Artifact
+  `benchmarks/results/2026-08-07-gfx1151-maple-p1-phase-profile.json` is
+  accepted diagnostic evidence, SHA-256
+  `b024726b8474e4d9d440f3546029786602fafc8078c88f50db5c85cf21a322c3`.
+- Freeze P2's stretch target at attention **<=31.996 ms (2.0x)** while retaining
+  any exact same-suite non-regressive gain. The current local128/VGPR16 body
+  owns one `(query head,row)` block, rereads every K/V stream for four GQA
+  heads, and performs a barriered 128-thread reduction for every key. The first
+  RED/GREEN candidate must consume complete `KVLiveSpans` and map that exact
+  tree to wave32: each lane computes
+  `(x[lane]+x[lane+64])+(x[lane+32]+x[lane+96])`, followed by the unchanged
+  16/8/4/2/1 tree. This preserves FP32 association and online-softmax/PV order
+  while enabling adjacent-query and/or GQA K/V reuse; local128 remains the
+  oracle/rollback.
+- RED production-shape coverage initially fails on the absent GQA4 wrapper.
+  GREEN registers a one-wave `(KV head,row)` consumer and consumes all five
+  span pointers. The short primitive is exact, but the 260-token real-checkpoint
+  continuation exposes one divergent token. Tightening the primitive to the
+  exact `start=256, capacity=512` boundary finds **1/2,048 BF16 outputs** one ULP
+  from local128.
+- Root cause the one-bit drift from generated ISA rather than weakening the
+  gate. Local128 materializes every product and reduction stage in LDS and
+  rounds `value*new_scale` before `fma(acc,old,weighted)`. The final GQA4 body
+  emulates all 128 virtual threads through the exact 64/32/16/8/4/2/1 LDS tree
+  and spells out that contraction. The long primitive, complete-span
+  eviction/mapping fixture, and formerly failing 260-token continuation then
+  pass byte-for-byte. All Maple attention tests pass **13/13**.
+- A seven-pair same-resident dirty screen improves local128 **471.365 ms /
+  678.880 tok/s** to GQA4 **432.015 ms / 740.715 tok/s (1.091x)**; all seven
+  candidate samples are faster and token/top-logit pairs match. This screen is
+  diagnostic only.
+- Cached dirty tracing names
+  `maple_attention_prefill_ring_gqa4_wave32_kernel` at local32/VGPR64,
+  dynamic-LDS512 (static trace field LDS0), SGPR128, scratch0. Attention falls
+  **63.993 -> 22.064 ms (2.900x)**, exceeding the <=31.996-ms stretch gate;
+  request kernel time falls **472.321 -> 435.302 ms**, launch count remains
+  **730**, and traced wall is **442.539 ms / 723.101 tok/s**. Dirty trace
+  artifact `/tmp/hipengine-maple-p2-gqa4-dirty-profile.json`, SHA-256
+  `e18166d37683afed580632700c605dc714986a8095573ecb7085a263d135786c`, makes
+  no retained claim.
+- Reduced M5 dirty state gate passes all **18/18** natural+heldout final
+  hidden/normalized/live-KV/span hashes, **90/90** tokens/top-1, max/mean KL
+  **0/0**, and exact lifecycle. Its one-shape 128 diagnostic is **748.023
+  tok/s** and is mechanically rejected because the tree/protocol are
+  unqualified. Artifact `/tmp/maple-p2-gqa4-dirty-state-gate.json`, SHA-256
+  `c06edae64aaed834779c1cee70be2b9c80f4719d30509a5fc8b9827cc4fe1fa3`.
+- Promote exact GQA4 as the public native-prefill default with
+  `HIPENGINE_MAPLE_PREFILL_GQA4=0` as temporary local128 rollback. The affected
+  default runtime bundle passes **5/5**, including short, natural English/
+  Japanese, and cross-256 continuation. Both evidence harnesses now record the
+  selector. Commit this validated implementation before the clean binding
+  128/320/512 M5 recertification.
+- Final pre-commit validation: Maple attention kernels **13/13**, affected
+  default runtime/real-checkpoint nodes **5/5**, benchmark provenance+rollup
+  **14/14**, Python compile, diff, and WORKLOG checks pass. A three-node runtime
+  unit rerun had one isolated fake-spec failure after shape qualification was
+  added; extending that fixture with its omitted head geometry repairs the node
+  focused. No previously passing production behavior was implicated, so the
+  already-complete GPU gates are not repeated.
+- Freeze implementation commit `9ccc60541`, push it, and run the binding clean
+  selector-unset M5 protocol. The artifact is **accepted**: qualified
+  128/320/512 throughput is **749.175/741.368/754.000 tok/s**, versus retained
+  P1 **726.421/679.632/650.745** (**+3.132%/+9.084%/+15.867%**), and same-run
+  serial **151.037/107.795/83.856 tok/s** (**4.960x/6.878x/8.992x**). Sample
+  ranges are **734.961-760.750 / 732.261-751.835 / 750.604-758.157 tok/s**.
+- Binding correctness remains **18/18** natural+heldout state hashes, **90/90**
+  tokens/top-1, and max/mean KL **0/0**. P2 adds no persistent allocation:
+  max-context-512 ownership remains exactly **5,355,881,848 bytes (4.988 GiB)**;
+  close is **0 bytes / 0 allocations**. Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-p2-gqa4-prefill-retained.json`,
+  SHA-256 `368f726a1ded56ae7ca247ef5a35d6e734c622348ebc81f22e036433e82f5fec`.
+- The clean committed selector-unset trace measures prefill320 at **439.479
+  ms/request / 431.666 ms kernel / 728.135 tok/s**, with attention **21.916 ms
+  (5.08% of kernel time)** versus the frozen P1 **63.993 ms (2.920x)** and the
+  same **730 launches**. It observes 48 request-local calls to the GQA4 kernel at
+  local32/VGPR64/dynamic-LDS512/static-LDS0/scratch0. Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json`, SHA-256
+  `5b89c00e9fbfc9cc7e19469e0c3c2a6b8f9ae643d5bc048956ac490f493da410`.
+- P2 is retained/default and done. Keep `HIPENGINE_MAPLE_PREFILL_GQA4=0` only
+  through final roadmap audit; make P3 dense ternary QKV/O tiling active. The
+  clean P3 baseline is **75.213 + 49.557 = 124.770 ms (28.90% of kernel time)**.
+
+## 2026-08-08 — Maple P3 dense ternary token-tile sweep rejected
+
+- Start from clean retained P2 evidence commit `5232042b8`. The existing dense
+  QKV/O bodies own one output row and serialize a fixed eight-token tile while
+  reusing one 512-byte packed weight row. The exact bounded sweep is 8/16/32:
+  each schedule preserves the word-strided lane loop and full 128-thread LDS
+  reduction tree, while production dynamic LDS grows 4/8/16 KiB.
+- RED production-inner-width coverage fails on the intentionally absent
+  `token_tile` wrapper argument. Temporary tile-16/32 template exports, Python
+  selection, and a default-8 prefill environment seam make the fixture GREEN.
+  `uv run --python 3.12 --extra dev python -m pytest -q
+  tests/test_maple_ternary_kernels.py` passes **14/14**; tile 8/16/32 are
+  BF16-bit identical at `in_features=2048`. The selector/default plus affected
+  runtime fixture passes **2/2**, Python compilation and `git diff --check`
+  pass. An earlier command accidentally selected Python 3.10 and failed
+  collection on `typing.Self`; rerunning with the required 3.12 interpreter is
+  the valid RED/GREEN evidence.
+- Run one-resident, counterbalanced prefill320 over eight prompts (natural and
+  heldout for each of code/general-English/general-Japanese/mixed), two
+  repetitions and 16 samples per tile. Tile 8/16/32 aggregate throughput is
+  **744.116/731.182/571.923 tok/s**. Tile 16/32 regress **1.738%/23.141%**,
+  lose all **16/16** paired samples, and preserve every next-token/top-logit
+  pair. The regression is consistent with longer block residency and larger
+  LDS outweighing reduced 512-byte row reloads.
+- Stop before the expensive 18-prompt state gate because both candidates fail
+  the non-regressive wall gate. Remove every temporary selector, wrapper,
+  export, and candidate test; production kernel/runtime files return byte-for-
+  byte to `5232042b8`. P3 closes rejected and selects D0 exact one-dispatch c1
+  router work. A future matrix/SIMD consumer must preserve the existing BF16
+  state contract; a different contraction order is not admissible merely for
+  throughput.
+- Publish rejected diagnostic
+  `benchmarks/results/2026-08-08-gfx1151-maple-p3-dense-token-tile-rejected.json`,
+  SHA-256 `f7ca7b1f2cd4b94e9ff05c24dce09192160dc0faf353f1a53d9a3fe34e9285ef`.
+
+## 2026-08-08 — Maple P3 direct native-BF16-WMMA gate rejected
+
+- Continue task #90 after scalar-tile closure `c70ec1809` because dense QKV/O
+  remains **124.770 ms / 28.90%** and the plan requires WMMA adjudication after
+  the 8/16/32 sweep. In-tree DFlash supplies the gfx11 wave32 operand mapping;
+  no external source is copied. The Maple probe expands each packed ternary
+  code exactly to BF16 and executes `v_wmma_f32_16x16x16_bf16` with FP32
+  accumulators over a 16-token x 16-output tile. It is never registered or
+  wired into runtime dispatch.
+- RED first fails on the intentionally absent WMMA wrapper. A tiny 17x2048x17
+  candidate fixture initially rounds to the same BF16 bits, so tighten the gate
+  to the actual 320x2048x2048 dense-O shape rather than declaring success. The
+  direct candidate then changes **43/655,360 BF16 outputs** versus tile 8.
+- Isolate whether an exact outer-tree hybrid could repair the result. A one-word
+  FP32 probe compares native WMMA's K16 partial with Maple's required sequential
+  16-term partial and changes **106/256 FP32 outputs**. The intrinsic therefore
+  changes the inner association before any outer 128-partial reduction;
+  compensation across WMMA tiles cannot restore the required partial without
+  recomputing the scalar sequence.
+- Prebuild the candidate outside profiling with compiler-version file
+  `/tmp/hipengine-maple-p3-hipcc-version.txt`, then run cached-only
+  `rocprofv3 --kernel-trace` on a 16x2048x16 smoke. Trace
+  `/tmp/hipengine-maple-p3-wmma-trace/gfx1151/1790963_kernel_trace.csv`, SHA-256
+  `5980e8f90988b24592a50880e46ddfd8b5c4e2c295266ce5da39492fc75f5149`,
+  names `maple_ternary_gemm_wmma_kernel` at **23,604 ns**, local32, VGPR48,
+  SGPR128, LDS0, scratch0. Extracted code object SHA-256
+  `746779b70f3ffb4a32ca988e88180531b175c9200280afe071764c207b1cbc0e`
+  contains `v_wmma_f32_16x16x16_bf16`, proving the intended matrix instruction
+  ran.
+- Stop before model/state/performance gates because the primitive violates the
+  user's byte-exact state contract. Remove the direct and one-word kernels,
+  wrappers, and RED fixtures; production code/tests/scripts again match
+  `c70ec1809` byte-for-byte. Direct native BF16 WMMA and an outer-compensated
+  sibling are closed; only a materially different exact non-WMMA SIMD consumer
+  may reopen dense ternary work.
+- Extend the rejected P3 artifact with the correctness/trace verdict. New
+  SHA-256 is `5ca0bc2b259e2e9de9205da9dfe9de731e9f0298dc31a1d86bdb9b416484d8ec`;
+  the prior SHA above remains the immutable scalar-tile version.
+
+## 2026-08-08 — Maple D0 exact one-dispatch c1 router implementation
+
+- Start from clean P3 closure `f86f2c86a`. Narrow lineage selects no tracked
+  external parent and no source is copied. The unchanged corrected c1 baseline
+  is **163.459 tok/s / 6.118 ms**, with router logits + softmax/top-k at
+  **1.108 ms / 22.0% of kernel time** and two router dispatches per layer.
+- Implement the documented last-threadgroup pattern in-tree. One 256-block
+  grid computes the same per-expert 256-thread tree logits into existing
+  scratch. Each block threadfences and increments one owned four-byte counter;
+  the last ticket runs the unchanged FP32 max/exp/sum/stable-rank/top-8 body.
+  `atomicInc(..., num_experts-1)` resets the counter to zero without another
+  launch. The original two-kernel route remains separately registered and
+  available with `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0`.
+- RED fails on the absent composite wrapper. GREEN production geometry
+  (`experts=256`, `hidden=2048`, `top_k=8`) matches every FP32 logit, selected
+  ID, and routing-weight bit from the two-dispatch route across two consecutive
+  candidate calls; the counter returns exactly to zero. The full Maple MoE
+  bundle passes **9/9** after the registry/default tests are included.
+- Real-checkpoint short, three-language natural, and cross-256 continuation
+  tests pass **3/3** with the candidate. A reduced one-shape M5 run then passes
+  **18/18** natural+heldout hidden/KV/span state hashes, **90/90** token/top-1
+  positions, max/mean KL **0/0**, and exact close. It is mechanically rejected
+  only because the 128-only timing protocol is unqualified. Dirty state artifact
+  `/tmp/maple-d0-router-single-dispatch-state-gate.json`, SHA-256
+  `d28be9460b138639ba8861a741e17f7e1d1e55bb403379b039caef6b59554817`.
+- A two-runner, counterbalanced same-resident c1 screen (8 warmup + 64 measured
+  pairs) improves aggregate **165.791 -> 170.279 tok/s (+2.71%)**, median step
+  **6.001 -> 5.828 ms**, and paired median by **0.191 ms**; **58/64** candidate
+  pairs win and all token/top-logit pairs are identical. Dirty screen artifact
+  `/tmp/maple-d0-router-single-dispatch-screen.json`, SHA-256
+  `bca879b2d52c47652f7add5496ab4d1a9d786116fb03af6e0696f3c82cec195d`.
+- Prebuild outside profiling and capture cached-only baseline/candidate
+  `maple_profile.py` traces. Router calls fall **48 -> 24 per token** and total
+  launches **295 -> 271**. Baseline logits+top-k is **1.108298 ms/token**;
+  candidate composite is **1.095186 ms/token**. The named candidate is
+  local256/VGPR16/SGPR128/LDS3584/scratch0. Independent traced kernel totals
+  vary **4.870 -> 4.921 ms** because the head is 0.053 ms slower in the
+  candidate process; do not attribute that variance to the router. Raw trace
+  SHA-256 is baseline
+  `205006560d72fd4a3ad227e49fe79144e56bd6df03fdd26bc265616299d42d38`
+  and candidate
+  `42f19f8e71bd74410fad6566771d612f73f8e47a79b0021f7a836b5ac0ce5808`.
+- Promote the exact composite as default. Manual 16-step graph/eager comparison
+  is token/top-logit exact; the repository graph bundle skips because its stale
+  dedicated cache-path guard does not see the locally resolved checkpoint.
+  Candidate adds exactly one four-byte owned counter and resets it on runner
+  reset; the complete state gate confirms lifecycle returns to zero.
+- Dirty diagnostics are implementation evidence only. Commit the validated
+  default before clean c1 category qualification/publication, then continue D0
+  with a materially different exact affine4-head bandwidth/layout screen.
+- Final implementation validation: Maple MoE + selector/registry bundle passes
+  **9/9**; real-checkpoint targeted bundle passes **3/3**; manual graph/eager
+  passes **16/16** exact steps; Python compilation, narrow lineage, diff, and
+  WORKLOG checks pass. The dedicated graph file reports **3 skips** from its
+  stale cache-location guard, not execution failures.
+- Add reusable `scripts/maple_c1_bench.py` before clean publication. It runs
+  selector-unset production versus `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH=0`
+  in two simultaneous resident runners, starts every pair from independently
+  computed native-prefill state, alternates execution order, and records exact
+  token/top-logit parity, meaningful byte-state hashes, counter reset, paired
+  wall timing, and tracked lifecycle over all 18 natural+heldout prompts.
+- Unqualified one-step real-checkpoint smoke passes **18/18 prompts**, **18/18**
+  native-start and final state hashes, **18/18** token/top-logit positions,
+  **0/36** counter violations, and exact close. Its timing is diagnostic only
+  (`157.267` versus `153.698 tok/s`, **17/18** candidate wins) because the
+  harness is uncommitted and the 1-step/0-warmup/1-repeat protocol is below the
+  claim floor. Python compile, `--help`, diff, HIP availability, and narrow
+  lineage checks pass. Commit the harness, then run its clean default
+  32-step/4-warmup/2-repeat qualification without changing the protocol.
+- Commit the harness at `79a20012c`, then run the binding clean protocol with
+  `GPU_MAX_HW_QUEUES=1`, gfx1151, cached-only JIT, all 18 natural+heldout
+  prompts, two repetitions, 4 warmup steps, and 32 measured continuation steps.
+  The selector-unset one-dispatch default improves exact rollback **139.538 ->
+  145.321 tok/s (+4.144%)**; mean/median step wall is **6.881/6.849 ms** versus
+  **7.167/7.142 ms**, paired median saving is **0.301 ms**, and the candidate
+  wins **1,127/1,152** timed pairs. Call order is exactly balanced
+  **648/648** including warmups.
+- The binding gate is exact: **18/18** prompts, **36/36** native-prefill and
+  final state pairs, **1,296/1,296** token/top-logit positions, and
+  **2,592/2,592** zero-counter checks. Two-runner tracked residency is
+  **10,672,716,372 bytes** and close returns **0 bytes / 0 allocations**.
+  Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-c1-router-retained.json`,
+  compact SHA-256
+  `ac453aa9ba2f0e7862983fb9c770154204731629f0fb2b64dd1030647bc0aa8a`.
+  The full raw-array source artifact SHA-256 is
+  `e4f959c5fea32399759ed56775ea3ab77b6d41fb549ff7df9ea0b3315b862adc`.
+- Refresh the separate fixed-token diagnostic without confusing workloads.
+  Cached-only `maple_profile.py` at selector-unset `79a20012c` measures
+  **5.527-ms wall / 4.859-ms kernels / 0.668-ms host gap / 271 launches =
+  180.935 tok/s**. The exact affine4 head is **1.278 ms / 26.30%**, router
+  compute **1.094 ms / 22.51%**, selected experts **1.136 ms / 23.37%**, and
+  the kernel-only roof is **205.804 tok/s**. Named raw trace SHA-256 is
+  `4e6bb86e6cac141674e48065c513fba5aac9963a9af80d27d8462b6e3290d8cc`.
+  Publish diagnostic
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-decode-profile.json`, SHA-256
+  `6c17b87dea6d810108613a6140ff538c1db5db987a6c2de7da08982dc8afa1d1`.
+- D0 router is retained/default and complete; exact affine4-head work remains
+  active. The short fixed-token path now needs **0.527 ms** to reach exact 200
+  tok/s. Update MAPLE overview/performance/kernel/refactor docs plus benchmark
+  rollup/changelog without replacing the natural-context 145.321 row with the
+  incomparable short diagnostic.
+
+## 2026-08-08 — Maple D0 exact wave32 affine4 head candidate
+
+- Start from clean retained router commit `e972e5399`. The refreshed c1 profile
+  identifies the exact affine4 head at **1.278 ms / 26.30%** of kernels. M3b's
+  rejected eight-output-row tile only cached the already-hot 4-KiB hidden vector
+  and measured 0.96x; do not repeat it. Narrow lineage selects no external
+  parent and no source is copied.
+- Audit the current gfx1151 code object. Production uses local128/VGPR24/
+  SGPR128/dynamic-LDS512/scratch0. Compiler ISA already hoists one BF16 scale
+  and bias per packed word, issues a B32 weight load plus B128 activation load,
+  and preserves eight FMA terms per word, so superficial metadata/CSE cleanup
+  has no remaining lever. The structural candidate instead maps the four
+  current waves onto four virtual partials per physical lane and reconstructs
+  the exact 64/32/16/8/4/2/1 tree with wave32 shuffles.
+- RED first fails on the intentionally absent
+  `maple_affine4_gemv_wave32_exact_f32` wrapper. Add a separately registered
+  `maple_affine4_gemv/group64_wave32_exact` primitive and a default-off
+  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=1` runtime route for c1 and the native
+  prefill final-row tail. The original group64 kernel remains unchanged.
+- GREEN at production K=2048 is FP32-bit exact. The real
+  **151,936x2,048 / 166.922-MiB** checkpoint head has **0/151,936** logit
+  mismatches, identical argmax/hash, and improves **1.527 -> 1.020 ms
+  (1.496x)** with **48/48** paired wins and **0.509-ms** paired median saving.
+- Dirty full-category screen (18 prompts, 4 warmup + 16 measured steps,
+  one repetition) improves exact group64 control **148.409 -> 158.903 tok/s
+  (+7.071%)**, saves **0.442 ms** at paired median, and wins **287/288** pairs.
+  All **18/18** native-start/final states, **360/360** tokens/top logits,
+  **720/720** zero-counter checks, all four categories, and lifecycle are exact.
+  This remains diagnostic because the tree is dirty and the protocol is below
+  the 32-step/two-repeat publication floor.
+- Cached-only profiling names
+  `maple_affine4_gemv_wave32_exact_kernel` at local32/VGPR16/SGPR128/LDS0/
+  scratch0, **0.983 ms/step**, with unchanged 271 launches. The dirty short
+  profile is **5.009-ms wall / 4.579-ms kernels = 199.659 tok/s**; this is a
+  diagnostic, not a retained 200 claim. Raw trace SHA-256 is
+  `0b62d9eca18e303bf96db73f42249f9c75978499fff08eb523fd3c53bd07db30`.
+- Extend `scripts/maple_c1_bench.py --comparison router|affine4_wave32` so the
+  clean binding run can isolate only the head while holding the retained router
+  fixed. Its formal one-step dirty smoke passes **18/18** states/positions and
+  exact lifecycle; candidate is **165.873 vs 154.120 tok/s**, **17/18** wins,
+  but remains unqualified by design.
+- Validation before implementation commit: Maple ternary plus selector/final-
+  tail unit bundle passes **17/17**; real-checkpoint short/natural/cross-chunk
+  candidate gates pass **3/3**; Python compile, `--help`, diff, narrow lineage,
+  exact full-logit screen, complete dirty state gate, and named cached trace
+  pass. Commit default-off before clean 32-step/two-repeat qualification.
+
+## 2026-08-08 — Retain/promote Maple D0 exact wave32 affine4 head
+
+- Run the binding clean qualification from implementation commit `ab80552b5`
+  with `GPU_MAX_HW_QUEUES=1`, gfx1151, cached-only JIT, the complete 18-prompt
+  natural+category-heldout suite, two simultaneous resident runners, two
+  repetitions, 4 warmup steps, and 32 measured continuation steps. The retained
+  one-dispatch router is selector-unset in both arms; only the head differs.
+- The exact wave32 candidate improves group64 **143.679 -> 153.409 tok/s
+  (+6.772%)**; mean/median wall is **6.519/6.493 ms** versus **6.960/6.934
+  ms**, paired mean/median saving is **0.441/0.442 ms**, and the candidate wins
+  **1,146/1,152** timed pairs. Every category wins: code/general-English/
+  general-Japanese/mixed-Japanese-English are **156.313/159.655/151.115/
+  145.854 tok/s** versus **146.314/149.129/141.716/136.876 tok/s**. Call order
+  is exactly balanced **648/648** including warmups.
+- The binding gate is exact: **18/18** prompts, **36/36** native-prefill and
+  final state pairs, **1,296/1,296** token/top-logit positions, and
+  **2,592/2,592** zero-counter checks. Two-runner tracked residency is
+  **10,672,716,372 bytes** and close returns **0 bytes / 0 allocations**.
+- Promote selector-unset c1 and native-prefill final-row sampling to
+  `group64_wave32_exact`; preserve
+  `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT=0` and the registered original group64
+  primitive as the exact rollback. Update the reusable A/B harness so future
+  head comparisons mean selector-unset production versus `=0` rollback.
+- Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-affine4-wave32-retained.json`
+  (compact SHA-256
+  `d51ba6b4cec5892fefe5d202df0894e140bf50ef864524f961bc3b1702765a59`).
+  The artifact records clean source `ab80552b5`, the exact command, full
+  hardware/compiler provenance, per-repetition hashes and timing summaries,
+  aggregate/category timing, and lifecycle. Update MAPLE overview/performance/
+  kernel/refactor docs plus benchmark rollup/changelog. A clean selector-unset
+  fixed-token profile remains the final D0 closure step; do not promote the
+  dirty **199.659 tok/s** diagnostic as the clean 200+ row.
+
+## 2026-08-08 — Close Maple D0 with clean selector-unset profile
+
+- Start from clean promotion commit `c70bd2309`; confirm HIP and gfx1151, then
+  prebuild all six Maple libraries outside profiling with the pinned
+  `/tmp/hipengine-maple-hipcc-version.txt`. Run `rocprofv3` only through the
+  cached child with `HIPENGINE_REQUIRE_CACHED_BUILD=1`,
+  `GPU_MAX_HW_QUEUES=1`, `HIPENGINE_HIP_ARCH=gfx1151`, and both Maple selectors
+  explicitly absent:
+  `env -u HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT -u
+  HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH GPU_MAX_HW_QUEUES=1
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1
+  .venv/bin/python scripts/maple_profile.py --model
+  deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --raw-root
+  /tmp/maple-d0-wave32-profile-raw --out
+  /tmp/maple-d0-wave32-profile.json --profile`.
+- The clean fixed-token diagnostic is **5.006-ms wall / 4.581-ms kernels /
+  0.425-ms host gap / 271 launches = 199.772 tok/s**. Against the clean pre-head
+  diagnostic, throughput is **180.935 -> 199.772 tok/s (+10.411%)**; kernel
+  time falls **4.859 -> 4.581 ms**, and the named exact wave32 head falls
+  **1.278 -> 0.982 ms (1.302x)**. It is local32/VGPR16/SGPR128/LDS0/scratch0.
+- Current kernel shares are exact head **0.982 ms / 21.43%**, one-dispatch
+  router **1.094 ms / 23.88%**, and selected experts **1.140 ms / 24.89%**.
+  Kernel-only roof is **218.286 tok/s**. The measured wall is still **5.7 us per
+  token / 0.228 tok/s** short of 200, so publish **199.772**, do not round or
+  rerun to manufacture a 200+ claim, and keep the qualified natural-context row
+  distinct at **153.409 tok/s**.
+- The profiled child returns marker token 9707 at **32/32** measured positions;
+  the binding state/counter/lifecycle gate remains the retained clean
+  qualification artifact. Raw kernel CSV SHA-256 is
+  `436f02af17e0e72d8e53c4c80acd8653bc626eb0568bc1ddb45e28c62fad702a`;
+  generated profile SHA-256 is
+  `65508287a8ab810c447171111e524d4b4da4e347ba9660842142c773ffc87959`.
+- Publish
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-wave32-decode-profile.json`
+  (SHA-256
+  `3c12dc8906e21b1798c8f2f508439fb865f2992d5d5af0934c43fcf7364eda68`)
+  with clean source, selector, command, trace, derived-share, and qualification
+  provenance. D0 is complete; D1 c2/c4/c8 affine4 row reuse is the next exact
+  owner. Preserve the `=0` group64 rollback until the final roadmap audit.
+
+## 2026-08-08 — Maple D0 residual host-selector snapshot candidate
+
+- Reopen only the measured **5.7-us/token** fixed-profile gap to the Task #91
+  exact-200 target; do not revisit rejected c1 output-row tiles, old routers, or
+  graph-only noise. Audit `MapleRunner.step()` and find that router/head choices
+  are already snapshotted once per call, but the invariant QK-attention and MoE
+  fusion env selectors are reread inside every one of 24 layers: **48
+  `os.environ.get` calls/token** for two default-off routes.
+- RED first adds a hot-path AST invariant and fails because both selector calls
+  live under `_decode_layers_and_tail`. Hoist their values beside the existing
+  router/head snapshots, preserving selection between calls and every kernel,
+  pointer, launch, and arithmetic operation within a call. GREEN passes the
+  focused node and the complete Maple runtime suite **22/22**; Python compile
+  and diff checks pass. No kernel source, allocation, or dispatch registry
+  changes.
+- An unqualified three-fresh-process host-wall screen with both fusion selectors
+  and both retained selectors explicitly unset measures **5.019783 / 4.956033 /
+  4.953308 ms**, median **4.956033 ms = 201.774 tok/s**. This is admission-only:
+  the tree is dirty and the 199.772 baseline is a prior process/revision, so do
+  not publish a delta or replace the canonical profile. Commit the behavior-
+  neutral host unit, then run a clean alternating baseline/candidate process
+  gate plus the existing exact state/category protocol before retention.
+- Commit implementation at `ed89dc50a`, then compare clean baseline `56f1bd5d9`
+  and candidate in four alternating fresh-process pairs, each using marker token
+  9707, 4 warmups, and the median of 32 cached resident steps. Baseline process
+  medians are **4.915200/5.016156/4.992967/5.047849 ms**; candidate medians are
+  **4.927268/4.928431/4.917004/4.972563 ms**. Mean wall improves **4.993043 ->
+  4.936317 ms**, aggregate throughput **200.279 -> 202.580 tok/s (+1.149%)**,
+  paired median saving is **0.075624 ms**, and candidate wins **3/4** pairs. All
+  four candidate processes are independently above **201 tok/s**.
+- Run the unchanged complete category gate on clean candidate: **18/18** prompts,
+  **36/36** native-start/final state pairs, **1,296/1,296** token/top-logit
+  positions, **2,592/2,592** zero-counter checks, and lifecycle are exact. The
+  current natural-context candidate is **153.201 tok/s**, only **-0.136%** from
+  the prior 153.409 row and within the 1% non-regression gate; close returns
+  **0 bytes / 0 allocations** after **10,672,716,372 bytes** tracked residency.
+- A separate cached-only trace process keeps the same **271 launches** and names
+  the exact wave32 head at local32/VGPR16/SGPR128/LDS0/scratch0. It measures
+  **5.018-ms wall / 4.550-ms kernels / 0.468-ms host gap = 199.293 tok/s** and
+  head **0.968 ms**. Do not combine that process's wall/kernel values with the
+  A/B rate or claim 200 as a universal floor; the retained fact is a +1.15%
+  same-protocol host win with every A/B candidate process above 201.
+- Source SHA-256: A/B
+  `38e7ff2f8ef785e82efce5ed36f1f988daf7b223b1d467dadd17d16e0fc0c32a`,
+  full category
+  `569975aab3153580c49a6359ba12cc40fe9190909b3eca175644deb9ce122414`,
+  generated profile
+  `9d2d84350054eade1f28263798a6805ba1a33ab6d48c37d05f08d2fddcbce1b5`,
+  raw trace
+  `e14a452854596dc288273044cad78ff3c327a4e11a6e7ef52bc6fb9d90363d3a`.
+  Publish compact combined artifact
+  `benchmarks/results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json`
+  (SHA-256
+  `a32f2db9708eeddce989e33bef5b49a69dfa3b57f98b451e893707ff03b64a27`).
+  D0's exact fixed-token target is reached under the retained A/B protocol;
+  advance Task #92 to c2/c4/c8 affine4 row reuse.
+
+## 2026-08-08 — Maple D1 exact batched affine4 row-reuse candidate
+
+- Start Task #92 from clean `6da6755ac`. The production c2/c4/c8 head launches
+  one 128-thread block per `(vocab,row)`, so its exact **166.922-MiB** packed
+  weight/scale/bias payload is logically reread for every request row.
+- Add a default-off registered leaf that assigns one 128-thread block to one
+  vocabulary row and carries 2/4/8 independent request partials. Packed words,
+  scales, and biases are loaded once; each request preserves the original
+  word/lane order and stride-64/32/16/8/4/2/1 LDS reduction tree. A
+  production-K=2,048 RED/GREEN fixture is FP32-bit exact for c2/c4/c8.
+- The dirty real-head admission screen at 151,936x2,048 is exact at every logit
+  and identical at argmax. Mean latency changes **2.763 -> 1.532 ms (1.803x)**
+  for c2, **5.281 -> 2.023 ms (2.611x)** for c4, and **10.554 -> 3.763 ms
+  (2.804x)** for c8; the candidate wins all **96/96** alternating pairs and
+  every runner closes at **0 bytes / 0 allocations**.
+- Wire only c2/c4/c8 through default-off
+  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1`; unsupported widths and
+  selector-unset/`=0` preserve the original all-row head. Promotion requires a
+  clean same-protocol aggregate c2/c4/c8 gate, the complete natural/category-
+  heldout trajectories including sparse/reclaimed slots, lifecycle, and a
+  cached named-kernel trace. No end-to-end performance claim is made yet.
+- Implementation validation: the full packed Maple kernel file passes
+  **17/17**, the bounded runtime-selector node passes, Python compilation and
+  `git diff --check` pass. The required narrow lineage query selects zero Maple
+  parents (`tracked_sources: 0 changed_or_dirty: 0`), consistent with this
+  in-tree original schedule; the all-kernel query cannot inspect an unrelated
+  manifest entry because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent.
+- Commit the default-off implementation as `7e134ca9e`, then run the unchanged
+  retained M6 protocol from that clean source with only
+  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1` added and cached builds
+  required. All **18/18** natural/category-heldout trajectories match serial,
+  the sparse final c8 group has two active rows and is exact, every one of nine
+  c2/c4/c8 timing samples is trajectory-exact, and all six runner lifecycles
+  close at **0 bytes / 0 allocations**.
+- Candidate c2/c4/c8 medians are **250.037/347.511/427.929 aggregate tok/s**
+  versus the retained same-protocol **218.818/261.099/299.181**, improvements of
+  **14.27%/33.10%/43.03%**. Candidate min/max ranges are
+  **250.010-250.655 / 347.346-347.515 / 427.596-428.836 tok/s**. Temporary full
+  result SHA-256 is
+  `6e8f074e2e80d88058eb5c4be41ee6d7ba27a5bc982e5813fdb4aade35f85721`;
+  this clean admission result is not yet the selector-unset retained artifact.
+- Extend `scripts/maple_phase_profile.py` with repeatable `--phase` selection and
+  explicit row-reuse-selector provenance so D1 can trace only c8 without
+  rerunning unaffected prefill/c1 phases. The script still prebuilds every
+  library outside `rocprofv3` and requires cached builds in the profiled child.
+- The explicit real-checkpoint reclaimed-slot node is GREEN with the candidate:
+  slot 0 completes and resets, slot 1 advances through a sparse round, then a
+  third request reuses slot 0; all generated trajectories equal serial and
+  ownership closes exactly.
+- From clean profiler-harness commit `5634e8073`, prebuild in the parent and run
+  only `decode_c8` in the cached-only `rocprofv3` child. The trace names
+  `maple_affine4_gemv_batched_rowreuse_exact_kernel<8>` at local128/VGPR96/
+  SGPR128/scratch0. Against the latest unchanged-batch P2 trace, the head falls
+  **10.490 -> 3.734 ms (2.809x)**, kernel sum **24.046 -> 17.305 ms**, and wall
+  **25.925 -> 19.296 ms**, raising this separate diagnostic **308.579 ->
+  414.602 aggregate tok/s** with the same **293 launches/batch**. The host gap
+  is **1.991 ms**. Generated profile SHA-256 is
+  `75eb865e272226c619d7de6b37e5ed92e241c895b617dd697a5d2a1f112606fe`;
+  raw kernel CSV SHA-256 is
+  `a06e9e9a447031944c1e1fb1b2aa8e8aa1d3fd26a8719485bfc5460703329f7a`.
+- Every D1 gate now passes. Promote selector-unset c2/c4/c8 to exact row reuse;
+  preserve `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=0` and the registered
+  original all-row kernel as rollback through the final roadmap audit. Run the
+  unchanged complete M6 protocol once more from the clean promotion commit to
+  publish selector-unset production; do not substitute the trace wall for that
+  retained aggregate-throughput row.
+- Commit promotion as `f897dc350`, then rerun the unchanged complete M6 protocol
+  from that clean revision with the row-reuse selector explicitly absent and
+  cached builds required. Selector-unset production is accepted at
+  **250.481/346.365/428.063 aggregate tok/s**, improvements of
+  **14.47%/32.66%/43.08%** over the corrected M6 baseline. Publication sample
+  ranges are **250.048-251.773 / 346.241-346.972 / 427.804-428.070 tok/s**.
+- The final publication repeats all nine width trajectories exact, **18/18**
+  natural/category-heldout trajectories exact with a two-active-row sparse c8
+  group, and every runner lifecycle at **0 bytes / 0 allocations**. Tracked
+  c2/c4/c8 residency is **5,316,071,856 / 5,323,952,976 / 5,339,715,216
+  bytes**; the helper scope still excludes model load, prompt prefill, and
+  public scheduler/server admission.
+- Full selector-unset source SHA-256 is
+  `1a7cc74bfef538688d7728a530d6e1a4edb17c9894e6a2dfa05b5cff9fb63b93`.
+  Publish compact artifact
+  `benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`
+  (SHA-256
+  `38d11961037c23ef0886c2a87d689baac9dc8f336e6c6b3c0d65b05c0158fa4e`)
+  and update the Maple overview/performance plan, benchmark rollup/changelog,
+  kernel catalog, and refactor ledger. D1 is complete; P4 safe long-prompt and
+  public batch admission is next.
+- Publication validation is GREEN: repository benchmark provenance/readme-sync
+  tests **14/14**, compact artifact/source-hash/metric/link/current-row checks
+  **6/6**, JSON parsing, stale-row scan, and `git diff --check` all pass. The
+  custom current-row check caught and corrected two qualification-vs-publication
+  labels in the kernel/refactor ledgers before commit.
+
+## 2026-08-08 — Maple P4 safe long-prompt native prefill candidate
+
+- Audit the >512 serial fallback and isolate the SWA hazard: publishing a whole
+  post-wrap chunk overwrites ring slots still needed by its earliest queries.
+  Keep embed/dense/MoE work row-batched; for sliding attention, bulk only the
+  pre-wrap segment and append/attend post-wrap rows one at a time. Because all
+  sliding layers share one span-metadata set but own separate K/V caches, replay
+  the pre-chunk logical ring before each sliding layer so a prior layer's future
+  positions cannot poison the next layer's earliest queries. Global layers stay
+  fully chunk-batched.
+- RED first freezes segmentation at starts 0/256/400/512/700. The implementation
+  removes only the >512 rejection and adds host orchestration; no arithmetic or
+  kernel body changes. Real-checkpoint dirty-tree gates at 513 and 770 tokens
+  match serial at the next-token and FP32 top-logit bits, final hidden and norm,
+  every physical live K/V byte, both complete span metadata sets, and the next
+  continuation. The 770 case covers one full post-wrap 256-row chunk and a
+  second fully wrapped chunk. Both runners close to **0 bytes / 0 allocations**;
+  the 770 state SHA-256 is
+  `d37dd985391371faf840f715ebd6664ab666d9613ac2aa55d6444bd6cb0b98a3`.
+- The full Maple runtime run establishes **22 passing nodes** with only the two
+  parameterizations of one host fake missing newly consumed `capacity` and
+  `layer_types` fields. Focused fixture repair is GREEN **2/2**; the new physical
+  SWA-boundary node and segmentation node are independently GREEN. Python
+  compilation and `git diff --check` pass; per the focused-repair rule, do not
+  repeat the already-established GPU-heavy full file.
+- Run the unchanged qualified P2 protocol at 128/320/512 (3 repetitions, 1
+  warmup, 18 natural/category-heldout prompts, 90 positions, full byte-state,
+  lifecycle). Candidate aggregate throughput is
+  **750.294/741.541/753.342 tok/s** versus retained
+  **749.175/741.368/754.000**, changes of **+0.149%/+0.023%/-0.087%**; every
+  shape is within the 1% preservation gate. Quality is exact: **18/18** states,
+  **90/90** tokens, top-1 100%, KL 0, lifecycle zero. The temporary artifact is
+  rejected only because the measured source is intentionally dirty; SHA-256
+  `9b882f2e476cb05c7b4e7c1e17b98c5a2ab449a6a12fdf88aa794cd60235ca65`.
+- Freeze this long-prompt implementation as its own logical unit before wiring
+  fixed-capacity prompt admission into the public scheduler. A clean retained
+  P4 publication will combine the long-prompt and public-admission gates.
+
+## 2026-08-08 — Maple P4 public fixed-slot admission candidate
+
+- Wire `MapleGenerator.create_resident_model_runner()` into the existing
+  `SubmitPollTextGenerator` protocol at public capacity 8. One c1 runner owns
+  the immutable 5.31-GB checkpoint; a `MapleBatchRunner.from_runner()` owner
+  adds only fixed request-local SWA/global rings and batched scratch. Lazy
+  request-local `KVLiveSpans` views point directly into each physical slot, so
+  native prompt chunks land in the same K/V storage consumed by c2/c4/c8 decode
+  without duplicating weights or copying cache state.
+- RED/GREEN tests freeze request-local span pointers, shared weight ownership,
+  native prefill into c2 continuation, scheduler admission/reclaim, >512 public
+  generation, and lifecycle. The first real public short/520 smoke exposed a
+  scheduler-boundary defect: legacy prefill work omits physical slots, and the
+  fallback assigned both singleton chunks to slot 0. Reserve Maple's private
+  physical slot in `reserve_admission`, validate any explicit slot, and release
+  it on rollback/reclaim. The corrected public smoke is exact for all four
+  generated positions and closes to zero.
+- A staggered public submit/poll gate proves continuous reuse rather than only
+  whole-batch reuse: request 0 completes while request 1 remains live; request 2
+  then occupies reclaimed slot 0 (`slot_to_request=[2, 1]`). All three
+  trajectories equal independent serial c1 and final teardown is zero.
+- Run the full 18-prompt natural/category-heldout public protocol at 64 generated
+  tokens/request, three repetitions, prompt admission included, and fixed
+  physical c2/c4/c8 widths including sparse final groups. After symmetric
+  excluded warmup, direct serial c1 is **124.341 tok/s** and public c2/c4/c8 is
+  **167.657/203.286/214.554 aggregate tok/s**, or
+  **1.348x/1.635x/1.726x**. All **54/54** repeated trajectory sets are exact,
+  every group reclaims all slots, and each owner closes to **0 bytes / 0
+  allocations**. Harness SHA-256 is `c0954b28...ee7384612`; result SHA-256 is
+  `1abc136b...eee16`.
+- Do not let an idle fixed c8 owner execute seven empty model rows. When exactly
+  one request advances, route that physical slot through the retained D0 c1
+  step against its request-local K/V view; c>=2 keeps D1 batched decode. The
+  first lone-active gate found a real D2H overflow: the c1 view exposed the
+  entire c8 `argmax_value` allocation, so a generic copy wrote 32 bytes into a
+  four-byte host scalar. Bound request-local logits to one vocabulary row and
+  argmax value to four bytes, then assert those ABI sizes in the GPU regression.
+  The repaired 18-prompt c8-owner singleton gate is exact at **122.845 tok/s**,
+  versus the same warmed direct c1 protocol's **124.341 tok/s**; teardown is
+  exact. Harness/result SHA-256 values are `b240c333...ef02` and
+  `a67774b7...fc68`.
+- Post-fix validation is GREEN: focused runtime admission plus the complete
+  Maple generation file pass **8/8**; the explicit staggered host test now
+  covers both c2 decode and transition to the lone-active c1 path; Python
+  compilation and `git diff --check` pass. Freeze this admission implementation
+  before the clean retained P4 rerun and documentation/benchmark rollup.
+- The first clean post-commit P2 protocol passes at
+  **750.445/741.916/753.288 tok/s**, changes of
+  **+0.170%/+0.074%/-0.095%** from retained P2, with **18/18** byte-state and
+  **90/90** token/logit positions exact and lifecycle zero. Do not publish this
+  file: its recorder still labels >512 as a serial fallback even though P4
+  removed that route. Correct only the protocol metadata, commit it, and repeat
+  once from clean source so the retained artifact cannot contradict runtime.
+- Add `scripts/maple_public_batch_bench.py` before publication rather than cite
+  an ephemeral `/tmp` harness. It times c1/c2/c4/c8 through the identical
+  public `SubmitPollTextGenerator` protocol, keeps an independent serial runner
+  only as the trajectory oracle, includes prompt admission/reclaim in wall time,
+  and records a physical-c8 singleton row for the c1 fast path. A deliberately
+  unqualified dirty-tree c1/c8 smoke is exact, closes all owners, and exits
+  rejected as designed; Python compilation, `--help`, and diff checks pass.
+- From clean harness commit `5f43dcc70`, the symmetric public protocol accepts
+  c1/c2/c4/c8 at **122.564/165.385/201.203/214.378 aggregate tok/s**; c2/c4/c8
+  are **1.349x/1.642x/1.749x** public c1. A single active request inside the
+  physical-c8 owner reaches **122.175 tok/s**, **99.683%** of the c1 owner, so
+  the retained D0 path is preserved rather than executing seven empty rows.
+  All **15** repeated 18-prompt trajectory sets equal the independent serial
+  oracle, sparse final groups reclaim, and all five owner lifecycles close to
+  zero. Full result SHA-256 is `382f50f9...c159`; harness SHA-256 is
+  `a518155d...6080`.
+- Make the decisive 770-token gate durable by parameterizing the existing 520
+  physical-state regression. The new 770 node covers a full 256-row post-wrap
+  segment plus a second fully wrapped chunk and is GREEN with exact physical
+  K/V, complete span metadata, final hidden/norm, FP32 top-logit bits, three
+  continuations, and teardown. This test-only change cannot affect the clean
+  performance rows.
+- Promote the real staggered submit/poll scenario from transient evidence into
+  `tests/test_maple_generation.py`: two independent submissions occupy slots
+  0/1, the short slot-0 request completes while slot 1 stays live, and a third
+  request is then admitted into slot 0. The real-checkpoint node is GREEN; all
+  three trajectories equal serial and close returns **0 bytes / 0 allocations**.
+- Draft the compact P4 artifact and documentation rollup, then audit the new
+  durable benchmark before publication. The measured run has reclaimed every
+  slot and used the intended physical width, but the harness acceptance rule
+  initially required only trajectory/lifecycle success. Harden acceptance to
+  require all-group reclaim, c1/c2/c4/c8 physical-width identity, and sparse
+  final c4/c8 groups. A deliberately unqualified dirty-tree c1/c4/c8 smoke
+  passes all three new scheduler checks and exits rejected as designed; commit
+  the gate before one final clean public rerun.
+- Publish the already-valid clean `5f43dcc70` P4 evidence as compact artifact
+  `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`
+  (SHA-256 `3a1ac67f...a236`). Its raw groups all satisfy the newly hardened
+  checks; the harness change only makes those facts acceptance-critical.
+  Update `docs/MAPLE.md` with the model summary, exact-vs-FlashHead Apple
+  context, long-prompt/public execution paths, current throughput/memory, and
+  correctness; close P4 in `docs/MAPLE-PERF.md`; refresh the kernel map,
+  refactor ledger, benchmark topline, and changelog. Benchmark rollup tests are
+  GREEN **20/20** and compact JSON/source/link/metric/diff checks pass. Commit
+  this valid evidence to obtain a clean tree for the stricter final rerun.
+- The final hardened gate accepts from clean `f03070494`: public c1/c2/c4/c8 is
+  **123.131/165.697/202.038/214.788 aggregate tok/s**, making c2/c4/c8
+  **1.346x/1.641x/1.744x** public c1. Physical-c8 singleton is
+  **122.778 tok/s (99.714% of c1)**. All 15 repeated 18-prompt trajectories,
+  physical widths, sparse c4/c8 final groups, every reclaim, and all lifecycle
+  checks pass. Raw result SHA-256 is `928ee7cf...3be9`; hardened harness SHA-256
+  is `7ea64300...bed`; update the compact artifact/docs to this final row before
+  closing P4.
+
+## 2026-08-08 — Close Maple retained-path refactor triggers
+
+- Reach the final roadmap-audit triggers after clean P0-P4/D0-D1 publication.
+  Remove the temporary P2 GQA4, D0 one-dispatch router, D0 wave32 affine4, and
+  D1 batched row-reuse environment selectors plus their dead production
+  branches. Production now selects the already-qualified leaves directly;
+  local128, two-dispatch router, group64 c1 head, and all-row batch head remain
+  separately registered and covered by direct bit-exact kernel tests.
+- Remove the duplicate private `MapleContinuousBatcher` admission/reclaim owner.
+  The low-level M6/D1 harness now drives `MapleBatchRunner.batch_step` directly
+  for isolated c2/c4/c8 timing and sparse masks; public admission, staggered
+  reclaim, and singleton routing remain solely owned by
+  `MapleResidentModelRunner`. Convert `maple_c1_bench.py` from the retired
+  environment A/B protocol to an independent production-repeat correctness
+  diagnostic with no performance claim. Historical retained artifacts and
+  source commits remain immutable.
+- Focused validation is GREEN: runtime dispatch/final-row/direct-harness tests **5/5**;
+  direct exact router, c1 head, c2/c4/c8 head, and GQA4-vs-local128 kernel tests
+  **6/6**; all changed Python files compile; benchmark `--help` entry points and
+  `git diff --check` pass. Do not repeat the expensive real-checkpoint suites:
+  the final clean P4 run already established 15/15 public trajectory sets,
+  exact 520/770 state, sparse/staggered reclaim, singleton preservation, and
+  zero lifecycle, while this unit deletes selectors without changing the
+  selector-unset production leaves.
+
+## 2026-08-08 — Close complete Maple optimization roadmap audit
+
+- Map every P0-P4 and D0-D1 outcome in `docs/MAPLE.md` to its production or
+  rejection state, durable kernel/runtime/public tests, compact benchmark and
+  profile evidence, implementation/publication commits, and benchmark
+  README/changelog rollups. Validate all 56 local document links and all 23
+  cited commits mechanically.
+- Branch provenance is explicit: `23b42230a` merged the then-current main before
+  correction/reprofiling; `83c1d6e87` closes the final retained-path selector
+  and duplicate-owner triggers. Historical performance artifacts remain bound
+  to their measured source commits and are not rewritten by this docs audit.
+- P0-P4 and D0-D1 are complete. P3 is an evidence-backed rejection with no live
+  candidate surface. Future P1b SIMD ternary work, approximate FlashHead, M1
+  graph, M2 fusion, ragged prompt compute, HTTP serving, and 128K qualification
+  remain explicitly separate tracks with concrete limits/triggers; none is an
+  unfinished requirement of this roadmap.
+
+## 2026-08-08 — Refocus root README on supported models and toplines
+
+- Audit the 2,538-line root README against the registered generation paths and
+  model support documents. The root had accumulated about 1,600 unheaded lines
+  of Laguna optimization chronology plus detailed memory, speculative,
+  concurrency, profiler, rejection, and phase-history material. Preserve that
+  evidence in `benchmarks/README.md`, model documents, artifacts, and this
+  worklog rather than duplicating it in the project landing page.
+- Rewrite `README.md` to 272 lines. Lead with a support matrix linking the tested
+  Qwen3.5 dense, Qwen3.5/3.6 MoE PARO/GGUF, Laguna S 2.1, and Maple-Preview
+  checkpoints and their qualified backend/workload boundaries. Retain only a
+  compact six-row single-request table and five selected parallel/speculative
+  toplines, with explicit warnings against cross-model or mixed-protocol
+  comparison. Keep concise status, principles, hardware, architecture,
+  installation, quickstart, API, documentation, lineage, and license sections.
+- Prevent regression by replacing the all-block root export contract with one
+  canonical `README_HIGHLIGHTS` block near the top of `benchmarks/README.md`.
+  `scripts/sync_benchmark_readme.py` now ignores the detailed canonical TOPLINE
+  blocks and rejects any unselected block in the root target. The benchmark
+  ledger remains complete; the root cannot silently regrow it on the next sync.
+- Validation is GREEN: benchmark README sync/provenance tests **6/6**, Python
+  compilation, `git diff --check`, and a CommonMark parse with **5 tables** pass.
+  The durable root audit verifies all Markdown tables are rectangular, all
+  **30** local links and anchors resolve, all six named model links are present,
+  support precedes performance/status, only one exported TOPLINE block exists,
+  and the README remains under 400 lines.
+
+## 2026-08-08 — Synchronize Moonshine CUDA branch with current main
+
+- Fetch `origin/main@0a1d9ecc4` and fast-forward the otherwise-unused local
+  `main` ref to it. Before integration, `moonshine-cuda-sm120a@5b66a7884` was
+  36 Moonshine commits ahead and 174 main commits behind their common base
+  `b97e95af4`; no remote Moonshine branch existed.
+- Merge current main into the Moonshine branch. Preserve both append-only
+  refactor ledgers while correcting the stale pre-mask-fix Moonshine entry:
+  uniform t256 is the qualified/default continuous route; exact two-region is
+  the slower, two-workspace, off-by-default strict-arithmetic fallback.
+- Resolve the shared memory-layer conflict by retaining main's
+  `DeviceMemoryArena` and applying Moonshine's backend-neutral `DeviceRuntime`
+  / `MemcpyKind` ABI, so the arena works with the default HIP runtime while CUDA
+  callers keep the same generic allocation/copy contract.
+- The requested supported-model-list edit was explicitly cancelled; do not add
+  Moonshine to the root support matrix in this integration.
+- Narrow post-resolution validation is GREEN: memory/materialize/CUDA source
+  bundle **22/22**, Ruff, Python compilation, and `git diff --check`.
+- Full `uv run --extra dev pytest -q` reaches **8 failures**. A detached,
+  unmodified `origin/main@0a1d9ecc4` full run reproduces the identical eight:
+  one stale provenance fixture, two local MTP-model preflight expectations, two
+  stale Laguna source hashes, and three order-sensitive uvicorn `caplog`
+  assertions. The three logging nodes pass **3/3** in isolation; a focused
+  origin run reproduces the other **5/5**. The merge therefore adds no full-suite
+  regression relative to current main. The first broad attempt used the external
+  Moonshine environment and stopped at collection because it lacks the project's
+  default FastAPI dependency; the locked `uv` run is authoritative.
+- Fully gated exclusive-GPU0 Moonshine validation is GREEN: **178 passed, 4
+  optional skips** across CUDA source, sm120a kernels, attention/CUTLASS,
+  static batch/encoder, continuous scheduling, runtime, and benchmark tests.
