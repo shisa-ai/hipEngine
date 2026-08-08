@@ -209410,3 +209410,28 @@ Vulkan local sizes verbatim will close the measured gap.
   delta. CPU transport/benchmark/promotion tests pass (15), guarded production
   transport smoke passes even with both removed selectors set to zero, and
   Ruff/format/diff checks pass. No destructive lifecycle arm ran.
+
+## 2026-08-08 — Wire registered submission transport into packed GGUF graphs
+
+- Audit the real occupancy-adaptive GGUF route. The c=1 whole-step graph already
+  used the submission registry, but dense physical c2/c4/c8 packed graphs called
+  `graph_instantiate`/`graph_launch` directly; logical c3/c5/c6/c7 currently use
+  packed eager physical buckets and are therefore transport-unaffected. Prior
+  retained profiler evidence reports 747 packed-native dispatches at c4 and 748
+  at c8 with zero row-local/copy fallback.
+- Route packed graph construction, replay, provenance, and close through the same
+  four-axis registered `GraphSubmission` ownership used by c1. Reuse the owner
+  session's persistent transport context across packed graph generations; keep
+  explicit gfx1100 PM4 fail-closed and HIP graph available/default. Add transport
+  proof to each packed execution manifest and record transport selection in the
+  packed benchmark environment provenance.
+- RED/GREEN host tests cover context delegation, PM4 replay instead of direct
+  `graph_launch`, provenance, and transport-owned teardown. A real current-tree
+  c2/p16/d3 W7900 smoke (`PYTHONPATH=/home/lhl/hipEngine-main`, explicit PM4,
+  cached build) passes with one admitted **747-node / 17-HSACO** graph,
+  canonical stateful/local-cache encoding, **21,305 dwords**, three retired PM4
+  submissions, zero fallback, successful packed-state flush, and clean process
+  teardown. An earlier direct-script run imported `/home/lhl/hipEngine` rather
+  than this checkout and exercised HIP graph; it is discarded, and all retained
+  commands now pin `PYTHONPATH` explicitly. This smoke is wiring evidence only,
+  not a c2 performance/correctness promotion claim.

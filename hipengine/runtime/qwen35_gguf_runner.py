@@ -19815,12 +19815,38 @@ class Qwen35GGUFResidentSession:
         max_replay_steps: int | None = None,
         record_steps: int = 0,
         record_layer_output_hidden: list[int] | tuple[int, ...] | set[int] = (),
+        submission_transport: str | None = None,
+        submission_timeout_seconds: float = 5.0,
     ):
         """Capture one fixed-width packed decode bucket with device feedback."""
 
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        from hipengine.core.pm4.transport import (
+            create_graph_submission_context,
+            select_submission_transport,
+        )
         from hipengine.runtime.gguf_packed_decode_graph import (
             capture_qwen35_gguf_packed_decode_graph,
         )
+
+        if submission_transport is None:
+            selected_transport = self._decode_graph_default_submission_transport
+            if selected_transport is None:
+                selected_transport = select_submission_transport()
+                self._decode_graph_default_submission_transport = selected_transport
+        else:
+            selected_transport = select_submission_transport(submission_transport)
+        submission_context = self._decode_graph_submission_contexts.get(selected_transport)
+        if submission_context is None:
+            submission_context = create_graph_submission_context(
+                backend=str(self.runner.backend),
+                gfx_arch=str(self.runner.target_arch),
+                runtime=self.runtime or get_hip_runtime(),
+                transport=selected_transport,
+            )
+            if submission_context is not None:
+                self._decode_graph_submission_contexts[selected_transport] = submission_context
 
         session_tuple = (self,) if sessions is None else tuple(sessions)
         graph = capture_qwen35_gguf_packed_decode_graph(
@@ -19835,6 +19861,9 @@ class Qwen35GGUFResidentSession:
             record_layer_output_hidden=tuple(
                 int(layer_id) for layer_id in record_layer_output_hidden
             ),
+            submission_transport=selected_transport,
+            submission_timeout_seconds=float(submission_timeout_seconds),
+            submission_context=submission_context,
         )
         for session in session_tuple:
             session._pin_device_kv_graph(graph)

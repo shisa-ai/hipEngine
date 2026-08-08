@@ -20,6 +20,11 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.core.pm4.transport import (
+    GraphSubmission,
+    GraphSubmissionContext,
+    create_graph_submission,
+)
 from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import bf16_to_float32
@@ -342,6 +347,9 @@ def capture_qwen35_gguf_packed_decode_graph(
     max_replay_steps: int | None = None,
     record_steps: int = 0,
     record_layer_output_hidden: Sequence[int] = (),
+    submission_transport: str | None = None,
+    submission_timeout_seconds: float = 5.0,
+    submission_context: GraphSubmissionContext | None = None,
 ) -> "Qwen35GGUFPackedDecodeGraph":
     """Capture one fixed-width packed GGUF decode bucket with device feedback."""
 
@@ -431,6 +439,8 @@ def capture_qwen35_gguf_packed_decode_graph(
         runtime=runtime,
     )
     graph = 0
+    graph_exec = 0
+    submission: GraphSubmission | None = None
     stream = runtime.stream_create()
     generated_tokens: DeviceBuffer | None = None
     generated_hidden: DeviceBuffer | None = None
@@ -613,8 +623,24 @@ def capture_qwen35_gguf_packed_decode_graph(
             raise
         if len(linear_paths) > 1 or len(full_paths) > 1:
             raise RuntimeError("packed graph capture selected inconsistent layer routes")
-        graph_exec = runtime.graph_instantiate(graph)
-    except Exception:
+        submission = create_graph_submission(
+            backend=str(owner.runner.backend),
+            gfx_arch=str(owner.runner.target_arch),
+            runtime=runtime,
+            graph=graph,
+            stream=stream,
+            transport=submission_transport,
+            timeout_seconds=float(submission_timeout_seconds),
+            submission_context=submission_context,
+        )
+        graph_exec = int(submission.graph_exec)
+    except Exception as operation_error:
+        submission_close_error: Exception | None = None
+        if submission is not None:
+            try:
+                submission.close()
+            except Exception as exc:
+                submission_close_error = exc
         if graph:
             try:
                 runtime.graph_destroy(graph)
@@ -625,6 +651,11 @@ def capture_qwen35_gguf_packed_decode_graph(
         for buffer in (active_mask_device, record_index, generated_hidden, generated_tokens):
             if buffer is not None:
                 free(buffer, runtime=runtime)
+        if submission_close_error is not None:
+            raise RuntimeError(
+                f"packed decode graph construction failed: {operation_error}; "
+                f"submission teardown also failed: {submission_close_error}"
+            ) from operation_error
         raise
 
     linear_path = next(iter(linear_paths)) if linear_paths else "not_applicable"
@@ -752,7 +783,9 @@ def capture_qwen35_gguf_packed_decode_graph(
         record_layer_ids=layer_ids,
         bucket_key=key,
         execution_manifest=manifest,
+        submission=submission,
     )
+    manifest["graph"]["transport"] = handle.transport_provenance()
     owner._decode_graphs.append(handle)
     return handle
 
@@ -777,6 +810,7 @@ class Qwen35GGUFPackedDecodeGraph:
     record_layer_ids: tuple[int, ...]
     bucket_key: Qwen35GGUFPackedDecodeGraphKey
     execution_manifest: dict[str, Any]
+    submission: GraphSubmission | None = None
     replayed_steps: int = 0
     replay_count: int = 0
     flushed: bool = False
@@ -812,7 +846,10 @@ class Qwen35GGUFPackedDecodeGraph:
             )
         launches = steps // self.steps_per_replay
         for _ in range(launches):
-            self.owner.runtime.graph_launch(self.graph_exec, self.stream)
+            if self.submission is None:
+                self.owner.runtime.graph_launch(self.graph_exec, self.stream)
+            else:
+                self.submission.launch(self.stream)
         if launches:
             self.owner.runtime.stream_synchronize(self.stream)
         self.replay_count += launches
@@ -839,7 +876,26 @@ class Qwen35GGUFPackedDecodeGraph:
         graph_manifest["replayed_steps"] = self.replayed_steps
         if launches:
             graph_manifest["replay_call_synchronizations"] += 1
+        graph_manifest["transport"] = self.transport_provenance()
         self.owner.last_packed_execution_manifest = self.execution_manifest
+
+    def transport_provenance(self) -> dict[str, Any]:
+        """Return inspectable transport proof for this packed graph generation."""
+
+        if self.submission is None:
+            value: dict[str, Any] = {
+                "schema_version": 1,
+                "transport": "hipgraph",
+                "graph_exec": int(self.graph_exec),
+                "launches": int(self.replay_count),
+                "native_fallbacks": 0,
+            }
+        else:
+            value = self.submission.provenance()
+        value["packed_decode_graph_key_sha256"] = str(self.bucket_key.key_sha256)
+        value["physical_rows"] = int(self.rows)
+        value["replayed_steps"] = int(self.replayed_steps)
+        return value
 
     def read_generated_token_ids(self, count: int | None = None) -> list[list[int]]:
         if self.closed:
@@ -920,12 +976,19 @@ class Qwen35GGUFPackedDecodeGraph:
     def close(self) -> None:
         if self.closed:
             return
-        self.closed = True
         runtime = self.owner.runtime or get_hip_runtime()
-        runtime.graph_exec_destroy(self.graph_exec)
-        runtime.graph_destroy(self.graph)
+        if self.submission is None:
+            if self.graph_exec:
+                runtime.graph_exec_destroy(self.graph_exec)
+                self.graph_exec = 0
+        else:
+            self.submission.close()
+        if self.graph:
+            runtime.graph_destroy(self.graph)
+            self.graph = 0
         if self.stream:
             runtime.stream_destroy(self.stream)
+            self.stream = 0
         for name in (
             "active_mask_device",
             "record_index",
@@ -945,6 +1008,7 @@ class Qwen35GGUFPackedDecodeGraph:
             unpin = getattr(session, "_unpin_device_kv_graph", None)
             if callable(unpin):
                 unpin(self)
+        self.closed = True
 
     def __enter__(self) -> "Qwen35GGUFPackedDecodeGraph":
         return self
