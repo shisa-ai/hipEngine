@@ -23,7 +23,7 @@ def test_decode_graph_submission_transport_uses_backend_default_with_explicit_pr
         "hip_gfx1100": {
             identity: {
                 "transport": "pm4",
-                "min_replay_steps_by_physical_rows": {1: 144, 2: 64, 4: 96, 8: 80},
+                "min_replay_steps_by_physical_rows": {1: 160, 2: 64, 4: 96, 8: 80},
             }
         },
         "hip_gfx1151": {identity: {"transport": "hipgraph"}},
@@ -66,7 +66,7 @@ def test_decode_graph_submission_transport_uses_backend_default_with_explicit_pr
             model_name=identity[0],
             file_type_name=identity[1],
             physical_rows=1,
-            replay_steps=144,
+            replay_steps=160,
             env={},
         )
         == "pm4"
@@ -136,7 +136,7 @@ def test_resident_session_reselects_shape_scoped_default_per_graph(
     policy = {
         identity: {
             "transport": "pm4",
-            "min_replay_steps_by_physical_rows": {1: 144},
+            "min_replay_steps_by_physical_rows": {1: 160},
         }
     }
     calls: list[tuple[object, ...]] = []
@@ -173,8 +173,8 @@ def test_resident_session_reselects_shape_scoped_default_per_graph(
     session._decode_graph_submission_contexts = {}
     session._pin_device_kv_graph = lambda graph: None
 
-    short = session.capture_decode_graph(position=4, max_replay_steps=143)
-    long = session.capture_decode_graph(position=4, max_replay_steps=144)
+    short = session.capture_decode_graph(position=4, max_replay_steps=159)
+    long = session.capture_decode_graph(position=4, max_replay_steps=160)
 
     assert short.name == "short"
     assert long.name == "long"
