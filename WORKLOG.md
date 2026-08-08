@@ -209541,3 +209541,7 @@ Vulkan local sizes verbatim will close the measured gap.
   `HSA_AMD_AGENT_INFO_TIMESTAMP_FREQUENCY` instead; guarded GPU validation proves
   the expected 100 MHz clock and remains bit-exact. The already captured raw
   ticks are valid and recalibrate to **13.254/18.818/29.267 ms** for c2/c4/c8.
+- Add an explicit `pm4_timestamps` mode to the c1 same-session transport
+  diagnostic so whole-step c1 receives the same calibrated device/host split.
+  The mode uses the canonical stateful/local-cache encoder and changes only the
+  default-off timestamp packets.
