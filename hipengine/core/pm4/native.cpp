@@ -1282,9 +1282,11 @@ int he_pm4_context_create(const char* pci_bdf, const char* gfx_target,
       throw Error("HSA queue descriptor failed validation");
     context->queue_active = true;
     check(hsa_signal_create(1, 1, &context->gpu, &context->completion), "hsa_signal_create");
-    check(hsa_system_get_info(HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY,
-                              &context->timestamp_frequency),
-          "hsa_system_get_info(timestamp_frequency)");
+    check(hsa_agent_get_info(
+              context->gpu,
+              static_cast<hsa_agent_info_t>(HSA_AMD_AGENT_INFO_TIMESTAMP_FREQUENCY),
+              &context->timestamp_frequency),
+          "hsa_agent_get_info(timestamp_frequency)");
     check(hsa_system_get_info(HSA_SYSTEM_INFO_VERSION_MAJOR,
                               &context->hsa_version_major),
           "hsa_system_get_info(version_major)");

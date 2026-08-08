@@ -209534,3 +209534,10 @@ Vulkan local sizes verbatim will close the measured gap.
   timestamp-enabled persistent PM4 context, leaves HIP unchanged, and preserves
   timestamp/barrier fields in compact proofs. This will distinguish actual PM4
   device tape time from blocking host submission and direct-AQL profiler gaps.
+- The first clean timestamped c2/c4/c8 matrix exposed a unit bug in the new
+  diagnostic: `COPY_DATA` reads the GPU wallclock, but native provenance divided
+  raw ticks by the HSA *system* frequency (1 GHz). The raw deltas aligned at an
+  exact 10x factor with direct-AQL kernel sums. Query gfx1100's
+  `HSA_AMD_AGENT_INFO_TIMESTAMP_FREQUENCY` instead; guarded GPU validation proves
+  the expected 100 MHz clock and remains bit-exact. The already captured raw
+  ticks are valid and recalibrate to **13.254/18.818/29.267 ms** for c2/c4/c8.
