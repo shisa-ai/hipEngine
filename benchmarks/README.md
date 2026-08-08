@@ -60,10 +60,12 @@ memory recovery:
 Explicit `transport="pm4"` selects the stateful/local-cache encoder
 unconditionally. The c1/c2/c4/c8 performance blocker is resolved. The scoped
 default is limited to Qwen3.6-35B-A3B `MOSTLY_Q4_K_M`, physical c1/c2/c4/c8,
-one-step tapes, and declared windows of at least **144/64/96/80** transitions;
-shorter or unknown scopes and peer backends retain HIP graph. A clean no-env
-routing gate proves c1 d128→HIP and d144→PM4, c2 d3→HIP, and p512/d128
-c2/c4/c8→PM4 with exact tokens, full retirement, and zero fallback:
+one-step tapes, and declared windows of at least **160/64/96/80** transitions;
+shorter or unknown scopes and peer backends retain HIP graph. A late clean p4096
+c1 profile measures capture break-even at **143 transitions**, so c1=160 restores
+the documented >10% margin that c1=144 lacked. Clean no-env routing proves c1
+d159→HIP and d160→PM4, c2 d3→HIP, and p512/d128 c2/c4/c8→PM4 with exact
+repeatable tokens, full retirement, clean close, and zero fallback:
 [`2026-08-08-gfx1100-pm4-scoped-default.json`](results/2026-08-08-gfx1100-pm4-scoped-default.json).
 ROCm #6529 recreate remains optional unrun coverage rather than an evidenced
 in-tree fault because production retains one

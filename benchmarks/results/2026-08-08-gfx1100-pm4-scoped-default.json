@@ -2,9 +2,11 @@
   "schema_version": 1,
   "kind": "gfx1100_pm4_scoped_package_default",
   "created_at": "2026-08-08T07:35:00Z",
+  "updated_at": "2026-08-08T11:05:04Z",
   "status": "accepted",
   "performance_claim": true,
   "source_commit": "be13fa2f13cf2e558a1c51de99b63a9342aa4a12",
+  "policy_revision_commit": "85cdc62ce435d3946e942f53d6bd0a1797164972",
   "source_clean": true,
   "decision": "make PM4 the package-selected submission transport only for Qwen3.6-35B-A3B MOSTLY_Q4_K_M one-step c1/c2/c4/c8 graph windows above conservative capture break-even; retain HIP graph globally and for every shorter, unknown, multi-step, peer-backend, or unrelated graph scope",
   "selection_precedence": [
@@ -19,7 +21,7 @@
     "file_type_name": "MOSTLY_Q4_K_M",
     "steps_per_replay": 1,
     "transport": "pm4",
-    "min_replay_steps_by_physical_rows": {"1": 144, "2": 64, "4": 96, "8": 80},
+    "min_replay_steps_by_physical_rows": {"1": 160, "2": 64, "4": 96, "8": 80},
     "fallback_transport": "hipgraph",
     "gfx1151_transport": "hipgraph",
     "unknown_identity_transport": "hipgraph"
@@ -28,8 +30,21 @@
     "clean_p512_capture_break_even_steps": {"c1": 129, "c2": 53, "c4": 61, "c8": 71},
     "directional_p16_capture_break_even_steps": {"c1": 106, "c2": 57, "c4": 80, "c8": 71},
     "directional_p768_capture_break_even_steps": {"c1": 118, "c2": 54, "c4": 65, "c8": 70},
-    "policy_margin": "rounded thresholds are at least about 10% above the worst observed break-even for each width",
-    "packed_context_scope": "current packed graph harness requires context below 1024; p4096 is rejected before model load"
+    "clean_p4096_c1": {
+      "source_commit": "e7eaf8064f5ac7e1cbfd88e4332586e7b19330de",
+      "hipgraph_capture_ms": 35.311034,
+      "pm4_capture_ms": 134.388558,
+      "hipgraph_replay_ms_per_token": 9.9129930625,
+      "pm4_replay_ms_per_token": 9.218943390625,
+      "capture_break_even_steps": 142.752786,
+      "capture_break_even_ceiling_steps": 143,
+      "d128_pm4_capture_inclusive_delta_percent": 0.785107,
+      "d160_pm4_projected_capture_inclusive_delta_percent": -0.738282,
+      "correctness_and_lifecycle_passed": true
+    },
+    "policy_margin": "c1=160 is 12.0% above the worst observed 143-step break-even; packed-width thresholds remain at least about 10% above their worst observed break-even",
+    "c1_context_scope": "the separate c1 graph transport harness validates p4096",
+    "packed_context_scope": "the packed graph harness requires context below 1024; p4096 is rejected before model load"
   },
   "no_override_gpu_validation": {
     "environment": {
@@ -40,27 +55,43 @@
       "HIPENGINE_HIP_ARCH": "gfx1100"
     },
     "c1_boundary": {
+      "source_commit": "85cdc62ce435d3946e942f53d6bd0a1797164972",
       "prompt_length": 512,
+      "warmup_runs": 1,
+      "measured_runs": 1,
       "rows": [
         {
-          "declared_replay_steps": 128,
+          "declared_replay_steps": 159,
           "selected_transport": "hipgraph",
           "token_id": 9707,
-          "capture_ms": 34.843279,
-          "native_fallbacks": 0
+          "trajectory_length": 160,
+          "trajectory_sha256": "86608a0d9a3972edb45fa055de414eb4da601f4f451638146dfebae99263c918",
+          "aggregate_tok_s": 97.8954191025223,
+          "capture_ms": 20.833944902,
+          "launches": 159,
+          "native_fallbacks": 0,
+          "tracked_bytes_after_close": 0
         },
         {
-          "declared_replay_steps": 144,
+          "declared_replay_steps": 160,
           "selected_transport": "pm4",
           "token_id": 9707,
-          "capture_ms": 121.34295,
-          "nodes": 626,
-          "launches": 1,
+          "trajectory_length": 161,
+          "trajectory_sha256": "706cfd1ec43514e77a79c82a03d9a45880af3a4afe76363af766daeca76ad306",
+          "aggregate_tok_s": 105.43999372520469,
+          "capture_ms": 69.832471199,
+          "nodes": 627,
+          "launches": 160,
           "native_fallbacks": 0,
-          "retired": true
+          "unretired_submissions": 0,
+          "callback_status": 0,
+          "retired": true,
+          "tracked_bytes_after_close": 0
         }
       ],
       "pm4_context_closed": true,
+      "all_graph_keys_stable": true,
+      "all_trajectories_repeatable": true,
       "passed": true
     },
     "short_packed_fallback": {
@@ -109,7 +140,7 @@
       "hipgraph_ms_per_token": 10.7263501171875,
       "pm4_ms_per_token": 9.9643580078125,
       "pm4_delta_percent": -7.103927254379039,
-      "note": "package threshold 144 is conservative because cold p512/d128 capture-inclusive wall is approximately break-even"
+      "note": "package threshold 160 preserves >10% margin above the clean p4096 143-step capture break-even; clean no-override d159 selects HIP and d160 selects retired PM4"
     },
     "packed_p512_d128": {
       "c2": {"hipgraph_ms_per_step": 14.584031781851081, "pm4_ms_per_step": 13.617756540043047, "pm4_delta_percent": -6.6255700499124215, "paired_wins": "5/5", "capture_inclusive_delta_percent": -3.812690177000222},
@@ -151,6 +182,15 @@
       "submission context ownership and packed graph lifecycle"
     ]
   },
+  "c1_margin_revision_validation": {
+    "red": "the actual package capability contract failed while c1 remained 144",
+    "mechanical_command": "uv run pytest -q tests/test_gguf_true_ar_category_bench.py tests/test_qwen35_gguf_decode_graph.py",
+    "mechanical_passed": 14,
+    "mechanical_failed": 0,
+    "clean_no_override_boundary_passed": true,
+    "d159_selected_transport": "hipgraph",
+    "d160_selected_transport": "pm4"
+  },
   "source_evidence": {
     "packed_default_path": "/tmp/hipengine-pm4-scoped-default-packed-clean.json",
     "packed_default_size_bytes": 4919893,
@@ -158,9 +198,18 @@
     "short_fallback_path": "/tmp/hipengine-pm4-scoped-short-clean.json",
     "short_fallback_size_bytes": 33612,
     "short_fallback_sha256": "2b4cb1a39071548a70f4176a848d21dcbfc8c6f7688be934c8334a0d0172a1e7",
-    "c1_boundary_path": "/tmp/hipengine-pm4-scoped-default-c1-clean.json",
-    "c1_boundary_size_bytes": 502315,
-    "c1_boundary_sha256": "823292bc0aee65e8830d2e85b0dfc70178af7ca83ff334bbec40861a4ae7806a"
+    "superseded_c1_boundary_path": "/tmp/hipengine-pm4-scoped-default-c1-clean.json",
+    "superseded_c1_boundary_size_bytes": 502315,
+    "superseded_c1_boundary_sha256": "823292bc0aee65e8830d2e85b0dfc70178af7ca83ff334bbec40861a4ae7806a",
+    "p4096_c1_profile_path": "/tmp/hipengine-pm4-c1-p4096-clean.json",
+    "p4096_c1_profile_size_bytes": 1052014,
+    "p4096_c1_profile_sha256": "6d07a16e3d8c3a08d4c676c06285d34f17abe9c4f40294873e5ab4046b4b228d",
+    "current_d159_boundary_path": "/tmp/hipengine-pm4-c1-threshold-85cdc62ce/d159.json",
+    "current_d159_boundary_size_bytes": 102307,
+    "current_d159_boundary_sha256": "718e154a3c06a56ee750a5329cd69521efac073dbfd49399614a0b53f8511290",
+    "current_d160_boundary_path": "/tmp/hipengine-pm4-c1-threshold-85cdc62ce/d160.json",
+    "current_d160_boundary_size_bytes": 1405388,
+    "current_d160_boundary_sha256": "0c984fe521d73c184b990fcad8cd98f41ba18ace3223c7a6785e87c05780f705"
   },
   "limitations": [
     "No submit-plus-queue-recreate stress was performed; production retains one queue and does not recreate it.",
