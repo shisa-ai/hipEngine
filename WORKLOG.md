@@ -209240,9 +209240,16 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   unfused-chain and W8A16 diagnostic tests. Default graph capture now proves
   the candidate wrapper in all four 99-wrapper regions; the underlying route
   still launches the qualified two device kernels.
-- Focused production/runtime/kernel/report validation passes **28 tests** with
-  one expected explicit actual-model-gate skip. Documentation promotes G1,
+- Focused production/runtime/kernel/report validation passes **28/28 runnable**
+  with one expected explicit actual-model-gate skip. Documentation promotes G1,
   advances the next action to G2, and updates the kernel catalog/refactor
   trigger/benchmark rollup/changelog. The compact promotion artifact is
   `benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json`;
   timing remains the previously retained leaf microbenchmark, not complete ASR.
+- Re-run the complete cached matrix from detached clean promoted revision
+  `75b3143fc`: **24/24** passes again with identical aggregate verdicts. The
+  refreshed compact artifact SHA-256 is
+  `aae7995de1777fe42fb05fd14806314b6174f53b5d86ae1df0595a4d7a44a9b6`;
+  its implementation-source closure and all 72 ignored raw hashes recompute.
+  The final applicable CPU/HIP Moonshine bundle collects 98 nodes and passes
+  **97/97 runnable** with only the expected explicit actual-model-gate skip.

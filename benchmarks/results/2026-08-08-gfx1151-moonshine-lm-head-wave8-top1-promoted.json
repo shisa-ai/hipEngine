@@ -246,7 +246,7 @@
   "performance_claim": false,
   "provenance": {
     "build_profile": "decode",
-    "collected_at": "2026-08-08T08:29:15.881479+00:00",
+    "collected_at": "2026-08-08T08:37:56.186332+00:00",
     "command": [
       "scripts/moonshine_lm_head_route_gate.py",
       "--model-path",
@@ -258,9 +258,9 @@
       "--python",
       "/home/lhl/miniforge3/envs/therock/bin/python3",
       "--raw-dir",
-      "/tmp/hipengine-moonshine-g1-route-raw",
+      "/tmp/hipengine-moonshine-g1-route-promoted-raw",
       "--output",
-      "/tmp/hipengine-moonshine-g1-route.json",
+      "/tmp/hipengine-moonshine-g1-route-promoted.json",
       "--require-clean"
     ],
     "configured_backend": "hip_gfx1151",
@@ -277,7 +277,7 @@
     },
     "git_branch": null,
     "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
-    "hipengine_commit": "dc62d7bb0eab65eb37160d0c1f10e024215c46b1",
+    "hipengine_commit": "75b3143fc5d9a5ea6cbdeb8cdb3d7d4b74c1239b",
     "kind": "hipengine_artifact_provenance",
     "kv_dtype": "fp16",
     "model_fingerprint": {
@@ -328,12 +328,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_argmax.json"
       ],
       "fixture": "audio-hai-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_argmax.json",
         "sha256": "565a3bcc8c81319ef05449c67399dc822c82d9884707448011cc4314c1706a86"
       },
       "report": {
@@ -380,12 +380,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_argmax.stdout.txt",
         "sha256": "565a3bcc8c81319ef05449c67399dc822c82d9884707448011cc4314c1706a86"
       },
       "token_route": "eager"
@@ -407,12 +407,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_top1.json"
       ],
       "fixture": "audio-hai-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_top1.json",
         "sha256": "41adaef01f2a425094bcd98af75963d18616ebc4313d6e5276585da27da22f6e"
       },
       "report": {
@@ -459,12 +459,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-eager-wave8_top1.stdout.txt",
         "sha256": "41adaef01f2a425094bcd98af75963d18616ebc4313d6e5276585da27da22f6e"
       },
       "token_route": "eager"
@@ -486,13 +486,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_argmax.json"
       ],
       "fixture": "audio-hai-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.json",
-        "sha256": "7a5aa2348daa54f7ceacd6e663e1c59365790ba2509ddead1fa6bbc20175ffea"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_argmax.json",
+        "sha256": "ce601633dad3c01605f8683e88aa1c25306b02528a58282decca8254171325f9"
       },
       "report": {
         "all_passed": true,
@@ -546,23 +546,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.582097,
+          "capture_wall_ms": 2.788837,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.60748,
+          "instantiate_wall_ms": 0.641354,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.stdout.txt",
-        "sha256": "7a5aa2348daa54f7ceacd6e663e1c59365790ba2509ddead1fa6bbc20175ffea"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "ce601633dad3c01605f8683e88aa1c25306b02528a58282decca8254171325f9"
       },
       "token_route": "graph"
     },
@@ -583,13 +583,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_top1.json"
       ],
       "fixture": "audio-hai-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.json",
-        "sha256": "b1a0d80bf1e6f7c443c5ba5f0e59cf9b63cfc09d34c37e8bfbcc134593119fcc"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_top1.json",
+        "sha256": "f116399e3afbe97eb888ef95c588d044c22b87d7ffb83827581bcfb737b2542f"
       },
       "report": {
         "all_passed": true,
@@ -643,23 +643,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.687546,
+          "capture_wall_ms": 2.721641,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.632719,
+          "instantiate_wall_ms": 0.6067899999999999,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.stdout.txt",
-        "sha256": "b1a0d80bf1e6f7c443c5ba5f0e59cf9b63cfc09d34c37e8bfbcc134593119fcc"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-hai-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "f116399e3afbe97eb888ef95c588d044c22b87d7ffb83827581bcfb737b2542f"
       },
       "token_route": "graph"
     },
@@ -680,12 +680,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_argmax.json"
       ],
       "fixture": "audio-konichiwa-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_argmax.json",
         "sha256": "fd2ac6cda7828a38fe5141365dbd574b8693487e5be9f2c69163589c80a20469"
       },
       "report": {
@@ -732,12 +732,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_argmax.stdout.txt",
         "sha256": "fd2ac6cda7828a38fe5141365dbd574b8693487e5be9f2c69163589c80a20469"
       },
       "token_route": "eager"
@@ -759,12 +759,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_top1.json"
       ],
       "fixture": "audio-konichiwa-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_top1.json",
         "sha256": "e0ba337193f4fbcd95ecb1cf64f5369a97cd6df3925dd8c6f42919f5ccdae13f"
       },
       "report": {
@@ -811,12 +811,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-eager-wave8_top1.stdout.txt",
         "sha256": "e0ba337193f4fbcd95ecb1cf64f5369a97cd6df3925dd8c6f42919f5ccdae13f"
       },
       "token_route": "eager"
@@ -838,13 +838,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_argmax.json"
       ],
       "fixture": "audio-konichiwa-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.json",
-        "sha256": "ab9bbba6826a2edaa3c33311f77d8477862db119e4b25c178a671d7ed6af4af9"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_argmax.json",
+        "sha256": "437d36da5b866466768413202e9d02fb40cb91d62d643c1956cd4950da971942"
       },
       "report": {
         "all_passed": true,
@@ -898,23 +898,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.535159,
+          "capture_wall_ms": 2.517046,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.6269469999999999,
+          "instantiate_wall_ms": 0.597362,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.stdout.txt",
-        "sha256": "ab9bbba6826a2edaa3c33311f77d8477862db119e4b25c178a671d7ed6af4af9"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "437d36da5b866466768413202e9d02fb40cb91d62d643c1956cd4950da971942"
       },
       "token_route": "graph"
     },
@@ -935,13 +935,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_top1.json"
       ],
       "fixture": "audio-konichiwa-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.json",
-        "sha256": "5e9621f7a64392985153f90c222bae74cae810d2b55033da33cc525fbc95fd29"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_top1.json",
+        "sha256": "4c8fc6e65603e677a89e37ca56c36d15eb2fc49f456ff258284aac6334ded65a"
       },
       "report": {
         "all_passed": true,
@@ -995,23 +995,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.535872,
+          "capture_wall_ms": 2.547682,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.590437,
+          "instantiate_wall_ms": 0.600688,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.stdout.txt",
-        "sha256": "5e9621f7a64392985153f90c222bae74cae810d2b55033da33cc525fbc95fd29"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "4c8fc6e65603e677a89e37ca56c36d15eb2fc49f456ff258284aac6334ded65a"
       },
       "token_route": "graph"
     },
@@ -1032,12 +1032,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.json"
       ],
       "fixture": "audio-konichiwa.ogenkidesuka-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.json",
         "sha256": "89c4597ade117308bcff95e47fa42f04c878f9b1c36a564024211c577fb7ac66"
       },
       "report": {
@@ -1084,12 +1084,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.stdout.txt",
         "sha256": "89c4597ade117308bcff95e47fa42f04c878f9b1c36a564024211c577fb7ac66"
       },
       "token_route": "eager"
@@ -1111,12 +1111,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.json"
       ],
       "fixture": "audio-konichiwa.ogenkidesuka-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.json",
         "sha256": "676f195214beb2a2e166fd158f6b874d304950508410cf9b55abb1654804c8db"
       },
       "report": {
@@ -1163,12 +1163,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.stdout.txt",
         "sha256": "676f195214beb2a2e166fd158f6b874d304950508410cf9b55abb1654804c8db"
       },
       "token_route": "eager"
@@ -1190,13 +1190,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.json"
       ],
       "fixture": "audio-konichiwa.ogenkidesuka-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.json",
-        "sha256": "2e81af2505489ce1e5595bf88b7f2e467e3715df118d6b2128823fb12dd1b1e6"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.json",
+        "sha256": "89bd6dae43495e71b6205528457d52080763dbebea79c0379085ac9dacfe39d4"
       },
       "report": {
         "all_passed": true,
@@ -1250,23 +1250,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.596696,
+          "capture_wall_ms": 2.614458,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.593786,
+          "instantiate_wall_ms": 0.607369,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.stdout.txt",
-        "sha256": "2e81af2505489ce1e5595bf88b7f2e467e3715df118d6b2128823fb12dd1b1e6"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "89bd6dae43495e71b6205528457d52080763dbebea79c0379085ac9dacfe39d4"
       },
       "token_route": "graph"
     },
@@ -1287,13 +1287,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.json"
       ],
       "fixture": "audio-konichiwa.ogenkidesuka-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.json",
-        "sha256": "87c8aca61be16d54ff863cecaccfb8c2740f919eb04f957052f8d8f94b6bebd9"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.json",
+        "sha256": "7e0245f00b5c3c7dadabf742fa86bb35141871bbe3aad9253601541560a73781"
       },
       "report": {
         "all_passed": true,
@@ -1347,23 +1347,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.524469,
+          "capture_wall_ms": 2.605941,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.611919,
+          "instantiate_wall_ms": 0.614152,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.stdout.txt",
-        "sha256": "87c8aca61be16d54ff863cecaccfb8c2740f919eb04f957052f8d8f94b6bebd9"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "7e0245f00b5c3c7dadabf742fa86bb35141871bbe3aad9253601541560a73781"
       },
       "token_route": "graph"
     },
@@ -1384,12 +1384,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_argmax.json"
       ],
       "fixture": "audio-kumbawa-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_argmax.json",
         "sha256": "e5ceb66af9342ea76febdaa782927fd670ac7f7026f75f98f5b7155d4e13f11e"
       },
       "report": {
@@ -1436,12 +1436,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_argmax.stdout.txt",
         "sha256": "e5ceb66af9342ea76febdaa782927fd670ac7f7026f75f98f5b7155d4e13f11e"
       },
       "token_route": "eager"
@@ -1463,12 +1463,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_top1.json"
       ],
       "fixture": "audio-kumbawa-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_top1.json",
         "sha256": "c601c4753482edd1e0dbea99d91557f4a017caba0b0c98711d181ceb370ca3c5"
       },
       "report": {
@@ -1515,12 +1515,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-eager-wave8_top1.stdout.txt",
         "sha256": "c601c4753482edd1e0dbea99d91557f4a017caba0b0c98711d181ceb370ca3c5"
       },
       "token_route": "eager"
@@ -1542,13 +1542,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_argmax.json"
       ],
       "fixture": "audio-kumbawa-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.json",
-        "sha256": "7ebc182de4cb33bf1288da725d7978a7e8d7a31893e34a7ddb48f1860de8cb8f"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_argmax.json",
+        "sha256": "0a3edad5e504f79ae651cbf6e763fd092a09623ffb8fc4a7e5d755dec63605ce"
       },
       "report": {
         "all_passed": true,
@@ -1602,23 +1602,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.5461,
+          "capture_wall_ms": 2.626762,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.601851,
+          "instantiate_wall_ms": 0.613893,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.stdout.txt",
-        "sha256": "7ebc182de4cb33bf1288da725d7978a7e8d7a31893e34a7ddb48f1860de8cb8f"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "0a3edad5e504f79ae651cbf6e763fd092a09623ffb8fc4a7e5d755dec63605ce"
       },
       "token_route": "graph"
     },
@@ -1639,13 +1639,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_top1.json"
       ],
       "fixture": "audio-kumbawa-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.json",
-        "sha256": "a34867a2b12cc5f30c504783d780aa1a7a4a1fe432f403c8e3aebd3c494c2b77"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_top1.json",
+        "sha256": "dd5769bf44a65412d43fbb3968443f39d8d08f44b4faac083a974016e68f7054"
       },
       "report": {
         "all_passed": true,
@@ -1699,23 +1699,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.5909139999999997,
+          "capture_wall_ms": 2.610652,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.613962,
+          "instantiate_wall_ms": 0.602523,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.stdout.txt",
-        "sha256": "a34867a2b12cc5f30c504783d780aa1a7a4a1fe432f403c8e3aebd3c494c2b77"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-kumbawa-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "dd5769bf44a65412d43fbb3968443f39d8d08f44b4faac083a974016e68f7054"
       },
       "token_route": "graph"
     },
@@ -1736,12 +1736,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_argmax.json"
       ],
       "fixture": "audio-sosososo-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_argmax.json",
         "sha256": "891909a219470304bc713fc4a059a9de201474ad112d3bdf7ad46f419e4e2e3e"
       },
       "report": {
@@ -1788,12 +1788,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_argmax.stdout.txt",
         "sha256": "891909a219470304bc713fc4a059a9de201474ad112d3bdf7ad46f419e4e2e3e"
       },
       "token_route": "eager"
@@ -1815,12 +1815,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_top1.json"
       ],
       "fixture": "audio-sosososo-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_top1.json",
         "sha256": "80e92bbc33a96ee8d26ed829fd6740722c2977b01378654e7d5ea67f1995f86e"
       },
       "report": {
@@ -1867,12 +1867,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-eager-wave8_top1.stdout.txt",
         "sha256": "80e92bbc33a96ee8d26ed829fd6740722c2977b01378654e7d5ea67f1995f86e"
       },
       "token_route": "eager"
@@ -1894,13 +1894,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_argmax.json"
       ],
       "fixture": "audio-sosososo-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.json",
-        "sha256": "1059dd664f40bcbc4ee5636973ade579ea49c5339719ac58f245c0b2e966e689"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_argmax.json",
+        "sha256": "1cb2ce7cd704efef867eb440f5cb15035a9d5c2eb6508493d5be243755a7805e"
       },
       "report": {
         "all_passed": true,
@@ -1954,23 +1954,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.545621,
+          "capture_wall_ms": 2.724776,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.601619,
+          "instantiate_wall_ms": 0.617429,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.stdout.txt",
-        "sha256": "1059dd664f40bcbc4ee5636973ade579ea49c5339719ac58f245c0b2e966e689"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "1cb2ce7cd704efef867eb440f5cb15035a9d5c2eb6508493d5be243755a7805e"
       },
       "token_route": "graph"
     },
@@ -1991,13 +1991,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_top1.json"
       ],
       "fixture": "audio-sosososo-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.json",
-        "sha256": "7a2c63d5601c344602d23a84c6f0a90638a53be5c87f57c1cf3e7b88ba199340"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_top1.json",
+        "sha256": "53eb83eb7d661fca6498248f4170cc3b6082abced7c16d41c87c2de05c4084d4"
       },
       "report": {
         "all_passed": true,
@@ -2051,23 +2051,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.691755,
+          "capture_wall_ms": 2.585794,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.60756,
+          "instantiate_wall_ms": 0.625453,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.stdout.txt",
-        "sha256": "7a2c63d5601c344602d23a84c6f0a90638a53be5c87f57c1cf3e7b88ba199340"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sosososo-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "53eb83eb7d661fca6498248f4170cc3b6082abced7c16d41c87c2de05c4084d4"
       },
       "token_route": "graph"
     },
@@ -2088,12 +2088,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_argmax.json"
       ],
       "fixture": "audio-sumimasen-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_argmax.json",
         "sha256": "4299e5f9a2ebb784c1bd9b4b881345fe154638962cdb29d85cbcaa4cce8a273b"
       },
       "report": {
@@ -2151,12 +2151,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_argmax.stdout.txt",
         "sha256": "4299e5f9a2ebb784c1bd9b4b881345fe154638962cdb29d85cbcaa4cce8a273b"
       },
       "token_route": "eager"
@@ -2178,12 +2178,12 @@
         "--token-route",
         "eager",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_top1.json"
       ],
       "fixture": "audio-sumimasen-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.json",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_top1.json",
         "sha256": "e012da32763a252c7a92ea7af3b5131bd6904e0454cd61bc7d8e5af6cac9e9c7"
       },
       "report": {
@@ -2241,12 +2241,12 @@
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.stdout.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-eager-wave8_top1.stdout.txt",
         "sha256": "e012da32763a252c7a92ea7af3b5131bd6904e0454cd61bc7d8e5af6cac9e9c7"
       },
       "token_route": "eager"
@@ -2268,13 +2268,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_argmax.json"
       ],
       "fixture": "audio-sumimasen-fp16",
       "lm_head_route": "wave8_argmax",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.json",
-        "sha256": "cd7bf5c054e9eddfb4b4776a80eb27c39472eacac423814848db3fc1d3074809"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_argmax.json",
+        "sha256": "49f4551513e93d1ac740f0f5bf21524ba04b9fae191678c27c8d3bcd4149c32b"
       },
       "report": {
         "all_passed": true,
@@ -2339,23 +2339,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.8400909999999997,
+          "capture_wall_ms": 2.6991080000000003,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.624342,
+          "instantiate_wall_ms": 0.642846,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_argmax.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.stdout.txt",
-        "sha256": "cd7bf5c054e9eddfb4b4776a80eb27c39472eacac423814848db3fc1d3074809"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "49f4551513e93d1ac740f0f5bf21524ba04b9fae191678c27c8d3bcd4149c32b"
       },
       "token_route": "graph"
     },
@@ -2376,13 +2376,13 @@
         "--token-route",
         "graph",
         "--json",
-        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.json"
+        "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_top1.json"
       ],
       "fixture": "audio-sumimasen-fp16",
       "lm_head_route": "wave8_top1",
       "raw_report": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.json",
-        "sha256": "3096fafae082815eb6a29db8f10790727a4c176b4a91b3571302181f3f64472d"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_top1.json",
+        "sha256": "69b78b943724eabec90d6dd23b34b66ceec6b2d058ff4d425bb81ef140e0eebd"
       },
       "report": {
         "all_passed": true,
@@ -2447,23 +2447,23 @@
             2,
             4
           ],
-          "capture_wall_ms": 2.665793,
+          "capture_wall_ms": 2.5344670000000002,
           "captured": true,
           "graph_count": 4,
-          "instantiate_wall_ms": 0.622308,
+          "instantiate_wall_ms": 0.6014390000000001,
           "replay_count": 194
         },
         "token_route": "graph"
       },
       "returncode": 0,
       "stderr": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.stderr.txt",
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_top1.stderr.txt",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       "stderr_tail": "",
       "stdout": {
-        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.stdout.txt",
-        "sha256": "3096fafae082815eb6a29db8f10790727a4c176b4a91b3571302181f3f64472d"
+        "path": "/tmp/hipengine-moonshine-g1-route-promoted-raw/audio-sumimasen-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "69b78b943724eabec90d6dd23b34b66ceec6b2d058ff4d425bb81ef140e0eebd"
       },
       "token_route": "graph"
     }
@@ -2473,8 +2473,8 @@
   "source_files": {
     "hipengine/kernels/hip_gfx1100/linear/moonshine_projection.hip": "0bcffccf18239d883fd7ed5bc19f3455ce90a9e949172046e49c9e5cccf5aa3d",
     "hipengine/kernels/hip_gfx1100/linear/moonshine_projection.py": "88ec623d24e3385c6e52380c629201770b02d80344f24528023db643ee91e8a5",
-    "hipengine/runtime/moonshine.py": "4ed2681f632190acedacb89439f0ced96e6d1264a52c1c78da04a3929b4e29c4",
-    "scripts/moonshine_decoder_smoke.py": "1b09c1d0b44093d5e409f2df57137018332a2057526a5ec12b00751cadee4e5d",
+    "hipengine/runtime/moonshine.py": "7246f3c0a7748f13de6727469d4452c74e44ecdb18bb5390b9f5af0249c08ef8",
+    "scripts/moonshine_decoder_smoke.py": "36102d8e466cf5efe3c4b449e030bec51b6cdd63c92ed3e916f2f61e0ee24e4f",
     "scripts/moonshine_lm_head_route_gate.py": "5b449d3fbf4ae9d92244ef2a81cf567f24aec9a62ed33fe92a96ec785cc3c201"
   },
   "status": "accepted_runtime_default"
