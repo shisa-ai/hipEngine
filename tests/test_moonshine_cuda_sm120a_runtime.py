@@ -23,6 +23,7 @@ reproduces the exact 194-position token stream.
 
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -433,6 +434,35 @@ def test_cuda_resident_runtime_self_attention_thread_buckets() -> None:
     assert _self_attention_threads(7) == 32
     assert _self_attention_threads(8) == 256
     assert _self_attention_threads(193) == 256
+
+
+def test_cuda_resident_runtime_read_result_tokens_limits_no_eos_to_generated_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = FakeCudaRuntime()
+    resident = MoonshineCudaResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    resident._device_owned_decode = True
+    resident.self_cache_length = 3
+
+    def fake_copy_device_to_host(host_ptr, _buffer, _nbytes=None, *, runtime=None):
+        del runtime
+        host = (ctypes.c_int64 * resident.spec.self_cache_capacity).from_address(
+            host_ptr
+        )
+        host[:] = [11, 12, 13] + [999] * (resident.spec.self_cache_capacity - 3)
+
+    monkeypatch.setattr(
+        "hipengine.runtime.moonshine_cuda.copy_device_to_host",
+        fake_copy_device_to_host,
+    )
+    try:
+        assert resident.read_result_tokens() == [11, 12, 13]
+    finally:
+        resident.close()
 
 
 def test_cuda_resident_runtime_requires_exactly_one_source() -> None:

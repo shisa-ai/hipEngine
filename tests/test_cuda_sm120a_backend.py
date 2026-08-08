@@ -133,13 +133,36 @@ def test_build_cuda_dry_run_and_require_cached_are_safe(
         )
 
 
-def test_cuda_sm120a_package_registers_only_backend_scaffold_keys() -> None:
-    assert not is_registered(KernelKey("cuda_sm120a", "smoke_add", "fp32"))
-    assert not is_registered(KernelKey("cuda_sm120a", "moonshine_projection", "fp16"))
+def test_cuda_sm120a_package_reregisters_all_implemented_kernel_families() -> None:
+    smoke_key = KernelKey("cuda_sm120a", "smoke_add", "fp32")
+    encoder_key = KernelKey(
+        "cuda_sm120a", "moonshine_conv1_tanh", "fp16", "strided_valid"
+    )
+    aot_attention_key = KernelKey(
+        "cuda_sm120a", "moonshine_self_attention", "fp16", "aot_cutlass"
+    )
+    assert not is_registered(smoke_key)
+    assert not is_registered(encoder_key)
+    assert not is_registered(aot_attention_key)
 
     module = load_backend_kernel_package("cuda_sm120a")
 
     assert module.BACKEND == "cuda_sm120a"
     assert module.TARGET_ARCH == "sm_120a"
     assert callable(resolve(backend="cuda_sm120a", layer="smoke_add", quant="fp32"))
-    assert not is_registered(KernelKey("cuda_sm120a", "moonshine_projection", "fp16"))
+    assert callable(
+        resolve(
+            backend="cuda_sm120a",
+            layer="moonshine_conv1_tanh",
+            quant="fp16",
+            variant="strided_valid",
+        )
+    )
+    assert callable(
+        resolve(
+            backend="cuda_sm120a",
+            layer="moonshine_self_attention",
+            quant="fp16",
+            variant="aot_cutlass",
+        )
+    )

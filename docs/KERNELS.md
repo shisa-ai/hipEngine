@@ -1138,8 +1138,42 @@ the two MLP composites. It issues 103 kernels/token versus the 135-kernel Phase-
 fallback. Clean past-1 timing is 0.861 ms HIP event / 0.915 ms wall; the six-file
 decoder-only median is 5.449 ms with exact generated IDs. Past-1 aggregate
 kernel time is 0.767 ms. Detailed bounded-fusion evidence is in the experiment
-ledger's `results/2026-07-31-hip-phase3-bounded-fusions.md`; fixed-address graph
-capture/replay remains the next structural step.
+ledger's `results/2026-07-31-hip-phase3-bounded-fusions.md`. Fixed-address graph
+capture/replay is now retained through four exact schedule regions (`0`, `1`,
+`2-3`, and `4-193`): the clean final gate measures 0.868 ms at cached position
+1 and a 5.446-ms six-file decoder-only median with exact generated IDs.
+
+The peer `cuda_sm120a` runtime now extends beyond C1 primitive bring-up:
+
+- **C2/C3:** `runtime/moonshine_cuda.py` composes a fixed-address eager decoder
+  and two CUDA graph buckets, then adds bounded wave8 LM-head/top-1 variants.
+  CUDA's graph schedule has two regions rather than HIP's four; neither its
+  thread geometry nor bucket map is a HIP selection authority.
+- **C4/C5:** `encoder/moonshine_encoder.{cu,py}` and
+  `runtime/moonshine_encoder_cuda.py` provide the torch-free conv/encoder stack,
+  CPU-oracle gates, async encoder handoff, device-owned token/position/EOS
+  control, and packed-FP16 deployment loading. Encoder and AOT-attention keys
+  are explicitly restored by backend package re-registration after registry
+  isolation.
+- **C6:** `runtime/moonshine_cuda_batch.py` plus the batch kernel families
+  provide exact fixed-capacity c2/c4/c8 encoder/decoder paths. Batch variants
+  remain CUDA-specific keys rather than aliases to scalar kernels.
+- **C7:** CUDA graph ownership is hardened around bounded scratch, reset/close,
+  and result publication. `read_result_tokens()` limits no-EOS readback to the
+  generated `self_cache_length` prefix rather than exposing unwritten capacity.
+- **C8:** `runtime/moonshine_cuda_continuous.py` owns decoder-side FIFO
+  admission, compaction/reclaim, and bounded graph LRU. The corrected full-mask
+  uniform-t256 route passes its complete labeled CUDA corpus gate; the earlier
+  split t32/t256 runtime remains explicit. This is not complete continuous audio
+  serving because callers still provide precomputed cross caches.
+- Long-bucket CUDA candidates include cuBLASLt projection routes and
+  CUTLASS/cuDNN attention. They are architecture-specific screens, not portable
+  HIP implementation or performance evidence.
+
+The current transfer order, public-support boundary, and independent gfx1151
+gates are frozen in [`MOONSHINE.md`](MOONSHINE.md). Main does not yet contain a
+fresh compact CUDA performance artifact, so the historical Blackwell rows stay
+directional and outside the benchmark scoreboard.
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 

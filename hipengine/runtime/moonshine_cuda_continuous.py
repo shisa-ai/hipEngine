@@ -1,12 +1,12 @@
 """Torch-free continuous batching over the Moonshine CUDA static-B decoder.
 
-Both reviewed designs are explicit. ``MoonshineCudaExactContinuousBatchRuntime``
-is the correctness-qualified path: live requests are packed into a t32
-positions-0-6 region, copied D2D once, then packed into a t256 positions-7-193
-region. ``MoonshineCudaContinuousBatchRuntime`` retains the simpler uniform-t256
-experiment whose full labeled gate regresses two characters and is not
-promotable. Both own FIFO admission/backpressure, independent positions,
-EOS/cancellation reclaim, compaction, and a bounded effective-batch graph LRU.
+Both reviewed designs are explicit. ``MoonshineCudaContinuousBatchRuntime`` is
+the corrected uniform-t256 route qualified by the complete full-mask labeled
+corpus gate. ``MoonshineCudaExactContinuousBatchRuntime`` retains the earlier
+split schedule: live requests are packed into a t32 positions-0-6 region,
+copied D2D once, then packed into a t256 positions-7-193 region. Both own FIFO
+admission/backpressure, independent positions, EOS/cancellation reclaim,
+compaction, and a bounded effective-batch graph LRU.
 """
 
 from __future__ import annotations
