@@ -208955,3 +208955,21 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Fully gated exclusive-GPU0 Moonshine validation is GREEN: **178 passed, 4
   optional skips** across CUDA source, sm120a kernels, attention/CUTLASS,
   static batch/encoder, continuous scheduling, runtime, and benchmark tests.
+
+## 2026-08-08 — Promote Moonshine CUDA implementation to main
+
+- Re-fetch confirms `origin/main@0a1d9ecc4` and
+  `origin/moonshine-cuda-sm120a@d4f32d578` are unchanged, with main a strict
+  ancestor and zero main-only / 37 Moonshine-only commits. Fast-forward local
+  `main` to the validated Moonshine merge tip; no force, rebase, or new code
+  resolution is involved.
+- Push `main` from `0a1d9ecc4` to `d4f32d578`. A post-push fetch and independent
+  `git ls-remote` both resolve `origin/main` and
+  `origin/moonshine-cuda-sm120a` to
+  `d4f32d578747156ebe68d2ff2fa7e3226a03ee58`; the worktree is clean.
+- Main now contains the Moonshine CUDA implementation, source and GPU tests,
+  benchmark harnesses, and retained engineering evidence. It intentionally does
+  **not** claim Moonshine in the root README supported-model matrix; that public
+  admission waits for the requested testing from main. The previously recorded
+  **178 passed / 4 optional skips** GPU0 gate and origin-matched full-suite
+  differential are the unchanged promotion evidence.
