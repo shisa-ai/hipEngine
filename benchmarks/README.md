@@ -75,7 +75,7 @@ tracing reduces the head **10.490 -> 3.734 ms (2.809x)** and wall **25.925 ->
 19.296 ms** with the same 293 launches. Evidence:
 [`D1 row reuse`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json).
 
-**Moonshine G1 exact wave8 top-1 retained/default-off on Radeon
+**Moonshine G1 exact wave8 top-1 retained/default on Radeon
 8060S/gfx1151:** at the synthetic production leaf shape `[1,416] x
 [36,864,416]`, stable partial top-1 improves wave8+full-logit-argmax median HIP
 event **114.854 -> 101.068 us (-12.003%, 63/63 wins)** and synchronized wall
@@ -83,12 +83,17 @@ event **114.854 -> 101.068 us (-12.003%, 63/63 wins)** and synchronized wall
 **117.379/129.143 -> 103.192/107.872 us**. Full FP16 logits and token are exact
 to the fallback and NumPy oracle, fixed scratch is 46,080 bytes, cached tracing
 names both local256/VGPR16/scratch0 candidate kernels, and lifecycle returns to
-baseline. A separate clean actual-checkpoint graph gate preserves all **194/194
-tokens**, eight selected full-logit/final-hidden pairs, and complete self/cross
-K/V byte-exact. This is a retained **kernel microbenchmark**, not complete ASR
-latency: the runtime stays on the explicit wave8+argmax fallback until the
-unavailable real-audio transcript-through-EOS bundle is restored. Evidence:
-[`G1 retained`](results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json).
+baseline. The actual-checkpoint graph gate preserves all **194/194 tokens**,
+eight selected full-logit/final-hidden pairs, and complete self/cross K/V
+byte-exact. The regenerated six-real-file admission matrix then passes all
+**24/24** fallback/candidate eager/graph rows through EOS, with pairwise-exact
+outcomes, worst fixture KL `1.010e-5`, 100% top-1, zero timed allocation, four
+graphs/194 replays, and clean teardown. `wave8_top1` is now the FP16 runtime
+default; `wave8_argmax` remains explicit rollback. The timing remains a
+**kernel microbenchmark**, not complete ASR latency. Evidence:
+[`G1 retained`](results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json)
+and
+[`G1 promoted`](results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json).
 
 | Maple retained workload | Current throughput | Exactness / scope | Artifact |
 | --- | ---: | --- | --- |

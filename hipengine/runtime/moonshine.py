@@ -37,6 +37,7 @@ MOONSHINE_SINGLE_PROJECTION_THREADS = 64
 MOONSHINE_MLP_FC1_THREADS = 32
 MOONSHINE_MLP_FC2_THREADS = 64
 MOONSHINE_LM_HEAD_ROUTES = ("wave8_argmax", "wave8_top1")
+MOONSHINE_DEFAULT_LM_HEAD_ROUTE = "wave8_top1"
 
 
 def normalize_moonshine_lm_head_route(route: str) -> str:
@@ -168,7 +169,7 @@ class MoonshineResidentRuntime:
         device: Device | None = None,
         runtime: HipRuntime | None = None,
         w8a16_families: str | Iterable[str] | None = None,
-        lm_head_route: str = "wave8_argmax",
+        lm_head_route: str = MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")

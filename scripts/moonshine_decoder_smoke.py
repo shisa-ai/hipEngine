@@ -30,7 +30,11 @@ from hipengine.kernels.hip_gfx1100.linear.moonshine_w8a16 import (
 from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
     build_moonshine_layernorm,
 )
-from hipengine.runtime.moonshine import MoonshineResidentRuntime
+from hipengine.runtime.moonshine import (
+    MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
+    MOONSHINE_LM_HEAD_ROUTES,
+    MoonshineResidentRuntime,
+)
 
 BOUNDARY_MAX_ABS = 1.0
 BOUNDARY_MAX_RELATIVE_L2 = 0.01
@@ -56,9 +60,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--lm-head-route",
-        choices=("wave8_argmax", "wave8_top1"),
-        default="wave8_argmax",
-        help="use the unfused full-logit argmax fallback or exact wave8 partial top-1",
+        choices=MOONSHINE_LM_HEAD_ROUTES,
+        default=MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
+        help="use exact wave8 partial top-1 (default) or the unfused full-logit fallback",
     )
     parser.add_argument(
         "--token-route",

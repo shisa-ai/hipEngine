@@ -126,7 +126,7 @@ Radeon speedup, launch geometry, numerical contract, or default.
 | Phase | Scope | Status | Promotion gate |
 | --- | --- | --- | --- |
 | **G0** | Main-promotion hygiene | Complete | Python 3.10 import, registry reset, no-EOS result, and stale-route/catalog defects repaired with focused tests |
-| **G1** | Exact wave8 LM-head + stable top-1 | Leaf retained; runtime default blocked | production leaf and actual-checkpoint graph state pass; historical real-audio fixture bundle is still required for the runtime-default decision |
+| **G1** | Exact wave8 LM-head + stable top-1 | **Complete; runtime default** | production leaf, actual-checkpoint graph state, and regenerated six-real-file eager/graph admission matrix pass; `wave8_argmax` remains explicit fallback |
 | **G2** | Async handoff + device-owned decode | Planned | same six-file stream/state, zero per-step token/position H2D in selected graph route, zero ownership after close |
 | **G3** | Static c2/c4/c8 decoder | Planned | each row bit-exact to independent c1, exact lockstep graph topology, mixed lengths/reclaim, no timed allocation |
 | **G4** | Continuous decoder scheduling | Planned | full mixed-arrival lifecycle plus exact state; preserve four regions or independently qualify reassociation on the full Japanese corpus |
@@ -211,12 +211,27 @@ routes through all 194 positions. All **194/194 tokens**, selected full-logit
 and final-hidden pairs at 0/1/2/4/31/63/127/193, and complete self/cross K/V
 planes are byte-exact with zero timed allocation and clean teardown.
 
-This retains G1 as a measured exact kernel win but does **not** make it the
-runtime default yet: the historical real-audio fixture bundle is absent on this
-host, so transcript-through-EOS qualification cannot be rerun. The blocker is
-recorded rather than treating synthetic encoder state as complete ASR evidence.
+The pinned six real source WAVs were recovered from
+`AUGMXNT/speed-benchmarking@248742f889a4f86667597105b2af1a5cef66111c`; all
+source hashes match the retained host-readiness manifest. The current Radeon
+8060S producer (HIP 7.15.0, Torch `2.10.0+rocm7.15.0a20260711`, Transformers
+5.8.1) regenerated the complete six-file position-0/193 fixture bundle with
+two-run exact repeatability and finite/archive/contract gates.
+
+A detached clean `dc62d7bb0` admission run then passes all **24/24** rows: six
+real files x fallback/candidate x eager/four-bucket graph. Every row is exact
+through first EOS and at selected fixture tokens, passes the full state/logit
+gate (worst KL `1.010e-5`, **100%** top-1, max relative L2 `0.004829`), performs
+zero timed allocation, and tears down to zero ownership. Every graph row has
+four captures and 194 replays; fallback/candidate outcomes are pairwise exact;
+the candidate adds exactly 46,080 resident bytes. G1 therefore promotes
+`wave8_top1` to the FP16 runtime and smoke-driver default while retaining
+`wave8_argmax` as the explicit unfused rollback.
+
 Evidence:
-[`G1 retained leaf + model state`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json).
+[`G1 leaf + model state`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json)
+and
+[`G1 six-real-file promotion`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json).
 
 ## Correctness and lifecycle gates
 
@@ -292,12 +307,23 @@ GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
 
 The model-derived fixture bundle is not committed because it is large. A local
 or CI gate must record its content hashes and producer identity; compact result
-summaries belong in the repository, raw tensors and profiler CSVs do not.
+summaries belong in the repository, raw tensors and profiler CSVs do not. The
+complete G1 promotion gate is:
+
+```bash
+GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+  python3 scripts/moonshine_lm_head_route_gate.py \
+  --model-path /path/to/pinned/snapshot \
+  --fixture-dir /path/to/moonshine-fixtures-six \
+  --compiler-version-file /tmp/hipengine-moonshine-hipcc-version.txt \
+  --python /path/to/python3 --raw-dir /tmp/moonshine-g1-raw \
+  --output /tmp/moonshine-g1.json --require-clean
+```
 
 ## Current next action
 
-Restore or regenerate the pinned real-audio fixture bundle and run the eager +
-four-bucket graph transcript-through-EOS gate on the retained G1 route. Promote
-it over `wave8_argmax` only if that gate passes; otherwise remove its runtime
-selector per `docs/REFACTOR.md`. Do not begin G2/G3 runtime transfer before this
-runtime-default decision is committed.
+Begin G2 from the promoted exact `wave8_top1` c1 baseline: transfer async
+encoder-state handoff plus device-owned token/position decode while preserving
+the same six-file stream/state, four graph regions, zero per-step token/position
+H2D, zero timed allocation, and complete teardown. Keep `wave8_argmax` as the
+explicit composite fallback; do not stack G3 batching before G2 closes.

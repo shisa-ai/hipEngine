@@ -3272,22 +3272,22 @@ should be boring.
   clean release if no deployment requires strict hidden-boundary arithmetic;
   preserve the static lockstep runtime as the exact comparison route.
 
-## Moonshine gfx1151 exact wave8 top-1 — temporary route selector
+## Moonshine gfx1151 exact wave8 top-1 — temporary rollback selector
 
-- `MoonshineResidentRuntime(lm_head_route="wave8_top1")` opts into the G1
-  candidate; `wave8_argmax` remains the default and explicit unfused fallback.
-  The candidate materializes the same complete FP16 logit plane, owns bounded
-  FP16-value/int64-index scratch, and replaces only the full-logit argmax scan
-  with stable block partials plus a final reduction.
-- The clean production leaf passes at **-12.003% event / -12.005% wall**, and
-  the actual-checkpoint 194-step graph gate is byte-exact for tokens, selected
-  full logits/final hidden, and complete K/V. The selector remains only because
-  the historical real-audio fixture bundle is unavailable for transcript-
-  through-EOS recertification. If that restored gate rejects, remove the
-  constructor selector, conditional scratch, runtime branch, and benchmark
-  immediately. If it passes, make top-1 the runtime default, keep the unfused
-  registry keys as required composite fallback, and remove the public selector
-  after one clean release unless rollback/bisection still requires it.
+- `wave8_top1` is now the G1 FP16 runtime default. It materializes the same
+  complete FP16 logit plane, owns bounded FP16-value/int64-index scratch, and
+  replaces only the full-logit argmax scan with stable block partials plus a
+  final reduction. `MoonshineResidentRuntime(lm_head_route="wave8_argmax")`
+  remains the explicit unfused rollback and is required for selective W8A16
+  LM-head diagnostics.
+- The clean production leaf passes at **-12.003% event / -12.005% wall**; the
+  actual-checkpoint 194-step graph gate is byte-exact; and the regenerated real-
+  audio gate passes all **24/24** six-file fallback/candidate eager/graph rows
+  through EOS with pairwise-exact outcomes, zero timed allocation, four graphs,
+  194 replays, and clean teardown. Keep the constructor/script selector through
+  one clean release for rollback and bisection. Then remove the public selector
+  unless a deployment still requires it; retain the separately registered
+  wave8 projection and stable argmax as the mandatory composite fallback.
 
 ## Maple P1 expert-major prefill rollback — temporary opt-out
 
