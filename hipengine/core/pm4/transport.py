@@ -18,6 +18,7 @@ from hipengine.core.pm4.native import NativePm4Context, NativePm4Executable
 
 _ENV_SUBMISSION_TRANSPORT = "HIPENGINE_SUBMISSION_TRANSPORT"
 _ENV_PM4_STATEFUL_REGISTERS = "HIPENGINE_PM4_STATEFUL_REGISTERS"
+_ENV_PM4_LOCAL_CACHE_DEPENDENCIES = "HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"
 _DEFAULT_SUBMISSION_TRANSPORT = "hipgraph"
 _NATIVE_TRANSPORTS = frozenset(("aql", "pm4"))
 
@@ -319,6 +320,7 @@ class NativeGraphSubmission:
     context: NativePm4Context
     executable: NativePm4Executable
     stateful_registers: bool = False
+    local_cache_dependencies: bool = False
     context_owner: NativeGraphSubmissionContext | None = None
     graph_exec: int = 0
     launches: int = 0
@@ -364,6 +366,7 @@ class NativeGraphSubmission:
             "submission_started": bool(self.submission_started),
             "native_fallbacks": 0,
             "stateful_registers": bool(self.stateful_registers),
+            "local_cache_dependencies": bool(self.local_cache_dependencies),
             "closed": bool(self.closed),
             "context": self._component_provenance(self.context),
             "executable": self._component_provenance(self.executable),
@@ -414,6 +417,7 @@ class NativeGraphSubmissionContext:
     name: str
     context: NativePm4Context
     stateful_registers: bool = False
+    local_cache_dependencies: bool = False
     context_create_ns: int = 0
     last_graph_inspection_ns: int = 0
     last_graph_inspection_phases_ns: dict[str, int] = field(default_factory=dict)
@@ -455,6 +459,7 @@ class NativeGraphSubmissionContext:
         executable = self.context.instantiate(
             manifest,
             stateful_registers=self.stateful_registers,
+            local_cache_dependencies=self.local_cache_dependencies,
         )
         self.last_native_instantiate_ns = time.perf_counter_ns() - instantiate_start_ns
         self.native_instantiate_ns_total += self.last_native_instantiate_ns
@@ -467,6 +472,7 @@ class NativeGraphSubmissionContext:
             context=self.context,
             executable=executable,
             stateful_registers=self.stateful_registers,
+            local_cache_dependencies=self.local_cache_dependencies,
             context_owner=self,
         )
 
@@ -491,6 +497,7 @@ class NativeGraphSubmissionContext:
             "children": int(self.children),
             "generations": int(self.generations),
             "stateful_registers": bool(self.stateful_registers),
+            "local_cache_dependencies": bool(self.local_cache_dependencies),
             "context_create_ns": int(self.context_create_ns),
             "last_graph_inspection_ns": int(self.last_graph_inspection_ns),
             "last_graph_inspection_phases_ns": dict(self.last_graph_inspection_phases_ns),
@@ -543,6 +550,9 @@ def _create_gfx1100_submission_context(
             "in-tree native graph submission is admitted only for hip_gfx1100/gfx1100"
         )
     stateful_registers = bool(selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS))
+    local_cache_dependencies = bool(
+        selected == "pm4" and _env_flag(_ENV_PM4_LOCAL_CACHE_DEPENDENCIES)
+    )
     context_create_start_ns = time.perf_counter_ns()
     context = NativePm4Context.create(
         pci_bdf=runtime.device_pci_bus_id(),
@@ -556,6 +566,7 @@ def _create_gfx1100_submission_context(
         name=selected,
         context=context,
         stateful_registers=stateful_registers,
+        local_cache_dependencies=local_cache_dependencies,
         context_create_ns=context_create_ns,
     )
 
@@ -577,6 +588,9 @@ def _create_gfx1100_native_submission(
         stream=request.capture_stream,
     )
     stateful_registers = bool(selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS))
+    local_cache_dependencies = bool(
+        selected == "pm4" and _env_flag(_ENV_PM4_LOCAL_CACHE_DEPENDENCIES)
+    )
     context: NativePm4Context | None = None
     try:
         context = NativePm4Context.create(
@@ -586,6 +600,7 @@ def _create_gfx1100_native_submission(
         executable = context.instantiate(
             manifest,
             stateful_registers=stateful_registers,
+            local_cache_dependencies=local_cache_dependencies,
         )
     except Exception as operation_error:
         if context is not None:
@@ -604,6 +619,7 @@ def _create_gfx1100_native_submission(
         context=context,
         executable=executable,
         stateful_registers=stateful_registers,
+        local_cache_dependencies=local_cache_dependencies,
     )
 
 

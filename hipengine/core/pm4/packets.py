@@ -42,9 +42,7 @@ ENABLE_SGPR_FLAT_SCRATCH_INIT: Final[int] = 1 << 5
 ENABLE_SGPR_PRIVATE_SEGMENT_SIZE: Final[int] = 1 << 6
 ENABLE_WAVEFRONT_SIZE32: Final[int] = 1 << 10
 _SUPPORTED_PROPERTIES: Final[int] = (
-    ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER
-    | ENABLE_SGPR_KERNARG_SEGMENT_PTR
-    | ENABLE_WAVEFRONT_SIZE32
+    ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER | ENABLE_SGPR_KERNARG_SEGMENT_PTR | ENABLE_WAVEFRONT_SIZE32
 )
 _LDS_SIZE_MASK: Final[int] = 0x00FF8000
 _LDS_SIZE_SHIFT: Final[int] = 15
@@ -81,12 +79,7 @@ class DispatchGeometry:
 def packet3(opcode: int, body_dwords: int, *, compute: bool) -> int:
     if not 0 <= opcode <= 0xFF or not 1 <= body_dwords <= 0x4000:
         raise Pm4InspectionError("invalid PACKET3 opcode or body length")
-    return (
-        (3 << 30)
-        | ((body_dwords - 1) << 16)
-        | (opcode << 8)
-        | ((1 << 1) if compute else 0)
-    )
+    return (3 << 30) | ((body_dwords - 1) << 16) | (opcode << 8) | ((1 << 1) if compute else 0)
 
 
 def acquire_system() -> tuple[int, ...]:
@@ -126,6 +119,20 @@ def dependency_global() -> tuple[int, ...]:
         0,
         10,
         0x0C380,
+    )
+
+
+def dependency_local_cache() -> tuple[int, ...]:
+    return (
+        *wait_compute_idle(),
+        packet3(PACKET3_ACQUIRE_MEM, 7, compute=False),
+        0,
+        0xFFFFFFFF,
+        0x00FFFFFF,
+        0,
+        0,
+        10,
+        0x00380,
     )
 
 
@@ -244,6 +251,7 @@ def encode_gfx1100_graph(
     *,
     acquire: bool = True,
     conservative_dependencies: bool = True,
+    local_cache_dependencies: bool = False,
     stateful: bool = False,
 ) -> tuple[int, ...]:
     """Encode one serialized gfx1100 kernel tape and mandatory final flush."""
@@ -254,15 +262,15 @@ def encode_gfx1100_graph(
     state: dict[int, int] | None = {} if stateful else None
     for index, (image, geometry, dynamic_group, kernarg_address) in enumerate(dispatches):
         if index and conservative_dependencies:
-            words.extend(dependency_global())
+            words.extend(
+                dependency_local_cache() if local_cache_dependencies else dependency_global()
+            )
         _dispatch(words, image, geometry, dynamic_group, kernarg_address, state)
     words.extend(wait_compute_idle())
     return tuple(words)
 
 
-def vendor_pm4_ib_packet(
-    *, address: int, dwords: int, completion_signal: int
-) -> tuple[bytes, int]:
+def vendor_pm4_ib_packet(*, address: int, dwords: int, completion_signal: int) -> tuple[bytes, int]:
     """Build AMD's 64-byte vendor-AQL PM4 indirect-buffer packet."""
 
     if address <= 0 or address & 3:

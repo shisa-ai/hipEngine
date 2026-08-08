@@ -907,6 +907,18 @@ evidence that a cache acquire/invalidation is semantically mandatory, not a
 lifecycle artifact. The flag and implementation were removed. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-pm4-wait-only-dependency-rejected.json`.
 
+The narrower default-off `HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES=1` candidate
+retains both the compute-idle event and `ACQUIRE_MEM`, but changes GCR control
+from `GLK_INV|GLV_INV|GL1_INV|GL2_INV|GL2_WB` (`0xc380`) to the local
+`GLK_INV|GLV_INV|GL1_INV` subset (`0x0380`). The prior completion barrier makes
+producer writes visible in coherent GL2; consumers still invalidate scalar,
+vector, and GL1 caches. It is bit-exact on the 626-node p512/d3 gate and on a
+counterbalanced p512/d128 run. The latter improves stateful replay
+**10.022598 -> 9.936004 ms/token (-0.864%, 5/5 paired wins)** and throughput
+**99.775 -> 100.644 tok/s (1.0087x)** with identical tokens, recurrent/KV state,
+and all logits. Tape size remains 18,079 dwords. This is retained as an explicit
+candidate pending tracked-clean publication and the broader promotion matrix.
+
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact
 benchmark command/hardware/source evidence, compact artifact, rollup, and

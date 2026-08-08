@@ -37,6 +37,7 @@ namespace {
 constexpr uint32_t kAbiVersion = 2;
 constexpr uint32_t kExecutableFlagTimestamps = 1u << 0;
 constexpr uint32_t kExecutableFlagStatefulRegisters = 1u << 1;
+constexpr uint32_t kExecutableFlagLocalCacheDependencies = 1u << 2;
 constexpr size_t kPacketBytes = 64;
 constexpr uint64_t kNanosPerSecond = 1000000000ull;
 constexpr uint32_t kPacket3SetShReg = 0x76;
@@ -56,6 +57,15 @@ constexpr uint32_t kComputeUserData0 = 0x240;
 constexpr uint32_t kLdsSizeMask = 0x00ff8000;
 constexpr uint32_t kLdsSizeShift = 15;
 constexpr uint32_t kLdsGranule = 512;
+// PACKET3_ACQUIRE_MEM GCR_CNTL fields from Linux amdgpu nvd.h.
+constexpr uint32_t kGcrGlkInv = 1u << 7;
+constexpr uint32_t kGcrGlvInv = 1u << 8;
+constexpr uint32_t kGcrGl1Inv = 1u << 9;
+constexpr uint32_t kGcrGl2Inv = 1u << 14;
+constexpr uint32_t kGcrGl2Wb = 1u << 15;
+constexpr uint32_t kDependencyLocalCacheGcr = kGcrGlkInv | kGcrGlvInv | kGcrGl1Inv;
+constexpr uint32_t kDependencyGlobalGcr =
+    kDependencyLocalCacheGcr | kGcrGl2Inv | kGcrGl2Wb;
 constexpr uint16_t kEnablePrivateSegmentBuffer = 1u << 0;
 constexpr uint16_t kEnableDispatchPtr = 1u << 1;
 constexpr uint16_t kEnableQueuePtr = 1u << 2;
@@ -664,7 +674,14 @@ void append_wait_compute_idle(std::vector<uint32_t>* words) {
 void append_dependency_global(std::vector<uint32_t>* words) {
   append_wait_compute_idle(words);
   const uint32_t values[] = {packet3(kPacket3AcquireMem, 7, false), 0, 0xffffffff,
-                             0x00ffffff, 0, 0, 10, 0x0c380};
+                             0x00ffffff, 0, 0, 10, kDependencyGlobalGcr};
+  words->insert(words->end(), std::begin(values), std::end(values));
+}
+
+void append_dependency_local_cache(std::vector<uint32_t>* words) {
+  append_wait_compute_idle(words);
+  const uint32_t values[] = {packet3(kPacket3AcquireMem, 7, false), 0, 0xffffffff,
+                             0x00ffffff, 0, 0, 10, kDependencyLocalCacheGcr};
   words->insert(words->end(), std::begin(values), std::end(values));
 }
 
@@ -836,6 +853,7 @@ struct Executable {
   hsa_signal_value_t last_completion_value = 1;
   std::string last_transport = "none";
   bool stateful_registers = false;
+  bool local_cache_dependencies = false;
   bool usable = true;
   bool in_flight = false;
   bool retired = true;
@@ -1081,6 +1099,8 @@ std::string executable_json(Executable* executable) {
       << ",\"kernarg_slab_allocated_bytes\":" << executable->kernargs.allocated
       << ",\"stateful_registers\":"
       << (executable->stateful_registers ? "true" : "false")
+      << ",\"local_cache_dependencies\":"
+      << (executable->local_cache_dependencies ? "true" : "false")
       << ",\"aql_submissions\":" << executable->aql_submissions
       << ",\"pm4_submissions\":" << executable->pm4_submissions
       << ",\"last_packet_id\":" << executable->last_packet_id
@@ -1358,7 +1378,8 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
   return guarded(error, error_size, [&] {
     if (context_opaque == nullptr || output == nullptr) throw Error("null executable input");
     *output = nullptr;
-    if (flags & ~(kExecutableFlagTimestamps | kExecutableFlagStatefulRegisters))
+    if (flags & ~(kExecutableFlagTimestamps | kExecutableFlagStatefulRegisters |
+                  kExecutableFlagLocalCacheDependencies))
       throw Error("unsupported PM4 executable creation flags");
     if (input == nullptr || count == 0) throw Error("cannot instantiate an empty graph");
     Context* context = &context_opaque->value;
@@ -1371,6 +1392,8 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
     executable->context = context;
     executable->generation = ++context->generation;
     executable->stateful_registers = (flags & kExecutableFlagStatefulRegisters) != 0;
+    executable->local_cache_dependencies =
+        (flags & kExecutableFlagLocalCacheDependencies) != 0;
     executable->modules.reserve(count);
     executable->dispatches.reserve(count);
     std::vector<uint8_t> staged_kernargs;
@@ -1496,7 +1519,12 @@ int he_pm4_executable_create_ex(he_pm4_context* context_opaque, const he_pm4_nod
     RegisterState register_state;
     RegisterState* state = executable->stateful_registers ? &register_state : nullptr;
     for (size_t index = 0; index < executable->dispatches.size(); ++index) {
-      if (index != 0) append_dependency_global(&executable->pm4_words);
+      if (index != 0) {
+        if (executable->local_cache_dependencies)
+          append_dependency_local_cache(&executable->pm4_words);
+        else
+          append_dependency_global(&executable->pm4_words);
+      }
       append_dispatch(&executable->pm4_words, executable->dispatches[index], state);
     }
     append_wait_compute_idle(&executable->pm4_words);
