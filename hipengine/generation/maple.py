@@ -45,6 +45,8 @@ class MapleGenerator:
     model_plugin: Any
     backend: str = "hip_gfx1151"
     context_length: int = _MAPLE_DEFAULT_CONTEXT
+    runner_type: type[MapleRunner] = field(default=MapleRunner, repr=False)
+    resident_batch_enabled: bool = field(default=True, repr=False)
     tokenizer: MapleTokenizer = field(init=False)
     checkpoint: MapleCheckpoint = field(init=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(
@@ -102,7 +104,15 @@ class MapleGenerator:
     def decode(self, token_ids, *, skip_special: bool = False) -> str:
         return self.tokenizer.decode(token_ids, skip_special=skip_special)
 
-    def create_resident_model_runner(
+    @property
+    def create_resident_model_runner(self):
+        """Return the qualified resident-batch factory, or no capability."""
+
+        if not getattr(self, "resident_batch_enabled", True):
+            return None
+        return self._create_resident_model_runner
+
+    def _create_resident_model_runner(
         self,
         *,
         capacity: int | None = None,
@@ -196,7 +206,7 @@ class MapleGenerator:
         if self._runner is not None:
             return self._runner
         started = time.perf_counter()
-        self._runner = MapleRunner.load(
+        self._runner = self.runner_type.load(
             self.checkpoint,
             backend=self.backend,
             max_context=self.context_length,
@@ -656,6 +666,24 @@ def _maple_finish_details(
     return None
 
 
+def make_maple_generator_cuda_sm120a(
+    *,
+    model_path: str | Path,
+    weight_index: WeightIndex,
+    model_plugin: Any,
+) -> MapleGenerator:
+    from hipengine.runtime.maple_cuda import MapleCudaRunner
+
+    return MapleGenerator(
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        backend="cuda_sm120a",
+        runner_type=MapleCudaRunner,
+        resident_batch_enabled=False,
+    )
+
+
 def make_maple_generator_gfx1151(
     *,
     model_path: str | Path,
@@ -686,6 +714,12 @@ def make_maple_generator_gfx1100(
 
 register_text_generator(
     model="maple",
+    backend="cuda_sm120a",
+    quant=_MAPLE_QUANT,
+    factory=make_maple_generator_cuda_sm120a,
+)
+register_text_generator(
+    model="maple",
     backend="hip_gfx1151",
     quant=_MAPLE_QUANT,
     factory=make_maple_generator_gfx1151,
@@ -701,6 +735,7 @@ register_text_generator(
 __all__ = [
     "MapleGenerator",
     "MapleResidentModelRunner",
+    "make_maple_generator_cuda_sm120a",
     "make_maple_generator_gfx1100",
     "make_maple_generator_gfx1151",
 ]

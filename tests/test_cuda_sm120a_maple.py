@@ -50,9 +50,15 @@ def test_cuda_sm120a_maple_build_plans_are_architecture_qualified(tmp_path) -> N
 
 
 def test_cuda_sm120a_maple_c1_registry_keys_resolve() -> None:
+    from hipengine.kernels.backends import backend_package_capability
     from hipengine.kernels.cuda_sm120a import register_backend_kernels
+    from hipengine.runtime.maple_cuda import MapleCudaRunner
 
     register_backend_kernels(replace=True)
+    runner_type = backend_package_capability(
+        "cuda_sm120a", "maple_runner_type"
+    )
+    assert runner_type() is MapleCudaRunner
     keys = (
         KernelKey("cuda_sm120a", "maple_ternary_gemv", "maple_ternary2", "row_alpha"),
         KernelKey("cuda_sm120a", "maple_affine4_gemv", "maple_ternary2", "group64_wave32_exact"),
