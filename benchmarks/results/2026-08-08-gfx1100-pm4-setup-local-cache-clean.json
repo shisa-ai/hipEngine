@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_pm4_setup_and_local_cache_dependency_diagnostic",
+  "created_at": "2026-08-08T00:06:07Z",
+  "status": "diagnostic_accepted",
+  "performance_claim": false,
+  "source_commit": "50d509dae574415297542631a183bf002efaa2b3",
+  "source_clean": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "gfx_arch": "gfx1100",
+    "pci_bdf": "0000:0d:00.0",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": "1",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "workload": {
+    "prompt_source": "repeated-token focused transport diagnostic",
+    "prompt_token_id": 9707,
+    "expected_token_id": 9707,
+    "prompt_length": 512,
+    "decode_steps": 128,
+    "warmups": 1,
+    "repetitions": 5,
+    "counterbalanced": true,
+    "one_loaded_session": true,
+    "capture_order": ["hipgraph", "pm4_stateful_local", "pm4_stateful"]
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/pm4_graph_bench.py --transports hipgraph pm4_stateful_local pm4_stateful --prompt-length 512 --steps 128 --warmups 1 --repetitions 5 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/hipengine-pm4-promote-clean-p512-d128.json",
+  "replay": {
+    "hipgraph": {
+      "capture_ms": 34.993404,
+      "wall_ms_samples": [1375.962865, 1372.587323, 1376.940863, 1372.930141, 1372.972815],
+      "median_ms_per_token": 10.7263501171875,
+      "median_tok_s": 93.2283571834596,
+      "capture_inclusive_ms_per_token": 10.999736085937501
+    },
+    "pm4_stateful_global": {
+      "capture_ms_warm_dso": 79.295732,
+      "wall_ms_samples": [1281.991543, 1282.877757, 1286.754092, 1288.279125, 1290.009791],
+      "median_ms_per_token": 10.05276634375,
+      "median_tok_s": 99.47510623498371,
+      "pm4_dwords": 18079
+    },
+    "pm4_stateful_local": {
+      "capture_ms_cold_dso": 132.857623,
+      "capture_breakdown_ms": {
+        "context_create": 3.994,
+        "graph_inspection": 86.335,
+        "dso_load": 51.720,
+        "native_instantiate": 14.466,
+        "hip_capture_and_python_residual": 28.062
+      },
+      "wall_ms_samples": [1271.277124, 1273.684469, 1275.437825, 1277.429145, 1280.929984],
+      "median_ms_per_token": 9.9643580078125,
+      "median_tok_s": 100.35769481746395,
+      "capture_inclusive_ms_per_token": 11.002308187499999,
+      "pm4_dwords": 18079,
+      "dependency_gcr_cntl": "0x0380"
+    }
+  },
+  "comparison": {
+    "local_vs_global_replay_wall_pct": -0.8794428609440907,
+    "local_vs_global_tok_s_speedup": 1.0088724567973353,
+    "local_vs_global_paired_wins": 5,
+    "local_vs_global_paired_total": 5,
+    "local_vs_hipgraph_replay_wall_pct": -7.103927254379039,
+    "local_vs_hipgraph_tok_s_speedup": 1.076471771565972,
+    "local_cold_capture_inclusive_vs_hipgraph_pct": 0.023383302493829028,
+    "local_cold_capture_inclusive_total_delta_ms": 0.3292289999997138,
+    "prior_stateful_capture_ms": 193.739496,
+    "current_local_cold_capture_ms": 132.857623,
+    "capture_reduction_pct_vs_prior": -31.425482108475286,
+    "decision": "retain exact setup and dependency optimizations; explicit PM4 promotion still requires natural/context/lifecycle gates"
+  },
+  "correctness": {
+    "passed": true,
+    "all_final_token_ids": [9707],
+    "recurrent_kv_state_sha256": "062dd376e3fb7791245cbf546eeef1301dbc29b586dc22ab10aa1f8d346f35a0",
+    "final_logits_sha256": "676151051dbd990f3da3e011e24ced70cd4132c71de0bb0e3c08c5252be291f9",
+    "state_exact_across_transports_and_runs": true,
+    "final_logits_exact_across_transports_and_runs": true
+  },
+  "lifecycle": {
+    "native_fallbacks": 0,
+    "callback_status": 0,
+    "unretired_submissions": 0,
+    "contexts_closed": true,
+    "memory_recovered": true,
+    "first_use_cache_delta_bytes": 4194304,
+    "recovery_tolerance_bytes": 67108864
+  },
+  "notes": [
+    "Focused repeated-token transport diagnostic only; performance_claim=false.",
+    "The local-cache candidate was captured first among PM4 variants, so its 132.858 ms setup is a cold DSO-cache measurement.",
+    "No submit-plus-queue-recreate stress was performed."
+  ]
+}
