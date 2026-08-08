@@ -105,7 +105,7 @@ package-default claim:
 | Retained PM4 | 100.357 tok/s median decode |
 | Narrow delta | +8.129% decode; +6.747% steady post-load wall |
 | Persistent control | 512 PM4 launches, exact output, 0.095% range/median |
-| Promotion status | Blocked by a separate recreate-heavy address-zero GPU fault and missing broad gates |
+| Historical promotion status | Initially blocked by recreate-heavy address-zero fault and missing broad gates; superseded by P6 evidence below |
 
 The evidence says that submission work is material enough to pursue and that a
 large real graph can be lowered exactly. It does **not** prove natural-prompt,
@@ -998,8 +998,12 @@ policy now selects PM4 only for the exact measured Qwen3.6-35B-A3B Q4_K_M
 identity and physical c1/c2/c4/c8 windows above conservative capture break-even
 thresholds. Short windows, unknown identities/widths, unrelated graph families,
 and peer backends retain HIP graph; explicit API/environment choices remain
-available for diagnostics. ROCm #6529 queue recreate remains useful optional isolation coverage,
-but it is not an evidenced fault in the production ownership path: hipEngine
+available for diagnostics. A clean no-override gate proves c1 d128→HIP and
+d144→PM4, c2 d3→HIP, and p512/d128 c2/c4/c8→PM4 with exact tokens, zero
+fallback, complete retirement, and checked PM4 context close. Evidence:
+`benchmarks/results/2026-08-08-gfx1100-pm4-scoped-default.json`. ROCm #6529
+queue recreate remains useful optional isolation coverage, but it is not an
+evidenced fault in the production ownership path: hipEngine
 retains one queue and does not recreate it in-process.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt

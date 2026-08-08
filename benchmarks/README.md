@@ -16,9 +16,9 @@ measured capture break-even.
 
 | Transport / encoder | Qwen3.6 Q4_K_M p512/d128 replay | Capture | Retained tape | Status |
 | --- | ---: | ---: | ---: | --- |
-| HIP graph | **10.726350 ms/token / 93.228 tok/s** | 34.993 ms | Native runtime graph | Portable oracle/default |
+| HIP graph | **10.726350 ms/token / 93.228 tok/s** | 34.993 ms | Native runtime graph | Portable oracle/global fallback |
 | In-tree stateful PM4, global acquire | **10.052766 / 99.475** | 79.296 ms (warm DSO metadata) | 18,079 dwords | Exact comparison path |
-| In-tree stateful PM4, local-cache acquire | **9.964358 / 100.358** | **132.858 ms cold** | 18,079 dwords | Canonical explicit-PM4 encoder; **-0.879%**, **5/5** paired wins vs global; **-7.104%** vs HIP replay |
+| In-tree stateful PM4, local-cache acquire | **9.964358 / 100.358** | **132.858 ms cold** | 18,079 dwords | Canonical/scoped-default encoder; **-0.879%**, **5/5** paired wins vs global; **-7.104%** vs HIP replay |
 
 Tracked-clean W7900 evidence, exact state/logit hashes, setup attribution, command,
 and lifecycle proof:
@@ -61,9 +61,12 @@ Explicit `transport="pm4"` selects the stateful/local-cache encoder
 unconditionally. The c1/c2/c4/c8 performance blocker is resolved. The scoped
 default is limited to Qwen3.6-35B-A3B `MOSTLY_Q4_K_M`, physical c1/c2/c4/c8,
 one-step tapes, and declared windows of at least **144/64/96/80** transitions;
-shorter or unknown scopes and peer backends retain HIP graph. ROCm #6529
-recreate remains optional unrun
-coverage rather than an evidenced in-tree fault because production retains one
+shorter or unknown scopes and peer backends retain HIP graph. A clean no-env
+routing gate proves c1 d128→HIP and d144→PM4, c2 d3→HIP, and p512/d128
+c2/c4/c8→PM4 with exact tokens, full retirement, and zero fallback:
+[`2026-08-08-gfx1100-pm4-scoped-default.json`](results/2026-08-08-gfx1100-pm4-scoped-default.json).
+ROCm #6529 recreate remains optional unrun coverage rather than an evidenced
+in-tree fault because production retains one
 queue and does not recreate it. The superseded stateful-only evidence remains in
 [`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).
 

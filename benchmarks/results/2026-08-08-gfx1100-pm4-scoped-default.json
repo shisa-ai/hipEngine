@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_pm4_scoped_package_default",
+  "created_at": "2026-08-08T07:35:00Z",
+  "status": "accepted",
+  "performance_claim": true,
+  "source_commit": "be13fa2f13cf2e558a1c51de99b63a9342aa4a12",
+  "source_clean": true,
+  "decision": "make PM4 the package-selected submission transport only for Qwen3.6-35B-A3B MOSTLY_Q4_K_M one-step c1/c2/c4/c8 graph windows above conservative capture break-even; retain HIP graph globally and for every shorter, unknown, multi-step, peer-backend, or unrelated graph scope",
+  "selection_precedence": [
+    "explicit API submission_transport",
+    "HIPENGINE_SUBMISSION_TRANSPORT",
+    "backend package model/quant/shape policy",
+    "hipgraph global fallback"
+  ],
+  "policy": {
+    "backend": "hip_gfx1100",
+    "model_name": "Qwen3.6-35B-A3B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "steps_per_replay": 1,
+    "transport": "pm4",
+    "min_replay_steps_by_physical_rows": {"1": 144, "2": 64, "4": 96, "8": 80},
+    "fallback_transport": "hipgraph",
+    "gfx1151_transport": "hipgraph",
+    "unknown_identity_transport": "hipgraph"
+  },
+  "threshold_basis": {
+    "clean_p512_capture_break_even_steps": {"c1": 129, "c2": 53, "c4": 61, "c8": 71},
+    "directional_p16_capture_break_even_steps": {"c1": 106, "c2": 57, "c4": 80, "c8": 71},
+    "directional_p768_capture_break_even_steps": {"c1": 118, "c2": 54, "c4": 65, "c8": 70},
+    "policy_margin": "rounded thresholds are at least about 10% above the worst observed break-even for each width",
+    "packed_context_scope": "current packed graph harness requires context below 1024; p4096 is rejected before model load"
+  },
+  "no_override_gpu_validation": {
+    "environment": {
+      "HIPENGINE_SUBMISSION_TRANSPORT": "unset",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1100"
+    },
+    "c1_boundary": {
+      "prompt_length": 512,
+      "rows": [
+        {
+          "declared_replay_steps": 128,
+          "selected_transport": "hipgraph",
+          "token_id": 9707,
+          "capture_ms": 34.843279,
+          "native_fallbacks": 0
+        },
+        {
+          "declared_replay_steps": 144,
+          "selected_transport": "pm4",
+          "token_id": 9707,
+          "capture_ms": 121.34295,
+          "nodes": 626,
+          "launches": 1,
+          "native_fallbacks": 0,
+          "retired": true
+        }
+      ],
+      "pm4_context_closed": true,
+      "passed": true
+    },
+    "short_packed_fallback": {
+      "physical_rows": 2,
+      "prompt_length": 16,
+      "declared_replay_steps": 3,
+      "selected_transport": "hipgraph",
+      "launches": 3,
+      "aggregate_tok_s": 150.692374,
+      "passed": true
+    },
+    "packed_p512_d128": {
+      "c2": {
+        "selected_transport": "pm4",
+        "nodes": 747,
+        "launches": 128,
+        "native_fallbacks": 0,
+        "retired": true,
+        "unretired_submissions": 0,
+        "aggregate_tok_s": 149.45718366222565
+      },
+      "c4": {
+        "selected_transport": "pm4",
+        "nodes": 747,
+        "launches": 128,
+        "native_fallbacks": 0,
+        "retired": true,
+        "unretired_submissions": 0,
+        "aggregate_tok_s": 210.5656929743945
+      },
+      "c8": {
+        "selected_transport": "pm4",
+        "nodes": 748,
+        "launches": 128,
+        "native_fallbacks": 0,
+        "retired": true,
+        "unretired_submissions": 0,
+        "aggregate_tok_s": 267.8594864634621
+      },
+      "all_runs_repeatable": true,
+      "passed": true
+    }
+  },
+  "retained_performance": {
+    "c1_replay": {
+      "hipgraph_ms_per_token": 10.7263501171875,
+      "pm4_ms_per_token": 9.9643580078125,
+      "pm4_delta_percent": -7.103927254379039,
+      "note": "package threshold 144 is conservative because cold p512/d128 capture-inclusive wall is approximately break-even"
+    },
+    "packed_p512_d128": {
+      "c2": {"hipgraph_ms_per_step": 14.584031781851081, "pm4_ms_per_step": 13.617756540043047, "pm4_delta_percent": -6.6255700499124215, "paired_wins": "5/5", "capture_inclusive_delta_percent": -3.812690177000222},
+      "c4": {"hipgraph_ms_per_step": 20.234723335306626, "pm4_ms_per_step": 19.399925982725108, "pm4_delta_percent": -4.12556840411511, "paired_wins": "5/5", "capture_inclusive_delta_percent": -2.2069782194312326},
+      "c8": {"hipgraph_ms_per_step": 31.004869499156484, "pm4_ms_per_step": 30.240148524171673, "pm4_delta_percent": -2.466454422604869, "paired_wins": "5/5", "capture_inclusive_delta_percent": -1.0797868328588311}
+    },
+    "artifact": "benchmarks/results/2026-08-08-gfx1100-pm4-full-transport-attribution.json"
+  },
+  "joined_correctness_and_lifecycle": {
+    "current_no_override_tokens_exact": true,
+    "current_no_override_retirement_exact": true,
+    "full_natural_and_4k_cases": 19,
+    "full_natural_and_4k_passed": true,
+    "promotion_graph_generations": 21,
+    "promotion_retired_submissions": 58,
+    "cancellation_paths_passed": true,
+    "independent_c1_all_layer_comparisons": 2800,
+    "sparse_retirement_all_layer_comparisons": 1160,
+    "sparse_active_widths": [8, 6, 4, 2, 1],
+    "sparse_graph_generations": 5,
+    "memory_recovery_passed": true,
+    "artifacts": [
+      "benchmarks/results/2026-08-08-gfx1100-pm4-promotion-matrix.json",
+      "benchmarks/results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json",
+      "benchmarks/results/2026-08-08-gfx1100-pm4-full-transport-attribution.json"
+    ]
+  },
+  "mechanical_validation": {
+    "command": "python3 -m pytest tests/test_pm4_transport.py tests/test_qwen35_gguf_decode_graph.py tests/test_gguf_packed_decode_graph.py tests/test_gguf_true_ar_category_bench.py tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys -q",
+    "passed": 31,
+    "failed": 0,
+    "coverage": [
+      "global HIP default and caller-scoped default precedence",
+      "exact model/file-type policy identity",
+      "c1/c2/c4/c8 thresholds and unknown-width fallback",
+      "short-to-long graph reselection in one resident session",
+      "explicit API and environment overrides",
+      "gfx1151 HIP policy",
+      "submission context ownership and packed graph lifecycle"
+    ]
+  },
+  "source_evidence": {
+    "packed_default_path": "/tmp/hipengine-pm4-scoped-default-packed-clean.json",
+    "packed_default_size_bytes": 4919893,
+    "packed_default_sha256": "356146fe8b00710fd3cfd47b81b7a2e03d72d05704199415370fe2e8cc84cc67",
+    "short_fallback_path": "/tmp/hipengine-pm4-scoped-short-clean.json",
+    "short_fallback_size_bytes": 33612,
+    "short_fallback_sha256": "2b4cb1a39071548a70f4176a848d21dcbfc8c6f7688be934c8334a0d0172a1e7",
+    "c1_boundary_path": "/tmp/hipengine-pm4-scoped-default-c1-clean.json",
+    "c1_boundary_size_bytes": 502315,
+    "c1_boundary_sha256": "823292bc0aee65e8830d2e85b0dfc70178af7ca83ff334bbec40861a4ae7806a"
+  },
+  "limitations": [
+    "No submit-plus-queue-recreate stress was performed; production retains one queue and does not recreate it.",
+    "The package policy is intentionally not generalized to another GGUF identity, graph family, width, multi-step tape, or backend without an independent exact performance gate.",
+    "The no-override packed run is a routing/retirement validation; canonical paired performance remains the five-round artifact cited above."
+  ]
+}
