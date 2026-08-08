@@ -628,6 +628,10 @@ class Qwen35GGUFBringupGenerator:
     native_batch_capacity: int = 8
     engine_loop_config_defaults: Mapping[str, Any] = field(default_factory=dict, repr=False)
     server_plain_ar_max_active_requests: int | None = None
+    server_plain_ar_max_active_requests_by_max_sequence_length: Mapping[int, int] = field(
+        default_factory=dict,
+        repr=False,
+    )
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -7891,6 +7895,13 @@ def make_qwen35_gguf_bringup_generator(
                 backend,
                 "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
                 4,
+            )
+        ),
+        server_plain_ar_max_active_requests_by_max_sequence_length=dict(
+            backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH",
+                {},
             )
         ),
     )

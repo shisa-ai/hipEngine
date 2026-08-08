@@ -75,6 +75,9 @@ def test_gfx1100_generator_factory_registers_plain_ar_width(monkeypatch) -> None
 
     assert generator.backend == "hip_gfx1100"
     assert generator.server_plain_ar_max_active_requests == 4
+    assert generator.server_plain_ar_max_active_requests_by_max_sequence_length == {
+        768: 13,
+    }
 
 
 def _request(**overrides) -> GenerationRequest:

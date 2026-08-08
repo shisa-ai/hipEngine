@@ -209705,3 +209705,62 @@ Vulkan local sizes verbatim will close the measured gap.
   delta equality; artifact links in all six rollups/handoffs; six README-sync
   tests; `sync_benchmark_readme.py --check`; and `git diff --check`. The already
   completed 86-test code gate is not repeated after docs-only publication.
+
+## 2026-08-08 — Repair context-scoped gfx1100 C8/C13 admission
+
+- The blocked server topology is an intentional-cap regression, not a PM4 or
+  scheduler race. Raw current traces show requests 0–3 submitted together while
+  requests 4–7 wait **3.8–4.6 s** for reclaim. Commit `56c91f873` introduced the
+  gfx1100 plain-AR resident cap of four after a real 4K/C8 startup OOM; the July
+  F1 C8/C13 packet predates that cap. Simply raising the global default would
+  reopen the 4K failure.
+- Add a registry-owned context-capacity map: unspecified or >768-position
+  gfx1100 Q4_K_M serving remains C4, while the independently retained p512/d128
+  physical-C8 and live C8→C13 envelope admits 13 logical resident slots through
+  masked physical groups no wider than C8. `LLM` resolves the map generically
+  from its configured serving context; lazy server construction passes
+  `max_context_tokens`; explicit MTP route caps remain four. RED first failed on
+  the absent generator map and `LLM(max_sequence_length=...)`; focused GREEN,
+  89 sampling/server tests, 25 LLM/burst tests, 11 harness tests, fixture/smoke
+  checks, compileall, Ruff, and diff checks pass.
+- The first dirty GPU invocation failed before allocation and exposed a separate
+  benchmark-integrity defect: direct execution of
+  `scripts/gguf_live_server_bench.py` imported `/home/lhl/hipEngine` from the
+  therock environment while recording `/home/lhl/hipEngine-main` provenance.
+  Pin `REPO_ROOT` before hipEngine imports and fail closed if the imported package
+  root differs. Audit found the paired `gguf_packed_ar_bench.py` had the same
+  latent defect, so pin/fail-check both harnesses. `/tmp`/empty-`PYTHONPATH` CLI
+  checks pass. Treat prior August 8 rows as source-ambiguous until source-pinned
+  clean reruns replace them; their in-artifact PM4 manifests show current-tree
+  behavior, but the documented command alone did not guarantee that source.
+- Source-pinned dirty W7900 gate 1 (`packed_c8`, p512/d128, one measured run,
+  PM4 package default) passes: all eight submissions arrive within **4.905 ms**,
+  one logical/physical C8 shape executes **127** graph replays, all **1,024** IDs
+  and SSE/accounting rows are exact, fallback is zero, and aggregate wall is
+  **159.681 tok/s**. Raw: `/tmp/hipengine-c8-admission-fix-dirty.json`, SHA256
+  `9051633bb959d2d98a915c78d5b6b23c1d6368b1686a09981400c1468d26b150`.
+- Source-pinned dirty W7900 gate 2 uses a short static C8 setup plus the exact
+  p512/d128 live trigger. It observes C8 then logical C13 lowered as physical
+  C8 + masked-C8(5), passes all **1,664/1,664** generated IDs at **137.174
+  aggregate tok/s**, records 254 native packed decode steps / 127 PM4 replays,
+  zero fallback, and final request/session/KV ownership zero. Peak tracked
+  allocation is **32,252,493,536 bytes**, safely below W7900 capacity; the pool
+  returns 39→3 pages. Raw:
+  `/tmp/hipengine-c8-c13-admission-fix-dirty.json`, SHA256
+  `47dde42c9d03eb56db95e09dffad76461181f5af6cd97c2e9b993db04c7a586e`.
+  These dirty timings prove the repair but are not publication evidence.
+- The repository-wide CPU run reaches **3,350/8,714** collected nodes before an
+  unrelated HIP argmax test segfaults. Collection-order reconstruction identifies
+  four earlier failures: three registry nodes pass immediately in isolation; the
+  fourth is a stale July 26 staged-F32 exclusion assertion that predates four
+  explicit July 29–30 gfx1151 aliases. Scope that test to the intended excluded
+  layer/quant/variant, verify its focused node plus Ruff, and commit the isolated
+  test repair as `e6ebc2d68`. Do not repeat the expensive broad run: preserve
+  the broad partial result plus focused repair/current changed-file gates under
+  the repository focused-repair rule. The crash node is
+  `test_laguna_argmax_control_publish.py::test_argmax_publish_control_matches_top1_and_publishes_next_state`;
+  it is unrelated to admission, LLM/server context selection, or either harness.
+- Final focused validation after the harness source pins passes all **529** server
+  API tests and all **125** LLM/GGUF-sampling/direct-harness/server-harness tests.
+  Compileall, fixtures, registry/CPU/smoke-add-plan smokes, targeted Ruff, torch
+  audit (scripts/optional extras only), and `git diff --check` pass.

@@ -146,6 +146,15 @@ LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
 # Rows/prefill and other backends retain the registered two-launch fallback.
 LAGUNA_HEAD_KV_FUSION = True
 
+# Keep the conservative physical-C4 default that prevents the measured 4K/C8
+# resident-session OOM. The independently retained p512/d128 physical-C8 and
+# live C8->C13 membership gates admit thirteen logical resident rows, lowered
+# through masked physical groups no wider than C8, only within the 768-position
+# envelope.
+GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS = 4
+GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH = {
+    768: 13,
+}
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
@@ -626,6 +635,8 @@ __all__ = [
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
+    "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
+    "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_F32_ORDERED_PREFILL_POLICIES",
