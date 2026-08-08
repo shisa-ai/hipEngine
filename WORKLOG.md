@@ -209344,3 +209344,24 @@ Vulkan local sizes verbatim will close the measured gap.
   and memory recovered with the known 4 MiB first-use delta. CPU harness tests
   pass (4), Ruff, format, compileall, and diff checks pass. Next: commit the
   validated harness and run its full tracked-clean 18-prompt + 4K matrix.
+
+## 2026-08-08 — Complete full PM4 matrix; isolate memory-baseline false failure
+
+- Tracked-clean `41ee5b8e2` full matrix proves **19/19 exact cases**: all ten
+  `mtpbench-code-general-ja` prompts, all eight category-heldouts, and a 4,096-
+  token context stress. Every `code` (6), `general_en` (4), `general_ja` (4),
+  `mixed_ja_en` (4), and context-stress case matches HIP graph for seed/final
+  tokens, recurrent/KV state, and all logits after three steps.
+- One persistent PM4 queue survives 21 graph generations and 58 submissions.
+  Both no-submit and retired-after-submit cancellation gates pass; every graph
+  releases its child, native callback status and unretired counts remain zero,
+  and context shutdown passes. The 4K case itself is exact (`state
+  be62d4a0...e69b8`, logits `daf35093...f39c3`).
+- The aggregate exits failed only because the harness sampled free memory after
+  a short prompt and before the first 4K prefill. The 4K path lazily retained
+  about 102 MiB of prefill workspace in the still-live model session; this is
+  not PM4 graph/context ownership (all 21 children and the native context were
+  already closed). Fix the baseline to warm the declared maximum context first.
+  Per focused-repair policy, preserve the completed 19-case correctness run and
+  rerun only a one-prompt + 4K memory/lifecycle bundle rather than repeating all
+  already-passing natural cases. No destructive lifecycle arm ran.

@@ -932,8 +932,13 @@ adds a 4K context stress generation, reuses one PM4 queue across all graph
 rebuilds, performs no-submit and retired-after-submit cancellation closes, and
 requires child-ledger drain, context/session shutdown, and memory recovery. The
 one-prompt/64-token harness smoke passes four PM4 generations with exact
-seed/final tokens, recurrent/KV state, and all logits. The full tracked-clean
-command is:
+seed/final tokens, recurrent/KV state, and all logits. The tracked-clean full
+run passes **19/19 exact cases** across every named category/heldout plus 4K,
+with 21 graph generations, 58 retired submissions, both cancellation paths,
+zero live children, and clean context shutdown. Its only aggregate false
+failure was measuring memory before the first 4K lazy prefill workspace; the
+harness now warms the declared maximum shape before taking the memory baseline.
+The full command is:
 
 ```bash
 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
