@@ -1,0 +1,177 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "id": "SH5-D1",
+  "status": "closed_blocked_continuation_required",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "mall_bytes": 33554432
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt_token_id": 9707,
+    "prompt_length": 512,
+    "decode_tokens": 128
+  },
+  "source": {
+    "parent_commit": "bb81b221f35b28668e2d5e5fd9e77a6ed901b116",
+    "fork_commit": "b7b85da9c4a9fdeb3cab51030a40d1552270f272",
+    "lineage_check": "blocked because the read-only /home/lhl/amd-gpu-tuning/reference/atlas path is absent",
+    "candidate_retained_default_off": true,
+    "production_default_changed": false
+  },
+  "fork_attribution": {
+    "dispatch": "dst->ne[1] == 1 enters ggml_vk_mul_mat_vec_q_f16; GGML_TYPE_Q8_0 plus F16 selects mul_mat_vec_q8_0_f16_f32",
+    "layout": "raw GGUF output-major rows of 34-byte Q8_0 blocks",
+    "geometry": "one output row per workgroup; quantized specialization consumes eight contiguous K values per lane and subgroup-reduces one scalar accumulator",
+    "sources": [
+      "/tmp/nathan-llama-b7b85da9/ggml/src/ggml-vulkan/ggml-vulkan.cpp:5451",
+      "/tmp/nathan-llama-b7b85da9/ggml/src/ggml-vulkan/ggml-vulkan.cpp:9706",
+      "/tmp/nathan-llama-b7b85da9/ggml/src/ggml-vulkan/ggml-vulkan.cpp:10251",
+      "/tmp/nathan-llama-b7b85da9/ggml/src/ggml-vulkan/vulkan-shaders/mul_mat_vec.comp:9"
+    ],
+    "non_duplicate_audit": "hipEngine already had raw local256 one-output scalar-K and raw local128 eight-output by eight-K kernels. The missing geometry was raw local64, one output by eight contiguous K values per lane."
+  },
+  "candidate": {
+    "kernel": "gguf_q8_0_rowvec8_dual_split_gemv_kernel",
+    "registry_variant": "linear_pair/gguf_q8_0/rowvec8_dual_split_gemv_decode_bf16_bf16_out",
+    "scope": "explicit HIPENGINE_GGUF_Q8_0_ROWVEC8_PAIR opt-in; rows=1 pair decode only",
+    "pair": "attn_qkv 2048->8192 plus attn_gate 2048->4096 with one combined output grid and separate output buffers",
+    "materialization": {
+      "replaced_tensors": 60,
+      "replaced_bytes": 802160640,
+      "replaced_gib": 0.7470703125,
+      "allocation_rule": "one raw allocation replaces each covered T16 allocation; no raw sidecar or duplicate resident copy",
+      "uncovered_q8": "full-attention and shared-expert Q8 tensors retain production Q8T16"
+    },
+    "fallbacks": [
+      "environment disabled reloads production Q8T16 residents",
+      "rows greater than one use the existing raw-Q8 WMMA prefill",
+      "registry, layout, shape, or quant misses fail closed through existing pair/singleton dispatch"
+    ]
+  },
+  "validation": {
+    "focused_command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_q8_0_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_qwen35_gguf_materialize_helpers.py tests/test_qwen35_gguf_materialize.py -q",
+    "focused_result": "104 passed, 21 skipped; exit 0",
+    "cpu_oracle": "production-shape BF16 input/output candidate passes the independent raw-Q8_0 CPU oracle for both outputs",
+    "materialization_contract": "raw replacement count/bytes, no sidecars, unrelated Q8T16 ownership, rows>1 fallback, and disabled production route covered",
+    "cached_trace": {
+      "kernel": "(anonymous namespace)::gguf_q8_0_rowvec8_dual_split_gemv_kernel",
+      "workgroup": 64,
+      "grid": 786432,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "duration_ns": 138939,
+      "kernel_csv_sha256": "bbca581a0c7212f232c4399f24e189e3402cdbcbba1d86438710bb976068cfa3",
+      "agent_csv_sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078"
+    }
+  },
+  "actual_weight_leaf": {
+    "tensor_names": [
+      "blk.0.attn_qkv.weight",
+      "blk.0.attn_gate.weight"
+    ],
+    "tensor_sha256": [
+      "ea76f5f82dd23081f0ded7cf30cd834c80159025b869327541275a1f9c3852db",
+      "179de4ea3eaa159fa9984da241c23c0962f6b018f69b6bfbb5ae5bce163c1675"
+    ],
+    "pair_bytes": 26738688,
+    "cycling_pool": "three copies / 80216064 bytes, greater than 2x MALL",
+    "protocol": "18 warmups, 15 counterbalanced samples, 64-launch HIP-event bursts",
+    "production_t16_median_ms": 0.13473688066005707,
+    "candidate_local64_median_ms": 0.11658842116594315,
+    "speedup": 1.1556626233773488,
+    "saving_ms_per_pair": 0.018148459494113922,
+    "wins": 15,
+    "pairs": 15,
+    "candidate_vs_t16_bf16_mismatches": 6,
+    "max_abs": 0.001953125,
+    "max_bf16_code_delta": 1,
+    "raw_sha256": "8748bb42f49f85e4759c1df90681e474618a69323085469cba6eed5e30f36cea"
+  },
+  "matched_model_gate": {
+    "protocol": "independent persistent-session one-warmup/three-run 512/128 eager processes, force bulk prefill, WMMA prefill, GEMV decode, cached builds, private c1 host embedding active",
+    "baseline": {
+      "prefill_tok_s": [1370.7489283724126, 1369.1201293436882, 1367.3746634061604],
+      "prefill_median_tok_s": 1369.1201293436882,
+      "decode_tok_s": [53.079585889872725, 52.876227248018786, 52.822406689161674],
+      "decode_median_tok_s": 52.876227248018786,
+      "decode_median_ms_per_token": 18.912090594312758,
+      "tracked_peak_gib": 20.566421270370483,
+      "raw_sha256": "f5353efa91ab7d05521992524582557a7c503b243f6b0b19da76f827d0076109"
+    },
+    "candidate": {
+      "prefill_tok_s": [1184.883856876928, 1185.7951830265, 1178.9972483487104],
+      "prefill_median_tok_s": 1184.883856876928,
+      "decode_tok_s": [54.42745908681097, 54.44264484279554, 54.31243422496639],
+      "decode_median_tok_s": 54.42745908681097,
+      "decode_median_ms_per_token": 18.37307889763906,
+      "tracked_peak_gib": 20.566421270370483,
+      "raw_sha256": "11e04c39b392fe0af6b3e615a2e3d92d89d121f481d62988f52c2ee4319b4a7c"
+    },
+    "decode_change_percent": 2.9337037068020155,
+    "decode_saving_ms_per_token": 0.5390116966736969,
+    "prefill_change_percent": -13.456545449746415,
+    "residency_change_bytes": 0,
+    "final_token_ids": {
+      "baseline": [9707, 9707, 9707],
+      "candidate": [9707, 9707, 9707]
+    }
+  },
+  "state_gate": {
+    "prefill_logits_and_complete_state_byte_exact": true,
+    "fixed_decode_transitions": 4,
+    "top1_matches": 4,
+    "top1_total": 4,
+    "decode_logits_byte_exact": false,
+    "final_hidden_and_recurrent_kv_state_byte_exact": false,
+    "reason": "local64 changes the FP32 reduction tree relative to production T16",
+    "baseline_sha256": "8adff28c24c942979fbb6c060350aee9be7463dade73828de05c0e9221ff49b6",
+    "candidate_sha256": "13745120ec3726cf6e6a4cde78ef208f8d077a6c8d078d5fbe078f2a4c1ab717"
+  },
+  "bounded_exact_repair": {
+    "method": "two virtual production-equivalent 128-lane K streams inside 64 physical threads",
+    "local64": {
+      "t16_bf16_mismatches": 0,
+      "median_ms": 0.17347769439220428,
+      "speedup": 0.7785725703839694,
+      "passes_leaf_gate": false
+    },
+    "local128_fast_nonexact": {
+      "t16_bf16_mismatches": 2,
+      "median_ms": 0.11787790805101395,
+      "speedup": 1.1458039649700198,
+      "passes_leaf_gate": false
+    },
+    "production_t16_median_ms": 0.1350649744272232,
+    "raw_sha256": "8f978d60b0d0e5016ba3c028cbf56f30ae5da1324f776ca2a85575c04cddabeb",
+    "decision": "remove the exact-tree specialization; it restores byte identity only by losing the leaf gate"
+  },
+  "admission": {
+    "leaf_required_speedup": 1.15,
+    "alternative_required_model_saving_ms_per_token": 0.5,
+    "leaf_passed": true,
+    "model_decode_saving_passed": true,
+    "byte_neutral_residency_passed": true,
+    "prefill_within_one_percent_passed": false,
+    "complete_quality_gate_passed": false,
+    "production_promotion_passed": false
+  },
+  "decision": "SH5-D1 is complete but not promotable. Retain the fork-attributed leaf and its explicit default-off byte-neutral model route only as the dependency for SH6-P1. The candidate produces a controlled +2.934% / 0.539-ms decode win, but raw WMMA prefill loses 13.457% and the fast local64 reduction is not byte-identical. Production remains Q8T16.",
+  "next": {
+    "id": "SH6-P1",
+    "name": "phase-exclusive raw-to-T16 prefill bridge and complete quality gate",
+    "why": "A single reusable 25.5-MiB pair buffer can, in principle, stream raw Q8_0 into exact production T16 bytes only during prefill, preserving byte-neutral persistent residency and the admitted fast raw decode. This directly attacks the measured prefill blocker without reopening any closed T16 schedule.",
+    "first_gate": "Add a GPU raw-Q8_0 to Q8T16 pair repacker that is byte-exact to the host packer and uses one reusable <=26738688-byte scratch allocation. Charge conversion plus existing T16 WMMA at 512/4K/32K/64K; require <=1% prefill loss, no persistent duplicate weights, exact prefill state, cached scratch-free repacker trace, and the complete natural/category quality gate for the changed decode reduction. On failure, remove the SH5 model route; on pass, promote through a gfx1151 capability and run SH6-C1."
+  }
+}

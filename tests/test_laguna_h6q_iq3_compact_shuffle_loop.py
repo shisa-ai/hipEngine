@@ -124,7 +124,7 @@ _H5Q_VARIANT = (
 )
 _H5J_IQ4_VARIANT = "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
-_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
+_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_976
 _SAMPLE_COLS = np.asarray(
     [
         0,

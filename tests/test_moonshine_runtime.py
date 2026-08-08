@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+import os
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +10,14 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
-from hipengine.core.memory import free, malloc, memory_stats, reset_memory_stats
+from hipengine.core.memory import (
+    copy_device_to_host,
+    free,
+    host_array_ptr,
+    malloc,
+    memory_stats,
+    reset_memory_stats,
+)
 from hipengine.core.tensor import Tensor
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
@@ -28,6 +37,7 @@ from hipengine.models.moonshine import (
     parse_moonshine_model_spec,
 )
 from hipengine.runtime.moonshine import (
+    MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
     MoonshineDecoderLibraries,
     MoonshineResidentRuntime,
     NoAllocationError,
@@ -159,6 +169,7 @@ def fake_decoder_libraries(trace: list[tuple[str, tuple[object, ...]]]) -> Moons
             trace,
             "hipengine_moonshine_f16_lm_head_projection",
             "hipengine_moonshine_f16_lm_head_projection_wave8",
+            "hipengine_moonshine_f16_lm_head_projection_wave8_top1",
             "hipengine_moonshine_f16_projection",
             "hipengine_moonshine_f16_projection_bias",
             "hipengine_moonshine_f16_projection_bias_gated_silu",
@@ -519,6 +530,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         loaded_model=fake_loaded_model(runtime),
         encoder_frames=40,
         runtime=runtime,  # type: ignore[arg-type]
+        lm_head_route="wave8_argmax",
     )
     trace: list[tuple[str, tuple[object, ...]]] = []
 
@@ -620,6 +632,104 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         resident.close()
 
 
+def test_exact_wave8_top1_is_the_fp16_runtime_default_with_explicit_fallback() -> None:
+    assert MOONSHINE_DEFAULT_LM_HEAD_ROUTE == "wave8_top1"
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    try:
+        assert resident.lm_head_contract()["route"] == "wave8_top1"
+        assert resident.lm_head_contract()["fallback"] == "wave8_argmax"
+        assert resident.tensor("lm_head_partial_values").shape == (4_608,)
+        assert resident.tensor("lm_head_partial_indices").shape == (4_608,)
+    finally:
+        resident.close()
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+def test_exact_wave8_top1_route_rejects_unknown_route_and_int8_lm_head() -> None:
+    with pytest.raises(ValueError, match="lm_head_route"):
+        MoonshineResidentRuntime(
+            model_path="/not-loaded",
+            encoder_frames=40,
+            runtime=FakeRuntime(),  # type: ignore[arg-type]
+            lm_head_route="unknown",
+        )
+
+    runtime = FakeRuntime()
+    with pytest.raises(ValueError, match="requires the exact FP16"):
+        MoonshineResidentRuntime(
+            loaded_model=fake_loaded_model(runtime, w8a16_families=("lm_head",)),
+            encoder_frames=40,
+            runtime=runtime,  # type: ignore[arg-type]
+            lm_head_route="wave8_top1",
+        )
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+def test_exact_wave8_top1_route_owns_bounded_scratch_and_keeps_fallback_explicit() -> None:
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+        lm_head_route="wave8_top1",
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+    try:
+        contract = resident.lm_head_contract()
+        assert contract == {
+            "route": "wave8_top1",
+            "materializes_full_fp16_logits": True,
+            "stable_lowest_id_top1": True,
+            "partial_count": 4_608,
+            "partial_value_dtype": "fp16",
+            "partial_index_dtype": "int64",
+            "fallback": "wave8_argmax",
+        }
+        assert resident.tensor("lm_head_partial_values").shape == (4_608,)
+        assert resident.tensor("lm_head_partial_indices").shape == (4_608,)
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries(trace))
+        resident.set_encoder_state(
+            np.zeros((1, 40, 416), dtype=np.float16),
+            np.ones((1, 40), dtype=np.int32),
+        )
+        resident.precompute_cross_kv()
+        trace.clear()
+        malloc_count = len(runtime.malloc_calls)
+        resident.set_decode_state(token_id=1, position=0)
+        with resident.no_allocation_region("wave8-top1-token-step"):
+            resident.token_step()
+        assert len(runtime.malloc_calls) == malloc_count
+        names = [name for name, _ in trace]
+        assert names.count(
+            "hipengine_moonshine_f16_lm_head_projection_wave8_top1"
+        ) == 1
+        assert "hipengine_moonshine_f16_lm_head_projection_wave8" not in names
+        assert "hipengine_moonshine_argmax_fp16" not in names
+        resident.reset_generation(clear_cross_cache=False)
+        assert resident.cross_cache_valid is True
+        trace.clear()
+        captures = resident.capture_token_graphs()
+        assert len(captures) == 4
+        capture_names = [name for name, _ in trace]
+        assert capture_names.count(
+            "hipengine_moonshine_f16_lm_head_projection_wave8_top1"
+        ) == 4
+        assert "hipengine_moonshine_f16_lm_head_projection_wave8" not in capture_names
+        assert "hipengine_moonshine_argmax_fp16" not in capture_names
+    finally:
+        resident.close()
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
 def test_selective_w8a16_routes_expected_fixed_address_kernels_and_reports_bytes() -> None:
     runtime = FakeRuntime()
     resident = MoonshineResidentRuntime(
@@ -628,6 +738,7 @@ def test_selective_w8a16_routes_expected_fixed_address_kernels_and_reports_bytes
         ),
         encoder_frames=40,
         runtime=runtime,  # type: ignore[arg-type]
+        lm_head_route="wave8_argmax",
     )
     trace: list[tuple[str, tuple[object, ...]]] = []
     try:
@@ -727,9 +838,9 @@ def test_token_graphs_capture_four_buckets_replay_sequential_state_and_close() -
         assert runtime.instantiated_graphs == [capture.graph for capture in captures]
         assert resident.self_cache_length == 0
         assert resident.decode_position is None
-        assert len(trace) == 4 * 100
+        assert len(trace) == 4 * 99
         for offset, expected_self_symbol in zip(
-            range(0, 4 * 100, 100),
+            range(0, 4 * 99, 99),
             (
                 "hipengine_moonshine_self_attention_fp16",
                 "hipengine_moonshine_self_attention_parallel_fp16",
@@ -738,8 +849,13 @@ def test_token_graphs_capture_four_buckets_replay_sequential_state_and_close() -
             ),
             strict=True,
         ):
-            graph_names = [name for name, _ in trace[offset : offset + 100]]
+            graph_names = [name for name, _ in trace[offset : offset + 99]]
             assert graph_names.count(expected_self_symbol) == 8
+            assert graph_names.count(
+                "hipengine_moonshine_f16_lm_head_projection_wave8_top1"
+            ) == 1
+            assert "hipengine_moonshine_f16_lm_head_projection_wave8" not in graph_names
+            assert "hipengine_moonshine_argmax_fp16" not in graph_names
         assert len(runtime.malloc_calls) == malloc_count
         assert all(capture.capture_wall_ms >= 0.0 for capture in captures)
         assert all(capture.instantiate_wall_ms >= 0.0 for capture in captures)
@@ -837,6 +953,130 @@ def test_runtime_rejects_unknown_encoder_bucket_and_cache_state_drift() -> None:
             resident.set_self_cache_length(195)
     finally:
         resident.close()
+
+
+def _actual_moonshine_model_gate_available() -> bool:
+    if os.environ.get("HIPENGINE_RUN_MOONSHINE_MODEL_GATE") != "1":
+        return False
+    if os.environ.get("HIPENGINE_HIP_ARCH") != "gfx1151":
+        return False
+    snapshot = Path(
+        os.environ.get(
+            "HIPENGINE_MOONSHINE_SNAPSHOT",
+            "/home/lhl/.cache/huggingface/hub/"
+            "models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/"
+            "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        )
+    )
+    if not (snapshot / "model.safetensors").is_file():
+        return False
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(
+    not _actual_moonshine_model_gate_available(),
+    reason="actual Moonshine gfx1151 model gate is not enabled/available",
+)
+def test_actual_checkpoint_graph_state_and_tokens_match_wave8_argmax() -> None:
+    snapshot = Path(
+        os.environ.get(
+            "HIPENGINE_MOONSHINE_SNAPSHOT",
+            "/home/lhl/.cache/huggingface/hub/"
+            "models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/"
+            "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        )
+    )
+    compiler_version_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = (
+        None
+        if not compiler_version_file
+        else Path(compiler_version_file).read_text()
+    )
+    rng = np.random.default_rng(0x1151A5A)
+    encoder_hidden = rng.normal(0.0, 0.03, size=(1, 40, 416)).astype(np.float16)
+    encoder_mask = np.zeros((1, 40), dtype=np.int32)
+    encoder_mask[:, :24] = 1
+    selected_positions = {0, 1, 2, 4, 31, 63, 127, 193}
+    baseline_stats = memory_stats()
+
+    def run(route: str) -> dict[str, object]:
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        captures: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        with MoonshineResidentRuntime(
+            model_path=snapshot,
+            encoder_frames=40,
+            runtime=runtime,
+            lm_head_route=route,
+        ) as resident:
+            resident.prepare_decoder_kernels(
+                compiler_version=compiler_version,
+                require_cached=compiler_version is not None,
+            )
+            resident.set_encoder_state(encoder_hidden, encoder_mask)
+            resident.precompute_cross_kv()
+            resident.capture_token_graphs()
+            token = resident.spec.decoder_start_token_id
+            tokens = []
+            for position in range(resident.spec.self_cache_capacity):
+                resident.set_decode_state(token_id=token, position=position)
+                with resident.no_allocation_region(f"{route}-position-{position}"):
+                    resident.graph_token_step()
+                token = resident.read_token()
+                tokens.append(token)
+                if position in selected_positions:
+                    logits = np.empty((1, resident.spec.vocab_size), dtype=np.float16)
+                    final_hidden = np.empty((1, 1, resident.spec.hidden_size), dtype=np.float16)
+                    copy_device_to_host(
+                        host_array_ptr(logits),
+                        resident.workspace.allocation("logits").buffer,
+                        runtime=runtime,
+                    )
+                    copy_device_to_host(
+                        host_array_ptr(final_hidden),
+                        resident.workspace.allocation("normalized").buffer,
+                        runtime=runtime,
+                    )
+                    captures[position] = (logits, final_hidden)
+            states = {}
+            for name in ("self_kv", "cross_kv"):
+                allocation = resident.workspace.allocation(name)
+                state = np.empty(allocation.tensor.shape, dtype=np.float16)
+                copy_device_to_host(
+                    host_array_ptr(state), allocation.buffer, runtime=runtime
+                )
+                states[name] = state
+            graph_contract = resident.token_graph_contract()
+        return {
+            "tokens": tokens,
+            "captures": captures,
+            "states": states,
+            "graph_contract": graph_contract,
+        }
+
+    fallback = run("wave8_argmax")
+    candidate = run("wave8_top1")
+    assert candidate["tokens"] == fallback["tokens"]
+    assert candidate["captures"].keys() == fallback["captures"].keys()
+    for position in selected_positions:
+        fallback_logits, fallback_hidden = fallback["captures"][position]
+        candidate_logits, candidate_hidden = candidate["captures"][position]
+        np.testing.assert_array_equal(candidate_logits, fallback_logits)
+        np.testing.assert_array_equal(candidate_hidden, fallback_hidden)
+    for name in ("self_kv", "cross_kv"):
+        np.testing.assert_array_equal(
+            candidate["states"][name], fallback["states"][name]
+        )
+    assert candidate["graph_contract"]["replay_count"] == 194
+    assert fallback["graph_contract"]["replay_count"] == 194
+    after = memory_stats()
+    assert after["current_allocated_bytes"] == baseline_stats["current_allocated_bytes"]
+    assert after["active_allocations"] == baseline_stats["active_allocations"]
 
 
 def test_partial_initialization_failure_unwinds_weights_workspace_events_and_stream() -> None:

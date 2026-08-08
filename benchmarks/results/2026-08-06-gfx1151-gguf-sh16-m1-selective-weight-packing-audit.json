@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh16_m1_selective_weight_packing_audit",
+  "date": "2026-08-06",
+  "created_at": "2026-08-06T13:58:09.131976+00:00",
+  "status": "structural_precondition_passed_selective_screen_admitted",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "30a530dc5",
+    "tracked_source_clean": true,
+    "analysis_script": "/tmp/analyze_sh16_m1_selective_weight_arena.py",
+    "analysis_script_sha256": "0097a66c62a29327a30226514c9329bd35fba0ff89d8611480adf7a53e8b03bc",
+    "analysis_raw": "/tmp/hipengine-sh16-m1-selective-weight-arena-analysis.json",
+    "analysis_raw_sha256": "51b37cd2e4238c63b12211fabee383e8a89953b5a87e3c5f81db416e30c3744e",
+    "baseline_artifact": "benchmarks/results/2026-08-06-gfx1151-gguf-sh14-c1-cumulative-completion-gate.json",
+    "baseline_artifact_sha256": "c0d7182405fd9d58e0b6debf736f3d21d806d97652df1fb2f00c138d601c654b",
+    "sh15_m1_artifact_sha256": "25c65a15ffa1e122cf3c654a7ece4729c543c1d12c081e3584a52bf3adcbde8c",
+    "sh15_m2_artifact_sha256": "206205ace4a8cdc5ba763e7184e74287e1d3b01e1494c669b5c23fe90f1e0f36"
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "memory_domain": "whole-device amdgpu GTT"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "source_evidence": "Re-analyze all four immutable SH15-M1 exact per-hipMalloc requested/commit/origin/label censuses; no new instrumented or performance run.",
+    "capacity_bound": "Each selected logical allocation receives a fresh 4-KiB-aligned view; sum each view rounded to 4 KiB, then round the single owner once to the measured 2-MiB physical commit. This is an order-independent conservative upper bound.",
+    "acceptance": "Admit only a size-invariant model-structural class whose conservative projected saving closes at least one pinned fork whole-GTT gap while preserving the large 2-MiB-aligned payload owners implicated by SH15-M2 prefill regression.",
+    "retention": "Any implementation remains default-off and receives no memory/performance credit without actual GTT, exact state/lifecycle/fallback/accounting, and <=1% prefill/decode loss."
+  },
+  "invariants": {
+    "depths_identical": true,
+    "weight_allocation_count": 732,
+    "unique_labels": 732,
+    "requested_bytes": 21918738944,
+    "captured_commit_bytes": 22187868160,
+    "all_4k_aligned": true,
+    "all_depth_2m_aligned_count": {
+      "512": 411,
+      "4096": 411,
+      "32768": 411,
+      "65536": 411
+    }
+  },
+  "threshold_screens": {
+    "up_to_2_mib": {
+      "threshold_bytes": 2097152,
+      "threshold_mib": 2.0,
+      "selected_allocation_count": 501,
+      "selected_requested_bytes": 260557312,
+      "selected_captured_commit_bytes": 377487360,
+      "selected_arena_capacity_upper_bound_bytes": 260964352,
+      "selected_arena_commit_upper_bound_bytes": 262144000,
+      "projected_commit_saving_bytes": 115343360,
+      "projected_commit_saving_mib": 110.0,
+      "dedicated_allocation_count": 231,
+      "dedicated_requested_bytes": 21658181632,
+      "dedicated_2m_aligned_count_all_depths": {
+        "512": 231,
+        "4096": 231,
+        "32768": 231,
+        "65536": 231
+      },
+      "fork_margin_after_projection_mib": {
+        "512": 63.52734375,
+        "4096": 236.8203125,
+        "32768": 49.37109375,
+        "65536": -54.73046875
+      },
+      "projected_parity_contexts": [
+        "65536"
+      ]
+    },
+    "up_to_16_mib": {
+      "threshold_bytes": 16777216,
+      "threshold_mib": 16.0,
+      "selected_allocation_count": 571,
+      "selected_requested_bytes": 884460032,
+      "selected_captured_commit_bytes": 1111490560,
+      "selected_arena_capacity_upper_bound_bytes": 884867072,
+      "selected_arena_commit_upper_bound_bytes": 884998144,
+      "projected_commit_saving_bytes": 226492416,
+      "projected_commit_saving_mib": 216.0,
+      "dedicated_allocation_count": 161,
+      "dedicated_requested_bytes": 21034278912,
+      "dedicated_2m_aligned_count_all_depths": {
+        "512": 161,
+        "4096": 161,
+        "32768": 161,
+        "65536": 161
+      },
+      "fork_margin_after_projection_mib": {
+        "512": -42.47265625,
+        "4096": 130.8203125,
+        "32768": -56.62890625,
+        "65536": -160.73046875
+      },
+      "projected_parity_contexts": [
+        "512",
+        "32768",
+        "65536"
+      ]
+    },
+    "up_to_32_mib": {
+      "threshold_bytes": 33554432,
+      "threshold_mib": 32.0,
+      "selected_allocation_count": 611,
+      "selected_requested_bytes": 1597491712,
+      "selected_captured_commit_bytes": 1866465280,
+      "selected_arena_capacity_upper_bound_bytes": 1597898752,
+      "selected_arena_commit_upper_bound_bytes": 1598029824,
+      "projected_commit_saving_bytes": 268435456,
+      "projected_commit_saving_mib": 256.0,
+      "dedicated_allocation_count": 121,
+      "dedicated_requested_bytes": 20321247232,
+      "dedicated_2m_aligned_count_all_depths": {
+        "512": 121,
+        "4096": 121,
+        "32768": 121,
+        "65536": 121
+      },
+      "fork_margin_after_projection_mib": {
+        "512": -82.47265625,
+        "4096": 90.8203125,
+        "32768": -96.62890625,
+        "65536": -200.73046875
+      },
+      "projected_parity_contexts": [
+        "512",
+        "32768",
+        "65536"
+      ]
+    }
+  },
+  "selected_policy": {
+    "name": "private-c1 weight allocations up to 16 MiB in one 4-KiB-view arena; larger weights remain dedicated",
+    "threshold_bytes": 16777216,
+    "selected_allocation_count": 571,
+    "selected_requested_bytes": 884460032,
+    "selected_captured_commit_bytes": 1111490560,
+    "selected_arena_commit_upper_bound_bytes": 884998144,
+    "projected_commit_saving_bytes": 226492416,
+    "projected_commit_saving_mib": 216.0,
+    "dedicated_allocation_count": 161,
+    "dedicated_requested_bytes": 21034278912,
+    "dedicated_requested_fraction": 0.9596482245507052,
+    "dedicated_2m_aligned_count_all_depths": {
+      "512": 161,
+      "4096": 161,
+      "32768": 161,
+      "65536": 161
+    },
+    "fork_margin_after_projection_mib": {
+      "512": -42.47265625,
+      "4096": 130.8203125,
+      "32768": -56.62890625,
+      "65536": -160.73046875
+    },
+    "projected_parity_contexts": [
+      "512",
+      "32768",
+      "65536"
+    ],
+    "selected_families": [
+      "ssm_a",
+      "ssm_dt.bias",
+      "ssm_norm.weight",
+      "attn_k_norm.weight",
+      "attn_q_norm.weight",
+      "attn_norm.weight",
+      "ffn_gate_inp_shexp.weight",
+      "output_norm.weight",
+      "post_attention_norm.weight",
+      "ssm_conv1d.weight",
+      "ssm_alpha.weight",
+      "ssm_beta.weight",
+      "attn_k.weight.t16.tiles",
+      "attn_v.weight.t16.tiles",
+      "ffn_down_shexp.weight.t16.tiles",
+      "ffn_gate_shexp.weight.t16.tiles",
+      "ffn_up_shexp.weight.t16.tiles",
+      "ffn_gate_inp.weight",
+      "attn_gate.weight.t16.tiles",
+      "attn_output.weight.t16.tiles",
+      "ssm_out.weight.t16.tiles"
+    ],
+    "excluded_large_families": [
+      "attn_q / attn_qkv T16 payloads (17 MiB each)",
+      "selected-expert gate/up/down T16 payloads",
+      "all other resident allocations larger than 16 MiB"
+    ],
+    "why_not_2_mib": "Only 110 MiB projected saving; closes 64K alone.",
+    "why_not_32_mib": "Adds Q/QKV input payloads and only 40 MiB more projection. The 16-MiB class already clears three rows with less hot-weight address disruption."
+  },
+  "qualifications": {
+    "projection_not_measured_gtt": true,
+    "shared_backing_assignment": "Immediate hipMemGetInfo deltas assign shared backing to the allocation call that first commits it. The 4-KiB-per-view capacity and one 2-MiB owner rounding are conservative, but only an actual selective owner may claim GTT.",
+    "sh15_m2_distinction": "The rejected global arena changed all 732 weight addresses plus all state/scratch. This screen leaves 161 large owners (95.965% of requested weight bytes), all state/scratch, and every shared/c>N route dedicated.",
+    "anti_gaming": "The threshold is allocation-size and package/private-c1 scoped, never prompt/token/candidate-ID/publication-length conditioned.",
+    "four_k": "The selected weight class alone projects 130.820 MiB above fork F16 at 4K. No compact-Q4 or state-arena stack is admitted by this audit."
+  },
+  "decision": {
+    "audit_passed": true,
+    "production_changed": false,
+    "admit_next": "SH16-M2 default-off selective <=16-MiB private-c1 weight arena screen",
+    "implementation_scope": "Plan exact selected bytes from GGUF metadata; allocate one ordinary owner; route only allocations <=16 MiB; preserve large dedicated owners and ordinary fallback for denial/shared/c>N/unsupported layouts.",
+    "stop_rule": "Start at 512. Stop/remove on plan mismatch, allocation/lifecycle/state failure, or >1% prefill/decode loss. Continue to 4K/32K/64K only after the first wall/GTT gate passes. Do not stack compact Q4 or the rejected state arena in SH16-M2.",
+    "objective_complete": false
+  },
+  "raw": {
+    "512": {
+      "path": "/tmp/hipengine-sh15-m1-20260806/increment-512.json",
+      "sha256": "1e9d792df600a0a2ced827e4fab51e88bbb6b158afbe06b0daa20c41d38dafe3"
+    },
+    "4096": {
+      "path": "/tmp/hipengine-sh15-m1-20260806/increment-4k.json",
+      "sha256": "f78b46d41c12d869e98fb5864907b76f921eeee3fe13dd646c2785524be1bb6c"
+    },
+    "32768": {
+      "path": "/tmp/hipengine-sh15-m1-20260806/increment-32k.json",
+      "sha256": "d94506530b4eed731666a3650d7a44eeba80aa6c46e8179b87471b2034a3341e"
+    },
+    "65536": {
+      "path": "/tmp/hipengine-sh15-m1-20260806/increment-64k.json",
+      "sha256": "3d05a731c2d18819a0d76b586e72306449e7d68934956a527ba29f2f777d779a"
+    }
+  }
+}

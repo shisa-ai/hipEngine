@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-08",
+  "artifact_type": "maple_d1_batched_affine4_rowreuse_retained",
+  "status": "accepted",
+  "performance_claim": true,
+  "claim_scope": "fixed-capacity Maple c2/c4/c8 resident decode helper; excludes model load, prompt prefill, public scheduler admission, and server throughput",
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2",
+    "exact_weight_bytes": 5308186624,
+    "shape": {
+      "hidden_size": 2048,
+      "vocab_size": 151936,
+      "layers": 24,
+      "experts": 256,
+      "experts_per_token": 8
+    }
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "host": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "software": {
+    "implementation_commit": "7e134ca9e1b8470446e49e0cfb785fdcd247b960",
+    "profile_harness_commit": "5634e8073d4844d21504c4dff7430615ba49e947",
+    "promotion_commit": "f897dc3504a725f6c5e75dd9227f7b3c87ecca3a",
+    "publication_source_tracked_clean": true,
+    "python": "3.12.13"
+  },
+  "kernel": {
+    "registered_variant": "maple_affine4_gemv/group64_batched_rowreuse_exact",
+    "symbol_c8": "maple_affine4_gemv_batched_rowreuse_exact_kernel<8>",
+    "supported_rows": [2, 4, 8],
+    "selector": "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT",
+    "production_default": "selector unset",
+    "rollback": "HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=0 selects the original group64_batched all-row primitive",
+    "resource_trace": {
+      "workgroup_size": 128,
+      "grid_size_x": 19447808,
+      "vgpr_count": 96,
+      "sgpr_count": 128,
+      "scratch_size": 0,
+      "requested_dynamic_lds_bytes": 512,
+      "csv_lds_block_size": 0
+    },
+    "mechanism": "one block owns one vocabulary row across all request rows; each packed word, BF16 scale, and BF16 bias is loaded once while every request replays the original per-thread accumulation order and 128-thread FP32 reduction tree"
+  },
+  "protocol": {
+    "baseline_artifact": "benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json",
+    "baseline_commit": "cc0a4e43983993c58e3e07b924fd010af6b5bd59",
+    "publication_command": "env -u HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/maple_batch_decode_bench.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --steps 64 --repetitions 3 --warmup-steps 8 --natural-gate-steps 8 --out /tmp/maple-d1-rowreuse-selector-unset-retained.json",
+    "qualification_command": "env HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/maple_batch_decode_bench.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --steps 64 --repetitions 3 --warmup-steps 8 --natural-gate-steps 8 --out /tmp/maple-d1-rowreuse-clean-candidate.json",
+    "profile_command": "env HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt .venv/bin/python scripts/maple_phase_profile.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --version-file /tmp/hipengine-maple-hipcc-version.txt --raw-root /tmp/maple-d1-rowreuse-c8-profile-raw --phase decode_c8 --out /tmp/maple-d1-rowreuse-c8-profile.json",
+    "reclaimed_slot_command": "env HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT=1 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python -m pytest -q tests/test_maple_runtime.py::test_maple_continuous_batcher_matches_serial",
+    "tokens_per_request": 64,
+    "repetitions": 3,
+    "warmup_steps": 8,
+    "natural_gate_steps": 8,
+    "timing_scope": "resident MapleBatchRunner plus MapleContinuousBatcher owner loop"
+  },
+  "performance": {
+    "rows": [
+      {
+        "concurrency": 2,
+        "baseline_median_aggregate_tokens_per_second": 218.81819143840934,
+        "publication_samples_aggregate_tokens_per_second": [251.77259560774178, 250.48127577904899, 250.04826523528808],
+        "publication_median_aggregate_tokens_per_second": 250.48127577904899,
+        "improvement_percent": 14.470042062088705,
+        "resident_tracked_bytes": 5316071856,
+        "after_close_bytes": 0,
+        "after_close_allocations": 0
+      },
+      {
+        "concurrency": 4,
+        "baseline_median_aggregate_tokens_per_second": 261.09912863571964,
+        "publication_samples_aggregate_tokens_per_second": [346.9720520745094, 346.2406992208825, 346.36541277445434],
+        "publication_median_aggregate_tokens_per_second": 346.36541277445434,
+        "improvement_percent": 32.656671274340624,
+        "resident_tracked_bytes": 5323952976,
+        "after_close_bytes": 0,
+        "after_close_allocations": 0
+      },
+      {
+        "concurrency": 8,
+        "baseline_median_aggregate_tokens_per_second": 299.18136116860035,
+        "publication_samples_aggregate_tokens_per_second": [428.0704609445142, 427.8039285055472, 428.06278773441454],
+        "publication_median_aggregate_tokens_per_second": 428.06278773441454,
+        "improvement_percent": 43.0780266733209,
+        "resident_tracked_bytes": 5339715216,
+        "after_close_bytes": 0,
+        "after_close_allocations": 0
+      }
+    ],
+    "qualification_medians_aggregate_tokens_per_second": {
+      "c2": 250.037199382937,
+      "c4": 347.5107313469156,
+      "c8": 427.92919437076887
+    },
+    "c8_cached_trace": {
+      "prior_artifact": "benchmarks/results/2026-08-08-gfx1151-maple-p2-phase-profile.json",
+      "prior_wall_ms_per_batch": 25.925284484401345,
+      "rowreuse_wall_ms_per_batch": 19.295623525977135,
+      "prior_kernel_ms_per_batch": 24.0464832,
+      "rowreuse_kernel_ms_per_batch": 17.3048075,
+      "host_gap_ms_per_batch": 1.9908160259771366,
+      "launches_per_batch": 293,
+      "prior_head_ms_per_batch": 10.4896012,
+      "rowreuse_head_ms_per_batch": 3.7337983,
+      "head_speedup": 2.80936471581767,
+      "useful_aggregate_tokens_per_second": 414.6017872513855
+    },
+    "leaf_screen": {
+      "shape": "151936x2048",
+      "baseline_mean_ms": {"c2": 2.762777978205122, "c4": 5.281335274048615, "c8": 10.553730666288175},
+      "rowreuse_mean_ms": {"c2": 1.531916597741656, "c4": 2.0226639535394497, "c8": 3.763292741496116},
+      "speedup": {"c2": 1.8034780628906273, "c4": 2.6110789510075723, "c8": 2.804387378615804},
+      "candidate_wins": 96,
+      "pairs": 96
+    }
+  },
+  "correctness": {
+    "production_k_fp32_logit_bits": {
+      "rows_tested": [2, 4, 8],
+      "fp32_mismatches": 0,
+      "leaf_argmax_equal": true
+    },
+    "timed_width_samples": {
+      "passed": true,
+      "trajectory_exact_samples": 9,
+      "samples": 9
+    },
+    "natural_and_heldout": {
+      "passed": true,
+      "prompt_count": 18,
+      "trajectory_matches": 18,
+      "category_counts": {"code": 6, "general_en": 4, "general_ja": 4, "mixed_ja_en": 4},
+      "heldout_category_counts": {"code": 2, "general_en": 2, "general_ja": 2, "mixed_ja_en": 2},
+      "sparse_final_c8_active_rows": 2
+    },
+    "reclaimed_slot": {
+      "passed": true,
+      "description": "slot 0 completes and resets, slot 1 advances through a sparse round, then a third request reuses slot 0; all trajectories equal independent serial decode"
+    },
+    "state_contract": "the new head launches after final RMSNorm, writes only the logits buffer, and is FP32-bit exact to the original head; hidden, KVLiveSpans, K/V cache, and request-position buffers have no new writer or arithmetic boundary",
+    "lifecycle": {
+      "all_publication_runners_closed_to_zero": true,
+      "all_natural_gate_runners_closed_to_zero": true
+    }
+  },
+  "source_artifacts": {
+    "qualification_full_sha256": "6e8f074e2e80d88058eb5c4be41ee6d7ba27a5bc982e5813fdb4aade35f85721",
+    "publication_full_sha256": "1a7cc74bfef538688d7728a530d6e1a4edb17c9894e6a2dfa05b5cff9fb63b93",
+    "profile_generated_sha256": "75eb865e272226c619d7de6b37e5ed92e241c895b617dd697a5d2a1f112606fe",
+    "profile_raw_kernel_csv_sha256": "a06e9e9a447031944c1e1fb1b2aa8e8aa1d3fd26a8719485bfc5460703329f7a"
+  },
+  "notes": [
+    "These are exact full-vocabulary affine4 helper rows, not approximate FlashHead results.",
+    "Every active request requires logits; row reuse shares immutable weight traffic but preserves one exact result per request.",
+    "The helper remains outside the public generation scheduler and does not include batched prompt prefill."
+  ]
+}

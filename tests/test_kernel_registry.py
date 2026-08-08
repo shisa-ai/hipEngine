@@ -109,3 +109,46 @@ def test_resolve_memoizes_candidates_and_invalidates_on_mutation(monkeypatch) ->
         variant=key.variant,
     ) is second
     assert candidate_calls == 2
+
+
+def test_restore_registry_for_tests_invalidates_cached_fallback() -> None:
+    exact_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q6_k_t16_v1",
+        "t16_gemv_decode_bf16_f32_out",
+    )
+    fallback_key = KernelKey("cpu_reference", "linear", "fp16")
+
+    def exact(*args, **kwargs):
+        return args, kwargs
+
+    def fallback(*args):
+        return args
+
+    register(exact_key, exact)
+    register(fallback_key, fallback)
+    baseline = dict(registry._KERNELS)
+
+    clear_registry_for_tests()
+    register(fallback_key, fallback)
+    assert (
+        resolve(
+            backend=exact_key.backend,
+            layer=exact_key.layer,
+            quant=exact_key.quant,
+            variant=exact_key.variant,
+        )
+        is fallback
+    )
+
+    registry.restore_registry_for_tests(baseline)
+    assert (
+        resolve(
+            backend=exact_key.backend,
+            layer=exact_key.layer,
+            quant=exact_key.quant,
+            variant=exact_key.variant,
+        )
+        is exact
+    )

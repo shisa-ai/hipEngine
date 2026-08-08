@@ -1,0 +1,713 @@
+{
+  "acceptance": {
+    "64k_wall_threshold_passed": true,
+    "all_correctness_passed": true,
+    "all_lifecycle_passed": true,
+    "named_scratch_free_trace_passed": true,
+    "passed": true,
+    "prefill_route_unchanged": true,
+    "rule": "Retain only if 64K whole wall saves >=1% or >=0.5 ms/token and primitive/18-prompt correctness, exact IDs, named scratch-free traces, unchanged tracked peak, whole-GTT/lifecycle, below-32K serial fallback, and decode-only prefill isolation all pass.",
+    "tracked_peak_unchanged": true
+  },
+  "candidate": {
+    "capability": "GGUF_PAGED_ATTN_PARALLEL_REDUCE=True",
+    "fallbacks": "The registered serial gated reducer remains selected below 32K and under HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0; unsupported shapes/backends retain their existing routes.",
+    "minimum_context_tokens": 32768,
+    "prefill_qualification": "The capability is read only by private-c1 full-attention decode routing. RED/GREEN threshold tests prove serial selection at 32K-1 and parallel selection at 32K; no prefill implementation, ownership, or route changes.",
+    "route": "existing registered bf16_split_k_gqa_gate_bf16_parallel_reduce_spans wrapper: in-place prepare normalized split weights, then dimension-coalesced BF16 gated output"
+  },
+  "correctness_claim": true,
+  "created_at": "2026-08-06T09:15:52.792999+00:00",
+  "date": "2026-08-06",
+  "decision": {
+    "campaign": "SH7-A1 is a retained performance unit, not automatic campaign completion. Select the next structurally new measured owner if fork parity remains open.",
+    "cross_engine": "This own-engine A/B is not a strict cross-engine claim. Reapply the frozen C1/C2 and pinned-fork comparator after the measured rows; fork parity remains a separate qualified diagnostic.",
+    "production": "Retain the gfx1151 package capability at true from 32K; keep serial below 32K and explicit opt-out."
+  },
+  "kind": "hipengine_gfx1151_sh7_a1_parallel_split_reducer_gate",
+  "measurement_scope": "Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV private-c1 eager decode at 32K/64K; package-default one hardware queue; serial-vs-prepare-plus-coalesced parallel reducer; one discarded 128-token run plus three measurements, 10-ms whole-GTT, cached-only kernel/HIP/ROCTX traces, exact category+heldout semantic gate.",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M"
+  },
+  "performance_claim": true,
+  "platform": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "gpu_max_hw_queues": 1,
+    "system": "AMD Ryzen AI MAX+ 395 / Radeon 8060S"
+  },
+  "primitive_correctness": {
+    "context_tokens": 8448,
+    "gqa_max_abs_vs_numpy": 8.2e-08,
+    "parallel_bf16_max_abs_vs_numpy": 0.0,
+    "parallel_bf16_mismatches_vs_numpy": 0,
+    "serial_bf16_max_abs_vs_numpy": 0.000122,
+    "serial_bf16_mismatches_vs_numpy": 1,
+    "shape": "16 query heads x 256 / 2 KV heads",
+    "splits": 33,
+    "warp_max_abs_vs_numpy": 8.2e-08
+  },
+  "protocol": {
+    "commands": {
+      "focused_tests": "python3 -m pytest tests/test_gfx1151_backend.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_gguf_decode_repack_dispatch.py -q",
+      "pair": "GPU_MAX_HW_QUEUES=1 HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE={0,1} python3 scripts/gguf_sh_c0_profile.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --workloads 32K 64K --baseline-steps 128 --baseline-warmups 1 --baseline-repetitions 3 --profile-steps 8 --warmup-steps 1 --gtt-interval-ms 10 --compiler-version-file /tmp/hipengine-hipcc-version.txt",
+      "primitive": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "semantic": "GPU_MAX_HW_QUEUES=1 python3 /tmp/sh7_parallel_reduce_semantic.py --output /tmp/hipengine-sh7-a1-semantic.json"
+    },
+    "memory": "Process-local tracked ownership plus 10-ms whole-GTT sysfs sampling; require zero tracked bytes after close and unchanged tracked peak.",
+    "semantic": {
+      "candidate": "same producer + prepare/coalesced parallel gated split reducer",
+      "control": "grouped-GQA producer + serial gated split reducer",
+      "decode_steps": 24,
+      "environment": {
+        "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT": "1",
+        "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT": "0",
+        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX": "1",
+        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT": "0",
+        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS": "1"
+      },
+      "forced_split_context_for_semantic_coverage": true,
+      "heldout_prompts": 8,
+      "primary_prompts": 10,
+      "repeats": 3,
+      "teacher_forced_matched_history": true
+    },
+    "trace": "Cached-only rocprofv3 kernel+HIP API+ROCTX, one warmup and eight measured decode tokens; compiler version precomputed; no JIT build in profiler.",
+    "wall": "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0 then =1; each lane independent right-sized 32K/64K processes; 128 decode tokens; one full discarded warmup plus three measurements; exact repeated token 9707."
+  },
+  "raw_evidence": {
+    "candidate_summary": {
+      "path": "/tmp/hipengine-sh7-a1-20260806/candidate.json",
+      "sha256": "51930ca7cad15ec1fa1a084b1e9b0e9b3d4785652ff20251aad8bb89d4b992bc"
+    },
+    "focused_tests": {
+      "path": "/tmp/hipengine-sh7-a1-focused-tests.log",
+      "sha256": "b1caae85ec31d08a00b70488af9cc30676ea609b8012c2800620e199adf3bcb2"
+    },
+    "primitive": {
+      "path": "/tmp/hipengine-sh7-a1-primitive.log",
+      "sha256": "a67865b86f7a4855684790eef2677aa543ea6aa6ed2e9e9aa527e1f77125a6a1"
+    },
+    "semantic": {
+      "path": "/tmp/hipengine-sh7-a1-semantic.json",
+      "sha256": "964a5e9a43ca8fe9204f7f089e3e037b3f1bb42138bde0a2c2ffa5265b4faac8"
+    },
+    "serial_summary": {
+      "path": "/tmp/hipengine-sh7-a1-20260806/serial.json",
+      "sha256": "2d39cd71cec310bfffece29ded39f546f7eeaa8a13b45c8042497791c44292f0"
+    }
+  },
+  "rows": [
+    {
+      "candidate": {
+        "all_tokens_exact": true,
+        "median_ms_per_token": 21.3745655859375,
+        "median_tok_s": 46.784576555694215,
+        "samples_ms_per_token": [
+          21.3745655859375,
+          21.3528687578125,
+          21.4610588984375
+        ],
+        "samples_tok_s": [
+          46.784576555694215,
+          46.83211475432893,
+          46.59602327790109
+        ],
+        "stdev_ms_per_token": 0.057237738113889644,
+        "tracked_after_close_bytes": 0,
+        "tracked_peak_bytes": 23189875704,
+        "tracked_peak_gib": 21.597254745662212,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_peak_gib": 22.151844024658203,
+        "whole_gtt_samples": 17323
+      },
+      "context_tokens": 32768,
+      "delta": {
+        "saving_ms_per_token": 0.33344775781250036,
+        "tok_s_change_pct": 1.5600212152703463,
+        "tracked_peak_bytes": 0,
+        "wall_speedup": 1.0156002121527035,
+        "wall_speedup_pct": 1.5600212152703463,
+        "whole_gtt_peak_gib": 0.0
+      },
+      "serial": {
+        "all_tokens_exact": true,
+        "median_ms_per_token": 21.70801334375,
+        "median_tok_s": 46.06593814757867,
+        "samples_ms_per_token": [
+          21.6950767734375,
+          21.70801334375,
+          21.7807339765625
+        ],
+        "samples_tok_s": [
+          46.093406833404536,
+          46.06593814757867,
+          45.91213505826138
+        ],
+        "stdev_ms_per_token": 0.04617503245856804,
+        "tracked_after_close_bytes": 0,
+        "tracked_peak_bytes": 23189875704,
+        "tracked_peak_gib": 21.597254745662212,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_peak_gib": 22.151844024658203,
+        "whole_gtt_samples": 17333
+      },
+      "trace": {
+        "candidate": {
+          "child_json_sha256": "d3de6846217cab71c1f5c28b37e1c185efdf40ece5b72bd90237f416f51ea002",
+          "command": [
+            "/home/lhl/miniforge3/envs/therock/bin/rocprofv3",
+            "--kernel-trace",
+            "--marker-trace",
+            "--hip-trace",
+            "--output-format",
+            "csv",
+            "-d",
+            "/tmp/hipengine-sh7-a1-20260806/candidate-raw/32768/trace",
+            "-o",
+            "sh-c0-32768",
+            "--",
+            "/home/lhl/miniforge3/envs/therock/bin/python3",
+            "/home/lhl/hipEngine-main/scripts/gguf_decode_rocprof.py",
+            "--child-mode",
+            "profile",
+            "--source-root",
+            "/home/lhl/hipEngine-main",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--prompt-token-id",
+            "9707",
+            "--prompt-length",
+            "32768",
+            "--expected-token-id",
+            "9707",
+            "--steps",
+            "8",
+            "--warmup-steps",
+            "1",
+            "--benchmark-warmups",
+            "0",
+            "--repetitions",
+            "1",
+            "--compiler-version-file",
+            "/tmp/hipengine-hipcc-version.txt",
+            "--child-json",
+            "/tmp/hipengine-sh7-a1-20260806/candidate-raw/32768/profile.json",
+            "--require-cached"
+          ],
+          "families": [
+            {
+              "calls": 80,
+              "calls_per_token": 10.0,
+              "gpu_us_per_token": 30.3725,
+              "name": "qwen35_paged_full_attn_decode_split_k_prepare_weights",
+              "resources": {
+                "grid": [
+                  [
+                    4096,
+                    1,
+                    1
+                  ]
+                ],
+                "lds_bytes": [
+                  1024
+                ],
+                "queues": [
+                  1
+                ],
+                "scratch_bytes": [
+                  0
+                ],
+                "sgpr": [
+                  128
+                ],
+                "streams": [
+                  0
+                ],
+                "vgpr": [
+                  24
+                ],
+                "workgroup": [
+                  [
+                    256,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "us_per_call": 3.03725
+            },
+            {
+              "calls": 80,
+              "calls_per_token": 10.0,
+              "gpu_us_per_token": 78.973125,
+              "name": "qwen35_paged_full_attn_decode_split_k_parallel_output_gate",
+              "resources": {
+                "grid": [
+                  [
+                    4096,
+                    8,
+                    1
+                  ]
+                ],
+                "lds_bytes": [
+                  1024
+                ],
+                "queues": [
+                  1
+                ],
+                "scratch_bytes": [
+                  0
+                ],
+                "sgpr": [
+                  128
+                ],
+                "streams": [
+                  0
+                ],
+                "vgpr": [
+                  16
+                ],
+                "workgroup": [
+                  [
+                    256,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "us_per_call": 7.8973125
+            }
+          ],
+          "gpu_kernel_us_per_token": 20216.100875,
+          "hip_api_csv_sha256": "a887830093f675aca5e708750f8f3c5ab53455f49e6564e70ed5d131e83846d2",
+          "kernel_csv_sha256": "c7eca2bf8f2a464933e3807bf8b3bef083794662fddb60dac3bf6f218023db52",
+          "marker_csv_sha256": "c95ab7e2ce476d5f55c901a14d8774e3392e7e4e16a17f788c20145c13fc4729",
+          "selected_decode_kernels": 5104,
+          "step_marker_windows": 8
+        },
+        "serial": {
+          "child_json_sha256": "55512453eebde27287d7e34d9ab644b026be274d94480671153e990b5e31732d",
+          "command": [
+            "/home/lhl/miniforge3/envs/therock/bin/rocprofv3",
+            "--kernel-trace",
+            "--marker-trace",
+            "--hip-trace",
+            "--output-format",
+            "csv",
+            "-d",
+            "/tmp/hipengine-sh7-a1-20260806/serial-raw/32768/trace",
+            "-o",
+            "sh-c0-32768",
+            "--",
+            "/home/lhl/miniforge3/envs/therock/bin/python3",
+            "/home/lhl/hipEngine-main/scripts/gguf_decode_rocprof.py",
+            "--child-mode",
+            "profile",
+            "--source-root",
+            "/home/lhl/hipEngine-main",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--prompt-token-id",
+            "9707",
+            "--prompt-length",
+            "32768",
+            "--expected-token-id",
+            "9707",
+            "--steps",
+            "8",
+            "--warmup-steps",
+            "1",
+            "--benchmark-warmups",
+            "0",
+            "--repetitions",
+            "1",
+            "--compiler-version-file",
+            "/tmp/hipengine-hipcc-version.txt",
+            "--child-json",
+            "/tmp/hipengine-sh7-a1-20260806/serial-raw/32768/profile.json",
+            "--require-cached"
+          ],
+          "families": [
+            {
+              "calls": 80,
+              "calls_per_token": 10.0,
+              "gpu_us_per_token": 424.1615,
+              "name": "qwen35_paged_full_attn_decode_split_k_reduce_gate",
+              "resources": {
+                "grid": [
+                  [
+                    4096,
+                    1,
+                    1
+                  ]
+                ],
+                "lds_bytes": [
+                  0
+                ],
+                "queues": [
+                  1
+                ],
+                "scratch_bytes": [
+                  0
+                ],
+                "sgpr": [
+                  128
+                ],
+                "streams": [
+                  0
+                ],
+                "vgpr": [
+                  16
+                ],
+                "workgroup": [
+                  [
+                    256,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "us_per_call": 42.41615
+            }
+          ],
+          "gpu_kernel_us_per_token": 20684.455375,
+          "hip_api_csv_sha256": "d5df0ef89fd809e434c4ee2fb54b91c4f6dc6cc063b8aaa2cc95751d66261485",
+          "kernel_csv_sha256": "75354cacfc546e4aaf422c95a3ecc8ecf557db6e7a64f3c07a9af39d1dd9df51",
+          "marker_csv_sha256": "1e01251b49dd3d170d51c281aa219c2118e5408744dc940caa70558a31bd11ef",
+          "selected_decode_kernels": 5024,
+          "step_marker_windows": 8
+        }
+      }
+    },
+    {
+      "candidate": {
+        "all_tokens_exact": true,
+        "median_ms_per_token": 24.7613588359375,
+        "median_tok_s": 40.38550576427356,
+        "samples_ms_per_token": [
+          24.844349546875,
+          24.7613588359375,
+          24.7413573984375
+        ],
+        "samples_tok_s": [
+          40.25060097118876,
+          40.38550576427356,
+          40.41815426275493
+        ],
+        "stdev_ms_per_token": 0.05461211441269317,
+        "tracked_after_close_bytes": 0,
+        "tracked_peak_bytes": 23982878200,
+        "tracked_peak_gib": 22.335795871913433,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_peak_gib": 22.890125274658203,
+        "whole_gtt_samples": 34019
+      },
+      "context_tokens": 65536,
+      "delta": {
+        "saving_ms_per_token": 0.5927789531249985,
+        "tok_s_change_pct": 2.3939677828369588,
+        "tracked_peak_bytes": 0,
+        "wall_speedup": 1.0239396778283696,
+        "wall_speedup_pct": 2.3939677828369588,
+        "whole_gtt_peak_gib": 0.0
+      },
+      "serial": {
+        "all_tokens_exact": true,
+        "median_ms_per_token": 25.3541377890625,
+        "median_tok_s": 39.441293895286364,
+        "samples_ms_per_token": [
+          25.41952175,
+          25.3541377890625,
+          25.31292334375
+        ],
+        "samples_tok_s": [
+          39.339843205350626,
+          39.441293895286364,
+          39.50551212200899
+        ],
+        "stdev_ms_per_token": 0.05375393484098623,
+        "tracked_after_close_bytes": 0,
+        "tracked_peak_bytes": 23982878200,
+        "tracked_peak_gib": 22.335795871913433,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "whole_gtt_final_gib": 0.017436981201171875,
+        "whole_gtt_peak_gib": 22.890125274658203,
+        "whole_gtt_samples": 34036
+      },
+      "trace": {
+        "candidate": {
+          "child_json_sha256": "d3043072fa57c7bd935bdbf2ea32f1dc86a76fda4f7deb535c28872dc98199fc",
+          "command": [
+            "/home/lhl/miniforge3/envs/therock/bin/rocprofv3",
+            "--kernel-trace",
+            "--marker-trace",
+            "--hip-trace",
+            "--output-format",
+            "csv",
+            "-d",
+            "/tmp/hipengine-sh7-a1-20260806/candidate-raw/65536/trace",
+            "-o",
+            "sh-c0-65536",
+            "--",
+            "/home/lhl/miniforge3/envs/therock/bin/python3",
+            "/home/lhl/hipEngine-main/scripts/gguf_decode_rocprof.py",
+            "--child-mode",
+            "profile",
+            "--source-root",
+            "/home/lhl/hipEngine-main",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--prompt-token-id",
+            "9707",
+            "--prompt-length",
+            "65536",
+            "--expected-token-id",
+            "9707",
+            "--steps",
+            "8",
+            "--warmup-steps",
+            "1",
+            "--benchmark-warmups",
+            "0",
+            "--repetitions",
+            "1",
+            "--compiler-version-file",
+            "/tmp/hipengine-hipcc-version.txt",
+            "--child-json",
+            "/tmp/hipengine-sh7-a1-20260806/candidate-raw/65536/profile.json",
+            "--require-cached"
+          ],
+          "families": [
+            {
+              "calls": 80,
+              "calls_per_token": 10.0,
+              "gpu_us_per_token": 35.32675,
+              "name": "qwen35_paged_full_attn_decode_split_k_prepare_weights",
+              "resources": {
+                "grid": [
+                  [
+                    4096,
+                    1,
+                    1
+                  ]
+                ],
+                "lds_bytes": [
+                  1024
+                ],
+                "queues": [
+                  1
+                ],
+                "scratch_bytes": [
+                  0
+                ],
+                "sgpr": [
+                  128
+                ],
+                "streams": [
+                  0
+                ],
+                "vgpr": [
+                  24
+                ],
+                "workgroup": [
+                  [
+                    256,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "us_per_call": 3.5326750000000002
+            },
+            {
+              "calls": 80,
+              "calls_per_token": 10.0,
+              "gpu_us_per_token": 172.158375,
+              "name": "qwen35_paged_full_attn_decode_split_k_parallel_output_gate",
+              "resources": {
+                "grid": [
+                  [
+                    4096,
+                    8,
+                    1
+                  ]
+                ],
+                "lds_bytes": [
+                  1024
+                ],
+                "queues": [
+                  1
+                ],
+                "scratch_bytes": [
+                  0
+                ],
+                "sgpr": [
+                  128
+                ],
+                "streams": [
+                  0
+                ],
+                "vgpr": [
+                  16
+                ],
+                "workgroup": [
+                  [
+                    256,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "us_per_call": 17.215837500000003
+            }
+          ],
+          "gpu_kernel_us_per_token": 23550.3115,
+          "hip_api_csv_sha256": "df8e9157f20eaf2215ff0a8abafbc3795ba090442e3fe96afa61d80bc83b3aa5",
+          "kernel_csv_sha256": "f38c7df0feaf184f71b353f318c622ad5c0c58dfd813f3bd635a6a1101903a1a",
+          "marker_csv_sha256": "423e1ba409d9c9ba5b8ea81aae96b2e2a5abdff4795c580b8e679cbb577c9976",
+          "selected_decode_kernels": 5104,
+          "step_marker_windows": 8
+        },
+        "serial": {
+          "child_json_sha256": "7ee21d8f50d091e591621c943e4d07005130563f74384df5dc7f2978c984bcdc",
+          "command": [
+            "/home/lhl/miniforge3/envs/therock/bin/rocprofv3",
+            "--kernel-trace",
+            "--marker-trace",
+            "--hip-trace",
+            "--output-format",
+            "csv",
+            "-d",
+            "/tmp/hipengine-sh7-a1-20260806/serial-raw/65536/trace",
+            "-o",
+            "sh-c0-65536",
+            "--",
+            "/home/lhl/miniforge3/envs/therock/bin/python3",
+            "/home/lhl/hipEngine-main/scripts/gguf_decode_rocprof.py",
+            "--child-mode",
+            "profile",
+            "--source-root",
+            "/home/lhl/hipEngine-main",
+            "--model",
+            "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--prompt-token-id",
+            "9707",
+            "--prompt-length",
+            "65536",
+            "--expected-token-id",
+            "9707",
+            "--steps",
+            "8",
+            "--warmup-steps",
+            "1",
+            "--benchmark-warmups",
+            "0",
+            "--repetitions",
+            "1",
+            "--compiler-version-file",
+            "/tmp/hipengine-hipcc-version.txt",
+            "--child-json",
+            "/tmp/hipengine-sh7-a1-20260806/serial-raw/65536/profile.json",
+            "--require-cached"
+          ],
+          "families": [
+            {
+              "calls": 80,
+              "calls_per_token": 10.0,
+              "gpu_us_per_token": 744.97275,
+              "name": "qwen35_paged_full_attn_decode_split_k_reduce_gate",
+              "resources": {
+                "grid": [
+                  [
+                    4096,
+                    1,
+                    1
+                  ]
+                ],
+                "lds_bytes": [
+                  0
+                ],
+                "queues": [
+                  1
+                ],
+                "scratch_bytes": [
+                  0
+                ],
+                "sgpr": [
+                  128
+                ],
+                "streams": [
+                  0
+                ],
+                "vgpr": [
+                  16
+                ],
+                "workgroup": [
+                  [
+                    256,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "us_per_call": 74.49727499999999
+            }
+          ],
+          "gpu_kernel_us_per_token": 24070.44975,
+          "hip_api_csv_sha256": "81a01c4b43983e2e14fc1b3c53a86f6bc9f13988e0260129339a0f37ab4853de",
+          "kernel_csv_sha256": "409734cbc7730569dca55cee4d3f310bcfad227dfd337a730f67afddb0008450",
+          "marker_csv_sha256": "25ac361e48bbbf7911fff41aa35356aff355b524b6e5c15b1b880f1d41f829da",
+          "selected_decode_kernels": 5024,
+          "step_marker_windows": 8
+        }
+      }
+    }
+  ],
+  "schema_version": 1,
+  "semantic_correctness": {
+    "artifact_sha256": "964a5e9a43ca8fe9204f7f089e3e037b3f1bb42138bde0a2c2ffa5265b4faac8",
+    "deterministic": true,
+    "exact_logit_positions": 1296,
+    "finite": true,
+    "max_kl": 0.0,
+    "mean_kl": 0.0,
+    "memory_returned_to_baseline": true,
+    "passed": true,
+    "positions": 1296,
+    "prompts": 18,
+    "repeats": 3,
+    "top1_agreement": 1.0
+  },
+  "source": {
+    "branch": "main",
+    "parent_commit": "6464e6e45e6bd7528eabd9fbb50646ff84bd4ff6",
+    "scoped_diff_sha256": "4f7d00bd97f9d2fd1593ce930a51d990efa852e747a682ad8c191a44a06755e1",
+    "scoped_files": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "tests/test_gfx1151_backend.py",
+      "tests/test_qwen35_gguf_decode_repack_dispatch.py"
+    ],
+    "tracked_dirty_qualification": "Only the three scoped candidate/test files differ from the parent in both benchmark lanes; HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0/1 selects the same-source serial/candidate route."
+  },
+  "status": "accepted_retained_default",
+  "topline_eligible": true,
+  "validation": {
+    "focused_tests_log_sha256": "b1caae85ec31d08a00b70488af9cc30676ea609b8012c2800620e199adf3bcb2",
+    "focused_tests_passed": 40,
+    "primitive_log_sha256": "a67865b86f7a4855684790eef2677aa543ea6aa6ed2e9e9aa527e1f77125a6a1"
+  }
+}

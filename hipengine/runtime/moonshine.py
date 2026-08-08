@@ -36,6 +36,15 @@ MOONSHINE_TRIPLE_QKV_THREADS = 32
 MOONSHINE_SINGLE_PROJECTION_THREADS = 64
 MOONSHINE_MLP_FC1_THREADS = 32
 MOONSHINE_MLP_FC2_THREADS = 64
+MOONSHINE_LM_HEAD_ROUTES = ("wave8_argmax", "wave8_top1")
+MOONSHINE_DEFAULT_LM_HEAD_ROUTE = "wave8_top1"
+
+
+def normalize_moonshine_lm_head_route(route: str) -> str:
+    if not isinstance(route, str) or route not in MOONSHINE_LM_HEAD_ROUTES:
+        expected = ", ".join(MOONSHINE_LM_HEAD_ROUTES)
+        raise ValueError(f"lm_head_route must be one of: {expected}")
+    return route
 
 
 def _moonshine_self_attention_threads(position: int) -> int:
@@ -146,6 +155,10 @@ class MoonshineResidentRuntime:
         "position",
         "argmax",
     )
+    _LM_HEAD_TOP1_SCRATCH_NAMES = (
+        "lm_head_partial_values",
+        "lm_head_partial_indices",
+    )
 
     def __init__(
         self,
@@ -156,6 +169,7 @@ class MoonshineResidentRuntime:
         device: Device | None = None,
         runtime: HipRuntime | None = None,
         w8a16_families: str | Iterable[str] | None = None,
+        lm_head_route: str = MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -175,6 +189,13 @@ class MoonshineResidentRuntime:
         self.weights = loaded_model.weights if loaded_model is not None else None
         self.spec = loaded_model.spec if loaded_model is not None else None
         self.w8a16_families = selected_w8a16
+        self.lm_head_route = normalize_moonshine_lm_head_route(lm_head_route)
+        self._scratch_names = self._SCRATCH_NAMES
+        if self.lm_head_route == "wave8_top1":
+            self._scratch_names = (
+                *self._scratch_names,
+                *self._LM_HEAD_TOP1_SCRATCH_NAMES,
+            )
         self.encoder_frames = int(encoder_frames)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
         self.stream = 0
@@ -201,6 +222,8 @@ class MoonshineResidentRuntime:
             assert self.loaded_model is not None
             assert self.weights is not None
             assert self.spec is not None
+            if self.lm_head_route == "wave8_top1" and "lm_head" in self.w8a16_families:
+                raise ValueError("wave8_top1 requires the exact FP16 Moonshine LM head")
             valid_frames = {frames for _, frames in self.spec.encoder_buckets}
             if self.encoder_frames not in valid_frames:
                 expected = ", ".join(str(value) for value in sorted(valid_frames))
@@ -264,6 +287,14 @@ class MoonshineResidentRuntime:
         reserve("token", (1,), DType.INT64)
         reserve("position", (1,), DType.INT64)
         reserve("argmax", (1,), DType.INT64)
+        if self.lm_head_route == "wave8_top1":
+            from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
+                moonshine_lm_head_partial_count,
+            )
+
+            partial_count = moonshine_lm_head_partial_count(spec.vocab_size)
+            reserve("lm_head_partial_values", (partial_count,), DType.FP16)
+            reserve("lm_head_partial_indices", (partial_count,), DType.INT64)
 
     def _initialize_workspace(self) -> None:
         for name in self.workspace.names:
@@ -366,7 +397,7 @@ class MoonshineResidentRuntime:
 
         if self.closed:
             raise RuntimeError("Moonshine runtime is closed")
-        names = ("self_kv", *self._SCRATCH_NAMES)
+        names = ("self_kv", *self._scratch_names)
         if clear_cross_cache:
             names = (
                 *names,
@@ -568,6 +599,26 @@ class MoonshineResidentRuntime:
             return None
         return loaded.w8a16[source_name]
 
+    def lm_head_contract(self) -> dict[str, object]:
+        partial_count = 0
+        if self.lm_head_route == "wave8_top1":
+            if self.spec is None:
+                raise RuntimeError("Moonshine runtime is closed")
+            from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
+                moonshine_lm_head_partial_count,
+            )
+
+            partial_count = moonshine_lm_head_partial_count(self.spec.vocab_size)
+        return {
+            "route": self.lm_head_route,
+            "materializes_full_fp16_logits": True,
+            "stable_lowest_id_top1": True,
+            "partial_count": partial_count,
+            "partial_value_dtype": "fp16" if partial_count else None,
+            "partial_index_dtype": "int64" if partial_count else None,
+            "fallback": "wave8_argmax",
+        }
+
     def quantization_contract(self) -> dict[str, object]:
         loaded = self.loaded_model
         if loaded is None or loaded.w8a16 is None:
@@ -744,6 +795,7 @@ class MoonshineResidentRuntime:
         )
         from hipengine.kernels.hip_gfx1100.linear.moonshine_projection import (
             moonshine_f16_lm_head_projection_wave8,
+            moonshine_f16_lm_head_projection_wave8_top1,
             moonshine_f16_projection_bias_gated_silu,
             moonshine_f16_projection_bias_residual,
             moonshine_f16_projection_triple,
@@ -1043,17 +1095,34 @@ class MoonshineResidentRuntime:
         if boundary_callback is not None:
             boundary_callback("final_hidden", normalized)
         lm_head_w8 = self._w8a16_weight(spec.embedding_weight_name)
+        top1_ready = False
         if lm_head_w8 is None:
-            moonshine_f16_lm_head_projection_wave8(
-                normalized.ptr,
-                self.weights[spec.lm_head_alias_name].ptr,
-                self.tensor("logits").ptr,
-                1,
-                spec.hidden_size,
-                spec.vocab_size,
-                library=libraries.projection,
-                **common,
-            )
+            if self.lm_head_route == "wave8_top1":
+                moonshine_f16_lm_head_projection_wave8_top1(
+                    normalized.ptr,
+                    self.weights[spec.lm_head_alias_name].ptr,
+                    self.tensor("logits").ptr,
+                    self.tensor("lm_head_partial_values").ptr,
+                    self.tensor("lm_head_partial_indices").ptr,
+                    self.tensor("token").ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.vocab_size,
+                    library=libraries.projection,
+                    **common,
+                )
+                top1_ready = True
+            else:
+                moonshine_f16_lm_head_projection_wave8(
+                    normalized.ptr,
+                    self.weights[spec.lm_head_alias_name].ptr,
+                    self.tensor("logits").ptr,
+                    1,
+                    spec.hidden_size,
+                    spec.vocab_size,
+                    library=libraries.projection,
+                    **common,
+                )
         else:
             moonshine_w8a16_lm_head_wave8(
                 normalized.ptr,
@@ -1066,13 +1135,14 @@ class MoonshineResidentRuntime:
                 library=libraries.w8a16,
                 **common,
             )
-        moonshine_argmax_fp16(
-            self.tensor("logits").ptr,
-            self.tensor("token").ptr,
-            spec.vocab_size,
-            library=libraries.glue,
-            **common,
-        )
+        if not top1_ready:
+            moonshine_argmax_fp16(
+                self.tensor("logits").ptr,
+                self.tensor("token").ptr,
+                spec.vocab_size,
+                library=libraries.glue,
+                **common,
+            )
 
     def capture_token_graphs(self) -> tuple[MoonshineTokenGraph, ...]:
         """Capture one reusable token DAG for each general self-cache launch bucket."""

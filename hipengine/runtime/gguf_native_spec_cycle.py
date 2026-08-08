@@ -625,9 +625,12 @@ def _validate_capture_admission(
             "native target graph requires an open GGUF resident session"
         )
     if bool(getattr(session, "host_token_embedding_enabled", False)):
-        raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph N1 requires device-resident token embedding"
-        )
+        fallback = getattr(session, "_device_token_embedding_weight", None)
+        if not callable(fallback):
+            raise NativeSpecTargetGraphUnsupportedError(
+                "native target graph N1 requires device-resident token embedding"
+            )
+        fallback(reason="native_mtp_graph")
     if bool(getattr(session, "use_expert_sidecar", False)):
         raise NativeSpecTargetGraphUnsupportedError(
             "native target graph N1 requires resident replacement expert layouts"

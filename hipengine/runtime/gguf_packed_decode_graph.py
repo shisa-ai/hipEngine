@@ -393,7 +393,7 @@ def capture_qwen35_gguf_packed_decode_graph(
     if owner._prefill_token_buf is None or owner._bulk_prefill_scratch is None:
         raise RuntimeError("GGUF resident packed decode buffers are closed")
     if owner.host_token_embedding_enabled:
-        raise NotImplementedError("packed decode graphs require device token embedding")
+        owner._device_token_embedding_weight(reason="packed_decode_graph")
     if _enum_value(owner.kv_storage_dtype) != DType.BF16.value:
         raise NotImplementedError("packed decode graphs currently support BF16 KV only")
     if owner.use_expert_sidecar:

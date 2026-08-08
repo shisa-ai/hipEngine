@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import inspect
 import json
 import subprocess
 from pathlib import Path
@@ -25,6 +27,32 @@ from scripts.qwen35_readme_sweep import (
     _measured_graph_replay_requested,
     _summarize_runs,
 )
+
+
+def test_readme_sweep_forwards_required_gguf_bench_keywords() -> None:
+    import scripts.qwen35_gguf_bench as bench
+    import scripts.qwen35_readme_sweep as sweep
+
+    tree = ast.parse(inspect.getsource(sweep._run_gguf_sweep))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_run_existing_gguf_session_once"
+    ]
+    assert len(calls) == 1
+    forwarded = {keyword.arg for keyword in calls[0].keywords if keyword.arg is not None}
+    required = {
+        name
+        for name, parameter in inspect.signature(
+            bench._run_existing_session_once
+        ).parameters.items()
+        if parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        and parameter.default is inspect.Parameter.empty
+    }
+
+    assert required <= forwarded
 
 
 def _fake_card(tmp_path: Path) -> AmdgpuCard:

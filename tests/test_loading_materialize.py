@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 
 import numpy as np
@@ -10,6 +11,7 @@ from safetensors.numpy import save_file
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
+from hipengine.core.memory import DeviceMemoryArena
 from hipengine.loading import (
     dtype_from_safetensors,
     float_array_to_bf16_bits,
@@ -129,6 +131,28 @@ def test_load_host_array_to_device_as_dtype_supports_bf16_bits() -> None:
     assert bytes(runtime.buffers[allocation.buffer.ptr]) == bits.tobytes()
 
 
+def test_load_host_array_to_device_as_dtype_can_borrow_arena_owner() -> None:
+    array = np.arange(8, dtype=np.float32)
+    runtime = FakeRuntime()
+    arena = DeviceMemoryArena.create(4096, runtime=runtime)  # type: ignore[arg-type]
+
+    allocation = load_host_array_to_device_as_dtype(
+        "arena_prepared",
+        array,
+        DType.FP32,
+        runtime=runtime,
+        allocator=arena,
+    )
+
+    assert allocation.owns_buffer is False
+    assert allocation.buffer.ptr == arena.owner.ptr
+    assert bytes(runtime.buffers[arena.owner.ptr][: array.nbytes]) == array.tobytes()
+    allocation.free(runtime=runtime)
+    assert runtime.freed == []
+    arena.close()
+    assert runtime.freed == [arena.owner.ptr]
+
+
 def test_load_host_array_to_device_as_dtype_rejects_size_mismatch() -> None:
     runtime = FakeRuntime()
     with pytest.raises(ValueError, match="does not match dtype"):
@@ -150,3 +174,44 @@ def test_load_tensors_to_device_returns_tensor_map(tmp_path) -> None:
     assert bytes(runtime.buffers[weights.allocation("b").buffer.ptr]) == b.tobytes()
     weights.free(runtime=runtime)
     assert runtime.freed == [weights.allocation("b").buffer.ptr, weights.allocation("a").buffer.ptr]
+
+
+def test_verify_packed_manifest_matches_on_disk_hash(tmp_path) -> None:
+    """C5-R1: packed load verifies the recorded SHA-256 against the file."""
+    from hipengine.loading.moonshine import _verify_packed_manifest
+
+    tensors = {"a": np.asarray([1, 2], dtype=np.float16)}
+    _write_model(tmp_path, tensors)
+    index = load_weight_index(tmp_path)
+    digest = hashlib.sha256((tmp_path / "model.safetensors").read_bytes()).hexdigest()
+    (tmp_path / "pack_manifest.json").write_text(
+        json.dumps({"packed": {"model.safetensors_sha256": digest}})
+    )
+    _verify_packed_manifest(tmp_path, index)  # must not raise
+
+    # A tampered recorded hash must be rejected.
+    (tmp_path / "pack_manifest.json").write_text(
+        json.dumps({"packed": {"model.safetensors_sha256": "0" * 64}})
+    )
+    with pytest.raises(ValueError, match="hash mismatch"):
+        _verify_packed_manifest(tmp_path, index)
+
+    # A missing manifest is rejected for packed loads.
+    (tmp_path / "pack_manifest.json").unlink()
+    with pytest.raises(FileNotFoundError, match="pack_manifest.json"):
+        _verify_packed_manifest(tmp_path, index)
+
+
+def test_validate_packed_fp16_accepts_finite_fp16(tmp_path) -> None:
+    """C5-R1: packed weights are already FP16 and only validated, not converted."""
+    from hipengine.loading.moonshine import _validate_packed_fp16
+
+    good = np.asarray([1.0, -2.0, 0.5], dtype=np.float16)
+    out = _validate_packed_fp16("w", good)
+    assert out.dtype == np.float16
+    assert np.array_equal(out, good)
+
+    with pytest.raises(ValueError, match="dtype must be float16"):
+        _validate_packed_fp16("w", np.asarray([1.0, 2.0], dtype=np.float32))
+    with pytest.raises(ValueError, match="finite"):
+        _validate_packed_fp16("w", np.asarray([np.inf, 1.0], dtype=np.float16))

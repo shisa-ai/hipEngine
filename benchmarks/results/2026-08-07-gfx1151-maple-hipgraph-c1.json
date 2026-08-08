@@ -1,0 +1,31 @@
+{
+  "benchmark": "maple-hipgraph-c1-decode",
+  "date": "2026-08-07",
+  "branch": "maple",
+  "hardware": "AMD Radeon 8060S, gfx1151",
+  "model": "deepgrove/maple-preview-2bit-mlx",
+  "quant": "ternary 2-bit",
+  "workload": "c1 greedy decode, single resident sequence",
+  "milestone": "M1",
+  "gate": "bit-exact vs eager across 120 tokens (growing KVLiveSpans cache)",
+  "correctness": {
+    "bit_exact_vs_eager_120_tokens": true,
+    "diverging_indices": [],
+    "test": "tests/test_maple_graph_capture.py::test_maple_graph_bit_exact_vs_eager_over_growing_kv"
+  },
+  "method": {
+    "approach": "whole-step hipGraph capture (24-layer loop + final norm + lm_head + argmax) via MapleGraphCache",
+    "stateless_basis": "KVLiveSpans ABI passes live/token_positions/evict/row as device pointers read at graph-exec time; eager span update + embed run before each replay",
+    "eager_retained": true,
+    "default_path": "eager (graph is opt-in via HIPENGINE_MAPLE_GRAPH=1)",
+    "env_flag": "HIPENGINE_MAPLE_GRAPH"
+  },
+  "results": {
+    "notes": "Noise-dominated on c1; kernel-bound decode leaves only ~4% host gap to recover. Repeated interleaved runs ranged 0.99x-1.10x. Graph is bit-exact but not a robust c1 win; kept as opt-in infrastructure for M6 batch decode.",
+    "eager_ms_per_token": 7.46,
+    "graph_ms_per_token": 7.54,
+    "observed_speedup_range": [0.99, 1.10]
+  },
+  "status": "retained-as-optin-infrastructure",
+  "next": "M3c selected-expert grouping (~12%) and M4/M5 batched prefill remain higher-leverage than c1 hipGraph"
+}

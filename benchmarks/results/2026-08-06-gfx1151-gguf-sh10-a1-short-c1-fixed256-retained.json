@@ -1,0 +1,236 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh10_a1_short_c1_fixed256_retained",
+  "date": "2026-08-06",
+  "status": "retained_default_below_context_1024",
+  "performance_claim": true,
+  "topline_eligible": true,
+  "source": {
+    "implementation_commit": "df4dd5a5d35869feaa6be8d8a3108c43f72c272d",
+    "parent_commit": "0bf635424",
+    "clean_publication_commit": "df4dd5a5d35869feaa6be8d8a3108c43f72c272d",
+    "clean_publication_staged_dirty": false,
+    "clean_publication_unstaged_dirty": false,
+    "untracked_artifacts_ignored": 255,
+    "lineage_check": "blocked: /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external source was copied"
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "mechanism": {
+    "production_control": "qwen35_paged_full_attn_decode_context_tensor_kernel",
+    "retained_candidate": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true,2> called with rows=1",
+    "implementation": "Reuse the existing registered context_batch plugin through a gfx1151 package capability; no HIP body, C ABI, allocation, persistent sidecar, or new code object is added.",
+    "candidate_properties": "Precomputes one physical KV element offset per token and computes two independent adjacent value dimensions per active thread while retaining the production QK/softmax/value FMA and reduction order for each output.",
+    "scope": "private-c1 BF16 full-attention decode for active_context <= 1023",
+    "fallbacks": "gfx1100, unsupported backends, context >= 1024, normal split routing, INT8 without a BF16 mirror, and capability absence retain their existing registered/direct routes",
+    "package_capability": {
+      "name": "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+      "hip_gfx1151": 1023,
+      "default": 0
+    },
+    "unfused_gate_preserved": true
+  },
+  "trace_first_baseline": {
+    "source": "immutable SH6-C1 cached 512 trace; kernel source unchanged through SH9",
+    "calls": 90,
+    "shape": "10 full-attention layers x one warmup plus eight measured tokens",
+    "measured_kernel_ms_per_token": 1.4996795,
+    "median_us_per_call": 150.002,
+    "resources": {
+      "workgroup_threads": 256,
+      "grid_threads": 4096,
+      "logical_blocks": 16,
+      "vgpr": 40,
+      "sgpr": 128,
+      "reported_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "queue": 1,
+      "stream": 0
+    },
+    "kernel_csv_sha256": "f2ddc3da8ecfc087d7dfaf68acdf670c8cf39fde5119c1a6facdea254d4972f2"
+  },
+  "leaf": {
+    "protocol": "Actual 16-query/2-KV-head/D256/block256 shape; 32 cycling copies / 50,331,648 K+V bytes for contexts 513/576/640; five warmup batches; 21 counterbalanced pairs; 96 launches/sample; independent NumPy check.",
+    "all_f32_outputs_byte_exact": true,
+    "max_numpy_abs": 1.862645149230957e-08,
+    "rows": [
+      {
+        "context": 513,
+        "control_us": 127.90858745574951,
+        "candidate_us": 81.8483978509903,
+        "speedup": 1.5627500453779735,
+        "wins": "21/21"
+      },
+      {
+        "context": 576,
+        "control_us": 162.4831259250641,
+        "candidate_us": 98.89425834019978,
+        "speedup": 1.6429985790086652,
+        "wins": "21/21"
+      },
+      {
+        "context": 640,
+        "control_us": 193.4486428896586,
+        "candidate_us": 117.33380953470866,
+        "speedup": 1.648703333308498,
+        "wins": "21/21"
+      }
+    ],
+    "raw_path": "/tmp/hipengine-sh10-a1-existing-batch-leaf.json",
+    "raw_sha256": "456b83fc81f1b873ae943add989599fd17eedb1dfdfad57166e9fcc532eac091"
+  },
+  "boundary": {
+    "context_1023": {
+      "f32_mismatches": 0,
+      "numpy_max_abs": 1.4901161193847656e-08,
+      "control_us": 305.62376976013184,
+      "candidate_us": 187.92301416397095,
+      "speedup": 1.6263243281818687,
+      "wins": "21/21",
+      "raw_path": "/tmp/hipengine-sh10-a1/leaf-boundary-1023.json",
+      "raw_sha256": "b0eb95cf60429ea7e6999e25b96dc4720a79da5d671ec8fdfeb5c442d3f7f00e"
+    },
+    "context_1024": "Package cap stops at 1023. Structural GREEN proves that a raised split threshold selects the prior direct owner at 1024; the production default split threshold selects the prior split route there. No arithmetic or dispatch path at 1024+ changes."
+  },
+  "complete_state": {
+    "exact": true,
+    "context": 512,
+    "prefill_logits_blake2b_128": "cbf90a5996858a0ef355bcf737e6ef34",
+    "prefill_layer_outputs": 40,
+    "prefill_conv_gdn_states": 30,
+    "prefill_live_bf16_kv_states": 10,
+    "teacher_forced_transitions": 4,
+    "teacher_forced_ids": [9707, 9707, 9707, 9707],
+    "final_layer_outputs": 40,
+    "final_conv_gdn_states": 30,
+    "final_live_bf16_kv_states": 10,
+    "control_path": "/tmp/hipengine-sh10-a1/state/control.json",
+    "control_sha256": "a3cb50785f2b83eebd778ac45eabf4f828eab42a3aa9f7c3cbfcd129db3eaa05",
+    "candidate_path": "/tmp/hipengine-sh10-a1/state/candidate.json",
+    "candidate_sha256": "ab1c45bf2e0b2c1c8a677bd694e8c20046905f06fe2b75ab3b8862213bc34fd4",
+    "comparison_sha256": "c626e04f577dc94e9fd7e95df3ba132db7fc53ad4ec652bd13c44e515982aff8"
+  },
+  "wall": {
+    "protocol": "Independent control/candidate processes; package-default one queue; private c1 eager; pp512/tg128; one discarded full run plus three measured runs; host token embedding retained; exact repeated token 9707; no graph replay; 10-ms candidate whole-GTT sampling.",
+    "control": {
+      "prefill_tok_s": {
+        "median": 1365.5511762789013,
+        "samples": [1357.4117898993065, 1365.5511762789013, 1368.8271132539796]
+      },
+      "decode_tok_s": {
+        "median": 51.54127054881157,
+        "samples": [51.54127054881157, 51.30827990703835, 51.929383608132014]
+      },
+      "tracked_peak_gib": 20.566421270370483,
+      "whole_gtt_peak_gib": 21.00012969970703,
+      "whole_gtt_qualification": "Carried from the unchanged-memory SH9 one-queue control because a summary-only parser failed after the completed SH10 control process and project policy forbids an unnecessary rerun.",
+      "all_close_bytes": [0, 0, 0, 0],
+      "raw_sha256": "e3b4920f0acbea10211544633ff11cdcebf96b24a9ba09185c5e61578df9b666"
+    },
+    "candidate": {
+      "prefill_tok_s": {
+        "median": 1357.1958473843201,
+        "samples": [1354.0214554111258, 1367.1453034770045, 1357.1958473843201]
+      },
+      "decode_tok_s": {
+        "median": 53.59135204989734,
+        "samples": [53.59135204989734, 52.11243758717067, 53.755016421965266]
+      },
+      "tracked_peak_gib": 20.566421270370483,
+      "whole_gtt_peak_gib": 21.00012969970703,
+      "all_close_bytes": [0, 0, 0, 0],
+      "raw_sha256": "e8fa6e8a356c73136630b599e7bc3f11e1ddadac894e8888b68946c41f6b5035"
+    },
+    "delta": {
+      "prefill_percent": -0.6118649406717358,
+      "decode_percent": 3.9775532874073427,
+      "decode_saving_ms_per_token": 0.7422005855914904,
+      "tracked_peak_gib": 0.0,
+      "whole_gtt_peak_gib": 0.0,
+      "all_candidate_decode_samples_above_all_control_samples": true
+    },
+    "summary_sha256": "e0e34a47c596fb190b8b321f646ad28cd68d914c7796f637e4632334c1cd8d01"
+  },
+  "clean_publication": {
+    "prefill_tok_s": {
+      "median": 1357.7909317923506,
+      "samples": [1354.1365054846513, 1365.9511334056576, 1357.7909317923506]
+    },
+    "decode_tok_s": {
+      "median": 53.44496579710796,
+      "samples": [53.9618879725035, 53.01665286943481, 53.44496579710796]
+    },
+    "tracked_peak_gib": 20.566421270370483,
+    "all_close_bytes": [0, 0, 0, 0],
+    "final_ids": [9707, 9707, 9707],
+    "raw_path": "/tmp/hipengine-sh10-a1/clean-candidate.json",
+    "raw_sha256": "b2930f1212225dda38b0e6fa14008d6ece85bb50b019e785a62fb6448fda8e18"
+  },
+  "full_process_trace": {
+    "candidate_calls": 90,
+    "control_calls": 0,
+    "measured_candidate_kernel_ms_per_token": 0.928096,
+    "baseline_control_kernel_ms_per_token": 1.4996795,
+    "device_saving_ms_per_token": 0.5715835,
+    "median_candidate_us_per_call": 92.093,
+    "resources": {
+      "workgroup_threads": 256,
+      "grid_threads": 4096,
+      "logical_blocks": 16,
+      "vgpr": 40,
+      "sgpr": 128,
+      "reported_lds_bytes": 0,
+      "scratch_bytes": 0,
+      "queue": 1,
+      "stream": 0
+    },
+    "compiler_child_present": false,
+    "profile_json_sha256": "7afda87bbc20203fc9218bb567eec15e04e3b1a482a74eab7e7b1ad6fcc4dc13",
+    "kernel_csv_sha256": "504c036d559abeb2490b8223c99231623295f1ad85cda9ecbc749442a01af537",
+    "hip_api_csv_sha256": "f600e9cf3c3beb23ac215a4bace5db7b6fe78175991d2d5150487a95363505c1"
+  },
+  "validation": {
+    "red": "The new gfx1151 context512 routing assertion failed while the context1024 fallback already passed.",
+    "green": {
+      "tests/test_qwen35_gguf_decode_repack_dispatch.py": "10 passed",
+      "tests/test_gfx1151_backend.py plus tests/test_qwen35_paged_attn_decode_plan.py": "32 passed",
+      "tests/test_kv_dispatch.py": "6 passed",
+      "compileall": "passed"
+    }
+  },
+  "acceptance": {
+    "leaf_material": true,
+    "exact_primitive_and_complete_state": true,
+    "named_cached_trace": true,
+    "no_scratch_or_resource_regression": true,
+    "decode_wall_improved": true,
+    "prefill_within_one_percent": true,
+    "memory_unchanged": true,
+    "lifecycle_clean": true,
+    "context_1024_boundary_unchanged": true,
+    "passed": true
+  },
+  "parity_after_clean_publication": {
+    "c1_target_tok_s": 58.165,
+    "clean_decode_tok_s": 53.44496579710796,
+    "c1_time_gap_ms_per_token": 1.5183664878015648,
+    "pinned_fork_f16_decode_tok_s": 64.411182,
+    "fork_f16_time_gap_ms_per_token": 3.185581580437077,
+    "c1_passed": false,
+    "fork_f16_decode_passed": false
+  },
+  "decision": "Retain the existing fixed256 batch leaf as the gfx1151 private-c1 BF16 attention default through active context 1023. This is an exact own-engine performance win, not a fork-parity claim. SH10-A1 is complete; continue immediately to SH11-A1 because the campaign objective remains open."
+}

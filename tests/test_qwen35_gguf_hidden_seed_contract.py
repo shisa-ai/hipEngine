@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import numpy as np
@@ -154,7 +155,7 @@ def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_reques
     session = object.__new__(Qwen35GGUFResidentSession)
     output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=200)))
     weights = SimpleNamespace(
-        config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6),
+        config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6, is_moe=False),
         root=lambda name: output_norm if name == "output_norm" else None,
     )
     session.runner = SimpleNamespace(weights=weights, hidden_size=8)
@@ -168,6 +169,7 @@ def test_run_current_hidden_to_final_hidden_populates_fp32_seed_only_when_reques
     session._hidden_a = SimpleNamespace(ptr=100)
     session._hidden_b = SimpleNamespace(ptr=101)
     session._hidden_seed_fp32_populated = True
+    monkeypatch.setattr(gguf_runner, "_gguf_moe_graph_enabled", lambda: False)
 
     ptr = session._run_current_hidden_to_final_hidden(position=5, capture_hidden_seed_fp32=False)
 
@@ -191,6 +193,7 @@ def test_resident_prefill_capture_marks_only_final_serial_prompt_token() -> None
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=99))
     )
     session.scratch = SimpleNamespace(zero_states=lambda runtime, **kwargs: None)
+    session._target_scratch_owner = session.scratch
     session.runtime = object()
     session._set_full_attention_position_device = lambda position, stream=0: None
     session._position = 17
@@ -266,6 +269,7 @@ def test_resident_prefill_forwards_capture_request_to_bulk_prefill() -> None:
         return SimpleNamespace(token_id=8)
 
     session._run_bulk_prefill_and_sample = fake_bulk_prefill_and_sample
+    session._q8_mmq_prefill_context = lambda: nullcontext()
 
     result = session.prefill(
         [10, 11],
@@ -350,9 +354,10 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
 
     runtime = Runtime()
     output_norm = SimpleNamespace(allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x6000)))
+    token_embedding = SimpleNamespace(name="token_embedding", allocations={"raw": object()})
     weights = SimpleNamespace(
         config=SimpleNamespace(layer_types=(), rms_norm_eps=1.0e-6, ssm_conv_kernel=2),
-        root=lambda name: output_norm if name == "output_norm" else SimpleNamespace(name=name),
+        root=lambda name: output_norm if name == "output_norm" else token_embedding,
     )
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(weights=weights, hidden_size=8, vocab_size=100)
@@ -366,6 +371,7 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
         position_buf=SimpleNamespace(ptr=0xA000),
         context_buf=SimpleNamespace(ptr=0xB000),
     )
+    session._target_scratch_owner = session.scratch
     session._prefill_token_buf = SimpleNamespace(ptr=0x3000)
     session._prefill_hidden_a = SimpleNamespace(ptr=0x1000, nbytes=16 * 8 * 2)
     session._prefill_hidden_b = SimpleNamespace(ptr=0x2000, nbytes=16 * 8 * 2)
@@ -376,6 +382,7 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
     session._verify_block_rows_capacity = 0
     session._hidden_seed_fp32_populated = True
     session._int8_prefill_oracle_buffers = {}
+    session.host_token_embedding_enabled = False
 
     def fake_ensure(rows: int, *, runtime) -> None:
         calls.append(("ensure_verify", int(rows), runtime))
@@ -429,6 +436,10 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
 def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[object, ...]] = []
 
+    class Runtime:
+        def stream_synchronize(self, stream: int) -> None:
+            calls.append(("stream_synchronize", int(stream)))
+
     class BulkScratch:
         def for_chunk(self, start, rows, total_tokens, *, runtime, stream=0):
             calls.append(("scratch", int(start), int(rows), int(total_tokens), runtime, int(stream)))
@@ -447,7 +458,8 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     monkeypatch.setattr(gguf_runner, "launch_gguf_embedding", fake_embedding)
     monkeypatch.setattr(gguf_runner, "set_decode_position_i64", fake_set_decode_position_i64)
 
-    runtime = object()
+    runtime = Runtime()
+    token_embedding = SimpleNamespace(name="token_embedding", allocations={"raw": object()})
     weights = SimpleNamespace(
         config=SimpleNamespace(
             layer_types=(gguf_runner.LINEAR_ATTENTION, gguf_runner.LINEAR_ATTENTION),
@@ -455,7 +467,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
             ssm_conv_kernel=2,
             is_moe=False,
         ),
-        root=lambda name: SimpleNamespace(name=name),
+        root=lambda name: token_embedding,
     )
 
     def fake_linear_layer(layer_id, src_ptr, dst_ptr, scratch, **kwargs: object) -> None:
@@ -487,6 +499,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
         position_buf=SimpleNamespace(ptr=0xA000),
         context_buf=SimpleNamespace(ptr=0xB000),
     )
+    session._target_scratch_owner = session.scratch
     session._prefill_token_buf = SimpleNamespace(ptr=0x3000)
     session._prefill_hidden_a = SimpleNamespace(ptr=0x1000, nbytes=16 * 8 * 2)
     session._prefill_hidden_b = SimpleNamespace(ptr=0x2000, nbytes=16 * 8 * 2)
@@ -497,7 +510,9 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     session._verify_block_rows_capacity = 0
     session._hidden_seed_fp32_populated = True
     session._int8_prefill_oracle_buffers = {}
+    session.host_token_embedding_enabled = False
     session.use_expert_sidecar = False
+    session.prefill_queue_drain = "layer"
     session._linear_prefill_layer_chunk_size = lambda rows: int(rows)
 
     def fake_run_output_norm_hidden(
@@ -537,6 +552,10 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     assert ("last_row_output_norm", last_src_ptr, 0x7000, 0, False) in calls
     assert result.hidden_ptr == 0x7000
     assert result.return_logits is False
+    assert [call for call in calls if call[0] == "stream_synchronize"] == [
+        ("stream_synchronize", 0),
+        ("stream_synchronize", 0),
+    ]
     assert session._verify_hidden_seed_rows_populated == 0
     assert not session._hidden_seed_fp32_populated
     assert session._position == 3
@@ -1097,6 +1116,7 @@ def test_attention_layer_capture_can_run_preceding_layers(
 def test_resident_session_reset_clears_hidden_seed_populated_flag_without_gpu_init() -> None:
     session = object.__new__(Qwen35GGUFResidentSession)
     session.scratch = SimpleNamespace(zero_states=lambda runtime, **kwargs: None)
+    session._target_scratch_owner = session.scratch
     session.runtime = object()
     session._set_full_attention_position_device = lambda position, stream=0: None
     session._position = 7

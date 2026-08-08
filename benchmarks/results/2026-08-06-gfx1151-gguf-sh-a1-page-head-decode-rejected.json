@@ -1,0 +1,229 @@
+{
+  "kind": "hipengine_gfx1151_gguf_sh_a1_page_head_decode_rejected",
+  "schema_version": 1,
+  "created_at": "2026-08-06T07:05:00+00:00",
+  "status": "rejected_runtime_plumbing",
+  "production_change": false,
+  "performance_claim": false,
+  "performance_claim_scope": "The bounded leaf screen is sufficient to reject runtime plumbing because the page-internal candidate loses producer-plus-reducer wall before conversion and loses by more after append plus complete live-cache conversion at every measured context. These are diagnostic rejection measurements, not a retained speedup claim.",
+  "correctness_claim": true,
+  "correctness_claim_scope": "The transient converter and attention specialization are byte-exact to the current layout on dense, permuted, and stale/evicted-unreferenced physical-page fixtures with complete KVLiveSpans position and eviction metadata.",
+  "source": {
+    "parent_commit": "72ba9fdd66a3152df6f01fbf604cd8f08ad40970",
+    "branch": "main",
+    "candidate_combined_source_sha256": "78c8cfac32e5181c763e61f46281bc848bf9f0201247dbfae4c4e5c3dc52fd74",
+    "tracked_candidate_patch_sha256": "f58f26874682ed5143a785efa0a47bf1b39c4c0213680934eee3ba7028f56c22",
+    "screen_source_sha256": "58558b066bdd2f6e45620036ab1cadcfdecbaf41130c4d7b96e309434036bd8c",
+    "red_green_test_sha256": "f122d9558e6661a0c18cbdfd5475426fb24ec048088fbe0e3b191254e7fad1d4",
+    "tracked_status_at_measurement": "Transient SH-A1 kernel/wrapper/registry/screen/test edits plus the unrelated pre-existing docs/ROCM-AI.md modification; all other tracked campaign sources matched parent_commit.",
+    "untracked_qualification": "Pre-existing untracked benchmark outputs were excluded. The transient candidate files and patch were hashed before removal.",
+    "final_tree_disposition": "The page converter, page-head producer, wrappers, registry keys, screen, and RED/GREEN test were removed after rejection. Production paged KV and BF16 grouped-GQA sources are byte-identical to parent_commit."
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "configured_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 1
+  },
+  "model_scope": {
+    "model": "Qwen3.6-35B-A3B",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "full_attention_layers": 10,
+    "q_heads": 16,
+    "kv_heads": 2,
+    "head_dim": 256,
+    "block_size": 256,
+    "split_chunk_size": 256
+  },
+  "candidate": {
+    "control_layout": "[physical_block, token_in_block, kv_head, head_dim]",
+    "candidate_layout": "[physical_block, kv_head, token_in_block, head_dim]",
+    "persistent_payload_delta_bytes": 0,
+    "screen_temporary": "One same-sized BF16 K pair and V pair materializes the candidate from the live page map only for the bounded screen.",
+    "converter_semantics": "Consumes base_offsets, live_counts, token_positions, and evict_mask; preserves physical page identity and does not materialize invalid/stale slots.",
+    "attention_semantics": "Arithmetic-identical q_per_kv=8 split-K grouped-GQA producer with only K/V physical addressing changed, followed by the unchanged production BF16 sigmoid-gated reducer.",
+    "timed_scope": "Control charges current append + current producer/reducer. Candidate charges the same append + complete live-cache page conversion + candidate producer + unchanged reducer.",
+    "runtime_plumbing_attempted": false
+  },
+  "protocol": {
+    "contexts": [512, 4096, 32768, 65536],
+    "warmups_per_component": 5,
+    "repetitions_per_component": 21,
+    "timing": "HIP events around each component and complete composed sub-window on one hardware queue.",
+    "correctness": "Complete KVLiveSpans fixtures at context 513 cross three logical pages. Current and candidate gated BF16 outputs are compared byte-for-byte and independently checked against NumPy.",
+    "promotion_rule": {
+      "copy_append_inclusive_attention_speedup_min": 1.1,
+      "projected_whole_decode_saving_percent_min": 1.0,
+      "persistent_memory_growth_bytes_max": 0,
+      "dense_permuted_evicted_oracles_exact": true
+    },
+    "screen_command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. .venv/bin/python scripts/qwen35_page_internal_head_major_decode_screen.py --contexts 512,4096,32768,65536 --warmups 5 --repetitions 21 --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt --require-cached-build --json /tmp/hipengine-sh-a1-page-head-screen.json",
+    "profile_command": "HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace -d /tmp/hipengine-sh-a1-rocprof -o sh-a1 -f csv -- env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/qwen35_page_internal_head_major_decode_screen.py --contexts 32768,65536 --warmups 0 --repetitions 1 --skip-oracles --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt --require-cached-build --json /tmp/hipengine-sh-a1-profile-child.json"
+  },
+  "correctness": {
+    "passed": true,
+    "red": "2 expected failures at collection because the bounded screen module did not exist.",
+    "green": "2 passed, including the native dense/permuted/evicted-unreferenced matrix.",
+    "cases": {
+      "dense": {
+        "block_table": [0, 1, 2],
+        "copy_bit_mismatches": 0,
+        "output_bit_mismatches": 0,
+        "max_abs_vs_numpy": 0.0
+      },
+      "permuted": {
+        "block_table": [2, 0, 3],
+        "copy_bit_mismatches": 0,
+        "output_bit_mismatches": 0,
+        "max_abs_vs_numpy": 1.4901161193847656e-08
+      },
+      "evicted_unreferenced": {
+        "block_table": [4, 0, 3],
+        "stale_physical_pages": [1, 2],
+        "copy_bit_mismatches": 0,
+        "output_bit_mismatches": 0,
+        "max_abs_vs_numpy": 0.0
+      }
+    },
+    "all_timed_output_bit_mismatches": 0
+  },
+  "rows": [
+    {
+      "context_len": 512,
+      "copy_bytes": 1048576,
+      "append_ms": {"median": 0.0056500001810491085, "min": 0.005489999894052744, "max": 0.007052999921143055},
+      "page_copy_ms": {"median": 0.01486700028181076, "min": 0.014427999965846539, "max": 0.018445000052452087},
+      "control_attention_reducer_ms": {"median": 0.06504199653863907, "min": 0.06488200277090073, "max": 0.06776700168848038},
+      "candidate_attention_reducer_ms": {"median": 0.11305200308561325, "min": 0.11148799955844879, "max": 0.12016499787569046},
+      "attention_speedup": 0.5753281212486201,
+      "control_append_inclusive_ms": 0.06692499667406082,
+      "candidate_copy_append_inclusive_ms": 0.10936500132083893,
+      "copy_append_inclusive_speedup": 0.6119416254357839,
+      "projected_whole_decode_saving_percent": null,
+      "output_bit_mismatches": 0
+    },
+    {
+      "context_len": 4096,
+      "copy_bytes": 8388608,
+      "append_ms": {"median": 0.005570999812334776, "min": 0.005410000216215849, "max": 0.006773000117391348},
+      "page_copy_ms": {"median": 0.054983001202344894, "min": 0.0544620007276535, "max": 0.05827900022268295},
+      "control_attention_reducer_ms": {"median": 0.06925000250339508, "min": 0.06888899952173233, "max": 0.07298699766397476},
+      "candidate_attention_reducer_ms": {"median": 0.11958400160074234, "min": 0.11826100200414658, "max": 0.14723500609397888},
+      "attention_speedup": 0.5790908614565479,
+      "control_append_inclusive_ms": 0.07177399843931198,
+      "candidate_copy_append_inclusive_ms": 0.1721619963645935,
+      "copy_append_inclusive_speedup": 0.4168980376326124,
+      "projected_whole_decode_saving_percent": null,
+      "output_bit_mismatches": 0
+    },
+    {
+      "context_len": 32768,
+      "copy_bytes": 67108864,
+      "append_ms": {"median": 0.005369999911636114, "min": 0.005210000090301037, "max": 0.006571999751031399},
+      "page_copy_ms": {"median": 1.1651450395584106, "min": 1.142462968826294, "max": 1.1781710386276245},
+      "control_attention_reducer_ms": {"median": 0.4562560021877289, "min": 0.4514870047569275, "max": 0.4621469974517822},
+      "candidate_attention_reducer_ms": {"median": 0.603331983089447, "min": 0.5945159792900085, "max": 0.6063780188560486},
+      "attention_speedup": 0.7562271104067868,
+      "control_append_inclusive_ms": 0.45926201343536377,
+      "candidate_copy_append_inclusive_ms": 1.6606359481811523,
+      "copy_append_inclusive_speedup": 0.2765579138151143,
+      "projected_whole_decode_saving_percent": -58.282342926589465,
+      "output_bit_mismatches": 0
+    },
+    {
+      "context_len": 65536,
+      "copy_bytes": 134217728,
+      "append_ms": {"median": 0.005330000072717667, "min": 0.005210000090301037, "max": 0.006531999912112951},
+      "page_copy_ms": {"median": 2.234673023223877, "min": 2.229543924331665, "max": 2.2509849071502686},
+      "control_attention_reducer_ms": {"median": 0.8406170010566711, "min": 0.8365299701690674, "max": 0.8445940017700195},
+      "candidate_attention_reducer_ms": {"median": 1.055380940437317, "min": 1.0481669902801514, "max": 1.0602699518203735},
+      "attention_speedup": 0.79650576284649,
+      "control_append_inclusive_ms": 0.8421409726142883,
+      "candidate_copy_append_inclusive_ms": 3.1987619400024414,
+      "copy_append_inclusive_speedup": 0.26327091181210116,
+      "projected_whole_decode_saving_percent": -97.76076360193117,
+      "output_bit_mismatches": 0
+    }
+  ],
+  "profile": {
+    "trace_rows": 58,
+    "copy": {
+      "symbol": "qwen35_copy_paged_kv_bf16_to_head_major_kernel<false,true>",
+      "dispatches": 6,
+      "workgroup": [256, 1, 1],
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "median_us_by_context": {"32768": 995.938, "65536": 2074.172}
+    },
+    "control_producer": {
+      "symbol": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<false,8,16,2>",
+      "dispatches": 6,
+      "workgroup": [256, 1, 1],
+      "grid_by_context": {"32768": [512, 128, 1], "65536": [512, 256, 1]},
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "median_us_by_context": {"32768": 483.182, "65536": 839.977}
+    },
+    "candidate_producer": {
+      "symbol": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<true,8,16,2>",
+      "dispatches": 6,
+      "workgroup": [256, 1, 1],
+      "grid_by_context": {"32768": [512, 128, 1], "65536": [512, 256, 1]},
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "median_us_by_context": {"32768": 584.811, "65536": 943.57}
+    },
+    "shared_reducer": {
+      "symbol": "qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>",
+      "dispatches": 12,
+      "workgroup": [256, 1, 1],
+      "vgpr": 16,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "validation": {
+    "transient_targeted_tests": "2 passed",
+    "combined_head_major_tests": "16 passed before candidate removal",
+    "production_post_removal_tests": "23 passed: existing paged head-major and paged-attention plan suites",
+    "production_post_removal_hip_smoke": "qwen35-paged-attn-gqa-hip passed at context 8448; GQA max abs 8.2e-08 and parallel gated BF16 mismatch 0",
+    "cached_named_profile": true,
+    "production_sources_match_parent": true,
+    "json_validation": true,
+    "diff_check": true
+  },
+  "raw_evidence_sha256": {
+    "screen_json": "565d61a82804bbc3de207c7d5df855a369080cb1ba6b2c1def9e47d9283df403",
+    "profile_child_json": "13d8e1bf1e677a9c80d5ed8eb582a71412bef9c4a6ea19278b29923107dd1d4b",
+    "profile_csv": "98e0a71e3baf3582f8967a0fa240d1b6e3847286307967810a8f94c76397cf46"
+  },
+  "decision": {
+    "correctness_gate_passed": true,
+    "persistent_memory_gate_passed": true,
+    "attention_only_speed_gate_passed": false,
+    "copy_append_inclusive_speed_gate_passed": false,
+    "projected_whole_decode_gate_passed": false,
+    "action": "reject_and_remove_candidate",
+    "blocking_reasons": [
+      "Page-internal attention plus the unchanged reducer is slower than current token-major at all four contexts, including only 0.7562x at 32K and 0.7965x at 64K.",
+      "Charging append and complete live-cache conversion yields only 0.2766x at 32K and 0.2633x at 64K, far below the required 1.10x.",
+      "The ten-layer projection is a regression, not the required >=1% whole-decode saving.",
+      "The candidate raises producer VGPR from 72 to 80 despite zero LDS and scratch in both variants."
+    ],
+    "production_disposition": "Keep [block,token,kv_head,D] BF16 KV and the existing grouped-GQA producer/reducer. Do not rewrite writers, compactors, graph capture, or other KVLiveSpans consumers.",
+    "campaign_next": "SH-G final retained-campaign recertification"
+  }
+}

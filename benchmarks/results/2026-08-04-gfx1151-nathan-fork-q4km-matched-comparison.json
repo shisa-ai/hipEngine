@@ -1,0 +1,378 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-04",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "summary": "On the same Radeon 8060S and exact Qwen3.6-35B-A3B UD-Q4_K_M file, hipEngine BF16-KV wins split full-prompt prefill at 512/4K/32K/64K against Nathanw1014 strix-halo-vulkan b7b85da with either F16 or Q8 KV. The fork wins tg128 decode at every depth and its whole-device GTT peak is descriptively lower than hipEngine tracked allocation. This is not a strict cross-engine performance claim because KV dtype, timing owner, memory scope, and output-correctness protocol differ.",
+  "platform": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "pci_id": "0000:c1:00.0",
+    "kernel": "7.1.3-2-cachyos",
+    "amd_iommu": "off"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "engines": {
+    "hipengine": {
+      "implementation_commit": "d5e95d1c9",
+      "measurement_source": "benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json",
+      "measurement_source_sha256": "dff2e1f92920698e3f46764017ef3a26924972824dd713f8983583c41e5ce146",
+      "backend": "hip_gfx1151",
+      "kv_dtype": "bf16",
+      "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+    },
+    "nathan_fork": {
+      "repository": "https://github.com/Nathanw1014/llama.cpp",
+      "source_commit": "b7b85da9c4a9fdeb3cab51030a40d1552270f272",
+      "build_commit_reported": "b7b85da9",
+      "build_number": 10283,
+      "release": "https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/dev-20260803-b7b85da",
+      "archive_sha256": "1449e4f66c7cd47516c9a9e64c1afda90515e74c2ef26a9807d34c61598cd66d",
+      "llama_bench_sha256": "a5923323bdd57cfac646216d4ce32e9df4d4e2bc04ae21c4572b2e52550877c4",
+      "backend": "Vulkan",
+      "gpu_info": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "mesa_commit": "d18d598e2",
+      "libdrm": "2.4.133",
+      "shaderc": "v2026.3-dev 49a8724d561c13db22b52f99f2a0e2707a9a9e3c"
+    }
+  },
+  "protocols": {
+    "matched_full_prompt": {
+      "workloads": [
+        "512/128",
+        "4K/128",
+        "32K/128",
+        "64K/128"
+      ],
+      "phase_semantics": {
+        "prefill": "full prompt: hipEngine forced bulk prefill; fork llama-bench -p P -n 0 -d 0",
+        "decode": "128-token decode after populated depth: hipEngine measured graph replay; fork llama-bench -p 0 -n 128 -d P"
+      },
+      "hipengine": "one discarded warmup plus three measured runs per right-sized process; BF16 KV",
+      "fork": "llama-bench built-in warmup plus five repetitions; F16 and Q8_0 KV; -b 1024 -ub 1024; separate process per phase/workload",
+      "fork_command": "python3 scripts/llamacpp_bench_with_peak.py --llama-bench <pinned>/vulkan/llama-bench --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend vulkan --workloads 512/128 4K/128 32K/128 64K/128 --repetitions 5 --ngl 99 --flash-attn 1 --cache-type-k <f16|q8_0> --cache-type-v <f16|q8_0> --poll 10 --card-name card1 --memory-domain gtt --extra-args \"-dev Vulkan0 -b 1024 -ub 1024\""
+    },
+    "fork_claim_reproduction": {
+      "description": "Fork-published pp512/tg32-at-depth protocol, rerun with the exact hipEngine GGUF and q8_0 KV.",
+      "command": [
+        "/tmp/hipengine-nathan-fork-compare/vulkan/llama-bench",
+        "-m",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "-ngl",
+        "99",
+        "-fa",
+        "1",
+        "-ctk",
+        "q8_0",
+        "-ctv",
+        "q8_0",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-p",
+        "512",
+        "-n",
+        "32",
+        "-d",
+        "0,4096,16384,32768,65536",
+        "-r",
+        "3",
+        "-o",
+        "json",
+        "-dev",
+        "Vulkan0"
+      ],
+      "repetitions": 3,
+      "whole_run_gtt_peak_gib": 21.52877426147461,
+      "whole_run_gtt_peak_delta_gib": 21.51137924194336
+    }
+  },
+  "matched_full_prompt_rows": {
+    "512/128": {
+      "prompt_tokens": 512,
+      "decode_tokens": 128,
+      "hipengine_bf16": {
+        "prefill_tok_s_median": 1394.7717350816215,
+        "prefill_runs_tok_s": [
+          1394.7717350816215,
+          1393.8368658769477,
+          1395.160419712145
+        ],
+        "decode_tok_s": 52.71041485290166,
+        "tracked_peak_gib": 21.479979306459427
+      },
+      "fork": {
+        "f16": {
+          "prefill_tok_s_mean": 1390.977897,
+          "prefill_stddev_tok_s": 6.14078,
+          "decode_tok_s_mean": 64.658013,
+          "decode_stddev_tok_s": 0.116322,
+          "whole_device_gtt_peak_gib": 20.830669403076172,
+          "whole_device_gtt_peak_delta_gib": 20.813274383544922,
+          "hipengine_prefill_lead_percent": 0.27274610831731216,
+          "fork_decode_lead_percent": 22.66648475531896,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 0.649309903383255
+        },
+        "q8_0": {
+          "prefill_tok_s_mean": 1387.763293,
+          "prefill_stddev_tok_s": 5.291273,
+          "decode_tok_s_mean": 64.246264,
+          "decode_stddev_tok_s": 0.074385,
+          "whole_device_gtt_peak_gib": 20.832103729248047,
+          "whole_device_gtt_peak_delta_gib": 20.814708709716797,
+          "hipengine_prefill_lead_percent": 0.505017110408712,
+          "fork_decode_lead_percent": 21.885331730534286,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 0.64787557721138
+        }
+      }
+    },
+    "4K/128": {
+      "prompt_tokens": 4096,
+      "decode_tokens": 128,
+      "hipengine_bf16": {
+        "prefill_tok_s_median": 1472.330266622394,
+        "prefill_runs_tok_s": [
+          1475.5488321467105,
+          1472.330266622394,
+          1470.9027460029918
+        ],
+        "decode_tok_s": 55.182885815731375,
+        "tracked_peak_gib": 23.00736578553915
+      },
+      "fork": {
+        "f16": {
+          "prefill_tok_s_mean": 1399.335754,
+          "prefill_stddev_tok_s": 2.732195,
+          "decode_tok_s_mean": 62.647828,
+          "decode_stddev_tok_s": 0.036016,
+          "whole_device_gtt_peak_gib": 21.160736083984375,
+          "whole_device_gtt_peak_delta_gib": 21.143341064453125,
+          "hipengine_prefill_lead_percent": 5.216368724499421,
+          "fork_decode_lead_percent": 13.527640089711547,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 1.8466297015547752
+        },
+        "q8_0": {
+          "prefill_tok_s_mean": 1389.529848,
+          "prefill_stddev_tok_s": 2.512811,
+          "decode_tok_s_mean": 63.107475,
+          "decode_stddev_tok_s": 0.111396,
+          "whole_device_gtt_peak_gib": 21.25318145751953,
+          "whole_device_gtt_peak_delta_gib": 21.23578643798828,
+          "hipengine_prefill_lead_percent": 5.958880173863967,
+          "fork_decode_lead_percent": 14.360592178398734,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 1.754184328019619
+        }
+      }
+    },
+    "32K/128": {
+      "prompt_tokens": 32768,
+      "decode_tokens": 128,
+      "hipengine_bf16": {
+        "prefill_tok_s_median": 1171.6104200444493,
+        "prefill_runs_tok_s": [
+          1172.7431951046108,
+          1171.6104200444493,
+          1171.0983313879265
+        ],
+        "decode_tok_s": 45.942622584403914,
+        "tracked_peak_gib": 23.65358927100897
+      },
+      "fork": {
+        "f16": {
+          "prefill_tok_s_mean": 1102.98245,
+          "prefill_stddev_tok_s": 0.495519,
+          "decode_tok_s_mean": 53.220196,
+          "decode_stddev_tok_s": 0.067855,
+          "whole_device_gtt_peak_gib": 21.99907684326172,
+          "whole_device_gtt_peak_delta_gib": 21.98168182373047,
+          "hipengine_prefill_lead_percent": 6.222036447130175,
+          "fork_decode_lead_percent": 15.84057027268313,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 1.6545124277472496
+        },
+        "q8_0": {
+          "prefill_tok_s_mean": 1104.182749,
+          "prefill_stddev_tok_s": 0.709406,
+          "decode_tok_s_mean": 57.553482,
+          "decode_stddev_tok_s": 0.031472,
+          "whole_device_gtt_peak_gib": 21.6297607421875,
+          "whole_device_gtt_peak_delta_gib": 21.61236572265625,
+          "hipengine_prefill_lead_percent": 6.106568057281714,
+          "fork_decode_lead_percent": 25.272522033902376,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 2.0238285288214684
+        }
+      }
+    },
+    "64K/128": {
+      "prompt_tokens": 65536,
+      "decode_tokens": 128,
+      "hipengine_bf16": {
+        "prefill_tok_s_median": 952.3484318028192,
+        "prefill_runs_tok_s": [
+          952.765794301275,
+          952.3484318028192,
+          952.1899451351658
+        ],
+        "decode_tok_s": 39.36224067751139,
+        "tracked_peak_gib": 24.39213039726019
+      },
+      "fork": {
+        "f16": {
+          "prefill_tok_s_mean": 893.918511,
+          "prefill_stddev_tok_s": 0.477218,
+          "decode_tok_s_mean": 45.912928,
+          "decode_stddev_tok_s": 0.03382,
+          "whole_device_gtt_peak_gib": 22.871307373046875,
+          "whole_device_gtt_peak_delta_gib": 22.853912353515625,
+          "hipengine_prefill_lead_percent": 6.536381122419699,
+          "fork_decode_lead_percent": 16.642059013249156,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 1.520823024213314
+        },
+        "q8_0": {
+          "prefill_tok_s_mean": 879.962644,
+          "prefill_stddev_tok_s": 5.969242,
+          "decode_tok_s_mean": 52.538284,
+          "decode_stddev_tok_s": 0.027972,
+          "whole_device_gtt_peak_gib": 22.239112854003906,
+          "whole_device_gtt_peak_delta_gib": 22.221717834472656,
+          "hipengine_prefill_lead_percent": 8.226006898858685,
+          "fork_decode_lead_percent": 33.47381423338638,
+          "descriptive_hip_tracked_minus_fork_gtt_peak_gib": 2.153017543256283
+        }
+      }
+    }
+  },
+  "fork_published_different_model_claim": {
+    "model": "Qwen3.5 35B-A3B Q4_K_XL / llama-bench label Q4_K - Medium, 20.81 GiB",
+    "kv_dtype": "q8_0",
+    "batch": 512,
+    "source": "https://github.com/Nathanw1014/strix-halo-llamacpp/blob/b166a56e58ab0f27fd03f60fff060eebdf5f64b5/benchmarks/results/kvoff/kvoff-q8supp-results/ceil_q4kxl_q8.md",
+    "rows": {
+      "0": {
+        "pp512_tok_s": 1368.45,
+        "pp512_stddev": 3.31,
+        "tg32_tok_s": 60.22,
+        "tg32_stddev": 0.09
+      },
+      "32768": {
+        "pp512_tok_s": 776.18,
+        "pp512_stddev": 16.54,
+        "tg32_tok_s": 53.51,
+        "tg32_stddev": 0.7
+      },
+      "65536": {
+        "pp512_tok_s": 537.41,
+        "pp512_stddev": 9.49,
+        "tg32_tok_s": 49.25,
+        "tg32_stddev": 0.07
+      }
+    }
+  },
+  "fork_exact_model_claim_protocol_reproduction": {
+    "0": {
+      "pp512_tok_s": 1391.808794,
+      "pp512_stddev": 4.203606,
+      "tg32_tok_s": 64.40622,
+      "tg32_stddev": 0.277098,
+      "versus_upstream_different_model_percent": {
+        "pp512": 1.7069526836932303,
+        "tg32": 6.951544337429438
+      }
+    },
+    "4096": {
+      "pp512_tok_s": 1281.593393,
+      "pp512_stddev": 2.801688,
+      "tg32_tok_s": 62.965222,
+      "tg32_stddev": 0.154068
+    },
+    "16384": {
+      "pp512_tok_s": 1067.613189,
+      "pp512_stddev": 0.520797,
+      "tg32_tok_s": 60.513077,
+      "tg32_stddev": 0.275676
+    },
+    "32768": {
+      "pp512_tok_s": 860.7865,
+      "pp512_stddev": 5.430183,
+      "tg32_tok_s": 57.543957,
+      "tg32_stddev": 0.092786,
+      "versus_upstream_different_model_percent": {
+        "pp512": 10.900371047952806,
+        "tg32": 7.5386974397309015
+      }
+    },
+    "65536": {
+      "pp512_tok_s": 623.634308,
+      "pp512_stddev": 1.924199,
+      "tg32_tok_s": 52.461836,
+      "tg32_stddev": 0.109771,
+      "versus_upstream_different_model_percent": {
+        "pp512": 16.044418228168446,
+        "tg32": 6.521494416243656
+      }
+    }
+  },
+  "validation": {
+    "fork_phase_returncodes": {
+      "f16": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "q8_0": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "depth": 0
+    },
+    "fork_backend_gate": "all records report backends=Vulkan and gpu_info=AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+    "fork_build_gate": "all records report build_commit=b7b85da9 and build_number=10283",
+    "hipengine_correctness_source": "linked accepted source is byte-exact complete-model state for the published BF16 row",
+    "cross_engine_output_equality": "not established; llama-bench synthetic split phases do not emit a shared token/logit oracle",
+    "strict_cross_engine_ratio_allowed": false
+  },
+  "memory_qualification": {
+    "hipengine_scope": "tracked/owned allocator peak per resident session",
+    "fork_scope": "whole-device amdgpu GTT peak at 10-ms polling; baseline-subtracted values also recorded",
+    "rule": "show side by side and as a descriptive numeric difference only; do not call the difference a strict allocator-memory ratio"
+  },
+  "conclusion": {
+    "prefill": "hipEngine leads all 8 matched comparisons (four depths times F16/Q8 fork KV)",
+    "decode": "Nathan fork leads all 8 matched comparisons",
+    "memory": "Nathan fork whole-device GTT peak is descriptively 0.648-2.153 GiB below hipEngine tracked peak; scopes differ",
+    "published_claim_reproduction": "The exact-model fork rerun exceeds the fork published different-model pp512/tg32 rows at d0/d32K/d64K; this validates the local build but is not a same-model reproduction of that upstream row."
+  },
+  "raw_evidence": {
+    "note": "Raw logs and portable binaries remain under /tmp and are not committed.",
+    "full_prompt_f16": {
+      "path": "/tmp/hipengine-nathan-fork-compare/full-prompt-f16-r5.json",
+      "sha256": "9786a932ff0a7fd0184bc0e52cbc2563bcf76be1f1fb25ea1d8e37a7575adb2a"
+    },
+    "full_prompt_q8_0": {
+      "path": "/tmp/hipengine-nathan-fork-compare/full-prompt-q8-r5.json",
+      "sha256": "f5efb6ffcd70d09f7afa4840f3938359645c9c3a03ec123aebc0d5a0c4ef111c"
+    },
+    "fork_depth_reproduction": {
+      "path": "/tmp/hipengine-nathan-fork-compare/claim-depth-q8-r3.json",
+      "sha256": "b03f82e3e20e129a52418baabe86a86768bb83ae524ac18678b2ebcafa54580e"
+    }
+  }
+}

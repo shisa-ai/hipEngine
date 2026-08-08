@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh11_a1_direct_4k_rejected",
+  "date": "2026-08-06",
+  "status": "closed_rejected_correctness_and_performance",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "source": {
+    "commit": "ddd99bfcdf30efa9dea6a4d646a04cae90eba272",
+    "parent_package": "SH10-A1 retained/default",
+    "tracked_source_clean": true,
+    "untracked_artifacts_ignored": 255,
+    "lineage_check": "blocked: /home/lhl/amd-gpu-tuning/reference/atlas is absent; no external source was copied"
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "rocm": "TheRock HIP 7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "mechanism": {
+    "control": "Production threshold 1024 selects the grouped-GQA split producer plus fused gate reducer at active context 4097+.",
+    "candidate": "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT=8192 forces qwen35_paged_full_attn_decode_context_tensor_kernel plus the unfused BF16 gate through the complete 4K/128 decode.",
+    "scope": "Explicit default-off current-model diagnostic only; no source or package capability changes.",
+    "historical_context": "The June G-D4 Q4_K_S run reported 115.805 -> 125.592 tok/s but changed token 570 -> 263. That old speed direction is not assumed transferable to the current exact model, hardware protocol, or retained stack."
+  },
+  "selection": {
+    "default_threshold": 1024,
+    "forced_threshold": 8192,
+    "control_uses_split_at_4096": true,
+    "candidate_uses_split_at_4096": false,
+    "candidate_uses_split_at_8192": true
+  },
+  "complete_state": {
+    "protocol": "Independent cached gfx1151 processes at prompt length 4096; complete prefill logits, all 40 layer outputs, 30 Conv/GDN states, ten live BF16-KV states, four fixed-input eager transitions, and final state are fingerprinted byte-for-byte.",
+    "prefill_logits_exact": true,
+    "prefill_state_exact": true,
+    "decode_logit_fingerprints_exact": [false, false, false, false],
+    "control_predicted_ids": [9707, 9707, 9707, 9707],
+    "direct_predicted_ids": [9707, 9707, 9707, 9707],
+    "final_state_exact": false,
+    "first_divergent_layer_output": 3,
+    "final_layer_output_mismatches": "37/40",
+    "final_linear_state_mismatches": "27/30",
+    "final_live_kv_mismatches": "9/10; layers 7 through 39, while layer 3 KV is produced before its divergent attention output",
+    "interpretation": "Stable free-running top-1 IDs do not repair the arithmetic/state failure and are not a replacement correctness oracle.",
+    "raw": {
+      "control_path": "/tmp/hipengine-sh11-a1/state/control.json",
+      "control_sha256": "2d65b71874884fa37f6e8c3f86ec1240d4dc71d3f7c7206a12f91263336be8df",
+      "direct_path": "/tmp/hipengine-sh11-a1/state/direct.json",
+      "direct_sha256": "8852c1175c4d6304750691d271ae8ad7b25c285fb5a6f3f042b29b9e2227dcac",
+      "comparison_sha256": "6665e2f48ce7256cf75ce96eed3ce7f081d4f5e3a2dd50f4b5d09b0af98db886"
+    }
+  },
+  "wall": {
+    "protocol": "Independent split/direct cached processes; package-default one queue; private-c1 eager; pp4096/tg128; one discarded full run plus three measured runs; repeated token 9707; no graph replay; phase-boundary HIP-used sampling.",
+    "control": {
+      "prefill_tok_s": {
+        "median": 1429.615950250991,
+        "samples": [1433.633104960043, 1423.922321647296, 1429.615950250991]
+      },
+      "decode_tok_s": {
+        "median": 54.571522404185465,
+        "samples": [55.04232881560492, 54.11127510807185, 54.571522404185465]
+      },
+      "tracked_peak_gib": 20.951031260192394,
+      "hip_used_peak_sampled_gib": 21.482017517089844,
+      "final_ids": [9707, 9707, 9707],
+      "close_bytes": 0,
+      "raw_sha256": "9890658b07a909d542fde2535683dc96bbdb79c5627a95b1d52d1ef8075d3ae6"
+    },
+    "direct": {
+      "prefill_tok_s": {
+        "median": 1437.31162423864,
+        "samples": [1438.0531592093243, 1437.31162423864, 1433.5112281649922]
+      },
+      "decode_tok_s": {
+        "median": 33.94977334554922,
+        "samples": [33.94539907656185, 33.991752346241284, 33.94977334554922]
+      },
+      "tracked_peak_gib": 20.951031260192394,
+      "hip_used_peak_sampled_gib": 21.482017517089844,
+      "final_ids": [9707, 9707, 9707],
+      "close_bytes": 0,
+      "raw_sha256": "c40f46ab76bb945ab67106b6b12af392e5db8aadb0b441298be2ea2d8e2a4a40"
+    },
+    "delta": {
+      "prefill_percent": 0.5383035902962519,
+      "decode_percent": -37.78848042006361,
+      "decode_regression_ms_per_token": 11.130701826914446,
+      "tracked_peak_gib": 0.0,
+      "hip_used_peak_sampled_gib": 0.0,
+      "all_direct_decode_samples_below_all_control_samples": true
+    },
+    "summary_sha256": "9e242dc892c31e36e78597824c8548d3b3e582a4a89d949d5c69f04251b8218f"
+  },
+  "named_trace": {
+    "protocol": "One warmup plus eight measured eager transitions, ten full-attention layers per transition. The immutable SH6-C1 current 4K split trace is reused because SH7 changes only >=32K reduction, SH9 changes only prefill, and SH10 changes only direct contexts below 1024; only the forced-direct trace is rerun.",
+    "control_split": {
+      "producer": {
+        "kernel": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8,16,2>",
+        "calls": 90,
+        "sum_ms": 7.149618,
+        "median_us_per_call": 79.3285,
+        "resources": "72 VGPR / 128 SGPR / reported LDS0 / scratch0 / local256 / grid (2 KV heads, 17 splits) / queue1 stream0"
+      },
+      "reducer": {
+        "kernel": "qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>",
+        "calls": 90,
+        "sum_ms": 0.44969,
+        "median_us_per_call": 4.9895,
+        "resources": "16 VGPR / 128 SGPR / reported LDS0 / scratch0 / local256 / 16 blocks / queue1 stream0"
+      },
+      "route_ms_per_transition": 0.8443675555555556,
+      "kernel_csv_sha256": "956a35c9cd54bea0656d32c930226eefd483228537488bd712ef2b966e3caf66",
+      "profile_json_sha256": "2cf8c22315a6880e7863f0b0182b973fcb62ff105c864b3623094e9d680daee5",
+      "carry_summary_sha256": "139cbb98163aef5d1b2d2b5e3aa6809c5fe8a834e67882db01e1b80576d7e555"
+    },
+    "direct": {
+      "context": {
+        "kernel": "qwen35_paged_full_attn_decode_context_tensor_kernel",
+        "calls": 90,
+        "sum_ms": 106.911998,
+        "median_us_per_call": 1191.1145,
+        "resources": "40 VGPR / 128 SGPR / reported LDS0 / scratch0 / local256 / 16 blocks / queue1 stream0"
+      },
+      "gate": {
+        "kernel": "qwen35_full_attn_gate_mul_bf16_kernel",
+        "calls": 90,
+        "sum_ms": 0.086968,
+        "median_us_per_call": 0.9615,
+        "resources": "16 VGPR / 128 SGPR / reported LDS0 / scratch0 / local256 / 16 blocks / queue1 stream0"
+      },
+      "route_ms_per_transition": 11.888774,
+      "kernel_csv_sha256": "7db2dd62436b8c46ad4d76a936917491de668d1ff086ba26f885b757eb9a763e",
+      "hip_api_csv_sha256": "1b3597db1fc649916c41c9565d0a01ce7722dd87dd37ee144d286315b012464d",
+      "profile_json_sha256": "8e08caf22dd272510233d714d766af1d0af31ffb7f53da65bbc9bef9224e9742",
+      "require_cached_build": true,
+      "compiler_child_present": false
+    },
+    "route_slowdown": 14.080093345341442,
+    "device_delta_ms_per_transition": 11.044406444444443,
+    "wall_alignment": "The +11.044-ms traced route delta explains the +11.131-ms unprofiled wall regression."
+  },
+  "acceptance": {
+    "current_route_remeasured": true,
+    "complete_state_exact": false,
+    "repeated_wall_improved": false,
+    "named_dispatches_confirmed": true,
+    "memory_unchanged": true,
+    "lifecycle_clean": true,
+    "historical_speed_lever_survives": false,
+    "passed": false
+  },
+  "decision": "Close SH11-A1 rejected with no source change and no SH11-A2 exact-emulation package. The forced direct route is both arithmetic/state-invalid and 37.788% slower at wall; its traced attention path is 14.080x slower than the current split route. Keep the 1024 split threshold and continue to SH12-C0's private-c1 eager synchronization/D2H census."
+}

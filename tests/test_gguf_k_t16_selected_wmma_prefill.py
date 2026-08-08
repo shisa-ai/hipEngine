@@ -39,6 +39,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
     gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
+    gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out,
+    gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
@@ -51,8 +53,10 @@ from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES, repack_gguf_q4_k_tile16
 from hipengine.quant.gguf_t16 import (
+    GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES,
     GGUF_Q5_K_T16_BLOCK_BYTES,
     GGUF_Q6_K_T16_BLOCK_BYTES,
+    repack_gguf_q5_k_qmicro_tile16,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
 )
@@ -81,6 +85,12 @@ _QUANT_INFO: dict[str, tuple[GGMLQuantizationType, Callable[[int, int], np.ndarr
         repack_gguf_q5_k_tile16,
         GGUF_Q5_K_T16_BLOCK_BYTES,
     ),
+    "gguf_q5_k_qmicro_t16_v1": (
+        GGMLQuantizationType.Q5_K,
+        make_q5_k_weight,
+        repack_gguf_q5_k_qmicro_tile16,
+        GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES,
+    ),
     "gguf_q6_k_t16_v1": (
         GGMLQuantizationType.Q6_K,
         make_q6_k_weight,
@@ -94,6 +104,8 @@ _WRAPPERS: dict[tuple[str, str], Any] = {
     ("gguf_q4_k_t16_v1", "fp16"): gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     ("gguf_q5_k_t16_v1", "bf16"): gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     ("gguf_q5_k_t16_v1", "fp16"): gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
+    ("gguf_q5_k_qmicro_t16_v1", "bf16"): gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out,
+    ("gguf_q5_k_qmicro_t16_v1", "fp16"): gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     ("gguf_q6_k_t16_v1", "bf16"): gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     ("gguf_q6_k_t16_v1", "fp16"): gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
 }
@@ -574,14 +586,24 @@ _TOLERANCES = {
     ("gguf_q4_k_t16_v1", "bf16"): {"rtol": 2.0e-2, "atol": 5.0e-1},
     ("gguf_q4_k_t16_v1", "fp16"): {"rtol": 7.5e-3, "atol": 1.5e-1},
     ("gguf_q5_k_t16_v1", "bf16"): {"rtol": 2.0e-2, "atol": 5.0e-1},
+    ("gguf_q5_k_qmicro_t16_v1", "bf16"): {"rtol": 2.0e-2, "atol": 5.0e-1},
     ("gguf_q6_k_t16_v1", "bf16"): {"rtol": 1.2e-2, "atol": 3.0e-1},
     ("gguf_q5_k_t16_v1", "fp16"): {"rtol": 7.5e-3, "atol": 1.5e-1},
+    ("gguf_q5_k_qmicro_t16_v1", "fp16"): {"rtol": 7.5e-3, "atol": 1.5e-1},
     ("gguf_q6_k_t16_v1", "fp16"): {"rtol": 6.0e-3, "atol": 1.0e-1},
 }
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("quant", ["gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1", "gguf_q6_k_t16_v1"])
+@pytest.mark.parametrize(
+    "quant",
+    [
+        "gguf_q4_k_t16_v1",
+        "gguf_q5_k_t16_v1",
+        "gguf_q5_k_qmicro_t16_v1",
+        "gguf_q6_k_t16_v1",
+    ],
+)
 @pytest.mark.parametrize(("counts", "in_features", "out_features"), _SELECTED_CASES)
 def test_p10_b2_b3_k_t16_selected_wmma_bf16_matches_cpu_selected_reference(
     quant: str, counts: list[int], in_features: int, out_features: int
@@ -605,6 +627,8 @@ def test_p10_b2_b3_k_t16_selected_wmma_bf16_matches_cpu_selected_reference(
         pytest.param("gguf_q4_k_t16_v1", [0, 16, 17], 512, 64, id="q4-fp16-empty-first-out64"),
         pytest.param("gguf_q5_k_t16_v1", [5, 11, 0, 23], 256, 48, id="q5-fp16-uneven-out48"),
         pytest.param("gguf_q5_k_t16_v1", [0, 16, 17], 512, 64, id="q5-fp16-empty-first-out64"),
+        pytest.param("gguf_q5_k_qmicro_t16_v1", [5, 11, 0, 23], 256, 48, id="q5-qmicro-fp16-uneven-out48"),
+        pytest.param("gguf_q5_k_qmicro_t16_v1", [0, 16, 17], 512, 64, id="q5-qmicro-fp16-empty-first-out64"),
         pytest.param("gguf_q6_k_t16_v1", [5, 11, 0, 23], 256, 48, id="q6-fp16-uneven-out48"),
         pytest.param("gguf_q6_k_t16_v1", [0, 16, 17], 512, 64, id="q6-fp16-empty-first-out64"),
     ],

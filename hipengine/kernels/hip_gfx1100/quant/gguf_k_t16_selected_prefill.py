@@ -28,6 +28,8 @@ _SYMBOLS = {
     ("gguf_q4_k_t16", "fp16"): "hipengine_gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     ("gguf_q5_k_t16", "bf16"): "hipengine_gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q5_k_t16", "fp16"): "hipengine_gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
+    ("gguf_q5_k_qmicro_t16", "bf16"): "hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out",
+    ("gguf_q5_k_qmicro_t16", "fp16"): "hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     ("gguf_q6_k_t16", "bf16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q6_k_t16", "fp16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
 }
@@ -149,6 +151,12 @@ gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_
 gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q4_k_t16", "fp16")
 gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q5_k_t16", "bf16")
 gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q5_k_t16", "fp16")
+gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper(
+    "gguf_q5_k_qmicro_t16", "bf16"
+)
+gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper(
+    "gguf_q5_k_qmicro_t16", "fp16"
+)
 gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_q6_k_t16", "bf16")
 gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q6_k_t16", "fp16")
 
@@ -468,6 +476,11 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
         ),
         (
+            "gguf_q5_k_qmicro_t16_v1",
+            gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out,
+            gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out,
+        ),
+        (
             "gguf_q6_k_t16_v1",
             gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
             gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
@@ -524,6 +537,8 @@ __all__ = [
     "gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
+    "gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out",
+    "gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",

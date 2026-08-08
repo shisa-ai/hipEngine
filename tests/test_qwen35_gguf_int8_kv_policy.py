@@ -14,6 +14,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUF_INT8_KV_KEY_ONLY_ENV,
     _GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS,
     Qwen35GGUFResidentSession,
+    _gguf_aotriton_head_major_buffers,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_int8_bf16_prefix_full_attention_layers,
     _gguf_int8_effective_scale_dtype,
@@ -43,6 +44,11 @@ class _BulkScratch:
     retained_value_cache: object | None = None
     retained_append_spans: KVLiveSpans | None = None
     int8_kv_value_bf16: bool = False
+    head_major_key_cache: object | None = None
+    head_major_value_cache: object | None = None
+    head_major_kv_capacity: int = 0
+    head_major_kv_admitted: bool = False
+    head_major_kv_dense_prefix: bool = True
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: DType) -> Tensor:
@@ -116,6 +122,8 @@ def test_gguf_int8_full_attention_prefill_uses_layer_local_bf16_oracle_and_retai
     layer_oracle_value = _Buffer(0x6200, 64)
     retained_key = _Buffer(0x7000, 16)
     retained_value = _Buffer(0x8000, 16)
+    head_major_key = _Buffer(0x9000, 128)
+    head_major_value = _Buffer(0xA000, 128)
     metadata = _scale_metadata()
     session.scratch = type(
         "Scratch",
@@ -126,7 +134,15 @@ def test_gguf_int8_full_attention_prefill_uses_layer_local_bf16_oracle_and_retai
         },
     )()
     session._int8_prefill_oracle_cache_for_layer = lambda layer_id: (layer_oracle_key, layer_oracle_value)
-    bulk = _BulkScratch(key_cache=shared_oracle_key, value_cache=shared_oracle_value, append_spans=_bf16_append_spans())
+    bulk = _BulkScratch(
+        key_cache=shared_oracle_key,
+        value_cache=shared_oracle_value,
+        append_spans=_bf16_append_spans(),
+        head_major_key_cache=head_major_key,
+        head_major_value_cache=head_major_value,
+        head_major_kv_capacity=64,
+        head_major_kv_admitted=True,
+    )
 
     layer_scratch = session._full_attention_prefill_scratch_for_layer(bulk, 7)
 
@@ -139,6 +155,11 @@ def test_gguf_int8_full_attention_prefill_uses_layer_local_bf16_oracle_and_retai
     assert layer_scratch.retained_append_spans.scale_metadata is metadata
     assert layer_scratch.append_spans.storage_dtype is DType.BF16
     assert layer_scratch.int8_kv_value_bf16 is True
+    assert _gguf_aotriton_head_major_buffers(layer_scratch, context_len=64) == (
+        head_major_key,
+        head_major_value,
+        64,
+    )
 
 
 def test_gguf_int8_hybrid_prefill_uses_bf16_primary_when_layer_has_no_scale_metadata() -> None:

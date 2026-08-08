@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh_d1_cumulative_512_checkpoint",
+  "created_at": "2026-08-06T04:20:00+09:00",
+  "status": "accepted_diagnostic_continue_sh_d1",
+  "passed": true,
+  "performance_claim": false,
+  "summary": "The retained Q5 tile8 leaf removes 0.2095 ms/token from selected-down GPU attribution and improves the non-profiled 512 row, but cumulative exact decode remains below both SH-C1 and fork-F16 parity. Continue SH-D1 at the open Q6T16 lm-head ownership leaf.",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory_domain": "GTT/UMA",
+    "gpu_max_hw_queues": 1
+  },
+  "software": {
+    "measured_commit": "1a4c6b9ce81fd5bb45179e60410adea531335dcb",
+    "implementation_commit": "3e836edead25306d450fcb7d37f65e0b3c657c13",
+    "tracked_dirty": true,
+    "tracked_status_entries": [
+      " M docs/ROCM-AI.md"
+    ],
+    "source_qualification": "The sole tracked difference is an unrelated concurrent documentation edit; runtime/kernel/benchmark/test sources match the measured commit.",
+    "hip": "7.15.0-0000000",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompt_source": "repeated token 9707",
+    "prompt_length": 512,
+    "baseline_decode_tokens": 128,
+    "baseline_warmups": 1,
+    "baseline_repetitions": 3,
+    "profile_decode_tokens": 8,
+    "profile_warmup_tokens": 1,
+    "profile": "cached-only rocprofv3 kernel+HIP API+ROCTX role trace",
+    "gtt_sampling_interval_ms": 10.0,
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_sh_c0_profile.py --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --workloads 512 --backend hip_gfx1151 --baseline-steps 128 --baseline-warmups 1 --baseline-repetitions 3 --profile-steps 8 --warmup-steps 1 --gtt-interval-ms 10 --compiler-version-file /tmp/hipengine-hipcc-version.txt --raw-root /tmp/hipengine-sh-d1-cumulative-3e836edea --out /tmp/sh-d1-cumulative-512-3e836edea.json"
+  },
+  "non_profiled": {
+    "decode_tok_s_samples": [
+      53.535420198189385,
+      53.500571639605866,
+      53.549063186625276
+    ],
+    "decode_tok_s_median": 53.535420198189385,
+    "decode_ms_per_token_samples": [
+      18.6792220234375,
+      18.6913890703125,
+      18.674463015625
+    ],
+    "decode_ms_per_token_median": 18.6792220234375,
+    "all_tokens_exact": true,
+    "tracked_peak_gib": 21.479979306459427,
+    "tracked_close_bytes": 0,
+    "whole_gtt_peak_gib": 21.916004180908203,
+    "whole_gtt_baseline_gib": 0.01739501953125,
+    "whole_gtt_samples": 5769
+  },
+  "profiled": {
+    "gpu_us_per_token": 17359.07975,
+    "dispatches_per_token": 628.0,
+    "role_attributed_kernels": 4664,
+    "selected_decode_kernels": 5024,
+    "roles_us_per_token": {
+      "gdn_input_projections": 4113.1555,
+      "selected_expert_gate_up": 2315.410875,
+      "lm_head": 1831.03675,
+      "full_attention_core": 1580.876625,
+      "gdn_output_projection": 1446.51975,
+      "selected_expert_down": 1393.26975,
+      "full_attention_qkv": 1087.215625,
+      "moe_router_combine": 974.727375,
+      "shared_expert_gate_up": 693.057375,
+      "gdn_attention_core": 643.9665,
+      "full_attention_output": 498.465,
+      "shared_expert_down": 358.273875,
+      "unattributed": 254.96425,
+      "gdn_decay_projections": 168.1405
+    },
+    "raw_kernel_trace_sha256": "3c7800f1d114a86617fe7f2db06f89643a14270ccc00172ec4e2e90b96c1848c",
+    "raw_marker_trace_sha256": "a44793abbb9924e56d2bb776fd5a575fdf2007b99fe23cb1e7dc251067c0e282",
+    "raw_hip_api_trace_sha256": "444f0bbdb332e1fd33ac7bc6378349c2d2e7922a90e86325ec5d78b3cde76d8d"
+  },
+  "comparison_to_sh_c0": {
+    "sh_c0_artifact": "benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json",
+    "old_decode_tok_s": 52.85718111193776,
+    "new_decode_tok_s": 53.535420198189385,
+    "cross_run_delta_percent": 1.2831540993744728,
+    "old_gpu_us_per_token": 17595.796,
+    "new_gpu_us_per_token": 17359.07975,
+    "gpu_saving_us_per_token": 236.71624999999767,
+    "old_selected_down_us_per_token": 1602.803875,
+    "new_selected_down_us_per_token": 1393.26975,
+    "selected_down_saving_us_per_token": 209.53412499999997,
+    "qualification": "The old-to-new wall comparison is cross-run diagnostic only. The retained same-revision A/B in the Q5 artifact is the performance claim."
+  },
+  "cumulative_gate": {
+    "current_tok_s": 53.535420198189385,
+    "sh_c1_half_time_gap_tok_s": 58.165,
+    "sh_c2_fork_f16_parity_tok_s": 64.658,
+    "current_ms_per_token": 18.6792220234375,
+    "remaining_ms_per_token_to_c1": 1.4867523251653445,
+    "remaining_ms_per_token_to_c2": 3.2132317360794005,
+    "c1_pass": false,
+    "c2_pass": false
+  },
+  "headroom_decision": {
+    "closed_or_below_admission": [
+      "GDN input exact same-layout and paired-layout ladders",
+      "selected Q4 exact tile8/tile4 ownership ladder",
+      "selected Q6 down exact tile8/tile4 ownership ladder",
+      "dense Q8T16 single/dual/triple col8 schedule from prior F3J evidence",
+      "Q6 LM-head producer-owned tile maxima alone: only 6.853 us terminal-chain saving in prior exact evidence"
+    ],
+    "next_open_leaf": "Exact Q6T16 c1 lm-head tile8 output ownership at K2048/N248320, preserving each logit's K/FMA/reduction/FP32 store order and charging the complete resident output matrix.",
+    "admission": "Require exact FP32 logits and top-1, named scratch-free trace, and >=1.15x projection speedup or >=0.5 ms/token projected saving before any full-model route."
+  },
+  "raw_checkpoint_sha256": "3eea8606339584905714edbb37c5c2f8488955aea2b14efafebca54d885743cf",
+  "next": "Screen Q6T16 lm-head tile8 once; continue SH-D1 through measured open leaves until fork-F16 parity or defensible Amdahl/leaf headroom exhaustion, then advance SH-M2."
+}

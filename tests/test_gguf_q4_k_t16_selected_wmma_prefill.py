@@ -8,6 +8,8 @@ import pytest
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     build_gguf_q4_k_t16_selected_prefill,
+    gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out,
@@ -22,6 +24,7 @@ from hipengine.quant.gguf_q4_k import (
     pack_gguf_q4_k_mmq_tile16_preview,
     pack_q8_1_mmq_ds4_from_bf16,
     repack_gguf_q4_k_tile16,
+    repack_gguf_q4_k_tile16_qmicro,
 )
 from tests.test_gguf_q4_k_selected_wmma_prefill import (
     _TOLERANCE_BF16,
@@ -157,21 +160,28 @@ def _run_t16_selected_dual_gpu(
     dtype: str,
     *,
     shared_x: bool = False,
+    qmicro: bool = False,
     raw_bits: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
     library = build_gguf_q4_k_t16_selected_prefill(load=True)
+    if shared_x and qmicro:
+        raise ValueError("shared_x and qmicro are mutually exclusive test routes")
     if dtype == "bf16":
         wrapper = (
-            gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out
+            gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out
+            if qmicro
+            else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out
             if shared_x
             else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out
         )
     else:
         wrapper = (
-            gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out
+            gguf_q4_k_qmicro_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out
+            if qmicro
+            else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_fp16_fp16_out
             if shared_x
             else gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_fp16_fp16_out
         )
@@ -180,10 +190,12 @@ def _run_t16_selected_dual_gpu(
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
         dtype=out_dtype,
     )
-    tiles_a = repack_gguf_q4_k_tile16(fixture.qweight_a).tiles
-    tiles_b = repack_gguf_q4_k_tile16(fixture.qweight_b).tiles
-    assert tiles_a.shape[-1] == GGUF_Q4_K_TILE16_BLOCK_BYTES
-    assert tiles_b.shape[-1] == GGUF_Q4_K_TILE16_BLOCK_BYTES
+    repack = repack_gguf_q4_k_tile16_qmicro if qmicro else repack_gguf_q4_k_tile16
+    tiles_a = repack(fixture.qweight_a).tiles
+    tiles_b = repack(fixture.qweight_b).tiles
+    if not qmicro:
+        assert tiles_a.shape[-1] == GGUF_Q4_K_TILE16_BLOCK_BYTES
+        assert tiles_b.shape[-1] == GGUF_Q4_K_TILE16_BLOCK_BYTES
 
     bufs = []
     try:
@@ -314,6 +326,24 @@ def test_p9_c14_q4_k_t16_selected_wmma_bf16_matches_cpu_selected_reference(
     )
     actual = _run_t16_selected_dual_gpu(fixture, "bf16")
     np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCE_BF16)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("dtype", ["bf16", "fp16"])
+def test_sh2_m4_q4_qmicro_wmma_matches_t16_production_bytes(dtype: str) -> None:
+    fixture = _build_compact_fixture(
+        counts=[0, 16, 17, 31],
+        in_features=512,
+        out_features_a=48,
+        out_features_b=64,
+        dtype=dtype,
+        seed=20260806,
+    )
+    baseline = _run_t16_selected_dual_gpu(fixture, dtype, raw_bits=True)
+    compact = _run_t16_selected_dual_gpu(
+        fixture, dtype, qmicro=True, raw_bits=True
+    )
+    np.testing.assert_array_equal(compact, baseline)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1151_gguf_sh_d1_q6_lm_head_tile8_rejected",
+  "created_at": "2026-08-06T04:45:00+09:00",
+  "status": "rejected_removed",
+  "passed": false,
+  "performance_claim": false,
+  "decision": "Reject exact Q6T16 c1 LM-head tile8 before runtime routing; restore production source byte-for-byte and close SH-D1 row-1 weight ownership under the frozen gate.",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "mall_assumption_bytes": 33554432
+  },
+  "software": {
+    "parent_commit": "786422891",
+    "candidate_provenance": "Transient uncommitted exact candidate over the cumulative checkpoint; all candidate kernel/wrapper/key/test/microbench surfaces were removed after rejection.",
+    "hip": "7.15.0-0000000",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_status": "blocked_before_diff: missing optional /home/lhl/amd-gpu-tuning/reference/atlas; in-tree design, no external device body copied"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "lm_head_quant": "gguf_q6_k_t16_v1"
+  },
+  "candidate": {
+    "description": "Split each resident 16-column Q6T16 tile into two independent eight-column local128 workgroups.",
+    "shape": {
+      "rows": 1,
+      "in_features": 2048,
+      "out_features": 248320,
+      "weight_bytes": 417177600,
+      "weight_to_mall_ratio": 12.432861328125
+    },
+    "arithmetic_contract": "Each FP32 logit preserves production K ownership, FMA order, wave32 shuffle tree, serial wave-0..3 reduction, and store; only independent output-column ownership changes.",
+    "admission": "Exact FP32 logits/top-1, named scratch-free trace, and >=1.15x projection speedup or >=0.5 ms/token projected saving.",
+    "runtime_routed": false,
+    "surfaces_removed": true
+  },
+  "correctness": {
+    "red": "Targeted collection failed because the intentionally absent tile8 wrapper could not be imported.",
+    "green": "Nine focused Q6T16 tests passed while the candidate existed, including exact production-bit equality and the CPU Q6_K oracle at K2048/N4096.",
+    "full_lm_head_fp32_logits_exact": true,
+    "full_lm_head_top1_exact": true,
+    "top1_id": 142091,
+    "control_logits_sha256": "b4157631b20ef044f15b16d904534fff3cea18edc19a525b3852b34b0c51f7ef",
+    "candidate_logits_sha256": "b4157631b20ef044f15b16d904534fff3cea18edc19a525b3852b34b0c51f7ef"
+  },
+  "protocol": {
+    "timing": "counterbalanced HIP events",
+    "warmups_per_variant": 5,
+    "samples_per_variant": 11,
+    "launches_per_sample": 8,
+    "complete_matrix_per_launch": true,
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_q6_k_t16_lm_head_tile8_microbench.py --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --warmups 5 --samples 11 --burst 8 --output /tmp/sh-d1-q6-lmhead-tile8.json",
+    "raw_sha256": "3995a71839862d844477baa1724371813c3e0660e127afa9f4528e35ab33d4ba"
+  },
+  "results": {
+    "control_ms": [
+      1.8375798463821411,
+      1.824235200881958,
+      1.8317440748214722,
+      1.8551709651947021,
+      1.8424782752990723,
+      1.8242391347885132,
+      1.8248512744903564,
+      1.8410615921020508,
+      1.8360623121261597,
+      1.8237049579620361,
+      1.824521541595459
+    ],
+    "candidate_ms": [
+      1.8357466459274292,
+      1.8415075540542603,
+      1.8317921161651611,
+      1.8283658027648926,
+      1.8397431373596191,
+      1.844098687171936,
+      1.8285281658172607,
+      1.8271454572677612,
+      1.846948504447937,
+      1.830081820487976,
+      1.8427406549453735
+    ],
+    "control_median_ms": 1.8317440748214722,
+    "candidate_median_ms": 1.8357466459274292,
+    "speedup": 0.9978196495061905,
+    "delta_percent": -0.21803504938095108,
+    "saving_ms_per_token": -0.004002571105957031,
+    "gate_pass": false
+  },
+  "cache_only_trace": {
+    "compiler_spawned_under_profiler": false,
+    "raw_sha256": "2a67fc20e08523eaaa411a7a5ea7f27e5c62b2ba6c99dbf314f4def3c25c1fdc",
+    "control": {
+      "kernel": "q6_k_t16_gemv_kernel<unsigned short,float>",
+      "local_size_x": 128,
+      "grid_size_x": 1986560,
+      "grid_size_y": 1,
+      "vgpr": 72,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "single_cold_trace_ns": 2272218
+    },
+    "candidate": {
+      "kernel": "q6_k_t16_gemv_tile8_kernel",
+      "local_size_x": 128,
+      "grid_size_x": 3973120,
+      "grid_size_y": 1,
+      "vgpr": 48,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "single_cold_trace_ns": 1817887
+    },
+    "qualification": "Single trace durations are cold structural evidence only; the counterbalanced 11-pair HIP-event screen owns the performance decision."
+  },
+  "sh_d1_closure": {
+    "cumulative_512_tok_s": 53.535420198189385,
+    "remaining_ms_per_token_to_c1": 1.4867523251653445,
+    "remaining_ms_per_token_to_fork_f16": 3.2132317360794005,
+    "retained": [
+      "Exact selected-down Q5T16 tile8: 1.1715x leaf and +0.998% committed eager"
+    ],
+    "closed": [
+      "GDN input DPP/non-temporal/Q8T32 ladders",
+      "selected Q4 tile8/tile4 ladder",
+      "selected Q6 down tile8/tile4 ladder",
+      "Q6 LM-head tile8 and producer-owned tile-max alternatives",
+      "dense Q8T16 c1 thread/col8/single-dual-triple scheduling from prior closure evidence"
+    ],
+    "reason": "All measured exact byte-neutral row-1 weight ownership families are retained or below admission. Remaining top attribution outside those closed families is attention/layout work assigned to SH-A1, not another SH-D1 weight retry."
+  },
+  "next": "Mark SH-D1 complete with the residual parity gap explicitly open at the campaign level; proceed immediately to SH-M2 exact scratch-liveness aliases, then SH-K1/SH-A1/SH-G."
+}
