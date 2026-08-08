@@ -424,4 +424,3 @@ def test_maple_weighted_residual_batched_matches_oracle(maple_moe_lib) -> None:
         dev.get(out, out_d)
 
     assert np.array_equal(out, expected)
-

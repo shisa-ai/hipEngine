@@ -1023,4 +1023,3 @@ def test_maple_batched_decode_qknorm_write_and_attention_match_oracle(
         )
         got = np.array(out[row, :q_size], dtype=np.uint16)
         assert np.array_equal(got, expected), f"row {row} attention decode mismatch"
-
