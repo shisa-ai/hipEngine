@@ -209851,3 +209851,48 @@ Vulkan local sizes verbatim will close the measured gap.
   selector, 627-node retirement, teardown, and hash consistency pass; compact
   JSON parses; six README-sync tests, synchronization check, and diff check pass.
   No queue/resource-recreate arm was executed.
+
+## 2026-08-08 — Prepare issue-grade ROCm #6529 lifecycle capture
+
+- Final PM4 review identifies one evidence gap in the existing lifecycle
+  minimizer: its complete JSON was written only after process completion, so the
+  ROCr `SIGABRT` observed in #6529 could discard the exact failing generation.
+  Add optional fsynced JSONL events before each submit and after completion /
+  teardown, fail closed if the local `hipengine` import root differs from the
+  script repository, and include canonical staged/unstaged/untracked source plus
+  compiler/Python identity in the final reproducer artifact.
+- Add `scripts/pm4_lifecycle_issue_capture.py` as a plan-only-by-default outer
+  driver. Safe execution is queue/resource recreate with no native submit. Any
+  direct-AQL/PM4 submit+recreate arm requires `--submit-recreate`, the existing
+  `--ack-reset-risk`, and the exact separate approval token; destructive clean-
+  source checking, cached-build checking, gfx1100 visibility, kernel-journal
+  readability, and devcoredump readiness all fail before child launch.
+- The outer driver records selected HIP name/ordinal/PCI BDF and runtime/driver
+  versions, source and environment, amdgpu parameters/srcversion, MES firmware
+  hashes, compiler/ROCm/system probes, a cursor-bounded live and post-run kernel
+  journal, process-coredump metadata (not the process core), and a 50-ms raw
+  devcoredump watcher using preflighted non-interactive sudo by default (or an
+  explicit direct-read permission mode). It classifies reproduction only when address zero,
+  `0x00801431`, client 10, and SQC-data all appear. Local full-address/raw dumps
+  are marked non-publishable and output inside the repository is rejected.
+- Document exact prebuild, safe-control, one-cycle AQL/PM4 destructive, staged
+  8/128-cycle, HSA-allocation, timestamp, quarantine, and fail-stop preservation
+  commands in `docs/PM4.md`. The destructive section is explicitly prepared but
+  not authorized; a passing run remains scoped non-reproduction, not a fix.
+- Dirty-tree W7900 safe integration command:
+  `python3 scripts/pm4_lifecycle_issue_capture.py --output-dir
+  /tmp/hipengine-6529-safe-capture-review --compiler-version-file
+  /tmp/hipengine-hipcc-version.txt --transport pm4 --cycles 8
+  --hip-visible-devices 0 --rocr-visible-devices 0 --settle-seconds 1
+  --execute`. It passes **8/8** no-submit generations in **0.891 s**, with eight
+  durable prepared/completed/finalized event triplets, distinct native queue
+  generations, clean final teardown, W7900 PCI `0000:0d:00.0`, no #6529 journal
+  tuple, no reset, and no devcoredump. Local manifest/reproducer/event hashes are
+  `11773de8...fb52`, `b4d21b8c...bd46`, and `92e2654c...9049`; source dirtiness is
+  recorded, so this validates the workflow rather than serving as issue
+  publication evidence. A focused two-generation rerun after privileged-reader
+  hardening also passes with `devcoredump_reader=sudo`, joined watcher, and no
+  dump. Focused CPU safety/source/classifier tests pass **16/16**;
+  both guarded lifecycle GPU controls pass (persistent HSA/timestamp PM4 reuse
+  plus no-submit queue-first quarantine); targeted Ruff, compileall, plan JSON,
+  and diff checks pass. **No native submit/resource-recreate arm was run.**

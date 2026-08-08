@@ -3,8 +3,11 @@ from __future__ import annotations
 import pytest
 
 from scripts.pm4_lifecycle_repro import (
+    REPO_ROOT,
     ReproConfig,
+    _JsonlEventWriter,
     _close_generation,
+    _source_context,
     build_parser,
     plan_from_args,
 )
@@ -129,6 +132,26 @@ def test_lifecycle_repro_rejects_incoherent_resource_and_quarantine_modes() -> N
         ReproConfig(quarantine_generations=2).validated()
     with pytest.raises(ValueError, match="timestamps"):
         ReproConfig(transport="hipgraph", timestamps=True).validated()
+
+
+def test_lifecycle_event_journal_fsyncs_complete_json_lines(tmp_path) -> None:
+    journal = tmp_path / "lifecycle.jsonl"
+    with _JsonlEventWriter(journal) as writer:
+        writer({"event": "run_started", "cycle": None})
+        writer({"event": "cycle_prepared", "cycle": 0})
+
+    assert journal.read_text(encoding="utf-8").splitlines() == [
+        '{"cycle":null,"event":"run_started"}',
+        '{"cycle":0,"event":"cycle_prepared"}',
+    ]
+
+
+def test_lifecycle_source_context_is_pinned_to_this_repository() -> None:
+    source = _source_context()
+    assert source["repo_root"] == str(REPO_ROOT)
+    assert source["import_root"] == source["repo_root"]
+    assert len(source["hipengine_commit"]) == 40
+    assert isinstance(source["dirty"], bool)
 
 
 def test_no_submit_create_drop_plan_is_non_destructive() -> None:
