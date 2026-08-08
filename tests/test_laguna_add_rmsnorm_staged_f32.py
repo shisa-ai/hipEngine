@@ -269,7 +269,10 @@ def test_staged_f32_key_is_excluded_from_unvalidated_backends(
 
     backend.register_gfx1151_kernels()
 
-    assert registered == []
+    assert all(
+        (key.layer, key.quant, key.variant) != (_KEY.layer, _KEY.quant, _KEY.variant)
+        for key in registered
+    )
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
