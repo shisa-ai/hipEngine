@@ -159,6 +159,7 @@ def fake_decoder_libraries(trace: list[tuple[str, tuple[object, ...]]]) -> Moons
             trace,
             "hipengine_moonshine_f16_lm_head_projection",
             "hipengine_moonshine_f16_lm_head_projection_wave8",
+            "hipengine_moonshine_f16_lm_head_projection_wave8_top1",
             "hipengine_moonshine_f16_projection",
             "hipengine_moonshine_f16_projection_bias",
             "hipengine_moonshine_f16_projection_bias_gated_silu",
@@ -618,6 +619,85 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         assert resident.self_cache_length == 0
     finally:
         resident.close()
+
+
+def test_exact_wave8_top1_route_rejects_unknown_route_and_int8_lm_head() -> None:
+    with pytest.raises(ValueError, match="lm_head_route"):
+        MoonshineResidentRuntime(
+            model_path="/not-loaded",
+            encoder_frames=40,
+            runtime=FakeRuntime(),  # type: ignore[arg-type]
+            lm_head_route="unknown",
+        )
+
+    runtime = FakeRuntime()
+    with pytest.raises(ValueError, match="requires the exact FP16"):
+        MoonshineResidentRuntime(
+            loaded_model=fake_loaded_model(runtime, w8a16_families=("lm_head",)),
+            encoder_frames=40,
+            runtime=runtime,  # type: ignore[arg-type]
+            lm_head_route="wave8_top1",
+        )
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
+def test_exact_wave8_top1_route_owns_bounded_scratch_and_keeps_fallback_explicit() -> None:
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+        lm_head_route="wave8_top1",
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+    try:
+        contract = resident.lm_head_contract()
+        assert contract == {
+            "route": "wave8_top1",
+            "materializes_full_fp16_logits": True,
+            "stable_lowest_id_top1": True,
+            "partial_count": 4_608,
+            "partial_value_dtype": "fp16",
+            "partial_index_dtype": "int64",
+            "fallback": "wave8_argmax",
+        }
+        assert resident.tensor("lm_head_partial_values").shape == (4_608,)
+        assert resident.tensor("lm_head_partial_indices").shape == (4_608,)
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries(trace))
+        resident.set_encoder_state(
+            np.zeros((1, 40, 416), dtype=np.float16),
+            np.ones((1, 40), dtype=np.int32),
+        )
+        resident.precompute_cross_kv()
+        trace.clear()
+        malloc_count = len(runtime.malloc_calls)
+        resident.set_decode_state(token_id=1, position=0)
+        with resident.no_allocation_region("wave8-top1-token-step"):
+            resident.token_step()
+        assert len(runtime.malloc_calls) == malloc_count
+        names = [name for name, _ in trace]
+        assert names.count(
+            "hipengine_moonshine_f16_lm_head_projection_wave8_top1"
+        ) == 1
+        assert "hipengine_moonshine_f16_lm_head_projection_wave8" not in names
+        assert "hipengine_moonshine_argmax_fp16" not in names
+        resident.reset_generation(clear_cross_cache=False)
+        assert resident.cross_cache_valid is True
+        trace.clear()
+        captures = resident.capture_token_graphs()
+        assert len(captures) == 4
+        capture_names = [name for name, _ in trace]
+        assert capture_names.count(
+            "hipengine_moonshine_f16_lm_head_projection_wave8_top1"
+        ) == 4
+        assert "hipengine_moonshine_f16_lm_head_projection_wave8" not in capture_names
+        assert "hipengine_moonshine_argmax_fp16" not in capture_names
+    finally:
+        resident.close()
+
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
 
 
 def test_selective_w8a16_routes_expected_fixed_address_kernels_and_reports_bytes() -> None:

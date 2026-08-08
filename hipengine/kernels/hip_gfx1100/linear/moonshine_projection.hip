@@ -96,6 +96,104 @@ __global__ void moonshine_f16_lm_head_projection_wave8_kernel(
   }
 }
 
+__global__ void moonshine_f16_lm_head_projection_wave8_top1_kernel(
+    const half_t* __restrict__ input,
+    const half_t* __restrict__ weight,
+    half_t* __restrict__ logits,
+    half_t* __restrict__ partial_values,
+    int64_t* __restrict__ partial_indices,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  __shared__ half_t wave_values[8];
+  __shared__ int64_t wave_indices[8];
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+  const int64_t column = static_cast<int64_t>(blockIdx.x) * 8 + wave;
+  const int64_t row = blockIdx.y;
+  if (row >= rows) return;
+  const bool valid = column < out_features;
+  float accumulator = 0.0f;
+  if (valid) {
+    for (int64_t feature = lane; feature < in_features; feature += 32) {
+      accumulator += static_cast<float>(input[row * in_features + feature]) *
+          static_cast<float>(weight[column * in_features + feature]);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      accumulator += __shfl_down(accumulator, offset);
+    }
+  }
+  if (lane == 0) {
+    const half_t rounded = valid
+        ? static_cast<half_t>(accumulator)
+        : static_cast<half_t>(-3.4028234663852886e38f);
+    if (valid) logits[row * out_features + column] = rounded;
+    wave_values[wave] = rounded;
+    wave_indices[wave] = valid ? column : out_features;
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float best_value = -3.4028234663852886e38f;
+    int64_t best_index = out_features;
+    for (int index = 0; index < 8; ++index) {
+      const float value = static_cast<float>(wave_values[index]);
+      const int64_t candidate_index = wave_indices[index];
+      if (value > best_value ||
+          (value == best_value && candidate_index < best_index)) {
+        best_value = value;
+        best_index = candidate_index;
+      }
+    }
+    const int64_t partial_count = (out_features + 7) / 8;
+    const int64_t partial_offset = row * partial_count + blockIdx.x;
+    partial_values[partial_offset] = static_cast<half_t>(best_value);
+    partial_indices[partial_offset] = best_index;
+  }
+}
+
+__global__ void moonshine_lm_head_top1_reduce_kernel(
+    const half_t* __restrict__ partial_values,
+    const int64_t* __restrict__ partial_indices,
+    int64_t* __restrict__ output,
+    int64_t rows,
+    int64_t partial_count,
+    int64_t out_features) {
+  __shared__ float values[256];
+  __shared__ int64_t indices[256];
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  float best_value = -3.4028234663852886e38f;
+  int64_t best_index = out_features;
+  for (int64_t index = threadIdx.x; index < partial_count;
+       index += blockDim.x) {
+    const int64_t offset = row * partial_count + index;
+    const float value = static_cast<float>(partial_values[offset]);
+    const int64_t candidate_index = partial_indices[offset];
+    if (value > best_value ||
+        (value == best_value && candidate_index < best_index)) {
+      best_value = value;
+      best_index = candidate_index;
+    }
+  }
+  values[threadIdx.x] = best_value;
+  indices[threadIdx.x] = best_index;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      const float other_value = values[threadIdx.x + stride];
+      const int64_t other_index = indices[threadIdx.x + stride];
+      if (other_value > values[threadIdx.x] ||
+          (other_value == values[threadIdx.x] &&
+           other_index < indices[threadIdx.x])) {
+        values[threadIdx.x] = other_value;
+        indices[threadIdx.x] = other_index;
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) output[row] = indices[0];
+}
+
 __global__ void moonshine_f16_projection_bias_kernel(
     const half_t* __restrict__ input,
     const half_t* __restrict__ weight,
@@ -357,6 +455,33 @@ extern "C" int hipengine_moonshine_f16_lm_head_projection_wave8(
   moonshine_f16_lm_head_projection_wave8_kernel<<<
       dim3((out_features + 7) / 8, rows), dim3(256), 0, stream>>>(
       input, weight, output, rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_moonshine_f16_lm_head_projection_wave8_top1(
+    const half_t* input,
+    const half_t* weight,
+    half_t* logits,
+    half_t* partial_values,
+    int64_t* partial_indices,
+    int64_t* output,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0) {
+    return hipErrorInvalidValue;
+  }
+  const int64_t partial_count = (out_features + 7) / 8;
+  moonshine_f16_lm_head_projection_wave8_top1_kernel<<<
+      dim3(partial_count, rows), dim3(256), 0, stream>>>(
+      input, weight, logits, partial_values, partial_indices, rows, in_features,
+      out_features);
+  const hipError_t stage_error = hipGetLastError();
+  if (stage_error != hipSuccess) return stage_error;
+  moonshine_lm_head_top1_reduce_kernel<<<
+      dim3(rows), dim3(256), 0, stream>>>(
+      partial_values, partial_indices, output, rows, partial_count, out_features);
   return hipGetLastError();
 }
 

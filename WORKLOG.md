@@ -209072,3 +209072,41 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   and all **18/18** report tests pass; the affected backend/resident/AOT/batch-
   encoder bundle passes every runnable test with only expected CUDA-hardware
   skips. `py_compile` and `git diff --check` pass.
+
+## 2026-08-08 — Implement Moonshine G1 exact gfx1151 wave8 top-1
+
+- RED first freezes a new gfx1151 registry key/raw-pointer ABI, fixed runtime
+  scratch and fallback contract, candidate eager/graph dispatch, stable
+  non-multiple-of-eight tie behavior, and production 36,864x416 full-logit/token
+  equality. The three host nodes fail only on the absent wrapper/constructor
+  route before implementation.
+- Add `moonshine_lm_head/fp16/tied_wave8_top1_logits_fp32_accum` in the existing
+  source-F16 projection code object. One local256 block preserves each of the
+  current eight wave32 FP32 dot-product orders and complete FP16 stores, then
+  publishes one rounded value/int64 ID partial. A second local256 kernel reduces
+  only `ceil(vocab/8)` partials with lowest-ID ties. The production candidate
+  owns 4,608 FP16 values plus 4,608 int64 IDs (**46,080 bytes**) and keeps the
+  original wave8 projection plus full-logit argmax as registered fallback.
+- `MoonshineResidentRuntime(lm_head_route="wave8_top1")` is immutable and
+  default-off, conditionally reserves/resets the scratch, rejects an INT8
+  lm-head sidecar, and uses the same route inside eager and four-bucket graph
+  capture. `scripts/moonshine_decoder_smoke.py` exposes the selector and reports
+  its contract. The cleanup trigger is recorded in `docs/REFACTOR.md`.
+- GREEN on Ryzen AI MAX+ 395 / Radeon 8060S / gfx1151: the projection/runtime/
+  smoke-policy bundle passes **22/22**; the subsequently added route/W8 negative
+  node passes focused (**23 distinct nodes total**). The 13-row all-zero tie/tail returns ID 0;
+  the 36,864-row production-shape random fixture preserves every FP16 logit bit,
+  matches the unfused token, and passes the independent NumPy projection/top-1
+  gate. No timed allocation occurs and fake-runtime graph capture names the
+  candidate in all four regions; close returns tracked ownership to zero.
+- Cached-only `rocprofv3 1.3.2 --kernel-trace` under direct Python and prebuilt
+  `require_cached` code objects names
+  `moonshine_f16_lm_head_projection_wave8_top1_kernel` and
+  `moonshine_lm_head_top1_reduce_kernel` at **167,754/5,210 ns**. Producer/reducer
+  are local256, VGPR16, SGPR128, scratch0, with LDS512/3,072; the same trace sees
+  unfused wave8/argmax at 221,134/29,536 ns. These are plausible one-shot trace
+  diagnostics, not a retained speed claim. Raw CSV remains under `/tmp`.
+- The historical six model-derived fixtures and pinned checkpoint are absent on
+  this host. G1 therefore remains default-off until a clean matched repeated
+  leaf decision plus the strongest available model-state/token gate is
+  published; do not infer a complete-ASR speedup from this implementation unit.

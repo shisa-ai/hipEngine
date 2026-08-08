@@ -55,6 +55,12 @@ def parse_args() -> argparse.Namespace:
         help="comma-separated selective families: lm_head,mlp,attention",
     )
     parser.add_argument(
+        "--lm-head-route",
+        choices=("wave8_argmax", "wave8_top1"),
+        default="wave8_argmax",
+        help="use the unfused full-logit argmax fallback or exact wave8 partial top-1",
+    )
+    parser.add_argument(
         "--token-route",
         choices=("eager", "graph"),
         default="eager",
@@ -247,6 +253,7 @@ def main() -> int:
         "post_eos_unselected_token_mismatches": [],
         "timed_step_allocations": 0,
         "token_route": args.token_route,
+        "lm_head": None,
         "w8a16_families": [
             value.strip() for value in args.w8a16_families.split(",") if value.strip()
         ],
@@ -260,11 +267,13 @@ def main() -> int:
             model_path=args.model_path,
             encoder_frames=encoder_frames,
             w8a16_families=args.w8a16_families,
+            lm_head_route=args.lm_head_route,
         ) as resident:
             resident.prepare_decoder_kernels(
                 compiler_version=compiler_version,
                 require_cached=args.require_cached_build,
             )
+            report["lm_head"] = resident.lm_head_contract()
             encoder_hidden = fixture["encoder.output"]
             encoder_mask = fixture["encoder.attention_mask"]
             if encoder_frames != source_frames:
