@@ -9,8 +9,10 @@ H8C-H8Q ladder, and high-leverage-only resumption policy.
 
 ## Current gfx1100 retained-PM4 transport diagnostics
 
-The c1 rows are focused repeated-token transport diagnostics, not package-default
-or natural-prompt performance claims. Native HIP graph remains the default.
+The c1 rows are focused repeated-token transport diagnostics, not broad
+natural-prompt performance claims. HIP graph remains the global default and
+portable fallback; one exact model/quant/shape policy selects PM4 only above
+measured capture break-even.
 
 | Transport / encoder | Qwen3.6 Q4_K_M p512/d128 replay | Capture | Retained tape | Status |
 | --- | ---: | ---: | ---: | --- |
@@ -56,9 +58,11 @@ pre/post-submit cancellation, context/session shutdown, and focused max-shape
 memory recovery:
 [`2026-08-08-gfx1100-pm4-promotion-matrix.json`](results/2026-08-08-gfx1100-pm4-promotion-matrix.json).
 Explicit `transport="pm4"` selects the stateful/local-cache encoder
-unconditionally. The c1/c2/c4/c8 performance blocker is resolved, so scoped
-backend-capability promotion is ready; unrelated graph families and peer
-backends must retain HIP graph. ROCm #6529 recreate remains optional unrun
+unconditionally. The c1/c2/c4/c8 performance blocker is resolved. The scoped
+default is limited to Qwen3.6-35B-A3B `MOSTLY_Q4_K_M`, physical c1/c2/c4/c8,
+one-step tapes, and declared windows of at least **144/64/96/80** transitions;
+shorter or unknown scopes and peer backends retain HIP graph. ROCm #6529
+recreate remains optional unrun
 coverage rather than an evidenced in-tree fault because production retains one
 queue and does not recreate it. The superseded stateful-only evidence remains in
 [`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).

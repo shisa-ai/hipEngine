@@ -152,6 +152,8 @@ class Qwen35GGUFResidentWeights:
     root_weights: Mapping[str, Qwen35GGUFDeviceWeight]
     layers: tuple[Qwen35GGUFResidentLayerWeights, ...]
     backend: str
+    model_name: str | None = None
+    file_type_name: str | None = None
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -343,6 +345,12 @@ def materialize_qwen35_gguf_weights(
         root_weights=MappingProxyType(root_weights),
         layers=layers,
         backend=backend,
+        model_name=(
+            None
+            if reader.info.metadata.get("general.name") is None
+            else str(reader.info.metadata["general.name"])
+        ),
+        file_type_name=reader.info.file_type_name,
     )
 
 

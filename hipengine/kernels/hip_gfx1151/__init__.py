@@ -620,6 +620,10 @@ LAGUNA_SWA_LOCAL1024 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
+# gfx1100 PM4 evidence does not admit architecture-specific packets on gfx1151.
+GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
+    ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {"transport": "hipgraph"},
+}
 # Clean LCP-2A six-case exactness, balanced-wall, and 250-transition natural
 # gates admit compiler-cacheable compact-scale direct LDS32 GDN on gfx1151.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
@@ -1681,6 +1685,7 @@ __all__ = [
     "BACKEND",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_EXACT_MODE",

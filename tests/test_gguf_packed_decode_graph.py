@@ -206,7 +206,11 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
         fake_capture,
         raising=False,
     )
-    monkeypatch.setattr(transport_module, "select_submission_transport", lambda value=None: "pm4")
+    monkeypatch.setattr(
+        transport_module,
+        "select_submission_transport",
+        lambda value=None, **_kwargs: "pm4",
+    )
     monkeypatch.setattr(
         transport_module,
         "create_graph_submission_context",
@@ -217,7 +221,6 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
     owner.runner = SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100")
     owner.runtime = object()
     owner._decode_graph_submission_contexts = {}
-    owner._decode_graph_default_submission_transport = None
     pins: list[tuple[str, object]] = []
     owner._pin_device_kv_graph = lambda graph: pins.append(("owner", graph))
     peer._pin_device_kv_graph = lambda graph: pins.append(("peer", graph))

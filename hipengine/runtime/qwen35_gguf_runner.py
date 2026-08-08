@@ -8958,6 +8958,50 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     return raw.lower() not in {"0", "false", "off", "no"}
 
 
+def _resolve_gguf_decode_graph_submission_transport(
+    backend: str,
+    *,
+    model_name: str | None = None,
+    file_type_name: str | None = None,
+    physical_rows: int = 1,
+    replay_steps: int = 0,
+    steps_per_replay: int = 1,
+    requested: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Resolve explicit/env selection over measured model/quant/shape policy."""
+
+    from hipengine.core.pm4.transport import select_submission_transport
+
+    package_policies = backend_package_capability(
+        backend,
+        "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
+        {},
+    )
+    if not isinstance(package_policies, Mapping):
+        raise RuntimeError("backend GGUF decode graph transport policies must be a mapping")
+    policy = package_policies.get((model_name, file_type_name), {})
+    if not isinstance(policy, Mapping):
+        raise RuntimeError("backend GGUF decode graph transport policy must be a mapping")
+    package_default = str(policy.get("transport", "hipgraph"))
+    if package_default == "pm4":
+        thresholds = policy.get("min_replay_steps_by_physical_rows", {})
+        if not isinstance(thresholds, Mapping):
+            raise RuntimeError("backend PM4 replay thresholds must be a mapping")
+        minimum = thresholds.get(int(physical_rows))
+        if (
+            minimum is None
+            or int(steps_per_replay) != 1
+            or int(replay_steps) < int(minimum)
+        ):
+            package_default = "hipgraph"
+    return select_submission_transport(
+        requested,
+        default_transport=package_default,
+        env=env,
+    )
+
+
 def _iq_grouped_prefill_enabled() -> bool:
     return _env_flag(_GGUF_IQ_GROUPED_PREFILL_ENV, True)
 
@@ -11078,9 +11122,6 @@ class Qwen35GGUFResidentSession:
     _decode_graph_submission_contexts: dict[str, object] = field(
         default_factory=dict, init=False, repr=False
     )
-    _decode_graph_default_submission_transport: str | None = field(
-        default=None, init=False, repr=False
-    )
     _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
     _native_spec_b1_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph: object | None = field(default=None, init=False, repr=False)
@@ -12656,6 +12697,8 @@ class Qwen35GGUFResidentSession:
             root_weights=MappingProxyType(root_weights),
             layers=weights.layers,
             backend=weights.backend,
+            model_name=weights.model_name,
+            file_type_name=weights.file_type_name,
         )
         self._host_token_embedding_reader = reader
         self._host_token_embedding_raw = raw
@@ -19763,19 +19806,28 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("whole-step GGUF graph cannot nest the per-layer MoE graph diagnostic")
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
-        from hipengine.core.pm4.transport import (
-            create_graph_submission_context,
-            select_submission_transport,
-        )
+        from hipengine.core.pm4.transport import create_graph_submission_context
         from hipengine.runtime.gguf_decode_graph import capture_qwen35_gguf_decode_graph
 
         if submission_transport is None:
-            selected_transport = self._decode_graph_default_submission_transport
-            if selected_transport is None:
-                selected_transport = select_submission_transport()
-                self._decode_graph_default_submission_transport = selected_transport
+            resident_weights = getattr(self.runner, "weights", None)
+            selected_transport = _resolve_gguf_decode_graph_submission_transport(
+                self.runner.backend,
+                model_name=getattr(resident_weights, "model_name", None),
+                file_type_name=getattr(resident_weights, "file_type_name", None),
+                physical_rows=1,
+                replay_steps=(
+                    int(steps_per_replay)
+                    if max_replay_steps is None
+                    else int(max_replay_steps)
+                ),
+                steps_per_replay=int(steps_per_replay),
+            )
         else:
-            selected_transport = select_submission_transport(submission_transport)
+            selected_transport = _resolve_gguf_decode_graph_submission_transport(
+                self.runner.backend,
+                requested=submission_transport,
+            )
         submission_context = self._decode_graph_submission_contexts.get(selected_transport)
         if submission_context is None:
             submission_context = create_graph_submission_context(
@@ -19822,21 +19874,32 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
-        from hipengine.core.pm4.transport import (
-            create_graph_submission_context,
-            select_submission_transport,
-        )
+        from hipengine.core.pm4.transport import create_graph_submission_context
         from hipengine.runtime.gguf_packed_decode_graph import (
             capture_qwen35_gguf_packed_decode_graph,
         )
 
         if submission_transport is None:
-            selected_transport = self._decode_graph_default_submission_transport
-            if selected_transport is None:
-                selected_transport = select_submission_transport()
-                self._decode_graph_default_submission_transport = selected_transport
+            resident_weights = getattr(self.runner, "weights", None)
+            selected_transport = _resolve_gguf_decode_graph_submission_transport(
+                self.runner.backend,
+                model_name=getattr(resident_weights, "model_name", None),
+                file_type_name=getattr(resident_weights, "file_type_name", None),
+                physical_rows=(
+                    len(token_ids) if physical_rows is None else int(physical_rows)
+                ),
+                replay_steps=(
+                    int(steps_per_replay)
+                    if max_replay_steps is None
+                    else int(max_replay_steps)
+                ),
+                steps_per_replay=int(steps_per_replay),
+            )
         else:
-            selected_transport = select_submission_transport(submission_transport)
+            selected_transport = _resolve_gguf_decode_graph_submission_transport(
+                self.runner.backend,
+                requested=submission_transport,
+            )
         submission_context = self._decode_graph_submission_contexts.get(selected_transport)
         if submission_context is None:
             submission_context = create_graph_submission_context(
