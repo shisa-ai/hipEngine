@@ -209130,3 +209130,22 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   **110.736 -> 98.349 us wall (-11.186%)**, but correctly emits
   `diagnostic_dirty` and `performance_claim=false`. This smoke is harness
   validation only; rerun from the committed clean revision for the decision.
+
+## 2026-08-08 — Add the Moonshine G1 actual-checkpoint graph gate
+
+- After the implementation RED/commit, authenticated access made the pinned
+  private 63,217,856-parameter F32 checkpoint available at exact revision
+  `cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d`; the historical model-derived
+  audio fixture bundle remains absent. Add a HIP-availability- and explicit-env-
+  guarded gate rather than treating a new candidate kernel as its own oracle.
+- Baseline wave8+argmax and candidate wave8-partials+reducer each independently
+  load the actual checkpoint, precompute all eight cross-K/V pairs from the same
+  deterministic masked 40-frame encoder state, capture all four graph buckets,
+  and autoregress through the complete 194-position cache. Compare every token,
+  full FP16 logits and final hidden at positions 0/1/2/4/31/63/127/193, complete
+  self/cross K/V state, graph replay count, no-allocation regions, and teardown.
+- The focused Radeon 8060S/gfx1151 gate passes: all **194/194** tokens, all eight
+  selected full-logit/final-hidden pairs, and both complete K/V planes are byte-
+  exact; both graph routes replay 194 times and tracked ownership returns to the
+  pre-gate baseline. This strengthens model-state correctness but is not a real-
+  audio transcript or performance claim.

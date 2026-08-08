@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+import os
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +10,14 @@ import pytest
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
-from hipengine.core.memory import free, malloc, memory_stats, reset_memory_stats
+from hipengine.core.memory import (
+    copy_device_to_host,
+    free,
+    host_array_ptr,
+    malloc,
+    memory_stats,
+    reset_memory_stats,
+)
 from hipengine.core.tensor import Tensor
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
@@ -917,6 +926,130 @@ def test_runtime_rejects_unknown_encoder_bucket_and_cache_state_drift() -> None:
             resident.set_self_cache_length(195)
     finally:
         resident.close()
+
+
+def _actual_moonshine_model_gate_available() -> bool:
+    if os.environ.get("HIPENGINE_RUN_MOONSHINE_MODEL_GATE") != "1":
+        return False
+    if os.environ.get("HIPENGINE_HIP_ARCH") != "gfx1151":
+        return False
+    snapshot = Path(
+        os.environ.get(
+            "HIPENGINE_MOONSHINE_SNAPSHOT",
+            "/home/lhl/.cache/huggingface/hub/"
+            "models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/"
+            "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        )
+    )
+    if not (snapshot / "model.safetensors").is_file():
+        return False
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(
+    not _actual_moonshine_model_gate_available(),
+    reason="actual Moonshine gfx1151 model gate is not enabled/available",
+)
+def test_actual_checkpoint_graph_state_and_tokens_match_wave8_argmax() -> None:
+    snapshot = Path(
+        os.environ.get(
+            "HIPENGINE_MOONSHINE_SNAPSHOT",
+            "/home/lhl/.cache/huggingface/hub/"
+            "models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/"
+            "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        )
+    )
+    compiler_version_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = (
+        None
+        if not compiler_version_file
+        else Path(compiler_version_file).read_text()
+    )
+    rng = np.random.default_rng(0x1151A5A)
+    encoder_hidden = rng.normal(0.0, 0.03, size=(1, 40, 416)).astype(np.float16)
+    encoder_mask = np.zeros((1, 40), dtype=np.int32)
+    encoder_mask[:, :24] = 1
+    selected_positions = {0, 1, 2, 4, 31, 63, 127, 193}
+    baseline_stats = memory_stats()
+
+    def run(route: str) -> dict[str, object]:
+        from hipengine.core.hip import get_hip_runtime
+
+        runtime = get_hip_runtime()
+        captures: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        with MoonshineResidentRuntime(
+            model_path=snapshot,
+            encoder_frames=40,
+            runtime=runtime,
+            lm_head_route=route,
+        ) as resident:
+            resident.prepare_decoder_kernels(
+                compiler_version=compiler_version,
+                require_cached=compiler_version is not None,
+            )
+            resident.set_encoder_state(encoder_hidden, encoder_mask)
+            resident.precompute_cross_kv()
+            resident.capture_token_graphs()
+            token = resident.spec.decoder_start_token_id
+            tokens = []
+            for position in range(resident.spec.self_cache_capacity):
+                resident.set_decode_state(token_id=token, position=position)
+                with resident.no_allocation_region(f"{route}-position-{position}"):
+                    resident.graph_token_step()
+                token = resident.read_token()
+                tokens.append(token)
+                if position in selected_positions:
+                    logits = np.empty((1, resident.spec.vocab_size), dtype=np.float16)
+                    final_hidden = np.empty((1, 1, resident.spec.hidden_size), dtype=np.float16)
+                    copy_device_to_host(
+                        host_array_ptr(logits),
+                        resident.workspace.allocation("logits").buffer,
+                        runtime=runtime,
+                    )
+                    copy_device_to_host(
+                        host_array_ptr(final_hidden),
+                        resident.workspace.allocation("normalized").buffer,
+                        runtime=runtime,
+                    )
+                    captures[position] = (logits, final_hidden)
+            states = {}
+            for name in ("self_kv", "cross_kv"):
+                allocation = resident.workspace.allocation(name)
+                state = np.empty(allocation.tensor.shape, dtype=np.float16)
+                copy_device_to_host(
+                    host_array_ptr(state), allocation.buffer, runtime=runtime
+                )
+                states[name] = state
+            graph_contract = resident.token_graph_contract()
+        return {
+            "tokens": tokens,
+            "captures": captures,
+            "states": states,
+            "graph_contract": graph_contract,
+        }
+
+    fallback = run("wave8_argmax")
+    candidate = run("wave8_top1")
+    assert candidate["tokens"] == fallback["tokens"]
+    assert candidate["captures"].keys() == fallback["captures"].keys()
+    for position in selected_positions:
+        fallback_logits, fallback_hidden = fallback["captures"][position]
+        candidate_logits, candidate_hidden = candidate["captures"][position]
+        np.testing.assert_array_equal(candidate_logits, fallback_logits)
+        np.testing.assert_array_equal(candidate_hidden, fallback_hidden)
+    for name in ("self_kv", "cross_kv"):
+        np.testing.assert_array_equal(
+            candidate["states"][name], fallback["states"][name]
+        )
+    assert candidate["graph_contract"]["replay_count"] == 194
+    assert fallback["graph_contract"]["replay_count"] == 194
+    after = memory_stats()
+    assert after["current_allocated_bytes"] == baseline_stats["current_allocated_bytes"]
+    assert after["active_allocations"] == baseline_stats["active_allocations"]
 
 
 def test_partial_initialization_failure_unwinds_weights_workspace_events_and_stream() -> None:
