@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 
@@ -164,9 +165,11 @@ def test_decoder_smoke_cli_uses_the_promoted_runtime_default(monkeypatch) -> Non
 
 
 def test_retained_gfx1151_route_admission_artifact_promotes_exact_top1() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
     artifact = json.loads(
-        Path(
-            "benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json"
+        (
+            repo_root
+            / "benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json"
         ).read_text()
     )
     assert artifact["kind"] == "hipengine_moonshine_lm_head_route_admission"
@@ -206,3 +209,6 @@ def test_retained_gfx1151_route_admission_artifact_promotes_exact_top1() -> None
     assert all(row["returncode"] == 0 for row in artifact["rows"])
     assert artifact["provenance"]["dirty"] is False
     assert artifact["provenance"]["untracked_count"] == 0
+    assert artifact["provenance"]["hipengine_commit"].startswith("75b3143fc")
+    for relative, expected in artifact["source_files"].items():
+        assert hashlib.sha256((repo_root / relative).read_bytes()).hexdigest() == expected
