@@ -209621,3 +209621,30 @@ Vulkan local sizes verbatim will close the measured gap.
   switching HIP→PM4 across a 143→144-step c1 boundary. A no-env p16/d3 c2 GPU
   smoke selects HIP graph and passes exact; clean above-threshold default PM4
   validation follows after the policy commit.
+
+## 2026-08-08 — Validate and publish scoped PM4 package default
+
+- At tracked-clean `be13fa2f1` with `HIPENGINE_SUBMISSION_TRANSPORT` unset, the
+  p512/d128 packed routing gate selects PM4 for c2/c4/c8. Each measured graph
+  executes 128 launches with 747/747/748 nodes, zero native fallback, retired
+  executable state, and zero unretired submissions. All selected runs are
+  repeatable and pass; aggregate diagnostic throughput is
+  **149.457/210.566/267.859 tok/s**. This one-run packet is a routing/retirement
+  check, not a replacement for the clean five-round paired performance matrix.
+- The clean short-window control routes p16/d3 c2 to HIP graph, completes three
+  launches, and passes at 150.692 aggregate tok/s. A same-loaded-model c1
+  boundary smoke routes declared d128 to HIP and d144 to PM4, preserves token
+  9707 in both, proves the PM4 626-node executable retired with zero fallback,
+  and closes the persistent PM4 context. This directly validates both sides of
+  the package threshold without an environment or API transport override.
+- Re-run the focused mechanical bundle at the clean policy commit: **31 passed**
+  across global/caller-default precedence, exact model/file-type identity,
+  physical-width thresholds, unknown/short/peer fallback, short→long reselection
+  in one session, explicit overrides, transport ownership, and packed graph
+  lifecycle; Ruff passes. Per the focused-repair policy, do not repeat the
+  already completed expensive 19-case/4K, 2,800 steady, 1,160 sparse-retirement,
+  and five-round c2/c4/c8 matrices because this unit changes selection only.
+- Publish the composite default proof in
+  `benchmarks/results/2026-08-08-gfx1100-pm4-scoped-default.json`. PM4 is now a
+  package-selected optimization only where measured and capture-amortized; HIP
+  remains the global default and every unmeasured fallback.
