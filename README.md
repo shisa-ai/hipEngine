@@ -222,6 +222,7 @@ and model-specific limitations.
 | [`docs/GGUF.md`](docs/GGUF.md) | Qwen dense/MoE GGUF support and format boundaries |
 | [`docs/LAGUNA.md`](docs/LAGUNA.md) | Laguna model contract, public boundary, and DFlash status |
 | [`docs/MAPLE.md`](docs/MAPLE.md) | Maple model summary, runtime support, performance, and audit |
+| [`docs/MOONSHINE.md`](docs/MOONSHINE.md) | Moonshine internal backend status and gfx1151 transfer campaign |
 | [`docs/KERNELS.md`](docs/KERNELS.md) | Kernel catalog, lineage, JIT, and profiling workflow |
 | [`docs/BENCHMARK.md`](docs/BENCHMARK.md) | Benchmark protocols and evidence requirements |
 | [`docs/TESTING.md`](docs/TESTING.md) | Correctness oracles, fixtures, and validation tiers |
