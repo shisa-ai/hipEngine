@@ -209030,3 +209030,23 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `hipengine/`, and the diff is whitespace-clean. Ruff is unavailable in the
   current project environment; broad lineage inspection remains blocked by the
   already-absent optional `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
+
+## 2026-08-08 — Freeze the Moonshine gfx1151 transfer campaign
+
+- Add `docs/MOONSHINE.md` as the campaign authority for the pinned
+  `shisa-ai/shisa-realtime-asr-0.92b` contract, current gfx1151 graph/hybrid
+  baselines, CUDA transfer/non-transfer matrix, G0-G7 dependency ladder,
+  correctness/lifecycle/profiler gates, evidence policy, and reproduction entry
+  points. Link it from the root documentation index, `docs/PLAN.md`, and the
+  Moonshine kernel catalog without adding Moonshine to the supported-model
+  matrix.
+- Freeze G1 more strictly than the CUDA no-logit-plane route: the HIP candidate
+  must preserve every FP16 logit bit while deriving stable lowest-ID top-1 from
+  the same rounded wave8 outputs. The existing wave8 projection plus separate
+  argmax remains the registered fallback. Current 31.219-us argmax and historical
+  ~20% cached-token head share are admission evidence only, not a promised gain.
+- Narrow source-lineage preflight selects zero tracked Moonshine parents
+  (`tracked_sources: 0 changed_or_dirty: 0`); the implementation is an in-tree
+  transfer from the reviewed CUDA concept and current HIP arithmetic. No kernel,
+  runtime, dispatch, benchmark default, or performance row changes in this docs
+  unit.

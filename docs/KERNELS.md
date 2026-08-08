@@ -905,6 +905,11 @@ exact composite in production:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json).
 ### Moonshine source-F16 projection baselines (**hipEngine landed**)
 
+The current runtime, CUDA-review findings, and ordered gfx1151 transfer gates
+are maintained in [`MOONSHINE.md`](MOONSHINE.md). Kernel catalog entries below
+remain the arithmetic/source authority; CUDA measurements never select HIP
+geometry without an independent gfx1151 gate.
+
 `linear/moonshine_projection.{hip,py}` provides raw-pointer FP16-input,
 FP16-weight, FP16-output single, paired, and triple projections with FP32
 accumulation. The single wrapper also has an explicit row-precompute key for
