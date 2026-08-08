@@ -876,7 +876,10 @@ class Qwen35GGUFPackedDecodeGraph:
         graph_manifest["replayed_steps"] = self.replayed_steps
         if launches:
             graph_manifest["replay_call_synchronizations"] += 1
-        graph_manifest["transport"] = self.transport_provenance()
+        transport_manifest = graph_manifest.get("transport")
+        if isinstance(transport_manifest, dict):
+            transport_manifest["launches"] = int(self.replay_count)
+            transport_manifest["replayed_steps"] = int(self.replayed_steps)
         self.owner.last_packed_execution_manifest = self.execution_manifest
 
     def transport_provenance(self) -> dict[str, Any]:
