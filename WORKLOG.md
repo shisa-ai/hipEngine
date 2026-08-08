@@ -208973,3 +208973,17 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   admission waits for the requested testing from main. The previously recorded
   **178 passed / 4 optional skips** GPU0 gate and origin-matched full-suite
   differential are the unchanged promotion evidence.
+
+## 2026-08-08 — Correct root NVIDIA hardware target status
+
+- Replace the obsolete planned `cuda_sm86` / NVIDIA Ampere row in the root
+  hardware-target matrix with the implemented architecture-qualified backend
+  key `cuda_sm120a`, hardware scope **NVIDIA consumer Blackwell GPUs**, and
+  status **Partial (some models)**. Update the architecture diagram to the same
+  CUDA tree and status.
+- This is a backend/hardware availability statement, not model admission:
+  Moonshine remains absent from the supported-model matrix until testing from
+  main completes. No runtime, registry, model, or kernel source changes.
+- Docs validation is GREEN: benchmark/root README tests **21/21**, canonical
+  benchmark-block synchronization, hardware/support/table invariants,
+  architecture-box width, full-file review, and `git diff --check`.
