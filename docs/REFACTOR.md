@@ -36,7 +36,7 @@ should be removed or collapsed.
   model/file-type/physical-width/replay-window map, not a blanket gfx1100 PM4
   default. `HIPENGINE_SUBMISSION_TRANSPORT=hipgraph` is the whole-route rollback;
   explicit `pm4|aql` remains diagnostic. Re-profile capture break-even before
-  lowering **144/64/96/80** at c1/c2/c4/c8 or admitting another model/quant,
+  lowering **160/64/96/80** at c1/c2/c4/c8 or admitting another model/quant,
   graph family, multi-step tape, width, or backend. Remove the environment
   rollback after one release window only if the scoped default remains exact and
   non-regressive; retain the package policy boundary and HIP fallback.

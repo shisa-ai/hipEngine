@@ -579,8 +579,11 @@ declared replay window determine whether capture amortizes. Production/model
 code asks package capability metadata; it does not branch on `backend == ...`
 or `quant == ...`. The exact gfx1100 Qwen3.6-35B-A3B `MOSTLY_Q4_K_M` policy
 selects PM4 only for one-step graphs with declared replay windows at least
-**144/64/96/80 steps for physical c1/c2/c4/c8**. Those thresholds include a
-safety margin above measured capture break-even. Unknown identities, widths,
+**160/64/96/80 steps for physical c1/c2/c4/c8**. Those thresholds include a
+safety margin above measured capture break-even. A late clean p4096 c1 profile
+measures break-even at 143 transitions, making c1=160 the first rounded floor
+above the documented 10% margin; c1=144 had only 0.059% projected advantage at
+its boundary. Unknown identities, widths,
 multi-step tapes, shorter windows, and gfx1151 retain HIP graph. The GGUF
 resident session retains one native submission context per selected transport,
 so graph pointer/topology generations replace only the executable while the
@@ -998,9 +1001,9 @@ policy now selects PM4 only for the exact measured Qwen3.6-35B-A3B Q4_K_M
 identity and physical c1/c2/c4/c8 windows above conservative capture break-even
 thresholds. Short windows, unknown identities/widths, unrelated graph families,
 and peer backends retain HIP graph; explicit API/environment choices remain
-available for diagnostics. A clean no-override gate proves c1 d128→HIP and
-d144→PM4, c2 d3→HIP, and p512/d128 c2/c4/c8→PM4 with exact tokens, zero
-fallback, complete retirement, and checked PM4 context close. Evidence:
+available for diagnostics. Clean no-override gates prove c1 d159→HIP and
+d160→PM4, c2 d3→HIP, and p512/d128 c2/c4/c8→PM4 with exact repeatable tokens,
+zero fallback, complete retirement, and checked PM4 context close. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-pm4-scoped-default.json`. ROCm #6529
 queue recreate remains useful optional isolation coverage, but it is not an
 evidenced fault in the production ownership path: hipEngine

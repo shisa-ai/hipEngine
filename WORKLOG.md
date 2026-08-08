@@ -209833,3 +209833,21 @@ Vulkan local sizes verbatim will close the measured gap.
   Targeted Ruff and `git diff --check` pass. Commit the policy/test unit before
   running the clean retained no-override d159/d160 W7900 boundary validation;
   artifact/rollup threshold updates follow that clean packet.
+- Clean source-`85cdc62ce` TheRock HIP 7.15 boundary runs use the source-pinned
+  `gguf_packed_ar_bench.py`, selector unset, cached builds, p512, one warmup, and
+  one measured run. d159 selects HIP graph in both runs, executes 159 launches,
+  remains repeatable/exact at **97.895 aggregate tok/s**, and closes at zero
+  tracked bytes. d160 selects canonical PM4 in both runs, executes **627 nodes /
+  160 launches**, remains repeatable/exact at **105.440 aggregate tok/s**, and
+  records stateful/local-cache encoding, zero fallback, zero callback/unretired
+  work, retired/not-in-flight executables, closed context, and zero tracked bytes.
+  Raw SHA256s are `718e154a...f8511290` (d159, 102,307 bytes) and
+  `0c984fe5...5780f705` (d160, 1,405,388 bytes); stderr is compiler-silent.
+- Update the scoped-default artifact and all current threshold references from
+  **144/64/96/80→160/64/96/80**, preserving the superseded d128/d144 source as
+  historical evidence. Record the clean p4096 break-even derivation plus current
+  d159/d160 raw hashes, add the benchmark changelog row, and update PM4, PLAN,
+  REFACTOR, and canonical benchmark handoffs. Raw/artifact break-even, source,
+  selector, 627-node retirement, teardown, and hash consistency pass; compact
+  JSON parses; six README-sync tests, synchronization check, and diff check pass.
+  No queue/resource-recreate arm was executed.
