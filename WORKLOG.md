@@ -216535,3 +216535,29 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   10.752 us, exact head 110.654 us). The focused source/unit/GPU bundle is GREEN
   with **15 passed / 3 optional skips**; Python compilation, diff checks, Torch
   hot-path audit, and backend/quant-branch audit pass.
+
+## 2026-08-08 — Publish clean Maple CUDA sm_120a c1 correctness evidence
+
+- Commit runtime wiring as `294379f1ac59baffbfbe62c66750f7c1477fd332`,
+  then create detached `/tmp/hipengine-maple-sm120a-clean` at that exact commit.
+  Its status has no staged, unstaged, or untracked files; this avoids hiding or
+  deleting the shared feature worktree's unrelated pre-existing
+  `hipengine/.gitignore`.
+- Repeat the full 18-position packed-weight gate from the clean worktree on
+  physical GPU0. Results reproduce exactly: max KL **0.0137925562**, mean KL
+  **0.0018637036**, top-1 **18/18**, minimum hidden cosine **0.9971485**, and
+  exact device greedy argmax. Repeat public 16-token generation: identical IDs
+  and text, **5,399,968,636 bytes / 560 allocations** resident, zero after
+  close. The 2.040-s load-inclusive wall is a diagnostic only.
+- Repeat cache-only full-model Nsight from the clean source. Expected counts are
+  present (24 QKV, attention, and router calls; one exact head and argmax tail),
+  with medians **5,856 ns** QKV, **1,984 ns** attention, **10,752 ns** router,
+  **111,007 ns** exact head, and **1,760 ns** argmax stage 2. Remove only the
+  temporary clean worktree; keep profiler/raw logits under `/tmp` and out of
+  Git.
+- Publish compact non-performance artifact
+  `benchmarks/results/2026-08-08-cuda-sm120a-maple-c1-correctness.json` and
+  update the root support boundary, Maple overview/reproduction/limits,
+  performance-plan deferral, kernel catalog, benchmark rollup, and changelog.
+  CUDA c1 is correctness-qualified; native prefill, resident batching/serving,
+  graph qualification, and performance promotion remain explicitly unclaimed.

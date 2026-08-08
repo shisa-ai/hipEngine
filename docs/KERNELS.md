@@ -218,7 +218,7 @@ bring-up diagnostics only, not retained throughput claims. Evidence:
 `benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json` and
 `benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
 
-### Maple CUDA sm_120a peer primitives (**hipEngine landed, runtime bring-up**)
+### Maple CUDA sm_120a peer c1 path (**hipEngine landed, correctness-qualified**)
 
 `hipengine/kernels/cuda_sm120a/{quant,attention,moe,norm,linear}/maple_*`
 ports the in-tree Maple raw-pointer families to architecture-qualified CUDA
@@ -236,9 +236,23 @@ BF16 boundaries are bit-exact; affine4 FP32 logits pass `atol=rtol=2e-4` and
 argmax agrees. A cache-only Nsight Systems trace names
 `maple_ternary_gemv_kernel`, `paro_rmsnorm_out_kernel<unsigned short>`,
 `maple_clamped_swiglu_kernel`, and `maple_weighted_residual_kernel` at plausible
-0.704-1.504 us durations. This is primitive/runtime-bring-up evidence, not a
-full-generation or performance claim; public Maple CUDA wiring remains the
-next gate.
+0.704-1.504 us durations.
+
+`hipengine/runtime/maple_cuda.py` now composes the peer families into the full
+24-layer c1 route selected by the `cuda_sm120a` Maple generation plugin. The
+clean 18-position packed-weight gate on RTX PRO 6000 Blackwell GPU0 passes at
+max/mean KL **0.0137926/0.0018637**, top-1 **18/18**, minimum hidden cosine
+**0.997149**, and exact device argmax. A clean cache-only full-model Nsight
+trace names all expected families: 24 QKV/O, QK/KV, attention, router,
+selected-dual/down, clamp, weighted-residual, and residual-norm calls, plus one
+embed/head/argmax tail; representative medians are **5.856 us** QKV,
+**1.984 us** attention, **10.752 us** router, and **111.007 us** exact head.
+The public 16-token c1 smoke is coherent and closes tracked ownership from
+**5,399,968,636 bytes / 560 allocations** to zero. Prompt admission remains a
+correctness-first serial c1 fallback and resident batching is deliberately not
+advertised, so this is not a native-prefill, serving, or performance claim.
+Evidence:
+`benchmarks/results/2026-08-08-cuda-sm120a-maple-c1-correctness.json`.
 
 ### Laguna gfx1151 decode transfer screen
 

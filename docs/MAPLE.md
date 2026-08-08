@@ -1,6 +1,6 @@
 # MAPLE — Ternary MoE inference on hipEngine
 
-Last updated: **2026-08-08** (branch `maple`)
+Last updated: **2026-08-08**
 
 ## Summary
 
@@ -30,6 +30,10 @@ used** by the exact production path.
 
 - Public model-ID loading and greedy text generation work on
   `hip_gfx1151`/Radeon 8060S and the peer `hip_gfx1100` registry key.
+- Correctness-first c1 `LLM.generate()` also runs through independent
+  `cuda_sm120a` kernels on RTX PRO 6000 Blackwell. Its 18-position packed gate
+  passes at max KL 0.013793 and top-1 18/18; prompt admission is currently
+  token-serial and there is no CUDA batching, serving, or throughput claim.
 - Native prefill now continues safely beyond the 512-token sliding window up
   to the configured context. The retained 520/770-token gates are byte-exact to
   serial through physical K/V rings, complete `KVLiveSpans`, final state, and
@@ -120,6 +124,21 @@ sparse/staggered reclaim, and c-aware decode orchestration now has one public
 implementation. Prompt **storage admission** is packed into fixed slots; prompt
 compute is currently native per request rather than one ragged multi-request
 GEMM.
+
+### CUDA sm_120a correctness-first c1
+
+The `cuda_sm120a` generation factory injects `MapleCudaRunner`; it does not add
+backend branches to the model, dispatcher, or engine. The runner loads the same
+463 packed tensors with `CudaRuntime` and composes independent CUDA ternary,
+affine4, RMSNorm, QK/RoPE/KV, GQA attention, router, selected-MoE, residual, and
+argmax libraries. Every attention call consumes the complete `KVLiveSpans` ABI.
+
+This first vertical slice admits prompts token-serially through the same c1 CUDA
+chain and declines the gfx11-only fixed-batch resident capability. The generic
+submit/poll compatibility owner therefore reaches direct deterministic
+`LLM.generate()` without crossing into HIP builders. Native CUDA prefill,
+resident c2/c4/c8 scheduling, HTTP serving, graph qualification, and performance
+promotion remain separate gates tracked in `docs/REFACTOR.md`.
 
 ## Interpreting DeepGrove's Apple numbers
 
@@ -264,11 +283,12 @@ and [M6 helper recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m
 | Public c1 runner, max context 512 (P2/M5 protocol) | **4.988 GiB** |
 | Batch helper c=2 / c=4 / c=8, capacity 66/request | **4.951 / 4.958 / 4.973 GiB** |
 | Public fixed-slot c1 / c2 / c4 / c8, default 4K context | **5.115 / 5.180 / 5.310 / 5.571 GiB** |
+| CUDA sm_120a correctness-first c1, default 4K context | **5.029 GiB** (5,399,968,636 bytes / 560 allocations) |
 | After `close()` | **0 bytes / 0 active allocations** |
 
 These are exact process-local hipEngine allocation counters, not sampled
-whole-device GTT. They exclude allocations internal to the HIP runtime and
-other processes. The low-level batch helper uses much smaller row scratch and
+whole-device GPU memory. They exclude allocations internal to the HIP/CUDA
+runtime and other processes. The low-level batch helper uses much smaller row scratch and
 short per-request capacity than either the 256-row public prefill runner or the
 public default-4K owner, so those rows are not directly comparable.
 
@@ -279,7 +299,8 @@ text as proof of numerical correctness.
 
 | Gate | Result |
 | --- | --- |
-| Packed NumPy/Torch formula vs hipEngine, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
+| Packed NumPy/Torch formula vs hipEngine gfx1151, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
+| Packed Torch formula vs CUDA sm_120a c1 on GPU0, same 18 positions | max KL **0.013793**, mean KL 0.001864, top-1 **18/18**, minimum hidden cosine 0.997149, device argmax exact |
 | Pinned HF `trust_remote_code` oracle with matched affine4 endpoints | max KL **0.004719**, mean KL 0.000723, top-1 **18/18** |
 | P2/M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | **18/18** byte-exact final-hidden/normalized/live-KV/span state hashes; max/mean KL **0/0**; top-1/token equality **90/90** |
 | D0 one- vs two-dispatch router, 18 natural+heldout prompts / 36 repeated trajectories | **36/36** native-start and final state hashes; **1,296/1,296** tokens/top logits; **2,592/2,592** zero-counter checks |
@@ -299,6 +320,7 @@ to the accepted values above; thresholds were not weakened.
 
 Primary evidence:
 
+- [CUDA sm_120a c1 correctness](../benchmarks/results/2026-08-08-cuda-sm120a-maple-c1-correctness.json)
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
 - [P4 long prefill + public admission](../benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json)
@@ -457,6 +479,20 @@ Then run the qualified paths from the repository root:
 # Focused runtime/correctness gates
 python3 -m pytest tests/test_maple_runtime.py tests/test_maple_generation.py -q
 
+# CUDA sm_120a c1 primitive + generation gates on physical GPU0
+CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 \
+uv run --extra dev pytest -q \
+  tests/test_cuda_sm120a_maple.py \
+  tests/test_maple_generation.py \
+  tests/test_maple_correctness_script.py
+
+# CUDA sm_120a full 18-position packed-formula gate (optional Torch oracle)
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=$PWD \
+uv run --extra torch python scripts/maple_correctness.py \
+  --model deepgrove/maple-preview-2bit-mlx --backend cuda_sm120a \
+  --token-ids 151644,872,198,7985,825,2805,11652,911,54380,12408,13,151645,198,151644,77091,198,151667,198 \
+  --oracle packed --json /tmp/maple-sm120a-packed-18.json
+
 # M5 public-native prefill recertification
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
@@ -509,5 +545,6 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_public_batch_bench.py \
 - The submit/poll path is public in-process generation; an HTTP endpoint remains
   separate server integration work.
 - FlashHead is approximate and excluded from the exact default.
-- CUDA-peer support, speculative decoding, tensor parallelism, and 128K runtime
-  qualification are separate future tracks.
+- CUDA sm_120a c1 generation is correctness-qualified, but native CUDA prefill,
+  resident batching/serving, performance promotion, speculative decoding,
+  tensor parallelism, and 128K runtime qualification are separate future tracks.

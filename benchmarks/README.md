@@ -107,6 +107,7 @@ and
 | c1 natural+heldout continuation | **153.201 tok/s** | 18 prompts, 1,152 paired timing samples; full-head exact; -0.14% vs prior | [`D0 current`](results/2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json) |
 | Fixed-helper c2/c4/c8 decode64 | **250.481/346.365/428.063 aggregate tok/s** | exact row reuse; excludes prompt/public scheduling | [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json) |
 | Public c1/c2/c4/c8 generation64 | **123.131/165.697/202.038/214.788 aggregate tok/s** | same public protocol; admission/prefill/reclaim included; exact full head | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
+| CUDA sm_120a correctness-first c1 | **— (no throughput claim)** | GPU0; packed max KL 0.013793, top-1 18/18, exact device argmax; serial prompt admission | [`CUDA c1`](results/2026-08-08-cuda-sm120a-maple-c1-correctness.json) |
 
 The fixed-capacity helper now uses exact affine4 row reuse at c=2/4/8 and
 reaches median aggregate **250.481/346.365/428.063 tok/s** at 64 tokens/request.

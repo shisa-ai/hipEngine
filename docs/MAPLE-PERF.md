@@ -570,6 +570,8 @@ Rules (per `AGENTS.md`):
 
 - FlashHead as the default (approximate; opt-in only).
 - MTP speculative decode (no drafter for Maple yet).
-- CUDA-peer backend, tensor parallelism, FP16-dequant prefill — separate tracks.
+- CUDA sm_120a c1 correctness is tracked separately; native CUDA prefill,
+  resident batching/performance, tensor parallelism, and FP16-dequant prefill
+  remain separate tracks.
 - Do not land throwaway prefill paths; build the complete bulk path directly
   per `docs/PREFILL.md` policy.
