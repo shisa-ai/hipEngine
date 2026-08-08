@@ -49,7 +49,7 @@ def _transport_spec(mode: str) -> tuple[str, bool | None, bool | None]:
     if mode == "pm4_stateful":
         return "pm4", True, False
     if mode == "pm4":
-        return "pm4", False, False
+        return "pm4", True, True
     if mode in {"hipgraph", "aql"}:
         return mode, None, None
     raise ValueError(f"unknown benchmark transport mode {mode!r}")
@@ -326,9 +326,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
     os.environ["HIPENGINE_GGUF_MOE_GRAPH"] = "0"
     os.environ["HIPENGINE_HIP_ARCH"] = target_arch
-    # Each PM4 benchmark label sets this immediately before constructing its
-    # own immutable transport context. Never inherit an ambient candidate flag.
-    os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "0"
     compiler_version = _read_compiler_version(args.compiler_version_file)
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
@@ -371,17 +368,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     mode
                 )
                 capture_start_ns = time.perf_counter_ns()
-                if stateful_registers is True or local_cache_dependencies is True:
-                    # A separate context lets conservative and stateful PM4
-                    # coexist in one loaded session for a real counterbalanced
-                    # replay comparison. The production session cache is keyed
-                    # by transport name and intentionally owns only one `pm4`.
-                    os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = str(
-                        int(bool(stateful_registers))
-                    )
-                    os.environ["HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"] = str(
-                        int(bool(local_cache_dependencies))
-                    )
+                if mode in {"pm4_stateful", "pm4_stateful_local"}:
+                    # Comparison aliases use separate contexts so the canonical
+                    # PM4 encoder and the retained global-acquire diagnostic can
+                    # coexist in one counterbalanced session.
                     context = create_graph_submission_context(
                         backend=str(session.runner.backend),
                         gfx_arch=str(session.runner.target_arch),
@@ -390,6 +380,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
                     if context is None:
                         raise RuntimeError("stateful PM4 benchmark context was not created")
+                    context.stateful_registers = bool(stateful_registers)
+                    context.local_cache_dependencies = bool(local_cache_dependencies)
                     custom_contexts[mode] = context
                     graph = capture_qwen35_gguf_decode_graph(
                         session,
@@ -403,10 +395,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     graphs[mode] = graph
                     session._pin_device_kv_graph(graph)
                 else:
-                    if stateful_registers is False:
-                        os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "0"
-                    if local_cache_dependencies is False:
-                        os.environ["HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"] = "0"
                     graphs[mode] = session.capture_decode_graph(
                         position=int(args.prompt_length),
                         steps_per_replay=1,
@@ -522,7 +510,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "ROCR_VISIBLE_DEVICES": os.environ.get("ROCR_VISIBLE_DEVICES"),
             "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
             "HIPENGINE_HIP_ARCH": target_arch,
-            "HIPENGINE_PM4_STATEFUL_REGISTERS": os.environ.get("HIPENGINE_PM4_STATEFUL_REGISTERS"),
         },
         build_profile="pm4_graph_bench",
         timing_protocol=(

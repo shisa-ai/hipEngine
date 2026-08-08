@@ -860,8 +860,9 @@ PM4 kernel rows, so device attribution needs direct-AQL tracing or retained GPU
 IB timestamps rather than a false kernel-family sum. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-graph-baseline.json`.
 
-The first exact opt-in candidate, `HIPENGINE_PM4_STATEFUL_REGISTERS=1`, ports the
-already-frozen register-state oracle into the native encoder. It always emits
+The historical first opt-in candidate,
+`HIPENGINE_PM4_STATEFUL_REGISTERS=1`, ported the already-frozen register-state
+oracle into the native encoder. It always emits
 the first value for every SH register and only elides later identical values;
 kernarg pointer dwords still change per node. The p512/d3 production gate remains
 bit exact and the tape falls **25,707 -> 18,100 dwords (-29.591%)**. The corrected
@@ -870,8 +871,9 @@ and counterbalances them against HIP graph. Its tracked-clean one-warmup/five-
 round p512/d128 result cuts **25,666 -> 18,079 dwords (-29.560%)** and improves
 **10.044991 -> 9.989421 ms/token (-0.553%, 5/5 paired wins; -0.611% paired
 median)** with exact shared tokens, recurrent/KV state, and logits plus zero
-fallback and clean teardown. This remains an opt-in candidate pending the
-broader PM4 promotion gates, not package-default evidence. Evidence:
+fallback and clean teardown. The broader gates below later promote this
+behavior as one half of the canonical explicit-PM4 encoder; this artifact remains
+the historical comparison evidence. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`.
 
 Setup attribution on the post-review 626-node p512/d3 stateful graph identifies
@@ -894,8 +896,8 @@ of remaining clean inspection. Identity-checked immutable DSO reuse by
 capture pay **0.057 ms** rather than **57.407 ms** for DSO loading; in the
 same-process directional run, inspection is **91.699 -> 30.448 ms** and capture
 **145.042 -> 75.914 ms**. Eight-way cold DSO loading regressed that phase
-**55.061 -> 63.072 ms** and was removed. Slab/cache publication and a
-same-session p512/d128 end-to-end comparison remain pending.
+**55.061 -> 63.072 ms** and was removed. The slab/cache setup path and its
+same-session p512/d128 result are now published in the artifacts below.
 
 A wait-only dependency experiment retained each compute-idle `EVENT_WRITE` but
 removed the following `ACQUIRE_MEM`. It reduced the 626-node stateful tape
@@ -907,8 +909,9 @@ evidence that a cache acquire/invalidation is semantically mandatory, not a
 lifecycle artifact. The flag and implementation were removed. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-pm4-wait-only-dependency-rejected.json`.
 
-The narrower default-off `HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES=1` candidate
-retains both the compute-idle event and `ACQUIRE_MEM`, but changes GCR control
+The historical default-off
+`HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES=1` candidate retained both the
+compute-idle event and `ACQUIRE_MEM`, but changed GCR control
 from `GLK_INV|GLV_INV|GL1_INV|GL2_INV|GL2_WB` (`0xc380`) to the local
 `GLK_INV|GLV_INV|GL1_INV` subset (`0x0380`). The prior completion barrier makes
 producer writes visible in coherent GL2; consumers still invalidate scalar,
@@ -922,8 +925,7 @@ faster than HIP graph replay. Cold local capture is **132.858 ms**, down
 **31.425%** from the prior 193.739 ms stateful artifact; cold capture-inclusive
 p512/d128 is now within **0.329 ms / 0.023%** of HIP graph instead of about 3.5%
 slower. Tape size remains 18,079 dwords. Evidence:
-`benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`. This is
-retained as an explicit candidate pending the broader promotion matrix.
+`benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`.
 
 `scripts/pm4_promotion_gate.py` executes that matrix in one resident session. It
 uses HIP graph as the exact oracle for every prompt in the complete
@@ -953,6 +955,14 @@ python3 scripts/pm4_promotion_gate.py \
   --compiler-version-file /tmp/hipengine-hipcc-version.txt \
   --require-cached --json /tmp/hipengine-pm4-promotion.json
 ```
+
+After that matrix, explicit `transport="pm4"` is promoted to the combined
+stateful-register/local-cache encoder unconditionally. The two experiment
+environment selectors are removed from transport construction and cannot
+downgrade the canonical path; low-level conservative/global modes remain only
+as benchmark diagnostics. This promotion does **not** change the package
+transport default: HIP graph remains default until the separate ROCm #6529
+resource-recreate risk is resolved.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact

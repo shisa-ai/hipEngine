@@ -16,7 +16,7 @@ or natural-prompt performance claims. Native HIP graph remains the default.
 | --- | ---: | ---: | ---: | --- |
 | HIP graph | **10.726350 ms/token / 93.228 tok/s** | 34.993 ms | Native runtime graph | Portable oracle/default |
 | In-tree stateful PM4, global acquire | **10.052766 / 99.475** | 79.296 ms (warm DSO metadata) | 18,079 dwords | Exact comparison path |
-| In-tree stateful PM4, local-cache acquire | **9.964358 / 100.358** | **132.858 ms cold** | 18,079 dwords | Exact opt-in candidate; **-0.879%**, **5/5** paired wins vs global; **-7.104%** vs HIP replay |
+| In-tree stateful PM4, local-cache acquire | **9.964358 / 100.358** | **132.858 ms cold** | 18,079 dwords | Canonical explicit-PM4 encoder; **-0.879%**, **5/5** paired wins vs global; **-7.104%** vs HIP replay |
 
 Tracked-clean W7900 evidence, exact state/logit hashes, setup attribution, command,
 and lifecycle proof:
@@ -30,8 +30,10 @@ category-heldouts, and 4K context, plus 21 persistent-context graph generations,
 58 retired submissions, pre/post-submit cancellation, context/session shutdown,
 and focused max-shape memory recovery:
 [`2026-08-08-gfx1100-pm4-promotion-matrix.json`](results/2026-08-08-gfx1100-pm4-promotion-matrix.json).
-Package-default PM4 remains blocked by the separate ROCm #6529 resource-recreate
-risk; HIP graph remains the default transport. The superseded stateful-only
+Explicit `transport="pm4"` now selects the stateful/local-cache encoder
+unconditionally; its old experiment selectors no longer control transport
+construction. Package-default PM4 remains blocked by the separate ROCm #6529
+resource-recreate risk, so HIP graph remains the default transport. The superseded stateful-only
 evidence remains in
 [`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).
 

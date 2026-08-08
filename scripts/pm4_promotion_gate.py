@@ -328,66 +328,52 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         ),
     )
     max_sequence_length = max(len(case.token_ids) for case in cases) + int(args.steps) + 8
-    old_stateful = os.environ.get("HIPENGINE_PM4_STATEFUL_REGISTERS")
-    old_local = os.environ.get("HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES")
-    os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "1"
-    os.environ["HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"] = "1"
     rows: list[dict[str, Any]] = []
     cancellation: dict[str, Any] = {}
     context_before_close: dict[str, Any] = {}
     context_after_close: dict[str, Any] = {}
     internal_contexts: dict[str, Any] = {}
     free_before = free_after = total_bytes = 0
-    try:
-        with Qwen35GGUFResidentSession(
-            model,
-            max_sequence_length=max_sequence_length,
-            compiler_version=compiler_version,
-            require_cached_build=bool(args.require_cached),
-            backend="hip_gfx1100",
-            use_wmma_prefill=True,
-            use_gemv_decode=True,
-        ) as session:
-            # Establish the memory baseline only after the declared maximum shape
-            # has initialized its lazy prefill workspaces. Otherwise a later 4K
-            # prefill is misclassified as a graph/context teardown leak.
-            _prefill(session, list(cases[-1].token_ids))
-            free_before, total_bytes = session.runtime.mem_get_info()
-            context = create_graph_submission_context(
-                backend=str(session.runner.backend),
-                gfx_arch=str(session.runner.target_arch),
-                runtime=session.runtime,
-                transport="pm4",
-            )
-            if context is None:
-                raise RuntimeError("PM4 promotion context was not created")
-            try:
-                cancellation = _cancellation_gates(session, context, cases[0].token_ids)
-                for case in cases:
-                    row = _run_case(session, context, case, steps=int(args.steps))
-                    rows.append(row)
-                    if context.provenance().get("children") != 0:
-                        raise RuntimeError("PM4 context retained a closed graph generation")
-                context_before_close = context.provenance()
-            finally:
-                internal_contexts = session.close_decode_graph_submission_contexts()
-                if context.provenance().get("children") == 0:
-                    context.close()
-                context_after_close = context.provenance()
-            session.runtime.device_synchronize()
-            free_after, total_after = session.runtime.mem_get_info()
-            if total_after != total_bytes:
-                raise RuntimeError("device total memory changed during promotion gate")
-            pci_bdf = session.runtime.device_pci_bus_id()
-    finally:
-        if old_stateful is None:
-            os.environ.pop("HIPENGINE_PM4_STATEFUL_REGISTERS", None)
-        else:
-            os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = old_stateful
-        if old_local is None:
-            os.environ.pop("HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES", None)
-        else:
-            os.environ["HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"] = old_local
+    with Qwen35GGUFResidentSession(
+        model,
+        max_sequence_length=max_sequence_length,
+        compiler_version=compiler_version,
+        require_cached_build=bool(args.require_cached),
+        backend="hip_gfx1100",
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+    ) as session:
+        # Establish the memory baseline only after the declared maximum shape
+        # has initialized its lazy prefill workspaces. Otherwise a later 4K
+        # prefill is misclassified as a graph/context teardown leak.
+        _prefill(session, list(cases[-1].token_ids))
+        free_before, total_bytes = session.runtime.mem_get_info()
+        context = create_graph_submission_context(
+            backend=str(session.runner.backend),
+            gfx_arch=str(session.runner.target_arch),
+            runtime=session.runtime,
+            transport="pm4",
+        )
+        if context is None:
+            raise RuntimeError("PM4 promotion context was not created")
+        try:
+            cancellation = _cancellation_gates(session, context, cases[0].token_ids)
+            for case in cases:
+                row = _run_case(session, context, case, steps=int(args.steps))
+                rows.append(row)
+                if context.provenance().get("children") != 0:
+                    raise RuntimeError("PM4 context retained a closed graph generation")
+            context_before_close = context.provenance()
+        finally:
+            internal_contexts = session.close_decode_graph_submission_contexts()
+            if context.provenance().get("children") == 0:
+                context.close()
+            context_after_close = context.provenance()
+        session.runtime.device_synchronize()
+        free_after, total_after = session.runtime.mem_get_info()
+        if total_after != total_bytes:
+            raise RuntimeError("device total memory changed during promotion gate")
+        pci_bdf = session.runtime.device_pci_bus_id()
 
     categories: dict[str, dict[str, int | bool]] = {}
     for row in rows:
@@ -430,8 +416,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "ROCR_VISIBLE_DEVICES": os.environ.get("ROCR_VISIBLE_DEVICES"),
             "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-            "HIPENGINE_PM4_STATEFUL_REGISTERS": "1",
-            "HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES": "1",
         },
         build_profile="pm4_promotion_gate",
         timing_protocol=(

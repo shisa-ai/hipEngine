@@ -209387,3 +209387,26 @@ Vulkan local sizes verbatim will close the measured gap.
   PM4 encoder is promotion-ready. Making PM4 the package transport default is a
   separate decision still blocked by the unrun ROCm #6529 resource-recreate
   lifecycle arm. No destructive lifecycle arm ran.
+
+## 2026-08-08 — Promote stateful/local-cache encoder for explicit PM4
+
+- Make `transport="pm4"` unconditionally construct the winning
+  stateful-register/local-cache dependency encoder. Remove
+  `HIPENGINE_PM4_STATEFUL_REGISTERS` and
+  `HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES` from production transport
+  construction; even explicitly setting both old names to `0` cannot downgrade
+  the canonical path. HIP graph remains the package transport default.
+- Preserve low-level conservative/global encoder arguments and
+  `pm4_stateful*` benchmark aliases only for rollback/bisection and #6529
+  isolation; track their eventual removal in `docs/REFACTOR.md`. Update the
+  benchmark harness so canonical `pm4` exercises production while comparison
+  aliases set immutable context fields directly, not environment selectors.
+- Post-promotion p512/d3 with both removed selectors externally set to zero
+  passes exactly against HIP graph: shared token `[9707]`, recurrent/KV hash
+  `3fa40af8...853c658`, all-logits hash `7d887b40...e357`, canonical PM4
+  provenance `stateful=true`, `local_cache_dependencies=true`, and 18,079
+  dwords. Diagnostic replay is **9.871169 vs 10.632129 ms/token**; all
+  submissions retire, contexts close, and memory recovers with the known 4 MiB
+  delta. CPU transport/benchmark/promotion tests pass (15), guarded production
+  transport smoke passes even with both removed selectors set to zero, and
+  Ruff/format/diff checks pass. No destructive lifecycle arm ran.
