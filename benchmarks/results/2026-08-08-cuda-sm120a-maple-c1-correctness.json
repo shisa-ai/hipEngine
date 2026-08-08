@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-08",
+  "artifact_type": "correctness_gate",
+  "performance_claim": false,
+  "status": "accepted_cuda_sm120a_c1_generation",
+  "source": {
+    "commit": "294379f1ac59baffbfbe62c66750f7c1477fd332",
+    "tree_state": "clean detached worktree at the measured commit",
+    "branch_worktree_note": "The shared feature worktree retained one unrelated pre-existing untracked hipengine/.gitignore; all final measurements were rerun in /tmp/hipengine-maple-sm120a-clean with no staged, unstaged, or untracked files."
+  },
+  "hardware": {
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "physical_gpu": 0,
+    "compute_capability": "12.0",
+    "backend": "cuda_sm120a",
+    "target_arch": "sm_120a",
+    "driver": "610.43.03",
+    "cuda_toolkit": "13.3",
+    "nvcc": "13.3.73",
+    "total_memory_mib": 97887
+  },
+  "checkpoint": {
+    "model": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "local_path": "/models/hf/maple-preview-2bit-mlx",
+    "quant": "maple_ternary2",
+    "required_tensors": 463,
+    "exact_weight_bytes": 5308186624
+  },
+  "runtime_scope": {
+    "execution": "torch-free 24-layer device-resident c1 decode",
+    "prompt_admission": "token-serial through the same CUDA c1 chain",
+    "sampling": "deterministic greedy",
+    "native_cuda_prefill": false,
+    "resident_cuda_batching": false,
+    "serving_claim": false
+  },
+  "primitive_gate": {
+    "command": "CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 uv run --extra dev pytest -q tests/test_cuda_sm120a_maple.py tests/test_maple_generation.py tests/test_maple_correctness_script.py",
+    "result": "15 passed, 3 optional skips",
+    "coverage": [
+      "ternary GEMV",
+      "direct-weight BF16 RMSNorm",
+      "clamp-7 SwiGLU",
+      "weighted residual",
+      "QK norm + partial RoPE + KVLiveSpans write",
+      "GQA attention decode",
+      "affine4 full logits",
+      "deterministic FP32 argmax",
+      "cuda_sm120a generation registration and capability selection"
+    ],
+    "bf16_boundaries": "bit exact on synthetic NumPy fixtures",
+    "affine4_logits": {
+      "atol": 0.0002,
+      "rtol": 0.0002,
+      "argmax_match": true
+    }
+  },
+  "packed_formula_gate": {
+    "oracle": "independent Torch 2.10.0+cu128 execution of the published Maple formulas over the exact packed checkpoint",
+    "command": "CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/tmp/hipengine-maple-sm120a-clean /home/lhl/.conda/envs/llmcompressor/bin/python scripts/maple_correctness.py --model /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a --token-ids 151644,872,198,7985,825,2805,11652,911,54380,12408,13,151645,198,151644,77091,198,151667,198 --oracle packed --json /tmp/maple-sm120a-clean-packed-18.json",
+    "positions": 18,
+    "max_kl": 0.013792556192735839,
+    "mean_kl": 0.001863703554820082,
+    "top1_agreement": 1.0,
+    "top1_matches": "18/18",
+    "device_greedy_argmax_exact": true,
+    "minimum_hidden_cosine": 0.9971485074375552,
+    "thresholds": {
+      "max_kl_lte": 0.05,
+      "top1_agreement_gte": 0.9
+    },
+    "passed": true
+  },
+  "public_generation_smoke": {
+    "api": "hipengine.LLM.generate_detailed",
+    "prompt": "<|im_start|>user\nWrite one short sentence about maple trees.<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "max_tokens": 16,
+    "generated_token_ids": [
+      785,
+      1196,
+      17064,
+      369,
+      264,
+      2805,
+      11652,
+      911,
+      54380,
+      12408,
+      13,
+      8993,
+      323,
+      2118,
+      624,
+      151668
+    ],
+    "text": "The user asks for a short sentence about maple trees. Simple and direct.\n</think>",
+    "diagnostic_elapsed_seconds_including_load": 2.0399113020393997,
+    "performance_claim": false,
+    "tracked_memory_before_close_bytes": 5399968636,
+    "tracked_allocations_before_close": 560,
+    "tracked_memory_after_close_bytes": 0,
+    "tracked_allocations_after_close": 0,
+    "passed": true
+  },
+  "profiler_gate": {
+    "tool": "Nsight Systems",
+    "command": "CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/tmp/hipengine-maple-sm120a-clean nsys profile --trace=cuda --sample=none --cpuctxsw=none --force-overwrite=true --output=/tmp/hipengine-maple-sm120a-clean-e2e /home/lhl/hipEngine/.venv/bin/python scripts/maple_correctness.py --model /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a --token-ids 9707 --worker hipengine --output /tmp/hipengine-maple-sm120a-clean-e2e.npz",
+    "cached_builds_only": true,
+    "expected_instances": {
+      "maple_ternary_qkv_gemv_kernel": 24,
+      "maple_attention_decode_kernel": 24,
+      "maple_router_topk_single_dispatch_kernel": 24,
+      "maple_affine4_gemv_wave32_exact_kernel": 1,
+      "argmax_stage2_kernel": 1
+    },
+    "median_duration_ns": {
+      "maple_ternary_qkv_gemv_kernel": 5856,
+      "maple_attention_decode_kernel": 1984,
+      "maple_router_topk_single_dispatch_kernel": 10752,
+      "maple_affine4_gemv_wave32_exact_kernel": 111007,
+      "argmax_stage2_kernel": 1760
+    },
+    "passed": true
+  },
+  "accepted": true
+}
