@@ -209321,3 +209321,26 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`.
   Package default remains HIP graph pending natural/context and unresolved
   #6529 lifecycle gates. No destructive lifecycle arm ran.
+
+## 2026-08-08 — Add one-session PM4 promotion matrix harness
+
+- Add `scripts/pm4_promotion_gate.py` with deterministic unit coverage. It
+  tokenizes the complete natural category suite and category-heldouts using the
+  GGUF tokenizer/chat format, adds a configurable 4K context stress case, and
+  compares HIP graph versus winning stateful/local-cache PM4 for seed/final
+  tokens, recurrent/KV state, and all logits after three replayed steps.
+- Reuse one persistent PM4 context across no-submit cancellation,
+  retired-after-submit close, every variable-position natural graph rebuild,
+  and the context-stress generation. Require zero live children between
+  generations, exact generation count, native provenance for the winning
+  encoder, context/session shutdown, and bounded memory recovery. This does not
+  run the submit-plus-resource-recreate lifecycle arm.
+- The first smoke completed every GPU operation but failed only while assembling
+  provenance because the new harness passed obsolete `workload`/`extra`
+  keywords to `collect_artifact_provenance`. Repair against the canonical API
+  and rerun rather than changing any GPU gate.
+- Corrected one-prompt plus 64-token context smoke passes: 2/2 exact cases,
+  4 PM4 generations, both cancellation paths, child ledger zero, context closed,
+  and memory recovered with the known 4 MiB first-use delta. CPU harness tests
+  pass (4), Ruff, format, compileall, and diff checks pass. Next: commit the
+  validated harness and run its full tracked-clean 18-prompt + 4K matrix.
