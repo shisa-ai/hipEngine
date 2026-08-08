@@ -163,7 +163,7 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
     assert calls == [
         ("inspect", 17, "gfx1100", 23),
         ("context_create", "0000:03:00.0", "gfx1100"),
-        ("native_instantiate", "manifest-sha", False, False),
+        ("native_instantiate", "manifest-sha", True, True),
         ("stream_sync", 29),
         ("native_launch", "pm4", 2.5),
         ("executable_close",),
@@ -173,6 +173,8 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
     assert provenance["graph_fingerprint"] == "manifest-sha"
     assert provenance["hsaco_sha256"] == ["hsaco-a", "hsaco-b"]
     assert provenance["launches"] == 1
+    assert provenance["stateful_registers"] is True
+    assert provenance["local_cache_dependencies"] is True
     assert provenance["native_fallbacks"] == 0
     assert provenance["context"]["queue_id"] == 7
     assert provenance["executable"]["pm4_submissions"] == 1
@@ -182,8 +184,9 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setenv("HIPENGINE_PM4_STATEFUL_REGISTERS", "1")
-    monkeypatch.setenv("HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES", "1")
+    # Removed experiment selectors cannot downgrade the canonical PM4 encoder.
+    monkeypatch.setenv("HIPENGINE_PM4_STATEFUL_REGISTERS", "0")
+    monkeypatch.setenv("HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES", "0")
     manifest = SimpleNamespace(
         gfx_arch="gfx1100",
         fingerprint="shared",

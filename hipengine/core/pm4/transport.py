@@ -17,8 +17,6 @@ from hipengine.core.pm4.graph import HipGraphManifest, inspect_hip_graph
 from hipengine.core.pm4.native import NativePm4Context, NativePm4Executable
 
 _ENV_SUBMISSION_TRANSPORT = "HIPENGINE_SUBMISSION_TRANSPORT"
-_ENV_PM4_STATEFUL_REGISTERS = "HIPENGINE_PM4_STATEFUL_REGISTERS"
-_ENV_PM4_LOCAL_CACHE_DEPENDENCIES = "HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"
 _DEFAULT_SUBMISSION_TRANSPORT = "hipgraph"
 _NATIVE_TRANSPORTS = frozenset(("aql", "pm4"))
 
@@ -201,15 +199,6 @@ def select_submission_transport(
     if not normalized:
         raise ValueError("submission transport must be non-empty")
     return normalized
-
-
-def _env_flag(name: str, *, env: Mapping[str, str] | None = None) -> bool:
-    value = (os.environ if env is None else env).get(name, "0").strip().lower()
-    if value in {"", "0", "false", "no", "off"}:
-        return False
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    raise ValueError(f"{name} must be a boolean value")
 
 
 def create_graph_submission_context(
@@ -549,10 +538,8 @@ def _create_gfx1100_submission_context(
         raise RuntimeError(
             "in-tree native graph submission is admitted only for hip_gfx1100/gfx1100"
         )
-    stateful_registers = bool(selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS))
-    local_cache_dependencies = bool(
-        selected == "pm4" and _env_flag(_ENV_PM4_LOCAL_CACHE_DEPENDENCIES)
-    )
+    stateful_registers = selected == "pm4"
+    local_cache_dependencies = selected == "pm4"
     context_create_start_ns = time.perf_counter_ns()
     context = NativePm4Context.create(
         pci_bdf=runtime.device_pci_bus_id(),
@@ -587,10 +574,8 @@ def _create_gfx1100_native_submission(
         gfx_arch=request.gfx_arch,
         stream=request.capture_stream,
     )
-    stateful_registers = bool(selected == "pm4" and _env_flag(_ENV_PM4_STATEFUL_REGISTERS))
-    local_cache_dependencies = bool(
-        selected == "pm4" and _env_flag(_ENV_PM4_LOCAL_CACHE_DEPENDENCIES)
-    )
+    stateful_registers = selected == "pm4"
+    local_cache_dependencies = selected == "pm4"
     context: NativePm4Context | None = None
     try:
         context = NativePm4Context.create(
