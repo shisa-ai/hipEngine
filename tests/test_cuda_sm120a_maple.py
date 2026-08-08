@@ -206,7 +206,10 @@ def test_cuda_sm120a_maple_i32_stable_compaction_matches_cpu_order() -> None:
             free(buffer, runtime=runtime)
 
 
-def test_cuda_sm120a_maple_native_prefill_matches_serial_state() -> None:
+@pytest.mark.parametrize("prompt_length", [12, 520, 770])
+def test_cuda_sm120a_maple_native_prefill_matches_serial_state(
+    prompt_length: int,
+) -> None:
     _require_cuda()
     from hipengine.core.memory import (
         DeviceBuffer,
@@ -215,17 +218,23 @@ def test_cuda_sm120a_maple_native_prefill_matches_serial_state() -> None:
         memory_stats,
     )
     from hipengine.loading.maple import load_maple_checkpoint
+    from hipengine.runtime.maple import PREFILL_CHUNK
     from hipengine.runtime.maple_cuda import MapleCudaRunner
 
     try:
         checkpoint = load_maple_checkpoint("/models/hf/maple-preview-2bit-mlx")
     except Exception as exc:  # noqa: BLE001 - optional public checkpoint gate
         pytest.skip(f"Maple checkpoint unavailable: {exc}")
-    prompt = (9707, 13, 358, 1093, 220, 3100, 1066, 13, 366, 264, 1156, 15)
+    prompt = (
+        (9707, 13, 358, 1093, 220, 3100, 1066, 13, 366, 264, 1156, 15)
+        if prompt_length == 12
+        else tuple(9_000 + (index % 512) for index in range(prompt_length))
+    )
     baseline_bytes = memory_stats()["current_allocated_bytes"]
+    max_context = prompt_length + 8
 
-    serial = MapleCudaRunner.load(checkpoint, max_context=64)
-    native = MapleCudaRunner.load(checkpoint, max_context=64)
+    serial = MapleCudaRunner.load(checkpoint, max_context=max_context)
+    native = MapleCudaRunner.load(checkpoint, max_context=max_context)
     try:
         serial_result = serial.prefill(prompt)
         native_result = native.prefill_native(prompt)
@@ -243,7 +252,7 @@ def test_cuda_sm120a_maple_native_prefill_matches_serial_state() -> None:
 
         spec = checkpoint.spec
         hidden_bytes = spec.hidden_size * 2
-        final_row_offset = (len(prompt) - 1) * hidden_bytes
+        final_row_offset = ((len(prompt) - 1) % PREFILL_CHUNK) * hidden_bytes
         np.testing.assert_array_equal(
             copy_bytes(serial, serial.buffers.hidden, nbytes=hidden_bytes),
             copy_bytes(
@@ -254,10 +263,14 @@ def test_cuda_sm120a_maple_native_prefill_matches_serial_state() -> None:
             ),
         )
         np.testing.assert_array_equal(serial.copy_logits(), native.copy_logits())
-        live_cache_bytes = len(prompt) * spec.kv_size * 2
         for serial_layer, native_layer in zip(
             serial.buffers.layers, native.buffers.layers, strict=True
         ):
+            live_cache_bytes = (
+                min(len(prompt), serial_layer.spans.max_live_count)
+                * spec.kv_size
+                * 2
+            )
             for name in ("key_cache", "value_cache"):
                 np.testing.assert_array_equal(
                     copy_bytes(
