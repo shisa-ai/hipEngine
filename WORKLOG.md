@@ -209764,3 +209764,47 @@ Vulkan local sizes verbatim will close the measured gap.
   API tests and all **125** LLM/GGUF-sampling/direct-harness/server-harness tests.
   Compileall, fixtures, registry/CPU/smoke-add-plan smokes, targeted Ruff, torch
   audit (scripts/optional extras only), and `git diff --check` pass.
+
+## 2026-08-08 — Restore short-context C8/C13 OpenAI topline
+
+- The clean source-pinned W7900 packet at `2a1fafb80` uses the unchanged
+  p512/d128 README protocols, one warmup plus three measured runs, cached-only
+  TheRock HIP 7.15 builds, selector-unset transport, and repository-root
+  fail-closed imports. Raw direct/server artifacts are respectively
+  `/tmp/hipengine-c8-admission-clean-2a1fafb80/direct.json` (16,834,065 bytes,
+  SHA256 `84b3cb49...19e789`) and `server.json` (26,853,840 bytes, SHA256
+  `24e81d2f...8de53`); both report `passed=true`, `complete_packet=true`, clean
+  source, and compiler-silent stderr.
+- Source-pinned direct c1/c2/c4/c8 is
+  **98.263/148.944/209.304/266.479 aggregate tok/s**; c1 uses HIP graph and
+  c2/c4/c8 use stateful/local-cache PM4. All trajectories and graph keys repeat,
+  maximum decode stdev/median is **0.270%**, native c8 is **2.712x c1** and
+  **+29.424%** over c4+c4, every PM4 submission retires with zero
+  fallback/callback error, and tracked ownership is zero after close. Relative
+  to the source-ambiguous August packet, these are
+  **+0.283%/-0.908%/-1.798%/-2.584%** refresh deltas, not causal admission
+  deltas; replace rather than blend the prior numbers.
+- Real OpenAI SSE c1/c8/c9/c13/serial-c13 is
+  **72.169/158.542/137.001/129.507/55.868 aggregate tok/s**, improving the last
+  retained July F1 table by **+182.093%/+16.471%/+54.642%/+16.275%/+76.194%**.
+  Every one of **189/189 request rows and 24,192/24,192 generated IDs** is exact,
+  maximum aggregate-rate stdev/median is **0.733%**, HTTP/SSE and usage
+  accounting pass, physical C8 executes 127 packed graph replays per run with
+  zero fallback, and C9/C13 lower honestly to C8+C1 / C8+masked-C8(5).
+- The delayed live gate observes one physical C8 and then logical C13 as
+  C8+masked-C8(5), reaches **122.860 aggregate tok/s** (**+14.518%** over July),
+  passes all **1,664/1,664 IDs**, records 254 native packed steps / 127 graph
+  replays and zero fallback, peaks at **32,294,243,664 tracked bytes**, returns
+  the KV pool 39→3 pages, and drains all request/session/KV/workspace/graph
+  ownership. Unspecified or >768-position serving and explicit MTP remain C4,
+  preserving the established long-context OOM boundary.
+- Publish compact evidence in
+  `benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json`;
+  replace the blocked OpenAI row and source-ambiguous direct row in the root and
+  canonical README, benchmark index/changelog, concurrency status, and PM4
+  handoff. Raw-to-artifact metrics, hashes, deltas, 189-row/24,192-ID exactness,
+  HIP/PM4 retirement, lifecycle, and all rollup links pass an independent
+  consistency script. Six README-sync tests, JSON parse,
+  `sync_benchmark_readme.py --check`, and `git diff --check` pass. Per focused-
+  repair policy, do not repeat the already completed GPU packet or broad code
+  gates for this docs/artifact-only publication.

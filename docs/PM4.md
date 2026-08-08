@@ -1006,17 +1006,23 @@ queue recreate remains useful optional isolation coverage, but it is not an
 evidenced fault in the production ownership path: hipEngine
 retains one queue and does not recreate it in-process.
 
-The current TheRock HIP 7.15 README direct protocol independently measures
-selector-unset c1/c2/c4/c8 at **97.985/150.308/213.136/273.549 aggregate
+The source-pinned TheRock HIP 7.15 README direct protocol independently measures
+selector-unset c1/c2/c4/c8 at **98.263/148.944/209.304/266.479 aggregate
 tok/s** with c1→HIP and c2/c4/c8→PM4, exact repeatable trajectories, full
-retirement, and zero tracked bytes after close. Its OpenAI rerun found a second
-host-only provenance consumer: the server runner deep-copied all 747/748 PM4
-dispatch records into live observability after every replay. Replacing this
-with compact 17/747 count proof moves host copy **5.026→0.119 ms** and restores
-focused eight-request wall **77.638→130.017 tok/s**, neutral to explicit HIP
-graph **130.040**. Current admission still forms c4 cohorts and fails the
-historical physical-c8/live-c13 topology gate, so server rows are blocked rather
-than promoted; this is independent of PM4 transport performance. Evidence:
+retirement, and zero tracked bytes after close. The preceding OpenAI audit found
+a second host-only provenance consumer: the server runner deep-copied all
+747/748 PM4 dispatch records into live observability after every replay.
+Replacing this with compact 17/747 count proof moved host copy **5.026→0.119
+ms** and focused eight-request wall **77.638→130.017 tok/s**, neutral to
+explicit HIP graph **130.040**, proving transport was not the remaining server
+blocker. Context-qualified admission now restores one physical C8 for the
+p512/d128 envelope without relaxing the unspecified/long-context C4 safety cap.
+The retained real OpenAI c1/c8/c9/c13/serial-c13 packet reaches
+**72.169/158.542/137.001/129.507/55.868 aggregate tok/s** across **189/189**
+exact rows, and live C8→C13 is **122.860 tok/s / 1,664 IDs** exact with zero
+fallback and complete ownership recovery. Current evidence:
+`benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json`.
+The prior blocked/source-ambiguous refresh remains historical evidence in
 `benchmarks/results/2026-08-08-gfx1100-pm4-readme-concurrency-refresh.json`.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt

@@ -1,0 +1,387 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_context_scoped_c8_server_refresh",
+  "created_at": "2026-08-08T10:43:15Z",
+  "status": "accepted_direct_and_openai_server_toplines",
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B Q4_K_M/BF16-KV source-pinned p512/d128 direct model-step and real in-process OpenAI SSE concurrency at c1/c8/c9/c13, including live c8-to-c13 admission",
+  "decision": "replace the source-ambiguous August direct packet and the blocked OpenAI row with the clean source-pinned packet after context-scoped admission restores one physical C8 without reopening the long-context C4 safety cap",
+  "source": {
+    "measurement_commit": "2a1fafb80c70ffdf64851f1b679188fe92020bb2",
+    "admission_repair_commit": "2a1fafb80c70ffdf64851f1b679188fe92020bb2",
+    "server_observability_repair_commit": "5241dea73701119371881ec4817853b70dc495b9",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "source_clean": true,
+    "harness_source_pinned": true,
+    "harness_source_mismatch_fails_closed": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "gfx_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": "1",
+    "hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "admission_policy": {
+    "scope": "gfx1100 Q4_K_M plain AR serving",
+    "configured_context_tokens": 768,
+    "short_context_max_tokens": 768,
+    "short_context_logical_resident_cap": 13,
+    "maximum_physical_group_width": 8,
+    "long_or_unspecified_context_logical_resident_cap": 4,
+    "mtp_logical_resident_cap": 4,
+    "safety_reason": "retain the established C4 cap for the 4K/C8 startup-OOM envelope while admitting the separately measured p512/d128 C8-to-C13 envelope"
+  },
+  "direct": {
+    "accepted": true,
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-pm4-readme-refresh-e7eaf8064/hipcc-version.txt --require-cached-build --json /tmp/hipengine-c8-admission-clean-2a1fafb80/direct.json",
+    "environment": {
+      "HIPENGINE_SUBMISSION_TRANSPORT": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "GPU_MAX_HW_QUEUES": "1"
+    },
+    "workload": {
+      "prompt_length": 512,
+      "decode_steps": 128,
+      "warmups": 1,
+      "measured_runs": 3,
+      "sampling": "greedy_top1",
+      "graph_capture_excluded": true,
+      "one_loaded_model": true
+    },
+    "results": {
+      "c1": {
+        "transport": "hipgraph",
+        "prior_source_ambiguous_aggregate_tok_s": 97.985450685,
+        "aggregate_tok_s": 98.263032931,
+        "per_request_tok_s": 98.263032931,
+        "refresh_delta_percent": 0.283289,
+        "aggregate_vs_c1": 1.0,
+        "aggregate_vs_serial_c4": 1.019654116,
+        "ttft_p50_seconds": 0.211095,
+        "ttft_p95_seconds": 0.211496,
+        "model_step_itl_p50_ms": 10.168400,
+        "model_step_itl_p95_ms": 10.301242,
+        "tracked_peak_gib": 21.784794
+      },
+      "c2": {
+        "transport": "pm4",
+        "prior_source_ambiguous_aggregate_tok_s": 150.308183853,
+        "aggregate_tok_s": 148.943931083,
+        "per_request_tok_s": 74.471965542,
+        "refresh_delta_percent": -0.907637,
+        "aggregate_vs_c1": 1.515767697,
+        "aggregate_vs_serial_c4": 1.545558771,
+        "ttft_p50_seconds": 0.954747,
+        "ttft_p95_seconds": 0.960874,
+        "model_step_itl_p50_ms": 13.441802,
+        "model_step_itl_p95_ms": 13.570544,
+        "tracked_peak_gib": 22.396015
+      },
+      "c4": {
+        "transport": "pm4",
+        "prior_source_ambiguous_aggregate_tok_s": 213.135628650,
+        "aggregate_tok_s": 209.304370191,
+        "per_request_tok_s": 52.326092548,
+        "refresh_delta_percent": -1.797568,
+        "aggregate_vs_c1": 2.130041827,
+        "aggregate_vs_serial_c4": 2.171905917,
+        "ttft_p50_seconds": 2.024834,
+        "ttft_p95_seconds": 2.036235,
+        "model_step_itl_p50_ms": 19.128440,
+        "model_step_itl_p95_ms": 19.317908,
+        "tracked_peak_gib": 23.399809
+      },
+      "native_c8": {
+        "transport": "pm4",
+        "prior_source_ambiguous_aggregate_tok_s": 273.548594710,
+        "aggregate_tok_s": 266.479049314,
+        "per_request_tok_s": 33.309881164,
+        "refresh_delta_percent": -2.584384,
+        "aggregate_vs_c1": 2.711895220,
+        "aggregate_vs_serial_c4": 2.765195124,
+        "ttft_p50_seconds": 3.479745,
+        "ttft_p95_seconds": 3.480223,
+        "model_step_itl_p50_ms": 30.097646,
+        "model_step_itl_p95_ms": 30.303018,
+        "tracked_peak_gib": 25.407396
+      },
+      "chunked_c8": {
+        "transport": "two_serial_pm4_c4_graphs",
+        "prior_source_ambiguous_aggregate_tok_s": 211.039682395,
+        "aggregate_tok_s": 205.895492592,
+        "per_request_tok_s": 25.736936574,
+        "refresh_delta_percent": -2.437546,
+        "aggregate_vs_c1": 2.095350474,
+        "aggregate_vs_serial_c4": 2.136532736,
+        "ttft_p50_seconds": 3.060636,
+        "ttft_p95_seconds": 4.090619,
+        "model_step_itl_p50_ms": 38.908659,
+        "model_step_itl_p95_ms": 39.161212,
+        "tracked_peak_gib": 26.076693
+      },
+      "serial_c4": {
+        "transport": "four_serial_hipgraph_c1_graphs",
+        "prior_source_ambiguous_aggregate_tok_s": 96.243930927,
+        "aggregate_tok_s": 96.368985674,
+        "per_request_tok_s": 24.092246419,
+        "refresh_delta_percent": 0.129935,
+        "aggregate_vs_c1": 0.980724722,
+        "aggregate_vs_serial_c4": 1.0,
+        "ttft_p50_seconds": 0.541707,
+        "ttft_p95_seconds": 0.866890,
+        "model_step_itl_p50_ms": 41.507737,
+        "model_step_itl_p95_ms": 42.038920,
+        "tracked_peak_gib": 26.995529
+      }
+    },
+    "correctness": {
+      "passed": true,
+      "c1_c2_c4_prefix_exact": true,
+      "c4_matches_serial_c4": true,
+      "native_c8_rows_match_c4": true,
+      "chunked_c8_groups_match_c4": true,
+      "all_measured_runs_repeatable": true,
+      "all_graph_bucket_keys_stable": true,
+      "maximum_decode_stdev_percent_of_median": 0.269748,
+      "variance_limit_percent": 5.0
+    },
+    "transport_proof": {
+      "c1": {
+        "transport": "hipgraph",
+        "native_fallbacks": 0
+      },
+      "c2_c4_c8": {
+        "transport": "pm4",
+        "stateful_registers": true,
+        "local_cache_dependencies": true,
+        "node_counts": [747, 748],
+        "native_fallbacks": 0,
+        "unretired_submissions": 0,
+        "callback_status": 0
+      }
+    },
+    "lifecycle": {
+      "tracked_bytes_after_close": 0,
+      "active_allocations_after_close": 0,
+      "hip_used_bytes_after_close": 245768192
+    },
+    "raw_source": {
+      "path": "/tmp/hipengine-c8-admission-clean-2a1fafb80/direct.json",
+      "size_bytes": 16834065,
+      "sha256": "84b3cb49c0e8474d85c88f4eb9e578c89eff5b79509e3f3a63cd46ae2e19e789",
+      "stderr_size_bytes": 1460,
+      "stderr_sha256": "d75507c0d1149a66190cf706529aaaf726ec88ac52e23a257a9bf8cfc00973f8",
+      "compiler_silent": true
+    }
+  },
+  "openai_server": {
+    "accepted": true,
+    "performance_claim": true,
+    "topline_status": "retained",
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 --prefill-chunk-size 256 --batch-window-ms 20 --compiler-version-file /tmp/hipengine-pm4-readme-refresh-e7eaf8064/hipcc-version.txt --require-cached-build --json /tmp/hipengine-c8-admission-clean-2a1fafb80/server.json",
+    "environment": {
+      "HIPENGINE_SUBMISSION_TRANSPORT": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_MAX_ACTIVE_REQUESTS": "13",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_KV_POOL_INITIAL_PAGES": "3",
+      "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "39",
+      "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0"
+    },
+    "workload": {
+      "prompt_length": 512,
+      "decode_tokens": 128,
+      "warmup_runs": 1,
+      "measured_runs": 3,
+      "configurations": ["c1", "packed_c8", "packed_c9", "packed_c13", "serial_c13"],
+      "live_initial_rows": 8,
+      "live_tail_rows": 5,
+      "prefill_chunk_size": 256,
+      "generation_batch_window_ms": 20.0,
+      "sampling": "greedy_top1_ignore_eos",
+      "speculative_decode": false,
+      "timing_scope": "real in-process FastAPI /v1/completions SSE client cycle wall with generated-token numerator"
+    },
+    "results": {
+      "c1": {
+        "physical_execution": "native_c1",
+        "prior_july_aggregate_tok_s": 25.583495018,
+        "aggregate_tok_s": 72.169149450,
+        "per_request_tok_s": 72.169149450,
+        "old_to_new_percent": 182.092612,
+        "aggregate_vs_c1": 1.0,
+        "aggregate_vs_serial_c13": 1.291784,
+        "cycle_wall_p50_seconds": 1.773611,
+        "scheduler_ttft_p50_seconds": 0.260637,
+        "scheduler_ttft_p95_seconds": 0.262788,
+        "scheduler_itl_p50_ms": 11.486417,
+        "scheduler_itl_p95_ms": 11.682420,
+        "cumulative_tracked_peak_gib": 26.728049
+      },
+      "packed_c8": {
+        "physical_execution": "one_physical_c8",
+        "prior_july_aggregate_tok_s": 136.121605732,
+        "aggregate_tok_s": 158.542397557,
+        "per_request_tok_s": 19.817799695,
+        "old_to_new_percent": 16.471149,
+        "aggregate_vs_c1": 2.196817,
+        "aggregate_vs_serial_c13": 2.837813,
+        "cycle_wall_p50_seconds": 6.458840,
+        "scheduler_ttft_p50_seconds": 1.950606,
+        "scheduler_ttft_p95_seconds": 2.089116,
+        "scheduler_itl_p50_ms": 32.431252,
+        "scheduler_itl_p95_ms": 35.782000,
+        "cumulative_tracked_peak_gib": 28.493901
+      },
+      "packed_c9": {
+        "physical_execution": "c8_plus_c1",
+        "prior_july_aggregate_tok_s": 88.592393424,
+        "aggregate_tok_s": 137.001116080,
+        "per_request_tok_s": 15.222346231,
+        "old_to_new_percent": 54.642076,
+        "aggregate_vs_c1": 1.898334,
+        "aggregate_vs_serial_c13": 2.452237,
+        "cycle_wall_p50_seconds": 8.408691,
+        "scheduler_ttft_p50_seconds": 2.247630,
+        "scheduler_ttft_p95_seconds": 2.384682,
+        "scheduler_itl_p50_ms": 44.258719,
+        "scheduler_itl_p95_ms": 52.117540,
+        "cumulative_tracked_peak_gib": 28.724947
+      },
+      "packed_c13": {
+        "physical_execution": "c8_plus_masked_c8_5",
+        "prior_july_aggregate_tok_s": 111.379909350,
+        "aggregate_tok_s": 129.507438319,
+        "per_request_tok_s": 9.962110640,
+        "old_to_new_percent": 16.275403,
+        "aggregate_vs_c1": 1.794499,
+        "aggregate_vs_serial_c13": 2.318105,
+        "cycle_wall_p50_seconds": 12.848683,
+        "scheduler_ttft_p50_seconds": 3.341178,
+        "scheduler_ttft_p95_seconds": 3.484342,
+        "scheduler_itl_p50_ms": 68.615933,
+        "scheduler_itl_p95_ms": 85.544271,
+        "cumulative_tracked_peak_gib": 30.076358
+      },
+      "serial_c13": {
+        "physical_execution": "thirteen_serial_c1_steps",
+        "prior_july_aggregate_tok_s": 31.708052959,
+        "aggregate_tok_s": 55.867816726,
+        "per_request_tok_s": 4.297524364,
+        "old_to_new_percent": 76.194410,
+        "aggregate_vs_c1": 0.774123,
+        "aggregate_vs_serial_c13": 1.0,
+        "cycle_wall_p50_seconds": 29.784590,
+        "scheduler_ttft_p50_seconds": 3.394122,
+        "scheduler_ttft_p95_seconds": 3.535043,
+        "scheduler_itl_p50_ms": 202.283306,
+        "scheduler_itl_p95_ms": 224.569883,
+        "cumulative_tracked_peak_gib": 30.076358
+      }
+    },
+    "correctness": {
+      "passed": true,
+      "request_rows_exact": "189/189",
+      "generated_ids_exact": "24192/24192",
+      "prompt_ids_exact": true,
+      "openai_usage_exact": true,
+      "http_sse_passed": true,
+      "all_static_variance_guards_passed": true,
+      "maximum_aggregate_rate_stdev_percent_of_median": 0.733214,
+      "variance_limit_percent": 5.0,
+      "resident_fallback_requests": 0
+    },
+    "static_route_proof": {
+      "c1": {
+        "logical_physical_shapes": [{"logical_c": 1, "physical_widths": [1], "active_masks": ["1"]}],
+        "native_c1_decode_steps_per_run": 127
+      },
+      "packed_c8": {
+        "logical_physical_shapes": [{"logical_c": 8, "physical_widths": [8], "active_masks": ["11111111"]}],
+        "native_packed_decode_steps_per_run": 127,
+        "native_packed_graph_replays_per_run": 127,
+        "fallbacks": 0
+      },
+      "packed_c9": {
+        "logical_physical_shapes": [{"logical_c": 9, "physical_widths": [8, 1], "active_masks": ["11111111", "1"]}],
+        "native_packed_decode_steps_per_run": 127,
+        "native_c1_decode_steps_per_run": 127,
+        "fallbacks": 0
+      },
+      "packed_c13": {
+        "logical_physical_shapes": [{"logical_c": 13, "physical_widths": [8, 8], "active_masks": ["11111111", "11111000"]}],
+        "native_packed_decode_steps_per_run": 254,
+        "native_packed_graph_replays_per_run": 127,
+        "fallbacks": 0
+      }
+    },
+    "live_admission": {
+      "passed": true,
+      "transition": "logical_c8_to_logical_c13",
+      "logical_physical_shapes_seen": [
+        {"logical_c": 5, "physical_widths": [8], "active_masks": ["11111000"]},
+        {"logical_c": 8, "physical_widths": [8], "active_masks": ["11111111"]},
+        {"logical_c": 13, "physical_widths": [8, 8], "active_masks": ["11111111", "11111000"]}
+      ],
+      "expected_group_shape_seen": true,
+      "declared_widths_only": true,
+      "packed_plans_only": true,
+      "prior_july_aggregate_tok_s": 107.283906128,
+      "aggregate_tok_s": 122.859695294,
+      "old_to_new_percent": 14.518291,
+      "wall_seconds": 13.543905,
+      "generated_ids_exact": "1664/1664",
+      "native_packed_decode_steps": 254,
+      "native_packed_graph_replays": 127,
+      "fallbacks": 0,
+      "final_request_ownership_zero": true,
+      "final_session_ownership_zero": true,
+      "final_kv_refs_and_pins_zero": true,
+      "tracked_peak_bytes": 32294243664,
+      "kv_pool_high_water_pages": 39,
+      "kv_pool_final_free_pages_before_close": 3
+    },
+    "lifecycle": {
+      "final_pending_requests": 0,
+      "final_active_requests": 0,
+      "admitted_requests": 189,
+      "reclaimed_requests": 189,
+      "packed_workspace_current_bytes": 0,
+      "packed_workspace_release_events": 189,
+      "graph_bucket_entries_after_close": 0,
+      "final_dynamic_kv_pool": null
+    },
+    "raw_source": {
+      "path": "/tmp/hipengine-c8-admission-clean-2a1fafb80/server.json",
+      "size_bytes": 26853840,
+      "sha256": "24e81d2f5c05633399233a697cd4904fcb8d0869a65ed1ecf6095a5cbcf8de53",
+      "stderr_size_bytes": 1110,
+      "stderr_sha256": "11b75ce5b34f596080fcab7864b2a2c32181bf4dda31903751c6cca8340f4d24",
+      "compiler_silent": true
+    }
+  },
+  "validation": {
+    "implementation": "529 server API tests plus 125 LLM/GGUF sampling/direct-harness/server-harness tests passed; compileall, fixtures, registry/CPU/smoke-add-plan smokes, targeted Ruff, torch audit, and git diff checks passed before commit 2a1fafb80",
+    "broad_cpu_run": "8714 nodes collected; run stopped at 3350 after an unrelated HIP argmax segfault; three apparent registry failures passed in isolation and the one stale gfx1151 assertion was repaired and focused-validated in e6ebc2d68",
+    "gpu_packet": "both source-pinned raw artifacts report passed=true and complete_packet=true; direct and server stderr contain measurements only and no compiler output"
+  },
+  "notes": [
+    "The direct changes relative to the immediately preceding August table are measurement refresh deltas, not causal admission deltas. The source-pinned run replaces that table because the former server harness source audit made the documented environment ambiguous.",
+    "The OpenAI old-to-new deltas compare the last retained July F1 numeric table with the current clean source-pinned packet. Many intervening runtime changes contribute; only physical-C8 restoration is attributed specifically to the context-scoped admission repair.",
+    "Short-context admission is context-qualified. Unspecified and long-context gfx1100 serving remains C4, preserving the established 4K startup-OOM safety boundary."
+  ]
+}
