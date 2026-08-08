@@ -149,6 +149,14 @@ LAGUNA_HEAD_KV_FUSION = True
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
+# Full PM4 attribution and the complete c1/c2/c4/c8 promotion matrix admit the
+# canonical stateful/local-cache owner only for the measured model/quant pair.
+GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
+    ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {
+        "transport": "pm4",
+        "min_replay_steps_by_physical_rows": {1: 144, 2: 64, 4: 96, 8: 80},
+    },
+}
 # LCP-5A's clean peer-aligned semantic/decode contract and 512/4K floors admit
 # the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.
 # Scalar-exact direct LDS32 remains available through the explicit selector.
@@ -608,6 +616,7 @@ __all__ = [
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_EXACT_MODE",

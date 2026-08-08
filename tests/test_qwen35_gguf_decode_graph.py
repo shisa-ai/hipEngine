@@ -15,6 +15,177 @@ from hipengine.runtime.gguf_decode_graph import (
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
+def test_decode_graph_submission_transport_uses_backend_default_with_explicit_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M")
+    policies = {
+        "hip_gfx1100": {
+            identity: {
+                "transport": "pm4",
+                "min_replay_steps_by_physical_rows": {1: 144, 2: 64, 4: 96, 8: 80},
+            }
+        },
+        "hip_gfx1151": {identity: {"transport": "hipgraph"}},
+    }
+
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default=None: policies.get(backend, default)
+        if name == "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES"
+        else default,
+    )
+
+    resolve = gguf_runner._resolve_gguf_decode_graph_submission_transport
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=2,
+            replay_steps=128,
+            env={},
+        )
+        == "pm4"
+    )
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=1,
+            replay_steps=128,
+            env={},
+        )
+        == "hipgraph"
+    )
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=1,
+            replay_steps=144,
+            env={},
+        )
+        == "pm4"
+    )
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=2,
+            replay_steps=63,
+            env={},
+        )
+        == "hipgraph"
+    )
+    assert resolve("hip_gfx1100", model_name="unmeasured", env={}) == "hipgraph"
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name="unmeasured",
+            replay_steps=1,
+            env={"HIPENGINE_SUBMISSION_TRANSPORT": "pm4"},
+        )
+        == "pm4"
+    )
+    assert (
+        resolve(
+            "hip_gfx1151",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=2,
+            replay_steps=128,
+            env={},
+        )
+        == "hipgraph"
+    )
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=2,
+            replay_steps=128,
+            env={"HIPENGINE_SUBMISSION_TRANSPORT": "hipgraph"},
+        )
+        == "hipgraph"
+    )
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            requested="aql",
+            env={"HIPENGINE_SUBMISSION_TRANSPORT": "hipgraph"},
+        )
+        == "aql"
+    )
+
+
+def test_resident_session_reselects_shape_scoped_default_per_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.core.pm4.transport as transport_module
+    import hipengine.runtime.gguf_decode_graph as decode_graph_module
+
+    identity = ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M")
+    policy = {
+        identity: {
+            "transport": "pm4",
+            "min_replay_steps_by_physical_rows": {1: 144},
+        }
+    }
+    calls: list[tuple[object, ...]] = []
+    graphs = [SimpleNamespace(name="short"), SimpleNamespace(name="long")]
+    monkeypatch.setattr(gguf_runner, "_gguf_moe_graph_enabled", lambda: False)
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default=None: policy
+        if name == "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES"
+        else default,
+    )
+    monkeypatch.setattr(
+        transport_module,
+        "create_graph_submission_context",
+        lambda **kwargs: calls.append(("context", kwargs["transport"]))
+        or SimpleNamespace(name=kwargs["transport"]),
+    )
+    monkeypatch.setattr(
+        decode_graph_module,
+        "capture_qwen35_gguf_decode_graph",
+        lambda session, **kwargs: calls.append(
+            ("capture", kwargs["submission_transport"])
+        )
+        or graphs.pop(0),
+    )
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weights=SimpleNamespace(model_name=identity[0], file_type_name=identity[1]),
+    )
+    session.runtime = object()
+    session._decode_graph_submission_contexts = {}
+    session._pin_device_kv_graph = lambda graph: None
+
+    short = session.capture_decode_graph(position=4, max_replay_steps=143)
+    long = session.capture_decode_graph(position=4, max_replay_steps=144)
+
+    assert short.name == "short"
+    assert long.name == "long"
+    assert calls == [
+        ("context", "hipgraph"),
+        ("capture", "hipgraph"),
+        ("context", "pm4"),
+        ("capture", "pm4"),
+    ]
+
+
 def _buffer(ptr: int):
     return SimpleNamespace(ptr=ptr)
 
@@ -346,7 +517,11 @@ def test_resident_session_reuses_one_submission_context_across_graph_generations
     context = object()
     graphs = [SimpleNamespace(name="first"), SimpleNamespace(name="second")]
     monkeypatch.setattr(gguf_runner, "_gguf_moe_graph_enabled", lambda: False)
-    monkeypatch.setattr(transport_module, "select_submission_transport", lambda value=None: "pm4")
+    monkeypatch.setattr(
+        transport_module,
+        "select_submission_transport",
+        lambda value=None, **_kwargs: "pm4",
+    )
     monkeypatch.setattr(
         transport_module,
         "create_graph_submission_context",
@@ -365,7 +540,6 @@ def test_resident_session_reuses_one_submission_context_across_graph_generations
     session.runner = SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100")
     session.runtime = object()
     session._decode_graph_submission_contexts = {}
-    session._decode_graph_default_submission_transport = None
     session._pin_device_kv_graph = lambda graph: calls.append(("pin", graph.name))
 
     first = session.capture_decode_graph(position=4, submission_transport="pm4")

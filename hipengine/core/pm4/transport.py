@@ -1,8 +1,8 @@
 """Architecture-keyed graph submission transports.
 
-HIP remains the default graph frontend and replay transport.  Explicit ``aql``
-or ``pm4`` selection inspects that captured graph once, creates one retained
-public-HSA owner, and never falls back to HIP after selection or submission.
+HIP remains the global default graph frontend and replay transport. Explicit or
+caller-scoped ``aql``/``pm4`` selection inspects the captured graph once, creates
+one retained public-HSA owner, and never falls back after selection/submission.
 """
 
 from __future__ import annotations
@@ -186,13 +186,14 @@ def resolve_submission_transport_factory(
 def select_submission_transport(
     transport: str | None = None,
     *,
+    default_transport: str = _DEFAULT_SUBMISSION_TRANSPORT,
     env: Mapping[str, str] | None = None,
 ) -> str:
-    """Parse transport selection once at graph-owner construction."""
+    """Resolve explicit argument, environment, then caller-owned default."""
 
     env_map = os.environ if env is None else env
     if transport is None:
-        selected = env_map.get(_ENV_SUBMISSION_TRANSPORT, _DEFAULT_SUBMISSION_TRANSPORT)
+        selected = env_map.get(_ENV_SUBMISSION_TRANSPORT, default_transport)
     else:
         selected = transport
     normalized = str(selected).strip().lower()

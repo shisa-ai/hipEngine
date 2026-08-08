@@ -209593,3 +209593,31 @@ Vulkan local sizes verbatim will close the measured gap.
   families and peer backends must stay on HIP graph until separately proven.
   Publish full host/direct-AQL/device attribution and the superseded blocked row
   in `benchmarks/results/2026-08-08-gfx1100-pm4-full-transport-attribution.json`.
+
+## 2026-08-08 — Scope automatic PM4 to measured profitable windows
+
+- Do not turn the global submission default into PM4. Add backend-package policy
+  keyed by exact GGUF `general.name` plus `general.file_type`: only
+  **Qwen3.6-35B-A3B / MOSTLY_Q4_K_M** on gfx1100 is eligible; gfx1151 explicitly
+  remains HIP graph and unknown identities fail back to HIP. Persist those two
+  GGUF metadata fields in resident weights rather than matching filenames or
+  branching on backend/quant in engine code.
+- Add physical-width and declared-window capture-amortization gates. Clean p512
+  break-even is 129/53/61/71 steps at c1/c2/c4/c8. Directional working-dirty
+  policy-only p16 packed
+  profiling remains exact and gives **-6.624%/-3.740%/-2.496% replay**, 3/3 wins,
+  and break-even 57/80/71; p768 gives **-6.519%/-3.965%/-2.358%**, 3/3, and
+  break-even 54/65/70. c1 remains exact/faster at p16/p768 by
+  **9.433%/7.232%**, with capture break-even 106/118 versus the retained p512
+  worst case of 129. Packed p4096 is rejected by the harness before model load
+  because this graph family is bounded below context 1024. Select conservative
+  **144/64/96/80** thresholds, leaving at least ~10% margin above the worst
+  observed break-even; multi-step tapes and unknown widths remain HIP.
+- Preserve precedence `explicit argument > HIPENGINE_SUBMISSION_TRANSPORT >
+  package policy > hipgraph`. Resolve shape policy at each graph capture rather
+  than caching one choice across later short/long or c1/packed generations;
+  retain one persistent context per actually selected transport. Unit coverage
+  proves exact identity/peer/unknown/threshold/override behavior and one session
+  switching HIP→PM4 across a 143→144-step c1 boundary. A no-env p16/d3 c2 GPU
+  smoke selects HIP graph and passes exact; clean above-threshold default PM4
+  validation follows after the policy commit.

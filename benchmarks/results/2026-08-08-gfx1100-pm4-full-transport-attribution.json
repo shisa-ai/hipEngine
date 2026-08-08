@@ -6,7 +6,7 @@
   "performance_claim": true,
   "source_commit": "a5620802a54c0e00f780cb0ba5f3d413cb49e747",
   "source_clean": true,
-  "decision": "select canonical PM4 for proven gfx1100 Qwen3.5 GGUF whole-step c1 and packed physical c2/c4/c8 graph scopes; retain packed eager for logical c3/c5/c6/c7 and HIP graph for unproven graph scopes or peer backends",
+  "decision": "canonical PM4 is eligible for the measured gfx1100 Qwen3.6-35B-A3B MOSTLY_Q4_K_M whole-step c1 and packed physical c2/c4/c8 graph scopes when the declared replay window amortizes capture; retain packed eager for logical c3/c5/c6/c7 and HIP graph for shorter or unproven model/quant/shape/backend scopes",
   "root_cause": "Qwen35GGUFPackedDecodeGraph.replay serialized full native provenance, including 747/748 dispatch records, after every synchronized token; defer full proof generation until outside replay timing and update only O(1) counters on the hot path",
   "model": {
     "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",

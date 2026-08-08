@@ -72,6 +72,14 @@ def test_gfx1100_admits_measured_24_transition_decode_graph() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS"
     ) == 24
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES"
+    ) == {
+        ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {
+            "transport": "pm4",
+            "min_replay_steps_by_physical_rows": {1: 144, 2: 64, 4: 96, 8: 80},
+        }
+    }
 
 
 def test_true_ar_uses_state_bound_graph_when_horizon_is_admitted() -> None:

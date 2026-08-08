@@ -2,8 +2,9 @@
 
 > **Status (2026-08-08):** P0-P6 are complete for admitted gfx1100 Qwen3.5
 > GGUF graph scopes. Canonical PM4 is exact and faster at physical c1/c2/c4/c8;
-> scoped backend-capability default wiring is pending. HIP graph remains the
-> portable fallback/oracle, explicit PM4 fails closed, and reset-prone
+> the scoped default is active only for the measured Qwen3.6-35B-A3B Q4_K_M
+> identity above conservative capture break-even thresholds. HIP graph remains
+> the portable fallback/oracle, explicit PM4 fails closed, and reset-prone
 > submit/recreate stress remains unrun pending a separate warning and approval.
 
 This document defines hipEngine's plan for a small, torch-free, in-tree
@@ -23,8 +24,9 @@ and fail closed.
 
 Build the transport in-tree.
 
-- Keep `hipgraph` as the default and correctness baseline.
-- Add explicit `aql` and `pm4` transports behind a backend registration.
+- Keep `hipgraph` as the global default, portable fallback, and correctness baseline.
+- Permit backend-package model/quant/shape policy to default only measured graph scopes to PM4.
+- Keep explicit `aql` and `pm4` transports behind a backend registration.
 - Implement gfx1100 first; do not infer gfx1151 or gfx12 safety from gfx1100.
 - Inspect already captured native HIP graphs rather than interposing HIP module
   registration or rewriting kernel launch wrappers.
@@ -559,9 +561,9 @@ Initial registrations:
 
 | Key | Meaning |
 | --- | --- |
-| `hipgraph` | Existing native HIP graph instantiate/launch; default everywhere |
-| `aql` | One architected AQL kernel-dispatch packet per node; diagnostic oracle |
-| `pm4` | One retained architecture-specific PM4 IB; explicit only |
+| `hipgraph` | Existing native HIP graph instantiate/launch; global default and portable fallback |
+| `aql` | One architected AQL kernel-dispatch packet per node; explicit diagnostic oracle |
+| `pm4` | One retained architecture-specific PM4 IB; explicit or exact backend-package scoped default |
 
 Selection is exposed consistently through a CLI option and environment value:
 
@@ -570,12 +572,19 @@ Selection is exposed consistently through a CLI option and environment value:
 HIPENGINE_SUBMISSION_TRANSPORT=hipgraph|aql|pm4
 ```
 
-The environment value is parsed once at owner construction, not read inside a
-per-token hot loop. Production/model code asks the registry for the configured
-backend and transport capability; it does not branch on `backend == ...` or
-`quant == ...`. The GGUF resident session retains one native submission context
-per explicit transport, so graph pointer/topology generations replace only the
-executable while the matched ROCr queue persists until session/context close.
+Selection precedence is explicit API argument, environment, measured
+backend-package policy, then `hipgraph`. It is resolved at graph capture, never
+inside a per-token hot loop, because model/quant identity, physical width, and
+declared replay window determine whether capture amortizes. Production/model
+code asks package capability metadata; it does not branch on `backend == ...`
+or `quant == ...`. The exact gfx1100 Qwen3.6-35B-A3B `MOSTLY_Q4_K_M` policy
+selects PM4 only for one-step graphs with declared replay windows at least
+**144/64/96/80 steps for physical c1/c2/c4/c8**. Those thresholds include a
+safety margin above measured capture break-even. Unknown identities, widths,
+multi-step tapes, shorter windows, and gfx1151 retain HIP graph. The GGUF
+resident session retains one native submission context per selected transport,
+so graph pointer/topology generations replace only the executable while the
+matched ROCr queue persists until session/context close.
 
 ### Interoperation with HIP streams
 
@@ -984,10 +993,12 @@ c3/c5/c6/c7 remain packed eager and transport-unaffected. Evidence:
 the superseded blocked matrix remains historical evidence in
 `benchmarks/results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json`.
 
-The concrete gfx1100 GGUF c>N performance blocker is resolved. Scoped
-backend-capability promotion may select PM4 for proven c1 and packed c2/c4/c8
-graphs while retaining HIP graph for unrelated graph families and peer
-backends. ROCm #6529 queue recreate remains useful optional isolation coverage,
+The concrete gfx1100 GGUF c>N performance blocker is resolved. Backend-package
+policy now selects PM4 only for the exact measured Qwen3.6-35B-A3B Q4_K_M
+identity and physical c1/c2/c4/c8 windows above conservative capture break-even
+thresholds. Short windows, unknown identities/widths, unrelated graph families,
+and peer backends retain HIP graph; explicit API/environment choices remain
+available for diagnostics. ROCm #6529 queue recreate remains useful optional isolation coverage,
 but it is not an evidenced fault in the production ownership path: hipEngine
 retains one queue and does not recreate it in-process.
 

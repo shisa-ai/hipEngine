@@ -17,6 +17,14 @@ from hipengine.core.pm4.transport import (
 
 def test_submission_transport_selection_is_default_hipgraph_and_environment_is_explicit() -> None:
     assert select_submission_transport(env={}) == "hipgraph"
+    assert select_submission_transport(default_transport="pm4", env={}) == "pm4"
+    assert (
+        select_submission_transport(
+            default_transport="pm4",
+            env={"HIPENGINE_SUBMISSION_TRANSPORT": " hipgraph "},
+        )
+        == "hipgraph"
+    )
     assert select_submission_transport(env={"HIPENGINE_SUBMISSION_TRANSPORT": " pm4 "}) == "pm4"
     assert (
         select_submission_transport("aql", env={"HIPENGINE_SUBMISSION_TRANSPORT": "pm4"}) == "aql"

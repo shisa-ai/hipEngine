@@ -1132,6 +1132,12 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
         == 128
     )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
+    ) == {
+        ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {"transport": "hipgraph"}
+    }
     assert (
         backend_package_capability(
             "hip_gfx1151",
