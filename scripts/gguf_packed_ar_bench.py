@@ -272,6 +272,7 @@ def _run_sample(
     decode_steps: int,
     measured: bool,
     run_index: int,
+    submission_transport: str | None = None,
 ) -> dict[str, Any]:
     groups = _configuration_groups(config)
     active_sessions = tuple(sessions[: config.logical_rows])
@@ -329,6 +330,7 @@ def _run_sample(
                 steps_per_replay=1,
                 max_replay_steps=int(decode_steps),
                 record_steps=int(decode_steps),
+                submission_transport=submission_transport,
             )
             graphs.append(graph)
             graph_groups.append(group_indices)
@@ -402,6 +404,7 @@ def _run_sample(
             "serial_bridge": config.execution_class == "serial_bridge",
             "chunked": config.execution_class == "chunked_native_groups",
             "native_c8_claim": config.name == "native_c8",
+            "requested_submission_transport": submission_transport,
         },
         "accounting": {
             "prompt_tokens": config.logical_rows * len(prompts[0]),
