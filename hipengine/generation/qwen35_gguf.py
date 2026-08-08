@@ -4466,6 +4466,63 @@ class _GGUFResidentLoopRow:
     prefix_fallback_reason: str | None = None
 
 
+def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy live route proof without PM4's per-dispatch diagnostic records."""
+
+    compact = {
+        key: copy.deepcopy(value)
+        for key, value in manifest.items()
+        if key != "graph"
+    }
+    graph_source = manifest.get("graph")
+    if not isinstance(graph_source, Mapping):
+        if graph_source is not None:
+            compact["graph"] = copy.deepcopy(graph_source)
+        return compact
+    graph = {
+        key: copy.deepcopy(value)
+        for key, value in graph_source.items()
+        if key != "transport"
+    }
+    compact["graph"] = graph
+    transport_source = graph_source.get("transport")
+    if not isinstance(transport_source, Mapping):
+        if transport_source is not None:
+            graph["transport"] = copy.deepcopy(transport_source)
+        return compact
+    transport = {
+        key: copy.deepcopy(value)
+        for key, value in transport_source.items()
+        if key != "executable"
+    }
+    graph["transport"] = transport
+    executable_source = transport_source.get("executable")
+    if not isinstance(executable_source, Mapping):
+        if executable_source is not None:
+            transport["executable"] = copy.deepcopy(executable_source)
+        return compact
+    executable = {
+        key: copy.deepcopy(value)
+        for key, value in executable_source.items()
+        if key not in {"module_records", "dispatch_records"}
+    }
+    records_omitted = False
+    for records_key, count_key in (
+        ("module_records", "module_record_count"),
+        ("dispatch_records", "dispatch_record_count"),
+    ):
+        records = executable_source.get(records_key)
+        if isinstance(records, (list, tuple)):
+            executable[count_key] = len(records)
+            records_omitted = True
+        elif records is not None:
+            executable[records_key] = copy.deepcopy(records)
+    if records_omitted:
+        executable["records_omitted"] = True
+    transport["executable"] = executable
+    return compact
+
+
 class Qwen35GGUFResidentModelRunner:
     """Long-lived scheduler-facing owner of GGUF model and session state.
 
@@ -6574,7 +6631,7 @@ class Qwen35GGUFResidentModelRunner:
                 )
             self._route_counts["native_packed_graph_replays"] += 1
             self._observe_graph_handles(tuple(slot.session for slot in concrete))
-            self._last_execution_manifest = copy.deepcopy(
+            self._last_execution_manifest = _compact_live_execution_manifest(
                 dict(getattr(graph, "execution_manifest", {}))
             )
             self._route_counts["native_packed_decode_steps"] += 1

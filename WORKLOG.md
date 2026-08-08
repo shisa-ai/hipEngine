@@ -209648,3 +209648,29 @@ Vulkan local sizes verbatim will close the measured gap.
   `benchmarks/results/2026-08-08-gfx1100-pm4-scoped-default.json`. PM4 is now a
   package-selected optimization only where measured and capture-amortized; HIP
   remains the global default and every unmeasured fallback.
+
+## 2026-08-08 — Remove full PM4 proof copies from server replay
+
+- The approved W7900 README concurrency refresh first completed a tracked-clean
+  TheRock HIP 7.15 direct c1/c2/c4/c8 packet at `e7eaf8064`. Package policy
+  selected HIP graph for c1 and canonical PM4 for c2/c4/c8; all trajectories,
+  graph keys, variance, and route gates passed. A first compile-populating run
+  was not retained; the compiler-silent clean rerun reached
+  **97.985/150.308/213.136/273.549 aggregate tok/s** at c1/c2/c4/c8.
+- The unchanged full OpenAI F1 command completed every static sample but failed
+  its later live c8→c13 trigger because current admission never formed logical
+  c8. A focused static `packed_c8` rerun exposed two physical-c4 cohorts and
+  **77.638 tok/s** under package-default PM4 versus **130.040 tok/s** with the
+  explicit HIP-graph control. Both paths executed 254 exact packed graph replays
+  with zero fallback; the failure is route/performance, not model correctness.
+- Source audit found the server runner deep-copied the packed graph's complete
+  PM4 execution manifest after every replay. That manifest includes 17 module
+  and 747/748 dispatch records; direct transport benchmarks bypass this server
+  observability copy. Add a RED fixture requiring compact count-only live proof,
+  then preserve full provenance on the graph while publishing only record counts
+  to `_last_execution_manifest`. A 200-iteration host microcheck moves median
+  copy time **5.0262 -> 0.1191 ms (42.19x)** while retaining 17/747 counts.
+- GREEN: the focused RED passes, all **86** tests in
+  `tests/test_generation_qwen35_gguf_sampling.py` pass, and Ruff passes. A clean
+  no-override server rerun is required before the stale OpenAI rows can be
+  retained or replaced.
