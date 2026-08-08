@@ -1,5 +1,10 @@
-"""CUDA ``sm_120a`` Moonshine attention kernels."""
+"""CUDA ``sm_120a`` attention kernels."""
 
+from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
+    build_maple_attention,
+    plan_maple_attention_build,
+    register_maple_attention_kernels,
+)
 from hipengine.kernels.cuda_sm120a.attention.moonshine_attention import (
     build_moonshine_attention,
     moonshine_cross_attention_fp16,
@@ -21,6 +26,7 @@ from hipengine.kernels.cuda_sm120a.attention.moonshine_attention_cutlass import 
 
 __all__ = [
     "aot_attention_enabled",
+    "build_maple_attention",
     "build_moonshine_attention",
     "build_moonshine_attention_cutlass",
     "moonshine_cross_attention_fp16",
@@ -30,8 +36,10 @@ __all__ = [
     "moonshine_encoder_attention_fp16",
     "moonshine_self_attention_fp16",
     "moonshine_self_attention_parallel_fp16",
+    "plan_maple_attention_build",
     "plan_moonshine_attention_build",
     "plan_moonshine_attention_cutlass_build",
+    "register_maple_attention_kernels",
     "register_moonshine_attention_cutlass_kernels",
     "register_moonshine_attention_kernels",
 ]
