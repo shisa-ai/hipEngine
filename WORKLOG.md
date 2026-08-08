@@ -216488,3 +216488,50 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `git diff --check`, Torch audit, and backend/quant-branch audit also pass.
   This is correctness/launch evidence only; full Maple CUDA runtime generation
   remains next.
+
+## 2026-08-08 — Wire Maple CUDA c1 generation on GPU0
+
+- RED first extends the Maple generation registry gate to `cuda_sm120a`; test
+  collection fails because the CUDA factory does not exist. Add
+  `MapleCudaRunner`, a backend-injected subclass that uses only the peer CUDA
+  libraries, `CudaRuntime`, CUDA-tagged device views, the unchanged packed
+  loader, and the complete 24-layer c1 chain. Prompt admission is deliberately
+  token-serial through this same device-resident path until CUDA grouped-prefill
+  metadata is independently ported. Disable the unqualified resident-batch
+  capability through an injected generator capability rather than a backend
+  branch, so the public engine uses its generic submit/poll compatibility owner.
+  Track both temporary boundaries in `docs/REFACTOR.md`.
+- The first real public attempt reaches the inherited gfx11 resident owner and
+  fails honestly at missing grouped-MoE metadata. After declining that
+  capability, the second attempt finds one copied-method integration omission
+  (`copy_device_to_host` was not imported). Add the missing generic memory
+  imports; no kernel or math changes are involved.
+- Download and pin public checkpoint revision
+  `deepgrove/maple-preview-2bit-mlx@361db5da5e74ff6fcdd852d478e1f266ce11013a`
+  under `/models/hf/maple-preview-2bit-mlx`. Validation sees all **463** required
+  tensors and exactly **5,308,186,624 bytes**. Real public generation with
+  `CUDA_VISIBLE_DEVICES=0`, `backend=cuda_sm120a`, and
+  `quant=maple_ternary2` succeeds. A 16-token canonical chat continuation is:
+  `The user asks for a short sentence about maple trees. Simple and direct.\n</think>`
+  with IDs `[785,1196,17064,369,264,2805,11652,911,54380,12408,13,8993,323,2118,624,151668]`.
+  The diagnostic wall is 1.681 s including load/upload; this is not a retained
+  speed claim. Tracked ownership is **5,399,968,636 bytes / 560 allocations**
+  while resident and **0 bytes / 0 allocations** after `LLM.close()`.
+- Extend `scripts/maple_correctness.py` to obtain a backend-package runner
+  capability without adding dispatch/model backend branches. Its initial packed
+  oracle invocation under the project `uv` environment is blocked because that
+  optional environment has no Torch. Re-run both workers with the existing
+  `/home/lhl/.conda/envs/llmcompressor` Torch 2.10.0+cu128 environment and
+  `CUDA_VISIBLE_DEVICES=0`. The exact retained 18-token fixture passes versus
+  the independent packed-weight Torch oracle: **max KL 0.0137925562**, mean KL
+  **0.0018637036**, top-1 **18/18**, device greedy argmax exact, and minimum
+  hidden cosine **0.9971485**. This clears KL <= 0.05 and top-1 >= 90% without
+  weakening thresholds.
+- Cache-only full-model Nsight Systems tracing of one token names the complete
+  intended chain: 24 each of ternary QKV/O, QK norm+KV write, GQA attention,
+  residual RMSNorm, router, selected dual/down, clamp-7, and weighted residual;
+  one affine4 embed/head and two-stage argmax; two span publications. Kernel
+  medians are plausible (for example QKV 5.904 us, attention 1.984 us, router
+  10.752 us, exact head 110.654 us). The focused source/unit/GPU bundle is GREEN
+  with **15 passed / 3 optional skips**; Python compilation, diff checks, Torch
+  hot-path audit, and backend/quant-branch audit pass.

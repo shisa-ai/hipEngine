@@ -108,6 +108,21 @@ should be removed or collapsed.
   exact c1 and rows-2-4 fallbacks before T16 can become sole-resident.
 - Until then, keep pack8 as the required unfused/prefill fallback and disclose
   that the retained W7900 route is not claimed to fit the 24-GiB component GPU.
+## Maple CUDA sm_120a serial-prefill compatibility path
+
+- Added 2026-08-08 for the first correctness-qualified CUDA vertical slice.
+  `MapleCudaRunner` executes every prompt token through the fully device-resident
+  c1 decode chain, and its generator advertises no resident fixed-batch factory,
+  so the generic submit/poll compatibility owner calls direct generation rather
+  than entering the gfx11-only `MapleBatchRunner` orchestration. This is exact
+  and lifecycle-clean but intentionally not a CUDA prefill or concurrency claim.
+- Remove the serial prompt fallback and re-enable native resident ownership only
+  after CUDA has independent row-batched QKV/O, attention-prefill, router,
+  selected-expert, group-compaction, and weighted-residual gates; the complete
+  18-position KL/top-1 gate; c1 native-vs-serial state parity; sparse c2/c4/c8
+  admission/reclaim tests; and a named cache-only Nsight trace. Do not route CUDA
+  through HIP builders or enable gfx11 grouped metadata as a shortcut.
+
 ## Maple P4 public fixed-slot admission
 
 - Added and retained 2026-08-08. `MapleResidentModelRunner` is now the sole

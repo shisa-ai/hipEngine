@@ -106,6 +106,19 @@ def register_backend_kernels(*, replace: bool = True) -> None:
         register_lm_head_kernels(replace=replace)
 
 
+def maple_runner_type():
+    """Return the CUDA Maple runner lazily without loading CUDA on import."""
+
+    from hipengine.runtime.maple_cuda import MapleCudaRunner
+
+    return MapleCudaRunner
+
+
 register_backend_kernels()
 
-__all__ = ["BACKEND", "TARGET_ARCH", "register_backend_kernels"]
+__all__ = [
+    "BACKEND",
+    "TARGET_ARCH",
+    "maple_runner_type",
+    "register_backend_kernels",
+]

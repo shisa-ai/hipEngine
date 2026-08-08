@@ -65,11 +65,22 @@ def token_ids(value: str) -> tuple[int, ...]:
 
 
 def hipengine_worker(model: str, backend: str, tokens: tuple[int, ...], output: Path) -> None:
+    from hipengine.kernels.backends import backend_package_capability
     from hipengine.loading.maple import load_maple_checkpoint
     from hipengine.runtime.maple import MapleRunner
 
+    runner_type_factory = backend_package_capability(
+        backend,
+        "maple_runner_type",
+        None,
+    )
+    runner_type = (
+        MapleRunner
+        if runner_type_factory is None
+        else runner_type_factory()
+    )
     checkpoint = load_maple_checkpoint(model)
-    runner = MapleRunner.load(
+    runner = runner_type.load(
         checkpoint,
         backend=backend,
         max_context=max(64, len(tokens) + 1),

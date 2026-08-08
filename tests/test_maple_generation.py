@@ -11,6 +11,7 @@ from hipengine.dispatch import RequestState, WorkItem, WorkKind
 from hipengine.generation.maple import (
     MapleGenerator,
     MapleResidentModelRunner,
+    make_maple_generator_cuda_sm120a,
     make_maple_generator_gfx1100,
     make_maple_generator_gfx1151,
 )
@@ -88,7 +89,7 @@ def request(*, temperature: float = 0.0, max_tokens: int = 4) -> GenerationReque
     )
 
 
-def test_maple_generators_register_for_both_gfx11_backends() -> None:
+def test_maple_generators_register_for_gfx11_and_cuda_sm120a() -> None:
     assert resolve_quant("maple_ternary2") is MAPLE_TERNARY2
     assert resolve_text_generator(
         model="maple", backend="hip_gfx1151", quant="maple_ternary2"
@@ -96,6 +97,16 @@ def test_maple_generators_register_for_both_gfx11_backends() -> None:
     assert resolve_text_generator(
         model="maple", backend="hip_gfx1100", quant="maple_ternary2"
     ) is make_maple_generator_gfx1100
+    assert resolve_text_generator(
+        model="maple", backend="cuda_sm120a", quant="maple_ternary2"
+    ) is make_maple_generator_cuda_sm120a
+
+
+def test_maple_generator_can_decline_unqualified_resident_batching() -> None:
+    generator = fake_generator()
+    generator.resident_batch_enabled = False
+
+    assert generator.create_resident_model_runner is None
 
 
 def test_maple_generator_runs_greedy_prompt_and_stops_on_eos() -> None:
