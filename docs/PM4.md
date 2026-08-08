@@ -1006,6 +1006,19 @@ queue recreate remains useful optional isolation coverage, but it is not an
 evidenced fault in the production ownership path: hipEngine
 retains one queue and does not recreate it in-process.
 
+The current TheRock HIP 7.15 README direct protocol independently measures
+selector-unset c1/c2/c4/c8 at **97.985/150.308/213.136/273.549 aggregate
+tok/s** with c1→HIP and c2/c4/c8→PM4, exact repeatable trajectories, full
+retirement, and zero tracked bytes after close. Its OpenAI rerun found a second
+host-only provenance consumer: the server runner deep-copied all 747/748 PM4
+dispatch records into live observability after every replay. Replacing this
+with compact 17/747 count proof moves host copy **5.026→0.119 ms** and restores
+focused eight-request wall **77.638→130.017 tok/s**, neutral to explicit HIP
+graph **130.040**. Current admission still forms c4 cohorts and fails the
+historical physical-c8/live-c13 topology gate, so server rows are blocked rather
+than promoted; this is independent of PM4 transport performance. Evidence:
+`benchmarks/results/2026-08-08-gfx1100-pm4-readme-concurrency-refresh.json`.
+
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact
 benchmark command/hardware/source evidence, compact artifact, rollup, and

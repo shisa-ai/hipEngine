@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_pm4_readme_concurrency_refresh",
+  "created_at": "2026-08-08T09:14:35Z",
+  "status": "accepted_direct_server_topline_blocked",
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B Q4_K_M/BF16-KV direct c1/c2/c4/c8 p512/d128 synchronized model-step throughput; current OpenAI SSE rows are explicitly excluded",
+  "decision": "replace the stale direct W7900 concurrency rows with the clean package-default HIP/PM4 packet; remove the stale numeric OpenAI SSE rows because current admission does not form the required logical/physical c8 topology",
+  "source": {
+    "direct_measurement_commit": "e7eaf8064f5ac7e1cbfd88e4332586e7b19330de",
+    "server_repair_commit": "5241dea73701119371881ec4817853b70dc495b9",
+    "source_clean": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "gfx_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": "1",
+    "hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "direct": {
+    "accepted": true,
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-pm4-readme-refresh-e7eaf8064/hipcc-version.txt --require-cached-build --json /tmp/hipengine-pm4-readme-refresh-e7eaf8064/direct-clean.json",
+    "environment": {
+      "HIPENGINE_SUBMISSION_TRANSPORT": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0"
+    },
+    "workload": {
+      "prompt_length": 512,
+      "decode_steps": 128,
+      "warmups": 1,
+      "measured_runs": 3,
+      "sampling": "greedy_top1",
+      "graph_capture_excluded": true,
+      "one_loaded_model": true
+    },
+    "results": {
+      "c1": {
+        "transport": "hipgraph",
+        "old_aggregate_tok_s": 85.469,
+        "aggregate_tok_s": 97.985450685,
+        "per_request_tok_s": 97.985450685,
+        "old_to_new_percent": 14.644433,
+        "aggregate_vs_c1": 1.0,
+        "aggregate_vs_serial_c4": 1.018095,
+        "ttft_p50_seconds": 0.205719,
+        "ttft_p95_seconds": 0.206365,
+        "model_step_itl_p50_ms": 10.205046,
+        "model_step_itl_p95_ms": 10.332433,
+        "tracked_peak_gib": 21.784794
+      },
+      "c2": {
+        "transport": "pm4",
+        "old_aggregate_tok_s": 127.427,
+        "aggregate_tok_s": 150.308183853,
+        "per_request_tok_s": 75.154091926,
+        "old_to_new_percent": 17.956307,
+        "aggregate_vs_c1": 1.533985,
+        "aggregate_vs_serial_c4": 1.561742,
+        "ttft_p50_seconds": 0.951751,
+        "ttft_p95_seconds": 0.955838,
+        "model_step_itl_p50_ms": 13.317601,
+        "model_step_itl_p95_ms": 13.447793,
+        "tracked_peak_gib": 22.396015
+      },
+      "c4": {
+        "transport": "pm4",
+        "old_aggregate_tok_s": 184.575,
+        "aggregate_tok_s": 213.135628650,
+        "per_request_tok_s": 53.283907162,
+        "old_to_new_percent": 15.473725,
+        "aggregate_vs_c1": 2.175176,
+        "aggregate_vs_serial_c4": 2.214536,
+        "ttft_p50_seconds": 2.041395,
+        "ttft_p95_seconds": 2.045303,
+        "model_step_itl_p50_ms": 18.779532,
+        "model_step_itl_p95_ms": 18.948143,
+        "tracked_peak_gib": 23.399809
+      },
+      "native_c8": {
+        "transport": "pm4",
+        "old_aggregate_tok_s": 246.872,
+        "aggregate_tok_s": 273.548594710,
+        "per_request_tok_s": 34.193574339,
+        "old_to_new_percent": 10.805841,
+        "aggregate_vs_c1": 2.791727,
+        "aggregate_vs_serial_c4": 2.842243,
+        "ttft_p50_seconds": 3.522508,
+        "ttft_p95_seconds": 3.533640,
+        "model_step_itl_p50_ms": 29.290922,
+        "model_step_itl_p95_ms": 29.442400,
+        "tracked_peak_gib": 25.407396
+      },
+      "chunked_c8": {
+        "transport": "two_serial_pm4_c4_graphs",
+        "old_aggregate_tok_s": 183.020,
+        "aggregate_tok_s": 211.039682395,
+        "per_request_tok_s": 26.379960299,
+        "old_to_new_percent": 15.309629,
+        "aggregate_vs_c1": 2.153786,
+        "aggregate_vs_serial_c4": 2.192758,
+        "ttft_p50_seconds": 3.072391,
+        "ttft_p95_seconds": 4.100253,
+        "model_step_itl_p50_ms": 37.940629,
+        "model_step_itl_p95_ms": 38.254424,
+        "tracked_peak_gib": 26.076693
+      },
+      "serial_c4": {
+        "transport": "four_serial_hipgraph_c1_graphs",
+        "old_aggregate_tok_s": 84.738,
+        "aggregate_tok_s": 96.243930927,
+        "per_request_tok_s": 24.060982732,
+        "old_to_new_percent": 13.578242,
+        "aggregate_vs_c1": 0.982227,
+        "aggregate_vs_serial_c4": 1.0,
+        "ttft_p50_seconds": 0.537379,
+        "ttft_p95_seconds": 0.864100,
+        "model_step_itl_p50_ms": 41.555877,
+        "model_step_itl_p95_ms": 42.160285,
+        "tracked_peak_gib": 26.995529
+      }
+    },
+    "correctness": {
+      "passed": true,
+      "c1_c2_c4_prefix_exact": true,
+      "c4_matches_serial_c4": true,
+      "native_c8_rows_match_c4": true,
+      "chunked_c8_groups_match_c4": true,
+      "all_measured_runs_repeatable": true,
+      "all_graph_bucket_keys_stable": true,
+      "all_variance_guards_passed": true
+    },
+    "transport_proof": {
+      "c1": {"transport": "hipgraph", "native_fallbacks": 0},
+      "c2_c4_c8": {
+        "transport": "pm4",
+        "stateful_registers": true,
+        "local_cache_dependencies": true,
+        "native_fallbacks": 0,
+        "unretired_submissions": 0,
+        "callback_status": 0
+      }
+    },
+    "lifecycle": {
+      "tracked_bytes_after_close": 0,
+      "active_allocations_after_close": 0,
+      "hip_used_bytes_after_close": 245768192
+    },
+    "raw_source": {
+      "path": "/tmp/hipengine-pm4-readme-refresh-e7eaf8064/direct-clean.json",
+      "size_bytes": 16833988,
+      "sha256": "690d3aa2ccbe1c6dfcec7c7af0e1c85894b7d0b31dc2dca414fa9049c8332041",
+      "stderr_size_bytes": 1460,
+      "stderr_sha256": "79bbf4f22af9747f8ccbff87a420b66df4875b888cc06bb868e9700e2f3bf80c"
+    }
+  },
+  "openai_server": {
+    "accepted": false,
+    "performance_claim": false,
+    "topline_status": "blocked",
+    "full_command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 --prefill-chunk-size 256 --batch-window-ms 20 --compiler-version-file /tmp/hipengine-pm4-readme-refresh-e7eaf8064/hipcc-version.txt --require-cached-build --json /tmp/hipengine-pm4-readme-refresh-e7eaf8064/server-clean.json",
+    "full_attempt": {
+      "static_routes_completed": ["c1", "packed_c8", "packed_c9", "packed_c13", "serial_c13"],
+      "failure": "live-admission trigger did not observe logical C=8 before timeout",
+      "stderr_size_bytes": 2009,
+      "stderr_sha256": "96d6144b37c569ca872442abfb5275f3de9317753fad0ed6034d360394a3f4d4"
+    },
+    "focused_c8": {
+      "pre_fix_package_pm4_aggregate_tok_s": 77.638323809,
+      "explicit_hipgraph_aggregate_tok_s": 130.039519721,
+      "fixed_package_pm4_aggregate_tok_s": 130.017093525,
+      "fixed_vs_pre_fix_percent": 67.465096,
+      "fixed_vs_hipgraph_percent": -0.017246,
+      "fixed_pm4_wall_seconds": 7.875887487,
+      "measured_request_rows_exact": "24/24",
+      "generated_tokens_exact": 3072,
+      "http_sse_passed": true,
+      "ownership_recovered": true,
+      "graph_replays_per_run": 254,
+      "fallbacks": 0,
+      "observed_topology": "two physical c4 cohorts (one late sample also observed c2 before c4)",
+      "required_topology": "one logical/physical c8 cohort",
+      "topology_gate_passed": false,
+      "interpretation": "compacting PM4 live provenance removes the transport-specific server regression, but current admission still invalidates the historical physical-c8 and live c8-to-c13 server claims"
+    },
+    "repair": {
+      "description": "replace per-replay deep copies of 17 module plus 747/748 dispatch records with compact live record counts while preserving full graph provenance",
+      "host_copy_median_ms_before": 5.026169,
+      "host_copy_median_ms_after": 0.119136,
+      "host_copy_speedup": 42.19,
+      "tests": "86 passed in tests/test_generation_qwen35_gguf_sampling.py; Ruff passed"
+    },
+    "raw_sources": {
+      "pre_fix_package_pm4": {
+        "path": "/tmp/hipengine-pm4-readme-refresh-e7eaf8064/server-c8-default.json",
+        "size_bytes": 5943424,
+        "sha256": "878a0cacd6f65a9b9708501f8d9bfd232718726074e79dc19b1ef5631f986a15"
+      },
+      "explicit_hipgraph": {
+        "path": "/tmp/hipengine-pm4-readme-refresh-e7eaf8064/server-c8-hipgraph.json",
+        "size_bytes": 5251698,
+        "sha256": "d4761698cec7b4be3af9a3c0dfa6fae3c7ba9474dc53e204b2f89166b5523244"
+      },
+      "fixed_package_pm4": {
+        "path": "/tmp/hipengine-pm4-readme-refresh-5241dea73/server-c8-fixed.json",
+        "size_bytes": 5251413,
+        "sha256": "ca0f2c852531f7d6954c92c7c7451757d3b9bc9bf57b9e9577c98b58b2c4faad"
+      }
+    }
+  },
+  "notes": [
+    "The direct old-to-new deltas are cumulative current-package topline refreshes, not PM4-only causal deltas; causal PM4-vs-HIP transport deltas remain in the dedicated paired transport artifacts.",
+    "The first direct process populated one missing prefill cache and is not retained; the published direct process emitted no compiler output.",
+    "Per the focused-repair policy, the full failed OpenAI matrix was not repeated after the focused post-fix run still rejected the required c8 topology."
+  ]
+}
