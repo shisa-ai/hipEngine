@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-08",
+  "artifact_type": "maple_cuda_native_prefill_retained",
+  "status": "accepted",
+  "performance_claim": true,
+  "source": {
+    "commit": "3269b4dfa0b556c1ad3390d92e949a6552f8e635",
+    "tracked_clean": true,
+    "branch": "maple-cuda-sm120a",
+    "base": "d7beb0f807ff769a560814d2a00e5abe460ce0c1",
+    "raw_artifact_sha256": "7b446b21474a6341de8258f17ac48f82c43d657bb2361ef454e03d6da93ed587",
+    "raw_artifact_note": "The 80,293-byte detailed sample/state artifact was retained under /tmp for the session and compacted here; raw profiler and per-sample files are not committed."
+  },
+  "hardware": {
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "physical_gpu": 0,
+    "compute_capability": "12.0",
+    "target_arch": "sm_120a",
+    "backend": "cuda_sm120a",
+    "driver": "610.43.03",
+    "cuda_toolkit": "13.3",
+    "nvcc": "13.3.73",
+    "total_memory_mib": 97887
+  },
+  "checkpoint": {
+    "model": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "local_path": "/models/hf/maple-preview-2bit-mlx",
+    "quant": "maple_ternary2",
+    "required_tensors": 463,
+    "exact_weight_bytes": 5308186624
+  },
+  "protocol": {
+    "command": "CUDA_VISIBLE_DEVICES=0 HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt PYTHONPATH=$PWD uv run --extra dev python scripts/maple_prefill_bench.py --model /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a --lengths 128,320,512 --repetitions 3 --warmups 1 --continuation-steps 4 --out /tmp/maple-sm120a-native-prefill-final.json",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "heldout": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "performance_prompt_rows_per_length": 8,
+    "performance_repetitions": 3,
+    "samples_per_arm_per_length": 24,
+    "warmups": 1,
+    "matched_sample_key": "(repetition, prompt_id, category, heldout)",
+    "matched_native_serial_grid": true,
+    "qualified_lengths": [
+      128,
+      320,
+      512
+    ],
+    "serial_baseline": "the same MapleCudaRunner c1 chain over the identical fixed-shape prompt/repetition grid",
+    "sampling": "deterministic greedy"
+  },
+  "correctness": {
+    "prompt_count": 18,
+    "position_count": 90,
+    "category_counts": {
+      "code": 6,
+      "general_en": 4,
+      "general_ja": 4,
+      "mixed_ja_en": 4
+    },
+    "heldout_category_counts": {
+      "code": 2,
+      "general_en": 2,
+      "general_ja": 2,
+      "mixed_ja_en": 2
+    },
+    "max_kl": 0.0,
+    "mean_kl": 0.0,
+    "top1_agreement": 1.0,
+    "top1_matches": "90/90",
+    "token_matches": "90/90",
+    "complete_state_matches": "18/18",
+    "state_scope": "final BF16 hidden/normalized rows, every live physical K/V byte in all 24 layers, and both complete KVLiveSpans owners",
+    "thresholds": {
+      "max_kl_lte": 0.05,
+      "top1_agreement_gte": 0.9
+    },
+    "passed": true
+  },
+  "performance": [
+    {
+      "prompt_tokens": 128,
+      "native_aggregate_tokens_per_second": 1953.8202626497305,
+      "native_median_sample_tokens_per_second": 1956.309503964415,
+      "native_min_sample_tokens_per_second": 1927.1093482949143,
+      "native_max_sample_tokens_per_second": 1972.877985282493,
+      "serial_aggregate_tokens_per_second": 361.038205403533,
+      "serial_median_sample_tokens_per_second": 361.07683658271856,
+      "serial_min_sample_tokens_per_second": 360.64550383772337,
+      "serial_max_sample_tokens_per_second": 361.21740466424404,
+      "native_over_serial": 5.4116717660557345,
+      "percent_improvement": 441.16717660557345,
+      "samples_per_arm": 24
+    },
+    {
+      "prompt_tokens": 320,
+      "native_aggregate_tokens_per_second": 1852.1239030335773,
+      "native_median_sample_tokens_per_second": 1858.319803449298,
+      "native_min_sample_tokens_per_second": 1824.03489832145,
+      "native_max_sample_tokens_per_second": 1875.2148578268473,
+      "serial_aggregate_tokens_per_second": 204.84219194209584,
+      "serial_median_sample_tokens_per_second": 204.84902099638086,
+      "serial_min_sample_tokens_per_second": 204.7081332832326,
+      "serial_max_sample_tokens_per_second": 204.8884315546368,
+      "native_over_serial": 9.041711014091911,
+      "percent_improvement": 804.1711014091911,
+      "samples_per_arm": 24
+    },
+    {
+      "prompt_tokens": 512,
+      "native_aggregate_tokens_per_second": 1917.4917751473465,
+      "native_median_sample_tokens_per_second": 1925.709369710506,
+      "native_min_sample_tokens_per_second": 1887.245819616315,
+      "native_max_sample_tokens_per_second": 1940.2957875635261,
+      "serial_aggregate_tokens_per_second": 142.89318833873418,
+      "serial_median_sample_tokens_per_second": 142.92214515423905,
+      "serial_min_sample_tokens_per_second": 142.67638501233273,
+      "serial_max_sample_tokens_per_second": 143.017109526866,
+      "native_over_serial": 13.419056551540116,
+      "percent_improvement": 1241.9056551540116,
+      "samples_per_arm": 24
+    }
+  ],
+  "long_context_gate": {
+    "command": "CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt uv run --extra dev pytest -q tests/test_cuda_sm120a_maple.py::test_cuda_sm120a_maple_native_prefill_matches_serial_state",
+    "prompt_lengths": [
+      12,
+      520,
+      770
+    ],
+    "result": "3 passed",
+    "scope": "exact final hidden/normalized state, physical sliding/global K/V, complete spans, FP32 top-logit bits, one continuation, and teardown",
+    "passed": true
+  },
+  "memory": {
+    "resident_tracked_bytes": 5355881852,
+    "resident_tracked_gib": 4.988053675740957,
+    "resident_allocations": 560,
+    "after_close_bytes": 0,
+    "after_close_allocations": 0,
+    "scope": "hipEngine-owned CUDA device allocations; excludes CUDA runtime internals"
+  },
+  "profiler": {
+    "tool": "Nsight Systems 2026.1.3",
+    "source_commit": "a6a0dace9b5819b00f49c459097b25eb86f59cb4",
+    "execution_change_after_profile": "none; 3269b4dfa changes only tests and benchmark metadata capture",
+    "command": "CUDA_VISIBLE_DEVICES=0 HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt PYTHONPATH=$PWD nsys profile --trace=cuda --sample=none --cpuctxsw=none --force-overwrite=true --output=/tmp/maple-sm120a-native-prefill .venv/bin/python -c '<load pinned checkpoint; MapleCudaRunner.prefill_native((9707,)*128); close>'",
+    "cached_builds_only": true,
+    "workload": "one diagnostic 128-row repeated-token native prefill; not the performance protocol",
+    "total_kernel_time_ns": 68194192,
+    "total_kernel_instances": 367,
+    "expected_family_medians_ns": {
+      "maple_affine4_embed_batched_kernel": {
+        "instances": 1,
+        "median_ns": 2432
+      },
+      "maple_ternary_qkv_gemm_kernel<8>": {
+        "instances": 24,
+        "median_ns": 499467
+      },
+      "maple_qknorm_rope_kv_write_batched_kernel": {
+        "instances": 24,
+        "median_ns": 3920
+      },
+      "maple_attention_prefill_ring_gqa4_wave32_kernel": {
+        "instances": 24,
+        "median_ns": 160014.5
+      },
+      "maple_ternary_gemm_bf16_kernel<8>": {
+        "instances": 24,
+        "median_ns": 335740.5
+      },
+      "maple_router_logits_batched_kernel": {
+        "instances": 24,
+        "median_ns": 52592
+      },
+      "qwen35_moe_group_count_active_parallel_kernel<int>": {
+        "instances": 24,
+        "median_ns": 1824
+      },
+      "qwen35_moe_group_prefix_active_parallel_kernel": {
+        "instances": 24,
+        "median_ns": 1344
+      },
+      "qwen35_moe_group_scatter_active_parallel_kernel<int>": {
+        "instances": 24,
+        "median_ns": 2464
+      },
+      "maple_selected_ternary_dual_grouped_kernel<128,1>": {
+        "instances": 24,
+        "median_ns": 978359
+      },
+      "maple_selected_ternary_grouped_kernel<32,1>": {
+        "instances": 24,
+        "median_ns": 772776.5
+      },
+      "maple_weighted_residual_batched_kernel": {
+        "instances": 24,
+        "median_ns": 1792
+      },
+      "maple_affine4_gemv_wave32_exact_kernel": {
+        "instances": 1,
+        "median_ns": 114527
+      }
+    },
+    "passed": true
+  },
+  "public_generation_smoke": {
+    "api": "hipengine.LLM.generate_detailed",
+    "prompt": "Write one short sentence about maple trees.",
+    "max_tokens": 16,
+    "generated_token_ids": [
+      10698,
+      11652,
+      11,
+      2805,
+      11652,
+      11,
+      2805,
+      11652,
+      11,
+      2805,
+      11652,
+      11,
+      2805,
+      11652,
+      11,
+      2805
+    ],
+    "text": " Short sentence, short sentence, short sentence, short sentence, short sentence, short",
+    "diagnostic_elapsed_seconds_including_load": 1.681009192019701,
+    "performance_claim": false,
+    "tracked_memory_before_close_bytes": 5399968636,
+    "tracked_allocations_before_close": 560,
+    "tracked_memory_after_close_bytes": 0,
+    "tracked_allocations_after_close": 0,
+    "passed": true
+  },
+  "scope_limits": {
+    "native_cuda_prefill": true,
+    "qualified_performance_through_tokens": 512,
+    "exact_state_gate_through_tokens": 770,
+    "resident_cuda_batching": false,
+    "cuda_serving_claim": false,
+    "cuda_decode_throughput_claim": false
+  },
+  "accepted": true
+}

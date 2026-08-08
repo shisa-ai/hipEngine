@@ -30,14 +30,14 @@ used** by the exact production path.
 
 - Public model-ID loading and greedy text generation work on
   `hip_gfx1151`/Radeon 8060S and the peer `hip_gfx1100` registry key.
-- Correctness-first c1 `LLM.generate()` also runs through independent
-  `cuda_sm120a` kernels on RTX PRO 6000 Blackwell. Its 18-position packed gate
-  passes at max KL 0.013793 and top-1 18/18; prompt admission is currently
-  token-serial and there is no CUDA batching, serving, or throughput claim.
-- Native prefill now continues safely beyond the 512-token sliding window up
-  to the configured context. The retained 520/770-token gates are byte-exact to
-  serial through physical K/V rings, complete `KVLiveSpans`, final state, and
-  continuation; the fixed performance protocol remains 128/320/512.
+- Independent `cuda_sm120a` c1 `LLM.generate()` passes the 18-position packed
+  gate at max KL 0.013793 and top-1 18/18. Its retained native-prefill path
+  reaches **1953.820/1852.124/1917.492 tok/s** at 128/320/512 on RTX PRO 6000
+  Blackwell GPU0, **5.412x/9.042x/13.419x** the identical serial prompt grid.
+- Native prefill on gfx11 and CUDA continues safely beyond the 512-token sliding
+  window. The retained 520/770-token gates are byte-exact to serial through
+  physical K/V rings, complete `KVLiveSpans`, final state, and continuation;
+  the fixed performance protocol remains 128/320/512.
 - Public `SubmitPollTextGenerator` admission is live at fixed capacities through
   8. One resident checkpoint owner feeds request-local native prompt prefill,
   exact c1 decode for a lone active row, and D1 batched decode for c=2/4/8.
@@ -57,7 +57,7 @@ used** by the exact production path.
 | Layer pattern | 18 sliding-attention + 6 full-attention layers, repeated 3:1 |
 | Sliding window | 512 tokens |
 | Position encoding | partial RoPE on sliding layers only; rotary dimension 64, theta 10,000; global layers are NoPE |
-| Context | Marketing claim: 131,072 tokens; pinned deployment config: `max_position_embeddings=128000`; hipEngine public default: 4K; retained fixed-shape performance qualification: <=512; exact long-prompt state gate: 770 |
+| Context | Marketing claim: 131,072 tokens; pinned deployment config: `max_position_embeddings=128000`; hipEngine public default: 4K; gfx11/CUDA retained fixed-shape performance qualification: <=512; exact long-prompt state gate: 770 |
 | MoE | 256 experts, stable top-8, FP32 router logits, all-expert softmax, selected-weight renormalization |
 | Expert MLP | 2048 → 512 gate/up, trained clamp-7 SwiGLU, 512 → 2048 down; no shared expert |
 | Norms | RMSNorm, epsilon 1e-6, FP32 internal arithmetic and BF16 boundary |
@@ -125,20 +125,28 @@ implementation. Prompt **storage admission** is packed into fixed slots; prompt
 compute is currently native per request rather than one ragged multi-request
 GEMM.
 
-### CUDA sm_120a correctness-first c1
+### CUDA sm_120a c1 generation and native prefill
 
 The `cuda_sm120a` generation factory injects `MapleCudaRunner`; it does not add
 backend branches to the model, dispatcher, or engine. The runner loads the same
 463 packed tensors with `CudaRuntime` and composes independent CUDA ternary,
-affine4, RMSNorm, QK/RoPE/KV, GQA attention, router, selected-MoE, residual, and
-argmax libraries. Every attention call consumes the complete `KVLiveSpans` ABI.
+affine4, RMSNorm, QK/RoPE/KV, GQA attention, router, stable expert compaction,
+expert-major selected MoE, residual, and argmax libraries. Every attention call
+consumes the complete `KVLiveSpans` ABI.
 
-This first vertical slice admits prompts token-serially through the same c1 CUDA
-chain and declines the gfx11-only fixed-batch resident capability. The generic
-submit/poll compatibility owner therefore reaches direct deterministic
-`LLM.generate()` without crossing into HIP builders. Native CUDA prefill,
-resident c2/c4/c8 scheduling, HTTP serving, graph qualification, and performance
-promotion remain separate gates tracked in `docs/REFACTOR.md`.
+Public prompt admission now uses the complete grouped CUDA bulk chain in bounded
+256-row chunks. On GPU0, the matched 8-prompt x 3-repetition native/serial grid
+measures **1953.820/1852.124/1917.492** versus
+**361.038/204.842/142.893 tok/s** at 128/320/512. The independent 18-prompt gate
+preserves **18/18** complete states and **90/90** positions at KL 0, while
+12/520/770-token physical-state tests preserve SWA/global K/V, complete spans,
+FP32 top-logit bits, continuation, and teardown. A cache-only 128-row Nsight
+trace names all expected batched families across 367 launches.
+
+The generator still declines the gfx11-only fixed-batch resident capability, so
+the generic submit/poll compatibility owner reaches direct deterministic c1
+`LLM.generate()` without crossing into HIP builders. CUDA resident c2/c4/c8,
+HTTP serving, decode performance, and graph qualification remain separate gates.
 
 ## Interpreting DeepGrove's Apple numbers
 
@@ -283,7 +291,7 @@ and [M6 helper recertification](../benchmarks/results/2026-08-07-gfx1151-maple-m
 | Public c1 runner, max context 512 (P2/M5 protocol) | **4.988 GiB** |
 | Batch helper c=2 / c=4 / c=8, capacity 66/request | **4.951 / 4.958 / 4.973 GiB** |
 | Public fixed-slot c1 / c2 / c4 / c8, default 4K context | **5.115 / 5.180 / 5.310 / 5.571 GiB** |
-| CUDA sm_120a correctness-first c1, default 4K context | **5.029 GiB** (5,399,968,636 bytes / 560 allocations) |
+| CUDA sm_120a c1 + native prefill, default 4K context | **5.029 GiB** (5,399,968,636 bytes / 560 allocations) |
 | After `close()` | **0 bytes / 0 active allocations** |
 
 These are exact process-local hipEngine allocation counters, not sampled
@@ -301,6 +309,7 @@ text as proof of numerical correctness.
 | --- | --- |
 | Packed NumPy/Torch formula vs hipEngine gfx1151, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
 | Packed Torch formula vs CUDA sm_120a c1 on GPU0, same 18 positions | max KL **0.013793**, mean KL 0.001864, top-1 **18/18**, minimum hidden cosine 0.997149, device argmax exact |
+| CUDA sm_120a native vs serial, 18 natural+heldout prompts / 90 positions | **18/18** complete hidden/KV/span states; max/mean KL **0/0**; top-1/token equality **90/90**; 12/520/770 physical state and continuation exact |
 | Pinned HF `trust_remote_code` oracle with matched affine4 endpoints | max KL **0.004719**, mean KL 0.000723, top-1 **18/18** |
 | P2/M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | **18/18** byte-exact final-hidden/normalized/live-KV/span state hashes; max/mean KL **0/0**; top-1/token equality **90/90** |
 | D0 one- vs two-dispatch router, 18 natural+heldout prompts / 36 repeated trajectories | **36/36** native-start and final state hashes; **1,296/1,296** tokens/top logits; **2,592/2,592** zero-counter checks |
@@ -320,6 +329,7 @@ to the accepted values above; thresholds were not weakened.
 
 Primary evidence:
 
+- [CUDA sm_120a native prefill](../benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json)
 - [CUDA sm_120a c1 correctness](../benchmarks/results/2026-08-08-cuda-sm120a-maple-c1-correctness.json)
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
@@ -493,6 +503,17 @@ uv run --extra torch python scripts/maple_correctness.py \
   --token-ids 151644,872,198,7985,825,2805,11652,911,54380,12408,13,151645,198,151644,77091,198,151667,198 \
   --oracle packed --json /tmp/maple-sm120a-packed-18.json
 
+# CUDA sm_120a matched native-vs-serial prefill qualification on GPU0
+nvcc --version > /tmp/hipengine-nvcc-version.txt
+CUDA_VISIBLE_DEVICES=0 \
+HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt \
+PYTHONPATH=$PWD uv run --extra dev python scripts/maple_prefill_bench.py \
+  --model /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a \
+  --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --heldout benchmarks/prompts/gdn-prefill-category-heldouts.jsonl \
+  --lengths 128,320,512 --repetitions 3 --warmups 1 \
+  --continuation-steps 4 --out /tmp/maple-sm120a-native-prefill.json
+
 # M5 public-native prefill recertification
 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
@@ -545,6 +566,6 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_public_batch_bench.py \
 - The submit/poll path is public in-process generation; an HTTP endpoint remains
   separate server integration work.
 - FlashHead is approximate and excluded from the exact default.
-- CUDA sm_120a c1 generation is correctness-qualified, but native CUDA prefill,
-  resident batching/serving, performance promotion, speculative decoding,
-  tensor parallelism, and 128K runtime qualification are separate future tracks.
+- CUDA sm_120a c1 generation and native c1 prefill are retained through the
+  stated gates. CUDA resident batching/serving, decode performance, speculative
+  decoding, tensor parallelism, and 128K runtime qualification remain separate.
