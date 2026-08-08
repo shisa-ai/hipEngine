@@ -209365,3 +209365,25 @@ Vulkan local sizes verbatim will close the measured gap.
   Per focused-repair policy, preserve the completed 19-case correctness run and
   rerun only a one-prompt + 4K memory/lifecycle bundle rather than repeating all
   already-passing natural cases. No destructive lifecycle arm ran.
+
+## 2026-08-08 — Close explicit PM4 promotion matrix with focused memory repair
+
+- At tracked-clean `7a983e13d`, rerun only the repaired memory/lifecycle scope:
+  one natural code prompt plus the 4,096-token context, both HIP/PM4 exact
+  comparisons, both cancellation paths, four PM4 graph generations, context
+  shutdown, and memory recovery. After maximum-shape warmup, the residual is the
+  known **-4 MiB** first-use delta, within the existing 64 MiB tolerance; the
+  focused artifact exits passed.
+- Combine this focused repair with the unchanged tracked-clean `41ee5b8e2`
+  19/19 full correctness/lifecycle evidence. The accepted matrix covers code
+  (6), general English (4), general Japanese (4), mixed Japanese/English (4),
+  and 4K context (1); exact seed/final tokens, recurrent/KV state, and all
+  logits; 21 persistent-context graph generations; 58 retired submissions;
+  both cancellation paths; zero children/callback errors/unretired submissions;
+  and context/session shutdown.
+- Publish compact composite evidence under the repository's focused-repair rule:
+  `benchmarks/results/2026-08-08-gfx1100-pm4-promotion-matrix.json`; update the
+  benchmark rollup/changelog and PM4 playbook. The explicit stateful/local-cache
+  PM4 encoder is promotion-ready. Making PM4 the package transport default is a
+  separate decision still blocked by the unrun ROCm #6529 resource-recreate
+  lifecycle arm. No destructive lifecycle arm ran.
