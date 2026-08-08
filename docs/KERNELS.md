@@ -218,6 +218,28 @@ bring-up diagnostics only, not retained throughput claims. Evidence:
 `benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json` and
 `benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
 
+### Maple CUDA sm_120a peer primitives (**hipEngine landed, runtime bring-up**)
+
+`hipengine/kernels/cuda_sm120a/{quant,attention,moe,norm,linear}/maple_*`
+ports the in-tree Maple raw-pointer families to architecture-qualified CUDA
+translation units. The port preserves the packed ternary/affine4 math, BF16
+rounding, `KVLiveSpans` ABI, stable router selection, reduction geometries, and
+C ABI symbols; only the host launch/runtime spelling changes from HIP to CUDA.
+Every library builds with `nvcc -arch=sm_120a`, registers independent
+`cuda_sm120a` keys, and uses `CudaRuntime` rather than aliasing a gfx11 wrapper.
+
+On exclusive RTX PRO 6000 Blackwell GPU0, the targeted CUDA gate validates
+ternary GEMV, RMSNorm, clamp-7 SwiGLU, weighted residual, one-token QK norm +
+partial RoPE + K/V write + GQA attention through real `KVLiveSpans`, affine4
+head logits, and deterministic argmax against the independent NumPy oracle.
+BF16 boundaries are bit-exact; affine4 FP32 logits pass `atol=rtol=2e-4` and
+argmax agrees. A cache-only Nsight Systems trace names
+`maple_ternary_gemv_kernel`, `paro_rmsnorm_out_kernel<unsigned short>`,
+`maple_clamped_swiglu_kernel`, and `maple_weighted_residual_kernel` at plausible
+0.704-1.504 us durations. This is primitive/runtime-bring-up evidence, not a
+full-generation or performance claim; public Maple CUDA wiring remains the
+next gate.
+
 ### Laguna gfx1151 decode transfer screen
 
 The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16

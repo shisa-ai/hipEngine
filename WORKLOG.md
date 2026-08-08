@@ -216429,3 +216429,62 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   expected HIP skips; and the generation/server/LLM focused bundle. No new
   performance measurement is claimed and no submit/resource-recreate stress is
   run during the merge.
+## 2026-08-08 — Start Maple CUDA sm_120a bring-up from current main
+
+- Fetch `origin/main@d7beb0f80` and audit the inherited `sm120` worktree. It was
+  paused after commit 2 of a 1,554-commit rebase, with 1,552 commands left and
+  four unmerged files. The source branch was 6,892 commits behind main and its
+  final tree contained 252,097 added lines, including a 3.29-MB generated test
+  and 1.70-MB status script. Preserve its exact tip
+  `a6c0cace0` as both `sm120` and
+  `archive/sm120-pre-main-sync-20260808`, abort only the interrupted replay, and
+  create `maple-cuda-sm120a` directly from current `origin/main`. The resulting
+  branch is 0 ahead / 0 behind; leave the pre-existing untracked
+  `hipengine/.gitignore` untouched.
+- Confirm exclusive development target GPU0: NVIDIA RTX PRO 6000 Blackwell
+  Workstation Edition, compute capability 12.0, driver 610.43.03, 97,887 MiB,
+  2 MiB initially used; CUDA 13.3 (`nvcc 13.3.73`) and cudart/driver/cuBLASLt
+  libraries load successfully. All CUDA build/test/profile commands use
+  `CUDA_VISIBLE_DEVICES=0`.
+- The required pre-port lineage command
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` is blocked before
+  reporting kernel drift because the configured external checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. The Maple source for
+  this unit is the already-landed in-tree gfx11 family, not that missing
+  external repository; record the blocker rather than fabricating a clean
+  lineage result.
+
+## 2026-08-08 — Land Maple CUDA sm_120a peer primitive slice
+
+- RED first: `CUDA_VISIBLE_DEVICES=0 uv run --extra dev pytest -q
+  tests/test_cuda_sm120a_maple.py -k 'build_plans or registry'` fails at the
+  absent CUDA Maple module and keys. Add peer CUDA translation units and ctypes
+  wrappers under `cuda_sm120a/{quant,attention,moe,norm,linear}` for the in-tree
+  Maple packed-linear, attention, router/MoE, PARO-output RMSNorm, and FP32
+  argmax families. Preserve the raw-pointer symbols, packed math, reduction
+  geometry, BF16 boundaries, and `KVLiveSpans`; use `nvcc -arch=sm_120a`,
+  `CudaRuntime`, and independent `cuda_sm120a` registrations rather than HIP
+  aliases or model/dispatch backend branches.
+- CPU-only build-plan and registry GREEN: **2/2**. Exclusive-GPU0 oracle gate
+  establishes **4/5** nodes before one test-fixture misuse of the production
+  fixed-K2048 wave32 head; the implementation correctly returns CUDA invalid
+  argument for K64. Focused repair uses the generic affine4 primitive for the
+  tiny K64 fixture and is GREEN **1/1**. Combined evidence is all **5/5**:
+  ternary GEMV, RMSNorm, clamp-7 SwiGLU, weighted residual, one-token QK
+  norm/RoPE/KV write/GQA attention, affine4 logits, and deterministic argmax
+  match NumPy (BF16 exact; head `atol=rtol=2e-4`).
+- Prebuild all five CUDA libraries, then run cache-only profiling:
+  `CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 nsys profile --trace=cuda
+  --sample=none --cpuctxsw=none --force-overwrite=true
+  --output=/tmp/hipengine-maple-sm120a-primitives uv run --extra dev pytest -q
+  tests/test_cuda_sm120a_maple.py::test_cuda_sm120a_maple_ternary_norm_and_moe_match_numpy`.
+  Nsight names `maple_ternary_gemv_kernel` (1,376 ns),
+  `paro_rmsnorm_out_kernel<unsigned short>` (1,504 ns),
+  `maple_clamped_swiglu_kernel` (704 ns), and
+  `maple_weighted_residual_kernel` (1,120 ns). The final focused bundle
+  `CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 uv run --extra dev pytest
+  -q tests/test_cuda_sm120a_maple.py tests/test_cuda_sm120a_backend.py
+  tests/test_cuda_runtime.py` is GREEN **14/14**; Python compilation,
+  `git diff --check`, Torch audit, and backend/quant-branch audit also pass.
+  This is correctness/launch evidence only; full Maple CUDA runtime generation
+  remains next.

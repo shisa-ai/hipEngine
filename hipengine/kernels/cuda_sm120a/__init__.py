@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hipengine.kernels.backends import cuda_target_arch_for_backend
 from hipengine.kernels.cuda_sm120a.attention import (
+    register_maple_attention_kernels,
     register_moonshine_attention_cutlass_kernels,
     register_moonshine_attention_kernels,
 )
@@ -13,10 +14,16 @@ from hipengine.kernels.cuda_sm120a.fused import (
     register_moonshine_mlp_kernels,
 )
 from hipengine.kernels.cuda_sm120a.linear import (
+    register_lm_head_kernels,
     register_moonshine_lm_head_kernels,
     register_moonshine_projection_kernels,
 )
-from hipengine.kernels.cuda_sm120a.norm import register_moonshine_layernorm_kernels
+from hipengine.kernels.cuda_sm120a.moe import register_maple_moe_kernels
+from hipengine.kernels.cuda_sm120a.norm import (
+    register_moonshine_layernorm_kernels,
+    register_qwen35_rmsnorm_kernels,
+)
+from hipengine.kernels.cuda_sm120a.quant import register_maple_ternary_kernels
 from hipengine.kernels.cuda_sm120a.smoke import register_smoke_add_kernel
 from hipengine.kernels.registry import KernelKey, is_registered
 
@@ -84,6 +91,19 @@ def register_backend_kernels(*, replace: bool = True) -> None:
     )
     if replace or not is_registered(aot_attention_key):
         register_moonshine_attention_cutlass_kernels(replace=replace)
+
+    maple_ternary_key = KernelKey(
+        BACKEND,
+        "maple_ternary_gemv",
+        "maple_ternary2",
+        "row_alpha",
+    )
+    if replace or not is_registered(maple_ternary_key):
+        register_maple_ternary_kernels(replace=replace)
+        register_maple_attention_kernels(replace=replace)
+        register_maple_moe_kernels(replace=replace)
+        register_qwen35_rmsnorm_kernels(replace=replace)
+        register_lm_head_kernels(replace=replace)
 
 
 register_backend_kernels()
