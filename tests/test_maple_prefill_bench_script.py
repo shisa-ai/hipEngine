@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import itertools
 from pathlib import Path
+from types import SimpleNamespace
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "maple_prefill_bench.py"
 _SPEC = importlib.util.spec_from_file_location("maple_prefill_bench_script", _SCRIPT)
@@ -28,6 +30,46 @@ def test_maple_prefill_harness_uses_backend_runner_capability(monkeypatch) -> No
 
     assert _MODULE._maple_runner_type("cuda_sm120a") is CudaRunner
     assert _MODULE._maple_runner_type("hip_gfx1151") is _MODULE.MapleRunner
+
+
+def test_maple_prefill_timing_uses_identical_native_and_serial_prompt_grid(
+    monkeypatch,
+) -> None:
+    class Runner:
+        def __init__(self) -> None:
+            self.reset_calls = 0
+            self.native_rows: list[tuple[int, ...]] = []
+            self.serial_rows: list[tuple[int, ...]] = []
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+        def prefill_native(self, tokens):
+            self.native_rows.append(tuple(tokens))
+            return SimpleNamespace(token_id=11)
+
+        def prefill(self, tokens):
+            self.serial_rows.append(tuple(tokens))
+            return SimpleNamespace(token_id=11)
+
+    shaped = [
+        ({"id": "a", "category": "code", "heldout": False}, (1, 2, 3, 4)),
+        ({"id": "b", "category": "code", "heldout": True}, (5, 6, 7, 8)),
+    ]
+    clock = itertools.cycle((0.0, 0.5))
+    monkeypatch.setattr(_MODULE.time, "perf_counter", lambda: next(clock))
+    runner = Runner()
+
+    native = _MODULE._time_prefill_samples(runner, shaped, 2, native=True)
+    serial = _MODULE._time_prefill_samples(runner, shaped, 2, native=False)
+
+    expected_rows = [(1, 2, 3, 4), (5, 6, 7, 8)] * 2
+    assert runner.native_rows == expected_rows
+    assert runner.serial_rows == expected_rows
+    assert runner.reset_calls == 8
+    assert [row["prompt_id"] for row in native] == ["a", "b", "a", "b"]
+    assert [row["prompt_id"] for row in serial] == ["a", "b", "a", "b"]
+    assert all(row["tokens_per_second"] == 8.0 for row in native + serial)
 
 
 def test_maple_prefill_harness_captures_physical_cuda_gpu0(monkeypatch) -> None:

@@ -366,6 +366,35 @@ def _selected_shape_prompts(prompts: list[dict[str, Any]]) -> list[dict[str, Any
     return selected
 
 
+def _time_prefill_samples(
+    runner,
+    shaped_rows: list[tuple[dict[str, Any], tuple[int, ...]]],
+    repetitions: int,
+    *,
+    native: bool,
+) -> list[dict[str, Any]]:
+    prefill = runner.prefill_native if native else runner.prefill
+    samples: list[dict[str, Any]] = []
+    for repetition in range(repetitions):
+        for prompt, tokens in shaped_rows:
+            runner.reset()
+            started = time.perf_counter()
+            result = prefill(tokens)
+            elapsed = time.perf_counter() - started
+            samples.append(
+                {
+                    "repetition": repetition,
+                    "prompt_id": prompt["id"],
+                    "category": prompt["category"],
+                    "heldout": prompt["heldout"],
+                    "seconds": elapsed,
+                    "tokens_per_second": len(tokens) / elapsed,
+                    "next_token": result.token_id,
+                }
+            )
+    return samples
+
+
 def _performance_rows(
     checkpoint,
     tokenizer: MapleTokenizer,
@@ -391,24 +420,12 @@ def _performance_rows(
             for _ in range(warmups):
                 runner.reset()
                 runner.prefill_native(shaped[length][0][1])
-            samples: list[dict[str, Any]] = []
-            for repetition in range(repetitions):
-                for prompt, tokens in shaped[length]:
-                    runner.reset()
-                    started = time.perf_counter()
-                    result = runner.prefill_native(tokens)
-                    elapsed = time.perf_counter() - started
-                    samples.append(
-                        {
-                            "repetition": repetition,
-                            "prompt_id": prompt["id"],
-                            "category": prompt["category"],
-                            "heldout": prompt["heldout"],
-                            "seconds": elapsed,
-                            "tokens_per_second": length / elapsed,
-                            "next_token": result.token_id,
-                        }
-                    )
+            samples = _time_prefill_samples(
+                runner,
+                shaped[length],
+                repetitions,
+                native=True,
+            )
             total_tokens = length * len(samples)
             total_seconds = sum(sample["seconds"] for sample in samples)
             native_rows.append(
@@ -436,25 +453,32 @@ def _performance_rows(
     try:
         for row in native_rows:
             length = row["prompt_tokens"]
-            tokens = shaped[length][0][1]
             for _ in range(warmups):
                 serial.reset()
-                serial.prefill(tokens)
-            timings = []
-            for _ in range(repetitions):
-                serial.reset()
-                started = time.perf_counter()
-                serial.prefill(tokens)
-                timings.append(time.perf_counter() - started)
-            serial_tps = [length / elapsed for elapsed in timings]
+                serial.prefill(shaped[length][0][1])
+            samples = _time_prefill_samples(
+                serial,
+                shaped[length],
+                repetitions,
+                native=False,
+            )
+            total_tokens = length * len(samples)
+            total_seconds = sum(sample["seconds"] for sample in samples)
+            aggregate = total_tokens / total_seconds
             row["serial_reference"] = {
-                "prompt_id": shaped[length][0][0]["id"],
-                "samples": repetitions,
-                "median_tokens_per_second": statistics.median(serial_tps),
-                "sample_tokens_per_second": serial_tps,
-                "native_over_serial": (
-                    row["aggregate_tokens_per_second"] / statistics.median(serial_tps)
+                "samples": len(samples),
+                "aggregate_tokens_per_second": aggregate,
+                "median_sample_tokens_per_second": statistics.median(
+                    sample["tokens_per_second"] for sample in samples
                 ),
+                "min_sample_tokens_per_second": min(
+                    sample["tokens_per_second"] for sample in samples
+                ),
+                "max_sample_tokens_per_second": max(
+                    sample["tokens_per_second"] for sample in samples
+                ),
+                "sample_rows": samples,
+                "native_over_serial": row["aggregate_tokens_per_second"] / aggregate,
             }
     finally:
         serial.close()
@@ -634,7 +658,7 @@ def main() -> int:
     print(json.dumps({
         "status": status,
         "quality": {key: quality[key] for key in ("prompt_count", "position_count", "max_kl", "mean_kl", "top1_agreement", "token_matches", "state_matches", "passed")},
-        "rows": [{key: row[key] for key in ("prompt_tokens", "aggregate_tokens_per_second", "median_sample_tokens_per_second", "min_sample_tokens_per_second", "max_sample_tokens_per_second")} | {"serial_tokens_per_second": row["serial_reference"]["median_tokens_per_second"], "native_over_serial": row["serial_reference"]["native_over_serial"]} for row in rows],
+        "rows": [{key: row[key] for key in ("prompt_tokens", "aggregate_tokens_per_second", "median_sample_tokens_per_second", "min_sample_tokens_per_second", "max_sample_tokens_per_second")} | {"serial_tokens_per_second": row["serial_reference"]["aggregate_tokens_per_second"], "native_over_serial": row["serial_reference"]["native_over_serial"]} for row in rows],
         "resident_tracked_bytes": resident["current_allocated_bytes"],
         "lifecycle_passed": lifecycle_passed,
         "protocol_qualified": protocol_qualified,
