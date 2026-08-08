@@ -8,7 +8,11 @@ import numpy as np
 
 from hipengine.core.cuda import CudaRuntime, get_cuda_runtime
 from hipengine.core.device import Device
-from hipengine.core.memory import copy_device_to_host, host_array_ptr
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    host_array_ptr,
+)
 from hipengine.kernels.backends import (
     cuda_target_arch_for_backend,
     load_backend_kernel_package,
@@ -18,17 +22,27 @@ from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
     build_maple_attention,
     maple_attention_decode_bf16,
     maple_attention_fused_qknorm_decode_bf16,
+    maple_attention_prefill_ring_bf16,
+    maple_attention_prefill_ring_gqa4_bf16,
     maple_kv_span_update,
+    maple_kv_span_update_batched,
+    maple_qknorm_rope_kv_write_batched_bf16,
     maple_qknorm_rope_kv_write_bf16,
 )
 from hipengine.kernels.cuda_sm120a.linear.maple_lm_head import (
     argmax_f32,
     build_lm_head,
 )
+from hipengine.kernels.cuda_sm120a.moe.group_scatter import (
+    build_qwen35_moe_group_scatter,
+    qwen35_moe_group_compact_active_i32_parallel,
+)
 from hipengine.kernels.cuda_sm120a.moe.maple_moe import (
     build_maple_moe,
     maple_clamped_swiglu_bf16,
+    maple_router_topk_parallel_batched_bf16,
     maple_router_topk_single_dispatch_bf16,
+    maple_weighted_residual_batched_bf16,
     maple_weighted_residual_bf16,
 )
 from hipengine.kernels.cuda_sm120a.norm.maple_rmsnorm import (
@@ -38,12 +52,17 @@ from hipengine.kernels.cuda_sm120a.norm.maple_rmsnorm import (
 )
 from hipengine.kernels.cuda_sm120a.quant.maple_ternary import (
     build_maple_ternary,
+    maple_affine4_embed_batched_bf16,
     maple_affine4_embed_bf16,
     maple_affine4_gemv_wave32_exact_f32,
     maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_bf16,
+    maple_selected_ternary_dual_grouped_bf16,
     maple_selected_ternary_gemv_bf16,
+    maple_selected_ternary_grouped_bf16,
+    maple_ternary_gemm_bf16,
     maple_ternary_gemv_bf16,
+    maple_ternary_qkv_gemm_bf16,
     maple_ternary_qkv_gemv_bf16,
 )
 from hipengine.loading.maple import (
@@ -60,15 +79,16 @@ from hipengine.runtime.maple import (
     _BufferOwner,
     _maple_fuse_moe,
     _maple_fuse_qkattn,
+    _maple_prefill_swa_segments,
 )
 
 
 class MapleCudaRunner(MapleRunner):
     """Correctness-first CUDA c1 runner using the peer sm_120a kernels.
 
-    Decode is fully device resident. Initial prompt admission deliberately uses
-    the token-serial c1 path until the CUDA grouped-prefill metadata family is
-    independently ported and gated.
+    Decode and grouped native c1 prefill are fully device resident. The serial
+    c1 chain remains the independent state/logit oracle; SWA-wrap attention is
+    segmented without falling back to HIP builders.
     """
 
     @classmethod
@@ -100,7 +120,7 @@ class MapleCudaRunner(MapleRunner):
             moe=build_maple_moe(load=True),
             norm=build_qwen35_rmsnorm(load=True),
             lm_head=build_lm_head(load=True),
-            group_scatter=None,
+            group_scatter=build_qwen35_moe_group_scatter(load=True),
         )
         weights: MapleDeviceWeights | None = None
         owner = _BufferOwner(runtime)
@@ -448,8 +468,9 @@ class MapleCudaRunner(MapleRunner):
         *,
         chunk_size: int = PREFILL_CHUNK,
     ) -> MapleStepResult:
-        """Correctness-first serial prompt admission through CUDA c1 kernels."""
+        """Run the complete grouped CUDA bulk-prefill chain over bounded rows."""
 
+        self._require_open()
         try:
             parsed_chunk = int(chunk_size)
         except (TypeError, ValueError) as exc:
@@ -460,7 +481,336 @@ class MapleCudaRunner(MapleRunner):
             or not 1 <= parsed_chunk <= PREFILL_CHUNK
         ):
             raise ValueError(f"Maple chunk_size must be in [1, {PREFILL_CHUNK}]")
-        return self.prefill(token_ids)
+        tokens = tuple(int(token) for token in token_ids)
+        if not tokens:
+            raise ValueError("Maple prompt token IDs must not be empty")
+        spec = self.checkpoint.spec
+        invalid_token = next(
+            (token for token in tokens if token < 0 or token >= spec.vocab_size),
+            None,
+        )
+        if invalid_token is not None:
+            raise ValueError(f"Maple token_id must be in [0, {spec.vocab_size})")
+        end_position = self.position + len(tokens)
+        if end_position > self.max_context:
+            raise ValueError("Maple prompt exceeds runner context capacity")
+
+        b = self.buffers
+        pf = b.pf
+        libs = self.libraries
+        if libs.group_scatter is None:
+            raise RuntimeError("Maple CUDA grouped-MoE metadata library is unavailable")
+        h = spec.hidden_size
+        q_size = spec.q_size
+        kv_size = spec.kv_size
+        top_k = spec.num_experts_per_tok
+        intermediate = spec.moe_intermediate_size
+        gqa4_attention = (
+            spec.num_attention_heads == spec.num_key_value_heads * 4
+            and spec.head_dim == 128
+        )
+        n = len(tokens)
+        started = time.perf_counter()
+        start_position = self.position
+        last_index = np.empty(1, dtype=np.int64)
+        last_value = np.empty(1, dtype=np.float32)
+
+        for c0 in range(0, n, parsed_chunk):
+            ids = tokens[c0 : c0 + parsed_chunk]
+            rows = len(ids)
+            pos = start_position + c0
+            swa_segments = _maple_prefill_swa_segments(
+                start=pos,
+                rows=rows,
+                capacity=b.sliding_span_owner.capacity,
+            )
+            replay_swa_per_layer = len(swa_segments) > 1
+            maple_kv_span_update_batched(
+                b.global_span_owner.spans,
+                start=pos,
+                rows=rows,
+                library=libs.attention,
+                runtime=self.runtime,
+            )
+            if not replay_swa_per_layer:
+                maple_kv_span_update_batched(
+                    b.sliding_span_owner.spans,
+                    start=pos,
+                    rows=rows,
+                    library=libs.attention,
+                    runtime=self.runtime,
+                )
+            ids_array = np.asarray(ids, dtype=np.int64)
+            copy_host_to_device(
+                pf.token_ids,
+                host_array_ptr(ids_array),
+                nbytes=ids_array.nbytes,
+                runtime=self.runtime,
+            )
+            maple_affine4_embed_batched_bf16(
+                self.weights.embeddings.weight.ptr,
+                self.weights.embeddings.scales.ptr,
+                self.weights.embeddings.biases.ptr,
+                pf.token_ids.ptr,
+                pf.hidden.ptr,
+                rows,
+                h,
+                library=libs.ternary,
+                runtime=self.runtime,
+            )
+
+            for layer_id, (layer_weights, kv_layer, layer_kind) in enumerate(
+                zip(self.weights.layers, b.layers, spec.layer_types)
+            ):
+                paro_rmsnorm_out_bf16(
+                    pf.hidden.ptr,
+                    layer_weights.input_layernorm.ptr,
+                    pf.normalized.ptr,
+                    rows,
+                    h,
+                    spec.rms_norm_eps,
+                    library=libs.norm,
+                    runtime=self.runtime,
+                )
+                maple_ternary_qkv_gemm_bf16(
+                    pf.normalized.ptr,
+                    layer_weights.q_proj.weight.ptr,
+                    layer_weights.q_proj.row_alpha.ptr,
+                    layer_weights.k_proj.weight.ptr,
+                    layer_weights.k_proj.row_alpha.ptr,
+                    layer_weights.v_proj.weight.ptr,
+                    layer_weights.v_proj.row_alpha.ptr,
+                    pf.qkv.ptr,
+                    rows,
+                    h,
+                    q_size,
+                    kv_size,
+                    library=libs.ternary,
+                    runtime=self.runtime,
+                )
+                rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
+                attention_prefill = (
+                    maple_attention_prefill_ring_gqa4_bf16
+                    if gqa4_attention
+                    else maple_attention_prefill_ring_bf16
+                )
+                layer_segments = (
+                    swa_segments
+                    if layer_kind == "sliding_attention" and replay_swa_per_layer
+                    else ((0, rows),)
+                )
+                if layer_kind == "sliding_attention" and replay_swa_per_layer:
+                    prefix_rows = min(pos, b.sliding_span_owner.capacity)
+                    if prefix_rows:
+                        maple_kv_span_update_batched(
+                            b.sliding_span_owner.spans,
+                            start=pos - prefix_rows,
+                            rows=prefix_rows,
+                            library=libs.attention,
+                            runtime=self.runtime,
+                        )
+                qkv_row_bytes = (q_size + 2 * kv_size) * 2
+                attention_row_bytes = q_size * 2
+                for row_offset, segment_rows in layer_segments:
+                    segment_start = pos + row_offset
+                    if layer_kind == "sliding_attention" and replay_swa_per_layer:
+                        maple_kv_span_update_batched(
+                            b.sliding_span_owner.spans,
+                            start=segment_start,
+                            rows=segment_rows,
+                            library=libs.attention,
+                            runtime=self.runtime,
+                        )
+                    qkv_ptr = pf.qkv.ptr + row_offset * qkv_row_bytes
+                    attention_ptr = (
+                        pf.attention.ptr + row_offset * attention_row_bytes
+                    )
+                    maple_qknorm_rope_kv_write_batched_bf16(
+                        qkv_ptr,
+                        layer_weights.q_norm.ptr,
+                        layer_weights.k_norm.ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        kv_layer.spans,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        rope_dim=rope_dim,
+                        eps=spec.rms_norm_eps,
+                        rope_theta=spec.rope_theta,
+                        start=segment_start,
+                        rows=segment_rows,
+                        library=libs.attention,
+                        runtime=self.runtime,
+                    )
+                    attention_prefill(
+                        qkv_ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        attention_ptr,
+                        kv_layer.spans,
+                        rows=segment_rows,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        scale=spec.head_dim**-0.5,
+                        start=segment_start,
+                        library=libs.attention,
+                        runtime=self.runtime,
+                    )
+                maple_ternary_gemm_bf16(
+                    pf.attention.ptr,
+                    layer_weights.o_proj.weight.ptr,
+                    layer_weights.o_proj.row_alpha.ptr,
+                    pf.projection.ptr,
+                    rows,
+                    q_size,
+                    h,
+                    library=libs.ternary,
+                    runtime=self.runtime,
+                )
+                paro_add_rmsnorm_out_bf16(
+                    pf.hidden.ptr,
+                    pf.projection.ptr,
+                    layer_weights.post_attention_layernorm.ptr,
+                    pf.normalized.ptr,
+                    pf.residual.ptr,
+                    rows,
+                    h,
+                    spec.rms_norm_eps,
+                    library=libs.norm,
+                    runtime=self.runtime,
+                )
+                maple_router_topk_parallel_batched_bf16(
+                    pf.normalized.ptr,
+                    layer_weights.router.ptr,
+                    pf.selected_ids.ptr,
+                    pf.routing_weights.ptr,
+                    pf.router_logits.ptr,
+                    rows,
+                    h,
+                    spec.num_experts,
+                    top_k,
+                    library=libs.moe,
+                    runtime=self.runtime,
+                )
+                qwen35_moe_group_compact_active_i32_parallel(
+                    pf.selected_ids.ptr,
+                    pf.routing_weights.ptr,
+                    pf.expert_start.ptr,
+                    pf.active_experts.ptr,
+                    pf.active_count.ptr,
+                    pf.sorted_lanes.ptr,
+                    pf.sorted_experts.ptr,
+                    pf.sorted_weights.ptr,
+                    rows * top_k,
+                    spec.num_experts,
+                    library=libs.group_scatter,
+                    runtime=self.runtime,
+                )
+                maple_selected_ternary_dual_grouped_bf16(
+                    pf.normalized.ptr,
+                    layer_weights.expert_gate_proj.weight.ptr,
+                    layer_weights.expert_gate_proj.row_alpha.ptr,
+                    layer_weights.expert_up_proj.weight.ptr,
+                    layer_weights.expert_up_proj.row_alpha.ptr,
+                    pf.expert_start.ptr,
+                    pf.sorted_lanes.ptr,
+                    pf.expert_gate.ptr,
+                    pf.expert_up.ptr,
+                    rows,
+                    spec.num_experts,
+                    top_k,
+                    h,
+                    intermediate,
+                    library=libs.ternary,
+                    runtime=self.runtime,
+                )
+                maple_clamped_swiglu_bf16(
+                    pf.expert_gate.ptr,
+                    pf.expert_up.ptr,
+                    pf.expert_intermediate.ptr,
+                    rows * top_k,
+                    intermediate,
+                    library=libs.moe,
+                    runtime=self.runtime,
+                )
+                maple_selected_ternary_grouped_bf16(
+                    pf.expert_intermediate.ptr,
+                    layer_weights.expert_down_proj.weight.ptr,
+                    layer_weights.expert_down_proj.row_alpha.ptr,
+                    pf.expert_start.ptr,
+                    pf.sorted_lanes.ptr,
+                    pf.expert_down.ptr,
+                    rows,
+                    spec.num_experts,
+                    top_k,
+                    intermediate,
+                    h,
+                    library=libs.ternary,
+                    runtime=self.runtime,
+                )
+                maple_weighted_residual_batched_bf16(
+                    pf.residual.ptr,
+                    pf.expert_down.ptr,
+                    pf.routing_weights.ptr,
+                    pf.hidden.ptr,
+                    rows,
+                    top_k,
+                    h,
+                    library=libs.moe,
+                    runtime=self.runtime,
+                )
+
+        final_hidden_ptr = pf.hidden.ptr + (rows - 1) * h * 2
+        paro_rmsnorm_out_bf16(
+            final_hidden_ptr,
+            self.weights.final_norm.ptr,
+            b.normalized.ptr,
+            1,
+            h,
+            spec.rms_norm_eps,
+            library=libs.norm,
+            runtime=self.runtime,
+        )
+        maple_affine4_gemv_wave32_exact_f32(
+            b.normalized.ptr,
+            self.weights.lm_head.weight.ptr,
+            self.weights.lm_head.scales.ptr,
+            self.weights.lm_head.biases.ptr,
+            b.logits.ptr,
+            h,
+            spec.vocab_size,
+            library=libs.ternary,
+            runtime=self.runtime,
+        )
+        argmax_f32(
+            b.logits.ptr,
+            b.argmax_block_values.ptr,
+            b.argmax_block_indices.ptr,
+            b.argmax_index.ptr,
+            b.argmax_value.ptr,
+            spec.vocab_size,
+            library=libs.lm_head,
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(last_index),
+            b.argmax_index,
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(last_value),
+            b.argmax_value,
+            runtime=self.runtime,
+        )
+        self.position = start_position + n
+        return MapleStepResult(
+            position=self.position - 1,
+            token_id=int(last_index[0]),
+            top_logit=float(last_value[0]),
+            elapsed_ms=(time.perf_counter() - started) * 1_000.0,
+        )
 
     def _publish_span_position(self, position: int) -> None:
         for span_owner in (

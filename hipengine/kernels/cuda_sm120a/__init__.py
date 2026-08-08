@@ -18,7 +18,10 @@ from hipengine.kernels.cuda_sm120a.linear import (
     register_moonshine_lm_head_kernels,
     register_moonshine_projection_kernels,
 )
-from hipengine.kernels.cuda_sm120a.moe import register_maple_moe_kernels
+from hipengine.kernels.cuda_sm120a.moe import (
+    register_maple_moe_kernels,
+    register_qwen35_moe_group_scatter_kernels,
+)
 from hipengine.kernels.cuda_sm120a.norm import (
     register_moonshine_layernorm_kernels,
     register_qwen35_rmsnorm_kernels,
@@ -102,6 +105,7 @@ def register_backend_kernels(*, replace: bool = True) -> None:
         register_maple_ternary_kernels(replace=replace)
         register_maple_attention_kernels(replace=replace)
         register_maple_moe_kernels(replace=replace)
+        register_qwen35_moe_group_scatter_kernels(replace=replace)
         register_qwen35_rmsnorm_kernels(replace=replace)
         register_lm_head_kernels(replace=replace)
 

@@ -216561,3 +216561,53 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   performance-plan deferral, kernel catalog, benchmark rollup, and changelog.
   CUDA c1 is correctness-qualified; native prefill, resident batching/serving,
   graph qualification, and performance promotion remain explicitly unclaimed.
+
+## 2026-08-08 — Start Maple CUDA sm_120a native-prefill gate
+
+- Continue from `91f422786` on `maple-cuda-sm120a`, still based directly on
+  fetched `origin/main@d7beb0f80` (ahead 8, behind 0); keep the unrelated
+  untracked `hipengine/.gitignore` untouched. GPU work remains pinned with
+  `CUDA_VISIBLE_DEVICES=0` to physical RTX PRO 6000 Blackwell GPU0.
+- Re-read the Maple prefill catalog/runtime and audit the CUDA source. The
+  architecture-qualified CUDA Maple files already contain the complete batched
+  embed, dense ternary QKV/O, QK/RoPE/KV, causal ring attention, router,
+  selected-expert, and weighted-residual primitives. The deliberate production
+  blocker is the missing stable int32 expert-compaction metadata family; do not
+  retain the slower row/route-gather oracle as CUDA native prefill.
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` is blocked before
+  reporting because this machine lacks manifest checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas`; the narrower referenced
+  `nano-vllm-amd` checkout is also absent. Use the in-tree qualified HIP source
+  `hipengine/kernels/hip_gfx1100/moe/group_scatter.{hip,py}` (latest Maple
+  expert-major change `12106b8a4`, original header lineage
+  `nano-vllm-amd/csrc/amd/qwen35_expert.hip@5d8f496`) as the read-only port
+  source and preserve the exact stable-order contract.
+- RED command:
+  `CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 uv run --extra dev pytest -q tests/test_cuda_sm120a_maple.py -x`.
+  It fails at the intended first missing boundary with `ModuleNotFoundError` for
+  `hipengine.kernels.cuda_sm120a.moe.group_scatter`. The new gate also requires
+  the generic four-axis key, exact CPU stable expert/lane/weight order, and the
+  complete grouped bulk chain in `MapleCudaRunner.prefill_native`.
+- Port only the required stable int32 parallel count/prefix/scatter family into
+  `cuda_sm120a/moe/group_scatter.{cu,py}`, translating HIP wave ballots to CUDA
+  warp32 `__ballot_sync` while preserving ascending lane order. Register
+  `(cuda_sm120a, moe_group_compact, generic,
+  active_experts_i32_parallel)` and compose it with the already-ported grouped
+  Maple kernels; no HIP builder or row/route-gather production fallback is used.
+- GREEN command (physical GPU0):
+  `CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1 uv run --extra dev pytest -q tests/test_cuda_sm120a_maple.py -x`
+  passes **8/8**. The public-checkpoint integration compares CUDA serial vs
+  native on a 12-token prompt and preserves the final BF16 hidden row, full FP32
+  logits, every live K/V byte in all 24 layers, both complete `KVLiveSpans`
+  owners, exact token/top-logit, one continuation, and tracked teardown.
+- Prebuild the compactor with cached NVCC 13.3 metadata, then run its focused
+  gate under Nsight Systems 2026.1.3. The trace names one call each to
+  `qwen35_moe_group_count_active_parallel_kernel<int>` (**1,312 ns**),
+  `qwen35_moe_group_prefix_active_parallel_kernel` (**1,312 ns**), and
+  `qwen35_moe_group_scatter_active_parallel_kernel<int>` (**1,472 ns**).
+  Command: `CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1
+  HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt nsys profile
+  --trace=cuda --sample=none --cpuctxsw=none --force-overwrite=true
+  --output=/tmp/maple-sm120a-group-scatter .venv/bin/python -m pytest -q
+  tests/test_cuda_sm120a_maple.py::test_cuda_sm120a_maple_i32_stable_compaction_matches_cpu_order`.
+  Keep `.nsys-rep`/SQLite under `/tmp` and out of Git.
