@@ -216618,3 +216618,19 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   benchmark orchestration only, not model/engine dispatch. Unit command
   `CUDA_VISIBLE_DEVICES=0 uv run --extra dev pytest -q
   tests/test_maple_prefill_bench_script.py` passes **2/2**.
+- Commit the backend-aware harness as `c55ca3d50`, then run the complete GPU0
+  18-prompt/90-position correctness and 128/320/512 timing protocol. Correctness
+  is exact (**KL 0, top-1/tokens 90/90, complete state 18/18**) and native
+  aggregate throughput is **1953.803/1857.945/1917.013 tok/s** with clean
+  lifecycle. Do **not** retain the reported **5.413x/9.072x/13.410x** ratios:
+  audit finds native timed all eight fixed-shape natural+heldout prompts while
+  the inherited serial denominator timed only the first prompt. The native rows
+  remain useful diagnostics, but `/tmp/maple-sm120a-native-prefill-qualified.json`
+  is superseded before publication.
+- Refactor both arms through `_time_prefill_samples(...)` so native and serial
+  time the identical eight-prompt x three-repetition grid. The focused harness
+  unit now checks prompt IDs, token rows, sample count, and wall arithmetic for
+  both paths; `CUDA_VISIBLE_DEVICES=0 uv run --extra dev pytest -q
+  tests/test_maple_prefill_bench_script.py` passes **3/3**. Rerun the full
+  protocol from this corrected committed source before any ratio/performance
+  claim.
