@@ -348,7 +348,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_wmma_prefill=True,
             use_gemv_decode=True,
         ) as session:
-            _prefill(session, list(cases[0].token_ids))
+            # Establish the memory baseline only after the declared maximum shape
+            # has initialized its lazy prefill workspaces. Otherwise a later 4K
+            # prefill is misclassified as a graph/context teardown leak.
+            _prefill(session, list(cases[-1].token_ids))
             free_before, total_bytes = session.runtime.mem_get_info()
             context = create_graph_submission_context(
                 backend=str(session.runner.backend),
