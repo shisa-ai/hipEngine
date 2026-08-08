@@ -21,8 +21,9 @@ from pathlib import Path
 from typing import Any, Callable, Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+_repo_root_text = str(REPO_ROOT)
+sys.path[:] = [entry for entry in sys.path if entry != _repo_root_text]
+sys.path.insert(0, _repo_root_text)
 
 import numpy as np  # noqa: E402
 
@@ -126,6 +127,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path)
+    parser.add_argument(
+        "--journal-jsonl",
+        type=Path,
+        help="fsync a durable event line before every submit and after each lifecycle stage",
+    )
     parser.add_argument("--print-plan", action="store_true")
     return parser
 
@@ -153,6 +159,78 @@ def plan_from_args(args: argparse.Namespace) -> ReproConfig:
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _source_context() -> dict[str, Any]:
+    """Return fail-closed local source identity for issue evidence."""
+
+    import hipengine
+    from hipengine.benchmark.provenance import collect_repo_state
+
+    package_file = Path(hipengine.__file__ or "").resolve()
+    import_root = package_file.parents[1]
+    if import_root != REPO_ROOT:
+        raise RuntimeError(
+            f"lifecycle reproducer imported hipengine from {import_root}, expected {REPO_ROOT}"
+        )
+    return {**collect_repo_state(REPO_ROOT), "import_root": str(import_root)}
+
+
+class _JsonlEventWriter:
+    """Durably append local full-address lifecycle events across ROCr aborts."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path.expanduser().resolve()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = self.path.open("x", encoding="utf-8")
+
+    def __call__(self, event: dict[str, Any]) -> None:
+        encoded = json.dumps(event, sort_keys=True, separators=(",", ":"))
+        self._handle.write(encoded + "\n")
+        self._handle.flush()
+        os.fsync(self._handle.fileno())
+
+    def close(self) -> None:
+        if not self._handle.closed:
+            self._handle.close()
+
+    def __enter__(self) -> "_JsonlEventWriter":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
+
+
+def _emit_event(
+    sink: Callable[[dict[str, Any]], None] | None,
+    event: str,
+    **payload: Any,
+) -> None:
+    if sink is None:
+        return
+    sink(
+        {
+            "schema_version": 1,
+            "kind": "hipengine_pm4_lifecycle_event",
+            "event": event,
+            "wall_time_ns": time.time_ns(),
+            "monotonic_ns": time.monotonic_ns(),
+            **payload,
+        }
+    )
+
+
+def _try_emit_event(
+    sink: Callable[[dict[str, Any]], None] | None,
+    event: str,
+    **payload: Any,
+) -> None:
+    try:
+        _emit_event(sink, event, **payload)
+    except Exception:
+        # A prior strict pre-submit write already prevents unjournaled submit.
+        # Post-failure evidence emission must not erase the original lifecycle error.
+        pass
 
 
 def _compiler_version(path: Path | None) -> str | None:
@@ -285,10 +363,24 @@ def run_reproducer(
     *,
     compiler_version: str | None = None,
     require_cached_build: bool = False,
+    event_sink: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Run the declared matrix arm once; never retry a failed generation."""
 
     config = config.validated()
+    source = _source_context()
+    started_ns = time.monotonic_ns()
+    _emit_event(
+        event_sink,
+        "run_started",
+        process_id=os.getpid(),
+        config=asdict(config),
+        source=source,
+        compiler_version_sha256=(
+            None if compiler_version is None else _sha256(compiler_version.encode("utf-8"))
+        ),
+        require_cached_build=require_cached_build,
+    )
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (
         copy_device_to_host,
@@ -322,7 +414,6 @@ def run_reproducer(
     failure: Exception | None = None
     unsafe_native_failure = False
     result: dict[str, Any] | None = None
-    started_ns = time.monotonic_ns()
 
     def make_context():
         return NativePm4Context.create(
@@ -425,6 +516,28 @@ def run_reproducer(
                     hsa_buffers[1].write(b.tobytes())
                     hsa_buffers[2].write(bytes(nbytes))
 
+                prepared = {
+                    "submit": config.submit,
+                    "buffer_addresses": list(pointers),
+                    "graph_handle": graph,
+                    "graph_fingerprint": manifest.fingerprint,
+                    "node_count": len(manifest.nodes),
+                    "hsaco_sha256": sorted({node.hsaco_sha256 for node in manifest.nodes}),
+                    "context_before": before,
+                    "executable_before": exec_before,
+                    "expected_sha256": _sha256(expected.tobytes()) if config.submit else None,
+                }
+                cycle.update(prepared)
+                # This fsynced event is the durable last-known generation if ROCr aborts
+                # the process or the GPU resets during the following native submission.
+                _emit_event(
+                    event_sink,
+                    "cycle_prepared",
+                    process_id=os.getpid(),
+                    cycle=cycle_index,
+                    **prepared,
+                )
+
                 submit_start = time.monotonic_ns()
                 if config.submit:
                     if config.transport == "hipgraph":
@@ -459,18 +572,17 @@ def run_reproducer(
                         "submit": config.submit,
                         "correct": correct,
                         "output_sha256": output_hash,
-                        "expected_sha256": _sha256(expected.tobytes()) if config.submit else None,
-                        "buffer_addresses": list(pointers),
-                        "graph_handle": graph,
-                        "graph_fingerprint": manifest.fingerprint,
-                        "node_count": len(manifest.nodes),
-                        "hsaco_sha256": sorted({node.hsaco_sha256 for node in manifest.nodes}),
-                        "context_before": before,
                         "context_after": after,
-                        "executable_before": exec_before,
                         "executable_after": exec_after,
                         "submit_ns": submit_end - submit_start,
                     }
+                )
+                _emit_event(
+                    event_sink,
+                    "cycle_completed",
+                    process_id=os.getpid(),
+                    cycle=cycle_index,
+                    cycle_record=cycle,
                 )
             except Exception as exc:
                 failure = exc
@@ -490,6 +602,13 @@ def run_reproducer(
                         except Exception as provenance_error:
                             cycle[label] = {"error": str(provenance_error)}
                 cycles.append(cycle)
+                _try_emit_event(
+                    event_sink,
+                    "cycle_failed",
+                    process_id=os.getpid(),
+                    cycle=cycle_index,
+                    cycle_record=cycle,
+                )
             finally:
                 cycle["cycle_ns"] = time.monotonic_ns() - cycle_start
                 if not cycles or cycles[-1] is not cycle:
@@ -544,6 +663,13 @@ def run_reproducer(
                         if config.transport != "hipgraph":
                             unsafe_native_failure = True
                             cycle["cleanup"] = "quarantined_until_process_exit"
+                _try_emit_event(
+                    event_sink,
+                    "cycle_finalized",
+                    process_id=os.getpid(),
+                    cycle=cycle_index,
+                    cycle_record=cycle,
+                )
             if failure is not None:
                 break
 
@@ -552,6 +678,18 @@ def run_reproducer(
             "kind": "hipengine_pm4_lifecycle_reproducer",
             "status": "fail" if failure is not None else "pass",
             "config": asdict(config),
+            "source": source,
+            "software": {
+                "python_executable": sys.executable,
+                "python_version": platform.python_version(),
+                "numpy_version": np.__version__,
+                "compiler_version_sha256": (
+                    None
+                    if compiler_version is None
+                    else _sha256(compiler_version.encode("utf-8"))
+                ),
+                "require_cached_build": require_cached_build,
+            },
             "hardware": {
                 "process_id": os.getpid(),
                 "hip_ordinal": runtime.current_device(),
@@ -617,6 +755,14 @@ def run_reproducer(
                 result["summary"]["final_cleanup_first_failure"] = cleanup_failures[0]
             else:
                 result["summary"]["final_cleanup_passed"] = True
+            _try_emit_event(
+                event_sink,
+                "run_finalized",
+                process_id=os.getpid(),
+                status=result["status"],
+                summary=result["summary"],
+                final_cleanup=final_cleanup,
+            )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -630,12 +776,23 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(asdict(config), sort_keys=True, indent=2))
         return 0
 
+    if (
+        args.json is not None
+        and args.journal_jsonl is not None
+        and args.json.expanduser().resolve() == args.journal_jsonl.expanduser().resolve()
+    ):
+        parser.error("--json and --journal-jsonl must be different files")
+
     result: dict[str, Any]
+    event_writer = (
+        None if args.journal_jsonl is None else _JsonlEventWriter(args.journal_jsonl)
+    )
     try:
         result = run_reproducer(
             config,
             compiler_version=_compiler_version(args.compiler_version_file),
             require_cached_build=args.require_cached_build,
+            event_sink=event_writer,
         )
     except Exception as exc:
         result = {
@@ -646,6 +803,16 @@ def main(argv: list[str] | None = None) -> int:
             "error_type": type(exc).__name__,
             "error": str(exc),
         }
+        _try_emit_event(
+            event_writer,
+            "cli_failed",
+            process_id=os.getpid(),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+    finally:
+        if event_writer is not None:
+            event_writer.close()
     encoded = json.dumps(result, sort_keys=True, indent=2)
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)

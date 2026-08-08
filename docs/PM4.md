@@ -49,7 +49,7 @@ graph framework, compiler, profiler, or HIP interposer.
 | P1 exact graph inspection | Complete | Bounded ELF64/bundle/MessagePack parsing, exact kernarg packing, deterministic DAG validation, and live gfx1100 `smoke_add` reconciliation |
 | P2 direct public-HSA AQL | Complete | Exact PCI-BDF agent match, public executable load, persistent queue, checked packet publication/wait/teardown, and bit-exact smoke |
 | P3 retained gfx1100 PM4 | Complete | Strict descriptor admission, conservative PM4 tape, vendor-AQL IB, two bit-exact safe replays, and no fallback |
-| P4 lifecycle reproducer | Complete (safe controls) | Reuse, recreate/no-submit, HSA/HIP allocation, timestamps, queue-first quarantine, and complete per-cycle JSON; reset-prone submit/recreate stress implemented but intentionally unrun |
+| P4 lifecycle reproducer | Complete (safe controls) | Reuse, recreate/no-submit, HSA/HIP allocation, timestamps, queue-first quarantine, durable pre-submit JSONL, and guarded journal/devcoredump capture; reset-prone submit/recreate stress implemented but intentionally unrun |
 | P5 production graph integration | Complete | Registry-selected session-owned transport, persistent context across graph generations, p512/d3 exact eager/HIP/AQL/PM4 token-state-KV-logit gate, cancellation/close, zero fallback, and exact memory recovery |
 | P6 performance/promotion | Complete for gfx1100 GGUF graph scopes | Canonical PM4 wins clean p512/d128 replay by 7.104%/6.626%/4.126%/2.466% at physical c1/c2/c4/c8; packed capture-inclusive and complete-request wall are non-regressive, with exact natural/lifecycle gates |
 
@@ -262,6 +262,7 @@ hipengine/core/pm4/
   build.py             deterministic native DSO build/cache plan
 
 scripts/pm4_lifecycle_repro.py
+scripts/pm4_lifecycle_issue_capture.py
 
 tests/
   test_pm4_elf.py
@@ -725,6 +726,145 @@ This reproducer targets #6529's gfx1100 address-zero SQC-data VM fault and MES
 reset chain. It must not be presented as a reproducer for #6437's distinct
 repeated-128K gfx1151 queue no-progress stall.
 
+### Issue-grade #6529 capture runbook
+
+The in-tree program is currently a **lifecycle minimizer**, not a confirmed or
+deterministic reproducer. Persistent reuse, timestamps, mixed HIP/HSA
+allocation, and recreate-without-native-submit controls pass. No direct-AQL or
+PM4 submit/resource-recreate arm has been executed. A passing destructive arm
+would be a scoped non-reproduction on one stack/card, not evidence that ROCm
+fixed the fault.
+
+`scripts/pm4_lifecycle_issue_capture.py` is the required outer driver for any
+future recreate experiment. It defaults to plan-only and no native submit. For
+an executed arm it:
+
+- rejects repository-local raw output, stale devcoredump nodes, disabled
+  devcoredump capture, unreadable kernel journals, non-gfx1100 visibility,
+  missing cached DSOs, and (for a destructive arm) dirty source;
+- records the exact source state, selected HIP ordinal/name/PCI BDF and runtime
+  versions, ROCm/compiler/system metadata, amdgpu parameters/source version,
+  and MES firmware hashes;
+- starts a cursor-bounded kernel-journal follower and a 50-ms watcher for both
+  `/sys/class/devcoredump/devcd*/data` and the DRM-linked devcoredump layout
+  before starting the child;
+- writes full local queue/resource provenance to an fsynced JSONL line before
+  every native submit, so a ROCr `SIGABRT` still leaves the exact last prepared
+  generation; and
+- emits a hash-indexed manifest and classifies only the complete address-zero /
+  `0x00801431` / client-10 / SQC-data tuple as a #6529 reproduction.
+
+The collector records `coredumpctl` metadata but deliberately does not copy a
+userspace process core. Its raw GPU-devcoredump watcher defaults to
+non-interactive `sudo -n cat` because transient sysfs data is normally
+root-readable; preflight rejects the run unless `sudo -n true` succeeds. A host
+with an explicit read-permission rule can select `--devcoredump-reader direct`.
+Full addresses, journals, process metadata, and raw GPU devcoredumps are local
+sensitive evidence: never commit or publish the output directory.
+Compact/redact it separately for an issue update.
+
+#### 1. Prepare cached builds outside the capture window
+
+Use the same compiler-version bytes for prebuild and execution:
+
+```bash
+hipcc --version > /tmp/hipengine-hipcc-version.txt
+python3 - <<'PY'
+from pathlib import Path
+from hipengine.core.pm4.native_build import build_pm4_native
+from hipengine.kernels.backends import hip_target_arch_environment
+from hipengine.kernels.hip_gfx1100.smoke import build_smoke_add
+
+version = Path('/tmp/hipengine-hipcc-version.txt').read_text().strip()
+with hip_target_arch_environment('gfx1100'):
+    print(build_smoke_add(load=False, compiler_version=version).output_path)
+    print(build_pm4_native(
+        load=False,
+        compiler_version=version,
+        target_arch='gfx1100',
+    ).output_path)
+PY
+```
+
+#### 2. Inspect, then execute only the safe no-submit control
+
+Choose a persistent local path outside the repository. On a multi-GPU host,
+set the ROCr ordinal for the physical card while HIP sees the remapped ordinal
+zero. The first command prints the exact child command and does not touch the
+GPU; the second captures the known-good HIP smoke graph, while its native side
+performs only create/instantiate/queue-retire/drop with no AQL/PM4 submit:
+
+```bash
+OUT=/var/tmp/hipengine-6529-safe-$(date -u +%Y%m%dT%H%M%SZ)
+python3 scripts/pm4_lifecycle_issue_capture.py \
+  --output-dir "$OUT" \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --transport pm4 --cycles 8 \
+  --hip-visible-devices 0 --rocr-visible-devices 0
+
+python3 scripts/pm4_lifecycle_issue_capture.py \
+  --output-dir "$OUT" \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --transport pm4 --cycles 8 \
+  --hip-visible-devices 0 --rocr-visible-devices 0 \
+  --execute
+```
+
+The safe control must end as
+`completed_without_issue_6529_signature`, with `reproducer.json` passing,
+eight `cycle_prepared`/`cycle_finalized` pairs in
+`lifecycle-events.jsonl`, no devcoredump, and a clean final teardown. Use a new
+output directory for every process/arm.
+
+#### 3. Destructive commands — prepared, not authorized
+
+**Do not run this section without separate explicit operator approval, an idle
+isolated GPU, and agreement that the card may reset and lose all VRAM.** The
+outer collector deliberately requires both the minimizer's reset-risk
+acknowledgement and the exact approval token. Start with one direct-AQL process,
+then one PM4 process. Never auto-retry a failed/faulting arm, and do not proceed
+to 8/128 cycles, HSA-buffer recreation, timestamps, or quarantine until the
+preceding discriminator is reviewed.
+
+```bash
+# Direct AQL, one submit/resource-recreate boundary.
+OUT=/var/tmp/hipengine-6529-aql-c1-$(date -u +%Y%m%dT%H%M%SZ)
+python3 scripts/pm4_lifecycle_issue_capture.py \
+  --output-dir "$OUT" \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --transport aql --cycles 1 --submit-recreate \
+  --hip-visible-devices 0 --rocr-visible-devices 0 \
+  --ack-reset-risk \
+  --approval-token ROCM-6529-RESET-RISK-APPROVED \
+  --execute
+
+# Retained PM4, the same one-boundary shape and same retained HIP buffers.
+OUT=/var/tmp/hipengine-6529-pm4-c1-$(date -u +%Y%m%dT%H%M%SZ)
+python3 scripts/pm4_lifecycle_issue_capture.py \
+  --output-dir "$OUT" \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --transport pm4 --cycles 1 --submit-recreate \
+  --hip-visible-devices 0 --rocr-visible-devices 0 \
+  --ack-reset-risk \
+  --approval-token ROCM-6529-RESET-RISK-APPROVED \
+  --execute
+```
+
+After a clean one-cycle AQL/PM4 pair, change only `--cycles` (8, then 128) in
+new processes. The later isolation arms each change one axis:
+
+- `--allocation-mode hsa` couples queue generations to fresh fine-grained HSA
+  buffers; the driver records that forced buffer recreation;
+- `--timestamps` is PM4-only and follows an unprofiled PM4 control;
+- `--quarantine-generations N` retires each queue first but delays release of
+  packet pointees for N generations.
+
+A fault is fail-stop. Preserve the directory and current boot journal, do not
+clear `/sys/class/devcoredump/devcd*/data` until the watcher has hashed it, do
+not rerun, and reboot only as required to recover the isolated card. The
+last `cycle_prepared` event plus `kernel-journal-after-cursor.stdout.txt`,
+`devcoredump-index.json`, and `manifest.json` are the primary correlation set.
+
 ## C ABI sketch
 
 The exact names may change, but the ownership contract should remain this
@@ -1081,12 +1221,16 @@ kernargs are identical.
 
 ## Promotion policy
 
-`pm4` remains explicit and default-off until all are true:
+Scoped PM4 promotion is active only for the exact gfx1100 Qwen3.6 GGUF identity,
+physical widths, and replay windows named above. `hipgraph` remains the global
+fallback/oracle and every unknown or unmeasured scope. A new automatic scope is
+admitted only when all are true:
 
 1. The minimal safe reproducer and retained-queue controls are stable.
-2. #6529's recreate/lifecycle risk has an owned root cause or the required
-   recreate stress passes on both gfx1100 discrete cards under the declared
-   protocol.
+2. The production owner retains one queue for its complete context lifetime and
+   does not exercise #6529's optional queue/resource-recreate diagnostic. Any
+   scope that recreates queues, or any claim that #6529 is resolved, additionally
+   requires an owned root cause or the declared stress on both gfx1100 cards.
 3. Strict proof records one PM4 submission and zero native fallback for every
    claimed launch.
 4. Natural prompt/category and heldout correctness passes.
@@ -1097,8 +1241,8 @@ kernargs are identical.
 7. The package can report architecture, transport, source, HSACO hashes, graph
    fingerprint, and lifecycle status.
 
-Even after gfx1100 promotion, other architectures retain `hipgraph` until their
-independent encoder and gates pass.
+Other models, shapes, graph families, and architectures retain `hipgraph` until
+their independent encoder/policy and all applicable gates pass.
 
 ## Refactor/removal triggers
 
