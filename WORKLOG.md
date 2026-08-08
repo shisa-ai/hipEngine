@@ -209183,3 +209183,39 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   is the concrete blocker required by the performance-retention policy. Publish
   `benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json`
   and update the benchmark rollup/changelog plus `docs/MOONSHINE.md`.
+
+## 2026-08-08 — Recover Moonshine fixtures and add the G1 route gate
+
+- Recover all six source WAVs from pinned public source
+  `AUGMXNT/speed-benchmarking@248742f889a4f86667597105b2af1a5cef66111c`;
+  each source SHA-256 exactly matches the retained Moonshine host-readiness
+  manifest. `make prepare-audio` reproduces the retained `konichiwa` 16-kHz
+  float32 input hash `39806c...b0afe`. The exact 252,895,696-byte checkpoint is
+  already cached at revision `cb0b524...29c7d` and its config/generation/model
+  hashes match `results/moonshine-contract-v1.json`.
+- In an isolated `/tmp` venv layered over TheRock, pin Transformers 5.8.1,
+  SciPy 1.18.0, and soundfile 0.14.0. Regenerate the ignored full two-fixture
+  seven-position collection and seven-case (synthetic + six real) position
+  0/193 collection under `/home/lhl/moonshine-prod-inference/results/raw/`.
+  All nine bundles pass two-run exact repeatability, finiteness, sidecar/archive
+  integrity, and checkpoint/contract gates. The six-file summary canonical hash
+  is `09321c...a4d21`; its JSON file SHA-256 is `1ca50a...7068c`.
+- The refreshed producer is Radeon 8060S/gfx1151, HIP 7.15.0, Torch
+  `2.10.0+rocm7.15.0a20260711`, Transformers 5.8.1. Versus the retained HIP
+  7.13 full collection, inputs, token streams, tensor layouts, counts, and
+  archive sizes remain exact; expected producer/numeric drift changes 310/328
+  real and 311/328 synthetic tensor raw hashes. The new gate therefore records
+  producer/content hashes rather than mislabeling the files as historical-byte
+  reproductions.
+- RED: `python3 -m pytest -q tests/test_moonshine_lm_head_route_gate.py
+  --tb=short` fails collection because the route-gate module does not exist.
+  GREEN: add `scripts/moonshine_lm_head_route_gate.py`, which requires the full
+  6 fixtures x 2 LM-head routes x eager/graph matrix from cached code objects,
+  exact transcript-through-EOS and selected fixture IDs, KL/top-1, boundary,
+  zero-allocation, teardown, four-graph/194-replay, 46,080-byte scratch, and
+  paired-route gates. It emits canonical provenance plus fixture/raw/source
+  hashes and refuses retained publication from a dirty tree.
+- `python3 -m py_compile scripts/moonshine_lm_head_route_gate.py
+  tests/test_moonshine_lm_head_route_gate.py` passes. The focused harness plus
+  retained LM-head report-contract bundle passes **6/6**. The next unit commits
+  this harness, then runs the 24-row matrix from a detached clean revision.
