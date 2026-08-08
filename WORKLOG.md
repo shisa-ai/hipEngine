@@ -208987,3 +208987,46 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Docs validation is GREEN: benchmark/root README tests **21/21**, canonical
   benchmark-block synchronization, hardware/support/table invariants,
   architecture-box width, full-file review, and `git diff --check`.
+
+## 2026-08-08 — Audit Moonshine CUDA main promotion for gfx1151 transfer
+
+- Fast-forward local `main` from `0a1d9ecc4` to `origin/main@d7beb0f80` after
+  confirming 81 incoming paths have zero collisions with all 255 pre-existing
+  untracked paths. The update comprises the 37-commit Moonshine CUDA series and
+  two follow-up documentation commits; no local artifact is moved or removed.
+- Reviewed all C0-C8 commit evidence, runtime/kernel registries, encoder and batch
+  compositions, continuous scheduler, benchmark/report surfaces, and the peer
+  gfx1151 Moonshine path. Most CUDA C1 work is a hardware-retuned port of HIP
+  primitives gfx1151 already owns; CUDA thread schedules, its two graph buckets,
+  uniform-t256 qualification, and cuDNN/cuBLASLt/CUTLASS code are not portable
+  evidence for gfx1151.
+- Three backend-neutral pieces are already reusable on HIP: `DeviceRuntime` plus
+  the shared memory arena, the CPU encoder oracle, and packed-FP16 loading with
+  manifest verification. The highest-value new gfx1151 candidates are, in
+  order: exact fused wave8 FP16 LM-head plus stable top-1; async handoff and
+  device-owned decode control; exact static-B c2/c4/c8 decode; continuous
+  scheduling after independent four-region topology/state qualification; then
+  a native encoder with hipBLASLt long-bucket and AOTriton attention screens.
+  Current HIP uses four exact self-attention regions (position 0, 1, 2-3, 4+),
+  not CUDA's two, so copying the uniform-t256 scheduler would be invalid.
+- Independent main validation on Ryzen AI MAX+ 395 / Radeon 8060S / gfx1151 is
+  GREEN for all **84/84** existing CPU/HIP Moonshine tests. On this non-NVIDIA
+  host the incoming 3.12 CUDA/source/report selection is **107 passed / 98
+  hardware skips / 0 failures**; the prior branch's **178 passed / 4 optional
+  skips** remains the only CUDA-device gate and is not locally remeasured.
+- Review defects before public admission: four incoming scripts use
+  `datetime.UTC` despite `requires-python >=3.10` (3.10 collection fails;
+  3.12 passes); backend package re-registration restores decoder keys but not
+  the 15 encoder or AOT-attention keys; `read_result_tokens()` returns the full
+  unwritten capacity when EOS is absent instead of `self_cache_length`; the
+  continuous-module header still calls the now-qualified uniform route rejected;
+  `docs/PLAN.md`/`docs/KERNELS.md` stop at CUDA bring-up; and main has no compact
+  Moonshine result under `benchmarks/results/` or benchmark rollup. The
+  continuous API also admits precomputed host cross caches, not full audio-to-
+  transcript service. Keep Moonshine out of the root supported-model matrix
+  until these scope/evidence issues and a main-based CUDA gate are closed.
+- No production code, dispatch, kernel, or benchmark default changes in this
+  audit. Incoming Python files compile on 3.12, contain no Torch import in
+  `hipengine/`, and the diff is whitespace-clean. Ruff is unavailable in the
+  current project environment; broad lineage inspection remains blocked by the
+  already-absent optional `/home/lhl/amd-gpu-tuning/reference/atlas` checkout.
