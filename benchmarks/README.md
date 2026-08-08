@@ -9,7 +9,7 @@ H8C-H8Q ladder, and high-leverage-only resumption policy.
 
 ## Current gfx1100 retained-PM4 transport diagnostics
 
-These rows are focused repeated-token transport diagnostics, not package-default
+The c1 rows are focused repeated-token transport diagnostics, not package-default
 or natural-prompt performance claims. Native HIP graph remains the default.
 
 | Transport / encoder | Qwen3.6 Q4_K_M p512/d128 replay | Capture | Retained tape | Status |
@@ -23,18 +23,36 @@ and lifecycle proof:
 [`2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`](results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json).
 The optimized cold PM4 capture is **193.739 -> 132.858 ms (-31.425%)** versus
 the prior stateful artifact; cold capture-inclusive p512/d128 is now within
-**0.329 ms / 0.023%** of HIP graph rather than about 3.5% slower. This remains a
-focused transport diagnostic. The explicit PM4 encoder's promotion matrix now
-passes **19/19 exact cases** across the complete natural category suite,
-category-heldouts, and 4K context, plus 21 persistent-context graph generations,
-58 retired submissions, pre/post-submit cancellation, context/session shutdown,
-and focused max-shape memory recovery:
+**0.329 ms / 0.023%** of HIP graph rather than about 3.5% slower.
+
+The same encoder is stable but **rejected for packed c2/c4/c8 performance** in a
+tracked-clean, one-model/eight-session, alternating-order p512/d128 matrix:
+
+| Physical width | HIP graph replay | PM4 replay | PM4 delta | Paired PM4 wins | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| c2 | **14.676 ms/step / 136.274 aggregate tok/s** | 16.518 / 121.078 | **+12.551% wall** | 0/5 | Keep HIP graph |
+| c4 | **20.252 / 197.513** | 22.114 / 180.880 | **+9.196%** | 0/5 | Keep HIP graph |
+| c8 | **31.102 / 257.220** | 32.870 / 243.379 | **+5.687%** | 0/5 | Keep HIP graph |
+
+All paired trajectories and all 18 natural category/heldout trajectories are
+exact. Independent-c1 packed oracles add **400/800/1,600** exact all-layer
+comparisons at c2/c4/c8 plus exact Conv/GDN/live-KV and lifecycle state; every
+submission retires, contexts close, and memory recovers. Capture-inclusive and
+request-inclusive wall also regress at every width. Logical c3/c5/c6/c7 use the
+packed eager route and are transport-unaffected. Evidence:
+[`2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json`](results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json).
+
+The explicit PM4 encoder's c1 promotion matrix passes **19/19 exact cases**
+across the complete natural category suite, category-heldouts, and 4K context,
+plus 21 persistent-context graph generations, 58 retired submissions,
+pre/post-submit cancellation, context/session shutdown, and focused max-shape
+memory recovery:
 [`2026-08-08-gfx1100-pm4-promotion-matrix.json`](results/2026-08-08-gfx1100-pm4-promotion-matrix.json).
-Explicit `transport="pm4"` now selects the stateful/local-cache encoder
-unconditionally; its old experiment selectors no longer control transport
-construction. Package-default PM4 remains blocked by the separate ROCm #6529
-resource-recreate risk, so HIP graph remains the default transport. The superseded stateful-only
-evidence remains in
+Explicit `transport="pm4"` selects the stateful/local-cache encoder
+unconditionally, but package-default PM4 is now concretely blocked by the
+packed c2/c4/c8 regressions above. ROCm #6529 recreate remains optional unrun
+coverage rather than an evidenced in-tree fault because production retains one
+queue and does not recreate it. The superseded stateful-only evidence remains in
 [`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).
 
 The retained source-selected H7H exact full-group Q5 production owner is

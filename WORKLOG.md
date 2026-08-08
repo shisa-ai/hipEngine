@@ -209457,3 +209457,31 @@ Vulkan local sizes verbatim will close the measured gap.
   because the new harness is uncommitted; rerun the same command tracked-clean
   before publishing. The result already proves PM4 must not replace HIP graph
   for packed c2/c4/c8 without a separate measured optimization.
+
+## 2026-08-08 — Block packed PM4 promotion on clean c2/c4/c8 performance
+
+- At tracked-clean `2a14dd56e`, rerun the one-model/eight-session p512/d128
+  packet with one warmup and five alternating HIP/PM4 rounds per physical width.
+  All measured trajectories are repeatable and transport-exact; the complete
+  18-prompt category/heldout suite is also exact across HIP and PM4. The joined
+  independent-c1 oracles retain 400/800/1,600 exact all-layer comparisons plus
+  exact tokens, Conv/GDN state, every live KV byte, lifecycle state, and flush.
+  Every PM4 submission retires, the persistent context drains/closes with zero
+  callback/fallback/unretired work, and post-warmup memory recovers within
+  256 KiB.
+- Performance blocks packed promotion at every admitted c>N width:
+  c2 HIP→PM4 is **14.676→16.518 ms/step (+12.551%, 0/5)**,
+  c4 is **20.252→22.114 (+9.196%, 0/5)**, and c8 is
+  **31.102→32.870 (+5.687%, 0/5)**. PM4 capture is 75.495/75.989/82.542 ms
+  versus HIP 22.822/24.382/26.910 ms; capture-inclusive wall regresses
+  15.174%/11.180%/7.012% and request-inclusive wall regresses
+  9.957%/6.158%/3.733%. The roughly constant 1.77–1.86 ms PM4 replay penalty
+  points to packed-tape submission/dependency overhead; profile direct AQL and
+  dependency structure before changing barriers. Wait-only acquire removal is
+  already correctness-rejected and must not be retried blindly.
+- Publish the blocked compact artifact and update PM4/PLAN/refactor/benchmark
+  documentation. Keep HIP graph for packed c2/c4/c8 and for package default;
+  logical c3/c5/c6/c7 remain packed eager and transport-unaffected. c1 explicit
+  PM4 remains the separately proven exact/faster scope. ROCm #6529 queue recreate
+  is optional isolation coverage, not an evidenced production blocker, because
+  the retained owner does not recreate queues in-process.
