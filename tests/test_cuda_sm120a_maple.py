@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import inspect
 import os
 
 import numpy as np
@@ -29,6 +30,9 @@ def test_cuda_sm120a_maple_build_plans_are_architecture_qualified(tmp_path) -> N
     from hipengine.kernels.cuda_sm120a.linear.maple_lm_head import (
         plan_lm_head_build,
     )
+    from hipengine.kernels.cuda_sm120a.moe.group_scatter import (
+        plan_qwen35_moe_group_scatter_build,
+    )
     from hipengine.kernels.cuda_sm120a.moe.maple_moe import plan_maple_moe_build
     from hipengine.kernels.cuda_sm120a.norm.maple_rmsnorm import (
         plan_qwen35_rmsnorm_build,
@@ -41,6 +45,9 @@ def test_cuda_sm120a_maple_build_plans_are_architecture_qualified(tmp_path) -> N
         plan_maple_ternary_build(cache_root=tmp_path, compiler_version="nvcc test"),
         plan_maple_attention_build(cache_root=tmp_path, compiler_version="nvcc test"),
         plan_maple_moe_build(cache_root=tmp_path, compiler_version="nvcc test"),
+        plan_qwen35_moe_group_scatter_build(
+            cache_root=tmp_path, compiler_version="nvcc test"
+        ),
         plan_qwen35_rmsnorm_build(cache_root=tmp_path, compiler_version="nvcc test"),
         plan_lm_head_build(cache_root=tmp_path, compiler_version="nvcc test"),
     )
@@ -82,6 +89,10 @@ def test_cuda_sm120a_maple_c1_registry_keys_resolve() -> None:
             "cuda_sm120a", "maple_weighted_residual", "maple_ternary2",
             "two_bf16_boundaries",
         ),
+        KernelKey(
+            "cuda_sm120a", "moe_group_compact", "generic",
+            "active_experts_i32_parallel",
+        ),
         KernelKey("cuda_sm120a", "rmsnorm", "w4_paro", "paro_out"),
         KernelKey("cuda_sm120a", "argmax", "w4_paro", "f32_rows_i32"),
     )
@@ -96,6 +107,197 @@ def test_cuda_sm120a_maple_c1_registry_keys_resolve() -> None:
         )
         for key in keys
     )
+
+
+def test_cuda_sm120a_maple_native_prefill_uses_complete_bulk_chain() -> None:
+    from hipengine.runtime.maple_cuda import MapleCudaRunner
+
+    source = inspect.getsource(MapleCudaRunner.prefill_native)
+    assert "return self.prefill(" not in source
+    for required_call in (
+        "maple_affine4_embed_batched_bf16",
+        "maple_ternary_qkv_gemm_bf16",
+        "maple_qknorm_rope_kv_write_batched_bf16",
+        "maple_attention_prefill_ring_gqa4_bf16",
+        "qwen35_moe_group_compact_active_i32_parallel",
+        "maple_selected_ternary_dual_grouped_bf16",
+        "maple_selected_ternary_grouped_bf16",
+        "maple_weighted_residual_batched_bf16",
+    ):
+        assert required_call in source
+
+
+def test_cuda_sm120a_maple_i32_stable_compaction_matches_cpu_order() -> None:
+    _require_cuda()
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.cuda_sm120a.moe.group_scatter import (
+        build_qwen35_moe_group_scatter,
+        qwen35_moe_group_compact_active_i32_parallel,
+    )
+
+    selected = np.asarray(
+        [[3, 1], [0, 3], [1, 1], [3, 0], [2, 3]], dtype=np.int32
+    )
+    routing = np.arange(selected.size, dtype=np.float32).reshape(selected.shape) / 17.0
+    flat = selected.reshape(-1)
+    expected_lanes = np.argsort(flat, kind="stable").astype(np.int64)
+    expected_experts = flat[expected_lanes].astype(np.int64)
+    counts = np.bincount(flat, minlength=4).astype(np.int64)
+    expected_starts = np.zeros(5, dtype=np.int64)
+    expected_starts[1:] = np.cumsum(counts, dtype=np.int64)
+    expected_active = np.flatnonzero(counts).astype(np.int64)
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    buffers = []
+    try:
+        def put(array: np.ndarray):
+            buffer = malloc(array.nbytes, runtime=runtime)
+            buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+            return buffer
+
+        selected_d = put(selected)
+        routing_d = put(routing)
+        outputs = (
+            np.empty(5, dtype=np.int64),
+            np.empty(4, dtype=np.int64),
+            np.empty(1, dtype=np.int64),
+            np.empty(flat.shape, dtype=np.int64),
+            np.empty(flat.shape, dtype=np.int64),
+            np.empty(flat.shape, dtype=np.float32),
+        )
+        output_buffers = []
+        for array in outputs:
+            buffer = malloc(array.nbytes, runtime=runtime)
+            buffers.append(buffer)
+            output_buffers.append(buffer)
+        qwen35_moe_group_compact_active_i32_parallel(
+            selected_d.ptr,
+            routing_d.ptr,
+            *(buffer.ptr for buffer in output_buffers),
+            flat.size,
+            4,
+            library=build_qwen35_moe_group_scatter(load=True),
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for host, device in zip(outputs, output_buffers, strict=True):
+            copy_device_to_host(
+                host_array_ptr(host), device, nbytes=host.nbytes, runtime=runtime
+            )
+
+        starts, active, active_count, lanes, experts, weights = outputs
+        assert int(active_count[0]) == expected_active.size
+        np.testing.assert_array_equal(starts, expected_starts)
+        np.testing.assert_array_equal(active[: expected_active.size], expected_active)
+        np.testing.assert_array_equal(lanes, expected_lanes)
+        np.testing.assert_array_equal(experts, expected_experts)
+        np.testing.assert_array_equal(weights, routing.reshape(-1)[expected_lanes])
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
+def test_cuda_sm120a_maple_native_prefill_matches_serial_state() -> None:
+    _require_cuda()
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        host_array_ptr,
+        memory_stats,
+    )
+    from hipengine.loading.maple import load_maple_checkpoint
+    from hipengine.runtime.maple_cuda import MapleCudaRunner
+
+    try:
+        checkpoint = load_maple_checkpoint("/models/hf/maple-preview-2bit-mlx")
+    except Exception as exc:  # noqa: BLE001 - optional public checkpoint gate
+        pytest.skip(f"Maple checkpoint unavailable: {exc}")
+    prompt = (9707, 13, 358, 1093, 220, 3100, 1066, 13, 366, 264, 1156, 15)
+    baseline_bytes = memory_stats()["current_allocated_bytes"]
+
+    serial = MapleCudaRunner.load(checkpoint, max_context=64)
+    native = MapleCudaRunner.load(checkpoint, max_context=64)
+    try:
+        serial_result = serial.prefill(prompt)
+        native_result = native.prefill_native(prompt)
+
+        def copy_bytes(runner, buffer, *, offset=0, nbytes=None):
+            size = buffer.nbytes - offset if nbytes is None else int(nbytes)
+            host = np.empty(size, dtype=np.uint8)
+            copy_device_to_host(
+                host_array_ptr(host),
+                DeviceBuffer(ptr=buffer.ptr + offset, nbytes=size),
+                nbytes=size,
+                runtime=runner.runtime,
+            )
+            return host
+
+        spec = checkpoint.spec
+        hidden_bytes = spec.hidden_size * 2
+        final_row_offset = (len(prompt) - 1) * hidden_bytes
+        np.testing.assert_array_equal(
+            copy_bytes(serial, serial.buffers.hidden, nbytes=hidden_bytes),
+            copy_bytes(
+                native,
+                native.buffers.pf.hidden,
+                offset=final_row_offset,
+                nbytes=hidden_bytes,
+            ),
+        )
+        np.testing.assert_array_equal(serial.copy_logits(), native.copy_logits())
+        live_cache_bytes = len(prompt) * spec.kv_size * 2
+        for serial_layer, native_layer in zip(
+            serial.buffers.layers, native.buffers.layers, strict=True
+        ):
+            for name in ("key_cache", "value_cache"):
+                np.testing.assert_array_equal(
+                    copy_bytes(
+                        serial,
+                        getattr(serial_layer, name),
+                        nbytes=live_cache_bytes,
+                    ),
+                    copy_bytes(
+                        native,
+                        getattr(native_layer, name),
+                        nbytes=live_cache_bytes,
+                    ),
+                )
+        for owner_name in ("sliding_span_owner", "global_span_owner"):
+            serial_owner = getattr(serial.buffers, owner_name)
+            native_owner = getattr(native.buffers, owner_name)
+            for name in (
+                "base_offsets",
+                "live_counts",
+                "token_positions",
+                "evict_mask",
+                "row_positions",
+            ):
+                np.testing.assert_array_equal(
+                    copy_bytes(serial, getattr(serial_owner, name)),
+                    copy_bytes(native, getattr(native_owner, name)),
+                )
+        assert native_result.position == serial_result.position == len(prompt) - 1
+        assert native_result.token_id == serial_result.token_id
+        assert native_result.top_logit == serial_result.top_logit
+
+        serial_continuation = serial.step(serial_result.token_id)
+        native_continuation = native.step(native_result.token_id)
+        assert native_continuation.token_id == serial_continuation.token_id
+        assert native_continuation.top_logit == serial_continuation.top_logit
+        np.testing.assert_array_equal(serial.copy_logits(), native.copy_logits())
+    finally:
+        native.close()
+        serial.close()
+    assert memory_stats()["current_allocated_bytes"] == baseline_bytes
 
 
 def test_cuda_sm120a_maple_ternary_norm_and_moe_match_numpy() -> None:
