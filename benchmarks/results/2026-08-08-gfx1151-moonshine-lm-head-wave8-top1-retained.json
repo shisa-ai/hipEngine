@@ -1,0 +1,831 @@
+{
+  "correctness": {
+    "candidate_allclose_cpu_oracle": true,
+    "candidate_token": 15836,
+    "cpu_oracle_token": 15836,
+    "fallback_token": 15836,
+    "finite": true,
+    "full_fp16_logits_byte_exact_vs_fallback": true,
+    "maximum_absolute_error_vs_cpu_oracle": 6.103515625e-05,
+    "passed": true,
+    "token_exact": true
+  },
+  "decision": {
+    "reason": "production-shape leaf and actual-checkpoint 194-step graph state gates pass; retain the candidate default-off until real-audio fixture qualification restores the runtime-default gate",
+    "retain_candidate": true,
+    "runtime_default_change": false
+  },
+  "kind": "hipengine_moonshine_lm_head_ab",
+  "lifecycle": {
+    "baseline_active_allocations": 0,
+    "baseline_current_allocated_bytes": 0,
+    "final_active_allocations": 0,
+    "final_current_allocated_bytes": 0,
+    "returned_to_baseline": true
+  },
+  "model": {
+    "id": "shisa-ai/shisa-realtime-asr-0.92b",
+    "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "weights": "deterministic_synthetic_fp16"
+  },
+  "model_state_gate": {
+    "checkpoint": {
+      "id": "shisa-ai/shisa-realtime-asr-0.92b",
+      "model_safetensors_bytes": 252895696,
+      "model_safetensors_sha256": "c8d22560303ee5ecbaf0c66d648e715bc774eed9fe93b19b4d8764dd57e21584",
+      "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+      "stored_parameters": 63217856
+    },
+    "command": "GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_RUN_MOONSHINE_MODEL_GATE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-moonshine-g1-clean-hipcc.txt PYTHONPATH=. python3 -m pytest -q tests/test_moonshine_runtime.py::test_actual_checkpoint_graph_state_and_tokens_match_wave8_argmax --tb=short",
+    "complete_cross_kv_byte_exact": true,
+    "complete_self_kv_byte_exact": true,
+    "final_hidden_pairs_byte_exact": 8,
+    "full_fp16_logit_pairs_byte_exact": 8,
+    "graph_buckets": 4,
+    "input": {
+      "deterministic_seed": "0x1151A5A",
+      "encoder_frames": 40,
+      "visible_frames": 24
+    },
+    "performance_claim": false,
+    "replay_count_per_route": 194,
+    "scope_note": "actual-checkpoint deterministic encoder-state gate; not a real-audio transcript gate",
+    "selected_positions": [
+      0,
+      1,
+      2,
+      4,
+      31,
+      63,
+      127,
+      193
+    ],
+    "source_revision": "0b68832c3",
+    "status": "passed",
+    "teardown_returned_to_baseline": true,
+    "timed_region_allocations": 0,
+    "token_positions_exact": 194
+  },
+  "performance_claim": true,
+  "profiler": {
+    "cached_build_required": true,
+    "command": "GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-moonshine-g1-clean-hipcc.txt rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-moonshine-g1-clean-trace -- python3 scripts/moonshine_lm_head_bench.py --compiler-version-file /tmp/hipengine-moonshine-g1-clean-hipcc.txt --require-cached-build --trace-smoke",
+    "compiler_child_observed": false,
+    "kernels": [
+      {
+        "duration_ns": 228827,
+        "grid_size_x": 1179648,
+        "lds_bytes": 0,
+        "name": "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_kernel(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+        "scratch_bytes": 0,
+        "sgpr_count": 128,
+        "start_timestamp": 1937789020410072,
+        "vgpr_count": 16,
+        "workgroup_size_x": 256
+      },
+      {
+        "duration_ns": 116938,
+        "grid_size_x": 256,
+        "lds_bytes": 3072,
+        "name": "(anonymous namespace)::moonshine_argmax_fp16_kernel(_Float16 const*, long*, long)",
+        "scratch_bytes": 0,
+        "sgpr_count": 128,
+        "start_timestamp": 1937789025244765,
+        "vgpr_count": 16,
+        "workgroup_size_x": 256
+      },
+      {
+        "duration_ns": 341437,
+        "grid_size_x": 1179648,
+        "lds_bytes": 512,
+        "name": "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_top1_kernel(_Float16 const*, _Float16 const*, _Float16*, _Float16*, long*, long, long, long)",
+        "scratch_bytes": 0,
+        "sgpr_count": 128,
+        "start_timestamp": 1937789025372523,
+        "vgpr_count": 16,
+        "workgroup_size_x": 256
+      },
+      {
+        "duration_ns": 21921,
+        "grid_size_x": 256,
+        "lds_bytes": 3072,
+        "name": "(anonymous namespace)::moonshine_lm_head_top1_reduce_kernel(_Float16 const*, long const*, long*, long, long, long)",
+        "scratch_bytes": 0,
+        "sgpr_count": 128,
+        "start_timestamp": 1937789025723979,
+        "vgpr_count": 16,
+        "workgroup_size_x": 256
+      }
+    ],
+    "observed_kernels": [
+      "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_kernel(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+      "(anonymous namespace)::moonshine_argmax_fp16_kernel(_Float16 const*, long*, long)",
+      "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_top1_kernel(_Float16 const*, _Float16 const*, _Float16*, _Float16*, long*, long, long, long)",
+      "(anonymous namespace)::moonshine_lm_head_top1_reduce_kernel(_Float16 const*, long const*, long*, long, long, long)"
+    ],
+    "raw_csv": "/tmp only; not committed",
+    "status": "passed",
+    "tool": "rocprofv3 1.3.2"
+  },
+  "provenance": {
+    "build_profile": "decode",
+    "collected_at": "2026-08-08T06:13:36.726405+00:00",
+    "command": [
+      "scripts/moonshine_lm_head_bench.py",
+      "--compiler-version-file",
+      "/tmp/hipengine-moonshine-g1-clean-hipcc.txt",
+      "--require-cached-build",
+      "--warmups",
+      "10",
+      "--repetitions",
+      "63",
+      "--burst",
+      "1",
+      "--minimum-improvement-percent",
+      "1.0",
+      "--profiler-summary-json",
+      "/tmp/hipengine-moonshine-g1-clean-profiler-summary.json",
+      "--output",
+      "/tmp/hipengine-moonshine-g1-clean-ab-burst1-r63.json",
+      "--require-accept"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_commit": "382a49de8fdb67978e5b4f36719bb09f163d6435",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "not_applicable",
+    "model_fingerprint": null,
+    "model_path": null,
+    "model_revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "profiler": {
+      "cached_build_required": true,
+      "command": "GPU_MAX_HW_QUEUES=1 PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-moonshine-g1-clean-hipcc.txt rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-moonshine-g1-clean-trace -- python3 scripts/moonshine_lm_head_bench.py --compiler-version-file /tmp/hipengine-moonshine-g1-clean-hipcc.txt --require-cached-build --trace-smoke",
+      "compiler_child_observed": false,
+      "kernels": [
+        {
+          "duration_ns": 228827,
+          "grid_size_x": 1179648,
+          "lds_bytes": 0,
+          "name": "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_kernel(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+          "scratch_bytes": 0,
+          "sgpr_count": 128,
+          "start_timestamp": 1937789020410072,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        },
+        {
+          "duration_ns": 116938,
+          "grid_size_x": 256,
+          "lds_bytes": 3072,
+          "name": "(anonymous namespace)::moonshine_argmax_fp16_kernel(_Float16 const*, long*, long)",
+          "scratch_bytes": 0,
+          "sgpr_count": 128,
+          "start_timestamp": 1937789025244765,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        },
+        {
+          "duration_ns": 341437,
+          "grid_size_x": 1179648,
+          "lds_bytes": 512,
+          "name": "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_top1_kernel(_Float16 const*, _Float16 const*, _Float16*, _Float16*, long*, long, long, long)",
+          "scratch_bytes": 0,
+          "sgpr_count": 128,
+          "start_timestamp": 1937789025372523,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        },
+        {
+          "duration_ns": 21921,
+          "grid_size_x": 256,
+          "lds_bytes": 3072,
+          "name": "(anonymous namespace)::moonshine_lm_head_top1_reduce_kernel(_Float16 const*, long const*, long*, long, long, long)",
+          "scratch_bytes": 0,
+          "sgpr_count": 128,
+          "start_timestamp": 1937789025723979,
+          "vgpr_count": 16,
+          "workgroup_size_x": 256
+        }
+      ],
+      "observed_kernels": [
+        "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_kernel(_Float16 const*, _Float16 const*, _Float16*, long, long, long)",
+        "(anonymous namespace)::moonshine_argmax_fp16_kernel(_Float16 const*, long*, long)",
+        "(anonymous namespace)::moonshine_f16_lm_head_projection_wave8_top1_kernel(_Float16 const*, _Float16 const*, _Float16*, _Float16*, long*, long, long, long)",
+        "(anonymous namespace)::moonshine_lm_head_top1_reduce_kernel(_Float16 const*, long const*, long*, long, long, long)"
+      ],
+      "raw_csv": "/tmp only; not committed",
+      "status": "passed",
+      "tool": "rocprofv3 1.3.2"
+    },
+    "quant": "fp16_synthetic_production_shape",
+    "repetitions": 63,
+    "repo_root": "/tmp/hipengine-moonshine-g1-clean",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_process_counterbalanced_hip_event_and_synchronized_wall",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 10
+  },
+  "publication": {
+    "artifact_path": "benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json",
+    "model_state_source_revision": "0b68832c3",
+    "performance_source_revision": "382a49de8",
+    "raw_profiler_csv_committed": false,
+    "real_audio_fixture_available": false
+  },
+  "schema_version": 1,
+  "scope": "synthetic_production_shape_kernel_microbenchmark",
+  "source_files": {
+    "hipengine/kernels/hip_gfx1100/linear/moonshine_projection.hip": "0bcffccf18239d883fd7ed5bc19f3455ce90a9e949172046e49c9e5cccf5aa3d",
+    "hipengine/kernels/hip_gfx1100/linear/moonshine_projection.py": "88ec623d24e3385c6e52380c629201770b02d80344f24528023db643ee91e8a5",
+    "scripts/moonshine_lm_head_bench.py": "c2ca4ebc3f0a498f8530d943b41607d07407b1c497763b5b189f7d2aa411cd26"
+  },
+  "status": "accepted_kernel_microbenchmark",
+  "timing": {
+    "counterbalanced_orders": [
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ],
+      [
+        "wave8_top1",
+        "wave8_argmax"
+      ],
+      [
+        "wave8_argmax",
+        "wave8_top1"
+      ]
+    ],
+    "event_improvement_percent": 12.00306731373208,
+    "performance_gate_passed": true,
+    "promotion_threshold_percent": 1.0,
+    "routes": {
+      "wave8_argmax": {
+        "event_us": {
+          "max_us": 117.4589991569519,
+          "mean_us": 114.63831719898042,
+          "median_us": 114.85400050878525,
+          "min_us": 108.84299874305725,
+          "p95_us": 117.37900227308273,
+          "samples_us": [
+            114.33299630880356,
+            111.32699996232986,
+            112.16899752616882,
+            112.40900307893753,
+            112.69000172615051,
+            111.12699657678604,
+            112.40900307893753,
+            111.16699874401093,
+            112.24900186061859,
+            112.20800131559372,
+            111.92800104618073,
+            111.7279976606369,
+            111.12699657678604,
+            111.32799834012985,
+            112.4889999628067,
+            113.29100281000137,
+            112.9710003733635,
+            113.25100064277649,
+            113.7320026755333,
+            114.4929975271225,
+            108.84299874305725,
+            114.25299942493439,
+            114.17300254106522,
+            114.9739995598793,
+            114.69399929046631,
+            114.41300064325333,
+            113.85200172662735,
+            114.4929975271225,
+            114.17300254106522,
+            114.73400145769119,
+            114.13200199604034,
+            115.21399766206741,
+            114.89299684762955,
+            115.81599712371826,
+            115.77600240707397,
+            116.01600050926208,
+            116.09599739313126,
+            114.85400050878525,
+            115.4949963092804,
+            115.37499725818634,
+            114.77399617433548,
+            115.73600023984909,
+            115.85599929094315,
+            116.17700010538101,
+            116.53699725866318,
+            117.4589991569519,
+            116.13599956035614,
+            117.29799956083298,
+            115.9759983420372,
+            116.97900295257568,
+            116.2170022726059,
+            116.93800240755081,
+            115.77600240707397,
+            117.01799929141998,
+            115.89600145816803,
+            117.2190010547638,
+            116.53699725866318,
+            117.33900010585785,
+            117.37900227308273,
+            116.69699847698212,
+            117.4589991569519,
+            117.4589991569519,
+            116.65699630975723
+          ],
+          "stdev_us": 2.049661002927482
+        },
+        "wall_us": {
+          "max_us": 234.46,
+          "mean_us": 122.93730158730159,
+          "median_us": 120.266,
+          "min_us": 113.603,
+          "p95_us": 129.143,
+          "samples_us": [
+            118.102,
+            117.431,
+            116.88,
+            117.23,
+            117.41,
+            115.848,
+            129.143,
+            115.868,
+            117.09,
+            117.0,
+            116.629,
+            116.479,
+            115.917,
+            115.968,
+            117.19,
+            118.042,
+            118.182,
+            118.252,
+            118.472,
+            119.344,
+            113.603,
+            118.984,
+            195.517,
+            119.775,
+            119.454,
+            234.46,
+            118.692,
+            119.234,
+            119.013,
+            119.484,
+            119.094,
+            120.016,
+            134.092,
+            120.647,
+            120.686,
+            120.847,
+            120.926,
+            119.685,
+            120.476,
+            120.266,
+            119.685,
+            120.676,
+            120.707,
+            121.058,
+            122.189,
+            122.409,
+            121.027,
+            122.179,
+            120.957,
+            121.819,
+            121.067,
+            121.077,
+            120.657,
+            121.849,
+            120.816,
+            121.368,
+            121.608,
+            122.199,
+            122.49,
+            121.538,
+            122.38,
+            122.269,
+            121.598
+          ],
+          "stdev_us": 17.421039583841477
+        }
+      },
+      "wave8_top1": {
+        "event_us": {
+          "max_us": 104.59499806165695,
+          "mean_us": 100.7947778654477,
+          "median_us": 101.06799751520157,
+          "min_us": 96.57999873161316,
+          "p95_us": 103.19200158119202,
+          "samples_us": [
+            98.50399941205978,
+            98.26300293207169,
+            98.14299643039703,
+            98.66400063037872,
+            99.38599914312363,
+            98.30299764871597,
+            98.26300293207169,
+            98.54300320148468,
+            98.26300293207169,
+            98.54400157928467,
+            98.42400252819061,
+            98.66400063037872,
+            98.62399846315384,
+            98.7439975142479,
+            99.10500049591064,
+            99.42500293254852,
+            99.14399683475494,
+            99.42500293254852,
+            99.82500225305557,
+            100.06699711084366,
+            100.02599656581879,
+            100.18599778413773,
+            100.2660021185875,
+            100.54700076580048,
+            100.2269983291626,
+            100.66699981689453,
+            100.50699859857559,
+            100.9880006313324,
+            100.54700076580048,
+            100.7080003619194,
+            101.91000252962112,
+            101.30800306797028,
+            101.06799751520157,
+            101.34899616241455,
+            101.42900049686432,
+            101.2289971113205,
+            101.51000320911407,
+            96.57999873161316,
+            101.14800184965134,
+            101.26800090074539,
+            102.03000158071518,
+            101.94999724626541,
+            102.31000185012817,
+            102.1910011768341,
+            102.63200104236603,
+            102.75200009346008,
+            102.43099927902222,
+            102.7510017156601,
+            101.82999819517136,
+            102.06999629735947,
+            102.19000279903412,
+            101.78999602794647,
+            102.23100334405899,
+            103.55299711227417,
+            102.31000185012817,
+            102.75200009346008,
+            102.71099954843521,
+            102.79200226068497,
+            102.79200226068497,
+            103.31299901008606,
+            104.59499806165695,
+            103.11199724674225,
+            103.19200158119202
+          ],
+          "stdev_us": 1.7643108225535786
+        },
+        "wall_us": {
+          "max_us": 125.315,
+          "mean_us": 105.89309523809524,
+          "median_us": 105.828,
+          "min_us": 101.3,
+          "p95_us": 107.872,
+          "samples_us": [
+            104.776,
+            103.153,
+            102.873,
+            104.205,
+            102.382,
+            103.054,
+            103.004,
+            103.184,
+            102.974,
+            103.474,
+            103.995,
+            103.414,
+            103.344,
+            103.354,
+            104.647,
+            104.075,
+            103.935,
+            104.115,
+            105.397,
+            104.856,
+            104.757,
+            104.837,
+            105.047,
+            105.357,
+            104.957,
+            105.368,
+            105.458,
+            105.769,
+            105.337,
+            106.349,
+            104.726,
+            106.129,
+            105.828,
+            106.33,
+            106.23,
+            106.079,
+            107.301,
+            101.3,
+            105.958,
+            106.069,
+            107.662,
+            106.821,
+            107.192,
+            107.171,
+            107.351,
+            107.582,
+            107.292,
+            125.315,
+            106.66,
+            106.98,
+            107.101,
+            106.9,
+            107.051,
+            106.881,
+            107.211,
+            107.612,
+            107.682,
+            107.562,
+            107.692,
+            109.025,
+            107.221,
+            107.872,
+            108.032
+          ],
+          "stdev_us": 3.0299365250153536
+        }
+      }
+    },
+    "wall_improvement_percent": 12.005055460396123
+  },
+  "workload": {
+    "burst": 1,
+    "candidate_scratch_bytes": 46080,
+    "hidden_size": 416,
+    "partial_count": 4608,
+    "repetitions": 63,
+    "rows": 1,
+    "seed": 4433,
+    "vocab_size": 36864,
+    "warmups": 10,
+    "weight_bytes": 30670848
+  }
+}

@@ -126,7 +126,7 @@ Radeon speedup, launch geometry, numerical contract, or default.
 | Phase | Scope | Status | Promotion gate |
 | --- | --- | --- | --- |
 | **G0** | Main-promotion hygiene | Complete | Python 3.10 import, registry reset, no-EOS result, and stale-route/catalog defects repaired with focused tests |
-| **G1** | Exact wave8 LM-head + stable top-1 | Active | full FP16 logits, selected token, hidden/KV state and lifecycle equal to current wave8+argmax; matched gfx1151 wall non-regressive; named cached trace |
+| **G1** | Exact wave8 LM-head + stable top-1 | Leaf retained; runtime default blocked | production leaf and actual-checkpoint graph state pass; historical real-audio fixture bundle is still required for the runtime-default decision |
 | **G2** | Async handoff + device-owned decode | Planned | same six-file stream/state, zero per-step token/position H2D in selected graph route, zero ownership after close |
 | **G3** | Static c2/c4/c8 decoder | Planned | each row bit-exact to independent c1, exact lockstep graph topology, mixed lengths/reclaim, no timed allocation |
 | **G4** | Continuous decoder scheduling | Planned | full mixed-arrival lifecycle plus exact state; preserve four regions or independently qualify reassociation on the full Japanese corpus |
@@ -188,6 +188,35 @@ LM-head+argmax near 20% of cached position-1 kernel time. That is an Amdahl
 admission estimate, not a promised speedup. The candidate keeps two device
 kernels (wave8 producer/partial plus final partial reduction); its intended gain
 is removal of the standalone global-logit scan, not launch-count gaming.
+
+### G1 leaf and model-state verdict
+
+The clean Radeon 8060S/gfx1151 production-shape leaf gate retains the candidate:
+
+| Route | Median HIP event | Median synchronized wall | P95 event / wall |
+| --- | ---: | ---: | ---: |
+| Wave8 + full-logit argmax | 114.854 us | 120.266 us | 117.379 / 129.143 us |
+| Wave8 + stable partial top-1 | **101.068 us** | **105.828 us** | **103.192 / 107.872 us** |
+
+The candidate saves **12.003% event** and **12.005% wall** over 63
+counterbalanced burst-1 repetitions, winning **63/63 event** and **62/63 wall**
+pairs. Every full FP16 logit bit and the selected token match the fallback and
+NumPy oracle; scratch is 46,080 bytes and teardown returns to baseline. A
+cached `rocprofv3` trace names both candidate kernels with local256, VGPR16, and
+scratch0.
+
+A second clean gate loads the actual pinned 63,217,856-parameter checkpoint,
+uses identical deterministic masked encoder state, and autoregresses both graph
+routes through all 194 positions. All **194/194 tokens**, selected full-logit
+and final-hidden pairs at 0/1/2/4/31/63/127/193, and complete self/cross K/V
+planes are byte-exact with zero timed allocation and clean teardown.
+
+This retains G1 as a measured exact kernel win but does **not** make it the
+runtime default yet: the historical real-audio fixture bundle is absent on this
+host, so transcript-through-EOS qualification cannot be rerun. The blocker is
+recorded rather than treating synthetic encoder state as complete ASR evidence.
+Evidence:
+[`G1 retained leaf + model state`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json).
 
 ## Correctness and lifecycle gates
 
@@ -267,6 +296,8 @@ summaries belong in the repository, raw tensors and profiler CSVs do not.
 
 ## Current next action
 
-Implement G1 as a default-off exact route. Do not start static or continuous
-batching until the fused-head decision is committed and its fallback contract
-is stable.
+Restore or regenerate the pinned real-audio fixture bundle and run the eager +
+four-bucket graph transcript-through-EOS gate on the retained G1 route. Promote
+it over `wave8_argmax` only if that gate passes; otherwise remove its runtime
+selector per `docs/REFACTOR.md`. Do not begin G2/G3 runtime transfer before this
+runtime-default decision is committed.

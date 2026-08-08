@@ -3279,12 +3279,15 @@ should be boring.
   The candidate materializes the same complete FP16 logit plane, owns bounded
   FP16-value/int64-index scratch, and replaces only the full-logit argmax scan
   with stable block partials plus a final reduction.
-- If the clean primitive, model-state/token, graph/lifecycle, profiler, and
-  matched complete-route gates reject it, remove the constructor selector,
-  conditional scratch, runtime branch, and candidate benchmark immediately.
-  If promoted, keep the unfused registry keys as the required composite fallback
-  and remove the public selector after one clean release unless it remains
-  necessary for rollback/bisection.
+- The clean production leaf passes at **-12.003% event / -12.005% wall**, and
+  the actual-checkpoint 194-step graph gate is byte-exact for tokens, selected
+  full logits/final hidden, and complete K/V. The selector remains only because
+  the historical real-audio fixture bundle is unavailable for transcript-
+  through-EOS recertification. If that restored gate rejects, remove the
+  constructor selector, conditional scratch, runtime branch, and benchmark
+  immediately. If it passes, make top-1 the runtime default, keep the unfused
+  registry keys as required composite fallback, and remove the public selector
+  after one clean release unless rollback/bisection still requires it.
 
 ## Maple P1 expert-major prefill rollback — temporary opt-out
 

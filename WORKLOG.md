@@ -209149,3 +209149,37 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   exact; both graph routes replay 194 times and tracked ownership returns to the
   pre-gate baseline. This strengthens model-state correctness but is not a real-
   audio transcript or performance claim.
+
+## 2026-08-08 — Retain Moonshine G1 leaf; keep runtime default blocked
+
+- Run from detached clean revision `382a49de8` on Ryzen AI MAX+ 395 / Radeon
+  8060S / gfx1151, `GPU_MAX_HW_QUEUES=1`, TheRock HIP 7.15.0 / clang 23.0.0.
+  Prebuild every code object with the recorded compiler-version file and
+  `require_cached`; cached `rocprofv3 1.3.2 --kernel-trace` observes baseline
+  wave8/argmax and both candidate kernels, no compiler child, local256/VGPR16/
+  SGPR128/scratch0, and candidate LDS512/3,072. Raw CSV remains under `/tmp`.
+- The clean 10-warmup/31-repeat/burst20 screen passes at **104.512 -> 92.145 us
+  event (-11.833%)** and **104.801 -> 92.418 us wall (-11.815%)**. Because that
+  immediate repetition can keep the 30.671-MB head hot, run burst1 as the
+  stricter adjudication. Its first 31-repeat median is positive but two host-
+  wall outliers regress candidate p95, so it is not published.
+- One expanded 10-warmup/63-repeat/burst1 adjudication is binding: baseline ->
+  candidate event is **114.854 -> 101.068 us (-12.003%, -13.786 us, 63/63
+  wins)** and synchronized wall is **120.266 -> 105.828 us (-12.005%, -14.438
+  us, 62/63 wins)**. Event/wall p95 improves **117.379/129.143 ->
+  103.192/107.872 us**. Full FP16 logits are byte-exact, all outputs finite,
+  fallback/candidate/NumPy select token 15836, max absolute error versus NumPy
+  is 6.104e-5, fixed scratch is 46,080 bytes, and ownership returns to zero.
+  Canonical provenance is clean on all staged/unstaged/untracked axes.
+- Re-run the actual-checkpoint graph gate from detached clean revision
+  `0b68832c3`: **1/1** passes with 194/194 exact tokens, eight byte-exact full-
+  logit/final-hidden pairs, complete self/cross K/V equality, 194 graph replays
+  per route, zero timed allocation, and clean teardown. The 252,895,696-byte
+  checkpoint SHA-256 is `c8d22560...7e21584` at the pinned revision.
+- Decision: retain the exact G1 kernel and immutable runtime selector
+  **default-off**. This is an accepted production-shape kernel microbenchmark,
+  not complete ASR latency. `wave8_argmax` remains runtime default because the
+  historical real-audio transcript-through-EOS fixtures are unavailable; this
+  is the concrete blocker required by the performance-retention policy. Publish
+  `benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json`
+  and update the benchmark rollup/changelog plus `docs/MOONSHINE.md`.
