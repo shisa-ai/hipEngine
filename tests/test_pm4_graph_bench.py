@@ -83,14 +83,26 @@ def test_pm4_graph_bench_setup_breakdown_separates_python_and_native_phases() ->
 def test_pm4_graph_bench_stateful_register_comparison_is_explicit_and_default_off() -> None:
     default = build_parser().parse_args([])
     candidate = build_parser().parse_args(
-        ["--transports", "pm4", "pm4_stateful", "pm4_stateful_local"]
+        [
+            "--transports",
+            "pm4",
+            "pm4_stateful",
+            "pm4_stateful_local",
+            "pm4_timestamps",
+        ]
     )
 
     assert default.transports == ["hipgraph", "aql", "pm4"]
-    assert candidate.transports == ["pm4", "pm4_stateful", "pm4_stateful_local"]
+    assert candidate.transports == [
+        "pm4",
+        "pm4_stateful",
+        "pm4_stateful_local",
+        "pm4_timestamps",
+    ]
     assert _transport_spec("pm4") == ("pm4", True, True)
     assert _transport_spec("pm4_stateful") == ("pm4", True, False)
     assert _transport_spec("pm4_stateful_local") == ("pm4", True, True)
+    assert _transport_spec("pm4_timestamps") == ("pm4", True, True)
     with pytest.raises(ValueError, match="unknown benchmark transport"):
         _transport_spec("pm4_magic")
 
