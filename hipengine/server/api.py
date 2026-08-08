@@ -3538,6 +3538,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 backend=config.backend,
                 quant=config.quant,
                 max_active_requests=config.max_active_requests,
+                max_sequence_length=config.max_context_tokens,
                 prefix_cache=prefix_cache_mode,
                 speculative_provider=config.speculative_provider,
                 draft_model=config.draft_model,

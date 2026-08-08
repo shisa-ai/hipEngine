@@ -29,10 +29,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
-from hipengine.benchmark.provenance import collect_artifact_provenance
-
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path[:] = [str(REPO_ROOT), *(entry for entry in sys.path if entry != str(REPO_ROOT))]
+
+import hipengine  # noqa: E402
+
+from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
+
+
+if Path(hipengine.__file__).resolve().parents[1] != REPO_ROOT:
+    raise RuntimeError("gguf_packed_ar_bench imported hipengine from another checkout")
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 _EXACT_ENV = {

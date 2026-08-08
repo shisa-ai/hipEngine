@@ -33,14 +33,19 @@ from pathlib import Path
 from types import MethodType
 from typing import Any, Iterator, Mapping, Sequence
 
-from fastapi.testclient import TestClient
-
-from hipengine import LLM, SamplingParams
-from hipengine.benchmark.provenance import collect_artifact_provenance
-from hipengine.server import ServerConfig, create_app
-
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path[:] = [str(REPO_ROOT), *(entry for entry in sys.path if entry != str(REPO_ROOT))]
+
+import hipengine  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from hipengine import LLM, SamplingParams  # noqa: E402
+from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
+from hipengine.server import ServerConfig, create_app  # noqa: E402
+
+
+if Path(hipengine.__file__).resolve().parents[1] != REPO_ROOT:
+    raise RuntimeError("gguf_live_server_bench imported hipengine from another checkout")
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
@@ -1052,7 +1057,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     samples_by_name: dict[str, list[dict[str, Any]]] = {name: [] for name in names}
     live_sample: dict[str, Any] | None = None
     with _temporary_environment(env):
-        llm = LLM(model, backend=str(args.backend))
+        llm = LLM(
+            model,
+            backend=str(args.backend),
+            max_sequence_length=max_sequence_length,
+        )
         try:
             adapter = llm._get_text_generator()
             llm.prepare(

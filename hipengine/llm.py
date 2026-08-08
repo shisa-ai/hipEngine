@@ -22,6 +22,44 @@ _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
 }
 
 
+def _server_plain_ar_capacity(
+    generator: Any,
+    *,
+    max_sequence_length: int | None,
+) -> int | None:
+    """Resolve registry-owned plain-AR residency for one serving context."""
+
+    raw_default = getattr(generator, "server_plain_ar_max_active_requests", None)
+    default = None if raw_default is None else int(raw_default)
+    if default is not None and default < 1:
+        raise ValueError("server_plain_ar_max_active_requests must be positive")
+    raw_limits = getattr(
+        generator,
+        "server_plain_ar_max_active_requests_by_max_sequence_length",
+        None,
+    )
+    if not raw_limits or max_sequence_length is None:
+        return default
+    if not isinstance(raw_limits, Mapping):
+        raise TypeError(
+            "server_plain_ar_max_active_requests_by_max_sequence_length must be a mapping"
+        )
+    requested = int(max_sequence_length)
+    if requested <= 0:
+        raise ValueError("max_sequence_length must be positive when set")
+    limits: list[tuple[int, int]] = []
+    for raw_context, raw_capacity in raw_limits.items():
+        context = int(raw_context)
+        capacity = int(raw_capacity)
+        if context <= 0 or capacity <= 0:
+            raise ValueError("plain-AR context limits and capacities must be positive")
+        limits.append((context, capacity))
+    for context, capacity in sorted(limits):
+        if requested <= context:
+            return capacity
+    return default
+
+
 def _engine_loop_config_with_generator_defaults(
     config: Any,
     generator: Any,
@@ -194,6 +232,7 @@ class LLM:
         backend: str = "auto",
         quant: str = AUTO_QUANT,
         max_active_requests: int | None = None,
+        max_sequence_length: int | None = None,
         prefix_cache: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
@@ -201,6 +240,8 @@ class LLM:
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
+        if max_sequence_length is not None and int(max_sequence_length) <= 0:
+            raise ValueError("max_sequence_length must be positive when set")
         provider = (
             None
             if speculative_provider is None
@@ -223,6 +264,9 @@ class LLM:
         self.quant = quant
         self.max_active_requests = (
             None if max_active_requests is None else int(max_active_requests)
+        )
+        self.max_sequence_length = (
+            None if max_sequence_length is None else int(max_sequence_length)
         )
         self.speculative_provider = provider
         self.draft_model = drafter
@@ -469,13 +513,10 @@ class LLM:
         generator = self._text_generator
         if generator is None:
             return None
-        raw_limit = getattr(generator, "server_plain_ar_max_active_requests", None)
-        if raw_limit is None:
-            return None
-        limit = int(raw_limit)
-        if limit < 1:
-            raise ValueError("server_plain_ar_max_active_requests must be positive")
-        return limit
+        return _server_plain_ar_capacity(
+            generator,
+            max_sequence_length=self.max_sequence_length,
+        )
 
     @property
     def supports_controlled_streaming(self) -> bool:
@@ -539,12 +580,31 @@ class LLM:
         context they can preallocate for the selected model/KV policy.
         """
 
+        requested = (
+            self.max_sequence_length
+            if max_sequence_length is None
+            else int(max_sequence_length)
+        )
+        if requested is not None and requested <= 0:
+            raise ValueError("max_sequence_length must be positive when set")
+        if self.max_sequence_length is not None and (
+            requested is not None and requested > self.max_sequence_length
+        ):
+            raise ValueError(
+                "prepare max_sequence_length exceeds the configured serving context"
+            )
+        if (
+            self.max_sequence_length is None
+            and self._text_generator is None
+            and requested is not None
+        ):
+            self.max_sequence_length = requested
         generator = self._get_text_generator()
         preparer = getattr(generator, "prepare", None)
         if not callable(preparer):
             return None
         return preparer(
-            max_sequence_length=None if max_sequence_length is None else int(max_sequence_length),
+            max_sequence_length=requested,
             sampling_params=sampling_params or SamplingParams(),
         )
 
@@ -675,17 +735,11 @@ class LLM:
             generator,
         )
         resident_capacity = self.max_active_requests
-        registered_plain_ar_capacity = getattr(
+        registered_plain_ar_capacity = _server_plain_ar_capacity(
             generator,
-            "server_plain_ar_max_active_requests",
-            None,
+            max_sequence_length=self.max_sequence_length,
         )
         if registered_plain_ar_capacity is not None:
-            registered_plain_ar_capacity = int(registered_plain_ar_capacity)
-            if registered_plain_ar_capacity < 1:
-                raise ValueError(
-                    "server_plain_ar_max_active_requests must be positive"
-                )
             resident_capacity = (
                 registered_plain_ar_capacity
                 if resident_capacity is None

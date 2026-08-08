@@ -147,6 +147,67 @@ def test_llm_caps_resident_capacity_to_registered_plain_ar_width(monkeypatch) ->
     assert llm._text_generator._runner.capacity == 4
 
 
+def test_llm_selects_registered_short_context_plain_ar_width(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class ContextCappedFakeGenerator:
+        server_plain_ar_max_active_requests = 4
+        server_plain_ar_max_active_requests_by_max_sequence_length = {768: 13}
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"{prompt}!" for prompt in request.prompts]
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["ContextCappedFakeForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="context_capped_fake_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="context_capped_fake_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: ContextCappedFakeGenerator(),
+        replace=True,
+    )
+
+    short = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=13,
+        max_sequence_length=768,
+    )
+    long = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=13,
+        max_sequence_length=4096,
+    )
+    prepared_short = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=13,
+    )
+
+    assert short.generate(["short"], SamplingParams(max_tokens=1)) == ["short!"]
+    assert short.server_plain_ar_max_active_requests == 13
+    assert short._text_generator._runner.capacity == 13
+    assert long.generate(["long"], SamplingParams(max_tokens=1)) == ["long!"]
+    assert long.server_plain_ar_max_active_requests == 4
+    assert long._text_generator._runner.capacity == 4
+    prepared_short.prepare(max_sequence_length=768)
+    assert prepared_short.max_sequence_length == 768
+    assert prepared_short.server_plain_ar_max_active_requests == 13
+    assert prepared_short._text_generator._runner.capacity == 13
+
+
 def test_llm_generate_detailed_preserves_exact_token_prompt_rows(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading

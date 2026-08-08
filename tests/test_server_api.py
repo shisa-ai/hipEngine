@@ -2677,6 +2677,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         backend: str,
         quant: str,
         max_active_requests: int | None = None,
+        max_sequence_length: int | None = None,
         prefix_cache: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
@@ -2688,6 +2689,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "backend": backend,
                 "quant": quant,
                 "max_active_requests": max_active_requests,
+                "max_sequence_length": max_sequence_length,
                 "prefix_cache": prefix_cache,
                 "speculative_provider": speculative_provider,
                 "draft_model": draft_model,
@@ -2703,6 +2705,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
             served_model_name="fake-model",
             eager_load=False,
             max_active_requests=8,
+            max_context_tokens=768,
             prefix_cache="radix",
         )
     )
@@ -2718,6 +2721,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "backend": "auto",
         "quant": "auto",
         "max_active_requests": 8,
+        "max_sequence_length": 768,
         "prefix_cache": "radix",
         "speculative_provider": None,
         "draft_model": None,
