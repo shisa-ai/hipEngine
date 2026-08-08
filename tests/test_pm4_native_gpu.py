@@ -116,6 +116,7 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         assert provenance["last_timeout_ns"] == 5_000_000_000
         assert provenance["last_completion_value"] == 0
         assert provenance["last_transport"] == "pm4"
+        assert provenance["local_cache_dependencies"] is False
         assert provenance["module_load_ns"] > 0
         assert provenance["kernel_resolve_ns"] > 0
         assert provenance["kernarg_stage_ns"] > 0

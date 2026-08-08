@@ -100,9 +100,20 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
         handle = 31
 
         def instantiate(
-            self, observed_manifest, *, stateful_registers: bool = False
+            self,
+            observed_manifest,
+            *,
+            stateful_registers: bool = False,
+            local_cache_dependencies: bool = False,
         ) -> FakeExecutable:
-            calls.append(("native_instantiate", observed_manifest.fingerprint, stateful_registers))
+            calls.append(
+                (
+                    "native_instantiate",
+                    observed_manifest.fingerprint,
+                    stateful_registers,
+                    local_cache_dependencies,
+                )
+            )
             return FakeExecutable()
 
         def provenance(self) -> dict[str, object]:
@@ -152,7 +163,7 @@ def test_pm4_submission_inspects_once_syncs_before_submit_and_never_launches_hip
     assert calls == [
         ("inspect", 17, "gfx1100", 23),
         ("context_create", "0000:03:00.0", "gfx1100"),
-        ("native_instantiate", "manifest-sha", False),
+        ("native_instantiate", "manifest-sha", False, False),
         ("stream_sync", 29),
         ("native_launch", "pm4", 2.5),
         ("executable_close",),
@@ -172,6 +183,7 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
 ) -> None:
     calls: list[tuple[object, ...]] = []
     monkeypatch.setenv("HIPENGINE_PM4_STATEFUL_REGISTERS", "1")
+    monkeypatch.setenv("HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES", "1")
     manifest = SimpleNamespace(
         gfx_arch="gfx1100",
         fingerprint="shared",
@@ -197,10 +209,21 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
         generation = 0
 
         def instantiate(
-            self, observed_manifest, *, stateful_registers: bool = False
+            self,
+            observed_manifest,
+            *,
+            stateful_registers: bool = False,
+            local_cache_dependencies: bool = False,
         ) -> FakeExecutable:
             self.generation += 1
-            calls.append(("instantiate", self.generation, stateful_registers))
+            calls.append(
+                (
+                    "instantiate",
+                    self.generation,
+                    stateful_registers,
+                    local_cache_dependencies,
+                )
+            )
             return FakeExecutable(80 + self.generation)
 
         def provenance(self) -> dict[str, object]:
@@ -250,6 +273,7 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
     assert owner.provenance()["children"] == 0
     assert owner.provenance()["generations"] == 2
     assert owner.provenance()["stateful_registers"] is True
+    assert owner.provenance()["local_cache_dependencies"] is True
     assert owner.provenance()["context_create_ns"] >= 0
     assert owner.provenance()["last_graph_inspection_ns"] > 0
     assert owner.provenance()["last_native_instantiate_ns"] > 0
@@ -258,9 +282,9 @@ def test_native_submission_context_reuses_one_queue_across_graph_generations(
     assert owner.provenance()["closed"] is True
     assert calls == [
         ("context_create",),
-        ("instantiate", 1, True),
+        ("instantiate", 1, True, True),
         ("executable_close", 81),
-        ("instantiate", 2, True),
+        ("instantiate", 2, True, True),
         ("executable_close", 82),
         ("context_close",),
     ]
@@ -275,7 +299,13 @@ def test_explicit_pm4_instantiation_failure_closes_context_without_hip_fallback(
     class RejectingContext:
         handle = 31
 
-        def instantiate(self, observed_manifest, *, stateful_registers: bool = False):
+        def instantiate(
+            self,
+            observed_manifest,
+            *,
+            stateful_registers: bool = False,
+            local_cache_dependencies: bool = False,
+        ):
             calls.append("native_instantiate")
             raise RuntimeError("unsupported kernel descriptor")
 

@@ -209277,3 +209277,23 @@ Vulkan local sizes verbatim will close the measured gap.
   proceeding. Compact rejection evidence:
   `benchmarks/results/2026-08-08-gfx1100-pm4-wait-only-dependency-rejected.json`.
   No destructive lifecycle arm ran.
+
+## 2026-08-08 — Retain local-cache PM4 dependency acquire candidate
+
+- Keep the compute-idle event and `ACQUIRE_MEM` at all 625 dependency
+  boundaries, but test a narrower GCR control: `GLK_INV|GLV_INV|GL1_INV`
+  (`0x0380`) instead of also doing `GL2_INV|GL2_WB` (`0xc380`). Linux amdgpu
+  `nvd.h` defines these `PACKET3_ACQUIRE_MEM` fields. The prior compute-idle
+  event completes producer writes into coherent GL2; the acquire still
+  invalidates consumer scalar/vector/L1 caches.
+- RED/GREEN packet tests distinguish both exact GCR words. The guarded native
+  transport smoke passes. The 626-node p512/d3 gate is bit-exact for tokens,
+  recurrent/KV state, and all logits and directionally improves **10.011125 ->
+  9.878803 ms/token (1.321%)** without changing the 18,079-dword tape.
+- The dirty-tree same-session p512/d128 decision is also exact and improves
+  stateful PM4 **10.022598 -> 9.936004 ms/token (-0.864%)**, **99.775 ->
+  100.644 tok/s (1.0087x)**, with **5/5 paired wins**. All paired deltas are
+  negative (`-0.0952, -0.0766, -0.0866, -0.0847, -0.0796 ms/token`). Retain the
+  default-off `HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES` candidate for a
+  tracked-clean HIP-graph/stateful/local comparison and broad promotion gates;
+  track flag collapse in `docs/REFACTOR.md`. No destructive lifecycle arm ran.

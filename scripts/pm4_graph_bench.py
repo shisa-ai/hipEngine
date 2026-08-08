@@ -37,19 +37,21 @@ from scripts.gguf_decode_graph_g5 import (  # noqa: E402
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _DEFAULT_TRANSPORTS = ("hipgraph", "aql", "pm4")
-_BENCHMARK_MODES = (*_DEFAULT_TRANSPORTS, "pm4_stateful")
+_BENCHMARK_MODES = (*_DEFAULT_TRANSPORTS, "pm4_stateful", "pm4_stateful_local")
 _DEFAULT_MEMORY_RECOVERY_TOLERANCE = 64 * 1024 * 1024
 
 
-def _transport_spec(mode: str) -> tuple[str, bool | None]:
+def _transport_spec(mode: str) -> tuple[str, bool | None, bool | None]:
     """Map one benchmark label to the production transport and PM4 encoder."""
 
+    if mode == "pm4_stateful_local":
+        return "pm4", True, True
     if mode == "pm4_stateful":
-        return "pm4", True
+        return "pm4", True, False
     if mode == "pm4":
-        return "pm4", False
+        return "pm4", False, False
     if mode in {"hipgraph", "aql"}:
-        return mode, None
+        return mode, None, None
     raise ValueError(f"unknown benchmark transport mode {mode!r}")
 
 
@@ -302,7 +304,10 @@ def _read_compiler_version(path: Path | None) -> str | None:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     transports = tuple(dict.fromkeys(str(mode) for mode in args.transports))
     if not transports or any(mode not in _BENCHMARK_MODES for mode in transports):
-        raise ValueError("transports must be selected from hipgraph, aql, pm4, and pm4_stateful")
+        raise ValueError(
+            "transports must be selected from hipgraph, aql, pm4, pm4_stateful, "
+            "and pm4_stateful_local"
+        )
     if args.backend != "hip_gfx1100" and any(
         _transport_spec(mode)[0] != "hipgraph" for mode in transports
     ):
@@ -362,14 +367,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         free_before_graphs, total_bytes = session.runtime.mem_get_info()
         try:
             for mode in transports:
-                selected_transport, stateful_registers = _transport_spec(mode)
+                selected_transport, stateful_registers, local_cache_dependencies = _transport_spec(
+                    mode
+                )
                 capture_start_ns = time.perf_counter_ns()
-                if stateful_registers is True:
+                if stateful_registers is True or local_cache_dependencies is True:
                     # A separate context lets conservative and stateful PM4
                     # coexist in one loaded session for a real counterbalanced
                     # replay comparison. The production session cache is keyed
                     # by transport name and intentionally owns only one `pm4`.
-                    os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "1"
+                    os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = str(
+                        int(bool(stateful_registers))
+                    )
+                    os.environ["HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"] = str(
+                        int(bool(local_cache_dependencies))
+                    )
                     context = create_graph_submission_context(
                         backend=str(session.runner.backend),
                         gfx_arch=str(session.runner.target_arch),
@@ -393,6 +405,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else:
                     if stateful_registers is False:
                         os.environ["HIPENGINE_PM4_STATEFUL_REGISTERS"] = "0"
+                    if local_cache_dependencies is False:
+                        os.environ["HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES"] = "0"
                     graphs[mode] = session.capture_decode_graph(
                         position=int(args.prompt_length),
                         steps_per_replay=1,
@@ -480,6 +494,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 _transport_spec(mode)[1] is None
                 or teardown[mode]["live"].get("stateful_registers") is _transport_spec(mode)[1]
             )
+            and (
+                _transport_spec(mode)[2] is None
+                or teardown[mode]["live"].get("local_cache_dependencies")
+                is _transport_spec(mode)[2]
+            )
         )
         for mode in transports
     )
@@ -544,6 +563,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 mode: {
                     "transport": _transport_spec(mode)[0],
                     "pm4_stateful_registers": _transport_spec(mode)[1],
+                    "pm4_local_cache_dependencies": _transport_spec(mode)[2],
                 }
                 for mode in transports
             },

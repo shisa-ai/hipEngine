@@ -13,6 +13,7 @@ from hipengine.core.pm4.packets import (
     Gfx1100KernelImage,
     acquire_system,
     dependency_global,
+    dependency_local_cache,
     encode_gfx1100_graph,
     packet3,
     vendor_pm4_ib_packet,
@@ -104,10 +105,22 @@ def test_conservative_graph_brackets_and_state_elision_are_exact() -> None:
     )
     stateless = encode_gfx1100_graph([dispatch, dispatch], stateful=False)
     stateful = encode_gfx1100_graph([dispatch, dispatch], stateful=True)
+    local_cache = encode_gfx1100_graph(
+        [dispatch, dispatch], stateful=True, local_cache_dependencies=True
+    )
 
     assert stateless[: len(acquire_system())] == acquire_system()
     boundary_start = len(acquire_system()) + 35  # first dispatch plus final wait
-    assert stateless[boundary_start : boundary_start + len(dependency_global())] == dependency_global()
+    assert (
+        stateless[boundary_start : boundary_start + len(dependency_global())] == dependency_global()
+    )
+    assert (
+        local_cache[boundary_start : boundary_start + len(dependency_local_cache())]
+        == dependency_local_cache()
+    )
+    assert dependency_global()[-1] == 0x0C380
+    assert dependency_local_cache()[-1] == 0x00380
+    assert len(local_cache) == len(stateful)
     assert len(stateful) < len(stateless)
     assert stateful[-2:] == wait_compute_idle()
 
@@ -118,7 +131,14 @@ def test_gfx1100_encoder_rejects_unsupported_abi_and_geometry() -> None:
         encode_gfx1100_graph([(_image(private_segment_size=16), geometry, 0, 0x1000)])
     with pytest.raises(Pm4InspectionError, match="implicit SGPR"):
         encode_gfx1100_graph(
-            [(_image(kernel_code_properties=ENABLE_SGPR_KERNARG_SEGMENT_PTR | (1 << 2)), geometry, 0, 0x1000)]
+            [
+                (
+                    _image(kernel_code_properties=ENABLE_SGPR_KERNARG_SEGMENT_PTR | (1 << 2)),
+                    geometry,
+                    0,
+                    0x1000,
+                )
+            ]
         )
     with pytest.raises(Pm4InspectionError, match="integral workgroups"):
         encode_gfx1100_graph(

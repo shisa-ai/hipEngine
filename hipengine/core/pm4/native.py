@@ -15,6 +15,7 @@ _ERROR_BYTES = 4096
 _ABI_VERSION = 2
 _EXECUTABLE_FLAG_TIMESTAMPS = 1 << 0
 _EXECUTABLE_FLAG_STATEFUL_REGISTERS = 1 << 1
+_EXECUTABLE_FLAG_LOCAL_CACHE_DEPENDENCIES = 1 << 2
 
 
 class NativePm4Error(RuntimeError):
@@ -215,6 +216,7 @@ class NativePm4Context:
         *,
         timestamps: bool = False,
         stateful_registers: bool = False,
+        local_cache_dependencies: bool = False,
     ) -> "NativePm4Executable":
         if not self.handle:
             raise NativePm4Error("native PM4 context is closed")
@@ -262,6 +264,8 @@ class NativePm4Context:
             flags |= _EXECUTABLE_FLAG_TIMESTAMPS
         if stateful_registers:
             flags |= _EXECUTABLE_FLAG_STATEFUL_REGISTERS
+        if local_cache_dependencies:
+            flags |= _EXECUTABLE_FLAG_LOCAL_CACHE_DEPENDENCIES
         _call(
             self.library.he_pm4_executable_create_ex,
             ctypes.c_void_p(self.handle),
