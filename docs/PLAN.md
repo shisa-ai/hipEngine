@@ -681,19 +681,22 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 
 **Phase-0 commitment:** lever #1 only. The nano-vllm-amd code already demonstrates it works on ROCm via PyTorch's `torch.cuda.CUDAGraph` wrapper; hipEngine's torch-free port calls `hipGraphCreate` / `hipGraphInstantiate` / `hipGraphLaunch` directly through `ctypes` on `libamdhip64.so` (~300 lines).
 
-**In-tree retained-PM4 program:** native HIP graph replay remains the package
-baseline and default. The explicit gfx1100 path inspects an already captured
-kernel-only graph through public HIP APIs, extracts the exact JIT-embedded
-HSACO, and lowers it to one retained PM4 indirect buffer submitted through a
-session-persistent public-ROCr queue. The canonical stateful/local-cache encoder
-is exact and faster for the c1 whole-step graph, including the full natural,
-heldout, 4K, rebuild, cancellation, shutdown, and memory matrix. Packed
-c2/c4/c8 graphs are also registry-wired and exact, but tracked-clean p512/d128
-replay regresses HIP graph **12.551%/9.196%/5.687%** with 0/5 wins at every
-width; c3/c5/c6/c7 remain packed eager and transport-unaffected. This measured
-c>N blocker keeps HIP graph package-default. The implementation removes the
-Redline runtime/interposer dependency and supplies a smaller #6529 isolation
-surface, but production retains one queue and does not exercise risky recreate.
+**In-tree retained-PM4 program:** native HIP graph replay remains the portable
+baseline, correctness oracle, and fallback. The gfx1100 path inspects an already
+captured kernel-only graph through public HIP APIs, extracts the exact
+JIT-embedded HSACO, and lowers it to one retained PM4 indirect buffer submitted
+through a session-persistent public-ROCr queue. The canonical
+stateful/local-cache encoder is exact across natural, heldout, 4K, rebuild,
+cancellation, sparse retirement, shutdown, and memory gates. After removing
+full 747/748-record provenance serialization from each packed replay, clean
+p512/d128 PM4 beats HIP graph by **7.104%/6.626%/4.126%/2.466%** at physical
+c1/c2/c4/c8, with 5/5 wins and non-regressive capture/request wall at every
+packed width. The gfx1100 backend package therefore owns scoped PM4 defaults
+for those Qwen3.5 GGUF whole-step/packed graph families; unrelated graph
+families and peer backends stay on HIP graph. Logical c3/c5/c6/c7 remain packed
+eager and transport-unaffected. The implementation removes the Redline
+runtime/interposer dependency and supplies a smaller #6529 isolation surface,
+but production retains one queue and does not exercise risky recreate.
 Architecture admission, exact ABI checks, conservative ordering, no post-submit
 fallback, and promotion gates are specified in [`PM4.md`](PM4.md).
 

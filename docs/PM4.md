@@ -1,10 +1,9 @@
 # In-Tree Retained-PM4 Submission
 
-> **Status (2026-08-07):** implementation in progress. P0 documentation, P1
-> exact graph inspection, P2 direct public-HSA AQL, P3 retained gfx1100 PM4,
-> P4 lifecycle-reproducer safe controls, and P5 production GGUF graph integration
-> are complete. P6 measurement/optimization is in progress. Native HIP graphs
-> remain the package default. Explicit PM4 selection fails closed, and reset-prone
+> **Status (2026-08-08):** P0-P6 are complete for admitted gfx1100 Qwen3.5
+> GGUF graph scopes. Canonical PM4 is exact and faster at physical c1/c2/c4/c8;
+> scoped backend-capability default wiring is pending. HIP graph remains the
+> portable fallback/oracle, explicit PM4 fails closed, and reset-prone
 > submit/recreate stress remains unrun pending a separate warning and approval.
 
 This document defines hipEngine's plan for a small, torch-free, in-tree
@@ -50,7 +49,7 @@ graph framework, compiler, profiler, or HIP interposer.
 | P3 retained gfx1100 PM4 | Complete | Strict descriptor admission, conservative PM4 tape, vendor-AQL IB, two bit-exact safe replays, and no fallback |
 | P4 lifecycle reproducer | Complete (safe controls) | Reuse, recreate/no-submit, HSA/HIP allocation, timestamps, queue-first quarantine, and complete per-cycle JSON; reset-prone submit/recreate stress implemented but intentionally unrun |
 | P5 production graph integration | Complete | Registry-selected session-owned transport, persistent context across graph generations, p512/d3 exact eager/HIP/AQL/PM4 token-state-KV-logit gate, cancellation/close, zero fallback, and exact memory recovery |
-| P6 performance/promotion | In progress | Clean p512/d128 baseline: PM4 synchronized replay is 6.699% lower wall than HIP graph, but first capture makes the complete request 3.310% slower; optimize setup before any promotion |
+| P6 performance/promotion | Complete for gfx1100 GGUF graph scopes | Canonical PM4 wins clean p512/d128 replay by 7.104%/6.626%/4.126%/2.466% at physical c1/c2/c4/c8; packed capture-inclusive and complete-request wall are non-regressive, with exact natural/lifecycle gates |
 
 ## Goals and non-goals
 
@@ -962,26 +961,33 @@ environment selectors are removed from transport construction and cannot
 downgrade the canonical path; low-level conservative/global modes remain only
 as benchmark diagnostics.
 
-Packed c>N graph admission is now implemented through the same registered
-submission owner and persistent context, but its promotion is **blocked on
-performance, not correctness or lifecycle**. A tracked-clean one-model,
-eight-session, alternating-order p512/d128 matrix is exact across c2/c4/c8,
-the complete 18-prompt category/heldout suite, **2,800** steady independent-c1
-all-layer comparisons, Conv/GDN/live-KV state, context close, and memory
-recovery. A focused sparse-retirement follow-up adds **1,160/1,160** exact
-all-layer rows across active widths **8→6→4→2→1**, five graph generations, and
-five retired submissions. PM4 nevertheless loses every replay pair: HIP→PM4 is
-**14.676→16.518 ms/step (+12.551%, 0/5)** at c2,
-**20.252→22.114 (+9.196%, 0/5)** at c4, and
-**31.102→32.870 (+5.687%, 0/5)** at c8. Capture-inclusive and request-inclusive
-wall also regress. Keep HIP graph for packed c2/c4/c8; logical c3/c5/c6/c7 use
-packed eager and are transport-unaffected. Profile the near-constant packed PM4
-penalty before attempting any dependency relaxation; the wait-only result above
-proves that removing acquires blindly is invalid. Evidence:
+Packed c>N graph admission uses the same registered submission owner and
+persistent context. Full attribution found that the prior apparent PM4 loss was
+not device dependency execution: `Qwen35GGUFPackedDecodeGraph.replay()` rebuilt
+full native JSON for all 747/748 dispatch records after every token. Calibrated
+100 MHz PM4 timestamps, direct-AQL `rocprofv3` traces, and matched host timing
+isolated **2.9–3.8/3.0–3.6/3.1–3.4 ms** of this host-only provenance cost at
+c2/c4/c8. Replay now updates O(1) counters and defers the complete proof until
+outside timing; the canonical local-cache acquire remains unchanged because the
+wait-only variant is correctness-rejected.
+
+The tracked-clean one-model/eight-session p512/d128 rerun is exact across
+c2/c4/c8 and all 18 natural category/heldout trajectories. PM4 wins every pair:
+HIP→PM4 is **14.584→13.618 ms/step (-6.626%, 5/5)** at c2,
+**20.235→19.400 (-4.126%, 5/5)** at c4, and
+**31.005→30.240 (-2.466%, 5/5)** at c8. Capture-inclusive and complete-request
+wall also improve at every width. Joined independent-c1 and sparse-retirement
+evidence covers **2,800 + 1,160** exact all-layer comparisons, active widths
+**8→6→4→2→1**, full retirement/teardown, and 256 KiB memory recovery. Logical
+c3/c5/c6/c7 remain packed eager and transport-unaffected. Evidence:
+`benchmarks/results/2026-08-08-gfx1100-pm4-full-transport-attribution.json`;
+the superseded blocked matrix remains historical evidence in
 `benchmarks/results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json`.
 
-This leaves HIP graph as the package default on a concrete c>N performance
-blocker. ROCm #6529 queue recreate remains useful optional isolation coverage,
+The concrete gfx1100 GGUF c>N performance blocker is resolved. Scoped
+backend-capability promotion may select PM4 for proven c1 and packed c2/c4/c8
+graphs while retaining HIP graph for unrelated graph families and peer
+backends. ROCm #6529 queue recreate remains useful optional isolation coverage,
 but it is not an evidenced fault in the production ownership path: hipEngine
 retains one queue and does not recreate it in-process.
 
