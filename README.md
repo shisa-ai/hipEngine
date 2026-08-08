@@ -105,7 +105,7 @@ precise public API and serving boundaries.
 | `cpu_reference` | Any CPU with NumPy | Correctness oracle and GPU-free CI |
 | `hip_gfx1100` | Radeon Pro W7900 / RX 7900 XTX (RDNA3) | Active |
 | `hip_gfx1151` | Ryzen AI MAX+ 395 / Radeon 8060S (RDNA3.5) | Active |
-| `cuda_sm86` | NVIDIA Ampere consumer GPUs | Planned peer backend; not supported |
+| `cuda_sm120a` | NVIDIA consumer Blackwell GPUs | Partial (some models) |
 
 Nearby unqualified ROCm targets can force a HIP backend only after independent
 correctness validation. gfx1151 defaults to one hardware queue to avoid a
@@ -134,7 +134,7 @@ retained low-power queue failure; operational overrides are documented in
 │  kernels/hip_gfx1100/      active RDNA3 implementation          │
 │  kernels/hip_gfx1151/      active RDNA3.5 peer backend          │
 │  kernels/cpu_reference/    correctness oracle                   │
-│  kernels/cuda_sm86/        planned peer backend                 │
+│  kernels/cuda_sm120a/      partial NVIDIA Blackwell backend     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
