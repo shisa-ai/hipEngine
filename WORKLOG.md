@@ -216611,3 +216611,10 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   --output=/tmp/maple-sm120a-group-scatter .venv/bin/python -m pytest -q
   tests/test_cuda_sm120a_maple.py::test_cuda_sm120a_maple_i32_stable_compaction_matches_cpu_order`.
   Keep `.nsys-rep`/SQLite under `/tmp` and out of Git.
+- Commit the validated native-prefill unit as `8a9cc325d`. Generalize
+  `scripts/maple_prefill_bench.py` to select an optional backend-provided
+  `maple_runner_type` capability and capture physical CUDA GPU0/NVCC metadata;
+  HIP keeps its existing `MapleRunner` fallback and ROCm metadata. This changes
+  benchmark orchestration only, not model/engine dispatch. Unit command
+  `CUDA_VISIBLE_DEVICES=0 uv run --extra dev pytest -q
+  tests/test_maple_prefill_bench_script.py` passes **2/2**.

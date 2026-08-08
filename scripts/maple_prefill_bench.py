@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recertify Maple M5 native prefill on the public gfx1151 path.
+"""Recertify Maple native prefill on a registered public backend path.
 
 The correctness phase compares serial and native prefill over the complete
 code/general-English/general-Japanese/mixed prompt suite plus heldouts. It checks
@@ -39,6 +39,10 @@ from hipengine.core.memory import (  # noqa: E402
     host_array_ptr,
     memory_stats,
     reset_memory_stats,
+)
+from hipengine.kernels.backends import (  # noqa: E402
+    backend_package_capability,
+    cuda_target_arch_for_backend,
 )
 from hipengine.loading.maple import load_maple_checkpoint  # noqa: E402
 from hipengine.runtime.maple import PREFILL_CHUNK, MapleRunner  # noqa: E402
@@ -110,6 +114,15 @@ def _kl_divergence(reference: np.ndarray, candidate: np.ndarray) -> float:
     cand_log_p = cand - cand_log_z
     probability = np.exp(ref_log_p)
     return float(np.sum(probability * (ref_log_p - cand_log_p)))
+
+
+def _maple_runner_type(backend: str):
+    capability = backend_package_capability(
+        backend,
+        "maple_runner_type",
+        default=None,
+    )
+    return MapleRunner if capability is None else capability()
 
 
 def _copy_native_final_logits(runner: MapleRunner) -> np.ndarray:
@@ -238,8 +251,9 @@ def _quality_gate(
     backend: str,
     continuation_steps: int,
 ) -> dict[str, Any]:
-    serial = MapleRunner.load(checkpoint, backend=backend, max_context=512)
-    native = MapleRunner.load(checkpoint, backend=backend, max_context=512)
+    runner_type = _maple_runner_type(backend)
+    serial = runner_type.load(checkpoint, backend=backend, max_context=512)
+    native = runner_type.load(checkpoint, backend=backend, max_context=512)
     rows: list[dict[str, Any]] = []
     try:
         for prompt in prompts:
@@ -367,8 +381,9 @@ def _performance_rows(
         length: [(prompt, _shape_tokens(tokenizer, prompt, length)) for prompt in selected]
         for length in lengths
     }
+    runner_type = _maple_runner_type(backend)
     reset_memory_stats()
-    runner = MapleRunner.load(checkpoint, backend=backend, max_context=max(lengths))
+    runner = runner_type.load(checkpoint, backend=backend, max_context=max(lengths))
     resident = memory_stats()
     native_rows: list[dict[str, Any]] = []
     try:
@@ -417,7 +432,7 @@ def _performance_rows(
         runner.close()
     after_close = memory_stats()
 
-    serial = MapleRunner.load(checkpoint, backend=backend, max_context=max(lengths))
+    serial = runner_type.load(checkpoint, backend=backend, max_context=max(lengths))
     try:
         for row in native_rows:
             length = row["prompt_tokens"]
@@ -446,6 +461,42 @@ def _performance_rows(
     if memory_stats()["current_allocated_bytes"] != 0:
         raise RuntimeError("Maple prefill benchmark leaked tracked device allocations")
     return native_rows, resident, after_close
+
+
+def _hardware_context(backend: str) -> dict[str, Any]:
+    if backend.startswith("cuda_"):
+        nvidia_smi = _capture(
+            [
+                "nvidia-smi",
+                "-i",
+                "0",
+                "--query-gpu=name,driver_version,memory.total",
+                "--format=csv,noheader",
+            ]
+        )
+        fields = [part.strip() for part in nvidia_smi["output"].split(",")]
+        return {
+            "gpu": fields[0] if fields and fields[0] else "NVIDIA GPU0",
+            "architecture": cuda_target_arch_for_backend(backend),
+            "physical_gpu": 0,
+            "nvidia_smi": nvidia_smi,
+            "nvcc": _capture(["nvcc", "--version"]),
+        }
+    return {
+        "gpu": "AMD Radeon 8060S Graphics",
+        "architecture": "gfx1151",
+        "rocminfo": _capture(
+            [
+                "bash",
+                "-lc",
+                "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8",
+            ]
+        ),
+        "rocm_smi": _capture(
+            ["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"]
+        ),
+        "hipcc": _capture(["hipcc", "--version"]),
+    }
 
 
 def _git_context() -> dict[str, Any]:
@@ -502,9 +553,7 @@ def main() -> int:
         after_close["current_allocated_bytes"] == 0
         and after_close["active_allocations"] == 0
     )
-    rocminfo = _capture(["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"])
-    rocm_smi = _capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"])
-    hipcc = _capture(["hipcc", "--version"])
+    hardware = _hardware_context(args.backend)
     protocol_qualified = (
         lengths == (128, 320, 512)
         and args.repetitions >= 3
@@ -524,7 +573,7 @@ def main() -> int:
         "schema_version": 1,
         "date": date.today().isoformat(),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "artifact_type": "maple_m5_native_prefill_recertification",
+        "artifact_type": "maple_native_prefill_recertification",
         "status": status,
         "performance_claim": status == "accepted",
         "model": {
@@ -534,19 +583,14 @@ def main() -> int:
             "quant": "maple_ternary2",
             "exact_weight_bytes": checkpoint.validation.exact_weight_bytes,
         },
-        "hardware": {
-            "gpu": "AMD Radeon 8060S Graphics",
-            "architecture": "gfx1151",
-            "host": platform.node(),
-            "rocminfo": rocminfo,
-            "rocm_smi": rocm_smi,
-            "hipcc": hipcc,
-        },
+        "hardware": {**hardware, "host": platform.node()},
         "software": {"python": platform.python_version(), "git": git},
         "protocol": {
             "command": shlex.join([sys.executable, *sys.argv]),
             "environment": {
+                "CUDA_VISIBLE_DEVICES": os.environ.get("CUDA_VISIBLE_DEVICES"),
                 "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES"),
+                "HIPENGINE_CUDA_ARCH": os.environ.get("HIPENGINE_CUDA_ARCH"),
                 "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
                 "HIPENGINE_COMPILER_VERSION_FILE": os.environ.get(
                     "HIPENGINE_COMPILER_VERSION_FILE"
@@ -577,10 +621,10 @@ def main() -> int:
             "resident_tracked": resident,
             "after_close": after_close,
             "lifecycle_passed": lifecycle_passed,
-            "scope": "hipEngine-owned device allocations; excludes HIP runtime internals",
+            "scope": "hipEngine-owned device allocations; excludes HIP/CUDA runtime internals",
         },
         "notes": [
-            "The retained performance protocol remains fixed at 128/320/512 tokens; public native prefill now continues safely beyond the qualified 512-token shapes up to the configured context.",
+            "The retained performance protocol remains fixed at 128/320/512 tokens; public native prefill may continue beyond the qualified 512-token shapes only under a backend-specific long-context gate.",
             "Fixed-shape timing rows are derived from two natural/heldout prompts per category; they are not output-quality scores.",
             "Correctness is evaluated on unmodified natural prompts with byte-exact final hidden/normalized state, live K/V and KVLiveSpans metadata, full-logit KL, and continuation parity.",
         ],
