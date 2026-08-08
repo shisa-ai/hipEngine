@@ -12,14 +12,20 @@ H8C-H8Q ladder, and high-leverage-only resumption policy.
 These rows are focused repeated-token transport diagnostics, not package-default
 or natural-prompt performance claims. Native HIP graph remains the default.
 
-| Transport / encoder | Qwen3.6 Q4_K_M p512/d128 replay | Retained tape | Status |
-| --- | ---: | ---: | --- |
-| HIP graph | **10.788071 ms/token / 92.695 tok/s** | Native runtime graph | Portable oracle/default |
-| In-tree conservative PM4 | **10.044991 / 99.552** | 25,666 dwords | Explicit diagnostic |
-| In-tree stateful-register PM4 | **9.989421 / 100.106** | 18,079 dwords (**-29.560%**) | Exact opt-in candidate; **-0.553%** replay wall, **5/5** paired wins vs conservative |
+| Transport / encoder | Qwen3.6 Q4_K_M p512/d128 replay | Capture | Retained tape | Status |
+| --- | ---: | ---: | ---: | --- |
+| HIP graph | **10.726350 ms/token / 93.228 tok/s** | 34.993 ms | Native runtime graph | Portable oracle/default |
+| In-tree stateful PM4, global acquire | **10.052766 / 99.475** | 79.296 ms (warm DSO metadata) | 18,079 dwords | Exact comparison path |
+| In-tree stateful PM4, local-cache acquire | **9.964358 / 100.358** | **132.858 ms cold** | 18,079 dwords | Exact opt-in candidate; **-0.879%**, **5/5** paired wins vs global; **-7.104%** vs HIP replay |
 
-Tracked-clean W7900 evidence, exact state/logit hashes, command, lifecycle proof,
-and non-promotion decision:
+Tracked-clean W7900 evidence, exact state/logit hashes, setup attribution, command,
+and lifecycle proof:
+[`2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`](results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json).
+The optimized cold PM4 capture is **193.739 -> 132.858 ms (-31.425%)** versus
+the prior stateful artifact; cold capture-inclusive p512/d128 is now within
+**0.329 ms / 0.023%** of HIP graph rather than about 3.5% slower. This remains a
+focused transport diagnostic pending natural/context/lifecycle promotion gates.
+The superseded stateful-only evidence remains in
 [`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).
 
 The retained source-selected H7H exact full-group Q5 production owner is

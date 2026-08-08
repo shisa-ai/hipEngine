@@ -916,8 +916,14 @@ vector, and GL1 caches. It is bit-exact on the 626-node p512/d3 gate and on a
 counterbalanced p512/d128 run. The latter improves stateful replay
 **10.022598 -> 9.936004 ms/token (-0.864%, 5/5 paired wins)** and throughput
 **99.775 -> 100.644 tok/s (1.0087x)** with identical tokens, recurrent/KV state,
-and all logits. Tape size remains 18,079 dwords. This is retained as an explicit
-candidate pending tracked-clean publication and the broader promotion matrix.
+and all logits. The tracked-clean three-way publication confirms global-to-local
+**10.052766 -> 9.964358 ms/token (-0.879%, 5/5)** and local PM4 is **7.104%**
+faster than HIP graph replay. Cold local capture is **132.858 ms**, down
+**31.425%** from the prior 193.739 ms stateful artifact; cold capture-inclusive
+p512/d128 is now within **0.329 ms / 0.023%** of HIP graph instead of about 3.5%
+slower. Tape size remains 18,079 dwords. Evidence:
+`benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`. This is
+retained as an explicit candidate pending the broader promotion matrix.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact

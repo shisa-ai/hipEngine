@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-08-08
 
+- [retained exact PM4 setup/dependency candidate; package default unchanged] Qwen3.6-35B-A3B Q4_K_M / p512/d128 focused transport replay / W7900: function/DSO reuse plus one 200,240-byte kernarg slab cuts cold stateful PM4 capture **193.739 -> 132.858 ms (-31.425%)**, while local-cache-only dependency acquire cuts same-session replay **10.052766 -> 9.964358 ms/token (-0.879%, 5/5 paired wins; +0.887% tok/s)** and reaches **-7.104%** versus HIP graph replay with exact token/recurrent-KV/logit hashes and clean retirement/teardown; cold capture-inclusive wall is now within **0.329 ms / 0.023%** of HIP; `benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`.
 - [retained exact PM4 encoder candidate; package default unchanged] Qwen3.6-35B-A3B Q4_K_M / p512/d128 focused transport replay / W7900: stateful SH-register elision cuts the retained tape **25,666 -> 18,079 dwords (-29.560%)** and synchronized PM4 replay **10.044991 -> 9.989421 ms/token (-0.553%, 5/5 paired wins; +0.556% tok/s)** in one tracked-clean counterbalanced session, with exact token/recurrent-KV/logit hashes, zero fallback, full retirement, and clean context teardown; keep native HIP graph as package default pending broad PM4 gates; `benchmarks/results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`.
 
 ## 2026-08-07

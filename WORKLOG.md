@@ -209297,3 +209297,27 @@ Vulkan local sizes verbatim will close the measured gap.
   default-off `HIPENGINE_PM4_LOCAL_CACHE_DEPENDENCIES` candidate for a
   tracked-clean HIP-graph/stateful/local comparison and broad promotion gates;
   track flag collapse in `docs/REFACTOR.md`. No destructive lifecycle arm ran.
+
+## 2026-08-08 — Publish clean PM4 setup and local-cache comparison
+
+- At tracked-clean `50d509dae`, run HIP graph, cold local-cache stateful PM4, and
+  warm global-acquire stateful PM4 in one p512/d128 session (warmup 1,
+  repetitions 5, rotating replay order). All runs have identical tokens,
+  recurrent/KV hash `062dd376...35a0`, and all-logits hash
+  `67615105...91f9`; every native submission retires with zero callback error or
+  fallback, contexts close, and memory recovers within the existing 4 MiB
+  first-use allowance.
+- Replay is HIP graph **10.726350 ms/token / 93.228 tok/s**, global stateful PM4
+  **10.052766 / 99.475**, and local-cache stateful PM4 **9.964358 / 100.358**.
+  Local acquire improves the same-session global path **0.879% with 5/5 paired
+  wins** and beats HIP replay by **7.104% / 1.0765x**.
+- Cold local PM4 capture is **132.857623 ms** versus HIP graph 34.993404 ms and
+  the prior stateful artifact's 193.739496 ms (**-31.425%**). The replay saving
+  now offsets essentially all cold setup at d128: capture-inclusive wall is
+  **11.002308 vs 10.999736 ms/token**, a residual **0.329229 ms / 0.023%** over
+  the entire 128-token window instead of about 3.5%. Do not call that tiny
+  residual a win; warm metadata generations are faster.
+- Publish compact diagnostic evidence and update the benchmark rollup/changelog:
+  `benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`.
+  Package default remains HIP graph pending natural/context and unresolved
+  #6529 lifecycle gates. No destructive lifecycle arm ran.
