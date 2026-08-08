@@ -209485,3 +209485,11 @@ Vulkan local sizes verbatim will close the measured gap.
   PM4 remains the separately proven exact/faster scope. ROCm #6529 queue recreate
   is optional isolation coverage, not an evidenced production blocker, because
   the retained owner does not recreate queues in-process.
+- Focused sparse-retirement follow-up at the same clean revision passes physical
+  c8 active masks/counts **8→6→4→2→1** across five PM4 graph generations and
+  owner transitions: **1,160/1,160** all-layer rows, every token, Conv/GDN state,
+  live KV byte, and lifecycle checkpoint are exact versus independent c1; all
+  five submissions retire with zero unretired work and packed state flushes
+  cleanly. The initially requested d7 shape was rejected by the harness before
+  model load because this canonical lifecycle is fixed at c8/d5; the corrected
+  command is the retained evidence. No HSA queue is recreated.

@@ -131,6 +131,21 @@
         "pm4_dwords": 22490,
         "retired_launches": 4
       }
+    },
+    "sparse_retirement_oracle": {
+      "passed": true,
+      "initial_physical_rows": 8,
+      "active_row_counts": [8, 6, 4, 2, 1],
+      "active_masks": ["11111111", "10110111", "10100101", "00100100", "00000100"],
+      "graph_generations": 5,
+      "all_layer_comparisons": 1160,
+      "tokens_exact": true,
+      "conv_gdn_and_live_kv_exact": true,
+      "lifecycle_state_exact": true,
+      "recording_graph_nodes_per_generation": 788,
+      "retired_launches": 5,
+      "unretired_submissions": 0,
+      "flush_executed": true
     }
   },
   "transport_proof": {
@@ -152,7 +167,9 @@
     "contexts_closed": true,
     "measured_free_delta_bytes": 262144,
     "recovery_tolerance_bytes": 67108864,
-    "memory_recovered": true
+    "memory_recovered": true,
+    "sparse_retirement_generations": 5,
+    "sparse_retirement_all_exact": true
   },
   "c1_reference": {
     "artifact": "benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json",
@@ -169,7 +186,11 @@
     "paired_full_artifact_sha256": "64d02092bed45d8b0d5489cb7e1f0d2ce7eb5770d2312ceb792734a2638cf564",
     "c2_oracle_sha256": "2e028c1330df02d13a2fcdfeaf013181dea9b3f12924133dcc2a0413d4b59824",
     "c4_oracle_sha256": "4d1e0f57ff0cc56cb8179420d34a19c59eb89518704cbc5d6a2bf230a422ec0b",
-    "c8_oracle_sha256": "9862b07b27a4179c49848f231871344654d718e11bf2f9efc5267f9b5e83d2e4"
+    "c8_oracle_sha256": "9862b07b27a4179c49848f231871344654d718e11bf2f9efc5267f9b5e83d2e4",
+    "sparse_retirement_command": "PYTHONPATH=/home/lhl/hipEngine-main HIPENGINE_SUBMISSION_TRANSPORT=pm4 HIPENGINE_HIP_ARCH=gfx1100 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 8 --lifecycle shrink_sparse --prefill-mode packed --decode-mode graph --capture-layer-hidden --prompt-length 16 --decode-steps 5 --compiler-version-file /tmp/hipengine-pm4-packed/hipcc-version.txt --require-cached-build --json /tmp/hipengine-pm4-packed/oracle-c8-to-c1-sparse-clean.json",
+    "sparse_c8_to_c1_oracle_path": "/tmp/hipengine-pm4-packed/oracle-c8-to-c1-sparse-clean.json",
+    "sparse_c8_to_c1_oracle_size_bytes": 3366436,
+    "sparse_c8_to_c1_oracle_sha256": "5ad5d5786ad5af48e99e71ea15780a3446dfa04e941e3c9497a281d4e1f93a4e"
   },
   "notes": [
     "The packed submission integration is stable and exact but fails the non-regressive performance gate at every PM4-eligible c>N width.",

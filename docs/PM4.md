@@ -966,9 +966,11 @@ Packed c>N graph admission is now implemented through the same registered
 submission owner and persistent context, but its promotion is **blocked on
 performance, not correctness or lifecycle**. A tracked-clean one-model,
 eight-session, alternating-order p512/d128 matrix is exact across c2/c4/c8,
-the complete 18-prompt category/heldout suite, **2,800** independent-c1
+the complete 18-prompt category/heldout suite, **2,800** steady independent-c1
 all-layer comparisons, Conv/GDN/live-KV state, context close, and memory
-recovery. PM4 nevertheless loses every replay pair: HIP→PM4 is
+recovery. A focused sparse-retirement follow-up adds **1,160/1,160** exact
+all-layer rows across active widths **8→6→4→2→1**, five graph generations, and
+five retired submissions. PM4 nevertheless loses every replay pair: HIP→PM4 is
 **14.676→16.518 ms/step (+12.551%, 0/5)** at c2,
 **20.252→22.114 (+9.196%, 0/5)** at c4, and
 **31.102→32.870 (+5.687%, 0/5)** at c8. Capture-inclusive and request-inclusive

@@ -36,8 +36,10 @@ tracked-clean, one-model/eight-session, alternating-order p512/d128 matrix:
 
 All paired trajectories and all 18 natural category/heldout trajectories are
 exact. Independent-c1 packed oracles add **400/800/1,600** exact all-layer
-comparisons at c2/c4/c8 plus exact Conv/GDN/live-KV and lifecycle state; every
-submission retires, contexts close, and memory recovers. Capture-inclusive and
+comparisons at c2/c4/c8 plus exact Conv/GDN/live-KV and lifecycle state. A
+focused sparse-retirement follow-up adds **1,160/1,160** exact all-layer rows
+across active widths **8→6→4→2→1**, five PM4 graph generations, and five retired
+submissions. Contexts close and memory recovers. Capture-inclusive and
 request-inclusive wall also regress at every width. Logical c3/c5/c6/c7 use the
 packed eager route and are transport-unaffected. Evidence:
 [`2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json`](results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json).
