@@ -209808,3 +209808,28 @@ Vulkan local sizes verbatim will close the measured gap.
   `sync_benchmark_readme.py --check`, and `git diff --check` pass. Per focused-
   repair policy, do not repeat the already completed GPU packet or broad code
   gates for this docs/artifact-only publication.
+
+## 2026-08-08 — Harden the automatic c1 PM4 capture margin
+
+- Final review recovers the clean source-`e7eaf8064` p4096/c1 paired transport
+  packet that completed after the scoped-default publication:
+  `/tmp/hipengine-pm4-c1-p4096-clean.json` (1,052,014 bytes, SHA256
+  `6d07a16e...b4b228d`). On W7900/gfx1100 with exact token/logit/state hashes,
+  three counterbalanced runs, full retirement, and clean teardown, HIP capture
+  is **35.311 ms** and replay **9.912993 ms/token** versus PM4 **134.389 ms** and
+  **9.218943 ms/token**. The measured capture break-even is **142.753 → 143
+  transitions**; at d128 PM4 is still **0.785% slower capture-inclusive**.
+- The published c1 threshold of 144 therefore has only **0.059%** projected
+  capture-inclusive advantage at its boundary and contradicts the artifact's
+  stated >=10% margin policy. Raise only physical-c1 admission **144→160**;
+  measured setup/replay medians project **0.738%** capture-inclusive advantage
+  at d160 and a 12.0% step margin over the 143-step break-even. Packed c2/c4/c8
+  remain **64/96/80** and current p512/d128 direct/server routes are unchanged.
+- RED: update the package capability contract and add actual no-env resolver
+  assertions for d159→HIP / d160→PM4; the focused node fails on the live 144
+  capability. GREEN: change the gfx1100 registry-owned policy, update the generic
+  short→long graph reselection fixture, and pass all **14** tests in
+  `test_gguf_true_ar_category_bench.py` plus `test_qwen35_gguf_decode_graph.py`.
+  Targeted Ruff and `git diff --check` pass. Commit the policy/test unit before
+  running the clean retained no-override d159/d160 W7900 boundary validation;
+  artifact/rollup threshold updates follow that clean packet.

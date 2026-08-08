@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100 import GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS
 from scripts.gguf_true_ar_category_bench import run_prompt_true_ar
@@ -77,9 +78,33 @@ def test_gfx1100_admits_measured_24_transition_decode_graph() -> None:
     ) == {
         ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {
             "transport": "pm4",
-            "min_replay_steps_by_physical_rows": {1: 144, 2: 64, 4: 96, 8: 80},
+            "min_replay_steps_by_physical_rows": {1: 160, 2: 64, 4: 96, 8: 80},
         }
     }
+    resolve = gguf_runner._resolve_gguf_decode_graph_submission_transport
+    identity = ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M")
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=1,
+            replay_steps=159,
+            env={},
+        )
+        == "hipgraph"
+    )
+    assert (
+        resolve(
+            "hip_gfx1100",
+            model_name=identity[0],
+            file_type_name=identity[1],
+            physical_rows=1,
+            replay_steps=160,
+            env={},
+        )
+        == "pm4"
+    )
 
 
 def test_true_ar_uses_state_bound_graph_when_horizon_is_admitted() -> None:

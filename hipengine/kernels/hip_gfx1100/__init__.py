@@ -160,10 +160,12 @@ GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH = {
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
 # Full PM4 attribution and the complete c1/c2/c4/c8 promotion matrix admit the
 # canonical stateful/local-cache owner only for the measured model/quant pair.
+# The c1 floor includes >10% margin over the clean p4096 break-even at 143
+# transitions; packed-width floors retain their independently measured margins.
 GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
     ("Qwen3.6-35B-A3B", "MOSTLY_Q4_K_M"): {
         "transport": "pm4",
-        "min_replay_steps_by_physical_rows": {1: 144, 2: 64, 4: 96, 8: 80},
+        "min_replay_steps_by_physical_rows": {1: 160, 2: 64, 4: 96, 8: 80},
     },
 }
 # LCP-5A's clean peer-aligned semantic/decode contract and 512/4K floors admit
