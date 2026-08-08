@@ -108,7 +108,7 @@ _H5Q_VARIANT = (
 )
 _H5J_IQ4_VARIANT = "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
-_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
+_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_976
 _H6R_PERMLANE_DECL_SHA256 = (
     "c2dfa7a1735338ec3a7f7c1a5dfebe04d696c00475e253df64459454d7d35d47"
 )

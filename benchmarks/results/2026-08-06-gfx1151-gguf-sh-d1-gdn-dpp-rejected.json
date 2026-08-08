@@ -1,0 +1,162 @@
+{
+  "schema_version": "hipengine.gguf.sh_d1_gdn_dpp_rejected.v1",
+  "date": "2026-08-06",
+  "kind": "diagnostic_kernel_rejection",
+  "status": "rejected_leaf_gate",
+  "performance_claim": false,
+  "summary": "The exact same-layout permlanex16/direct-DPP reduction removes every bpermute and preserves BF16 bytes, but improves the cycling GDN-input leaf only 1.0183x and projects 0.0729 ms/token saving, far below both frozen continuation gates. The transient sibling is removed and production remains unchanged.",
+  "platform": {
+    "system": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "compiler": "HIP 7.15.0 / AMD clang 23.0.0git aa451e1f",
+    "hardware_queues": 1
+  },
+  "model_role": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "role": "linear-attention attn_qkv[2048->8192] + attn_gate[2048->4096]",
+    "calls_per_token": 30,
+    "sh_c0_gpu_ms_per_token_range": [4.11311925, 4.166025375],
+    "source_audit": "benchmarks/results/2026-08-05-gfx1151-gguf-sh-d1-gdn-input-audit.json"
+  },
+  "candidate": {
+    "name": "Q8T16 dual-split exact DPP wave reduction",
+    "scope": "transient separately registered BF16 row-1 sibling; never production-dispatched",
+    "parent_commit": "f786e770e63c851a46f2dc8aff36931e2328f90e",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
+    "transient_source_sha256": "6c0552ddee68d70d01dd5e5234d110d92d97e496dea65c8d2d49fe1febf2f493",
+    "transient_wrapper_sha256": "925f41ea72455b3c2d40417d48b413e216a12385cfd7d9e23f0f41d03424a36e",
+    "transient_test_sha256": "fc87e87a0de969497b1df21f1b6531574fe28acd4c85a4d476539d40dcc3083d",
+    "build_artifact": "/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-b80528b41827f923/gguf_q8_0_t16_gemv.so",
+    "build_artifact_sha256": "3db3c434109a653c9feb42dfb7f35594ae7e54a80b38046d21f2261ef1f494b4",
+    "code_object": "/tmp/sh-d1-q8t16-dpp-isa/q8t16-dpp-gfx1151.co",
+    "code_object_sha256": "8deaaa3277cf6a2d0fb7235a1b8ed0f9eebe0d00ccce1bb0a05975d692f56322",
+    "symbol_slice": "/tmp/sh-d1-q8t16-dpp-isa/dual-split-dpp-bf16.s",
+    "symbol_slice_sha256": "9c9a5f413fe44b00043e98c225c15b0e451abe0d26c34f13c4683ac5ac331dd8",
+    "disposition": "removed after the frozen leaf gate failed; no env flag, registry variant, wrapper, test, or device body retained"
+  },
+  "correctness": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 -m pytest -q tests/test_gguf_q8_0_t16_dpp_gemv_decode.py",
+    "result": "4 passed",
+    "shapes": [
+      "32 -> 16+32",
+      "256 -> 64+128",
+      "2048 -> 8192+4096"
+    ],
+    "requirements": {
+      "production_bf16_byte_identity": true,
+      "cpu_gguf_q8_0_oracle": true,
+      "registry_resolution": true
+    },
+    "full_model_gate": "not run because the primitive failed the earlier frozen leaf continuation gate"
+  },
+  "isa": {
+    "kernel": "q8_0_t16_dual_split_dpp_gemv_kernel",
+    "code_bytes": 2976,
+    "instructions": 511,
+    "metadata": {
+      "max_flat_workgroup_size": 128,
+      "vgpr_count": 50,
+      "sgpr_count": 32,
+      "group_segment_fixed_size": 256,
+      "private_segment_fixed_size": 0,
+      "vgpr_spill_count": 0,
+      "sgpr_spill_count": 0
+    },
+    "static_instruction_facts": {
+      "v_permlanex16_b32": 16,
+      "v_add_f32_dpp": 64,
+      "ds_bpermute_b32": 0,
+      "v_fma_mix_f32": 16,
+      "v_fmac_f32": 16,
+      "s_waitcnt": 20,
+      "s_barrier": 1
+    },
+    "gate_passed": true,
+    "comparison": "Production had 80 ds_bpermute_b32 and 67 s_waitcnt at the same 50 VGPR and zero spills/private bytes."
+  },
+  "named_trace": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/sh-d1-q8t16-dpp-trace -- python3 scripts/gguf_q8_0_t16_pair_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 1 --threads 128 --modes dpp --iters 1 --warmup 1 --mall-bytes 33554432 --peak-gbs 256 --json /tmp/sh-d1-q8t16-dpp-trace.json",
+    "csv": "/tmp/sh-d1-q8t16-dpp-trace/gfx1151/3676693_kernel_trace.csv",
+    "csv_sha256": "553053489ca28183fb6c300987b5b946727e320d929b63f179d0f1d823f5bf69",
+    "kernel": "(anonymous namespace)::q8_0_t16_dual_split_dpp_gemv_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)",
+    "dispatches": 2,
+    "workgroup_size": 128,
+    "grid_size_x_threads": 98304,
+    "scratch_size": 0,
+    "duration_ns": [206825, 36107],
+    "note": "Trace is launch/name/resource proof only; profiler timings and one-copy cache state are excluded from the leaf decision."
+  },
+  "cycling_leaf": {
+    "shape": {
+      "rows": 1,
+      "in_features": 2048,
+      "out_features_a": 8192,
+      "out_features_b": 4096
+    },
+    "matrix_mb": 26.739,
+    "pool_copies": 3,
+    "pool_mb": 80.2,
+    "warmup_launches_per_variant": 80,
+    "measured_launches_per_variant": 400,
+    "raw_runs": [
+      {
+        "path": "/tmp/sh-d1-q8t16-dpp-screen-1.json",
+        "sha256": "00de72eca860aa564d435c5390bd6dd6b5eb06be84983cdc096e72501a7041f4",
+        "order": ["exact", "dpp"],
+        "exact_us": 135.02,
+        "dpp_us": 132.61
+      },
+      {
+        "path": "/tmp/sh-d1-q8t16-dpp-screen-2.json",
+        "sha256": "b7047d7c64b401b8cc8285c7799eceb4cdb695a883a61c89ced32086ef7447e9",
+        "order": ["dpp", "exact"],
+        "exact_us": 135.92,
+        "dpp_us": 132.84
+      },
+      {
+        "path": "/tmp/sh-d1-q8t16-dpp-screen-3.json",
+        "sha256": "0a2fc8ca0faf45aa0d98934efd61f9cdb568934d77252841a3728f7c7f193cad",
+        "order": ["exact", "dpp"],
+        "exact_us": 135.2,
+        "dpp_us": 132.77
+      }
+    ],
+    "medians": {
+      "production_us": 135.2,
+      "candidate_us": 132.77,
+      "speedup": 1.0183023273,
+      "latency_reduction_pct": 1.7973372781,
+      "saving_us_per_call": 2.43,
+      "projected_saving_ms_per_token": 0.0729,
+      "candidate_effective_matrix_read_gb_s": 201.4
+    },
+    "frozen_gates": {
+      "projected_half_ms_target_us": 118.493333,
+      "independent_1_15x_target_us": 117.530435,
+      "candidate_miss_vs_half_ms_target_us": 14.276667,
+      "candidate_slower_than_half_ms_target_pct": 12.048498121,
+      "passed_projected_half_ms_gate": false,
+      "passed_1_15x_gate": false
+    },
+    "commands": [
+      "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_q8_0_t16_pair_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 1 --threads 128 --modes exact,dpp --iters 400 --warmup 80 --mall-bytes 33554432 --peak-gbs 256 --json /tmp/sh-d1-q8t16-dpp-screen-1.json",
+      "Same command with --modes dpp,exact and output /tmp/sh-d1-q8t16-dpp-screen-2.json",
+      "Same command with --modes exact,dpp and output /tmp/sh-d1-q8t16-dpp-screen-3.json"
+    ]
+  },
+  "decision": {
+    "result": "reject",
+    "reason": "The candidate passes byte exactness, CPU-oracle, ISA, resource, and named-launch gates but misses the earlier continuation threshold by 12.05%; the measured 2.43 us/call median saving projects only 0.0729 ms/token over 30 calls.",
+    "production_change": false,
+    "next": "Proceed to the next structurally distinct SH-D1 work rather than full-model gating this sibling; non-temporal same-layout loads precede any byte-neutral paired-Q8T32 materializer/runtime work. Continue the overall campaign through SH-D1 selected experts, SH-M2, SH-K1, SH-A1, and SH-G."
+  },
+  "provenance": {
+    "tracked_state_during_measurement": "candidate-only modifications to the Q8T16 HIP source/wrapper and microbench plus one new focused test",
+    "unrelated_untracked_paths": 258,
+    "qualification": "Diagnostic rejection only. No retained performance/topline claim and no production source change."
+  }
+}

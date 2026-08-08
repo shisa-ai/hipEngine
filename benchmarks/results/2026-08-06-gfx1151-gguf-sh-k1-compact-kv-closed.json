@@ -1,0 +1,245 @@
+{
+  "kind": "hipengine_gfx1151_gguf_sh_k1_compact_kv_closed",
+  "schema_version": 1,
+  "created_at": "2026-08-05T21:43:27+00:00",
+  "status": "rejected_default_promotion",
+  "production_change": false,
+  "performance_claim": false,
+  "performance_claim_scope": "The sequential committed-production comparison is sufficient to reject promotion because the candidate loses repeated decode and increases tracked plus whole-GTT peak at both required long-context rows. It is not published as a retained A/B speed claim.",
+  "correctness_claim": true,
+  "correctness_claim_scope": "The fixed 8-BF16/2-INT8 full-attention map passes the committed 11-prompt 4K/16 gate (ten category/train/heldout prompts plus mixed_v1) on gfx1151 with a 65,792-token resident allocation, no persistent BF16 mirror, and released layer-local prefill-oracle buffers.",
+  "source": {
+    "measured_commit": "f9bde81902354c0dbf326821f3b6ade90f9dc885",
+    "branch": "main",
+    "tracked_status_at_measurement": "Only unrelated docs/ROCM-AI.md was modified; runtime, kernel, benchmark, quality-harness, and K1 test sources matched the commit.",
+    "untracked_qualification": "Pre-existing untracked benchmark outputs were excluded from this artifact and all hashes."
+  },
+  "hardware": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "candidate": {
+    "requested_storage": "int8_per_token_head",
+    "full_attention_layer_count": 10,
+    "bf16_full_attention_indices": [0, 1, 2, 3, 4, 5, 6, 7],
+    "int8_full_attention_indices": [8, 9],
+    "int8_payload": "signed int8 K and V",
+    "scale_granularity": "per_token_head",
+    "requested_scale_dtype": "fp16",
+    "effective_scale_dtype_in_resident_audit": "fp32",
+    "persistent_bf16_mirror_bytes": 0,
+    "prefill_oracle_lifetime": "One layer-local BF16 K/V pair is allocated while prefill consumes each compact layer and released afterward.",
+    "direct_decode_consumer": "qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float,8,16,2>",
+    "existing_mode_disposition": "Keep the existing guarded/explicit hybrid path and exact BF16 fallback; do not promote it over the gfx1151 BF16 default or claim a speed/memory win."
+  },
+  "closed_prior_frontier": [
+    "All-layer per-token/head and pure-INT8 policies have prompt-dependent strict-quality failures.",
+    "Three-INT8-layer prefix-7 and non-contiguous {5,8,9}/{6,8,9} K+V maps fail the established long quality gate.",
+    "Key-only prefix-6 fails; passing prefix-7 key-only saves less than the two-layer K+V map.",
+    "Block16 fails the forced-long 4K row.",
+    "Tail-four Hadamard group32 is quality-clean on gfx1100 but loses repeated decode and allocator high water.",
+    "These rows were not repeated under SH-K1."
+  ],
+  "protocol": {
+    "quality": "BF16 reference and candidate run in independent resident sessions over all ten committed natural prompts (including four category heldouts) plus mixed_v1. Each prompt contributes the prompt-final row plus 16 teacher-forced decode rows with identical token histories.",
+    "quality_thresholds": {
+      "mean_kl_max": 0.05,
+      "aggregate_top1_agreement_min": 0.9,
+      "minimum_prompt_top1_agreement_min": 0.9,
+      "all_prompts_must_pass": true,
+      "require_no_bf16_mirror": true,
+      "expected_bf16_full_attention_indices": [0, 1, 2, 3, 4, 5, 6, 7],
+      "expected_int8_full_attention_indices": [8, 9]
+    },
+    "wall_memory": "Independent right-sized candidate processes at 32K/128 and 64K/128, one discarded run plus three measured runs, eager decode, cached builds, one hardware queue, and simultaneous 10-ms whole-device GTT sampling. The committed SH-M2 owner-slot BF16 rows are the production baseline.",
+    "profile": "Cached full-process rocprofv3 kernel traces at 32K and 64K with one prefill, one warmup transition, and four measured transitions. Selected-region gating was not used because the installed libroctx64 lacks roctxProfilerResume/Pause; the decode-only INT8 grouped-GQA symbol keeps the producer count unambiguous.",
+    "promotion_rule": "Require quality thresholds, no persistent BF16 mirror in compact layers, repeated decode and memory wins, <=1% prefill loss, and valid grouped-GQA traces at both 32K and 64K."
+  },
+  "quality": {
+    "passed": true,
+    "prompt_length": 4096,
+    "decode_steps": 16,
+    "resident_capacity_tokens": 65792,
+    "prompt_count": 11,
+    "passed_prompt_count": 11,
+    "positions": 187,
+    "mean_kl": 0.0000334398972403632,
+    "max_kl": 0.0007874930893521051,
+    "top1_agreement": 1.0,
+    "minimum_prompt_top1_agreement": 1.0,
+    "top1_mismatch_count": 0,
+    "worst_prompt_mean_kl": 0.00006742736342074352,
+    "layout_audit": {
+      "passed": true,
+      "complete_layer_partition": true,
+      "fixed_layer_policy_passed": true,
+      "persistent_bf16_mirror_bytes": 0,
+      "surviving_prefill_oracle_buffer_count": 0,
+      "primary_kv_bytes": 1212678144,
+      "scale_bytes": 2105344,
+      "total_kv_bytes": 1214783488
+    },
+    "categories": {
+      "code": {"prompt_count": 4, "positions": 68, "mean_kl": 0.00001459460722835018, "max_kl": 0.0002060464354538663, "top1_agreement": 1.0, "minimum_prompt_top1_agreement": 1.0},
+      "general_en": {"prompt_count": 2, "positions": 34, "mean_kl": 0.00003670361907620324, "max_kl": 0.00034248315535855147, "top1_agreement": 1.0, "minimum_prompt_top1_agreement": 1.0},
+      "general_ja": {"prompt_count": 2, "positions": 34, "mean_kl": 0.00005973852048700592, "max_kl": 0.0007874930893521051, "top1_agreement": 1.0, "minimum_prompt_top1_agreement": 1.0},
+      "mixed_ja_en": {"prompt_count": 2, "positions": 34, "mean_kl": 0.00005046022744911762, "max_kl": 0.0004807297418915873, "top1_agreement": 1.0, "minimum_prompt_top1_agreement": 1.0},
+      "mixed_v1": {"prompt_count": 1, "positions": 17, "mean_kl": 0.000015655706705940863, "max_kl": 0.00011249518771608253, "top1_agreement": 1.0, "minimum_prompt_top1_agreement": 1.0}
+    }
+  },
+  "wall_memory_rows": [
+    {
+      "prompt_length": 32768,
+      "resident_capacity_tokens": 33024,
+      "production_bf16": {
+        "source_artifact": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json",
+        "prefill_tok_s": 1149.8833089520194,
+        "decode_tok_s": 46.43468666179726,
+        "tracked_peak_gib": 22.245020858943462,
+        "whole_gtt_peak_gib": 22.800140380859375
+      },
+      "compact_candidate": {
+        "prefill_tok_s_samples": [1151.6005287766498, 1149.9833557993736, 1150.2465609312562],
+        "prefill_tok_s": 1150.2465609312562,
+        "decode_tok_s_samples": [46.16822945639374, 46.23491999362271, 46.23219402774891],
+        "decode_tok_s": 46.23219402774891,
+        "owned_session_gib": 22.183016769587994,
+        "tracked_peak_gib": 22.308993332087994,
+        "tracked_transient_above_owned_gib": 0.1259765625,
+        "whole_gtt_peak_gib": 22.870452880859375,
+        "tracked_after_close_bytes": 0,
+        "finite_final_logits_all": true,
+        "final_token_ids": [9707, 9707, 9707]
+      },
+      "deltas": {
+        "prefill_pct": 0.0315903341155499,
+        "decode_pct": -0.4360805436745663,
+        "owned_session_saving_gib": 0.06200408935546875,
+        "tracked_peak_change_gib": 0.06397247314453125,
+        "whole_gtt_peak_change_gib": 0.0703125
+      },
+      "gates": {"prefill": true, "decode_win": false, "tracked_peak_win": false, "whole_gtt_win": false}
+    },
+    {
+      "prompt_length": 65536,
+      "resident_capacity_tokens": 65792,
+      "production_bf16": {
+        "source_artifact": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-m2-owner-slots-retained.json",
+        "prefill_tok_s": 939.2335771263719,
+        "decode_tok_s": 39.749966426257224,
+        "tracked_peak_gib": 22.983561985194683,
+        "whole_gtt_peak_gib": 23.538421630859375
+      },
+      "compact_candidate": {
+        "prefill_tok_s_samples": [938.5958867916149, 938.8963847996566, 938.6946803515588],
+        "prefill_tok_s": 938.6946803515588,
+        "decode_tok_s_samples": [39.40214218369408, 39.48352480917866, 39.51958553261443],
+        "decode_tok_s": 39.48352480917866,
+        "owned_session_gib": 22.860034458339214,
+        "tracked_peak_gib": 23.111011020839214,
+        "tracked_transient_above_owned_gib": 0.2509765625,
+        "whole_gtt_peak_gib": 23.671234130859375,
+        "tracked_after_close_bytes": 0,
+        "finite_final_logits_all": true,
+        "final_token_ids": [9707, 9707, 9707]
+      },
+      "deltas": {
+        "prefill_pct": -0.057376225460537,
+        "decode_pct": -0.6702939424435894,
+        "owned_session_saving_gib": 0.12352752685546875,
+        "tracked_peak_change_gib": 0.12744903564453125,
+        "whole_gtt_peak_change_gib": 0.1328125
+      },
+      "gates": {"prefill": true, "decode_win": false, "tracked_peak_win": false, "whole_gtt_win": false}
+    }
+  ],
+  "grouped_gqa_profile": [
+    {
+      "prompt_length": 32768,
+      "decode_producer_count": 10,
+      "decode_producer_mean_us": 454.5572,
+      "decode_producer_min_us": 450.125,
+      "decode_producer_max_us": 467.718,
+      "workgroup": [256, 1, 1],
+      "grid": [512, 129, 1],
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "int8_writer_count": 26,
+      "trace_rows": 14378,
+      "trace_sha256": "833b4acc6d437c14db5b5816a31a8d069d47155b3dc4b914b3870efb69a1500c"
+    },
+    {
+      "prompt_length": 65536,
+      "decode_producer_count": 10,
+      "decode_producer_mean_us": 802.4617,
+      "decode_producer_min_us": 799.38,
+      "decode_producer_max_us": 806.874,
+      "workgroup": [256, 1, 1],
+      "grid": [512, 257, 1],
+      "vgpr": 80,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "int8_writer_count": 42,
+      "trace_rows": 25170,
+      "trace_sha256": "22f3c5f51455e7ed9ec2ee91508a1599e1bebbc38e515c962ce6c0eb8a120fa6"
+    }
+  ],
+  "primitive_correctness": {
+    "passed": true,
+    "contexts": [64, 520],
+    "int8_vs_cpu_max_abs": [5.21540641784668e-08, 1.862645149230957e-08],
+    "int8_vs_cpu_top1_agreement": [1.0, 1.0],
+    "crosses_page_boundary": true,
+    "required_int8_hip_path": true
+  },
+  "validation": {
+    "focused_tests": "237 passed: KV dispatch/policy/spans, GGUF INT8 policy, memory audit, E2E fixture gate, mixed-KV suite, and resident batch layout",
+    "cpu_fixtures": "7 passed",
+    "hip_writer_smoke": "4/4 cases passed with exact payload/scales/dequantization",
+    "hip_decode_smoke": "3/3 cases passed; max abs <=2.98e-08 including split/page-boundary and fp16-scale cases",
+    "primitive_accuracy": "accepted",
+    "cached_named_profiles": true,
+    "json_validation": true,
+    "diff_check": true
+  },
+  "decision": {
+    "quality_gate_passed": true,
+    "no_mirror_gate_passed": true,
+    "prefill_guard_passed": true,
+    "decode_win_gate_passed": false,
+    "tracked_peak_memory_gate_passed": false,
+    "whole_gtt_memory_gate_passed": false,
+    "default_promotion_passed": false,
+    "production_default": "BF16 KV with SH-M2 owner-slot scratch",
+    "conclusion": "The fixed 8/2 hybrid is strict-quality-safe on gfx1151 and the intended direct grouped-GQA consumer is active, but it is neither a repeated decode win nor a peak-memory win. Its persistent saving is smaller than the required layer-local BF16 prefill-oracle high water. Close SH-K1 without changing production and advance to SH-A1."
+  },
+  "raw": {
+    "quality_json": {"path": "/tmp/hipengine-sh-k1-quality-f9bde8190.json", "sha256": "47a2763ba164fdecc1658fdb599b3c2243230957a6193a9ed9fc94cb1a2a1c15"},
+    "wall_32768_json": {"path": "/tmp/hipengine-sh-k1-f9bde8190/32768/int8_per_token_head.json", "sha256": "db351bffd0e8bbdd07c9500479eb2dd9a115bac01b38b0be5ac40a5ea57c7213"},
+    "wall_32768_meta": {"path": "/tmp/hipengine-sh-k1-f9bde8190/32768/int8_per_token_head.meta.json", "sha256": "35258fffeed51bea0eea80b6805aa89aa54bfc2604a6b3a5d920862397a1c171"},
+    "wall_65536_json": {"path": "/tmp/hipengine-sh-k1-f9bde8190/65536/int8_per_token_head.json", "sha256": "a44f467cb8f76b8e9e0d5d676ebe5b66764e0d0174154bfa0ec32634942f57fb"},
+    "wall_65536_meta": {"path": "/tmp/hipengine-sh-k1-f9bde8190/65536/int8_per_token_head.meta.json", "sha256": "f84632fbc72ae21446fc4dea42cc88abdf9cad8f25e95b23da89301c5444661c"},
+    "profile_summary": {"path": "/tmp/hipengine-sh-k1-f9bde8190/profile-summary.json", "sha256": "1fe1741b44ed6d82175b714dcfd4657c7e032fe09f3768ef056f3c580501e20b"},
+    "primitive_accuracy": {"path": "/tmp/hipengine-sh-k1-f9bde8190/primitive-accuracy.json", "sha256": "236568e01329c0568a044fd454a69a4785a4d8c3e6e3ab2510973ee2705f2c6f"},
+    "production_baseline_artifact_sha256": "abf5b9503d1daab36736023cb18478a74440c1eec3c97b8e2f743f7f0ace356d"
+  },
+  "commands": {
+    "quality": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/qwen35_native_mixed_kv_suite.py --engine gguf --backend hip_gfx1151 --gguf-model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --paro-model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-length 4096 --decode-steps 16 --candidate-kv-storage int8_per_token_head --kl-threshold 0.05 --top1-threshold 0.9 --max-sequence-length 65792 --require-no-bf16-mirror --expected-bf16-full-layers 0-7 --expected-int8-full-layers 8,9 --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt --require-cached-build --json /tmp/hipengine-sh-k1-quality-f9bde8190.json",
+    "wall_template": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 PYTHONPATH=. .venv/bin/python scripts/qwen35_gguf_bench.py --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length {32768|65536} --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --prefill-linear-chunk-size 1024 --prefill-moe-chunk-size 1024 --prefill-full-attn-query-chunk-size 4096 --prefill-full-attn-post-chunk-size 1024 --prefill-full-attn-rope-chunk-size 1024 --prefill-chunk-autotune --compiler-version-file /tmp/hipengine-sh-k1-hipcc-version.txt --require-cached-build --kv-storage int8_per_token_head --kv-scale-dtype fp16 --kv-scale-granularity per_token_head --json <output>",
+    "profile_template": "rocprofv3 --kernel-trace -d <trace-dir> -o sh-k1-<context> -f csv -- env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-sh-k1-hipcc-version.txt HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-sh-k1-hipcc-version.txt PYTHONPATH=. .venv/bin/python -u scripts/qwen35_gguf_bench.py <same cached policy> --prompt-length {32768|65536} --decode-tokens 4 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --kv-storage int8_per_token_head --json <bench.json>"
+  }
+}

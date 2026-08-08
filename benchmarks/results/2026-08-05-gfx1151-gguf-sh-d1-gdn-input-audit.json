@@ -1,0 +1,172 @@
+{
+  "schema_version": "hipengine.gguf.sh_d1_gdn_input_audit.v1",
+  "date": "2026-08-05",
+  "kind": "diagnostic_kernel_audit",
+  "status": "candidate_selected",
+  "performance_claim": false,
+  "summary": "SH-D1 isolates the 30-per-token Q8T16 attn_qkv+attn_gate dual-split projection as the first exact decode leaf and selects an exact permlanex16/DPP-add wave-reduction sibling for implementation.",
+  "platform": {
+    "system": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "hardware_queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "commit": "36f5b4a3147746ae507210e314082c67a1a2aa9c",
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.hip",
+    "source_sha256": "5ea58d777cf51700bf40c201ae8fcff2d6871a212f4af0efe63a85431cfd17a4",
+    "build_artifact": "/home/lhl/.cache/hipengine/build/gguf_q8_0_t16_gemv-d7e565561fabe42b/gguf_q8_0_t16_gemv.so",
+    "build_artifact_sha256": "38d9163ffa9e41c59b3f0387acf4f2109b060f8d96edcc284b69d4fd9c5289d7",
+    "named_owner": "q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>",
+    "registered_variant": "linear/gguf_q8_0_t16_v1/t16_dual_gemv_decode_bf16_bf16_out",
+    "role": "linear-attention attn_qkv[2048->8192] + attn_gate[2048->4096]",
+    "calls_per_token": 30
+  },
+  "sh_c0_role_evidence": {
+    "source": "benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json",
+    "contexts": {
+      "512": {
+        "gpu_us_per_token": 4113.11925,
+        "us_per_call": 137.103975,
+        "profile_share_pct": 23.375579
+      },
+      "4096": {
+        "gpu_us_per_token": 4143.3605,
+        "us_per_call": 138.112017,
+        "profile_share_pct": 24.444717
+      },
+      "32768": {
+        "gpu_us_per_token": 4156.815125,
+        "us_per_call": 138.560504,
+        "profile_share_pct": 20.165514
+      },
+      "65536": {
+        "gpu_us_per_token": 4166.025375,
+        "us_per_call": 138.867513,
+        "profile_share_pct": 17.282413
+      }
+    }
+  },
+  "cycling_leaf_baseline": {
+    "raw_json": "/tmp/sh-d1-q8t16-baseline.json",
+    "raw_sha256": "3a8819246d024f4e5df84bb564aa8e13bdd9796557c3d6479ac7a9a85effea23",
+    "rows": 1,
+    "in_features": 2048,
+    "out_features_a": 8192,
+    "out_features_b": 4096,
+    "matrix_mb": 26.739,
+    "pool_copies": 3,
+    "pool_mb": 80.2,
+    "mall_assumption_mb": 32,
+    "warmup_launches": 80,
+    "measured_launches": 400,
+    "latency_us": 135.16,
+    "effective_matrix_read_gb_s": 197.8,
+    "assumed_peak_gb_s": 256.0,
+    "percent_assumed_peak": 77.3,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_q8_0_t16_pair_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 1 --threads 128 --modes exact --iters 400 --warmup 80 --mall-bytes 33554432 --peak-gbs 256 --json /tmp/sh-d1-q8t16-baseline.json"
+  },
+  "isa_audit": {
+    "code_object": "/tmp/sh-d1-q8t16-isa/q8t16-gfx1151.co",
+    "code_object_sha256": "e26a1d7f482df414a1ffcf1e8c76e8d1a39ac4c54076734db7bab03a90838016",
+    "symbol_slice": "/tmp/sh-d1-q8t16-isa/dual-split-bf16.s",
+    "symbol_slice_sha256": "d06ad8358d7dcce0a5648e5094a2aa662b0e1ded1dddffecf12d22534bf29ad2",
+    "code_bytes": 4608,
+    "metadata": {
+      "max_flat_workgroup_size": 128,
+      "vgpr_count": 50,
+      "sgpr_count": 29,
+      "group_segment_fixed_size": 256,
+      "private_segment_fixed_size": 0,
+      "vgpr_spill_count": 0,
+      "sgpr_spill_count": 0
+    },
+    "static_instruction_facts": {
+      "instructions": 858,
+      "global_load_b128": 3,
+      "global_load_d16_b16": 1,
+      "v_fma_mix_f32": 16,
+      "v_fmac_f32": 16,
+      "ds_bpermute_b32": 80,
+      "s_waitcnt": 67,
+      "s_barrier": 1
+    },
+    "interpretation": "The weight loop is already vectorized and spill-free. The remaining concrete exact mechanical seam is the 16-column wave tree: five generic shuffles per accumulator compile to 80 ds_bpermute operations and a large waitcnt chain."
+  },
+  "selected_candidate": {
+    "name": "gfx1151 Q8T16 dual-split exact DPP-add wave reduction",
+    "scope": "new separately registered BF16 row-1 dual-split sibling; no default change during primitive admission",
+    "change": "Replace only each output accumulator's offset-16/8/4/2/1 __shfl_down peer-and-add tree with permlanex16 followed by direct DPP-add row shifts 8/4/2/1. Preserve the existing Q8T16 payload, 128-thread/four-wave K partition, all FMA order, lane-0 LDS publication, one barrier, serial wave0..3 accumulation, output ABI, and unfused production fallback.",
+    "why_selected": "The repository's independently retained H6U Q6 work proves this exact communication substitution can preserve bytes while removing bpermute/wait pressure. It is not a closed launch-width, d-scale-cache, graph, or approximate activation retry.",
+    "primitive_oracle": {
+      "test_target": "tests/test_gguf_q8_0_t16_gemv_decode.py",
+      "requirements": [
+        "candidate output is BF16-byte identical to production dual-split output",
+        "candidate and production both satisfy the existing CPU GGUF Q8_0 oracle",
+        "ordinary and Qwen production shapes plus a K-block boundary are covered",
+        "KL <= 0.05 and top-1 agreement >= 90% remain mandatory even though byte identity is stricter"
+      ]
+    },
+    "isa_gate": {
+      "required_named_symbol": "q8_0_t16_dual_split_dpp_gemv_kernel<unsigned short, unsigned short>",
+      "required": [
+        "16 permlanex16 peer transfers",
+        "64 direct DPP-add operations across shifts 8/4/2/1",
+        "zero ds_bpermute in the candidate reduction",
+        "unchanged 32 logical per-lane multiply/FMA instructions",
+        "private bytes and spills remain zero",
+        "VGPR no worse than production"
+      ]
+    },
+    "leaf_gate": {
+      "baseline_us": 135.16,
+      "minimum_speedup": 1.15,
+      "speedup_target_us": 117.530435,
+      "minimum_projected_saving_ms_per_token": 0.5,
+      "projected_saving_target_us": 118.493333,
+      "decision": "Proceed to runtime/full-model gating only if the cycling leaf is <=118.493 us; <=117.530 us satisfies the independent 1.15x rule. Otherwise remove the sibling and move to the next structurally distinct candidate."
+    },
+    "full_model_gate_after_leaf": [
+      "byte-exact logits, hidden, Conv/GDN, and KV state on natural prompts",
+      "one-warmup/three-measurement 512/4K/32K/64K decode",
+      "prefill loss <=1% at every context",
+      "tracked memory does not grow and close delta is zero",
+      "cached rocprof names the candidate for exactly 30 GDN input calls per token with zero compiler activity"
+    ]
+  },
+  "deferred_candidates": [
+    {
+      "name": "non-temporal vector loads over the unchanged T16 slab",
+      "reason": "Exact and low-risk but secondary: first remove the measured 80-operation peer tree; screen cache policy only if DPP misses and current ISA still shows the same vector loads."
+    },
+    {
+      "name": "byte-neutral paired Q8T32 replacement slab",
+      "reason": "Requires materializer and resident-layout plumbing and risks eight-wave workgroup occupancy. Do not pay that cost until the same-layout DPP leaf establishes the residual."
+    }
+  ],
+  "closed_retries": [
+    "64/256-thread dense Q8 launch sweeps",
+    "lane-0 d-scale broadcast/cache",
+    "Q8T16 q8_1/dp4a over the strided T16 payload",
+    "single/dual/triple col8 except the retained physical-C8 pair-rowtile route",
+    "launch-only graph work"
+  ],
+  "lineage": {
+    "broad_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "broad_status": "blocked because manifest repo /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "narrow_command": "python3 scripts/check_lineage.py --kind kernel --file '*mmq.cuh' --diff stat",
+    "narrow_status": "clean at llama.cpp-hip 1ebf790cd; zero commits since pinned baseline",
+    "note": "No external body is being ported. The selected DPP mechanism already exists and is validated in-tree; all new implementation and measurement remain in hipEngine."
+  },
+  "qualifications": [
+    "This artifact freezes a baseline and implementation target; it is not a retained speedup.",
+    "The cycling microbenchmark uses synthetic deterministic Q8_0 weights and is only a leaf admission gate.",
+    "No prompt, token ID, candidate ID, or publication-context branch is permitted."
+  ]
+}

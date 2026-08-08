@@ -1,0 +1,3779 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "status": "retained_production_default",
+  "performance_claim": true,
+  "topline_eligible": true,
+  "measurement_scope": "Exact same-source D->L->L->D 512/128 comparison of dedicated versus 21 independent 768-row owner slots, followed by a committed-source production checkpoint; one discarded warmup plus three runs/leg, cached builds, BF16 KV, and 10-ms whole-GTT.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": 0,
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-device amdgpu GTT"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "commit": "edb151447c4340a3839f4a28708c1dcc4d0ac5a5",
+    "change": "hip_gfx1151 GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS 4096 -> 768",
+    "algorithm": "unchanged SH-M2 conservative route/stage interval map with 21 independently allocated owner slots",
+    "logical_fields_or_operation_order_changed": false,
+    "single_or_split_arena_used": false,
+    "dedicated_fallback": "F32/capture diagnostics, unvalidated routes, unvalidated backends, and capability denial retain dedicated buffers",
+    "comparison_seam": "external /tmp wrapper changes only the imported backend capability between 4096 and 768; no runtime env/branch is added"
+  },
+  "protocol": {
+    "workload": "512/128",
+    "prompt": "[9707] * 512",
+    "warmup_runs": 1,
+    "measured_runs_per_leg": 3,
+    "order": [
+      "dedicated_a",
+      "owner_slots_a",
+      "owner_slots_b",
+      "dedicated_b"
+    ],
+    "prefill": "forced bulk WMMA, bulk attention, five explicit q4096 controls resolving right-sized scratch capacity 768",
+    "decode": "production GEMV eager, one warmup token and 128 measured transitions",
+    "build": "precomputed hipcc version plus require_cached_build; no compiler in measured process",
+    "correctness": "dedicated versus owner-slot byte fingerprints after prefill and four fixed-input transitions"
+  },
+  "same_source_ab": {
+    "source_commit_before_intended_diff": "db413cbcc",
+    "intended_diff": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "tests/test_gfx1151_backend.py",
+      "tests/test_qwen35_gguf_prefill_scratch_liveness.py",
+      "WORKLOG.md"
+    ],
+    "dedicated": {
+      "prefill_tok_s_median_of_leg_medians": 1361.7441494457896,
+      "decode_tok_s_median_of_leg_medians": 53.322445529844316,
+      "tracked_peak_gib": 21.479979306459427,
+      "whole_gtt_peak_gib": 21.916004180908203,
+      "scratch_physical_owner_bytes": 355182664,
+      "allocation_mode": "dedicated"
+    },
+    "owner_slots": {
+      "prefill_tok_s_median_of_leg_medians": 1370.2036326154143,
+      "decode_tok_s_median_of_leg_medians": 53.40789881485085,
+      "tracked_peak_gib": 21.214187383651733,
+      "whole_gtt_peak_gib": 21.648426055908203,
+      "scratch_physical_owner_bytes": 69790760,
+      "owner_slot_count": 21,
+      "allocation_mode": "liveness_aliased"
+    },
+    "delta": {
+      "prefill_percent": 0.621224124448605,
+      "decode_percent": 0.16025762539100263,
+      "tracked_saving_bytes": 285391904,
+      "tracked_saving_gib": 0.2657919228076935,
+      "whole_gtt_saving_gib": 0.267578125,
+      "scratch_owner_saving_bytes": 285391904,
+      "scratch_owner_saving_gib": 0.2657919228076935
+    },
+    "legs": {
+      "dedicated_a": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1363.358416018411,
+          "min": 1362.3672423959626,
+          "max": 1365.5607593798231,
+          "mean": 1363.7621392647322,
+          "stdev": 1.6345892530744572
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 53.37123671861185,
+          "min": 53.370274192653945,
+          "max": 53.42730805215085,
+          "mean": 53.38960632113888,
+          "stdev": 0.032654203481773156
+        },
+        "tracked_peak_gib": 21.479979306459427,
+        "whole_gtt_10ms": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18677760,
+          "baseline_gib": 0.01739501953125,
+          "peak_bytes": 23532130304,
+          "peak_gib": 21.916004180908203,
+          "peak_delta_bytes": 23513452544,
+          "peak_delta_gib": 21.898609161376953,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 5798,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 57.954237720929086
+        },
+        "scratch_census": {
+          "allocation_mode": "dedicated",
+          "rows": 768,
+          "max_positions": 768,
+          "physical_owner_bytes": 355182664,
+          "physical_owner_gib": 0.33078963309526443,
+          "logical_field_bytes": 355182664,
+          "logical_field_gib": 0.33078963309526443,
+          "logical_alias_overhead_bytes": 0,
+          "by_field_bytes": {
+            "moe_down_out_f32": 50331648,
+            "conv_out": 25165824,
+            "linear_qkv_f32": 25165824,
+            "moe_down_out": 25165824,
+            "ffn_gate_up": 12582912,
+            "ffn_intermediate_f32": 12582912,
+            "full_q": 12582912,
+            "full_query": 12582912,
+            "full_query_raw": 12582912,
+            "linear_qkv": 12582912,
+            "linear_z_f32": 12582912,
+            "prefill_key": 12582912,
+            "prefill_query": 12582912,
+            "prefill_value": 12582912,
+            "recurrent_out": 12582912,
+            "ffn_intermediate": 6291456,
+            "full_attn_bf16": 6291456,
+            "full_gate": 6291456,
+            "full_gated": 6291456,
+            "full_query_bf16": 6291456,
+            "linear_z": 6291456,
+            "moe_shared_out_f32": 6291456,
+            "post_norm_f32": 6291456,
+            "recurrent_bf16": 6291456,
+            "moe_q8_1": 3538944,
+            "attn_out": 3145728,
+            "ffn_down": 3145728,
+            "moe_shared_out": 3145728,
+            "norm": 3145728,
+            "post_norm": 3145728,
+            "residual": 3145728,
+            "linear_recurrent_state_tmp": 2097152,
+            "full_key": 1572864,
+            "full_key_raw": 1572864,
+            "full_attn_split_partial": 786432,
+            "full_k": 786432,
+            "full_v": 786432,
+            "moe_router_logits": 786432,
+            "moe_shared_gate": 786432,
+            "moe_shared_intermediate": 786432,
+            "moe_shared_up": 786432,
+            "linear_conv_state_tmp": 131072,
+            "linear_alpha_f32": 98304,
+            "linear_beta_f32": 98304,
+            "prefill_beta": 98304,
+            "prefill_decay": 98304,
+            "prefill_key_scale": 98304,
+            "prefill_query_scale": 98304,
+            "linear_alpha": 49152,
+            "linear_beta": 49152,
+            "moe_lane_to_row": 49152,
+            "moe_selected_experts": 49152,
+            "moe_sorted_experts": 49152,
+            "moe_sorted_lanes": 49152,
+            "softmax_lse": 49152,
+            "moe_routing_weights": 24576,
+            "moe_sorted_weights": 24576,
+            "block_table": 9216,
+            "context_counts": 6144,
+            "positions": 6144,
+            "moe_tile_expert": 5120,
+            "full_attn_split_l": 3072,
+            "full_attn_split_m": 3072,
+            "moe_shared_gate_logits": 3072,
+            "moe_expert_start_compact": 2056,
+            "moe_expert_start_wmma": 2056,
+            "moe_group_counts": 1024,
+            "moe_padded_counts": 1024,
+            "moe_scatter_offsets": 1024,
+            "cu_k": 8,
+            "cu_q": 8,
+            "gdn_cu_seqlens": 8,
+            "gdn_state_indices": 8,
+            "moe_total_compact": 8,
+            "moe_wmma_total": 8,
+            "atomic": 4,
+            "moe_router_counter": 4
+          },
+          "by_field_bytes_per_row": {
+            "moe_down_out_f32": 65536.0,
+            "conv_out": 32768.0,
+            "linear_qkv_f32": 32768.0,
+            "moe_down_out": 32768.0,
+            "ffn_gate_up": 16384.0,
+            "ffn_intermediate_f32": 16384.0,
+            "full_q": 16384.0,
+            "full_query": 16384.0,
+            "full_query_raw": 16384.0,
+            "linear_qkv": 16384.0,
+            "linear_z_f32": 16384.0,
+            "prefill_key": 16384.0,
+            "prefill_query": 16384.0,
+            "prefill_value": 16384.0,
+            "recurrent_out": 16384.0,
+            "ffn_intermediate": 8192.0,
+            "full_attn_bf16": 8192.0,
+            "full_gate": 8192.0,
+            "full_gated": 8192.0,
+            "full_query_bf16": 8192.0,
+            "linear_z": 8192.0,
+            "moe_shared_out_f32": 8192.0,
+            "post_norm_f32": 8192.0,
+            "recurrent_bf16": 8192.0,
+            "moe_q8_1": 4608.0,
+            "attn_out": 4096.0,
+            "ffn_down": 4096.0,
+            "moe_shared_out": 4096.0,
+            "norm": 4096.0,
+            "post_norm": 4096.0,
+            "residual": 4096.0,
+            "linear_recurrent_state_tmp": 2730.6666666666665,
+            "full_key": 2048.0,
+            "full_key_raw": 2048.0,
+            "full_attn_split_partial": 1024.0,
+            "full_k": 1024.0,
+            "full_v": 1024.0,
+            "moe_router_logits": 1024.0,
+            "moe_shared_gate": 1024.0,
+            "moe_shared_intermediate": 1024.0,
+            "moe_shared_up": 1024.0,
+            "linear_conv_state_tmp": 170.66666666666666,
+            "linear_alpha_f32": 128.0,
+            "linear_beta_f32": 128.0,
+            "prefill_beta": 128.0,
+            "prefill_decay": 128.0,
+            "prefill_key_scale": 128.0,
+            "prefill_query_scale": 128.0,
+            "linear_alpha": 64.0,
+            "linear_beta": 64.0,
+            "moe_lane_to_row": 64.0,
+            "moe_selected_experts": 64.0,
+            "moe_sorted_experts": 64.0,
+            "moe_sorted_lanes": 64.0,
+            "softmax_lse": 64.0,
+            "moe_routing_weights": 32.0,
+            "moe_sorted_weights": 32.0,
+            "block_table": 12.0,
+            "context_counts": 8.0,
+            "positions": 8.0,
+            "moe_tile_expert": 6.666666666666667,
+            "full_attn_split_l": 4.0,
+            "full_attn_split_m": 4.0,
+            "moe_shared_gate_logits": 4.0,
+            "moe_expert_start_compact": 2.6770833333333335,
+            "moe_expert_start_wmma": 2.6770833333333335,
+            "moe_group_counts": 1.3333333333333333,
+            "moe_padded_counts": 1.3333333333333333,
+            "moe_scatter_offsets": 1.3333333333333333,
+            "cu_k": 0.010416666666666666,
+            "cu_q": 0.010416666666666666,
+            "gdn_cu_seqlens": 0.010416666666666666,
+            "gdn_state_indices": 0.010416666666666666,
+            "moe_total_compact": 0.010416666666666666,
+            "moe_wmma_total": 0.010416666666666666,
+            "atomic": 0.005208333333333333,
+            "moe_router_counter": 0.005208333333333333
+          },
+          "allocation_offsets": {},
+          "allocation_lifetimes": {},
+          "allocation_groups": {},
+          "notes": [
+            "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
+            "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency."
+          ]
+        },
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/tmp/run_sh2_m3_leg.py",
+          "dedicated",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "512/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh2-m3-20260806/dedicated_a.json"
+        ],
+        "raw_json": "/tmp/hipengine-sh2-m3-20260806/dedicated_a.json",
+        "raw_sha256": "7fb82c216d7470476617342a462afa92653ccf13cd7aee2d5a9653f23cf37a9f"
+      },
+      "owner_slots_a": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1372.3471801994835,
+          "min": 1364.460758852121,
+          "max": 1372.9117445311645,
+          "mean": 1369.9065611942563,
+          "stdev": 4.724643434520393
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 53.38331135019682,
+          "min": 53.3169782381377,
+          "max": 53.45052480933415,
+          "mean": 53.38360479922289,
+          "stdev": 0.06677376920490655
+        },
+        "tracked_peak_gib": 21.214187383651733,
+        "whole_gtt_10ms": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18722816,
+          "baseline_gib": 0.017436981201171875,
+          "peak_bytes": 23244820480,
+          "peak_gib": 21.648426055908203,
+          "peak_delta_bytes": 23226097664,
+          "peak_delta_gib": 21.63098907470703,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 5775,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 57.72928162710741
+        },
+        "scratch_census": {
+          "allocation_mode": "liveness_aliased",
+          "rows": 768,
+          "max_positions": 768,
+          "physical_owner_bytes": 69790760,
+          "physical_owner_gib": 0.06499771028757095,
+          "logical_field_bytes": 226928712,
+          "logical_field_gib": 0.21134383231401443,
+          "logical_alias_overhead_bytes": 157137952,
+          "by_field_bytes": {
+            "conv_out": 25165824,
+            "linear_qkv_f32": 25165824,
+            "moe_down_out": 25165824,
+            "ffn_gate_up": 12582912,
+            "full_q": 12582912,
+            "full_query": 12582912,
+            "full_query_raw": 12582912,
+            "linear_qkv": 12582912,
+            "recurrent_out": 12582912,
+            "ffn_intermediate": 6291456,
+            "full_attn_bf16": 6291456,
+            "full_gate": 6291456,
+            "full_gated": 6291456,
+            "full_query_bf16": 6291456,
+            "linear_z": 6291456,
+            "recurrent_bf16": 6291456,
+            "moe_q8_1": 3538944,
+            "attn_out": 3145728,
+            "ffn_down": 3145728,
+            "moe_shared_out": 3145728,
+            "norm": 3145728,
+            "post_norm": 3145728,
+            "residual": 3145728,
+            "full_key": 1572864,
+            "full_key_raw": 1572864,
+            "full_attn_split_partial": 786432,
+            "full_k": 786432,
+            "full_v": 786432,
+            "moe_router_logits": 786432,
+            "moe_shared_gate": 786432,
+            "moe_shared_intermediate": 786432,
+            "moe_shared_up": 786432,
+            "prefill_beta": 98304,
+            "prefill_decay": 98304,
+            "prefill_key_scale": 98304,
+            "prefill_query_scale": 98304,
+            "linear_alpha": 49152,
+            "linear_beta": 49152,
+            "moe_lane_to_row": 49152,
+            "moe_selected_experts": 49152,
+            "moe_sorted_experts": 49152,
+            "moe_sorted_lanes": 49152,
+            "softmax_lse": 49152,
+            "moe_routing_weights": 24576,
+            "moe_sorted_weights": 24576,
+            "block_table": 9216,
+            "context_counts": 6144,
+            "positions": 6144,
+            "moe_tile_expert": 5120,
+            "full_attn_split_l": 3072,
+            "full_attn_split_m": 3072,
+            "moe_shared_gate_logits": 3072,
+            "moe_expert_start_compact": 2056,
+            "moe_expert_start_wmma": 2056,
+            "moe_group_counts": 1024,
+            "moe_padded_counts": 1024,
+            "moe_scatter_offsets": 1024,
+            "cu_k": 8,
+            "cu_q": 8,
+            "gdn_cu_seqlens": 8,
+            "gdn_state_indices": 8,
+            "moe_total_compact": 8,
+            "moe_wmma_total": 8,
+            "atomic": 4,
+            "moe_router_counter": 4
+          },
+          "by_field_bytes_per_row": {
+            "conv_out": 32768.0,
+            "linear_qkv_f32": 32768.0,
+            "moe_down_out": 32768.0,
+            "ffn_gate_up": 16384.0,
+            "full_q": 16384.0,
+            "full_query": 16384.0,
+            "full_query_raw": 16384.0,
+            "linear_qkv": 16384.0,
+            "recurrent_out": 16384.0,
+            "ffn_intermediate": 8192.0,
+            "full_attn_bf16": 8192.0,
+            "full_gate": 8192.0,
+            "full_gated": 8192.0,
+            "full_query_bf16": 8192.0,
+            "linear_z": 8192.0,
+            "recurrent_bf16": 8192.0,
+            "moe_q8_1": 4608.0,
+            "attn_out": 4096.0,
+            "ffn_down": 4096.0,
+            "moe_shared_out": 4096.0,
+            "norm": 4096.0,
+            "post_norm": 4096.0,
+            "residual": 4096.0,
+            "full_key": 2048.0,
+            "full_key_raw": 2048.0,
+            "full_attn_split_partial": 1024.0,
+            "full_k": 1024.0,
+            "full_v": 1024.0,
+            "moe_router_logits": 1024.0,
+            "moe_shared_gate": 1024.0,
+            "moe_shared_intermediate": 1024.0,
+            "moe_shared_up": 1024.0,
+            "prefill_beta": 128.0,
+            "prefill_decay": 128.0,
+            "prefill_key_scale": 128.0,
+            "prefill_query_scale": 128.0,
+            "linear_alpha": 64.0,
+            "linear_beta": 64.0,
+            "moe_lane_to_row": 64.0,
+            "moe_selected_experts": 64.0,
+            "moe_sorted_experts": 64.0,
+            "moe_sorted_lanes": 64.0,
+            "softmax_lse": 64.0,
+            "moe_routing_weights": 32.0,
+            "moe_sorted_weights": 32.0,
+            "block_table": 12.0,
+            "context_counts": 8.0,
+            "positions": 8.0,
+            "moe_tile_expert": 6.666666666666667,
+            "full_attn_split_l": 4.0,
+            "full_attn_split_m": 4.0,
+            "moe_shared_gate_logits": 4.0,
+            "moe_expert_start_compact": 2.6770833333333335,
+            "moe_expert_start_wmma": 2.6770833333333335,
+            "moe_group_counts": 1.3333333333333333,
+            "moe_padded_counts": 1.3333333333333333,
+            "moe_scatter_offsets": 1.3333333333333333,
+            "cu_k": 0.010416666666666666,
+            "cu_q": 0.010416666666666666,
+            "gdn_cu_seqlens": 0.010416666666666666,
+            "gdn_state_indices": 0.010416666666666666,
+            "moe_total_compact": 0.010416666666666666,
+            "moe_wmma_total": 0.010416666666666666,
+            "atomic": 0.005208333333333333,
+            "moe_router_counter": 0.005208333333333333
+          },
+          "allocation_offsets": {
+            "attn_out": {
+              "offset_bytes": 25165824,
+              "nbytes": 3145728
+            },
+            "conv_out": {
+              "offset_bytes": 0,
+              "nbytes": 25165824
+            },
+            "ffn_down": {
+              "offset_bytes": 50331648,
+              "nbytes": 3145728
+            },
+            "ffn_gate_up": {
+              "offset_bytes": 25165824,
+              "nbytes": 12582912
+            },
+            "ffn_intermediate": {
+              "offset_bytes": 50331648,
+              "nbytes": 6291456
+            },
+            "full_attn_bf16": {
+              "offset_bytes": 0,
+              "nbytes": 6291456
+            },
+            "full_gate": {
+              "offset_bytes": 50331648,
+              "nbytes": 6291456
+            },
+            "full_gated": {
+              "offset_bytes": 0,
+              "nbytes": 6291456
+            },
+            "full_k": {
+              "offset_bytes": 66453504,
+              "nbytes": 786432
+            },
+            "full_key": {
+              "offset_bytes": 60162048,
+              "nbytes": 1572864
+            },
+            "full_key_raw": {
+              "offset_bytes": 63307776,
+              "nbytes": 1572864
+            },
+            "full_q": {
+              "offset_bytes": 0,
+              "nbytes": 12582912
+            },
+            "full_query": {
+              "offset_bytes": 0,
+              "nbytes": 12582912
+            },
+            "full_query_bf16": {
+              "offset_bytes": 25165824,
+              "nbytes": 6291456
+            },
+            "full_query_raw": {
+              "offset_bytes": 25165824,
+              "nbytes": 12582912
+            },
+            "full_v": {
+              "offset_bytes": 67239936,
+              "nbytes": 786432
+            },
+            "linear_alpha": {
+              "offset_bytes": 68026368,
+              "nbytes": 49152
+            },
+            "linear_beta": {
+              "offset_bytes": 68812800,
+              "nbytes": 49152
+            },
+            "linear_qkv": {
+              "offset_bytes": 0,
+              "nbytes": 12582912
+            },
+            "linear_qkv_f32": {
+              "offset_bytes": 25165824,
+              "nbytes": 25165824
+            },
+            "linear_z": {
+              "offset_bytes": 50331648,
+              "nbytes": 6291456
+            },
+            "moe_down_out": {
+              "offset_bytes": 0,
+              "nbytes": 25165824
+            },
+            "moe_expert_start_compact": {
+              "offset_bytes": 68919296,
+              "nbytes": 2056
+            },
+            "moe_expert_start_wmma": {
+              "offset_bytes": 68921600,
+              "nbytes": 2056
+            },
+            "moe_group_counts": {
+              "offset_bytes": 68923904,
+              "nbytes": 1024
+            },
+            "moe_lane_to_row": {
+              "offset_bytes": 66453504,
+              "nbytes": 49152
+            },
+            "moe_padded_counts": {
+              "offset_bytes": 68924928,
+              "nbytes": 1024
+            },
+            "moe_q8_1": {
+              "offset_bytes": 56623104,
+              "nbytes": 3538944
+            },
+            "moe_router_logits": {
+              "offset_bytes": 0,
+              "nbytes": 786432
+            },
+            "moe_routing_weights": {
+              "offset_bytes": 68861952,
+              "nbytes": 24576
+            },
+            "moe_scatter_offsets": {
+              "offset_bytes": 68925952,
+              "nbytes": 1024
+            },
+            "moe_selected_experts": {
+              "offset_bytes": 67239936,
+              "nbytes": 49152
+            },
+            "moe_shared_gate": {
+              "offset_bytes": 66453504,
+              "nbytes": 786432
+            },
+            "moe_shared_gate_logits": {
+              "offset_bytes": 68916224,
+              "nbytes": 3072
+            },
+            "moe_shared_intermediate": {
+              "offset_bytes": 67239936,
+              "nbytes": 786432
+            },
+            "moe_shared_out": {
+              "offset_bytes": 25165824,
+              "nbytes": 3145728
+            },
+            "moe_shared_up": {
+              "offset_bytes": 68026368,
+              "nbytes": 786432
+            },
+            "moe_sorted_experts": {
+              "offset_bytes": 68026368,
+              "nbytes": 49152
+            },
+            "moe_sorted_lanes": {
+              "offset_bytes": 68812800,
+              "nbytes": 49152
+            },
+            "moe_sorted_weights": {
+              "offset_bytes": 68886528,
+              "nbytes": 24576
+            },
+            "moe_tile_expert": {
+              "offset_bytes": 68911104,
+              "nbytes": 5120
+            },
+            "moe_total_compact": {
+              "offset_bytes": 68926976,
+              "nbytes": 8
+            },
+            "moe_wmma_total": {
+              "offset_bytes": 68927232,
+              "nbytes": 8
+            },
+            "norm": {
+              "offset_bytes": 25165824,
+              "nbytes": 3145728
+            },
+            "post_norm": {
+              "offset_bytes": 60162048,
+              "nbytes": 3145728
+            },
+            "prefill_beta": {
+              "offset_bytes": 60162048,
+              "nbytes": 98304
+            },
+            "prefill_decay": {
+              "offset_bytes": 63307776,
+              "nbytes": 98304
+            },
+            "prefill_key_scale": {
+              "offset_bytes": 66453504,
+              "nbytes": 98304
+            },
+            "prefill_query_scale": {
+              "offset_bytes": 67239936,
+              "nbytes": 98304
+            },
+            "recurrent_bf16": {
+              "offset_bytes": 0,
+              "nbytes": 6291456
+            },
+            "recurrent_out": {
+              "offset_bytes": 25165824,
+              "nbytes": 12582912
+            },
+            "residual": {
+              "offset_bytes": 63307776,
+              "nbytes": 3145728
+            }
+          },
+          "allocation_lifetimes": {
+            "attn_out": [
+              {
+                "route": "linear",
+                "start_stage": 5,
+                "end_stage": 7
+              },
+              {
+                "route": "full",
+                "start_stage": 5,
+                "end_stage": 7
+              }
+            ],
+            "conv_out": [
+              {
+                "route": "linear",
+                "start_stage": 2,
+                "end_stage": 5
+              }
+            ],
+            "ffn_down": [
+              {
+                "route": "linear",
+                "start_stage": 12,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 12,
+                "end_stage": 17
+              }
+            ],
+            "ffn_gate_up": [
+              {
+                "route": "linear",
+                "start_stage": 9,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 9,
+                "end_stage": 15
+              }
+            ],
+            "ffn_intermediate": [
+              {
+                "route": "linear",
+                "start_stage": 10,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 10,
+                "end_stage": 12
+              }
+            ],
+            "full_attn_bf16": [
+              {
+                "route": "full",
+                "start_stage": 4,
+                "end_stage": 5
+              }
+            ],
+            "full_gate": [
+              {
+                "route": "full",
+                "start_stage": 1,
+                "end_stage": 5
+              }
+            ],
+            "full_gated": [
+              {
+                "route": "full",
+                "start_stage": 5,
+                "end_stage": 6
+              }
+            ],
+            "full_k": [
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 3
+              }
+            ],
+            "full_key": [
+              {
+                "route": "full",
+                "start_stage": 2,
+                "end_stage": 4
+              }
+            ],
+            "full_key_raw": [
+              {
+                "route": "full",
+                "start_stage": 1,
+                "end_stage": 3
+              }
+            ],
+            "full_q": [
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 2
+              }
+            ],
+            "full_query": [
+              {
+                "route": "full",
+                "start_stage": 2,
+                "end_stage": 4
+              }
+            ],
+            "full_query_bf16": [
+              {
+                "route": "full",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "full_query_raw": [
+              {
+                "route": "full",
+                "start_stage": 1,
+                "end_stage": 3
+              }
+            ],
+            "full_v": [
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 4
+              }
+            ],
+            "linear_alpha": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 4
+              }
+            ],
+            "linear_beta": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 4
+              }
+            ],
+            "linear_qkv": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 2
+              }
+            ],
+            "linear_qkv_f32": [
+              {
+                "route": "linear",
+                "start_stage": 1,
+                "end_stage": 3
+              }
+            ],
+            "linear_z": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 5
+              }
+            ],
+            "moe_down_out": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 17
+              }
+            ],
+            "moe_expert_start_compact": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_expert_start_wmma": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_group_counts": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_lane_to_row": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_padded_counts": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_q8_1": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 17
+              }
+            ],
+            "moe_router_logits": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 8
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 8
+              }
+            ],
+            "moe_routing_weights": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 17
+              }
+            ],
+            "moe_scatter_offsets": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_selected_experts": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 12
+              }
+            ],
+            "moe_shared_gate": [
+              {
+                "route": "linear",
+                "start_stage": 13,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 13,
+                "end_stage": 15
+              }
+            ],
+            "moe_shared_gate_logits": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 17
+              }
+            ],
+            "moe_shared_intermediate": [
+              {
+                "route": "linear",
+                "start_stage": 14,
+                "end_stage": 16
+              },
+              {
+                "route": "full",
+                "start_stage": 14,
+                "end_stage": 16
+              }
+            ],
+            "moe_shared_out": [
+              {
+                "route": "linear",
+                "start_stage": 15,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 15,
+                "end_stage": 17
+              }
+            ],
+            "moe_shared_up": [
+              {
+                "route": "linear",
+                "start_stage": 13,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 13,
+                "end_stage": 15
+              }
+            ],
+            "moe_sorted_experts": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_sorted_lanes": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_sorted_weights": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_tile_expert": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_total_compact": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_wmma_total": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "norm": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 1
+              },
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 1
+              }
+            ],
+            "post_norm": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 15
+              }
+            ],
+            "prefill_beta": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "prefill_decay": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "prefill_key_scale": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "prefill_query_scale": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "recurrent_bf16": [
+              {
+                "route": "linear",
+                "start_stage": 5,
+                "end_stage": 6
+              }
+            ],
+            "recurrent_out": [
+              {
+                "route": "linear",
+                "start_stage": 4,
+                "end_stage": 5
+              }
+            ],
+            "residual": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 17
+              }
+            ]
+          },
+          "allocation_groups": {
+            "attn_out": "owner_slot_01",
+            "conv_out": "owner_slot_00",
+            "ffn_down": "owner_slot_02",
+            "ffn_gate_up": "owner_slot_01",
+            "ffn_intermediate": "owner_slot_02",
+            "full_attn_bf16": "owner_slot_00",
+            "full_gate": "owner_slot_02",
+            "full_gated": "owner_slot_00",
+            "full_k": "owner_slot_06",
+            "full_key": "owner_slot_04",
+            "full_key_raw": "owner_slot_05",
+            "full_q": "owner_slot_00",
+            "full_query": "owner_slot_00",
+            "full_query_bf16": "owner_slot_01",
+            "full_query_raw": "owner_slot_01",
+            "full_v": "owner_slot_07",
+            "linear_alpha": "owner_slot_08",
+            "linear_beta": "owner_slot_09",
+            "linear_qkv": "owner_slot_00",
+            "linear_qkv_f32": "owner_slot_01",
+            "linear_z": "owner_slot_02",
+            "moe_down_out": "owner_slot_00",
+            "moe_expert_start_compact": "owner_slot_14",
+            "moe_expert_start_wmma": "owner_slot_15",
+            "moe_group_counts": "owner_slot_16",
+            "moe_lane_to_row": "owner_slot_06",
+            "moe_padded_counts": "owner_slot_17",
+            "moe_q8_1": "owner_slot_03",
+            "moe_router_logits": "owner_slot_00",
+            "moe_routing_weights": "owner_slot_10",
+            "moe_scatter_offsets": "owner_slot_18",
+            "moe_selected_experts": "owner_slot_07",
+            "moe_shared_gate": "owner_slot_06",
+            "moe_shared_gate_logits": "owner_slot_13",
+            "moe_shared_intermediate": "owner_slot_07",
+            "moe_shared_out": "owner_slot_01",
+            "moe_shared_up": "owner_slot_08",
+            "moe_sorted_experts": "owner_slot_08",
+            "moe_sorted_lanes": "owner_slot_09",
+            "moe_sorted_weights": "owner_slot_11",
+            "moe_tile_expert": "owner_slot_12",
+            "moe_total_compact": "owner_slot_19",
+            "moe_wmma_total": "owner_slot_20",
+            "norm": "owner_slot_01",
+            "post_norm": "owner_slot_04",
+            "prefill_beta": "owner_slot_04",
+            "prefill_decay": "owner_slot_05",
+            "prefill_key_scale": "owner_slot_06",
+            "prefill_query_scale": "owner_slot_07",
+            "recurrent_bf16": "owner_slot_00",
+            "recurrent_out": "owner_slot_01",
+            "residual": "owner_slot_05"
+          },
+          "notes": [
+            "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
+            "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency."
+          ]
+        },
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/tmp/run_sh2_m3_leg.py",
+          "owner_slots",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "512/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh2-m3-20260806/owner_slots_a.json"
+        ],
+        "raw_json": "/tmp/hipengine-sh2-m3-20260806/owner_slots_a.json",
+        "raw_sha256": "18a9b3bee7f289164e8f8c0a3471d34157872a7b12d56ddffe20d2fd3656bbab"
+      },
+      "owner_slots_b": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1368.0600850313451,
+          "min": 1364.1167990976414,
+          "max": 1369.36281010438,
+          "mean": 1367.179898077789,
+          "stdev": 2.731520579386815
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 53.432486279504886,
+          "min": 53.31805602358567,
+          "max": 53.50064116251765,
+          "mean": 53.41706115520274,
+          "stdev": 0.09226474995633778
+        },
+        "tracked_peak_gib": 21.214187383651733,
+        "whole_gtt_10ms": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18722816,
+          "baseline_gib": 0.017436981201171875,
+          "peak_bytes": 23244820480,
+          "peak_gib": 21.648426055908203,
+          "peak_delta_bytes": 23226097664,
+          "peak_delta_gib": 21.63098907470703,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 5771,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 57.692960500949994
+        },
+        "scratch_census": {
+          "allocation_mode": "liveness_aliased",
+          "rows": 768,
+          "max_positions": 768,
+          "physical_owner_bytes": 69790760,
+          "physical_owner_gib": 0.06499771028757095,
+          "logical_field_bytes": 226928712,
+          "logical_field_gib": 0.21134383231401443,
+          "logical_alias_overhead_bytes": 157137952,
+          "by_field_bytes": {
+            "conv_out": 25165824,
+            "linear_qkv_f32": 25165824,
+            "moe_down_out": 25165824,
+            "ffn_gate_up": 12582912,
+            "full_q": 12582912,
+            "full_query": 12582912,
+            "full_query_raw": 12582912,
+            "linear_qkv": 12582912,
+            "recurrent_out": 12582912,
+            "ffn_intermediate": 6291456,
+            "full_attn_bf16": 6291456,
+            "full_gate": 6291456,
+            "full_gated": 6291456,
+            "full_query_bf16": 6291456,
+            "linear_z": 6291456,
+            "recurrent_bf16": 6291456,
+            "moe_q8_1": 3538944,
+            "attn_out": 3145728,
+            "ffn_down": 3145728,
+            "moe_shared_out": 3145728,
+            "norm": 3145728,
+            "post_norm": 3145728,
+            "residual": 3145728,
+            "full_key": 1572864,
+            "full_key_raw": 1572864,
+            "full_attn_split_partial": 786432,
+            "full_k": 786432,
+            "full_v": 786432,
+            "moe_router_logits": 786432,
+            "moe_shared_gate": 786432,
+            "moe_shared_intermediate": 786432,
+            "moe_shared_up": 786432,
+            "prefill_beta": 98304,
+            "prefill_decay": 98304,
+            "prefill_key_scale": 98304,
+            "prefill_query_scale": 98304,
+            "linear_alpha": 49152,
+            "linear_beta": 49152,
+            "moe_lane_to_row": 49152,
+            "moe_selected_experts": 49152,
+            "moe_sorted_experts": 49152,
+            "moe_sorted_lanes": 49152,
+            "softmax_lse": 49152,
+            "moe_routing_weights": 24576,
+            "moe_sorted_weights": 24576,
+            "block_table": 9216,
+            "context_counts": 6144,
+            "positions": 6144,
+            "moe_tile_expert": 5120,
+            "full_attn_split_l": 3072,
+            "full_attn_split_m": 3072,
+            "moe_shared_gate_logits": 3072,
+            "moe_expert_start_compact": 2056,
+            "moe_expert_start_wmma": 2056,
+            "moe_group_counts": 1024,
+            "moe_padded_counts": 1024,
+            "moe_scatter_offsets": 1024,
+            "cu_k": 8,
+            "cu_q": 8,
+            "gdn_cu_seqlens": 8,
+            "gdn_state_indices": 8,
+            "moe_total_compact": 8,
+            "moe_wmma_total": 8,
+            "atomic": 4,
+            "moe_router_counter": 4
+          },
+          "by_field_bytes_per_row": {
+            "conv_out": 32768.0,
+            "linear_qkv_f32": 32768.0,
+            "moe_down_out": 32768.0,
+            "ffn_gate_up": 16384.0,
+            "full_q": 16384.0,
+            "full_query": 16384.0,
+            "full_query_raw": 16384.0,
+            "linear_qkv": 16384.0,
+            "recurrent_out": 16384.0,
+            "ffn_intermediate": 8192.0,
+            "full_attn_bf16": 8192.0,
+            "full_gate": 8192.0,
+            "full_gated": 8192.0,
+            "full_query_bf16": 8192.0,
+            "linear_z": 8192.0,
+            "recurrent_bf16": 8192.0,
+            "moe_q8_1": 4608.0,
+            "attn_out": 4096.0,
+            "ffn_down": 4096.0,
+            "moe_shared_out": 4096.0,
+            "norm": 4096.0,
+            "post_norm": 4096.0,
+            "residual": 4096.0,
+            "full_key": 2048.0,
+            "full_key_raw": 2048.0,
+            "full_attn_split_partial": 1024.0,
+            "full_k": 1024.0,
+            "full_v": 1024.0,
+            "moe_router_logits": 1024.0,
+            "moe_shared_gate": 1024.0,
+            "moe_shared_intermediate": 1024.0,
+            "moe_shared_up": 1024.0,
+            "prefill_beta": 128.0,
+            "prefill_decay": 128.0,
+            "prefill_key_scale": 128.0,
+            "prefill_query_scale": 128.0,
+            "linear_alpha": 64.0,
+            "linear_beta": 64.0,
+            "moe_lane_to_row": 64.0,
+            "moe_selected_experts": 64.0,
+            "moe_sorted_experts": 64.0,
+            "moe_sorted_lanes": 64.0,
+            "softmax_lse": 64.0,
+            "moe_routing_weights": 32.0,
+            "moe_sorted_weights": 32.0,
+            "block_table": 12.0,
+            "context_counts": 8.0,
+            "positions": 8.0,
+            "moe_tile_expert": 6.666666666666667,
+            "full_attn_split_l": 4.0,
+            "full_attn_split_m": 4.0,
+            "moe_shared_gate_logits": 4.0,
+            "moe_expert_start_compact": 2.6770833333333335,
+            "moe_expert_start_wmma": 2.6770833333333335,
+            "moe_group_counts": 1.3333333333333333,
+            "moe_padded_counts": 1.3333333333333333,
+            "moe_scatter_offsets": 1.3333333333333333,
+            "cu_k": 0.010416666666666666,
+            "cu_q": 0.010416666666666666,
+            "gdn_cu_seqlens": 0.010416666666666666,
+            "gdn_state_indices": 0.010416666666666666,
+            "moe_total_compact": 0.010416666666666666,
+            "moe_wmma_total": 0.010416666666666666,
+            "atomic": 0.005208333333333333,
+            "moe_router_counter": 0.005208333333333333
+          },
+          "allocation_offsets": {
+            "attn_out": {
+              "offset_bytes": 25165824,
+              "nbytes": 3145728
+            },
+            "conv_out": {
+              "offset_bytes": 0,
+              "nbytes": 25165824
+            },
+            "ffn_down": {
+              "offset_bytes": 50331648,
+              "nbytes": 3145728
+            },
+            "ffn_gate_up": {
+              "offset_bytes": 25165824,
+              "nbytes": 12582912
+            },
+            "ffn_intermediate": {
+              "offset_bytes": 50331648,
+              "nbytes": 6291456
+            },
+            "full_attn_bf16": {
+              "offset_bytes": 0,
+              "nbytes": 6291456
+            },
+            "full_gate": {
+              "offset_bytes": 50331648,
+              "nbytes": 6291456
+            },
+            "full_gated": {
+              "offset_bytes": 0,
+              "nbytes": 6291456
+            },
+            "full_k": {
+              "offset_bytes": 66453504,
+              "nbytes": 786432
+            },
+            "full_key": {
+              "offset_bytes": 60162048,
+              "nbytes": 1572864
+            },
+            "full_key_raw": {
+              "offset_bytes": 63307776,
+              "nbytes": 1572864
+            },
+            "full_q": {
+              "offset_bytes": 0,
+              "nbytes": 12582912
+            },
+            "full_query": {
+              "offset_bytes": 0,
+              "nbytes": 12582912
+            },
+            "full_query_bf16": {
+              "offset_bytes": 25165824,
+              "nbytes": 6291456
+            },
+            "full_query_raw": {
+              "offset_bytes": 25165824,
+              "nbytes": 12582912
+            },
+            "full_v": {
+              "offset_bytes": 67239936,
+              "nbytes": 786432
+            },
+            "linear_alpha": {
+              "offset_bytes": 68026368,
+              "nbytes": 49152
+            },
+            "linear_beta": {
+              "offset_bytes": 68812800,
+              "nbytes": 49152
+            },
+            "linear_qkv": {
+              "offset_bytes": 0,
+              "nbytes": 12582912
+            },
+            "linear_qkv_f32": {
+              "offset_bytes": 25165824,
+              "nbytes": 25165824
+            },
+            "linear_z": {
+              "offset_bytes": 50331648,
+              "nbytes": 6291456
+            },
+            "moe_down_out": {
+              "offset_bytes": 0,
+              "nbytes": 25165824
+            },
+            "moe_expert_start_compact": {
+              "offset_bytes": 68919296,
+              "nbytes": 2056
+            },
+            "moe_expert_start_wmma": {
+              "offset_bytes": 68921600,
+              "nbytes": 2056
+            },
+            "moe_group_counts": {
+              "offset_bytes": 68923904,
+              "nbytes": 1024
+            },
+            "moe_lane_to_row": {
+              "offset_bytes": 66453504,
+              "nbytes": 49152
+            },
+            "moe_padded_counts": {
+              "offset_bytes": 68924928,
+              "nbytes": 1024
+            },
+            "moe_q8_1": {
+              "offset_bytes": 56623104,
+              "nbytes": 3538944
+            },
+            "moe_router_logits": {
+              "offset_bytes": 0,
+              "nbytes": 786432
+            },
+            "moe_routing_weights": {
+              "offset_bytes": 68861952,
+              "nbytes": 24576
+            },
+            "moe_scatter_offsets": {
+              "offset_bytes": 68925952,
+              "nbytes": 1024
+            },
+            "moe_selected_experts": {
+              "offset_bytes": 67239936,
+              "nbytes": 49152
+            },
+            "moe_shared_gate": {
+              "offset_bytes": 66453504,
+              "nbytes": 786432
+            },
+            "moe_shared_gate_logits": {
+              "offset_bytes": 68916224,
+              "nbytes": 3072
+            },
+            "moe_shared_intermediate": {
+              "offset_bytes": 67239936,
+              "nbytes": 786432
+            },
+            "moe_shared_out": {
+              "offset_bytes": 25165824,
+              "nbytes": 3145728
+            },
+            "moe_shared_up": {
+              "offset_bytes": 68026368,
+              "nbytes": 786432
+            },
+            "moe_sorted_experts": {
+              "offset_bytes": 68026368,
+              "nbytes": 49152
+            },
+            "moe_sorted_lanes": {
+              "offset_bytes": 68812800,
+              "nbytes": 49152
+            },
+            "moe_sorted_weights": {
+              "offset_bytes": 68886528,
+              "nbytes": 24576
+            },
+            "moe_tile_expert": {
+              "offset_bytes": 68911104,
+              "nbytes": 5120
+            },
+            "moe_total_compact": {
+              "offset_bytes": 68926976,
+              "nbytes": 8
+            },
+            "moe_wmma_total": {
+              "offset_bytes": 68927232,
+              "nbytes": 8
+            },
+            "norm": {
+              "offset_bytes": 25165824,
+              "nbytes": 3145728
+            },
+            "post_norm": {
+              "offset_bytes": 60162048,
+              "nbytes": 3145728
+            },
+            "prefill_beta": {
+              "offset_bytes": 60162048,
+              "nbytes": 98304
+            },
+            "prefill_decay": {
+              "offset_bytes": 63307776,
+              "nbytes": 98304
+            },
+            "prefill_key_scale": {
+              "offset_bytes": 66453504,
+              "nbytes": 98304
+            },
+            "prefill_query_scale": {
+              "offset_bytes": 67239936,
+              "nbytes": 98304
+            },
+            "recurrent_bf16": {
+              "offset_bytes": 0,
+              "nbytes": 6291456
+            },
+            "recurrent_out": {
+              "offset_bytes": 25165824,
+              "nbytes": 12582912
+            },
+            "residual": {
+              "offset_bytes": 63307776,
+              "nbytes": 3145728
+            }
+          },
+          "allocation_lifetimes": {
+            "attn_out": [
+              {
+                "route": "linear",
+                "start_stage": 5,
+                "end_stage": 7
+              },
+              {
+                "route": "full",
+                "start_stage": 5,
+                "end_stage": 7
+              }
+            ],
+            "conv_out": [
+              {
+                "route": "linear",
+                "start_stage": 2,
+                "end_stage": 5
+              }
+            ],
+            "ffn_down": [
+              {
+                "route": "linear",
+                "start_stage": 12,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 12,
+                "end_stage": 17
+              }
+            ],
+            "ffn_gate_up": [
+              {
+                "route": "linear",
+                "start_stage": 9,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 9,
+                "end_stage": 15
+              }
+            ],
+            "ffn_intermediate": [
+              {
+                "route": "linear",
+                "start_stage": 10,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 10,
+                "end_stage": 12
+              }
+            ],
+            "full_attn_bf16": [
+              {
+                "route": "full",
+                "start_stage": 4,
+                "end_stage": 5
+              }
+            ],
+            "full_gate": [
+              {
+                "route": "full",
+                "start_stage": 1,
+                "end_stage": 5
+              }
+            ],
+            "full_gated": [
+              {
+                "route": "full",
+                "start_stage": 5,
+                "end_stage": 6
+              }
+            ],
+            "full_k": [
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 3
+              }
+            ],
+            "full_key": [
+              {
+                "route": "full",
+                "start_stage": 2,
+                "end_stage": 4
+              }
+            ],
+            "full_key_raw": [
+              {
+                "route": "full",
+                "start_stage": 1,
+                "end_stage": 3
+              }
+            ],
+            "full_q": [
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 2
+              }
+            ],
+            "full_query": [
+              {
+                "route": "full",
+                "start_stage": 2,
+                "end_stage": 4
+              }
+            ],
+            "full_query_bf16": [
+              {
+                "route": "full",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "full_query_raw": [
+              {
+                "route": "full",
+                "start_stage": 1,
+                "end_stage": 3
+              }
+            ],
+            "full_v": [
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 4
+              }
+            ],
+            "linear_alpha": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 4
+              }
+            ],
+            "linear_beta": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 4
+              }
+            ],
+            "linear_qkv": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 2
+              }
+            ],
+            "linear_qkv_f32": [
+              {
+                "route": "linear",
+                "start_stage": 1,
+                "end_stage": 3
+              }
+            ],
+            "linear_z": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 5
+              }
+            ],
+            "moe_down_out": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 17
+              }
+            ],
+            "moe_expert_start_compact": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_expert_start_wmma": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_group_counts": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_lane_to_row": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_padded_counts": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_q8_1": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 17
+              }
+            ],
+            "moe_router_logits": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 8
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 8
+              }
+            ],
+            "moe_routing_weights": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 17
+              }
+            ],
+            "moe_scatter_offsets": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_selected_experts": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 12
+              }
+            ],
+            "moe_shared_gate": [
+              {
+                "route": "linear",
+                "start_stage": 13,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 13,
+                "end_stage": 15
+              }
+            ],
+            "moe_shared_gate_logits": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 17
+              }
+            ],
+            "moe_shared_intermediate": [
+              {
+                "route": "linear",
+                "start_stage": 14,
+                "end_stage": 16
+              },
+              {
+                "route": "full",
+                "start_stage": 14,
+                "end_stage": 16
+              }
+            ],
+            "moe_shared_out": [
+              {
+                "route": "linear",
+                "start_stage": 15,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 15,
+                "end_stage": 17
+              }
+            ],
+            "moe_shared_up": [
+              {
+                "route": "linear",
+                "start_stage": 13,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 13,
+                "end_stage": 15
+              }
+            ],
+            "moe_sorted_experts": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_sorted_lanes": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_sorted_weights": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 13
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 13
+              }
+            ],
+            "moe_tile_expert": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_total_compact": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "moe_wmma_total": [
+              {
+                "route": "linear",
+                "start_stage": 8,
+                "end_stage": 12
+              },
+              {
+                "route": "full",
+                "start_stage": 8,
+                "end_stage": 12
+              }
+            ],
+            "norm": [
+              {
+                "route": "linear",
+                "start_stage": 0,
+                "end_stage": 1
+              },
+              {
+                "route": "full",
+                "start_stage": 0,
+                "end_stage": 1
+              }
+            ],
+            "post_norm": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 15
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 15
+              }
+            ],
+            "prefill_beta": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "prefill_decay": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "prefill_key_scale": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "prefill_query_scale": [
+              {
+                "route": "linear",
+                "start_stage": 3,
+                "end_stage": 5
+              }
+            ],
+            "recurrent_bf16": [
+              {
+                "route": "linear",
+                "start_stage": 5,
+                "end_stage": 6
+              }
+            ],
+            "recurrent_out": [
+              {
+                "route": "linear",
+                "start_stage": 4,
+                "end_stage": 5
+              }
+            ],
+            "residual": [
+              {
+                "route": "linear",
+                "start_stage": 7,
+                "end_stage": 17
+              },
+              {
+                "route": "full",
+                "start_stage": 7,
+                "end_stage": 17
+              }
+            ]
+          },
+          "allocation_groups": {
+            "attn_out": "owner_slot_01",
+            "conv_out": "owner_slot_00",
+            "ffn_down": "owner_slot_02",
+            "ffn_gate_up": "owner_slot_01",
+            "ffn_intermediate": "owner_slot_02",
+            "full_attn_bf16": "owner_slot_00",
+            "full_gate": "owner_slot_02",
+            "full_gated": "owner_slot_00",
+            "full_k": "owner_slot_06",
+            "full_key": "owner_slot_04",
+            "full_key_raw": "owner_slot_05",
+            "full_q": "owner_slot_00",
+            "full_query": "owner_slot_00",
+            "full_query_bf16": "owner_slot_01",
+            "full_query_raw": "owner_slot_01",
+            "full_v": "owner_slot_07",
+            "linear_alpha": "owner_slot_08",
+            "linear_beta": "owner_slot_09",
+            "linear_qkv": "owner_slot_00",
+            "linear_qkv_f32": "owner_slot_01",
+            "linear_z": "owner_slot_02",
+            "moe_down_out": "owner_slot_00",
+            "moe_expert_start_compact": "owner_slot_14",
+            "moe_expert_start_wmma": "owner_slot_15",
+            "moe_group_counts": "owner_slot_16",
+            "moe_lane_to_row": "owner_slot_06",
+            "moe_padded_counts": "owner_slot_17",
+            "moe_q8_1": "owner_slot_03",
+            "moe_router_logits": "owner_slot_00",
+            "moe_routing_weights": "owner_slot_10",
+            "moe_scatter_offsets": "owner_slot_18",
+            "moe_selected_experts": "owner_slot_07",
+            "moe_shared_gate": "owner_slot_06",
+            "moe_shared_gate_logits": "owner_slot_13",
+            "moe_shared_intermediate": "owner_slot_07",
+            "moe_shared_out": "owner_slot_01",
+            "moe_shared_up": "owner_slot_08",
+            "moe_sorted_experts": "owner_slot_08",
+            "moe_sorted_lanes": "owner_slot_09",
+            "moe_sorted_weights": "owner_slot_11",
+            "moe_tile_expert": "owner_slot_12",
+            "moe_total_compact": "owner_slot_19",
+            "moe_wmma_total": "owner_slot_20",
+            "norm": "owner_slot_01",
+            "post_norm": "owner_slot_04",
+            "prefill_beta": "owner_slot_04",
+            "prefill_decay": "owner_slot_05",
+            "prefill_key_scale": "owner_slot_06",
+            "prefill_query_scale": "owner_slot_07",
+            "recurrent_bf16": "owner_slot_00",
+            "recurrent_out": "owner_slot_01",
+            "residual": "owner_slot_05"
+          },
+          "notes": [
+            "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
+            "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency."
+          ]
+        },
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/tmp/run_sh2_m3_leg.py",
+          "owner_slots",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "512/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh2-m3-20260806/owner_slots_b.json"
+        ],
+        "raw_json": "/tmp/hipengine-sh2-m3-20260806/owner_slots_b.json",
+        "raw_sha256": "97632cd267d2fb0b3b04d1a4f62a7a59693be6fe932da9411245fb822660e756"
+      },
+      "dedicated_b": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1360.1298828731683,
+          "min": 1357.1128812814682,
+          "max": 1360.8758411410201,
+          "mean": 1359.3728684318855,
+          "stdev": 1.9924281353120021
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 53.27365434107678,
+          "min": 53.02762979814708,
+          "max": 53.477709558196516,
+          "mean": 53.259664565806794,
+          "stdev": 0.22536577593019197
+        },
+        "tracked_peak_gib": 21.479979306459427,
+        "whole_gtt_10ms": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18722816,
+          "baseline_gib": 0.017436981201171875,
+          "peak_bytes": 23532130304,
+          "peak_gib": 21.916004180908203,
+          "peak_delta_bytes": 23513407488,
+          "peak_delta_gib": 21.89856719970703,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 5790,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 57.87140870001167
+        },
+        "scratch_census": {
+          "allocation_mode": "dedicated",
+          "rows": 768,
+          "max_positions": 768,
+          "physical_owner_bytes": 355182664,
+          "physical_owner_gib": 0.33078963309526443,
+          "logical_field_bytes": 355182664,
+          "logical_field_gib": 0.33078963309526443,
+          "logical_alias_overhead_bytes": 0,
+          "by_field_bytes": {
+            "moe_down_out_f32": 50331648,
+            "conv_out": 25165824,
+            "linear_qkv_f32": 25165824,
+            "moe_down_out": 25165824,
+            "ffn_gate_up": 12582912,
+            "ffn_intermediate_f32": 12582912,
+            "full_q": 12582912,
+            "full_query": 12582912,
+            "full_query_raw": 12582912,
+            "linear_qkv": 12582912,
+            "linear_z_f32": 12582912,
+            "prefill_key": 12582912,
+            "prefill_query": 12582912,
+            "prefill_value": 12582912,
+            "recurrent_out": 12582912,
+            "ffn_intermediate": 6291456,
+            "full_attn_bf16": 6291456,
+            "full_gate": 6291456,
+            "full_gated": 6291456,
+            "full_query_bf16": 6291456,
+            "linear_z": 6291456,
+            "moe_shared_out_f32": 6291456,
+            "post_norm_f32": 6291456,
+            "recurrent_bf16": 6291456,
+            "moe_q8_1": 3538944,
+            "attn_out": 3145728,
+            "ffn_down": 3145728,
+            "moe_shared_out": 3145728,
+            "norm": 3145728,
+            "post_norm": 3145728,
+            "residual": 3145728,
+            "linear_recurrent_state_tmp": 2097152,
+            "full_key": 1572864,
+            "full_key_raw": 1572864,
+            "full_attn_split_partial": 786432,
+            "full_k": 786432,
+            "full_v": 786432,
+            "moe_router_logits": 786432,
+            "moe_shared_gate": 786432,
+            "moe_shared_intermediate": 786432,
+            "moe_shared_up": 786432,
+            "linear_conv_state_tmp": 131072,
+            "linear_alpha_f32": 98304,
+            "linear_beta_f32": 98304,
+            "prefill_beta": 98304,
+            "prefill_decay": 98304,
+            "prefill_key_scale": 98304,
+            "prefill_query_scale": 98304,
+            "linear_alpha": 49152,
+            "linear_beta": 49152,
+            "moe_lane_to_row": 49152,
+            "moe_selected_experts": 49152,
+            "moe_sorted_experts": 49152,
+            "moe_sorted_lanes": 49152,
+            "softmax_lse": 49152,
+            "moe_routing_weights": 24576,
+            "moe_sorted_weights": 24576,
+            "block_table": 9216,
+            "context_counts": 6144,
+            "positions": 6144,
+            "moe_tile_expert": 5120,
+            "full_attn_split_l": 3072,
+            "full_attn_split_m": 3072,
+            "moe_shared_gate_logits": 3072,
+            "moe_expert_start_compact": 2056,
+            "moe_expert_start_wmma": 2056,
+            "moe_group_counts": 1024,
+            "moe_padded_counts": 1024,
+            "moe_scatter_offsets": 1024,
+            "cu_k": 8,
+            "cu_q": 8,
+            "gdn_cu_seqlens": 8,
+            "gdn_state_indices": 8,
+            "moe_total_compact": 8,
+            "moe_wmma_total": 8,
+            "atomic": 4,
+            "moe_router_counter": 4
+          },
+          "by_field_bytes_per_row": {
+            "moe_down_out_f32": 65536.0,
+            "conv_out": 32768.0,
+            "linear_qkv_f32": 32768.0,
+            "moe_down_out": 32768.0,
+            "ffn_gate_up": 16384.0,
+            "ffn_intermediate_f32": 16384.0,
+            "full_q": 16384.0,
+            "full_query": 16384.0,
+            "full_query_raw": 16384.0,
+            "linear_qkv": 16384.0,
+            "linear_z_f32": 16384.0,
+            "prefill_key": 16384.0,
+            "prefill_query": 16384.0,
+            "prefill_value": 16384.0,
+            "recurrent_out": 16384.0,
+            "ffn_intermediate": 8192.0,
+            "full_attn_bf16": 8192.0,
+            "full_gate": 8192.0,
+            "full_gated": 8192.0,
+            "full_query_bf16": 8192.0,
+            "linear_z": 8192.0,
+            "moe_shared_out_f32": 8192.0,
+            "post_norm_f32": 8192.0,
+            "recurrent_bf16": 8192.0,
+            "moe_q8_1": 4608.0,
+            "attn_out": 4096.0,
+            "ffn_down": 4096.0,
+            "moe_shared_out": 4096.0,
+            "norm": 4096.0,
+            "post_norm": 4096.0,
+            "residual": 4096.0,
+            "linear_recurrent_state_tmp": 2730.6666666666665,
+            "full_key": 2048.0,
+            "full_key_raw": 2048.0,
+            "full_attn_split_partial": 1024.0,
+            "full_k": 1024.0,
+            "full_v": 1024.0,
+            "moe_router_logits": 1024.0,
+            "moe_shared_gate": 1024.0,
+            "moe_shared_intermediate": 1024.0,
+            "moe_shared_up": 1024.0,
+            "linear_conv_state_tmp": 170.66666666666666,
+            "linear_alpha_f32": 128.0,
+            "linear_beta_f32": 128.0,
+            "prefill_beta": 128.0,
+            "prefill_decay": 128.0,
+            "prefill_key_scale": 128.0,
+            "prefill_query_scale": 128.0,
+            "linear_alpha": 64.0,
+            "linear_beta": 64.0,
+            "moe_lane_to_row": 64.0,
+            "moe_selected_experts": 64.0,
+            "moe_sorted_experts": 64.0,
+            "moe_sorted_lanes": 64.0,
+            "softmax_lse": 64.0,
+            "moe_routing_weights": 32.0,
+            "moe_sorted_weights": 32.0,
+            "block_table": 12.0,
+            "context_counts": 8.0,
+            "positions": 8.0,
+            "moe_tile_expert": 6.666666666666667,
+            "full_attn_split_l": 4.0,
+            "full_attn_split_m": 4.0,
+            "moe_shared_gate_logits": 4.0,
+            "moe_expert_start_compact": 2.6770833333333335,
+            "moe_expert_start_wmma": 2.6770833333333335,
+            "moe_group_counts": 1.3333333333333333,
+            "moe_padded_counts": 1.3333333333333333,
+            "moe_scatter_offsets": 1.3333333333333333,
+            "cu_k": 0.010416666666666666,
+            "cu_q": 0.010416666666666666,
+            "gdn_cu_seqlens": 0.010416666666666666,
+            "gdn_state_indices": 0.010416666666666666,
+            "moe_total_compact": 0.010416666666666666,
+            "moe_wmma_total": 0.010416666666666666,
+            "atomic": 0.005208333333333333,
+            "moe_router_counter": 0.005208333333333333
+          },
+          "allocation_offsets": {},
+          "allocation_lifetimes": {},
+          "allocation_groups": {},
+          "notes": [
+            "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
+            "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency."
+          ]
+        },
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/tmp/run_sh2_m3_leg.py",
+          "dedicated",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "512/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh2-m3-20260806/dedicated_b.json"
+        ],
+        "raw_json": "/tmp/hipengine-sh2-m3-20260806/dedicated_b.json",
+        "raw_sha256": "54f86f480e623da96c0cb3e6987d1bfb29667754dfa9dfbb4c732843510aa216"
+      }
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "scratch_rows": 768,
+    "prefill_logits_exact": true,
+    "prefill_state_exact": true,
+    "trajectory_exact": true,
+    "final_state_exact": true,
+    "finite": true,
+    "decode_transitions": 4,
+    "layer_outputs_per_checkpoint": 40,
+    "linear_state_pairs_per_checkpoint": 30,
+    "live_kv_layer_pairs_per_checkpoint": 10,
+    "raw": {
+      "dedicated": {
+        "path": "/tmp/hipengine-sh2-m3-20260806/state-dedicated.json",
+        "sha256": "22e23b98cd662ddb4f6be26370db70ec08d3f2341a7668b08c7535d756a22aee",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/tmp/run_sh2_m3_leg.py",
+          "dedicated",
+          "/home/lhl/hipEngine-main/scripts/gguf_sh_m1_screen.py",
+          "state-child",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--contexts",
+          "512",
+          "--query-rows",
+          "4096",
+          "--decode-steps",
+          "4",
+          "--max-sequence-length",
+          "517",
+          "--backend",
+          "hip_gfx1151",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh2-m3-20260806/state-dedicated.json"
+        ]
+      },
+      "owner_slots": {
+        "path": "/tmp/hipengine-sh2-m3-20260806/state-owner_slots.json",
+        "sha256": "c7cb10af8005b70c7af7e39121af9a9a7eae584a748754123608580f5145dbfb",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/tmp/run_sh2_m3_leg.py",
+          "owner_slots",
+          "/home/lhl/hipEngine-main/scripts/gguf_sh_m1_screen.py",
+          "state-child",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--contexts",
+          "512",
+          "--query-rows",
+          "4096",
+          "--decode-steps",
+          "4",
+          "--max-sequence-length",
+          "517",
+          "--backend",
+          "hip_gfx1151",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh2-m3-20260806/state-owner_slots.json"
+        ]
+      }
+    }
+  },
+  "committed_checkpoint": {
+    "commit": "edb151447c4340a3839f4a28708c1dcc4d0ac5a5",
+    "prefill_tok_s": {
+      "count": 3,
+      "median": 1364.4423127854773,
+      "min": 1364.360358780219,
+      "max": 1366.5629485681459,
+      "mean": 1365.1218733779474,
+      "stdev": 1.2486802603543776
+    },
+    "decode_tok_s": {
+      "count": 3,
+      "median": 53.29319970891986,
+      "min": 53.275501046563306,
+      "max": 53.41528337313579,
+      "mean": 53.32799470953965,
+      "stdev": 0.07611040504821248
+    },
+    "tracked_peak_gib": 21.214187383651733,
+    "whole_gtt_10ms": {
+      "card": {
+        "card_name": "card1",
+        "pci_id": "0000:c1:00.0",
+        "sysfs_path": "/sys/class/drm/card1/device",
+        "vram_total_bytes": 536870912,
+        "vram_total_gib": 0.5
+      },
+      "memory_domain": "gtt",
+      "memory_total_bytes": 128849018880,
+      "memory_total_gib": 120.0,
+      "baseline_bytes": 18677760,
+      "baseline_gib": 0.01739501953125,
+      "peak_bytes": 23244820480,
+      "peak_gib": 21.648426055908203,
+      "peak_delta_bytes": 23226142720,
+      "peak_delta_gib": 21.631031036376953,
+      "final_bytes": 18722816,
+      "final_gib": 0.017436981201171875,
+      "samples_count": 5802,
+      "interval_seconds": 0.01,
+      "elapsed_seconds": 57.99566753604449
+    },
+    "scratch_census": {
+      "allocation_mode": "liveness_aliased",
+      "rows": 768,
+      "max_positions": 768,
+      "physical_owner_bytes": 69790760,
+      "physical_owner_gib": 0.06499771028757095,
+      "logical_field_bytes": 226928712,
+      "logical_field_gib": 0.21134383231401443,
+      "logical_alias_overhead_bytes": 157137952,
+      "by_field_bytes": {
+        "conv_out": 25165824,
+        "linear_qkv_f32": 25165824,
+        "moe_down_out": 25165824,
+        "ffn_gate_up": 12582912,
+        "full_q": 12582912,
+        "full_query": 12582912,
+        "full_query_raw": 12582912,
+        "linear_qkv": 12582912,
+        "recurrent_out": 12582912,
+        "ffn_intermediate": 6291456,
+        "full_attn_bf16": 6291456,
+        "full_gate": 6291456,
+        "full_gated": 6291456,
+        "full_query_bf16": 6291456,
+        "linear_z": 6291456,
+        "recurrent_bf16": 6291456,
+        "moe_q8_1": 3538944,
+        "attn_out": 3145728,
+        "ffn_down": 3145728,
+        "moe_shared_out": 3145728,
+        "norm": 3145728,
+        "post_norm": 3145728,
+        "residual": 3145728,
+        "full_key": 1572864,
+        "full_key_raw": 1572864,
+        "full_attn_split_partial": 786432,
+        "full_k": 786432,
+        "full_v": 786432,
+        "moe_router_logits": 786432,
+        "moe_shared_gate": 786432,
+        "moe_shared_intermediate": 786432,
+        "moe_shared_up": 786432,
+        "prefill_beta": 98304,
+        "prefill_decay": 98304,
+        "prefill_key_scale": 98304,
+        "prefill_query_scale": 98304,
+        "linear_alpha": 49152,
+        "linear_beta": 49152,
+        "moe_lane_to_row": 49152,
+        "moe_selected_experts": 49152,
+        "moe_sorted_experts": 49152,
+        "moe_sorted_lanes": 49152,
+        "softmax_lse": 49152,
+        "moe_routing_weights": 24576,
+        "moe_sorted_weights": 24576,
+        "block_table": 9216,
+        "context_counts": 6144,
+        "positions": 6144,
+        "moe_tile_expert": 5120,
+        "full_attn_split_l": 3072,
+        "full_attn_split_m": 3072,
+        "moe_shared_gate_logits": 3072,
+        "moe_expert_start_compact": 2056,
+        "moe_expert_start_wmma": 2056,
+        "moe_group_counts": 1024,
+        "moe_padded_counts": 1024,
+        "moe_scatter_offsets": 1024,
+        "cu_k": 8,
+        "cu_q": 8,
+        "gdn_cu_seqlens": 8,
+        "gdn_state_indices": 8,
+        "moe_total_compact": 8,
+        "moe_wmma_total": 8,
+        "atomic": 4,
+        "moe_router_counter": 4
+      },
+      "by_field_bytes_per_row": {
+        "conv_out": 32768.0,
+        "linear_qkv_f32": 32768.0,
+        "moe_down_out": 32768.0,
+        "ffn_gate_up": 16384.0,
+        "full_q": 16384.0,
+        "full_query": 16384.0,
+        "full_query_raw": 16384.0,
+        "linear_qkv": 16384.0,
+        "recurrent_out": 16384.0,
+        "ffn_intermediate": 8192.0,
+        "full_attn_bf16": 8192.0,
+        "full_gate": 8192.0,
+        "full_gated": 8192.0,
+        "full_query_bf16": 8192.0,
+        "linear_z": 8192.0,
+        "recurrent_bf16": 8192.0,
+        "moe_q8_1": 4608.0,
+        "attn_out": 4096.0,
+        "ffn_down": 4096.0,
+        "moe_shared_out": 4096.0,
+        "norm": 4096.0,
+        "post_norm": 4096.0,
+        "residual": 4096.0,
+        "full_key": 2048.0,
+        "full_key_raw": 2048.0,
+        "full_attn_split_partial": 1024.0,
+        "full_k": 1024.0,
+        "full_v": 1024.0,
+        "moe_router_logits": 1024.0,
+        "moe_shared_gate": 1024.0,
+        "moe_shared_intermediate": 1024.0,
+        "moe_shared_up": 1024.0,
+        "prefill_beta": 128.0,
+        "prefill_decay": 128.0,
+        "prefill_key_scale": 128.0,
+        "prefill_query_scale": 128.0,
+        "linear_alpha": 64.0,
+        "linear_beta": 64.0,
+        "moe_lane_to_row": 64.0,
+        "moe_selected_experts": 64.0,
+        "moe_sorted_experts": 64.0,
+        "moe_sorted_lanes": 64.0,
+        "softmax_lse": 64.0,
+        "moe_routing_weights": 32.0,
+        "moe_sorted_weights": 32.0,
+        "block_table": 12.0,
+        "context_counts": 8.0,
+        "positions": 8.0,
+        "moe_tile_expert": 6.666666666666667,
+        "full_attn_split_l": 4.0,
+        "full_attn_split_m": 4.0,
+        "moe_shared_gate_logits": 4.0,
+        "moe_expert_start_compact": 2.6770833333333335,
+        "moe_expert_start_wmma": 2.6770833333333335,
+        "moe_group_counts": 1.3333333333333333,
+        "moe_padded_counts": 1.3333333333333333,
+        "moe_scatter_offsets": 1.3333333333333333,
+        "cu_k": 0.010416666666666666,
+        "cu_q": 0.010416666666666666,
+        "gdn_cu_seqlens": 0.010416666666666666,
+        "gdn_state_indices": 0.010416666666666666,
+        "moe_total_compact": 0.010416666666666666,
+        "moe_wmma_total": 0.010416666666666666,
+        "atomic": 0.005208333333333333,
+        "moe_router_counter": 0.005208333333333333
+      },
+      "allocation_offsets": {
+        "attn_out": {
+          "offset_bytes": 25165824,
+          "nbytes": 3145728
+        },
+        "conv_out": {
+          "offset_bytes": 0,
+          "nbytes": 25165824
+        },
+        "ffn_down": {
+          "offset_bytes": 50331648,
+          "nbytes": 3145728
+        },
+        "ffn_gate_up": {
+          "offset_bytes": 25165824,
+          "nbytes": 12582912
+        },
+        "ffn_intermediate": {
+          "offset_bytes": 50331648,
+          "nbytes": 6291456
+        },
+        "full_attn_bf16": {
+          "offset_bytes": 0,
+          "nbytes": 6291456
+        },
+        "full_gate": {
+          "offset_bytes": 50331648,
+          "nbytes": 6291456
+        },
+        "full_gated": {
+          "offset_bytes": 0,
+          "nbytes": 6291456
+        },
+        "full_k": {
+          "offset_bytes": 66453504,
+          "nbytes": 786432
+        },
+        "full_key": {
+          "offset_bytes": 60162048,
+          "nbytes": 1572864
+        },
+        "full_key_raw": {
+          "offset_bytes": 63307776,
+          "nbytes": 1572864
+        },
+        "full_q": {
+          "offset_bytes": 0,
+          "nbytes": 12582912
+        },
+        "full_query": {
+          "offset_bytes": 0,
+          "nbytes": 12582912
+        },
+        "full_query_bf16": {
+          "offset_bytes": 25165824,
+          "nbytes": 6291456
+        },
+        "full_query_raw": {
+          "offset_bytes": 25165824,
+          "nbytes": 12582912
+        },
+        "full_v": {
+          "offset_bytes": 67239936,
+          "nbytes": 786432
+        },
+        "linear_alpha": {
+          "offset_bytes": 68026368,
+          "nbytes": 49152
+        },
+        "linear_beta": {
+          "offset_bytes": 68812800,
+          "nbytes": 49152
+        },
+        "linear_qkv": {
+          "offset_bytes": 0,
+          "nbytes": 12582912
+        },
+        "linear_qkv_f32": {
+          "offset_bytes": 25165824,
+          "nbytes": 25165824
+        },
+        "linear_z": {
+          "offset_bytes": 50331648,
+          "nbytes": 6291456
+        },
+        "moe_down_out": {
+          "offset_bytes": 0,
+          "nbytes": 25165824
+        },
+        "moe_expert_start_compact": {
+          "offset_bytes": 68919296,
+          "nbytes": 2056
+        },
+        "moe_expert_start_wmma": {
+          "offset_bytes": 68921600,
+          "nbytes": 2056
+        },
+        "moe_group_counts": {
+          "offset_bytes": 68923904,
+          "nbytes": 1024
+        },
+        "moe_lane_to_row": {
+          "offset_bytes": 66453504,
+          "nbytes": 49152
+        },
+        "moe_padded_counts": {
+          "offset_bytes": 68924928,
+          "nbytes": 1024
+        },
+        "moe_q8_1": {
+          "offset_bytes": 56623104,
+          "nbytes": 3538944
+        },
+        "moe_router_logits": {
+          "offset_bytes": 0,
+          "nbytes": 786432
+        },
+        "moe_routing_weights": {
+          "offset_bytes": 68861952,
+          "nbytes": 24576
+        },
+        "moe_scatter_offsets": {
+          "offset_bytes": 68925952,
+          "nbytes": 1024
+        },
+        "moe_selected_experts": {
+          "offset_bytes": 67239936,
+          "nbytes": 49152
+        },
+        "moe_shared_gate": {
+          "offset_bytes": 66453504,
+          "nbytes": 786432
+        },
+        "moe_shared_gate_logits": {
+          "offset_bytes": 68916224,
+          "nbytes": 3072
+        },
+        "moe_shared_intermediate": {
+          "offset_bytes": 67239936,
+          "nbytes": 786432
+        },
+        "moe_shared_out": {
+          "offset_bytes": 25165824,
+          "nbytes": 3145728
+        },
+        "moe_shared_up": {
+          "offset_bytes": 68026368,
+          "nbytes": 786432
+        },
+        "moe_sorted_experts": {
+          "offset_bytes": 68026368,
+          "nbytes": 49152
+        },
+        "moe_sorted_lanes": {
+          "offset_bytes": 68812800,
+          "nbytes": 49152
+        },
+        "moe_sorted_weights": {
+          "offset_bytes": 68886528,
+          "nbytes": 24576
+        },
+        "moe_tile_expert": {
+          "offset_bytes": 68911104,
+          "nbytes": 5120
+        },
+        "moe_total_compact": {
+          "offset_bytes": 68926976,
+          "nbytes": 8
+        },
+        "moe_wmma_total": {
+          "offset_bytes": 68927232,
+          "nbytes": 8
+        },
+        "norm": {
+          "offset_bytes": 25165824,
+          "nbytes": 3145728
+        },
+        "post_norm": {
+          "offset_bytes": 60162048,
+          "nbytes": 3145728
+        },
+        "prefill_beta": {
+          "offset_bytes": 60162048,
+          "nbytes": 98304
+        },
+        "prefill_decay": {
+          "offset_bytes": 63307776,
+          "nbytes": 98304
+        },
+        "prefill_key_scale": {
+          "offset_bytes": 66453504,
+          "nbytes": 98304
+        },
+        "prefill_query_scale": {
+          "offset_bytes": 67239936,
+          "nbytes": 98304
+        },
+        "recurrent_bf16": {
+          "offset_bytes": 0,
+          "nbytes": 6291456
+        },
+        "recurrent_out": {
+          "offset_bytes": 25165824,
+          "nbytes": 12582912
+        },
+        "residual": {
+          "offset_bytes": 63307776,
+          "nbytes": 3145728
+        }
+      },
+      "allocation_lifetimes": {
+        "attn_out": [
+          {
+            "route": "linear",
+            "start_stage": 5,
+            "end_stage": 7
+          },
+          {
+            "route": "full",
+            "start_stage": 5,
+            "end_stage": 7
+          }
+        ],
+        "conv_out": [
+          {
+            "route": "linear",
+            "start_stage": 2,
+            "end_stage": 5
+          }
+        ],
+        "ffn_down": [
+          {
+            "route": "linear",
+            "start_stage": 12,
+            "end_stage": 17
+          },
+          {
+            "route": "full",
+            "start_stage": 12,
+            "end_stage": 17
+          }
+        ],
+        "ffn_gate_up": [
+          {
+            "route": "linear",
+            "start_stage": 9,
+            "end_stage": 15
+          },
+          {
+            "route": "full",
+            "start_stage": 9,
+            "end_stage": 15
+          }
+        ],
+        "ffn_intermediate": [
+          {
+            "route": "linear",
+            "start_stage": 10,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 10,
+            "end_stage": 12
+          }
+        ],
+        "full_attn_bf16": [
+          {
+            "route": "full",
+            "start_stage": 4,
+            "end_stage": 5
+          }
+        ],
+        "full_gate": [
+          {
+            "route": "full",
+            "start_stage": 1,
+            "end_stage": 5
+          }
+        ],
+        "full_gated": [
+          {
+            "route": "full",
+            "start_stage": 5,
+            "end_stage": 6
+          }
+        ],
+        "full_k": [
+          {
+            "route": "full",
+            "start_stage": 0,
+            "end_stage": 3
+          }
+        ],
+        "full_key": [
+          {
+            "route": "full",
+            "start_stage": 2,
+            "end_stage": 4
+          }
+        ],
+        "full_key_raw": [
+          {
+            "route": "full",
+            "start_stage": 1,
+            "end_stage": 3
+          }
+        ],
+        "full_q": [
+          {
+            "route": "full",
+            "start_stage": 0,
+            "end_stage": 2
+          }
+        ],
+        "full_query": [
+          {
+            "route": "full",
+            "start_stage": 2,
+            "end_stage": 4
+          }
+        ],
+        "full_query_bf16": [
+          {
+            "route": "full",
+            "start_stage": 3,
+            "end_stage": 5
+          }
+        ],
+        "full_query_raw": [
+          {
+            "route": "full",
+            "start_stage": 1,
+            "end_stage": 3
+          }
+        ],
+        "full_v": [
+          {
+            "route": "full",
+            "start_stage": 0,
+            "end_stage": 4
+          }
+        ],
+        "linear_alpha": [
+          {
+            "route": "linear",
+            "start_stage": 0,
+            "end_stage": 4
+          }
+        ],
+        "linear_beta": [
+          {
+            "route": "linear",
+            "start_stage": 0,
+            "end_stage": 4
+          }
+        ],
+        "linear_qkv": [
+          {
+            "route": "linear",
+            "start_stage": 0,
+            "end_stage": 2
+          }
+        ],
+        "linear_qkv_f32": [
+          {
+            "route": "linear",
+            "start_stage": 1,
+            "end_stage": 3
+          }
+        ],
+        "linear_z": [
+          {
+            "route": "linear",
+            "start_stage": 0,
+            "end_stage": 5
+          }
+        ],
+        "moe_down_out": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 17
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 17
+          }
+        ],
+        "moe_expert_start_compact": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "moe_expert_start_wmma": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "moe_group_counts": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "moe_lane_to_row": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 13
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 13
+          }
+        ],
+        "moe_padded_counts": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "moe_q8_1": [
+          {
+            "route": "linear",
+            "start_stage": 0,
+            "end_stage": 17
+          },
+          {
+            "route": "full",
+            "start_stage": 0,
+            "end_stage": 17
+          }
+        ],
+        "moe_router_logits": [
+          {
+            "route": "linear",
+            "start_stage": 7,
+            "end_stage": 8
+          },
+          {
+            "route": "full",
+            "start_stage": 7,
+            "end_stage": 8
+          }
+        ],
+        "moe_routing_weights": [
+          {
+            "route": "linear",
+            "start_stage": 7,
+            "end_stage": 17
+          },
+          {
+            "route": "full",
+            "start_stage": 7,
+            "end_stage": 17
+          }
+        ],
+        "moe_scatter_offsets": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "moe_selected_experts": [
+          {
+            "route": "linear",
+            "start_stage": 7,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 7,
+            "end_stage": 12
+          }
+        ],
+        "moe_shared_gate": [
+          {
+            "route": "linear",
+            "start_stage": 13,
+            "end_stage": 15
+          },
+          {
+            "route": "full",
+            "start_stage": 13,
+            "end_stage": 15
+          }
+        ],
+        "moe_shared_gate_logits": [
+          {
+            "route": "linear",
+            "start_stage": 7,
+            "end_stage": 17
+          },
+          {
+            "route": "full",
+            "start_stage": 7,
+            "end_stage": 17
+          }
+        ],
+        "moe_shared_intermediate": [
+          {
+            "route": "linear",
+            "start_stage": 14,
+            "end_stage": 16
+          },
+          {
+            "route": "full",
+            "start_stage": 14,
+            "end_stage": 16
+          }
+        ],
+        "moe_shared_out": [
+          {
+            "route": "linear",
+            "start_stage": 15,
+            "end_stage": 17
+          },
+          {
+            "route": "full",
+            "start_stage": 15,
+            "end_stage": 17
+          }
+        ],
+        "moe_shared_up": [
+          {
+            "route": "linear",
+            "start_stage": 13,
+            "end_stage": 15
+          },
+          {
+            "route": "full",
+            "start_stage": 13,
+            "end_stage": 15
+          }
+        ],
+        "moe_sorted_experts": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 13
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 13
+          }
+        ],
+        "moe_sorted_lanes": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 13
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 13
+          }
+        ],
+        "moe_sorted_weights": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 13
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 13
+          }
+        ],
+        "moe_tile_expert": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "moe_total_compact": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "moe_wmma_total": [
+          {
+            "route": "linear",
+            "start_stage": 8,
+            "end_stage": 12
+          },
+          {
+            "route": "full",
+            "start_stage": 8,
+            "end_stage": 12
+          }
+        ],
+        "norm": [
+          {
+            "route": "linear",
+            "start_stage": 0,
+            "end_stage": 1
+          },
+          {
+            "route": "full",
+            "start_stage": 0,
+            "end_stage": 1
+          }
+        ],
+        "post_norm": [
+          {
+            "route": "linear",
+            "start_stage": 7,
+            "end_stage": 15
+          },
+          {
+            "route": "full",
+            "start_stage": 7,
+            "end_stage": 15
+          }
+        ],
+        "prefill_beta": [
+          {
+            "route": "linear",
+            "start_stage": 3,
+            "end_stage": 5
+          }
+        ],
+        "prefill_decay": [
+          {
+            "route": "linear",
+            "start_stage": 3,
+            "end_stage": 5
+          }
+        ],
+        "prefill_key_scale": [
+          {
+            "route": "linear",
+            "start_stage": 3,
+            "end_stage": 5
+          }
+        ],
+        "prefill_query_scale": [
+          {
+            "route": "linear",
+            "start_stage": 3,
+            "end_stage": 5
+          }
+        ],
+        "recurrent_bf16": [
+          {
+            "route": "linear",
+            "start_stage": 5,
+            "end_stage": 6
+          }
+        ],
+        "recurrent_out": [
+          {
+            "route": "linear",
+            "start_stage": 4,
+            "end_stage": 5
+          }
+        ],
+        "residual": [
+          {
+            "route": "linear",
+            "start_stage": 7,
+            "end_stage": 17
+          },
+          {
+            "route": "full",
+            "start_stage": 7,
+            "end_stage": 17
+          }
+        ]
+      },
+      "allocation_groups": {
+        "attn_out": "owner_slot_01",
+        "conv_out": "owner_slot_00",
+        "ffn_down": "owner_slot_02",
+        "ffn_gate_up": "owner_slot_01",
+        "ffn_intermediate": "owner_slot_02",
+        "full_attn_bf16": "owner_slot_00",
+        "full_gate": "owner_slot_02",
+        "full_gated": "owner_slot_00",
+        "full_k": "owner_slot_06",
+        "full_key": "owner_slot_04",
+        "full_key_raw": "owner_slot_05",
+        "full_q": "owner_slot_00",
+        "full_query": "owner_slot_00",
+        "full_query_bf16": "owner_slot_01",
+        "full_query_raw": "owner_slot_01",
+        "full_v": "owner_slot_07",
+        "linear_alpha": "owner_slot_08",
+        "linear_beta": "owner_slot_09",
+        "linear_qkv": "owner_slot_00",
+        "linear_qkv_f32": "owner_slot_01",
+        "linear_z": "owner_slot_02",
+        "moe_down_out": "owner_slot_00",
+        "moe_expert_start_compact": "owner_slot_14",
+        "moe_expert_start_wmma": "owner_slot_15",
+        "moe_group_counts": "owner_slot_16",
+        "moe_lane_to_row": "owner_slot_06",
+        "moe_padded_counts": "owner_slot_17",
+        "moe_q8_1": "owner_slot_03",
+        "moe_router_logits": "owner_slot_00",
+        "moe_routing_weights": "owner_slot_10",
+        "moe_scatter_offsets": "owner_slot_18",
+        "moe_selected_experts": "owner_slot_07",
+        "moe_shared_gate": "owner_slot_06",
+        "moe_shared_gate_logits": "owner_slot_13",
+        "moe_shared_intermediate": "owner_slot_07",
+        "moe_shared_out": "owner_slot_01",
+        "moe_shared_up": "owner_slot_08",
+        "moe_sorted_experts": "owner_slot_08",
+        "moe_sorted_lanes": "owner_slot_09",
+        "moe_sorted_weights": "owner_slot_11",
+        "moe_tile_expert": "owner_slot_12",
+        "moe_total_compact": "owner_slot_19",
+        "moe_wmma_total": "owner_slot_20",
+        "norm": "owner_slot_01",
+        "post_norm": "owner_slot_04",
+        "prefill_beta": "owner_slot_04",
+        "prefill_decay": "owner_slot_05",
+        "prefill_key_scale": "owner_slot_06",
+        "prefill_query_scale": "owner_slot_07",
+        "recurrent_bf16": "owner_slot_00",
+        "recurrent_out": "owner_slot_01",
+        "residual": "owner_slot_05"
+      },
+      "notes": [
+        "physical_owner_bytes counts allocator-owned buffers and excludes the separately reported head-major K/V pair.",
+        "logical_field_bytes intentionally counts aliased views separately; it is a sizing census, not additional residency."
+      ]
+    },
+    "all_final_ids_exact": true,
+    "lifecycle_after_close_bytes": 0,
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "gguf",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant",
+      "gguf_q4_k_m",
+      "--backend",
+      "hip_gfx1151",
+      "--workloads",
+      "512/128",
+      "--token-id",
+      "9707",
+      "--warmup-decode-tokens",
+      "1",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode",
+      "bulk",
+      "--prefill-linear-chunk-size",
+      "4096",
+      "--prefill-moe-chunk-size",
+      "4096",
+      "--prefill-full-attn-query-chunk-size",
+      "4096",
+      "--prefill-full-attn-post-chunk-size",
+      "4096",
+      "--prefill-full-attn-rope-chunk-size",
+      "4096",
+      "--prefill-chunk-autotune",
+      "--no-graph-replay-decode",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--kv-storage",
+      "bf16",
+      "--prefill-queue-drain",
+      "none",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/hipengine-sh2-m3-committed-20260806/owner_slots.json"
+    ],
+    "raw_evidence": {
+      "path": "/tmp/hipengine-sh2-m3-committed-20260806/evidence.json",
+      "sha256": "d272a8277cca6c1eb223c7563f9b6e610b9fbc1ee44c146cea78e8590dca7436"
+    },
+    "raw_child": {
+      "path": "/tmp/hipengine-sh2-m3-committed-20260806/owner_slots.json",
+      "sha256": "df813969a4fdd0a40028a31260fcefdcc1e01b4806841344970e4470548cb58b"
+    }
+  },
+  "validation": {
+    "red": "focused 768-row contract observed allocation_mode='dedicated' before capability change",
+    "green_command": "uv run pytest -q tests/test_qwen35_gguf_prefill_scratch_liveness.py tests/test_gfx1151_backend.py::test_gfx1151_backend_aliases_gfx1100_kernel_keys",
+    "green_result": "9 passed",
+    "memory_gate_passed": true,
+    "performance_gate_passed": true,
+    "state_gate_passed": true,
+    "lifecycle_gate_passed": true
+  },
+  "decision": {
+    "sh2_m3": "retained_default",
+    "reason": "The unchanged independent owner-slot map is byte exact at the right-sized 768-row class, saves 0.265792 GiB tracked and 0.267578 GiB whole-GTT, improves same-source prefill/decode medians, and reproduces its memory/lifecycle contract at committed source.",
+    "next": "Proceed immediately to SH2-D1 mixed-T16 selected-MoE composite, then cumulative SH2-C1 attribution. Do not stop the campaign."
+  },
+  "raw_aggregate": {
+    "path": "/tmp/hipengine-sh2-m3-20260806/run-evidence.json",
+    "sha256": "7bf72760e01143e41d18d96d0f4a83e230e3ba64d0e192d5c33e447c1d0cda7d"
+  },
+  "orchestrator": {
+    "path": "/tmp/run_hipengine_sh2_m3.py",
+    "sha256": "aff1a8f2af304253f71f2449d643dbfdfef43f8808dbe94aaa18fd06a4f96407"
+  },
+  "comparison_wrapper": {
+    "path": "/tmp/run_sh2_m3_leg.py",
+    "sha256": "bbbb0b9102fda56e38dfb71ddab822a897a9bb93aacfd7bca7736b4f86475c6e"
+  }
+}

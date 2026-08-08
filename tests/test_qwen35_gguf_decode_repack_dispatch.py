@@ -42,7 +42,7 @@ _WEIGHT_NAMES = (
 )
 
 
-def _runner(*, is_moe: bool = True) -> Qwen35GGUFFullStackRunner:
+def _runner(*, is_moe: bool = True, backend: str = "hip_gfx1100") -> Qwen35GGUFFullStackRunner:
     runner = object.__new__(Qwen35GGUFFullStackRunner)
     cfg = SimpleNamespace(
         is_moe=is_moe,
@@ -57,7 +57,7 @@ def _runner(*, is_moe: bool = True) -> Qwen35GGUFFullStackRunner:
     layer = _Layer()
     runner.weights = SimpleNamespace(config=cfg, layer=lambda layer_id: layer)
     runner.runtime = object()
-    runner.backend = "hip_gfx1100"
+    runner.backend = backend
     runner.compiler_version = None
     runner.require_cached_build = False
     runner._cast_library = lambda: "cast-lib"
@@ -169,6 +169,17 @@ def _patch_full_attention_primitives(monkeypatch):
         "qwen35_paged_full_attn_decode_context_bf16_spans",
         record("attention_context"),
     )
+
+    def resolve_paged_attn_decode(**kwargs):
+        calls.append(("resolve_attention_context_batch", (), kwargs))
+        return record("attention_context_batch")
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "resolve_paged_attn_decode",
+        resolve_paged_attn_decode,
+        raising=False,
+    )
     monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_bf16", record("attention_gate"))
     return calls
 
@@ -219,6 +230,26 @@ def test_long_context_parallel_reduce_is_gfx1100_default(monkeypatch) -> None:
     assert "split_k_gqa_gate" not in names
     split_args = next(args for name, args, _ in calls if name == "split_k_gqa_parallel_reduce")
     assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
+
+
+def test_long_context_parallel_reduce_is_gfx1151_default_at_32k_only(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    runner = _runner(is_moe=True, backend="hip_gfx1151")
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    below = _scratch(position=32766, max_positions=32768)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, below, position=32766, stream=5)
+    below_names = [name for name, _, _ in calls]
+    assert "split_k_gqa_gate" in below_names
+    assert "split_k_gqa_parallel_reduce" not in below_names
+
+    calls.clear()
+    admitted = _scratch(position=32767, max_positions=32768)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, admitted, position=32767, stream=5)
+    admitted_names = [name for name, _, _ in calls]
+    assert "split_k_gqa_parallel_reduce" in admitted_names
+    assert "split_k_gqa_gate" not in admitted_names
 
 
 def test_long_context_parallel_reduce_keeps_explicit_opt_out(monkeypatch) -> None:
@@ -329,6 +360,7 @@ def test_short_context_keeps_unfused_full_attention_gate(monkeypatch) -> None:
     assert "rope_key_f32" in names
     assert "bf16_to_f32" in names
     assert "attention_context" in names
+    assert "attention_context_batch" not in names
     assert "attention_gate" in names
     assert "split_k_gqa_gate" not in names
     assert "split_k_warp_gate" not in names
@@ -339,6 +371,52 @@ def test_short_context_keeps_unfused_full_attention_gate(monkeypatch) -> None:
     assert context_args[:5] == (scratch.full_query.ptr, 0x2110, 0x2120, scratch.full_attn_context.ptr, scratch.decode_spans)
     assert context_args[5:11] == (512, scratch.block_size, 16, 2, 256, 256 ** -0.5)
     assert gate_args[:4] == (scratch.full_attn_context.ptr, scratch.full_gate.ptr, scratch.full_gated.ptr, runner.q_width)
+
+
+def test_gfx1151_short_context_uses_exact_fixed256_batch_leaf(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    runner = _runner(is_moe=True, backend="hip_gfx1151")
+    scratch = _scratch(position=511, max_positions=768)
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=511, stream=5)
+
+    names = [name for name, _, _ in calls]
+    assert "attention_context_batch" in names
+    assert "attention_context" not in names
+    assert "attention_gate" in names
+    resolve_kwargs = next(kwargs for name, _, kwargs in calls if name == "resolve_attention_context_batch")
+    assert resolve_kwargs == {
+        "backend": "hip_gfx1151",
+        "spans": scratch.decode_spans,
+        "kind": "context_batch",
+        "model_quant": "w4_paro",
+    }
+    context_args = next(args for name, args, _ in calls if name == "attention_context_batch")
+    assert context_args[:5] == (
+        scratch.full_query.ptr,
+        0x2110,
+        0x2120,
+        scratch.full_attn_context.ptr,
+        scratch.decode_spans,
+    )
+    assert context_args[5:12] == (1, 512, scratch.block_size, 16, 2, 256, 256 ** -0.5)
+
+
+def test_gfx1151_fixed256_batch_leaf_stops_before_1024(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "8192")
+    runner = _runner(is_moe=True, backend="hip_gfx1151")
+    scratch = _scratch(position=1023, max_positions=1280)
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=1023, stream=5)
+
+    names = [name for name, _, _ in calls]
+    assert "attention_context" in names
+    assert "attention_context_batch" not in names
+    assert "split_k_gqa_gate" not in names
+    context_args = next(args for name, args, _ in calls if name == "attention_context")
+    assert context_args[5] == 1024
 
 
 def test_decode_repack_flag_does_not_change_split_k_routing(monkeypatch) -> None:

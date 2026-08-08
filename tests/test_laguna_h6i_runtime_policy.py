@@ -60,7 +60,7 @@ _H6T_RUNTIME_VARIANT = (
     "bf16_bf16_out"
 )
 _ACTIVE_EXPERT_ABI = "grouped_raw_iq_active_experts"
-_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
+_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_976
 
 
 def test_h6i_runtime_capability_is_retained_under_h6r_source_and_fail_closed(

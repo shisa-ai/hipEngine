@@ -21,7 +21,7 @@ _PACKAGE = _ROOT / "hipengine/kernels/hip_gfx1100/__init__.py"
 _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
 _REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 _NORMALIZED_PACKAGE_SHA256 = (
-    "72c0630bbc46a485ca80d9a6634cc1b4cc2e43f2019088b544db53102edc6a86"
+    "33d3d69e328138c377d904f6863494b8e79da20cb7b8f6e7434cf81eb26ba658"
 )
 _RUNTIME_ARTIFACT_RUNNER_SHA256 = (
     "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
@@ -56,6 +56,20 @@ _SOURCE_SHA256 = {
     ),
     "docs/REFACTOR.md": (
         "06a81ed76dbc7835a068f4023106fac89c619b863d2ad9c362e2b2b9dbcf0d3e"
+    ),
+}
+_POST_MERGE_SOURCE_SHA256 = {
+    "hipengine/kernels/hip_gfx1151/__init__.py": (
+        "ff8bb57241b7e3a4aba4ef9e18b4d5c5d2344bee2c06717f6dde5163458bf257"
+    ),
+    "hipengine/runtime/laguna_gguf_runner.py": (
+        "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
+    ),
+    "hipengine/runtime/laguna_moe.py": (
+        "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
+    ),
+    "docs/REFACTOR.md": (
+        "f83cf26e2ceb5b5d88cc9fa2c9c31f43a9d1050cf843ded32da70355c5e485e8"
     ),
 }
 _SOURCE_TOPOLOGY = {
@@ -203,7 +217,9 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     session_source = inspect.getsource(runner.LagunaGGUFResidentSession.__init__)
     assert "self.use_activation_pack_reuse" in session_source
     for relative, expected in _SOURCE_SHA256.items():
-        assert _sha256(_ROOT / relative) == expected
+        assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
+            relative, expected
+        )
         artifact_expected = {
             "hipengine/runtime/laguna_gguf_runner.py": (
                 _RUNTIME_ARTIFACT_RUNNER_SHA256

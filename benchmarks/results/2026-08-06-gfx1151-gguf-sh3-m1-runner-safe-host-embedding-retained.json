@@ -1,0 +1,567 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "status": "retained_production_default_private_c1",
+  "performance_claim": true,
+  "topline_eligible": true,
+  "kind": "hipengine_gfx1151_gguf_sh3_m1_runner_safe_host_embedding_gate",
+  "measurement_scope": "Same-source private-c1 loader-time device-versus-automatic-host ownership at 512/128 and 4K/128; one warmup plus three measured runs, cached builds, BF16 KV, eager decode, and independent 10-ms whole-GTT sampling.",
+  "source": {
+    "parent_commit": "8c39cda03",
+    "measured_worktree": "SH3-M1 intended implementation diff over parent; no source edits during the final A/B/state/GTT matrix",
+    "intended_files": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "hipengine/loading/qwen35_gguf_materialize.py",
+      "hipengine/runtime/qwen35_gguf_runner.py",
+      "hipengine/runtime/gguf_decode_graph.py",
+      "hipengine/runtime/gguf_packed_decode_graph.py",
+      "hipengine/runtime/gguf_native_spec_cycle.py",
+      "scripts/qwen35_gguf_bench.py",
+      "tests/test_qwen35_gguf_host_token_embedding.py"
+    ],
+    "raw_gate_sha256": "f228f87ad53a312aa090bde21e1064736ffeac124be74245ca16d05a7403833a"
+  },
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "gtt_poll_ms": 10
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "token_embedding_bytes": 540344320
+  },
+  "implementation": {
+    "placement": "gfx1151 capability selects host ownership only before materialization for private max_batch_size=1 sessions",
+    "load_order": "root.token_embedding remains a validated allocation-free resident spec; the 540,344,320-byte device allocation is never created on the admitted route",
+    "lookup": "exact Q8_0 host dequantization to BF16 followed by the existing hidden-buffer H2D boundary; unique-token gathering is indexed and cached",
+    "fallback": "shared runners and c>1 remain device resident; graph, packed-AR, native-row, MTP, and device-token-pointer consumers transactionally materialize the exact table once",
+    "allocation_denial": "runner ownership changes only after a complete upload; failure preserves the host reader, raw bytes, and row cache",
+    "fallback_chain": "the pre-existing resident device embedding kernel remains the unfused/device fallback",
+    "legacy_override": "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING accepts auto/host/device or boolean spellings; explicit device disables admission"
+  },
+  "protocol": {
+    "workloads": [
+      "512/128",
+      "4096/128"
+    ],
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "warmup_decode_tokens": 1,
+    "graph": false,
+    "query_rows": 4096,
+    "correctness": "byte-exact FP32 logits plus hidden/layer/Conv/GDN/live-BF16-KV after prefill and four transitions"
+  },
+  "rows": {
+    "512": {
+      "device": {
+        "summary": {
+          "prefill_tok_s": 1368.0032603048596,
+          "decode_tok_s": 53.2633862987352,
+          "tracked_peak_gib": 21.069656133651733,
+          "whole_process_hip_peak_gib": 21.486652374267578,
+          "host_enabled": false,
+          "host_reason": null,
+          "final_ids": [
+            9707,
+            9707,
+            9707
+          ],
+          "runs": 3,
+          "after_close_bytes": 0
+        },
+        "gtt": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18677760,
+          "baseline_gib": 0.01739501953125,
+          "peak_bytes": 23089811456,
+          "peak_gib": 21.50406265258789,
+          "peak_delta_bytes": 23071133696,
+          "peak_delta_gib": 21.48666763305664,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 5931,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 59.28658295003697
+        },
+        "json": "/tmp/hipengine-sh3-m1-20260806-final/512-device.json",
+        "sha256": "636db0b25a8dffeec33cc88573140fc911c8f2ce7f30b75238445d9664878ed9",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "512/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh3-m1-20260806-final/512-device.json"
+        ],
+        "environment": {
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING": "0"
+        }
+      },
+      "host_auto": {
+        "summary": {
+          "prefill_tok_s": 1374.6838966419655,
+          "decode_tok_s": 53.24494359725969,
+          "tracked_peak_gib": 20.566421270370483,
+          "whole_process_hip_peak_gib": 20.98271942138672,
+          "host_enabled": true,
+          "host_reason": "gfx1151_private_c1_auto",
+          "final_ids": [
+            9707,
+            9707,
+            9707
+          ],
+          "runs": 3,
+          "after_close_bytes": 0
+        },
+        "gtt": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18722816,
+          "baseline_gib": 0.017436981201171875,
+          "peak_bytes": 22548717568,
+          "peak_gib": 21.00012969970703,
+          "peak_delta_bytes": 22529994752,
+          "peak_delta_gib": 20.98269271850586,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 5945,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 59.421343056019396
+        },
+        "json": "/tmp/hipengine-sh3-m1-20260806-final/512-host_auto.json",
+        "sha256": "260e426255a4d27613cd108dfa19659eca5047942ac120b883de3cdd4bb24ab4",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "512/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh3-m1-20260806-final/512-host_auto.json"
+        ],
+        "environment": {
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING": null
+        }
+      }
+    },
+    "4096": {
+      "device": {
+        "summary": {
+          "prefill_tok_s": 1435.0359844197872,
+          "decode_tok_s": 55.984970949036736,
+          "tracked_peak_gib": 21.454266123473644,
+          "whole_process_hip_peak_gib": 21.985950469970703,
+          "host_enabled": false,
+          "host_reason": null,
+          "final_ids": [
+            9707,
+            9707,
+            9707
+          ],
+          "runs": 3,
+          "after_close_bytes": 0
+        },
+        "gtt": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18722816,
+          "baseline_gib": 0.017436981201171875,
+          "peak_bytes": 23625928704,
+          "peak_gib": 22.003360748291016,
+          "peak_delta_bytes": 23607205888,
+          "peak_delta_gib": 21.985923767089844,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 6827,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 68.24878276605159
+        },
+        "json": "/tmp/hipengine-sh3-m1-20260806-final/4096-device.json",
+        "sha256": "1e6925d26cf4de1cbe4e86971fcaeb022a68abdf874632fa090b2c6927adae10",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "4096/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh3-m1-20260806-final/4096-device.json"
+        ],
+        "environment": {
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING": "0"
+        }
+      },
+      "host_auto": {
+        "summary": {
+          "prefill_tok_s": 1431.753964103813,
+          "decode_tok_s": 55.759384951839415,
+          "tracked_peak_gib": 20.951031260192394,
+          "whole_process_hip_peak_gib": 21.482017517089844,
+          "host_enabled": true,
+          "host_reason": "gfx1151_private_c1_auto",
+          "final_ids": [
+            9707,
+            9707,
+            9707
+          ],
+          "runs": 3,
+          "after_close_bytes": 0
+        },
+        "gtt": {
+          "card": {
+            "card_name": "card1",
+            "pci_id": "0000:c1:00.0",
+            "sysfs_path": "/sys/class/drm/card1/device",
+            "vram_total_bytes": 536870912,
+            "vram_total_gib": 0.5
+          },
+          "memory_domain": "gtt",
+          "memory_total_bytes": 128849018880,
+          "memory_total_gib": 120.0,
+          "baseline_bytes": 18677760,
+          "baseline_gib": 0.01739501953125,
+          "peak_bytes": 23084834816,
+          "peak_gib": 21.499427795410156,
+          "peak_delta_bytes": 23066157056,
+          "peak_delta_gib": 21.482032775878906,
+          "final_bytes": 18722816,
+          "final_gib": 0.017436981201171875,
+          "samples_count": 6915,
+          "interval_seconds": 0.01,
+          "elapsed_seconds": 69.12641321402043
+        },
+        "json": "/tmp/hipengine-sh3-m1-20260806-final/4096-host_auto.json",
+        "sha256": "6c3317f75380c38d5bbea2d23cdf84f1aaf486be3094aeed0b687600f194759c",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-main/scripts/qwen35_readme_sweep.py",
+          "--engine",
+          "gguf",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--quant",
+          "gguf_q4_k_m",
+          "--backend",
+          "hip_gfx1151",
+          "--workloads",
+          "4096/128",
+          "--token-id",
+          "9707",
+          "--warmup-decode-tokens",
+          "1",
+          "--warmup-runs",
+          "1",
+          "--measured-runs",
+          "3",
+          "--force-bulk-prefill",
+          "--bulk-prefill-attention-mode",
+          "bulk",
+          "--prefill-linear-chunk-size",
+          "4096",
+          "--prefill-moe-chunk-size",
+          "4096",
+          "--prefill-full-attn-query-chunk-size",
+          "4096",
+          "--prefill-full-attn-post-chunk-size",
+          "4096",
+          "--prefill-full-attn-rope-chunk-size",
+          "4096",
+          "--prefill-chunk-autotune",
+          "--no-graph-replay-decode",
+          "--use-wmma-prefill",
+          "--use-gemv-decode",
+          "--kv-storage",
+          "bf16",
+          "--prefill-queue-drain",
+          "none",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh3-m1-20260806-final/4096-host_auto.json"
+        ],
+        "environment": {
+          "GPU_MAX_HW_QUEUES": "1",
+          "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING": null
+        }
+      }
+    }
+  },
+  "comparisons": {
+    "512": {
+      "prefill_delta_fraction": 0.0048834944557201165,
+      "decode_delta_fraction": -0.000346254768182952,
+      "tracked_saving_gib": 0.50323486328125,
+      "whole_gtt_saving_gib": 0.5039329528808594,
+      "performance_within_one_percent": true,
+      "exact_ids": true,
+      "teardown_zero": true
+    },
+    "4096": {
+      "prefill_delta_fraction": -0.0022870648203997535,
+      "decode_delta_fraction": -0.004029402773159774,
+      "tracked_saving_gib": 0.50323486328125,
+      "whole_gtt_saving_gib": 0.5039329528808594,
+      "performance_within_one_percent": true,
+      "exact_ids": true,
+      "teardown_zero": true
+    }
+  },
+  "state": {
+    "passed": true,
+    "rows": [
+      {
+        "prompt_length": 512,
+        "prefill_logits_exact": true,
+        "prefill_state_exact": true,
+        "trajectory_exact": true,
+        "final_state_exact": true,
+        "finite": true,
+        "passed": true
+      },
+      {
+        "prompt_length": 4096,
+        "prefill_logits_exact": true,
+        "prefill_state_exact": true,
+        "trajectory_exact": true,
+        "final_state_exact": true,
+        "finite": true,
+        "passed": true
+      }
+    ],
+    "raw": {
+      "device": {
+        "json": "/tmp/hipengine-sh3-m1-20260806-final/state-device.json",
+        "sha256": "1c065bbf21bad81f405a27397ae41da23d5073a4c96e9e5403ff843689724398",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-main/scripts/gguf_sh_m1_screen.py",
+          "state-child",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--contexts",
+          "512",
+          "4096",
+          "--query-rows",
+          "4096",
+          "--decode-steps",
+          "4",
+          "--max-sequence-length",
+          "4229",
+          "--backend",
+          "hip_gfx1151",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh3-m1-20260806-final/state-device.json"
+        ]
+      },
+      "host_auto": {
+        "json": "/tmp/hipengine-sh3-m1-20260806-final/state-host_auto.json",
+        "sha256": "7bd4acc0f6154637ea243c586f778cb8cfb2e6d7298af3a0e3e68935f9b61e5a",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python3",
+          "/home/lhl/hipEngine-main/scripts/gguf_sh_m1_screen.py",
+          "state-child",
+          "--model",
+          "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "--contexts",
+          "512",
+          "4096",
+          "--query-rows",
+          "4096",
+          "--decode-steps",
+          "4",
+          "--max-sequence-length",
+          "4229",
+          "--backend",
+          "hip_gfx1151",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--require-cached-build",
+          "--json",
+          "/tmp/hipengine-sh3-m1-20260806-final/state-host_auto.json"
+        ]
+      }
+    }
+  },
+  "focused_validation": {
+    "command": "python3 -m pytest -q tests/test_qwen35_gguf_host_token_embedding.py tests/test_qwen35_gguf_materialize_helpers.py tests/test_qwen35_gguf_decode_graph.py tests/test_gguf_packed_decode_graph.py tests/test_gguf_native_spec_cycle.py tests/test_gfx1151_backend.py tests/test_qwen35_gguf_bench_metadata.py",
+    "result": "62 passed",
+    "real_gpu_lifecycle": "loader-time host ownership creates zero token-table device allocations; graph fallback restores exactly 540,344,320 bytes once; all formal children close tracked ownership to zero"
+  },
+  "gate": {
+    "passed": true,
+    "all_performance_within_one_percent": true,
+    "exact_state": true,
+    "exact_tracked_saving_bytes": {
+      "512": 540344320,
+      "4096": 540344320
+    }
+  },
+  "decision": {
+    "sh3_m1": "retain_and_enable_for_gfx1151_private_c1",
+    "production_default": "automatic host token embedding for private c1 gfx1151 sessions; device residency/fallback for every wider or pointer-fed route",
+    "reason": "Both workloads save exactly 540,344,320 tracked bytes, sampled whole-GTT falls 0.503933 GiB, all prefill/decode deltas are within 1%, and complete state is byte exact.",
+    "campaign_complete": false,
+    "next": "Run SH3-C1 fresh four-depth cumulative re-attribution and the declared beat-fork policy gate; continue to a structurally new owner if policy remains below target."
+  },
+  "notes": [
+    "The first final collector attempt retained every completed child but stopped on the canonical 4K/128 workload label; checkpoint continuation ran only missing children.",
+    "A prior in-progress matrix was deliberately stopped after the indexed unique-token gather changed source; all evidence in this artifact is from the subsequently frozen source.",
+    "Raw benchmark/state payloads remain under /tmp and are represented by exact SHA-256 values in this artifact."
+  ]
+}

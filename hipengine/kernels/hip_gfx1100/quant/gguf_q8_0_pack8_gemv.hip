@@ -380,6 +380,73 @@ __launch_bounds__(128, 4) __global__ void gguf_q8_0_pack8_dual_gate_up_gemv_kern
       acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7);
 }
 
+// SH5-D1: fork-attributed raw-row vector traversal for private c1 screening.
+// Unlike the resident Q8T16 body (16 output accumulators per lane) and the
+// existing raw pack8 body (8 outputs x 8 K values per lane), one workgroup owns
+// one output row and each lane consumes eight adjacent K values. This mirrors
+// llama.cpp Vulkan's gfx1151 Q8_0/F16 mat-vec specialization while preserving
+// hipEngine's BF16 activation/output contract. The combined A/B grid removes a
+// second launch but keeps separate output buffers. This is a leaf only: no
+// runtime route or duplicate resident weight copy is introduced here.
+__global__ __launch_bounds__(128, 4) void gguf_q8_0_rowvec8_dual_split_gemv_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out_a,
+    uint16_t* __restrict__ out_b,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b) {
+  const int64_t global_out = blockIdx.x;
+  const bool use_b = global_out >= out_features_a;
+  const int64_t local_out = use_b ? global_out - out_features_a : global_out;
+  const uint8_t* __restrict__ qweight = use_b ? qweight_b : qweight_a;
+  uint16_t* __restrict__ out = use_b ? out_b : out_a;
+  if (local_out >= (use_b ? out_features_b : out_features_a)) return;
+
+  const int tid = threadIdx.x;
+  const int64_t row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  const uint8_t* __restrict__ weight_row = qweight + local_out * row_bytes;
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8;
+       k_base < in_features;
+       k_base += vec_stride) {
+    const int64_t block_idx = k_base / Q8_0_BLOCK;
+    const int lane_base = static_cast<int>(k_base & (Q8_0_BLOCK - 1));
+    const uint8_t* __restrict__ block =
+        weight_row + block_idx * Q8_0_BLOCK_BYTES;
+    const int8_t* __restrict__ qs =
+        reinterpret_cast<const int8_t*>(block + 2 + lane_base);
+    const float d = fp16_bytes_to_float(block);
+
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const float xv = bf16_bits_to_float(x[k_base + j]);
+      acc = fmaf(xv, d * static_cast<float>(qs[j]), acc);
+    }
+  }
+
+  GGUF_Q8_PACK8_WAVE_REDUCE(acc);
+  __shared__ float wave_sums[4];
+  const int lane = tid & 31;
+  const int wave = tid >> 5;
+  if (lane == 0) {
+    wave_sums[wave] = acc;
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    float total = 0.0f;
+    const int waves = blockDim.x >> 5;
+#pragma unroll
+    for (int group = 0; group < 4; ++group) {
+      if (group < waves) total += wave_sums[group];
+    }
+    out[local_out] = float_to_bf16_bits(total);
+  }
+}
+
 bool valid_q8_0_pack8_single(
     const void* x,
     const void* qweight,
@@ -429,6 +496,37 @@ int launch_q8_0_pack8_single(
       0,
       stream,
       x, qweight, out, rows, in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_q8_0_rowvec8_dual_split(
+    const uint16_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || qweight_b == nullptr ||
+      out_a == nullptr || out_b == nullptr || rows != 1 ||
+      in_features <= 0 || (in_features % Q8_0_BLOCK) != 0 ||
+      out_features_a <= 0 || out_features_b <= 0 ||
+      (threads != 32 && threads != 64 && threads != 128)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t total_outputs = out_features_a + out_features_b;
+  hipLaunchKernelGGL(
+      gguf_q8_0_rowvec8_dual_split_gemv_kernel,
+      dim3(static_cast<unsigned int>(total_outputs)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x, qweight_a, qweight_b, out_a, out_b,
+      in_features, out_features_a, out_features_b);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -497,6 +595,23 @@ extern "C" int hipengine_gguf_q8_0_pack8_dual_gate_up_gemv_decode_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q8_0_pack8_dual<uint16_t>(
       x, qweight_a, qweight_b, out, rows, in_features, out_features_a, out_features_b, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_rowvec8_dual_split_gemv_decode_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out_a,
+    uint16_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_q8_0_rowvec8_dual_split(
+      x, qweight_a, qweight_b, out_a, out_b, rows, in_features,
+      out_features_a, out_features_b, threads, stream);
 }
 
 extern "C" int hipengine_gguf_q8_0_pack8_dual_gate_up_gemv_decode_fp16_fp16_out(

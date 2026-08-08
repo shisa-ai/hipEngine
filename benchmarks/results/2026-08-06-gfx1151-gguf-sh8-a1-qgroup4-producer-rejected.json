@@ -1,0 +1,318 @@
+{
+  "candidate": {
+    "admission": "Continue only if complete producer+retained parallel reducer is >=1.10x or projects >=0.5 ms/token saving over ten full-attention layers.",
+    "control": "q_per_kv=8, one local256 block per (kv_head, split)",
+    "hypothesis": "Lower register pressure might repay duplicated K/V traffic.",
+    "qgroup4": "two local256 q_per_group=4 blocks per KV head and split; same per-head reduction order; K/V read twice"
+  },
+  "correctness": {
+    "fixture": "8448 tokens, 33 splits, 16 query heads, 2 KV heads, head_dim 256, complete KVLiveSpans path",
+    "green": "candidate wrapper/key registry contract passed after implementation",
+    "primitive_log_sha256": "e5fc7a0d71b628de6904cce1e848ba366bc0227a3a3dd4ec1c52e8a79e8e9e4d",
+    "qgroup4_bf16_mismatches_vs_numpy": 0,
+    "qgroup4_max_abs_vs_numpy": 0.0,
+    "qgroup4_mismatches_vs_retained_parallel": 0,
+    "red": "registry contract failed because candidate wrapper/key did not exist"
+  },
+  "correctness_claim": true,
+  "created_at": "2026-08-06T09:27:29.932073+00:00",
+  "date": "2026-08-06",
+  "decision": {
+    "cleanup": "Remove transient HIP body, C wrapper, Python wrapper/symbol/key/export, smoke extension, and RED/GREEN registry assertion; retained SH7 qgroup8 producer plus parallel reducer remains production.",
+    "next_owner": "SH9-D1 independently gates gfx1100 LCP-2B compact-WMMA no-read count inference on gfx1151. It is an explicit open package capability and removes scalar selected-Q4 host synchronization without reopening closed producer/reducer/layout ladders.",
+    "result": "Reject before model routing. qgroup4 lowers VGPR but loses all 42 timing pairs and misses both frozen admission alternatives at both contexts."
+  },
+  "kind": "hipengine_gfx1151_sh8_a1_qgroup4_producer_screen",
+  "measurement_scope": "Radeon 8060S/gfx1151 synthetic production-shape BF16 grouped-GQA split producer at 32K/64K, one hardware queue, cached source candidate, 21 counterbalanced HIP-event pairs of 10 launches plus cached rocprof trace; leaf screen only, no model route.",
+  "performance_claim": false,
+  "protocol": {
+    "commands": {
+      "primitive": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "timing": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. python3 /tmp/sh8_qgroup4_leaf.py --contexts 32768 65536 --repeats 21 --burst 10 --compiler-version-file /tmp/hipengine-hipcc-version.txt",
+      "trace": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-sh8-a1-qgroup4-trace -o sh8-qgroup4 -- python3 /tmp/sh8_qgroup4_leaf.py --contexts 32768 65536 --profile --compiler-version-file /tmp/hipengine-hipcc-version.txt"
+    },
+    "timing": "5 warmups per route followed by 21 order-alternating pairs; each HIP event encloses 10 complete producer+parallel-reducer launches; contiguous physical pages, one empty capacity split matching runtime workspace.",
+    "trace": "rocprofv3 --kernel-trace; cached build; 10 alternating warmups plus 5 profile launches per route/context."
+  },
+  "raw_evidence": {
+    "kernel_trace": {
+      "path": "/tmp/hipengine-sh8-a1-qgroup4-trace/sh8-qgroup4_kernel_trace.csv",
+      "sha256": "77dcb38a98245d3f660c03112e6fc9398bd46cb36623853f1376ff4076d5d841"
+    },
+    "leaf": {
+      "path": "/tmp/hipengine-sh8-a1-qgroup4-leaf.json",
+      "sha256": "073c8d00b9279dc569d7b0b47f0a5a0a8ea44d6132f2e3ba5d766c966169d9f2"
+    },
+    "primitive": {
+      "path": "/tmp/hipengine-sh8-a1-qgroup4-primitive.log",
+      "sha256": "e5fc7a0d71b628de6904cce1e848ba366bc0227a3a3dd4ec1c52e8a79e8e9e4d"
+    }
+  },
+  "rows": [
+    {
+      "burst": 10,
+      "candidate_median_ms": 0.474481201171875,
+      "candidate_ms": [
+        0.477786922454834,
+        0.4767113208770752,
+        0.4777682781219482,
+        0.4763776779174805,
+        0.4706399917602539,
+        0.47281608581542967,
+        0.47318081855773925,
+        0.47201151847839357,
+        0.47083730697631837,
+        0.47407941818237304,
+        0.47618808746337893,
+        0.4741363048553467,
+        0.4739559173583984,
+        0.47614398002624514,
+        0.4765730857849121,
+        0.474481201171875,
+        0.4782522201538086,
+        0.4736155986785889,
+        0.47558321952819826,
+        0.4746417045593262,
+        0.4742249011993408
+      ],
+      "candidate_wins": 0,
+      "context": 32768,
+      "control_median_ms": 0.4250682830810547,
+      "control_ms": [
+        0.4267556190490723,
+        0.42553958892822263,
+        0.42396068572998047,
+        0.4268853187561035,
+        0.4238436222076416,
+        0.4224218845367432,
+        0.4254115104675293,
+        0.4251677989959717,
+        0.42363691329956055,
+        0.4281613826751709,
+        0.4250682830810547,
+        0.42465949058532715,
+        0.42418670654296875,
+        0.42667531967163086,
+        0.4259020805358887,
+        0.4281984806060791,
+        0.42441539764404296,
+        0.42443141937255857,
+        0.42795400619506835,
+        0.42459988594055176,
+        0.4241350173950195
+      ],
+      "num_splits": 129,
+      "projected_saving_ms_per_token_10_layers": -0.4941291809082027,
+      "repeats": 21,
+      "saving_ms_per_layer": -0.04941291809082027,
+      "speedup": 0.895859060445851
+    },
+    {
+      "burst": 10,
+      "candidate_median_ms": 0.8583819389343261,
+      "candidate_ms": [
+        0.8545663833618165,
+        0.8611706733703614,
+        0.8578325271606445,
+        0.8603331565856933,
+        0.8581814765930176,
+        0.8583819389343261,
+        0.8578728675842285,
+        0.8596282005310059,
+        0.8600890159606933,
+        0.8589147567749024,
+        0.8565664291381836,
+        0.8577244758605957,
+        0.8593197822570801,
+        0.8635796546936035,
+        0.8582416534423828,
+        0.8588990211486817,
+        0.8577570915222168,
+        0.8601535797119141,
+        0.8575726509094238,
+        0.8584263801574707,
+        0.8564949035644531
+      ],
+      "candidate_wins": 0,
+      "context": 65536,
+      "control_median_ms": 0.7598731994628907,
+      "control_ms": [
+        0.7586259841918945,
+        0.761014986038208,
+        0.762982702255249,
+        0.757945203781128,
+        0.7576645851135254,
+        0.7582341194152832,
+        0.7587389945983887,
+        0.7618167877197266,
+        0.7661610126495362,
+        0.7580296039581299,
+        0.7595844745635987,
+        0.7588109970092773,
+        0.7608308792114258,
+        0.7606546878814697,
+        0.7593442916870117,
+        0.7579336166381836,
+        0.7598731994628907,
+        0.7599134922027588,
+        0.7610116004943848,
+        0.7639531135559082,
+        0.7613722801208496
+      ],
+      "num_splits": 257,
+      "projected_saving_ms_per_token_10_layers": -0.9850873947143546,
+      "repeats": 21,
+      "saving_ms_per_layer": -0.09850873947143546,
+      "speedup": 0.8852390352088102
+    }
+  ],
+  "schema_version": 1,
+  "source": {
+    "lineage": "check_lineage blocked by absent read-only /home/lhl/amd-gpu-tuning/reference/atlas; not a green verdict",
+    "parent_commit": "cad45d291",
+    "transient_diff_sha256": "4178c4a7c598f67f4c21744b35ec255378f4b3ad01e5f7b2ce06446822d8ce7d",
+    "transient_files": [
+      "hipengine/kernels/hip_gfx1100/attention/__init__.py",
+      "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip",
+      "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py",
+      "scripts/smoke.py",
+      "tests/test_qwen35_paged_attn_decode_plan.py"
+    ]
+  },
+  "status": "rejected_leaf_gate",
+  "topline_eligible": false,
+  "trace": {
+    "129": {
+      "qgroup4": {
+        "calls": 15,
+        "grid": [
+          [
+            1024,
+            129,
+            1
+          ]
+        ],
+        "lds": [
+          0
+        ],
+        "mean_us": 478.61859999999996,
+        "median_us": 455.813,
+        "name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<4l, 16l, 2l, 2l>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "scratch": [
+          0
+        ],
+        "sgpr": [
+          128
+        ],
+        "vgpr": [
+          56
+        ],
+        "workgroup": [
+          [
+            256,
+            1,
+            1
+          ]
+        ]
+      },
+      "qgroup8": {
+        "calls": 15,
+        "grid": [
+          [
+            512,
+            129,
+            1
+          ]
+        ],
+        "lds": [
+          0
+        ],
+        "mean_us": 449.4744,
+        "median_us": 405.676,
+        "name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8l, 16l, 2l, 1l>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "scratch": [
+          0
+        ],
+        "sgpr": [
+          128
+        ],
+        "vgpr": [
+          72
+        ],
+        "workgroup": [
+          [
+            256,
+            1,
+            1
+          ]
+        ]
+      }
+    },
+    "257": {
+      "qgroup4": {
+        "calls": 15,
+        "grid": [
+          [
+            1024,
+            257,
+            1
+          ]
+        ],
+        "lds": [
+          0
+        ],
+        "mean_us": 819.7861333333333,
+        "median_us": 820.053,
+        "name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<4l, 16l, 2l, 2l>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "scratch": [
+          0
+        ],
+        "sgpr": [
+          128
+        ],
+        "vgpr": [
+          56
+        ],
+        "workgroup": [
+          [
+            256,
+            1,
+            1
+          ]
+        ]
+      },
+      "qgroup8": {
+        "calls": 15,
+        "grid": [
+          [
+            512,
+            257,
+            1
+          ]
+        ],
+        "lds": [
+          0
+        ],
+        "mean_us": 749.5161999999999,
+        "median_us": 725.396,
+        "name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_kernel<8l, 16l, 2l, 1l>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, float)",
+        "scratch": [
+          0
+        ],
+        "sgpr": [
+          128
+        ],
+        "vgpr": [
+          72
+        ],
+        "workgroup": [
+          [
+            256,
+            1,
+            1
+          ]
+        ]
+      }
+    }
+  }
+}

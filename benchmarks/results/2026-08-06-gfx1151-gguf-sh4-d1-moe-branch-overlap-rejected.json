@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "id": "SH4-D1",
+  "status": "closed_rejected",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt_token_id": 9707,
+    "prompt_length": 512,
+    "decode_tokens": 128
+  },
+  "source": {
+    "parent_commit": "cbd5bc9c74f0ea87c9e06ba582b70862183f26e6",
+    "candidate_committed": false,
+    "final_production_changed": false,
+    "transient_tracked_patch_sha256": "aa02e24c7a5ebc617fa35bfff0df37b6a62f65ca6d48fa9cfadbddcb38fed19d",
+    "transient_surfaces_removed": true
+  },
+  "candidate": {
+    "scope": "private gfx1151 max_batch_size=1 ordinary eager step on the default stream",
+    "fork_join": "record router-complete event on caller stream; wait and run the complete shared gate/up, exact BF16 SiLU, and shared down branch on one nonblocking auxiliary stream; keep selected experts on the caller stream; wait for shared output before the existing exact combine",
+    "scratch": "one dedicated 2048-byte shared gate/up concat row removes the only selected/shared fast-path scratch conflict",
+    "resource_ownership": "session-local lazy stream plus two disable-timing events and one device buffer; transactional partial-allocation cleanup; device synchronization before idempotent close",
+    "serial_fallbacks": [
+      "default policy",
+      "unsupported backend",
+      "max_batch_size greater than one",
+      "shared runner",
+      "nondefault caller stream",
+      "graph capture or replay",
+      "prefill",
+      "packed AR",
+      "MTP and verifier paths",
+      "diagnostic hidden/state capture",
+      "resource allocation failure"
+    ]
+  },
+  "validation": {
+    "focused_command": "python3 -m pytest tests/test_gfx1151_backend.py tests/test_qwen35_gguf_moe_branch_concurrency.py -q",
+    "focused_result": "28 passed",
+    "contracts": [
+      "backend capability isolation and explicit opt-out",
+      "complete fallback matrix",
+      "lazy reuse and idempotent release",
+      "partial event-allocation rollback and fail-closed serial execution",
+      "serial launch order",
+      "fork/enqueue/join event order"
+    ],
+    "teacher_forced": {
+      "passed": true,
+      "first_divergence": null,
+      "transitions": 4,
+      "comparison": "fresh serial-prefix hidden, all Conv/GDN state, and all live BF16 KV state",
+      "repeated_stream_shared_with_llama_cpp": true,
+      "sha256": "08ba4675737a97a415e01cdae62d4a5c0e2989bb0d3174ed6d58dbd4b746376b"
+    },
+    "same_resident_snapshot": {
+      "exact": true,
+      "comparison": "128-token trajectory, final BF16 hidden row, 30 Conv/GDN state pairs, and ten live BF16 K/V cache pairs",
+      "final_token_id": 9707
+    }
+  },
+  "same_resident_counterbalanced_wall": {
+    "command": "/home/lhl/miniforge3/envs/therock/bin/python3 /tmp/sh4_d1_ab.py --pairs 5 --steps 128 --json /tmp/hipengine-sh4-d1-ab.json",
+    "protocol": "one resident session, serial/candidate warmup, then five alternating pairs; even pairs serial then candidate and odd pairs candidate then serial; each leg resets and prefills 512 repeated token IDs before 128 eager steps",
+    "serial_ms_per_token": [
+      18.80276799965941,
+      18.860602227505296,
+      18.812951318977866,
+      18.797575523421983,
+      18.81144412436697
+    ],
+    "candidate_ms_per_token": [
+      19.18710114841815,
+      19.20665503166674,
+      19.220770576794166,
+      19.187782343578874,
+      19.231909132940928
+    ],
+    "serial_median_ms_per_token": 18.81144412436697,
+    "candidate_median_ms_per_token": 19.20665503166674,
+    "serial_median_tok_s": 53.15912980357914,
+    "candidate_median_tok_s": 52.06528665981984,
+    "saving_ms_per_token": -0.39521090729977004,
+    "wall_improvement_percent": -2.057676917965001,
+    "snapshots_exact": true,
+    "raw_sha256": "82675d997e0e7dbd9ba982858f656687f275e3187302f752fb6fc2b52141705a",
+    "harness_sha256": "df0bb67b5820e439eabf4445f647648e457a5e87e45b9a05dfed90b1e367c496"
+  },
+  "cached_cross_queue_trace": {
+    "command": "HIPENGINE_GGUF_MOE_BRANCH_CONCURRENCY=1 rocprofv3 --kernel-trace --marker-trace --hip-trace --output-format csv -d /tmp/hipengine-sh4-d1-trace -o sh4-d1-candidate -- python3 scripts/gguf_decode_rocprof.py --child-mode profile --source-root /home/lhl/hipEngine-main --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prompt-token-id 9707 --prompt-length 512 --expected-token-id 9707 --steps 8 --warmup-steps 1 --benchmark-warmups 0 --repetitions 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --child-json /tmp/hipengine-sh4-d1-trace/profile.json --require-cached",
+    "profiler_exit_clean": true,
+    "tokens_exact": true,
+    "marker_windows": 8,
+    "timed_dispatches": 5024,
+    "dispatches_per_token": 628.0,
+    "caller": {
+      "queue_id": 1,
+      "stream_id": 0,
+      "dispatches": 4064
+    },
+    "auxiliary": {
+      "queue_id": 2,
+      "stream_id": 1,
+      "dispatches": 960,
+      "dispatches_per_token": 120.0,
+      "kernel_ms_per_token": 1.363091875,
+      "kernels_with_real_timestamp_overlap": 189,
+      "overlap_ms_per_token": 0.45554975,
+      "overlap_percent_of_auxiliary_kernel_time": 33.42032612438542,
+      "overlap_peer_role": "selected_expert_gate_up",
+      "kernel_calls": {
+        "q8_0_t16_dual_gemv": 320,
+        "silu_mul_dual_out": 320,
+        "q8_0_t16_gemv": 320
+      }
+    },
+    "conclusion": "The implementation reaches a distinct hardware queue and produces genuine selected/shared timestamp overlap, but only one third of auxiliary kernel time overlaps and clean whole-wall still regresses.",
+    "raw_hashes": {
+      "profile_child": "85f589cd8683cea67e9a1b8628ef434d0d953324fb7aa468f0f9b5741701c0f0",
+      "kernel_csv": "06341b04fc5f8771515fde9904e75cb79d8558c6c0c607bba68015e0bb0f2ee8",
+      "marker_csv": "6c8ab3f8950839af61c9ed04b468c631e57b1fe3bae7a9ca791d7d9b4e04130f",
+      "hip_api_csv": "fc4004156e3fc434eaf28215eaedaa9a50ee30f8ffde692c8c631fe70f215d90",
+      "overlap_summary": "d7b90b04a6dd6695745639075e2871605c4ec52053cf9f951d3f3cb7d1502b11"
+    }
+  },
+  "admission": {
+    "required_wall_improvement_percent": 1.0,
+    "alternative_required_saving_ms_per_token": 0.5,
+    "real_cross_queue_overlap_passed": true,
+    "exact_state_passed": true,
+    "wall_improvement_passed": false,
+    "saving_passed": false,
+    "passed": false
+  },
+  "decision": "Reject and remove every bridge, capability, policy, routing, scratch, and test surface. Real cross-queue overlap is measurable, but queue/event overhead plus memory-bandwidth contention produces a 2.058% regression instead of either required win. Production remains the serial routed/shared chain.",
+  "next": {
+    "id": "SH5-D1",
+    "name": "row-1 dense-Q8 replacement-layout/vector algorithm",
+    "why": "Stream overlap is exhausted. The fresh production trace still assigns about 8.2 ms/token to dense Q8T16 projection families, while prior closed work changed only launch width, cache policy, adjacent T16 packing, or the slow existing q8_1 dp4a body. A truly different byte-neutral row-1 vector traversal is the remaining algorithmic owner with enough scope.",
+    "first_gate": "Audit the current/fork arithmetic and layouts, then build only an actual-weight 2048->8192 plus 2048->4096 leaf. Require CPU-oracle correctness, cached no-spill trace, no duplicate resident weights, and >=1.15x or >=0.5 ms/token projected saving before any model routing; preserve current Q8T16 prefill and exact unfused fallback."
+  }
+}

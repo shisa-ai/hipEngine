@@ -1,0 +1,154 @@
+{
+  "artifact_type": "maple_c1_graph_review",
+  "schema_version": 1,
+  "date": "2026-08-07",
+  "status": "accepted_diagnostic",
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "host": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  },
+  "software": {
+    "git_head": "9b3e45f10157f5788709c9107098679dfeb6b1bd",
+    "tracked_clean_before_run": true,
+    "python": "/home/lhl/miniforge3/envs/therock/bin/python3",
+    "compiler_version_file": "/tmp/hipengine-maple-hipcc-version.txt"
+  },
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2"
+  },
+  "protocol": {
+    "workload": "fixed c1 token 9707 from empty state; positions 0-3 warmup and 4-131 measured",
+    "child_script_sha256": "42a75f83555d48161fc5d62815c020150c7e3491da6df24d1becb6ae79c7df7a",
+    "warmup_steps": 4,
+    "measured_steps": 128,
+    "independent_processes_per_mode": 3,
+    "counterbalanced_mode_order": [
+      "eager",
+      "graph",
+      "graph",
+      "eager",
+      "eager",
+      "graph"
+    ],
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-maple-hipcc-version.txt",
+      "HIPENGINE_MAPLE_GRAPH": "0 or 1 per process"
+    },
+    "command": "for mode in 0 1 1 0 0 1; do GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-maple-hipcc-version.txt HIPENGINE_MAPLE_GRAPH=$mode PYTHONPATH=/home/lhl/hipEngine-maple /home/lhl/miniforge3/envs/therock/bin/python3 /tmp/maple_graph_review_child.py $mode $trial; done",
+    "timing": "Python perf_counter around MapleRunner.step; model load, graph capture, and four warmup steps excluded from each measured window"
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "mode": "eager",
+      "median_ms": 7.143393624573946,
+      "mean_ms": 7.090130187862087,
+      "p10_ms": 5.631750915199518,
+      "p90_ms": 8.582710986956954,
+      "tok_s_from_median": 139.98948574804922,
+      "graph_stats": null
+    },
+    {
+      "trial": 2,
+      "mode": "graph",
+      "median_ms": 7.065687561407685,
+      "mean_ms": 7.011656654867693,
+      "p10_ms": 5.537043791264296,
+      "p90_ms": 8.425034815445542,
+      "tok_s_from_median": 141.52904318355843,
+      "graph_stats": {
+        "capture": 1,
+        "replay": 131,
+        "eager": 0,
+        "reject": 0
+      }
+    },
+    {
+      "trial": 3,
+      "mode": "graph",
+      "median_ms": 7.032881025224924,
+      "mean_ms": 7.006068530245102,
+      "p10_ms": 5.5521409958601,
+      "p90_ms": 8.498632814735174,
+      "tok_s_from_median": 142.1892388643128,
+      "graph_stats": {
+        "capture": 1,
+        "replay": 131,
+        "eager": 0,
+        "reject": 0
+      }
+    },
+    {
+      "trial": 4,
+      "mode": "eager",
+      "median_ms": 7.066123536787927,
+      "mean_ms": 7.005320632742951,
+      "p10_ms": 5.493380827829242,
+      "p90_ms": 8.457795949652791,
+      "tok_s_from_median": 141.52031093056343,
+      "graph_stats": null
+    },
+    {
+      "trial": 5,
+      "mode": "eager",
+      "median_ms": 7.031468558125198,
+      "mean_ms": 7.001959702392924,
+      "p10_ms": 5.594501039013267,
+      "p90_ms": 8.45596194267273,
+      "tok_s_from_median": 142.21780154935803,
+      "graph_stats": null
+    },
+    {
+      "trial": 6,
+      "mode": "graph",
+      "median_ms": 7.006556959822774,
+      "mean_ms": 7.023036490863888,
+      "p10_ms": 5.546191008761525,
+      "p90_ms": 8.496769005432725,
+      "tok_s_from_median": 142.72345257938136,
+      "graph_stats": {
+        "capture": 1,
+        "replay": 131,
+        "eager": 0,
+        "reject": 0
+      }
+    }
+  ],
+  "summary": {
+    "eager_trial_medians_ms": [
+      7.143393624573946,
+      7.066123536787927,
+      7.031468558125198
+    ],
+    "graph_trial_medians_ms": [
+      7.065687561407685,
+      7.032881025224924,
+      7.006556959822774
+    ],
+    "eager_median_of_medians_ms": 7.066123536787927,
+    "graph_median_of_medians_ms": 7.032881025224924,
+    "speedup": 1.0047267274170815,
+    "delta_percent": 0.47267274170814666,
+    "saving_ms": 0.03324251156300306,
+    "decision": "keep c1 graph opt-in; current capture is exact but does not materially recover the profiler-attributed host gap"
+  },
+  "correctness": {
+    "ids_equal_all_trials": true,
+    "top_logit_values_equal_all_trials": true,
+    "ids_sha256": "0b173b3a257fecc070ac42ba2132966f957116b4c91107ef7a87e889aefc1bd9",
+    "top_logit_values_sha256": "18dd76eb774fdebb768b1de9892ee1aa549dfe126ecd1cba51dfad4a73e180b1",
+    "graph_rejects": 0,
+    "runner_buffer_owner_empty_after_close_all_trials": true
+  },
+  "notes": [
+    "This fixed-token review is a matched graph/eager diagnostic, not a replacement for the qualified 163.459 tok/s c1 profile row.",
+    "The measured window extends through context position 131, so its absolute rate must not be compared directly with the shorter corrected phase-profile window.",
+    "The independent 120-token growing-KV graph parity test remains the primary graph correctness gate."
+  ]
+}

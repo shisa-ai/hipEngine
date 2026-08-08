@@ -21,6 +21,9 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     laguna_global_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
     laguna_swa_f16_projection_head_kv_nontemporal_tile2_bf16_spans,
 )
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
 )
@@ -44,6 +47,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS as GFX1100_GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS as GFX1100_GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS,
+    GGUF_Q5_T16_SELECTED_QWEN_TILE8 as GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8,
     GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS as GFX1100_GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q6_LM_HEAD_MAX_CHUNK as GFX1100_GGUF_Q6_LM_HEAD_MAX_CHUNK,
     GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS as GFX1100_GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
@@ -66,8 +70,12 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
     GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS,
     GGUF_PREFILL_ROUTER_SELECT_THREADS,
+    GGUF_PREFILL_SCRATCH_ARENA_GROUPING,
+    GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS,
+    GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS,
     GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS,
+    GGUF_Q5_T16_SELECTED_QWEN_TILE8,
     GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q6_LM_HEAD_MAX_CHUNK,
     GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
@@ -846,13 +854,16 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GFX1100_GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GGUF_PREFILL_ROUTER_SELECT_THREADS == 128
     assert GFX1100_GGUF_PREFILL_ROUTER_SELECT_THREADS == 128
+    assert GGUF_PREFILL_SCRATCH_ARENA_GROUPING == "owner_slots"
+    assert GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS is True
+    assert GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS == 768
     assert GGUF_Q8_T16_PREFILL_FOUR_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
     assert GGUF_ROUTER_F32_BF16_HIDDEN_THREADS == 256
     assert GFX1100_GGUF_ROUTER_F32_BF16_HIDDEN_THREADS == 256
     assert GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
-    assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 0
+    assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
     assert GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE is False
     assert GGUF_GDN_INDEXED_SINGLETON_DECODE is True
     assert GFX1100_GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 0
@@ -861,6 +872,8 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
     assert GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
+    assert GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8 is False
+    assert GGUF_Q5_T16_SELECTED_QWEN_TILE8 is True
     assert GFX1100_GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
     assert GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q6_LM_HEAD_MAX_CHUNK == 6
@@ -873,10 +886,10 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
-    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is False
+    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
-    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
+    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "baseline"
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 4096
     assert (
@@ -1153,7 +1166,16 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
         )
-        is False
+        is True
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="paged_attn_decode",
+            quant="w4_paro",
+            variant="bf16_split_k_gqa_gate_bf16_parallel_reduce_spans",
+        )
+        is qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans
     )
     assert (
         backend_package_capability(
@@ -1266,7 +1288,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
         )
-        == 0
+        == 4096
     )
     assert (
         backend_package_capability(
@@ -1280,7 +1302,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
         )
-        == "shared_x"
+        == "baseline"
     )
     assert hip_target_arch_for_backend("hip_gfx1151") == "gfx1151"
     assert (
@@ -1596,7 +1618,13 @@ def test_gguf_runtime_has_no_literal_gfx1100_resolver_backend() -> None:
 
 
 def test_gfx1151_gguf_lazy_registration_rebinds_source_kernels() -> None:
-    from hipengine.kernels.registry import KernelKey, clear_registry_for_tests, resolve
+    from hipengine.kernels.registry import (
+        KernelKey,
+        clear_registry_for_tests,
+        is_registered,
+        register,
+        resolve,
+    )
     from hipengine.runtime.gguf_embedding import _ensure_embedding_kernel_registered
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
@@ -1609,14 +1637,18 @@ def test_gfx1151_gguf_lazy_registration_rebinds_source_kernels() -> None:
     linear_key = KernelKey(
         "hip_gfx1151",
         "linear",
-        "gguf_q8_0",
-        "gemv_bf16_bf16_out",
+        "gguf_q6_k_t16_v1",
+        "t16_gemv_decode_bf16_f32_out",
     )
     clear_registry_for_tests()
+    register(KernelKey("cpu_reference", "embedding", "fp16"), lambda *args: args)
+    register(KernelKey("cpu_reference", "linear", "fp16"), lambda *args: args)
 
     _ensure_embedding_kernel_registered(embedding_key)
     _ensure_linear_kernel_registered(linear_key)
 
+    assert is_registered(embedding_key)
+    assert is_registered(linear_key)
     assert callable(
         resolve(
             backend=embedding_key.backend,

@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-05",
+  "artifact_type": "public_api_correctness_smoke",
+  "performance_claim": false,
+  "status": "accepted",
+  "objective": "Verify post-fix deepgrove/maple-preview-2bit-mlx inference through the public hipEngine LLM API",
+  "hardware": {
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "resolved_path": "/data/models/huggingface/hub/models--deepgrove--maple-preview-2bit-mlx/snapshots/361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "backend_request": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "quant_request": "auto",
+    "resolved_quant": "maple_ternary2"
+  },
+  "api": {
+    "entrypoint": "hipengine.LLM.generate_detailed",
+    "constructor": "LLM('deepgrove/maple-preview-2bit-mlx', backend='auto', quant='auto')",
+    "sampling": {
+      "max_tokens": 128,
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "top_k": 0,
+      "min_p": 0.0
+    },
+    "runs_in_same_resident_process": 2
+  },
+  "prompt": {
+    "text": "<|im_start|>user\nWrite one short sentence about maple trees.<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "token_ids": [
+      151644,
+      872,
+      198,
+      7985,
+      825,
+      2805,
+      11652,
+      911,
+      54380,
+      12408,
+      13,
+      151645,
+      198,
+      151644,
+      77091,
+      198,
+      151667,
+      198
+    ]
+  },
+  "generation": {
+    "generated_token_count": 37,
+    "generated_ids_sha256": "dc7c0f61adabfb59273e5cfb6499ae2658c7cb88ed4cbfcb4078c27552d087e3",
+    "text_sha256": "a924b6dc67299550e27767ae47007979597621acc37fb32d891d2115530b22be",
+    "text": "The user asks for a short sentence about maple trees. Simple and direct.\n</think>\n\nMaple trees are known for their vibrant autumn foliage and are a common symbol of the season.<|im_end|>",
+    "finish_reason": "stop",
+    "eos_token_id": 151645,
+    "sampler_mode": "greedy",
+    "cold_elapsed_s_diagnostic_only": 4.364625217043795,
+    "resident_repeat_elapsed_s_diagnostic_only": 0.7031332780607045
+  },
+  "checks": {
+    "backend_gfx1151": true,
+    "quant_maple_ternary2": true,
+    "prompt_ids_exact": true,
+    "nonempty_generation": true,
+    "coherent_completed_answer": true,
+    "real_eos_stop": true,
+    "resident_repeat_ids_equal": true,
+    "resident_repeat_text_equal": true,
+    "allocator_current_zero_after_close": true
+  },
+  "allocator_after_close": {
+    "current_allocated_bytes": 0,
+    "active_allocations": 0,
+    "peak_allocated_bytes": 5378146152,
+    "total_allocated_bytes": 5378146152,
+    "total_freed_bytes": 5378146152
+  },
+  "notes": [
+    "This run is after the equal-capacity global KVLiveSpans owner fix in commit 7b82c60bf.",
+    "The two elapsed values are diagnostics only, not retained throughput measurements or performance claims.",
+    "Generated IDs are represented by a hash rather than committed as a scoring target."
+  ]
+}

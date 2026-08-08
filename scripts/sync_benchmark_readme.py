@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy canonical benchmark table blocks into the repository README."""
+"""Copy the compact canonical benchmark summary into the repository README."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pathlib import Path
 
 BEGIN_RE = re.compile(r"^<!-- BEGIN TOPLINE:([A-Z0-9_]+) -->$")
 END_RE = re.compile(r"^<!-- END TOPLINE:([A-Z0-9_]+) -->$")
+DEFAULT_BLOCKS = ("README_HIGHLIGHTS",)
 
 
 @dataclass(frozen=True)
@@ -65,18 +66,30 @@ def _blocks(text: str, path: Path) -> dict[str, Block]:
     return found
 
 
-def _synchronized(source_text: str, target_text: str, source: Path, target: Path) -> str:
+def _synchronized(
+    source_text: str,
+    target_text: str,
+    source: Path,
+    target: Path,
+    *,
+    block_names: tuple[str, ...] = DEFAULT_BLOCKS,
+) -> str:
     source_blocks = _blocks(source_text, source)
     target_blocks = _blocks(target_text, target)
-    missing = sorted(set(source_blocks) - set(target_blocks))
-    extra = sorted(set(target_blocks) - set(source_blocks))
-    if missing or extra:
+    selected = set(block_names)
+    missing_source = sorted(selected - set(source_blocks))
+    missing_target = sorted(selected - set(target_blocks))
+    extra_target = sorted(set(target_blocks) - selected)
+    if missing_source or missing_target or extra_target:
         raise ValueError(
-            f"TOPLINE block mismatch: missing in target={missing}, extra in target={extra}"
+            "TOPLINE block mismatch: "
+            f"missing in source={missing_source}, missing in target={missing_target}, "
+            f"unselected in target={extra_target}"
         )
 
     lines = target_text.splitlines(keepends=True)
-    for block in sorted(target_blocks.values(), key=lambda item: item.begin, reverse=True):
+    selected_blocks = (target_blocks[name] for name in block_names)
+    for block in sorted(selected_blocks, key=lambda item: item.begin, reverse=True):
         replacement = source_blocks[block.name].body.splitlines(keepends=True)
         lines[block.begin + 1 : block.end] = replacement
     return "".join(lines)
@@ -118,10 +131,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         if synchronized != target_text:
+            source_blocks = _blocks(source_text, source)
+            target_blocks = _blocks(target_text, target)
             stale = [
                 name
-                for name, block in _blocks(source_text, source).items()
-                if block.body != _blocks(target_text, target)[name].body
+                for name in DEFAULT_BLOCKS
+                if source_blocks[name].body != target_blocks[name].body
             ]
             print(f"README.md has stale TOPLINE blocks: {', '.join(stale)}", file=sys.stderr)
             print("run: python3 scripts/sync_benchmark_readme.py --write", file=sys.stderr)

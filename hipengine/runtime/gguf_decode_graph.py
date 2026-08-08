@@ -327,7 +327,7 @@ def capture_qwen35_gguf_decode_graph(
     if session.runner is None or session.scratch is None:
         raise RuntimeError("GGUF resident session is closed")
     if session.host_token_embedding_enabled:
-        raise RuntimeError("GGUF decode graph requires device-resident token embedding")
+        session._device_token_embedding_weight(reason="decode_graph")
     if not _decode_graph_kv_layout_admitted(session):
         raise RuntimeError(
             "GGUF decode graph requires BF16 KV or the admitted tail4_hadamard_group32 layout"

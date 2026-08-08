@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "status": "closed_precondition_failed",
+  "performance_claim": false,
+  "topline_eligible": false,
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device": 0,
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-device amdgpu GTT",
+    "gtt_poll_ms": 10
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "token_embedding": {
+      "source": "token_embd.weight",
+      "ggml_type": "Q8_0",
+      "bytes": 540344320,
+      "gib": 0.50323486328125
+    }
+  },
+  "source_revision": "33875d75b",
+  "source_artifacts": {
+    "sh2_m1": {
+      "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m1-host-embedding-screen.json",
+      "sha256": "4b30080a362b07fbe35a5b9f042bd9d7db8470357454fed0b4349a2308cc847a"
+    },
+    "post_sh_g_audit": {
+      "path": "benchmarks/results/2026-08-06-gfx1151-gguf-post-sh-g-parity-gap-audit.json",
+      "sha256": "ec77e5e5a019965873c898b608e795091379edc0f80f70677a15b0618b15a256"
+    }
+  },
+  "question": "Can active, prefill-only, decode-only, or never-used code objects/libraries supply at least 0.49 GiB of phase-exclusive whole-GTT at both 512 and 4K?",
+  "method": {
+    "protocol": "Reuse the fresh same-revision SH2-M1 cached-only measured processes and subtract each sampler baseline plus hipEngine live-owned/tracked bytes from 10-ms whole-GTT peak.",
+    "bound": "All code-object, runtime-library, driver, page-table, and any other process-owned memory outside hipengine.core.memory is contained in this residual. Every phase-exclusive code/library subset is therefore no larger than the residual.",
+    "why_no_unload_probe": "The declared implementation gate can be disproved by the safe aggregate upper bound. dlclose, module unloading, extra compilation, or lifecycle perturbation cannot turn a subset into more bytes than the complete set and would add risk without changing admission.",
+    "threshold_gib_at_each_context": 0.49
+  },
+  "rows": {
+    "512": {
+      "device_eager": {
+        "whole_gtt_peak_gib": 21.916004180908203,
+        "whole_gtt_baseline_gib": 0.017436981201171875,
+        "process_gtt_peak_delta_gib": 21.89856719970703,
+        "tracked_peak_gib": 21.479979306459427,
+        "live_owned_peak_gib": 21.479979306459427,
+        "all_untracked_process_residency_upper_bound_gib": 0.41858789324760437,
+        "residual_vs_tracked_high_water_gib": 0.41858789324760437,
+        "phase_exclusive_code_library_upper_bound_gib": 0.41858789324760437,
+        "passes_0_49_gib_precondition": false,
+        "lifecycle_after_close_bytes": 0,
+        "raw_sha256": "6f6884cf5654a10f469281b56688748a97bda7c719d02e34728ea55e9181402a"
+      },
+      "host_copy_eager": {
+        "whole_gtt_peak_gib": 21.47259521484375,
+        "whole_gtt_baseline_gib": 0.017436981201171875,
+        "process_gtt_peak_delta_gib": 21.455158233642578,
+        "tracked_peak_gib": 21.061182498931885,
+        "live_owned_peak_gib": 20.976744443178177,
+        "all_untracked_process_residency_upper_bound_gib": 0.47841379046440125,
+        "residual_vs_tracked_high_water_gib": 0.39397573471069336,
+        "phase_exclusive_code_library_upper_bound_gib": 0.47841379046440125,
+        "passes_0_49_gib_precondition": false,
+        "lifecycle_after_close_bytes": 0,
+        "raw_sha256": "2ecfc466b94568c230e3367f356dc4b7327151ceeb6dfabac0da243035e6a888"
+      }
+    },
+    "4096": {
+      "device_eager": {
+        "whole_gtt_peak_gib": 22.147724151611328,
+        "whole_gtt_baseline_gib": 0.01739501953125,
+        "process_gtt_peak_delta_gib": 22.130329132080078,
+        "tracked_peak_gib": 21.598797373473644,
+        "live_owned_peak_gib": 21.598797373473644,
+        "all_untracked_process_residency_upper_bound_gib": 0.5315317586064339,
+        "residual_vs_tracked_high_water_gib": 0.5315317586064339,
+        "phase_exclusive_code_library_upper_bound_gib": 0.5315317586064339,
+        "passes_0_49_gib_precondition": true,
+        "lifecycle_after_close_bytes": 0,
+        "raw_sha256": "d15f21cacac1c0b604026191743c1efe77337d95417806bae128f263b8dec502"
+      },
+      "host_copy_eager": {
+        "whole_gtt_peak_gib": 21.64379119873047,
+        "whole_gtt_baseline_gib": 0.017436981201171875,
+        "process_gtt_peak_delta_gib": 21.626354217529297,
+        "tracked_peak_gib": 21.095562510192394,
+        "live_owned_peak_gib": 21.095562510192394,
+        "all_untracked_process_residency_upper_bound_gib": 0.5307917073369026,
+        "residual_vs_tracked_high_water_gib": 0.5307917073369026,
+        "phase_exclusive_code_library_upper_bound_gib": 0.5307917073369026,
+        "passes_0_49_gib_precondition": true,
+        "lifecycle_after_close_bytes": 0,
+        "raw_sha256": "bbea8ca54b56f52c692b3152932ed91f633545170f28fa43bfa6466ef125f60d"
+      }
+    }
+  },
+  "common_context_upper_bounds_gib": {
+    "device_resident_route": 0.41858789324760437,
+    "host_embedding_stack": 0.47841379046440125
+  },
+  "classification": {
+    "active_plus_prefill_only_plus_decode_only_plus_never_used_plus_driver_runtime_upper_bound_512_device_gib": 0.41858789324760437,
+    "active_plus_prefill_only_plus_decode_only_plus_never_used_plus_driver_runtime_upper_bound_512_host_gib": 0.47841379046440125,
+    "shortfall_to_threshold_512_device_gib": 0.07141210675239562,
+    "shortfall_to_threshold_512_host_gib": 0.011586209535598746,
+    "phase_exclusive_precondition_passed": false,
+    "implementation_admitted": false,
+    "correctness_reused": true,
+    "lifecycle_reused": true
+  },
+  "decision": {
+    "sh2_m2": "closed_without_implementation",
+    "reason": "At 512, even the complete process-owned untracked residual is only 0.418588 GiB on the device route and 0.478414 GiB against live owned bytes on the host stack. Both are below 0.49 GiB, so no active/prefill/decode/never-used code-object subset can pass the frozen two-context gate.",
+    "production_change": false,
+    "next": "Proceed directly to SH2-M3 768-row owner slots. Do not add lazy loaders, dlclose, or phase module churn for SH2-M2."
+  }
+}

@@ -26,6 +26,87 @@ class DeviceBuffer:
             raise ValueError("buffer size must be non-negative")
 
 
+class DeviceMemoryArena:
+    """One owning device allocation with aligned non-owning buffer views."""
+
+    def __init__(
+        self,
+        owner: DeviceBuffer,
+        *,
+        runtime: DeviceRuntime,
+        alignment: int = 4096,
+    ) -> None:
+        if owner.ptr == 0 or owner.nbytes <= 0:
+            raise ValueError("device arena owner must be a non-empty allocation")
+        self.owner = owner
+        self.runtime = runtime
+        self.alignment = _validate_alignment(alignment)
+        self._offset = 0
+        self.requested_bytes = 0
+        self.allocation_count = 0
+        self._active: dict[int, int] = {}
+        self.closed = False
+
+    @classmethod
+    def create(
+        cls,
+        capacity_bytes: int,
+        *,
+        runtime: DeviceRuntime | None = None,
+        alignment: int = 4096,
+    ) -> "DeviceMemoryArena":
+        parsed_alignment = _validate_alignment(alignment)
+        capacity = _align_up(_validate_allocation_size(capacity_bytes), parsed_alignment)
+        selected_runtime = runtime or get_hip_runtime()
+        owner = malloc(capacity, runtime=selected_runtime)
+        return cls(owner, runtime=selected_runtime, alignment=parsed_alignment)
+
+    @property
+    def capacity_bytes(self) -> int:
+        return int(self.owner.nbytes)
+
+    @property
+    def used_bytes(self) -> int:
+        return self._offset
+
+    def allocate(self, nbytes: int) -> DeviceBuffer:
+        if self.closed:
+            raise RuntimeError("device arena is closed")
+        size = _validate_allocation_size(nbytes)
+        offset = _align_up(self._offset, self.alignment)
+        end = offset + size
+        if end > self.capacity_bytes:
+            raise MemoryError(
+                f"device arena capacity {self.capacity_bytes} cannot fit "
+                f"{size} bytes at aligned offset {offset}"
+            )
+        view = DeviceBuffer(ptr=int(self.owner.ptr) + offset, nbytes=size)
+        self._offset = end
+        self.requested_bytes += size
+        self.allocation_count += 1
+        self._active[view.ptr] = size
+        return view
+
+    def owns(self, buffer: DeviceBuffer) -> bool:
+        start = int(self.owner.ptr)
+        end = start + int(self.owner.nbytes)
+        return start <= int(buffer.ptr) and int(buffer.ptr) + int(buffer.nbytes) <= end
+
+    def release(self, buffer: DeviceBuffer) -> None:
+        """Release one logical view without freeing its shared HIP owner."""
+
+        expected = self._active.pop(int(buffer.ptr), None)
+        if expected is not None and expected != int(buffer.nbytes):
+            raise ValueError("device arena view size does not match its allocation")
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        free(self.owner, runtime=self.runtime)
+        self._active.clear()
+        self.closed = True
+
+
 def malloc(nbytes: int, *, runtime: DeviceRuntime | None = None) -> DeviceBuffer:
     runtime = runtime or get_hip_runtime()
     ptr = runtime.malloc(nbytes)
@@ -170,6 +251,24 @@ class _MemoryStatsTracker:
 
 
 _MEMORY_STATS = _MemoryStatsTracker()
+
+
+def _validate_alignment(alignment: int) -> int:
+    parsed = int(alignment)
+    if parsed <= 0 or parsed & (parsed - 1):
+        raise ValueError("alignment must be a positive power of two")
+    return parsed
+
+
+def _validate_allocation_size(nbytes: int) -> int:
+    parsed = int(nbytes)
+    if parsed <= 0:
+        raise ValueError("allocation size must be positive")
+    return parsed
+
+
+def _align_up(value: int, alignment: int) -> int:
+    return (int(value) + int(alignment) - 1) // int(alignment) * int(alignment)
 
 
 def _check_copy_size(nbytes: int, capacity: int) -> None:
