@@ -216634,3 +216634,26 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   tests/test_maple_prefill_bench_script.py` passes **3/3**. Rerun the full
   protocol from this corrected committed source before any ratio/performance
   claim.
+- Commit the matched-grid correction as `a6a0dace9`, then rerun the complete
+  protocol. All **18/18** natural+heldout states and **90/90** positions are
+  byte/logit/token exact at KL 0. Matched 24-sample native vs serial aggregate
+  is **1953.037 vs 361.070**, **1851.029 vs 204.938**, and **1917.279 vs
+  143.022 tok/s** at 128/320/512: **5.409x/9.032x/13.405x**. Every native and
+  serial sample has the identical `(repetition,prompt,category,heldout)` key;
+  tracked residency is **5,355,881,852 bytes / 560 allocations** and close is
+  zero. `/tmp/maple-sm120a-native-prefill-matched.json` is accepted source data.
+- Cache-only Nsight of one 128-row native request records **367 launches / 68.194
+  ms kernels**. Expected 24-call medians include QKV **499.467 us**, O **335.741
+  us**, GQA4 attention **160.015 us**, grouped gate/up **978.359 us**, grouped
+  down **772.777 us**, router logits **52.592 us**, QK/KV **3.920 us**, and
+  compactor count/prefix/scatter **1.824/1.344/2.464 us**; embed/head/argmax each
+  appear once. Raw report remains `/tmp/maple-sm120a-native-prefill.nsys-rep`.
+- Extend the real-checkpoint CUDA serial/native state test to **12/520/770**
+  tokens. All three preserve final hidden/normalized state, physical sliding and
+  global K/V, complete spans, FP32 top-logit bits, one continuation, and
+  teardown. Combined command `CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1
+  HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt uv run --extra dev
+  pytest -q tests/test_cuda_sm120a_maple.py
+  tests/test_maple_prefill_bench_script.py` passes **13/13**. Add the NVCC
+  version-file field to benchmark metadata and perform one final matched run
+  from the resulting committed source before publication.
