@@ -209110,3 +209110,23 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   this host. G1 therefore remains default-off until a clean matched repeated
   leaf decision plus the strongest available model-state/token gate is
   published; do not infer a complete-ASR speedup from this implementation unit.
+
+## 2026-08-08 — Add the Moonshine G1 clean A/B harness
+
+- Add `scripts/moonshine_lm_head_bench.py` for the exact production leaf shape
+  `[1,416] x [36,864,416]`. It runs baseline wave8+argmax and candidate
+  wave8-partials+reducer over the same deterministic FP16 input/weights and
+  fixed allocations, counterbalances order, records every synchronized HIP-
+  event and host-wall sample, and requires byte-exact full logits, exact token,
+  NumPy allclose/top-1, finite output, and allocation return-to-baseline.
+- The harness supports prebuild-only and trace-smoke modes, cached-build
+  enforcement, attached profiler summaries with both expected kernel names,
+  canonical clean/dirty provenance, a >=1% event+wall leaf threshold, and
+  `--require-accept`. Its accepted status is explicitly kernel-microbenchmark
+  scoped and cannot select the complete runtime without the missing model gate.
+- Two helper/report-contract tests pass; CPython 3.10 import, `py_compile`, and
+  diff checks pass. A five-repeat dirty-tree smoke is correctness/lifecycle
+  GREEN and measures **109.748 -> 97.397 us event (-11.254%)** and
+  **110.736 -> 98.349 us wall (-11.186%)**, but correctly emits
+  `diagnostic_dirty` and `performance_claim=false`. This smoke is harness
+  validation only; rerun from the committed clean revision for the decision.
