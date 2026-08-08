@@ -55,9 +55,10 @@ numbers below.
   details, and backend execution telemetry.
 - On gfx1100, the exact Qwen3.6-35B-A3B `Q4_K_M` one-step graph policy selects
   in-tree PM4 only for measured c1/c2/c4/c8 windows above capture break-even;
-  HIP graph remains the global fallback. Current W7900 direct c1/c2/c4/c8 is
-  **97.985/150.308/213.136/273.549 aggregate tok/s** with exact state and clean
-  retirement; the OpenAI physical-c8 topology row is explicitly blocked below.
+  HIP graph remains the global fallback. Current source-pinned W7900 direct
+  c1/c2/c4/c8 is **98.263/148.944/209.304/266.479 aggregate tok/s**. Real OpenAI
+  SSE c1/c8/c9/c13/serial-c13 is **72.169/158.542/137.001/129.507/55.868** with
+  one physical C8, exact trajectories/IDs, zero fallback, and complete ownership drain.
 - PARO and GGUF support ordinary sampling controls including top-k/min-p,
   penalties, logit bias, suppression, deterministic seeds, EOS/min-token policy,
   token stops, and multi-token stops. Covered PARO shapes use a native GPU
@@ -3417,42 +3418,49 @@ the batch; *per-sequence* is tok/s seen by one request. See
 
 ### gfx1100 / W7900 direct and server GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 
-**Status: retained current direct c1/c2/c4/c8 model-step throughput; current
-OpenAI SSE topology blocked.** All rows use `UD-Q4_K_M`, BF16 KV, greedy top-1,
-W7900/gfx1100, and TheRock HIP 7.15. With no selector override, c1 uses HIP graph
-and capture-amortized c2/c4/c8 use canonical stateful/local-cache PM4.
+**Status: retained current direct c1/c2/c4/c8 model-step throughput and real
+OpenAI SSE c1/c8/c9/c13 scaling.** All rows use `UD-Q4_K_M`, BF16 KV, greedy
+top-1, W7900/gfx1100, and TheRock HIP 7.15. With no selector override, c1 uses
+HIP graph and capture-amortized c2/c4/c8 use canonical stateful/local-cache PM4.
+The source-pinned harness fails closed on any imported-package root mismatch.
 
 <!-- BEGIN TOPLINE:W7900_CONCURRENCY -->
 | Direct route | Logical C | Native groups / transport | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| direct c1 | 1 | 1x c1 / HIP graph | 97.985 | 97.985 | 1.000x | 1.018x | 0.206 / 0.206 s | 10.205 / 10.332 ms | 21.785 GiB |
-| direct c2 | 2 | 1x c2 / PM4 | 150.308 | 75.154 | 1.534x | 1.562x | 0.952 / 0.956 s | 13.318 / 13.448 ms | 22.396 GiB |
-| direct c4 | 4 | 1x c4 / PM4 | 213.136 | 53.284 | 2.175x | 2.215x | 2.041 / 2.045 s | 18.780 / 18.948 ms | 23.400 GiB |
-| **direct c8** | **8** | **1x c8 / PM4** | **273.549** | **34.194** | **2.792x** | **2.842x** | **3.523 / 3.534 s** | **29.291 / 29.442 ms** | **25.407 GiB** |
-| chunked c8 control | 8 | 2x c4 PM4, serialized | 211.040 | 26.380 | 2.154x | 2.193x | 3.072 / 4.100 s | 37.941 / 38.254 ms | 26.077 GiB* |
-| serial-c4 rate control | 4 | 4x c1 HIP graph, serialized | 96.244 | 24.061 | 0.982x | 1.000x | 0.537 / 0.864 s | 41.556 / 42.160 ms | 26.996 GiB* |
+| direct c1 | 1 | 1x c1 / HIP graph | 98.263 | 98.263 | 1.000x | 1.020x | 0.211 / 0.211 s | 10.168 / 10.301 ms | 21.785 GiB |
+| direct c2 | 2 | 1x c2 / PM4 | 148.944 | 74.472 | 1.516x | 1.546x | 0.955 / 0.961 s | 13.442 / 13.571 ms | 22.396 GiB |
+| direct c4 | 4 | 1x c4 / PM4 | 209.304 | 52.326 | 2.130x | 2.172x | 2.025 / 2.036 s | 19.128 / 19.318 ms | 23.400 GiB |
+| **direct c8** | **8** | **1x c8 / PM4** | **266.479** | **33.310** | **2.712x** | **2.765x** | **3.480 / 3.480 s** | **30.098 / 30.303 ms** | **25.407 GiB** |
+| chunked c8 control | 8 | 2x c4 PM4, serialized | 205.895 | 25.737 | 2.095x | 2.137x | 3.061 / 4.091 s | 38.909 / 39.161 ms | 26.077 GiB* |
+| serial-c4 rate control | 4 | 4x c1 HIP graph, serialized | 96.369 | 24.092 | 0.981x | 1.000x | 0.542 / 0.867 s | 41.508 / 42.039 ms | 26.996 GiB* |
 
-| Real OpenAI SSE protocol | Current status | Result |
-| --- | --- | --- |
-| p512/d128 c1/c8/c9/c13/serial-c13 plus live c8→c13 | **Blocked; no numeric topline** | Current admission forms c4 cohorts and the live gate never observes required logical/physical c8 |
+| Real OpenAI SSE route | Logical C | Physical execution | Aggregate generated tok/s | Per-request tok/s | Aggregate / logical-c1 | Aggregate / serial-c13 | Cycle wall p50 | Scheduler TTFT p50 / p95 | Scheduler ITL p50 / p95 | Cumulative tracked peak |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| logical-c1 control | 1 | native c1 | 72.169 | 72.169 | 1.000x | 1.292x | 1.774 s | 0.261 / 0.263 s | 11.486 / 11.682 ms | 26.728 GiB |
+| **physical c8** | **8** | **1x c8** | **158.542** | **19.818** | **2.197x** | **2.838x** | **6.459 s** | **1.951 / 2.089 s** | **32.431 / 35.782 ms** | **28.494 GiB*** |
+| grouped c9 | 9 | c8 + c1 | 137.001 | 15.222 | 1.898x | 2.452x | 8.409 s | 2.248 / 2.385 s | 44.259 / 52.118 ms | 28.725 GiB* |
+| **grouped c13** | **13** | **c8 + masked c8** | **129.507** | **9.962** | **1.794x** | **2.318x** | **12.849 s** | **3.341 / 3.484 s** | **68.616 / 85.544 ms** | **30.076 GiB*** |
+| serial-c13 bridge | 13 | 13x c1 serial | 55.868 | 4.298 | 0.774x | 1.000x | 29.785 s | 3.394 / 3.535 s | 202.283 / 224.570 ms | 30.076 GiB* |
 <!-- END TOPLINE:W7900_CONCURRENCY -->
 
 Direct protocol uses 128 decode transitions, one discarded warmup, and median
-of three in one loaded model. Native c8 is **2.792x** c1 and **+29.620%** over
+of three in one loaded model. Native c8 is **2.712x** c1 and **+29.424%** over
 two serialized c4 groups. All trajectories and graph keys repeat, every PM4
 submission retires with zero fallback/callback error, and tracked allocation
 returns to zero.
 
-The unchanged OpenAI refresh completed its static samples but failed the live
-c8→c13 trigger because current admission forms c4 cohorts rather than the
-required physical c8. Compacting live PM4 proof removes a separate instrumentation
-regression—focused wall returns **77.638→130.017 tok/s**, neutral to explicit HIP
-graph **130.040**—but does not repair topology, so the stale July server numbers
-are no longer toplines.
+The real OpenAI protocol uses one discarded warmup and median of three static
+runs per route, then admits five delayed requests into eight live requests.
+Context-qualified admission forms one physical C8 and then logical C13 as C8 +
+masked-C8(5); unspecified or >768-position contexts retain the C4 safety cap.
+All **189/189 rows and 24,192/24,192 generated IDs** are exact. Live C8→C13 is
+**1,664/1,664** exact at **122.860 aggregate tok/s**, with zero fallback, KV
+pool return, and final zero request/session/KV ownership.
 
-Current artifact: [`PM4 README concurrency refresh`](benchmarks/results/2026-08-08-gfx1100-pm4-readme-concurrency-refresh.json).
-Historical server evidence remains in [`F1 real server`](benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json)
-and [`benchmarks/HISTORY.md`](benchmarks/HISTORY.md).
+Current artifact: [`context-scoped C8 server refresh`](benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json).
+The prior [`blocked PM4 refresh`](benchmarks/results/2026-08-08-gfx1100-pm4-readme-concurrency-refresh.json),
+[`F1 real server`](benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json),
+and [`benchmarks/HISTORY.md`](benchmarks/HISTORY.md) remain historical evidence.
 
 ### gfx1151 / Radeon 8060S PARO direct c2/c4/c8 and production shape catalog (Qwen3.6 35B-A3B, 512/128)
 
