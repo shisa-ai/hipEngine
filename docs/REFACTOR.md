@@ -3272,6 +3272,20 @@ should be boring.
   clean release if no deployment requires strict hidden-boundary arithmetic;
   preserve the static lockstep runtime as the exact comparison route.
 
+## Moonshine gfx1151 exact wave8 top-1 — temporary route selector
+
+- `MoonshineResidentRuntime(lm_head_route="wave8_top1")` opts into the G1
+  candidate; `wave8_argmax` remains the default and explicit unfused fallback.
+  The candidate materializes the same complete FP16 logit plane, owns bounded
+  FP16-value/int64-index scratch, and replaces only the full-logit argmax scan
+  with stable block partials plus a final reduction.
+- If the clean primitive, model-state/token, graph/lifecycle, profiler, and
+  matched complete-route gates reject it, remove the constructor selector,
+  conditional scratch, runtime branch, and candidate benchmark immediately.
+  If promoted, keep the unfused registry keys as the required composite fallback
+  and remove the public selector after one clean release unless it remains
+  necessary for rollback/bisection.
+
 ## Maple P1 expert-major prefill rollback — temporary opt-out
 
 - `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` defaults to `1`; `=0` restores the

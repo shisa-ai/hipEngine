@@ -927,7 +927,24 @@ whole-token profiles can separate its 30.671-MB stream from other 416-wide
 projections. Phase-3 runtime uses the separately registered
 `tied_wave8_fp32_accum` symbol: one local256 block owns eight independent
 wave32 vocabulary rows. The one-row-per-block local256 wrapper remains the
-explicit fallback. The cross-K/V variant preserves the same dot products but writes direct resident
+explicit fallback.
+
+The default-off G1 candidate registers
+`moonshine_lm_head/fp16/tied_wave8_top1_logits_fp32_accum`. It preserves the
+same per-column wave32 FP32 dot and complete FP16 logit store, then writes one
+stable FP16-value/int64-index partial per eight-vocabulary block and reduces
+only those partials. `MoonshineResidentRuntime(lm_head_route="wave8_top1")`
+reserves 46,080 bytes of fixed scratch at the 36,864-row model shape; the
+ordinary wave8 projection plus `moonshine_argmax/fp16/lowest_id` remains the
+required unfused fallback and runtime default pending G1 qualification. The
+13-row tie/tail and 36,864-row production-shape gfx1151 gates are byte-exact for
+all logits and selected token versus the unfused chain and pass the independent
+NumPy projection oracle. A cached-only trace names producer and reducer at
+local256/VGPR16/scratch0 with LDS512/3,072 and plausible one-shot durations
+167.754/5.210 us; matched repeated performance is intentionally deferred to the
+clean decision gate.
+
+The cross-K/V variant preserves the same dot products but writes direct resident
 `[heads,frames,52]` storage instead of row-major `[frames,416]`, avoiding a
 separate transpose or temporary frame buffer. Four-row output matches the
 transposed NumPy projection within max absolute error `3.052e-5`; cache-only
