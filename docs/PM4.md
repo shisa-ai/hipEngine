@@ -925,6 +925,25 @@ slower. Tape size remains 18,079 dwords. Evidence:
 `benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json`. This is
 retained as an explicit candidate pending the broader promotion matrix.
 
+`scripts/pm4_promotion_gate.py` executes that matrix in one resident session. It
+uses HIP graph as the exact oracle for every prompt in the complete
+`mtpbench-code-general-ja` category suite and `gdn-prefill-category-heldouts`,
+adds a 4K context stress generation, reuses one PM4 queue across all graph
+rebuilds, performs no-submit and retired-after-submit cancellation closes, and
+requires child-ledger drain, context/session shutdown, and memory recovery. The
+one-prompt/64-token harness smoke passes four PM4 generations with exact
+seed/final tokens, recurrent/KV state, and all logits. The full tracked-clean
+command is:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. \
+python3 scripts/pm4_promotion_gate.py \
+  --steps 3 --context-stress-length 4096 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached --json /tmp/hipengine-pm4-promotion.json
+```
+
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact
 benchmark command/hardware/source evidence, compact artifact, rollup, and
