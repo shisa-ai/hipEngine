@@ -65,7 +65,7 @@ _H6C_VARIANT = (
     "selected_dual_silu_grouped_prefill_compact_"
     "k3072_n1024_e256_rowbatch4_bf16_bf16_out"
 )
-_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_208
+_PRODUCTION_MOE_SCRATCH_BYTES = 104_370_976
 
 
 def test_h6f_source_default_is_retained_under_h6r_source_and_fail_closed(

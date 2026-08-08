@@ -187,6 +187,8 @@ GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 0
 # Dynamic selected-expert pair reuse remains disabled until independently
 # measured on W7900. Zero preserves the existing gfx1100 route.
 GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
+# Qwen Q5T16 tile8 selected-down requires an independent W7900 gate.
+GGUF_Q5_T16_SELECTED_QWEN_TILE8 = False
 # Q5T16 selected-down pair reuse also requires an independent W7900 gate.
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
@@ -657,6 +659,7 @@ __all__ = [
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT",
+    "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

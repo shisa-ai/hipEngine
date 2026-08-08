@@ -26,6 +26,198 @@ See also:
 
 This is the authoritative list of kernels/oracles that exist in this repo today. Empty backend family packages under `hipengine/kernels/hip_gfx1100/*/` are placeholders, not implemented kernels.
 
+### Maple packed linear kernels (**hipEngine landed, gfx11 bring-up**)
+
+`hipengine/kernels/hip_gfx1100/quant/maple_ternary.{hip,py}` implements the
+framework-independent storage contract published in
+`deepgrove-ai/mlx-lm-deepgrove/mlx_lm/ternary.py`: ternary projections pack 16
+LSB-first 2-bit codes per U32 word with `value = row_alpha * (code - 1)`, while
+embeddings and the exact lm-head use LSB-first affine 4-bit/group-64 storage.
+The family exposes generic BF16 ternary GEMV, split-weight fused Q/K/V GEMV,
+selected-expert dual gate/up and single down GEMV, exact expert-major batched
+gate/up/down, affine4 embedding lookup, and affine4→FP32 lm-head GEMV. The
+expert-major consumers take generic stable-compaction `expert_start` and
+`sorted_lanes` metadata and write directly back to original row/route order.
+The generic group-scatter family now also registers an int32 selected-ID
+parallel count/prefix/stable-scatter variant for Maple's router ABI. These
+kernels register under both `hip_gfx1100` and the peer `hip_gfx1151` alias for
+quant key `maple_ternary2`.
+
+Independent NumPy fixtures cover pack/dequant order and BF16 boundaries. The
+gfx1151 gate is BF16-bit exact for embedding, generic/fused QKV, and selected
+expert outputs; affine4 FP32 logits pass at `atol=rtol=2e-4`. A cache-only
+`rocprofv3 --kernel-trace` smoke observes
+`maple_ternary_gemv_kernel` at grid 128/local32, VGPR32, SGPR128, LDS0,
+scratch0, and **3,527 ns** duration on Radeon 8060S/gfx1151.
+
+The P1 expert-major prefill path is BF16-bit exact to the row/route NumPy oracle
+and passes all 18 natural+heldout final hidden/KV/span-state hashes with KL 0
+and 90/90 token/top-1 agreement. A cached dirty-tree gfx1151 trace confirms the
+final kernels ran as `maple_selected_ternary_dual_grouped_kernel<128, 1>`
+(local128, VGPR72, LDS1024, scratch0) and
+`maple_selected_ternary_grouped_kernel<32, 1>` (local32, VGPR48, LDS512,
+scratch0). Stable metadata costs 0.444 ms/request. The expert family changes
+**276.150 -> 254.179 ms (1.086x)** and traced prefill320 changes **498.442 ->
+476.730 ms (1.046x)** in the implementation trace. Clean qualification retains
+**726.421/679.632/650.745 tok/s** at 128/320/512 with 18/18 state hashes and
+90/90 positions exact. Exact 2-/4-lane cooperative schedules regress, leaving
+gate/up scalar unpack/reduction as the measured blocker to the 97.708-ms P1
+target. The row/route gather remains an environment-controlled rollback.
+
+The P3 dense token-tile sweep leaves the original tile-8 QKV/O consumers
+unchanged. Exact tile 16/32 candidates preserved the production 2,048-wide
+reduction bit-for-bit but measured **731.182/571.923 tok/s** versus tile 8
+**744.116 tok/s**, with **0/16** paired wins for each candidate. The regression
+is consistent with larger dynamic LDS (8/16 KiB versus 4 KiB) and longer block
+residency dominating the saved 512-byte weight-row reloads. The required direct
+BF16-WMMA probe is also rejected: native K16 association changes **106/256
+FP32** word partials and **43/655,360 BF16** production-shape outputs. A cached
+trace names `maple_ternary_gemm_wmma_kernel` at local32/VGPR48/SGPR128/LDS0/
+scratch0, and extracted ISA confirms `v_wmma_f32_16x16x16_bf16`. All temporary
+selectors, alternate exports, and WMMA probes were removed; do not repeat these
+scalar-tile or direct-WMMA schedules.
+
+The D0 c1 router registers a retained one-dispatch last-block composite. Its
+256 expert blocks preserve the existing logit tree; a four-byte owned atomic
+counter identifies the final block, which executes the unchanged FP32
+softmax/stable-top-8 body and wraps the counter to zero. The clean two-resident
+18-prompt natural+heldout qualification improves the exact two-dispatch
+rollback **139.538 -> 145.321 tok/s (+4.14%)**, saves **0.301 ms** at the paired
+median, and wins **1,127/1,152** timed pairs. All **1,296/1,296** tokens/top
+logits, **36/36** native-start/final state pairs, and **2,592/2,592** counter
+checks are exact; close returns zero ownership. Cached tracing names
+`maple_router_topk_single_dispatch_kernel` at local256/VGPR16/SGPR128/LDS3584/
+scratch0, cuts **24 launches/token**, and measures the refreshed short profile
+at **5.527-ms wall / 4.859-ms kernels / 271 launches / 180.935 tok/s**. The
+two-dispatch route remains registered as the exact rollback.
+
+The retained/default D0 affine4 head registers
+`maple_affine4_gemv/group64_wave32_exact`. One local32 wave computes four
+virtual production partials per lane and reconstructs the exact stride
+64/32/16/8/4/2/1 tree with shuffles, removing the original four-wave LDS
+exchange and barriers without output-row tiling. At the real 151,936x2,048
+head it is FP32-bit exact across all logits and improves **1.527 -> 1.020 ms
+(1.496x, 48/48 wins)**. Clean two-resident 18-prompt qualification improves
+the exact group64 rollback **143.679 -> 153.409 tok/s (+6.77%)**, saves
+**0.442 ms** at the paired median, and wins **1,146/1,152** pairs. All
+**1,296/1,296** tokens/top logits, **36/36** native-start/final state pairs,
+**2,592/2,592** counter checks, and lifecycle are exact. Cached tracing names
+`maple_affine4_gemv_wave32_exact_kernel` at local32/VGPR16/SGPR128/LDS0/
+scratch0, **0.968 ms/step** in the final trace. D0's behavior-neutral host tail
+also snapshots the two default-off fusion selectors once per step rather than
+once per layer, deleting 46 environment reads without changing this **271-
+launch** trace. Four-process fixed-token A/B improves **200.279 -> 202.580
+tok/s (+1.15%)**; the separate trace process is **5.018-ms wall / 4.550-ms
+kernels / 0.468-ms host gap = 199.293 tok/s**. Production now selects wave32
+directly after the final roadmap audit removed the temporary environment seam;
+the original group64 primitive remains registered and directly tested.
+
+The retained/default D1 batched head registers
+`maple_affine4_gemv/group64_batched_rowreuse_exact` for c2/c4/c8. One local128
+block owns one vocabulary row across all request rows, loads each packed
+word/scale/bias once, and replays the original 128-thread FP32 tree independently
+for every request. Production-shape c2/c4/c8 logits are bit-exact to the original
+all-row kernel. The clean fixed-helper gate improves aggregate throughput
+**218.818/261.099/299.181 -> 250.481/346.365/428.063 tok/s**; all nine timing
+samples, **18/18** natural/category-heldout trajectories, sparse and reclaimed
+slots, and lifecycle are exact. Cached c8 tracing names
+`maple_affine4_gemv_batched_rowreuse_exact_kernel<8>` at local128/VGPR96/
+SGPR128/scratch0, measures the head **10.490 -> 3.734 ms (2.809x)**, and reduces
+wall **25.925 -> 19.296 ms** with the same 293 launches/batch. Production now
+selects row reuse directly at supported widths after the final roadmap audit;
+unsupported widths retain the registered original all-row route, and direct
+kernel tests compare both exact primitives.
+
+`hipengine/kernels/hip_gfx1100/attention/maple_attention.{hip,py}` adds the
+unfused attention/KV chain: device span publication, per-head standard
+QK-RMSNorm plus rotate-half partial RoPE, BF16 K/V append, and online-softmax
+GQA decode. Both write and attention consume all required `KVLiveSpans`
+pointers (`base_offsets`, `live_counts`, `token_positions`, `evict_mask`) plus
+`row_positions`; the same token-granular ring represents SWA-512 and bounded
+global cache by capacity. Span wrap, nonidentity physical offsets, Q/K values,
+K/V bytes, and attention output are BF16-bit exact to the NumPy oracle. The
+cache-only gfx1151 trace reports QK/RoPE/KV-write at local32/VGPR24/scratch0,
+**5,771 ns**, and attention at local32/VGPR16/scratch0, **3,607 ns** on the tiny
+fixture. The batched ring-prefill attention reads the complete live causal
+prefix across chunk boundaries; its prefix-aware fixture is BF16-bit exact and
+a cached gfx1151 trace names `maple_attention_prefill_ring_kernel` at **6,452
+ns**, VGPR16, LDS0, scratch0. The clean post-P1 prefill320 trace measures 48
+chunk/layer calls at **63.993 ms/request (13.55% of kernel time)**, local128,
+VGPR16, LDS0, scratch0. This local128 body owns one `(query head,row)` per block,
+rereads each KV stream for all four GQA query heads, and barriers throughout the
+per-key reduction. P2 adds a separately registered exact GQA4 body: one wave32
+owns `(KV head,row)`, loads each K/V row once, and emulates all 128 virtual
+threads through the original 64/32/16/8/4/2/1 LDS stages plus the original
+weighted-value/FMA boundary. It consumes every `KVLiveSpans` pointer and keeps
+local128 as rollback. The production-shape primitive is BF16-bit exact at the
+256-row chunk boundary; the binding M5 gate passes 18/18 state hashes, 90/90
+positions, KL 0, and exact lifecycle. Clean cached tracing names
+`maple_attention_prefill_ring_gqa4_wave32_kernel` at local32/VGPR64,
+dynamic-LDS512 (static trace field LDS0), scratch0 and measures **63.993 ->
+21.916 ms (2.920x)** at unchanged launch count. P2 qualified 128/320/512 at
+**749.175/741.368/754.000 tok/s**, up **3.13%/9.08%/15.87%** over P1. P4's
+unchanged arithmetic recertifies **750.854/741.890/754.458 tok/s** with
+5,355,881,852-byte residency and carries native prefill safely through the
+retained 520/770-token physical-state gates. Batched decode uses disjoint
+per-request rings and separate SWA/global capacity owners; wrapped positions
+remain inside their request arena after position 512. The wrapped c=3 primitive
+is BF16-bit exact;
+cached tracing reports batched QK/RoPE/KV write at **3,967 ns** (VGPR24) and
+batched attention at **20,197 ns** (VGPR16), both LDS0/scratch0.
+
+`hipengine/kernels/hip_gfx1100/moe/maple_moe.{hip,py}` supplies the unfused MoE
+control/tail around selected ternary GEMV: BF16-hidden/BF16-weight router logits
+with FP32 accumulation, all-expert softmax, stable top-k, and selected
+renormalization; trained clamp-7 SwiGLU; and selected weighted sum plus residual
+with both published BF16 boundaries. Tiny gfx1151 fixtures preserve selected IDs
+exactly, bound FP32 route weights to one ULP, and preserve BF16 activation/residual
+bytes. Cache-only tracing
+reports router local256/VGPR8/LDS3584/scratch0 at **19,156 ns**, clamp-7
+local256/VGPR32/scratch0 at **2,605 ns**, and weighted residual
+local256/VGPR16/scratch0 at **2,885 ns**.
+
+The router also retains the two-dispatch parallel variant
+`maple_router_topk_parallel_bf16` (grid-over-experts coalesced dot followed by
+parallel softmax/stable-top-k). It first cut the serial router from 277 -> 48
+us/call and decode from 12,758 -> 6,132 us (2.08x), with the packed gate at max
+KL 0.0139, top-1 18/18, and exact router IDs. It is now the explicit D0 rollback
+rather than the default (`benchmarks/results/2026-08-07-gfx1151-maple-router-parallel.json`).
+
+`hipengine/runtime/maple.py` composes those registered/unfused families with the
+existing direct-weight PARO RMSNorm and two-stage FP32 argmax into a resident
+24-layer c=1 runner. Immutable packed weights stay device-resident; SWA and
+global metadata reset without clearing stale cache bytes because absolute
+`token_positions` gate every read. Both span-owner identities are published even
+when their capacities are equal; the earlier top-ID-1112 diagnostic preceded
+that correctness fix and is not retained evidence. P4 keeps global layers
+chunk-batched beyond SWA-512 while each sliding layer restores pre-chunk span
+metadata, batches the safe prefix, and serializes post-wrap attention rows. The
+520/770-token gates preserve physical K/V, spans, final state, and continuation.
+
+`MapleBatchRunner.from_runner()` now shares the c1 checkpoint owner and exposes
+request-local span/cache views for native prompt admission. Public
+`MapleResidentModelRunner` uses fixed sparse slots, D0 c1 for one active row,
+and D1 c2/c4/c8 otherwise; completion/rollback resets only that slot. The clean
+public protocol reaches **123.131/165.697/202.038/214.788 aggregate tok/s** at
+c1/c2/c4/c8, with all 15 repeated natural/heldout trajectory sets,
+physical-c8 singleton preservation, staggered slot reuse, and lifecycle exact.
+The final roadmap audit removes the duplicate `MapleContinuousBatcher` owner;
+the low-level D1 benchmark drives `MapleBatchRunner.batch_step` directly, while
+all admission/reclaim orchestration stays on the public runner. Evidence:
+`benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
+
+The corrected 18-position packed-formula gate passes at max KL **0.013508** and
+18/18 top-1; the pinned Transformers `trust_remote_code` same-weight gate passes
+at max KL **0.004719** and 18/18 top-1, with device greedy argmax exact. The
+post-fix public `LLM.generate_detailed()` route resolves model ID →
+`hip_gfx1151` / `maple_ternary2`, consumes the exact 18-token chat prompt,
+produces a coherent 37-token answer, stops on real EOS 151645, repeats the same
+IDs/text in one resident process, and returns tracked allocation to zero after
+`close()`. The observed **4.365 s cold / 0.703 s resident-repeat** walls are
+bring-up diagnostics only, not retained throughput claims. Evidence:
+`benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json` and
+`benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json`.
+
 ### Laguna gfx1151 decode transfer screen
 
 The retained gfx1100 current-P4 Laguna head-RMSNorm + partial-RoPE + BF16
@@ -713,6 +905,11 @@ exact composite in production:
 [`production`](../benchmarks/results/2026-07-30-gfx1151-laguna-f16-output-add-rmsnorm-production.json).
 ### Moonshine source-F16 projection baselines (**hipEngine landed**)
 
+The current runtime, CUDA-review findings, and ordered gfx1151 transfer gates
+are maintained in [`MOONSHINE.md`](MOONSHINE.md). Kernel catalog entries below
+remain the arithmetic/source authority; CUDA measurements never select HIP
+geometry without an independent gfx1151 gate.
+
 `linear/moonshine_projection.{hip,py}` provides raw-pointer FP16-input,
 FP16-weight, FP16-output single, paired, and triple projections with FP32
 accumulation. The single wrapper also has an explicit row-precompute key for
@@ -730,11 +927,54 @@ whole-token profiles can separate its 30.671-MB stream from other 416-wide
 projections. Phase-3 runtime uses the separately registered
 `tied_wave8_fp32_accum` symbol: one local256 block owns eight independent
 wave32 vocabulary rows. The one-row-per-block local256 wrapper remains the
-explicit fallback. The cross-K/V variant preserves the same dot products but writes direct resident
+explicit fallback.
+
+The promoted G1 route registers
+`moonshine_lm_head/fp16/tied_wave8_top1_logits_fp32_accum`. It preserves the
+same per-column wave32 FP32 dot and complete FP16 logit store, then writes one
+stable FP16-value/int64-index partial per eight-vocabulary block and reduces
+only those partials. `MoonshineResidentRuntime` selects `wave8_top1` by default
+and reserves 46,080 bytes of fixed scratch at the 36,864-row model shape; the
+ordinary wave8 projection plus `moonshine_argmax/fp16/lowest_id` remains the
+required explicit unfused fallback. The 13-row tie/tail and 36,864-row
+production-shape gfx1151 gates are byte-exact for all logits and selected token
+versus the unfused chain and pass the independent NumPy projection oracle.
+Clean 63-repeat burst-1 timing improves event **114.854 -> 101.068 us
+(-12.003%, 63/63 wins)** and synchronized wall **120.266 -> 105.828 us
+(-12.005%, 62/63 wins)**; both p95s improve. A cached-only trace names producer
+and reducer at local256/VGPR16/scratch0 with LDS512/3,072. The actual pinned
+checkpoint also preserves 194/194 graph tokens, eight selected
+full-logit/final-hidden pairs, and complete self/cross K/V state byte-exact.
+The regenerated real-audio admission matrix passes all **24/24** six-file x
+fallback/candidate x eager/graph rows: exact through EOS and selected fixture
+state, worst KL `1.010e-5`, 100% top-1, zero timed allocation, four graphs and
+194 replays per graph row, pairwise-exact route outcomes, and clean teardown.
+Evidence:
+[`G1 leaf + model state`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json)
+and
+[`G1 runtime promotion`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json).
+
+The cross-K/V variant preserves the same dot products but writes direct resident
 `[heads,frames,52]` storage instead of row-major `[frames,416]`, avoiding a
 separate transpose or temporary frame buffer. Four-row output matches the
 transposed NumPy projection within max absolute error `3.052e-5`; cache-only
 tracing names the head-major pair at 17.073 us, local256/VGPR16/LDS512/scratch0.
+
+The peer `cuda_sm120a/linear/moonshine_projection.{cu,py}` C1c port preserves
+the same nine raw-pointer FP16 keys under `quant="fp16"` without aliasing HIP
+wrappers or adding backend branches: single, row-precompute single,
+bias-aware single, triple QKV, row pair, head-major cross K/V, tied LM head
+(plain + wave8), and the C1d fc1 gated-SiLU / fc2 bias+residual boundaries.
+It builds only with `-arch=sm_120a` and uses full-mask `__shfl_down_sync`
+warp reductions. On an RTX PRO 6000 Blackwell (GPU0) all projection families
+pass the independent NumPy oracle within 2.0e-3 (all finite); the 36,864-row
+tied LM head matches and wave8 equals the plain tied path, and the head-major
+cross-K/V matches the transposed oracle layout. An Nsight Systems cache-only
+trace observes all seven C1c kernels and no compiler child; single-run
+launch-level medians are 1.7/2.6/2.4 us single/triple/bias, 31.4 us pair,
+33.0 us cross-K/V head-major, and 31.0/7.0 us LM tied/wave8. These are
+bring-up diagnostics, not a performance promotion; the tied-vs-wave8 LM gap is
+a C3 leaf hint pending enclosing-layer/generation evidence.
 
 The production-shape fixture covers hidden 416, batch-one single/triple, and a
 40-row paired cross-K/V baseline against the independent NumPy oracle. Maximum
@@ -788,6 +1028,45 @@ reports embedding/residual/RoPE/cache/composite at
 The 36,864-way argmax is tie-stable and traces at 31.219 us,
 local256/VGPR16/LDS3072/scratch0; it uses no caller scratch allocation.
 
+The peer `cuda_sm120a/fused/moonshine_glue.{cu,py}` C1 port preserves these
+six raw-pointer FP16 keys without aliasing HIP wrappers or adding backend
+branches to model code. It builds only with the architecture-qualified
+`-arch=sm_120a` target and uses CUDA warp32-compatible block reductions. On an
+RTX PRO 6000 Blackwell (GPU0), embedding, rounded residual, lowest-ID argmax,
+partial RoPE, fixed cache append, and the bounded RoPE+cache composite pass the
+independent NumPy oracle at positions 0/1/63/193; the composite is byte-equal
+to the separate CUDA chain. An Nsight Systems cache-only trace observes all six
+expected kernels. Single-run diagnostic medians are 0.576 us residual, 1.024 us
+embedding, 8.256 us argmax, and 1.168/0.784/1.200 us for RoPE/cache/composite
+(the last three are four-instance medians). These are bring-up diagnostics, not
+a complete decoder or performance promotion.
+
+The peer `cuda_sm120a/norm/moonshine_layernorm.{cu,py}` C1b port preserves the
+HIP LayerNorm family: `moonshine_layernorm/fp16/fp32_stats` and the fused
+`moonshine_residual+moonshine_layernorm/rounded_fp32_stats` composite, both
+raw-pointer, no backend branches. The CUDA kernels use the same ordered FP32
+warp-butterfly plus cross-warp shared reduction (full-mask `__shfl_down_sync`)
+and the residual+LayerNorm launch writes the rounded FP16 boundary before
+computing FP32 statistics over that same buffer, exactly like the HIP
+reference. On an RTX PRO 6000 Blackwell (GPU0) the hidden-416 kernels pass the
+independent NumPy FP32-stats oracle across decoder and encoder row counts
+1/7/40/207/1248 (allclose 3.0e-3), the fused residual boundary is byte-exact to
+the primitive chain, and all outputs are finite. A cache-only Nsight Systems
+trace observes both expected kernel identities with no compiler child;
+per-row-bucket durations for rows 1/7/40/207/1,248 are
+1.952/1.952/2.016/2.336/4.768 us (LayerNorm) and
+2.080/2.144/2.240/2.592/5.440 us (residual+LayerNorm). A batch-timed
+CUDA-event schedule screen (2000-launch batches on GPU0) shows 256 threads is
+the measured best below 768 rows and 128 threads is best from 768 upward for
+both kernels (256 is roughly 1.4-1.5x slower at 1,248 rows), so the wrappers
+auto-select 128 threads for rows >= 768 while keeping 256 for decoder/short
+buckets; an explicit ``threads=`` always overrides. A thread-sweep correctness
+gate covers threads 32/64/128/256 across hidden 52/416 and rows 1/7, plus
+poisoned-output/epsilon and constant/extreme-row coverage. Against the
+model-derived CUDA synthetic and ``audio-konichiwa`` fixtures, final decoder
+LayerNorm output is byte-exact at positions 0/1/8/32/64/128/193 (opt-in GPU
+gate). These are bring-up diagnostics, not a performance promotion.
+
 `fused/moonshine_mlp.{hip,py}` registers
 `moonshine_gated_silu/fp16/value_gate_split`: it consumes the bias-aware FP16
 `fc1` boundary as `[value,gate]`, evaluates SiLU in FP32, multiplies in FP32,
@@ -805,6 +1084,24 @@ the rounded residual. Complete boundaries improve 15.265 -> 9.636 us and 9.278
 -> 6.899 us; the selected whole MLP+next-norm chain improves 30.604 -> 22.116 us
 (1.38x). Resources are local32/VGPR16/LDS0/scratch0 and
 local64/VGPR16/LDS512/scratch0. Primitive fallbacks remain registered.
+
+The peer `cuda_sm120a/fused/moonshine_mlp.{cu,py}` C1d port preserves the
+standalone `moonshine_gated_silu/fp16/value_gate_split` primitive: it consumes
+the bias-aware FP16 `fc1` boundary as `[value,gate]`, evaluates SiLU in FP32,
+multiplies in FP32, and writes the FP16 activation, one thread per activated
+element. It builds only with `-arch=sm_120a` and uses the CUDA warp32-safe
+launch geometry. On an RTX PRO 6000 Blackwell (GPU0) the kernel matches the
+independent NumPy oracle across decoder and encoder row counts
+1/7/40/207/1248 (allclose 1.0e-3, all finite), and the complete unfused
+production-shape chain (bias-aware fc1, gated SiLU, bias-aware fc2, residual)
+matches the NumPy decoder-MLP-plus-residual oracle (allclose 5.0e-3). A
+cache-only Nsight Systems trace observes the single gated-SiLU kernel identity
+five times (one per row bucket) with no compiler child; single-run launch-level
+medians are about 0.9 us. The C1d fused MLP boundaries registered in the C1c
+projection module are also gated: the fused fc1 (bias-aware projection + paired
+gated SiLU) and fused fc2 (bias-aware projection + rounded residual) chain
+matches the NumPy decoder-MLP-plus-residual oracle byte-exact on GPU0. These
+are bring-up diagnostics, not a performance promotion.
 
 `attention/moonshine_attention.{hip,py}` registers
 `moonshine_self_attention/fp16/fixed_cache_logical_dim` and
@@ -868,8 +1165,42 @@ the two MLP composites. It issues 103 kernels/token versus the 135-kernel Phase-
 fallback. Clean past-1 timing is 0.861 ms HIP event / 0.915 ms wall; the six-file
 decoder-only median is 5.449 ms with exact generated IDs. Past-1 aggregate
 kernel time is 0.767 ms. Detailed bounded-fusion evidence is in the experiment
-ledger's `results/2026-07-31-hip-phase3-bounded-fusions.md`; fixed-address graph
-capture/replay remains the next structural step.
+ledger's `results/2026-07-31-hip-phase3-bounded-fusions.md`. Fixed-address graph
+capture/replay is now retained through four exact schedule regions (`0`, `1`,
+`2-3`, and `4-193`): the clean final gate measures 0.868 ms at cached position
+1 and a 5.446-ms six-file decoder-only median with exact generated IDs.
+
+The peer `cuda_sm120a` runtime now extends beyond C1 primitive bring-up:
+
+- **C2/C3:** `runtime/moonshine_cuda.py` composes a fixed-address eager decoder
+  and two CUDA graph buckets, then adds bounded wave8 LM-head/top-1 variants.
+  CUDA's graph schedule has two regions rather than HIP's four; neither its
+  thread geometry nor bucket map is a HIP selection authority.
+- **C4/C5:** `encoder/moonshine_encoder.{cu,py}` and
+  `runtime/moonshine_encoder_cuda.py` provide the torch-free conv/encoder stack,
+  CPU-oracle gates, async encoder handoff, device-owned token/position/EOS
+  control, and packed-FP16 deployment loading. Encoder and AOT-attention keys
+  are explicitly restored by backend package re-registration after registry
+  isolation.
+- **C6:** `runtime/moonshine_cuda_batch.py` plus the batch kernel families
+  provide exact fixed-capacity c2/c4/c8 encoder/decoder paths. Batch variants
+  remain CUDA-specific keys rather than aliases to scalar kernels.
+- **C7:** CUDA graph ownership is hardened around bounded scratch, reset/close,
+  and result publication. `read_result_tokens()` limits no-EOS readback to the
+  generated `self_cache_length` prefix rather than exposing unwritten capacity.
+- **C8:** `runtime/moonshine_cuda_continuous.py` owns decoder-side FIFO
+  admission, compaction/reclaim, and bounded graph LRU. The corrected full-mask
+  uniform-t256 route passes its complete labeled CUDA corpus gate; the earlier
+  split t32/t256 runtime remains explicit. This is not complete continuous audio
+  serving because callers still provide precomputed cross caches.
+- Long-bucket CUDA candidates include cuBLASLt projection routes and
+  CUTLASS/cuDNN attention. They are architecture-specific screens, not portable
+  HIP implementation or performance evidence.
+
+The current transfer order, public-support boundary, and independent gfx1151
+gates are frozen in [`MOONSHINE.md`](MOONSHINE.md). Main does not yet contain a
+fresh compact CUDA performance artifact, so the historical Blackwell rows stay
+directional and outside the benchmark scoreboard.
 
 ### gfx1100 HIP kernels (**hipEngine landed**)
 
@@ -3654,6 +3985,7 @@ Evidence: [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29
 | `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` | `bf16` | same | `qwen35_add_rmsnorm_bf16(...)`, `qwen35_add_rmsnorm_f32_bf16(...)`, `qwen35_head_rmsnorm_f32_bf16(...)` | Build/registration tests landed; launch wrappers are source-family peers of `qwen35_rmsnorm_kernel` and share the same `.so` |
 | `rmsnorm`, `add_rmsnorm` variants `paro_out`, `paro_out_fp16` | `bf16`, `w4_paro` | same | `paro_rmsnorm_out_bf16(...)`, `paro_add_rmsnorm_out_bf16(...)`, `paro_rmsnorm_out_fp16(...)`, `paro_add_rmsnorm_out_fp16(...)` | `python3 scripts/smoke.py --mode paro-rmsnorm-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16 and FP16 norm/add/residual (`fp16_*_mismatch=0`); `rocprofv3` shows BF16 `paro_rmsnorm_out_kernel<uint16_t>`/`paro_add_rmsnorm_out_kernel<uint16_t>` and FP16 `paro_rmsnorm_out_kernel<_Float16>` (`DurationNs=5800`, `VGPR_Count=24`, `Scratch_Size=0`, `LDS_Block_Size=1024`) / `paro_add_rmsnorm_out_kernel<_Float16>` (`DurationNs=5320`, `VGPR_Count=32`, `Scratch_Size=0`, `LDS_Block_Size=1024`) on W7900 |
 | `add_rmsnorm` variant `bf16_out_staged_f32_local256` | `gguf_f32_weight` | `hipengine/kernels/hip_gfx1100/fused/gguf_ops.{hip,py}` | `gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256(...)` | Separately registered W7900 diagnostic; runtime ownership is absent. One local256 block preserves the existing unrounded BF16+BF16 F32 add, square accumulation, reduction tree, RNE residual, and weighted norm while staging the unrounded value in dynamic LDS instead of reloading both BF16 inputs. Synthetic hidden 256/1024/3072/4096 and all 48 actual Q2 XL boundaries are BF16-bit exact to registered control; the 10x1024 CPU gate is KL max **1.40e-5**, top-1 **100%**. Repository hidden-3072 synthetic event/wall improves **2.74%/2.69%** and the complete actual 48-call window improves **3.53%/3.70%**. Codegen is local256/wave32, logical/allocated VGPR **15/16**, SGPR **18/128**, dynamic LDS **13,312 B**, private/spills/scratch0, 296 instructions, 1,384 bytes, and nine static barriers representing the same nine dynamic synchronization points as control. Cache-only tracing names two expected calls at **3.88/4.80 us**, local256/VGPR16/scratch0, with no compiler under profiling. The exact key is gfx1151-excluded; registered `bf16_out` remains every runtime/rows/prefill/backend fallback (`benchmarks/results/2026-07-26-gfx1100-laguna-q2-xl-add-rmsnorm-staged-f32-correctness.json`). |
+| `paged_kv_copy` variants `head_major_spans`, `head_major_dense_prefix_spans` | `bf16` | `hipengine/kernels/hip_gfx1100/attention/paged_kv_write.{hip,py}` | `qwen35_copy_paged_kv_bf16_to_head_major_{,dense_prefix_}spans(...)` | Nathan-review P0 retained gfx1151 prefill route. One raw-pointer local256 copy gathers paged token-major BF16 K/V into a reusable `[kv_head, capacity, head_dim]` pair before AOTriton; the generic key follows non-identity page tables, while the production dense-prefix key compiles identity addressing out. Persistent `KVLiveSpans` KV, native attention, and strided AOTriton remain exact fallbacks. Lengths 1/255/256/257 with permuted pages, sentinels, and dense/generic comparison are byte-exact; full-model p512 matches every hidden/GDN/KV/logit boundary, and forced allocation denial matches the same state. Cached gfx1151 tracing names 12 expected dense copies at local256/VGPR16/SGPR128/LDS0/scratch0. Copy-inclusive full prefill is neutral at 512 and improves 4K/32K/64K **0.616%/3.383%/7.001%**; default ownership is bounded to rounded capacity <=65,792 tokens. Evidence: `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`. |
 | `rmsnorm`, `add_rmsnorm`, `bf16_add`, `gate_repeat_value`, `gate_mul`, `head_rmsnorm+partial_rotary` GGUF helpers | `gguf_f32_weight`, `bf16`, `f32_out` | `hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip` | `gguf_rmsnorm_bf16_f32_weight(...)`, `gguf_rmsnorm_bf16_f32_weight_out_f32(...)`, `gguf_add_rmsnorm_bf16_f32_weight(...)`, `gguf_bf16_add(...)`, `gguf_gate_repeat_value_bf16(...)`, `gguf_gate_mul_bf16(...)`, `gguf_qwen35_head_rmsnorm_partial_rotary_{position,positions}_f32_weight(...)` | `HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 -m pytest tests/test_gguf_ops.py tests/test_qwen35_gguf_full_attention_gpu.py -q` → synthetic BF16 add, F32-weight RMSNorm/add-RMSNorm, GGUF F32-weight scalar/multi-position head RMSNorm+RoPE, c=1 full-attention gate/value repeat, resident full-attention CPU-bridge oracle, and GGUF AOTriton final-row oracle pass (`5 passed` after task #46); `gguf_rmsnorm_bf16_f32_weight_out_f32(...)` is the MTP-GGUF M2.5 fp32 post-`output_norm` seed target and matches CPU RMSNorm with `rtol/atol=1e-6` in `tests/test_gguf_ops.py::test_gguf_ops_bf16_add_and_f32_weight_rmsnorm`; `rocprofv3 --kernel-trace` on gfx1151 shows `gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)` with `DurationNs=3887`. Existing prefill trace shows `gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel`, BF16 prompt-KV writer, AOTriton `attn_fwd`, and `gguf_gate_mul_bf16_kernel`. Used by the Qwen3.5 GGUF full-stack runner because GGUF norm weights are F32 tensors, not PARO BF16 delta weights. |
 | `router_logits`, `router_select`, `router_topk_shared` variants `out`, `out_fp16_hidden`, `prefill_sigmoid_out`, `prefill_sigmoid_out_fp16_hidden`, `coop_out`, `coop_out_fp16_hidden`; `router_topk_split_shared` variants `coop_out`, `coop_out_fp16_hidden`, `coop_out_bf16_hidden`, `coop_out_bf16_hidden_persistent` | `bf16`, `fp16`, F32 weights/`fp32` select, `w4_paro` shared route | `hipengine/kernels/hip_gfx1100/moe/router.hip` | `qwen35_router_logits_bf16(...)`, `qwen35_router_logits_fp16(...)`, `qwen35_router_select(...)`, `qwen35_router_topk_shared_out_{bf16,fp16}(...)`, `qwen35_router_topk_shared_sigmoid_out_{bf16,fp16}(...)`, `qwen35_router_topk_shared_coop_out_{bf16,fp16}(...)`, `qwen35_router_topk_split_shared_coop_out_{bf16,fp16}(...)`, `qwen35_router_topk_split_shared_coop_out_bf16_f32w(...)`, `qwen35_router_topk_split_shared_coop_out_bf16_f32w_persistent(...)` | `python3 scripts/smoke.py --mode qwen35-router-hip --rows 2 --hidden-size 16 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → BF16 and FP16-hidden top-k/routing plus P3.2 sigmoid-router logits vs NumPy oracle (`selected_match=True`, `fp16_selected_match=True`, `sigmoid_selected_match=True`, `sigmoid_fp16_selected_match=True`, sigmoid logits max abs `0.0`/`4.77e-07`); `rows=1 --hidden-size 256` also validates the opt-in cooperative wrappers (`coop_selected_match=True`, `coop_fp16_selected_match=True`). P9.D1 adds the GGUF split expert/shared decode cooperative wrapper; `tests/test_qwen35_router_plan.py -k split_shared_coop_bf16_matches_cpu_router` matches CPU router logits/top-k and `rocprofv3` shows `qwen35_router_topk_split_shared_coop_out_kernel<unsigned short>` (`End-Start=17440 ns`). The gfx1100 F32-weight extension is byte-exact to the current 512-thread logits plus 256-thread select chain at `hidden=2048, experts=256, top_k=8`; its cached W7900 trace shows the active 256-thread kernel at 40 VGPR, zero scratch, 512-byte LDS, and 10.6 us median. Clean commit `4c743994` promotes it by default after 4K graph decode improves `97.234 -> 98.273 tok/s` (+1.07%) with exact IDs/final values and unchanged memory. The persistent-counter extension removes exactly 40 four-byte reset nodes/token; its cache-cycled fused leaf improves `14.667 -> 10.444 us` (-28.79%), the expected `<unsigned short, true>` trace remains at 40 VGPR/zero scratch/512-byte LDS, the source-dirty admission improves `98.936 -> 100.711 tok/s` (+1.79%), and clean `0ec2a813` confirms `98.812 -> 100.446 tok/s` (+1.65%) with exact IDs/final values. `rocprofv3 --kernel-trace` all-layer 512 prefill shows FP16 hidden `qwen35_router_logits_token_tile_kernel<_Float16,4>` ran 40 times (`8.683 ms` total, avg `217.1 us`) plus block-parallel select on W7900; tokens `<4` stay on the original one-token logits kernel by default. D1.5's cooperative decode producer is gated by `HIPENGINE_PARO_ROUTER_TOPK_COOP=1`; it is correct but rejected as default after 512/128 and 4K/128 graph replay regressions. P3.2's shared-gate sigmoid producer is gated by `HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED=1`; it is correct and prefill/legacy-only, but rejected as default after neutral 512/4K E2E results. |
 | `moe_group_count`, `moe_group_prefix`, `moe_group_compact`, `moe_group_scatter`, `moe_group_scatter_gather`, `moe_gather_packed_hidden`, `moe_wmma_tile_map`, `moe_mmq_tile_map` | generic selected-expert and `w4_paro` grouped/compact MoE metadata plus packed-hidden gather | `hipengine/kernels/hip_gfx1100/moe/group_scatter.hip` | `qwen35_moe_group_count(...)`, `qwen35_moe_group_prefix(...)`, `qwen35_moe_group_compact_active(...)`, `qwen35_moe_group_compact_active_source_rows(...)`, stable `*_parallel(...)` siblings, `qwen35_moe_group_scatter(...)`, `qwen35_moe_group_scatter_gather_lowp(...)`, `qwen35_moe_gather_packed_hidden_lowp(...)`, `qwen35_moe_wmma_tile_map(...)`, `qwen35_moe_mmq32_tile_map(...)` | `python3 scripts/smoke.py --mode qwen35-moe-group-scatter-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` → grouped metadata/gather fixture passes (`prefix_match=True`, `lane_match=True`, `packed_match=True`, `tile_match=True`); `rocprofv3 --kernel-trace` shows `qwen35_moe_group_count_kernel` (`DurationNs=6640`), `qwen35_moe_group_prefix_kernel` (`11601`), `qwen35_moe_group_scatter_gather_kernel` (`11241`), `qwen35_moe_gather_packed_hidden_kernel` (`5360`), and `qwen35_moe_wmma_tile_map_kernel` (`2561`) on W7900. The generic one-pass compact-active extension deterministically emits starts, active IDs/count, stable lanes, expert IDs, and F32 routing weights and retains count/prefix/scatter as its unfused fallback; its dedicated GPU CPU-oracle fixture passes. The Laguna MMQ sibling additionally emits `compact_to_source = sorted_lane // top_k`, and the tile-map body supports 32-row padding without a scalar D2H. Its gfx1151 CPU-oracle fixture passes; cached tracing records compact/source metadata at **3.566 us** and the 32-row tile map at **2.084 us**, both VGPR16/scratch0. The exact stable parallel sibling replaces the serial 256x5,120 lane scan with per-expert count and ballot-ordered scatter workgroups; production-shape metadata and complete MoE BF16 output are byte-identical. Its M512/top10/E256 leaf improves **0.348880 -> 0.058969 ms (-83.10%)**, and clean seven-repeat resident pp512 improves **490.824 -> 497.408 tok/s (+1.341%)** with all paired wins. Cached production tracing measures **500.325 tok/s** and parallel count/prefix/scatter at **0.277/1.520/0.767 ms** across 47 layers. The prefix follow-up replaces its remaining one-thread loop with a one-block exclusive scan plus ballot active-ID compaction: cached prefix time falls **32.34 -> 2.404 us/layer**, local256/VGPR24/LDS2560B/scratch0, with exact complete output and a projected **1.407 ms** pp512 saving. gfx1151 defaults to parallel; serial remains rollback and other backends stay unchanged. Expert compact WMMA remains a separate Qwen/PARO lane. |
@@ -3705,7 +4037,7 @@ Evidence: [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29
 | P9.C11 final hot-expert path status (blocked) | retained defaults only | final artifact + correctness bundle | Final P9.C hot-expert pass did not meet acceptance. Adjacent correctness bundle passes (`143` collected tests across Q8_0 dual/single, Q4_K selected, Q5_K/Q6_K selected, dispatch/routing, replay helpers) and 512/128 bench has finite deterministic final token `220`, but 512/0 target bucket remains `140.110 ms` (`Q4 58.126`, `Q5 27.043`, `Q6 2.656`, `Q8 52.285`) vs target `<=110 ms`. Umbrella #27 remains open/blocked; do not mark complete. Next bottleneck is Q4 selected dual, but shallow variants regressed, so the next path requires deeper expert-weight repack/layout or a different selected-MoE design. Artifact: `benchmarks/results/2026-05-18-hipengine-qwen36-35b-a3b-q4km-p9_c11-hot-expert-final-blocked.json`. |
 | P9.C12 Q4T16 selected-dual repack/layout design | future `q4_k_tile16_dual` allocation + Q4 selected dual kernel | design artifact only; implementation starts in P9.C13 | #27 is blocked because retained 512/0 target bucket is `140.110 ms` vs `<=110 ms`, with Q4 selected dual the next bottleneck (`58.126 ms`). P9.C12 selects a deeper Q4T16 tile-major replacement layout for prototype: repack raw Q4_K gate/up weights from `[E,out,row_bytes]` into `[E,out_tile16,k_block]` slabs with fp16 `d/dmin` per column, predecoded uint8 scale/min per subblock/column, and q4 nibbles arranged by `[subblock, kt, k_lane16, col]` for coalesced WMMA B-fragment loads. Actual qwen35moe Q4 shape from GGUF is `E=256`, `hidden=2048`, `expert_ffn=512`, `blocks_per_row=8`; raw gate or up tensor is `150,994,944 B`, Q4T16 is `155,189,248 B` (`+2.78%`). Final runtime must replace raw Q4 gate/up allocation rather than duplicate all layers; replay prototype may use one-layer side buffers. Go/no-go: CPU roundtrip exact, first qwen layer gate+up `<=1.35 ms`, full Q4 replay `<=45 ms` to continue and `<=35 ms` to plausibly unblock #27. Artifact: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_c12-q4t16-repack-design.json`. |
 | P9.C13 Q4T16 materializer prototype | `repack_gguf_q4_k_tile16`, `unpack_gguf_q4_k_tile16`; replay flag `--q4-tile16-materialize-layers` | `hipengine/quant/gguf_q4_k.py`, `scripts/qwen35_gguf_moe_replay.py`, `tests/test_gguf_q4_k_tile16_repack.py` | CPU-side prototype for the P9.C12 Q4T16 layout. `tiles` shape is `[experts, out_tiles16, blocks_per_row, 2368]`; per tile stores fp16 `d`, fp16 `dmin`, uint8 scale/min vectors, and q4 nibbles packed by `[subblock,k_lane32,col_pair]`. Unit tests validate bit-exact raw GGUF Q4_K roundtrip and expected `2368/2304 = +2.78%` storage overhead. Replay smoke with `--q4-tile16-materialize-layers 1` on Qwen3.6-35B-A3B-UD-Q4_K_M builds/copies the first layer's Q4T16 gate+up buffers (`310,378,496 B`) and frees them without changing compute; this is not a perf claim, only materializer/device-copy readiness for the next HIP kernel prototype. Artifact: `benchmarks/results/2026-05-19-hipengine-qwen36-35b-a3b-q4km-p9_c13-q4t16-materializer.json`. |
-| P9.C14 / GPF-3A Q4T16 selected-dual WMMA | `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_{bf16,fp16}_...`; exact shared-activation variants `...compact32_shared_x_{bf16,fp16}_...`; replay options `--q4-tile16-wmma-layers`, `--q4-t16-shared-x` | `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.{hip,py}`, `scripts/gguf_q4_t16_prefill_ab.py`, `scripts/qwen35_gguf_moe_replay.py`, `tests/test_gguf_q4_k_t16_selected_wmma_prefill.py` | First HIP WMMA consumer for the P9.C13 Q4T16 selected gate/up layout. It preserves the compact selected-MoE ABI and writes the same concatenated gate+up output as raw-Q4 selected WMMA, but reads `tiles[E,out_tiles16,blocks_per_row,2368]` slabs with predecoded uint8 scale/min and q4 nibbles packed by `[subblock,k_lane32,col_pair]`. GPF-3A keeps two independent 16-column WMMA accumulators live so both consume one activation load while preserving each accumulator's K/WMMA order. BF16/FP16 bytes exactly match baseline on uneven/empty/multi-block fixtures. gfx1151 trace: `44.725 -> 33.343 us` (-25.45%), 56 VGPR/128 SGPR/zero scratch/LDS; real 40-layer Q4 gate/up replay `114.633 -> 97.082 ms` (-15.31%). Clean full-model 512/1K/4K prefill improves +3.11%/+2.42%/+1.94%, all logits/trajectories are exact, and aggregate decode is -0.0031%. Backend capability selects shared-X automatically on gfx1151; gfx1100 retains baseline. Artifacts: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c14-q4t16-selected-wmma-prototype.json`, `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json`, `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json`. |
+| P9.C14 / GPF-3A Q4T16 selected-dual WMMA | `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_{bf16,fp16}_...`; exact shared-activation variants `...compact32_shared_x_{bf16,fp16}_...`; replay options `--q4-tile16-wmma-layers`, `--q4-t16-shared-x` | `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_t16_selected_prefill.{hip,py}`, `scripts/gguf_q4_t16_prefill_ab.py`, `scripts/qwen35_gguf_moe_replay.py`, `tests/test_gguf_q4_k_t16_selected_wmma_prefill.py` | First HIP WMMA consumer for the P9.C13 Q4T16 selected gate/up layout. It preserves the compact selected-MoE ABI and writes the same concatenated gate+up output as raw-Q4 selected WMMA, but reads `tiles[E,out_tiles16,blocks_per_row,2368]` slabs with predecoded uint8 scale/min and q4 nibbles packed by `[subblock,k_lane32,col_pair]`. GPF-3A keeps two independent 16-column WMMA accumulators live so both consume one activation load while preserving each accumulator's K/WMMA order. BF16/FP16 bytes exactly match baseline on uneven/empty/multi-block fixtures. gfx1151 trace: `44.725 -> 33.343 us` (-25.45%), 56 VGPR/128 SGPR/zero scratch/LDS; real 40-layer Q4 gate/up replay `114.633 -> 97.082 ms` (-15.31%). Clean full-model 512/1K/4K prefill improves +3.11%/+2.42%/+1.94%, all logits/trajectories are exact, and aggregate decode is -0.0031%. The 2026-08-05 controlled repeated-128K split identifies `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>` as the gfx1151 trigger: conservative and exact-GDN arms pass 12/12, shared-X stalls on prefill 4, and the baseline-only production arm passes 12/12. gfx1151 automatic dispatch therefore uses baseline; explicit shared-X remains for repair/bisection, and gfx1100 policy is unchanged. Artifacts: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c14-q4t16-selected-wmma-prototype.json`, `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-q4t16-shared-x-replay.json`, `benchmarks/results/2026-07-13-gfx1151-gguf-prefill-gpf3a-full-model-ab.json`, `benchmarks/results/2026-08-05-gfx1151-q4km-shared-x-128k-fallback.json`. |
 | P9.C15 Q4T16 selected-dual replay sweep (rejected) | no new default | `scripts/qwen35_gguf_moe_replay.py --q4-tile16-wmma-layers`, launch-bound sweep | Full 512/0 qwen35moe routing replay shows the compact32 Q4T16 WMMA prototype is not enough to unblock #27. Same-run raw baseline: Q4 selected gate+up `62.199 ms`, selected-MoE total `93.138 ms`. All-layer Q4T16 at launch-bound min-blocks 2: Q4 `59.680 ms`; min-blocks 1 (best): Q4 `59.395 ms`, selected-MoE total `92.478 ms`; min-blocks 4: Q4 `59.689 ms`. Best delta is only `-4.5%` on Q4 and `-0.7%` on selected-MoE total, far from the `<=35-40 ms` Q4 continuation target. Rejected as a default/runtime integration; proceed to P9.C16 alternative selected-MoE design. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c15-q4t16-replay-rejected.json`. |
 | P9.C16 selected-MoE alternative evaluation (no design selected) | no new code/default | modeled compact tile-list plus measured `64x16`/`64x32` tile proxies | Since P9.C15 missed target, evaluated alternatives before broad runtime changes. Compact tile-list/no-padding model on real 512/0 routing: raw Q4 `62.199 ms`, compact rows `163,840`, WMMA rows `185,872`, padding `13.45%`; optimistic no-padding lower bound `54.775 ms`, still above target. Hot-threshold row distribution shows rows in experts `>=64` are `93.5%` of compact rows, so cold-tail removal cannot close the gap. Measured wider/persistent-column proxies: `64x16` Q4 `61.868 ms` (`-0.5%`), `64x32` Q4 `91.831 ms` (regression). No in-repo selected-MoE alternative is selected for #48; further Q4 selected-MoE work should move to parent kernel R&D or a new design task. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c16-selected-moe-alternatives.json`. |
 | P9.C17 final #27 Q4 redesign gate (blocked/no-wire) | no new code/default | carried-forward P9.C11 gate plus P9.C15/P9.C16 rejection evidence | No winning Q4 selected-MoE redesign exists to wire into runtime dispatch. P9.C11 final #27 gate remains the accepted correctness/perf contract: adjacent bundle `143` tests passed, finite deterministic 512/128 token `220`, but combined target bucket is `140.110 ms` vs `<=110 ms` (`Q4 58.126`, `Q5 27.043`, `Q6 2.656`, `Q8 52.285`). P9.C15 Q4T16 improved Q4 only to `59.395 ms`, and P9.C16 no-padding/wider-tile alternatives also missed. #27 remains open/blocked; further Q4 work should happen as parent R&D/new design before hipENGINE wiring. Artifact: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_c17-no-q4-redesign-blocked.json`. |
@@ -3724,6 +4056,8 @@ Evidence: [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29
 | D27-O3 retained Qwen3.6 Q5T16 dense `ssm_out` | registered `t16_gemv_decode_bf16_bf16_out`, exact col4 `t16_gemv_rowtile_bf16_bf16_out`, and `t16_wmma_prefill_bf16_bf16_out`; shape-qualified gfx1100 ownership | `hipengine/kernels/hip_gfx1100/quant/gguf_{t16_selected_gemv,k_t16_selected_prefill}.{hip,py}`, materialization/dispatch/backend/runtime code, focused selected-T16 and transaction fixtures; `benchmarks/results/2026-08-05-qwen36-27b-q5t16-ssm-out-retained.json` | The prior one-weight screen repeatedly reused a 60-MiB dense BF16 plane inside 96-MiB cache and was not production representative: the model rotates 48 distinct `ssm_out` planes / 2.813 GiB per pass. A counterbalanced GPU1 48-weight rotation reverses that result: direct c1 and exact col4/local128 c2/c3/c4 reach **1.666x/1.581x/1.523x/1.573x**, all **11/11** paired wins, with aggregate **7.38e-5 max KL / 99.79% top-1**. The restored rowtile is BF16-bit identical to the one-expert selected producer for rows 2-4; the metadata-free dense Q5 WMMA producer is bit-identical to the one-expert selected WMMA producer. No geometry env flag or gfx1151 alias is introduced. Shape-qualified gfx1100 ownership replaces exactly 48 K6,144/N5,120 tensors and saves **1,958,215,680 bytes / 1.824 GiB**. The complete B1-B3 transaction and named direct/rows2-4/WMMA trace pass. W7900 tracing cuts the 336-call family **37.004 -> 22.911 ms (-38.09%)**, target host wall **5.095%**, and complete wall **4.354%**. Natural25 true AR advances **23.217 -> 24.049 tok/s** and B1/B2/B3 **41.512/51.974/56.802 -> 43.170/54.621/59.551**; every aggregate scope and every B2/B3 prompt improves, candidate MTP matches its own AR, one B1 timing and one fluent prior-route trajectory change are disclosed. Populated 512/4096 prefill reaches **234.014/215.771 tok/s**, graph AR **23.241/21.841**, peaks fall exactly 1.824 GiB, and teardown is clean. Retained quality-gated gfx1100 default; rotation/profile hashes `a9a07c32...b2082` / `b8e82af2...e946`. |
 | D27-O3 raw-Q5/Q8_1 integer-dot dense `ssm_out` row reuse (rejected and removed) | existing selected POC remains diagnostic; no dense rowtile, registry key, geometry selector, allocation, or runtime route retained | temporary `gguf_k_gemv.{hip,py}` rowtile and focused selected-DP4A fixture; `benchmarks/results/2026-08-05-qwen36-27b-raw-q5-q8-1-dp4a-rowreuse-rejected.json` | This is the materially different RDNA3 `__builtin_amdgcn_sudot4` follow-up to the float Q5 closures. The temporary body reuses raw Q5 decode and scale/min coefficients over Q8_1 verifier rows; local128 is synthetic BF16-bit exact to the existing selected primitive, while actual K6,144/N5,120 output passes KL **0.001697** / top-1 **100%** versus dense. Eight `(column tile, threads)` geometries cover `(1,32)`, `(2,64/128)`, `(4,64/128/256)`, and `(8,128/256)`. Final col4 rows 2/3/4 reach only **0.646x/0.713x/0.798x** dense including quantization, with zero paired wins. Remove the candidate completely and keep dense BF16. The existing row-separate Q5T16/DP4A control also loses; the follow-up T16 integer-dot row-reuse body is closed in the next row. |
 | D27-O3 Q5T16/Q8_1 integer-dot dense `ssm_out` row reuse (rejected and removed) | no kernel, wrapper, registry key, selector, sidecar, allocation, or runtime route retained | temporary `gguf_t16_selected_gemv.{hip,py}` rowtile and focused selected-T16 fixture; `benchmarks/results/2026-08-05-qwen36-27b-q5t16-q8-1-dp4a-rowreuse-rejected.json` | This closes the final materially distinct Q5 compressed-ownership combination. The temporary body combines Q5T16 coalesced bytes, Q8_1 activations, RDNA3 `__builtin_amdgcn_sudot4`, and cross-row weight reuse. All 27 `(threads, columns, rows)` actual-weight cases are BF16-bit exact to the same-width selected control and pass KL **0.000489** / top-1 **100%** versus dense. Best screen totals reach only **0.834x/0.838x/0.865x** dense at rows 2/3/4. Binding local64/local128 col8 adjudication also loses; best final total is **0.887x**, and even the prequantized dot peaks at **0.934x** dense. Row reuse accelerates the row-separated integer dot by up to **1.87x**, but cannot cross the dense owner. Remove the candidate completely and do not retry Q5 `ssm_out` compression without a new representation or hardware primitive. |
+| SH5-D1 gfx1151 raw Q8_0 rowvec8 pair decode leaf (runtime rejected) | `linear_pair/gguf_q8_0/rowvec8_dual_split_gemv_decode_bf16_bf16_out` | `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_pack8_gemv.{hip,py}`, `tests/test_gguf_q8_0_pack8_gemv_decode.py` | Fork-attributed raw-row output-major c1 leaf: one local64 workgroup owns one output and each lane consumes eight adjacent K values. Actual layer-0 `2048->8192 + 2048->4096` bytes with a >2x-MALL pool improve Q8T16 **0.134737 -> 0.116588 ms (1.15566x, 15/15)**; cached trace is local64, 24 VGPR, 512 B LDS, scratch0. The temporary byte-neutral model route improved decode **2.934%** but lost **13.457%** prefill and changed state. SH6-P1's exact bridge still lost **3.720%** prefill, so all model-route, materializer, dispatcher, env, scratch, and runtime-bridge surfaces are removed. Retain only the standalone leaf and source evidence; production remains Q8T16. Artifacts: `benchmarks/results/2026-08-06-gfx1151-gguf-sh5-d1-raw-rowvec8-blocked.json` and `2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json`. |
+| SH6-P1 raw Q8_0 pair -> Q8T16 GPU bridge leaf (runtime rejected) | `layout_transform/gguf_q8_0/raw_pair_to_t16` | `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_raw_to_t16.{hip,py}`, `tests/test_gguf_q8_0_raw_to_t16.py` | Byte-only combined-grid transform for the linear-attention `2048->8192 + 2048->4096` pair. It writes host-packer-identical T16 bytes for both production tensors into one exactly **26,738,688-byte** owner. Production-shape RED/GREEN passes at local64/128/256. A three-pair **80,216,064-byte** cycling screen selects local64 at **0.360914 ms/pair** versus 0.401951/0.502646 ms; cached gfx1151 trace names local64 at **40 VGPR, 128 SGPR, scratch0**. The lifecycle-correct 30-pair runtime bridge preserves complete 512 prefill state, but charged prefill regresses **1369.120 -> 1318.196 tok/s (-3.720%)**, failing the frozen 1% gate. Runtime wiring is removed; the exact transform remains only as a tested diagnostic leaf. Artifact: `benchmarks/results/2026-08-06-gfx1151-gguf-sh6-p1-raw-to-t16-prefill-bridge-rejected.json`. |
 | P9.D6 Q8T16 split-output pair decode | `gguf_q8_0_t16_dual_gemv_decode_{bf16,fp16}_{bf16,fp16}_out`; diagnostics `gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out`, `gguf_q8_0_t16_dual_gemv_decode_rowtile{2,4}_bf16_bf16_out` | `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.{hip,py}`, `hipengine/runtime/gguf_linear.py`, `hipengine/runtime/qwen35_gguf_runner.py`, `tests/test_gguf_q8_0_t16_gemv_decode.py`, `tests/test_gguf_linear_dispatch.py` | Adds a split-output companion to the H3c concatenated Q8T16 dual kernel so same-input projections can share one launch without changing scratch layout. qwen35moe decode routes `attn_k+attn_v` and `ssm_alpha+ssm_beta` through this path. Synthetic BF16/FP16 CPU-oracle fixtures pass; unit rocprof smoke sees `q8_0_t16_dual_split_gemv_kernel<unsigned short,unsigned short>` with `DurationNs=13999`, `VGPR=56`, `SGPR=128`. 2026-07-01 adds a diagnostic `HIPENGINE_GGUF_Q8_T16_THREADS` launch-width override for Q8T16 single/pair/triple GEMV wrappers; default stays 128 threads. The llama-compat verifier pair shape rejected 64 threads (`rows=2/3/4`: `197.77/224.80/251.96 us` vs 128-thread `179.26/207.05/237.02 us`), and rocprof confirmed `Workgroup_Size_X=64` on the override path. The same parity pass added a callable q8_1/dp4a T16 dual-split diagnostic that matches a q8_1 CPU oracle plus KL/top-1 gate and rocprof-confirmed `q8_0_t16_dual_split_q8_1_dp4a_kernel<unsigned short>` (`Workgroup_Size_X=128`, `Grid_Size_X=1536`, `Grid_Size_Y=8`), but the qwen35 pair microbench rejects it: 128-thread exact rows 2/3/4 are `181.50/207.98/236.26 us`, while quantize+dp4a is `304.78/448.32/558.14 us` and prequantized dp4a is `303.05/452.51/566.29 us`. This proves q8_1/dp4a over the current T16 layout is not the llama.cpp win; the four adjacent K bytes for one output column are strided by 16 and must be packed before dot4. A later exact row-amortized rowtile2/rowtile4 diagnostic is bit-identical to the exact pair, and the qwen35 pair microbench likes rowtile4 at 64 threads (`rows=2/3/4/5/6`: exact 128 `179.75/207.70/236.41/265.87/298.97 us` vs rowtile4-64 `154.05/170.55/191.16/254.19/271.06 us`), with cached rocprof confirming the rowtile4 kernel launched at `Workgroup_Size_X=64`; however full-suite `llama-compat-device-chain-dp4a-q6top1dp4a` rejected runtime promotion (`59.63 -> 57.25 tok/s`, `target_block_verify_total` `13.178 -> 13.697 ms/output`). It remains default-off for the verifier under `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1`; F3B later scopes the repaired 128-thread body to gfx1151 physical C8 packed AR. P9.E2 passes (`KL 0`, top-1 `100%`); 512/128 graph decode improves D4 `86.025 -> 86.502 tok/s` but remains below `95`. Artifacts: `benchmarks/results/2026-05-20-hipengine-qwen36-35b-a3b-q4km-p9_d6-q8t16-pair-dispatch.json`, `benchmarks/results/2026-07-01-q8-t16-pair-threads-micro.json`, `benchmarks/results/2026-07-01-q8-t16-pair-q8-1-dp4a-micro.json`, `benchmarks/results/2026-07-01-q8-t16-pair-rowtile-micro.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-rowtilepair-full.json`. |
 | 2026-07-12 Q8T16 wave/block indexing promotion | production `gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out` | `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.{hip,py}`, `tests/test_gguf_q8_0_t16_gemv_decode.py` | The BF16 split-output production body now traverses K explicitly as `(wave, block_idx, lane)`, preserving every thread's K sequence and FP32 accumulation order. The compile-time A/B at `8184355c` proves 64/128-thread bit identity and measures **136.415 -> 132.175 us** (**-3.108%**) on rows=1 `2048x(8192+4096)` with a >2x-MALL cycling pool. Static resources move `33 SGPR/49 VGPR -> 29/50`, retaining 16-wave occupancy and zero spills. Clean `8184355c -> e20cdc13` p512/d128 eager moves **20.5342 -> 20.4709 ms/token** (**-0.308%**); 24 marked steps move the actual leaf **4245.4 -> 4188.2 us/token** (**-1.349%**) and total GPU time **-0.296%**. State-bound graph wall also improves **-0.200%** across commits, with exact 128/128 replay. The temporary callable A/B wrapper was removed after promotion; reproduce the scalar/candidate micro at diagnostic commit `8184355c`. Artifacts: `benchmarks/results/2026-07-12-gfx1151-q8-t16-waveblock-{micro,production}.json`. |
 | F3 gfx1151 packed-AR Q8T16 64-thread row amortization (rejected) | no broad backend default; explicit diagnostic `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` | `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_gemv.{hip,py}`, `hipengine/runtime/gguf_linear.py`, `hipengine/runtime/qwen35_gguf_runner.py`, `hipengine/kernels/hip_gfx{1100,1151}/__init__.py`, `tests/test_gguf_{linear_dispatch,q8_0_t16_gemv_decode}.py`, `tests/test_gfx1151_backend.py` | The clean p512/d64 screen looked exact and improved c4/c8 **+1.22%/+2.72%**, but p512/d128 changed one prompt at c2/c4/c8. A later first-transition all-layer oracle identifies the actual error: the old hardcoded 64-thread rowtile changes production reduction partition, producing one-BF16-ULP model-hidden drift first at layers 13/4 for the two c2 rows. The broad route stays rejected even after repairing thread geometry because exact 128-thread all-projection C2/C4/C8 is **77.940/107.798/133.377 tok/s** versus retained **78.552/108.050/133.251**. |
@@ -3733,6 +4067,8 @@ Evidence: [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29
 | F3C gfx1151 physical-C8 Q4T16 selected expert-pair reuse | `selected_dual_t16_pairreuse_gemv_decode_bf16_bf16_out`; `GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS=8`; `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0` rollback | `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.{hip,py}`, `hipengine/runtime/qwen35_gguf_runner.py`, `hipengine/kernels/hip_gfx{1100,1151}/__init__.py`, `scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py`, `tests/test_{gguf_t16_selected_gemv_decode,gfx1151_backend,qwen35_gguf_compact_moe_gemv_routing}.py` | Two wave32 ballots find repeated dynamic expert IDs across at most 64 selected lanes. Consecutive occurrences share each Q4T16 gate/up weight tile while every row keeps the production 128-thread K partition, reduction, and BF16 output order; unique IDs take the old dual body inside the same launch. At Qwen C8 shape, paired IDs improve **363.114 -> 249.404 us (-31.32%)**, while unique/random are bounded at **+0.19%/+0.44%** and all outputs are byte-exact. The no-env combined-default model oracle is **320/320** layer outputs exact with exact token/Conv/GDN/KV/final state. Clean retained p512/d128 C8 is **133.852 -> 144.039 tok/s (+7.61%)** with 0.026% variance and all trajectories exact. A source-equivalent real-Uvicorn diagnostic improves blocking **86.185 -> 87.770 (+1.84%)**, exact SSE **84.196 -> 84.798 (+0.72%)**, and delayed **67.788 -> 68.242 tok/s (+0.67%)**, with every request exact; server speed remains diagnostic pending clean repetition. Cached `rocprofv3` confirms 128 threads, 200 VGPR, 1,032 B LDS, zero scratch. gfx1100 remains disabled pending independent W7900 transfer. |
 | F3D gfx1151 Q4T16 byte-identical selected-input reuse (rejected and removed) | no runtime path retained; microbench fixture mode `--selection-pattern paired_identical` remains | temporary extension of `q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel`; `scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py`; strengthened `tests/test_gguf_t16_selected_gemv_decode.py` | The candidate cooperatively compared paired 2,048-element BF16 inputs and, when byte-identical, executed one production-order gate/up body for both lanes. It was byte-exact and improved the identical-input leaf **370.045 -> 216.955 us (-41.37%)** plus one-run direct C8 **144.039 -> 145.502 tok/s (+1.02%)**, but comparison overhead regressed the matched distinct-request server packet versus F3C by **-0.41% blocking / -1.39% exact SSE / -1.31% delayed** and put SSE/delayed **-0.69%/-0.65%** below the clean retained server row. The shortcut was removed; general dynamic expert-ID weight reuse remains. Artifact: `benchmarks/results/2026-07-20-gfx1151-gguf-selected-identical-input-reuse-rejected.json`. |
 | F3E gfx1151 physical-C8 Q5T16 selected-down expert-pair reuse | `selected_t16_pairreuse_gemv_decode_bf16_bf16_out`; `GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS=8`; `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0` rollback | `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.{hip,py}`, `hipengine/runtime/qwen35_gguf_runner.py`, `hipengine/kernels/hip_gfx{1100,1151}/__init__.py`, `scripts/gguf_q5_k_t16_selected_down_dp4a_microbench.py`, `tests/test_{gguf_t16_selected_gemv_decode,gfx1151_backend,qwen35_gguf_compact_moe_gemv_routing}.py` | Extends dynamic expert-ID pairing to Q5T16 selected down with two independent 16-column accumulators, preserving each row's production 128-thread K/reduction/BF16 order. Real-shape unique/random/paired micros are **+5.37%/+0.35%/-28.19%**, all byte-exact. The automatic combined-default oracle is **320/320** layer outputs exact. Clean retained direct C8 improves **144.039 -> 150.756 tok/s (+4.66%)**, and **133.852 -> 150.756 (+12.63%)** versus the pre-selected-reuse row, with 0.111% variance; a matched source-equivalent distinct-request server packet is exact and moves versus F3C by **+0.80% blocking / -0.12% SSE noise / +0.11% delayed**. Automatic tracing records the expected **37** Q5 launches at 128 threads, 96 VGPR, 520 B LDS, and zero scratch. gfx1100 remains disabled pending W7900 transfer. |
+| SH-D1 gfx1151 Qwen c1 Q5T16 selected-down tile8 | `selected_t16_qwen_tile8_gemv_decode_bf16_bf16_out`; `GGUF_Q5_T16_SELECTED_QWEN_TILE8=True`; direct 16-column peer/shape fallback | `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.{hip,py}`, `hipengine/runtime/qwen35_gguf_runner.py`, `hipengine/kernels/hip_gfx{1100,1151}/__init__.py`, `scripts/gguf_q5_k_t16_selected_down_tile8_microbench.py`, selected-T16/routing/backend tests | Exact K512/N2048/top8 specialization splits each resident Q5T16 tile into two eight-column owners while preserving every output column's production local128 K/FMA order, wave32 tree, serial wave-0..3 reduction, and BF16 store. The >2x-MALL final leaf improves **40.815 -> 34.865 us (1.1707x)** and projects **0.2202 ms/token** over 37 layers; tracing records local128/grid256x8, **56 VGPR**, 512 B LDS, and scratch0 versus production 128 VGPR. Final-code eager 512/128 improves **52.881 -> 53.413 tok/s (+1.007%)** with all samples separated, exact IDs, zero close bytes, byte-exact complete state at 512/4K/32K/64K, and all 18 natural/heldout prompts x3 exact. Q6 tile8 reaches only **1.0803x** and tile4 regresses to **0.9325x**; both Q6 surfaces are removed. gfx1100 and all shape/quant misses retain production. Artifact: `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-selected-down-q5-tile8-retained.json`. |
+| SH-D1 Qwen c1 Q6T16 LM-head tile8 (rejected and removed) | no runtime path, wrapper, registry key, test, or microbench retained | transient exact `q6_k_t16_gemv_tile8_kernel` in `gguf_q6_k_t16_gemv.{hip,py}`; full real-weight screen and focused Q6 test | Split the K2048/N248320 producer's 16 FP32 logits into two local128 eight-column owners while preserving every logit's K/FMA/reduction/store order. Full logits/top-1 are exact and cached tracing records **48 VGPR / 512 B LDS / scratch0** versus production **72 / 512 / 0**, but the counterbalanced complete 417,177,600-byte matrix screen regresses **1.83174 -> 1.83575 ms (0.99782x, -0.218%)**. Remove the candidate and close SH-D1 row-1 weight ownership; lower accumulator pressure cannot repay doubled workgroups. Artifact: `benchmarks/results/2026-08-06-gfx1151-gguf-sh-d1-q6-lm-head-tile8-rejected.json`. |
 | F3F gfx1151 physical-C8 Q6T16 selected-down expert-pair reuse | `gguf_q6_k_t16_v1/selected_t16_pairreuse_gemv_decode_bf16_bf16_out`; `GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS=8`; `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` rollback | `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.{hip,py}`, `hipengine/runtime/qwen35_gguf_runner.py`, `hipengine/kernels/hip_gfx{1100,1151}/__init__.py`, `scripts/gguf_q6_k_t16_selected_down_pairreuse_microbench.py`, selected-T16/routing/backend tests | Closes the three-layer Q6 down tail with the same exact 128-thread dynamic expert pairing. Unique/random/paired real-shape micros are **+6.81%/+4.28%/-23.59%**, all byte-exact. The automatic combined-default oracle is **320/320 exact**. Clean retained direct C8 improves **150.756 -> 151.015 tok/s (+0.171%)**, and **133.852 -> 151.015 (+12.82%)** versus the pre-selected-reuse row, with 0.093% variance; a matched source-equivalent distinct-request server packet moves **-0.15% blocking noise / +0.48% SSE / +0.81% delayed**, all rows exact. Automatic tracing records the expected **3** launches at 96 VGPR, 520 B LDS, and zero scratch. gfx1100 remains disabled pending W7900 transfer. |
 | Laguna LPF-2 compact expert-pair selected prefill (runtime rejected; primitives retained) | registered primitives only: `selected_dual_t16_pairreuse_gemv_decode_compact_bf16_bf16_out`; Q4/Q5/Q6 `selected_t16_pairreuse_gemv_decode_compact_bf16_bf16_out` | `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.{hip,py}`, `tests/test_gguf_t16_selected_gemv_decode.py` | Exact small-M alternative to 16-row compact WMMA. The primitives pair adjacent rows inside exact expert starts while preserving each row's 128-thread K partition, four-wave reduction, and BF16 bits; irregular 132-lane Q4 dual and Q4/Q5/Q6 down fixtures remain byte-exact beyond the old 64-lane mask. Cached gfx1151 trace records Q4 dual 238.241 us / 128 VGPR, Q4 down 198.330 us / 128 VGPR, and Q6 down 204.944 us / 112 VGPR, each at 128 threads, 128 SGPR, 512 B LDS, and zero scratch. The balanced full-model route was rejected: compact-pair regressed every measured row 16..128 by **-17.07% to -10.21%**, with a weighted **0.8843x / -11.57%** result despite exact next tokens and lifecycle recovery. The selector, compact scratch, group library, benchmark harness, and runtime route were removed; direct selected GEMV remains the only Laguna route. Artifact: `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf2-compact-pair-rejected.json`. |
 | Laguna AR-O1 exact grouped-small-M Q4/Q6 selected down | `selected_t16_grouped_smallm_bf16_bf16_out`; gfx1151 `LAGUNA_SELECTED_DOWN_MODE=adaptive_grouped_smallm`; direct fallback below 32 rows and on unmeasured backends | `hipengine/kernels/hip_gfx1100/{moe/group_scatter,quant/gguf_t16_selected_gemv}.{hip,py}`, `hipengine/runtime/laguna_{moe,gguf_runner}.py`, `hipengine/kernels/hip_gfx1151/__init__.py`, grouped-down tests/harnesses | One deterministic device pass emits compact starts, active experts, stable lane order, and F32 routing weights without scalar D2H. C16xR4 grouped Q4/Q6 down shares each decoded T16 tile across up to four BF16 rows while preserving every row's direct K/reduction association and BF16 bits; staged count/prefix/scatter and direct selected GEMV remain unfused fallbacks. Production fixtures and the complete MoE chain are bit-exact; trace records compact metadata `10.059 us`, Q4 down `192.481 us`, Q6 down `104.636 us`, 128 threads, 1,024 B LDS, zero scratch. Clean rows 32..128 improve **2.63-6.92%**, aggregate shape wall **5.461%**, and the ten-prompt h16/h32 category gate improves weighted prefill **50.193 -> 53.178 tok/s (+5.948%)** plus E2E **3.835%/2.762%**, with `KL=0`, 320/320 teacher top-1, exact trajectories/oracle/lifecycle. Artifacts: `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-{ab,category}.json`. |
@@ -3818,8 +4154,8 @@ Evidence: [`WPF-1R raw-Q5/Q6 repair rejection`](../benchmarks/results/2026-07-29
 | `paged_attn_decode` variant `bf16_split_k_spans` | `w4_paro` long-context full-attention decode, BF16 KV cache | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_bf16_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-split-k-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → NumPy softmax oracle `max_abs=5.96e-08`; public wrapper runs parent split-K context kernel then reduce using caller-provided workspaces; `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel` (`DurationNs=17320`, `VGPR_Count=32`, `Scratch_Size=0`) and `qwen35_paged_full_attn_decode_split_k_reduce_kernel` (`DurationNs=6320`, `VGPR_Count=16`, `Scratch_Size=0`) on W7900 |
 | `paged_attn_decode` variant `bf16_split_k_gate_f32_spans` | `w4_paro` long-context full-attention decode + gate, BF16 KV cache, FP32 gate/out | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_gate_f32_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-gate-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → NumPy softmax+sigmoid oracle `gated_max_abs=4.47e-08`; `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel` (`DurationNs=16320`, `VGPR_Count=32`, `Scratch_Size=0`) and `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<float>` (`DurationNs=5000`, `VGPR_Count=16`, `Scratch_Size=0`) on W7900 |
 | `paged_attn_decode` variants `bf16_split_k_gate_bf16_spans`, `bf16_split_k_gate_fp16_spans` | `w4_paro` long-context full-attention decode + gate, BF16 KV cache, BF16/FP16 gate/out | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_gate_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gate_fp16_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-gate-bf16-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → bit-exact BF16 and FP16 outputs (`bf16_mismatch=0`, `fp16_mismatch=0`, max abs `0`); wrappers instantiate the parent gated reduce with `hip_bfloat16` and `_Float16`, not integer casts; `rocprofv3` shows FP16 `qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<_Float16>` (`DurationNs=10040`, `VGPR_Count=16`, `Scratch_Size=0`, `LDS_Block_Size=24`) on W7900 |
-| `paged_attn_decode` variants `bf16_split_k_warp_spans`, `bf16_split_k_gqa_spans`, `bf16_split_k_gqa_gate_bf16_spans`, `bf16_split_k_gqa_gate_bf16_parallel_reduce_spans`, `bf16_split_k_gqa_gate_bf16_batch_spans`, `bf16_split_k_gqa_gate_fp16_spans`, `bf16_split_k_gqa_gate_fp16_batch_spans` | `w4_paro` Qwen3.5 GQA-specialized long-context and small-B verifier full-attention decode | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_warp_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_{bf16,fp16}_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → Qwen3.5 shape `[16,256] / 2 KV`, `ctx=512`, NumPy oracle `warp_max_abs=4.1e-08`, `gqa_max_abs=4.1e-08`, BF16 gated output bit-exact (`gqa_gate_bf16_mismatch=0`); FP16 GQA gated wrapper shares the same `_Float16` reduce instantiated by `qwen35-paged-attn-gate-bf16-hip`. `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-state-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` drives KV append + GQA gated decode through `Qwen35ParoDecodeState` and is bit-exact (`appended_key_mismatch=0`, `appended_value_mismatch=0`, `gqa_gate_bf16_mismatch=0`). `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-batch-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` validates row-batched BF16 and FP16 gated paths bit-exact vs independent c1 GQA decode at uneven 1017/1021/1024/1025 contexts (`gqa_gate_{bf16,fp16}_batch_vs_c1_mismatch=0`). On gfx1151, cached `rocprofv3` records the c4 producer at **262.972 us** (grid Z 4) and the new `hip_bfloat16` batch reducer at **12.143 us** (grid Y 4), both with 256-thread workgroups. MTP B=3/D32 rocprof under `chain_attn_mode=decode_batched` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<8,16,2>` + `qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<_Float16>` cut full-attn attention+KV `1.91 -> 0.45 ms/pass` vs the prefill-batched verifier; artifact `benchmarks/results/2026-06-07-hipengine-mtp-small-b-decode-full-attn.json`. LCP-D2 adds the gfx1100-scoped prepare-plus-coalesced BF16 split reduction from 32K: the 8,448-token/33-split NumPy fixture is exact; clean 513-split `rocprofv3` records serial `194.881 us` versus `6.280 + 18.720 us`; clean 32K/64K/128K graph decode improves `+1.23%/+3.95%/+7.80%`, max long-context KL is `1.904e-6`, and gfx1151 retains serial fallback. LCP-D1 retains the original serial gated reducer through 256 splits and parallelizes only independent work above that boundary; the 256/257 fixture and 4,096-value BF16 A/B are exact, and the clean gfx1151 128K trace moves the reducer **234.714 -> 196.466 us/call (-16.30%)** with 16 VGPR and zero scratch. |
-| `paged_attn_decode` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`, `gqa_splitk_gate_fp16_spans`; key-only `int8_key_bf16_value` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`; block16 `int8_block16` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans` | `int8_per_token_head` Qwen3.5 grouped-GQA split-K decode, signed INT8 K/V cache with per-token/head scales; diagnostic key-only layout stores signed INT8 K plus BF16 V; diagnostic block16 layout stores signed INT8 K/V plus per-token/head/16-dim-block scales | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_attn_decode_int8_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_gqa_splitk_gate_{bf16,fp16}_spans(...)`, `qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans(...)`, `qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans(...)` | `python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --pseudo-vocab-size 32 --require-int8-hip --max-abs-threshold 2e-3 --json /tmp/hipengine-int8-hip-ctx64-520.json` → accepted; INT8 HIP vs CPU oracle max_abs `5.22e-08` at ctx64 and `1.86e-08` at ctx520 with top-1 `1.0`. Key-only/block16 primitive gate: same script with `--scale-dtype fp32 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-block16-hip-64-520.json` → accepted, block16 HIP vs CPU oracle `max_abs <= 2.98e-08`, top-1 `1.0`; rocprof key-only ctx64 shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernel<float,8,16,2>` ran once (`20520 ns`). `python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` validates direct FP32-scale ctx64 decode, unaligned split ctx384 (`chunk_size=128`), and FP16-scale ctx520 page-boundary decode plus FP16/BF16 gated outputs (`max_abs<=2.98e-08`, `gate_fp16_max_abs=1.53e-05`, `gate_bf16_max_abs=1.49e-08`). `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float,8,16,2>` (`DurationNs=65200`, `47363`) and `_Float16` scale launches (`88723`, `78883`, `85603` ns) plus reduce/gated reduce kernels on W7900. The GQA producer grid is `(kv_head, split)`, so each KV stream is scanned once while sharing K/V loads across the 8 Q heads in its group. |
+| `paged_attn_decode` variants `bf16_split_k_warp_spans`, `bf16_split_k_gqa_spans`, `bf16_split_k_gqa_gate_bf16_spans`, `bf16_split_k_gqa_gate_bf16_parallel_reduce_spans`, `bf16_split_k_gqa_gate_bf16_batch_spans`, `bf16_split_k_gqa_gate_fp16_spans`, `bf16_split_k_gqa_gate_fp16_batch_spans` | `w4_paro` Qwen3.5 GQA-specialized long-context and small-B verifier full-attention decode | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_full_attn_decode_split_k_warp_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_bf16_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_{bf16,fp16}_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans(...)`, `qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(...)` | `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` → Qwen3.5 shape `[16,256] / 2 KV`, `ctx=512`, NumPy oracle `warp_max_abs=4.1e-08`, `gqa_max_abs=4.1e-08`, BF16 gated output bit-exact (`gqa_gate_bf16_mismatch=0`); FP16 GQA gated wrapper shares the same `_Float16` reduce instantiated by `qwen35-paged-attn-gate-bf16-hip`. `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-state-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` drives KV append + GQA gated decode through `Qwen35ParoDecodeState` and is bit-exact (`appended_key_mismatch=0`, `appended_value_mismatch=0`, `gqa_gate_bf16_mismatch=0`). `python3 scripts/smoke.py --mode qwen35-paged-attn-gqa-batch-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt` validates row-batched BF16 and FP16 gated paths bit-exact vs independent c1 GQA decode at uneven 1017/1021/1024/1025 contexts (`gqa_gate_{bf16,fp16}_batch_vs_c1_mismatch=0`). On gfx1151, cached `rocprofv3` records the c4 producer at **262.972 us** (grid Z 4) and the new `hip_bfloat16` batch reducer at **12.143 us** (grid Y 4), both with 256-thread workgroups. MTP B=3/D32 rocprof under `chain_attn_mode=decode_batched` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kernel<8,16,2>` + `qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<_Float16>` cut full-attn attention+KV `1.91 -> 0.45 ms/pass` vs the prefill-batched verifier; artifact `benchmarks/results/2026-06-07-hipengine-mtp-small-b-decode-full-attn.json`. LCP-D2 adds the gfx1100-scoped prepare-plus-coalesced BF16 split reduction from 32K: the 8,448-token/33-split NumPy fixture is exact; clean 513-split `rocprofv3` records serial `194.881 us` versus `6.280 + 18.720 us`; clean 32K/64K/128K graph decode improves `+1.23%/+3.95%/+7.80%`, max long-context KL is `1.904e-6`, and gfx1151 retained serial fallback pending an independent gate. SH7-A1 now admits that same registered route on gfx1151 from 32K: a one-queue same-source pair improves wall **+1.560%/+2.394%** at 32K/64K (**-0.333/-0.593 ms/token**), reduces the reducer **424.162 -> 109.346** and **744.973 -> 207.485 us/token**, preserves all **1,296/1,296** semantic logits byte-exactly, and traces the 24-VGPR prepare plus 16-VGPR output at 1 KiB LDS and zero scratch. Contexts below 32K and explicit opt-out retain serial fallback. SH8-A1's exact qgroup4 producer screen lowers 72 -> 56 VGPR but doubles the K/V ownership grid and regresses complete producer+parallel-reducer wall to **0.8959x/0.8852x** at 32K/64K (**0/42 wins**); the transient sibling is removed before model routing. LCP-D1 retains the original serial gated reducer through 256 splits and parallelizes only independent work above that boundary; the 256/257 fixture and 4,096-value BF16 A/B are exact, and the clean gfx1151 128K trace moves the reducer **234.714 -> 196.466 us/call (-16.30%)** with 16 VGPR and zero scratch. |
+| `paged_attn_decode` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`, `gqa_splitk_gate_fp16_spans`; key-only `int8_key_bf16_value` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans`; block16 `int8_block16` variants `gqa_splitk_spans`, `gqa_splitk_gate_bf16_spans` | `int8_per_token_head` Qwen3.5 grouped-GQA split-K decode, signed INT8 K/V cache with per-token/head scales; diagnostic key-only layout stores signed INT8 K plus BF16 V; diagnostic block16 layout stores signed INT8 K/V plus per-token/head/16-dim-block scales | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_attn_decode_int8_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_gqa_splitk_gate_{bf16,fp16}_spans(...)`, `qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans(...)`, `qwen35_paged_attn_decode_int8_block16_gqa_splitk_spans(...)`, `qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans(...)` | `python3 scripts/qwen35_kv_int8_accuracy.py --device hip --contexts 64,520 --block-size 256 --num-q-heads 16 --num-kv-heads 2 --head-dim 256 --pseudo-vocab-size 32 --require-int8-hip --max-abs-threshold 2e-3 --json /tmp/hipengine-int8-hip-ctx64-520.json` → accepted; INT8 HIP vs CPU oracle max_abs `5.22e-08` at ctx64 and `1.86e-08` at ctx520 with top-1 `1.0`. Key-only/block16 primitive gate: same script with `--scale-dtype fp32 --compiler-version-file /tmp/hipengine-hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-block16-hip-64-520.json` → accepted, block16 HIP vs CPU oracle `max_abs <= 2.98e-08`, top-1 `1.0`; rocprof key-only ctx64 shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_key_bf16_value_kernel<float,8,16,2>` ran once (`20520 ns`). `python3 scripts/smoke.py --mode qwen35-paged-attn-int8-gqa-hip --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build` validates direct FP32-scale ctx64 decode, unaligned split ctx384 (`chunk_size=128`), and FP16-scale ctx520 page-boundary decode plus FP16/BF16 gated outputs (`max_abs<=2.98e-08`, `gate_fp16_max_abs=1.53e-05`, `gate_bf16_max_abs=1.49e-08`). `rocprofv3` shows `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel<float,8,16,2>` (`DurationNs=65200`, `47363`) and `_Float16` scale launches (`88723`, `78883`, `85603` ns) plus reduce/gated reduce kernels on W7900. The GQA producer grid is `(kv_head, split)`, so each KV stream is scanned once while sharing K/V loads across the 8 Q heads in its group. The 2026-08-04 gfx1151 maintenance guard `test_int8_gqa_splitk_producer_grid_is_owned_by_kv_head` now freezes both producer ownership and the `num_kv_heads × num_splits` launch. A fresh cached-build smoke remains exact (`max_abs<=2.98e-08`, FP16/BF16 gated max abs `1.53e-05/1.49e-08`); `rocprofv3` records global grid X **512 = 2 KV heads × local256**, grid Y **1/3**, VGPR80/SGPR128/LDS0/scratch0, rather than the **4096** global-X work items a 16-Q-head producer would launch. |
 | `paged_attn_decode` variants `hadamard_group32_gqa_splitk_spans`, `hadamard_group32_gqa_splitk_gate_{bf16,fp16}_spans` | `int8_hadamard_group32` Qwen3.5 grouped-GQA split-K decode; query is transformed in wave32 registers, attention consumes transformed K/V, and the self-inverse transform is fused before the existing split reducer | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_attn_decode_int8_hadamard_group32_gqa_splitk_spans(...)`, gated BF16/FP16 variants | Native writer+decode fixture matches CPU dequantized paged attention within `max_abs <= 2e-4`; cached W7900 trace records `qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_groupwise_kernel<_Float16,...,32,true>` at `18760 ns`, 88 VGPR, `Scratch_Size=0`, followed by the unchanged split reducer at `1600 ns`. BF16 storage and unfused CPU dequantize+attention remain fallback boundaries. Clean `c971262f` therock-7.15 GGUF closure passes the full 512/8 and 4K/16 quality suites plus bounded 128K/16 and saves exactly 18.75% persistent K/V with no persistent BF16 shadow. It remains explicit/non-default: 4K production prefill/decode regress 0.67%/0.75%, 128K decode regresses 3.82%, and an inferred four-layer BF16 prefill transient raises allocator high water by 0.532 GiB. Artifact: `benchmarks/results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json`. |
 | `paged_attn_prefill` variant `hadamard_group32_gqa_gate_fp16_spans` | `int8_hadamard_group32` streaming causal-GQA prefill over transformed K/V, with wave32 inverse transform before FP16 gate/output | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans(...)` | Compiles/registers with the shared groupwise attention body and is integrated for the explicit `tail4_hadamard_group32` policy. Clean GGUF native quality passes at 512/8, 4K/16, and bounded 128K/16, but production prefill regresses 1.20%/0.67%/0.38% at 512/4K/128K and allocates an inferred four-layer 1.002 GiB BF16 transient. It remains explicit and non-default pending transient removal plus a repeated non-regressive speed gate; BF16 prefill remains fallback. |
 | `paged_attn_prefill` variant `per_token_head_gqa_gate_fp16_spans` | `int8_per_token_head` Qwen3.5 streaming causal-GQA prefill, signed INT8 K/V cache with per-token/head scales, FP16 gate/output | `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip` | `qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans(...)` | #88 removes the temporary BF16 INT8 prefill oracle by appending full-attention K/V directly into the retained INT8 cache and running online-softmax causal prefill over the INT8 cache plus scale tensors. `HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-int8-prefill-gpu1-20260615-023751/hipcc-version.txt python3 -m pytest tests/test_qwen35_int8_prefill_attention_gpu.py -q` -> `1 passed` against a NumPy causal INT8 reference. Focused host dispatch/runtime coverage `python3 -m pytest tests/test_kv_dispatch.py tests/test_qwen35_paged_attn_decode_plan.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py -q` -> `195 passed`. Cached `rocprofv3 --kernel-trace` captured `qwen35_paged_full_attn_prefill_gqa_gate_int8_kernel` (`DurationNs=10440`). GPU1 262K scratch gate: `int8_oracle_bytes 536870912 -> 0`, min-free `0.664 -> 1.139 GiB`; artifact `benchmarks/results/2026-06-15-gpu1-int8-prefill-streaming-scratch-262k.json`. |
@@ -5996,6 +6332,27 @@ BF16-byte exact, but actual layer-1 natural-M512 timing regresses
 **5.223 -> 5.308 ms (+1.635%)**. Doubling accumulators per lane and serializing
 more cache fills outweighs the smaller workgroup; local128 remains production
 (`benchmarks/results/2026-07-26-gfx1151-laguna-q6-down-shared-weight-local64-rejected.json`).
+
+### SH2-M4 compact selected T16 metadata
+
+`quant/gguf_t16_selected_gemv.{hip,py}` and the selected-prefill T16 families
+register exact `gguf_q4_k_qmicro_t16_v1` and
+`gguf_q5_k_qmicro_t16_v1` consumers. The layouts preserve FP16 `d/dmin` and
+quant planes while replacing each expanded four-column scale/min group with a
+24-bit record. Legacy 2,368-byte Q4 and 2,880-byte Q5 T16 keys remain registered
+fallbacks.
+
+The full Q4+Q5 route is not a production kernel policy: its actual-weight leaf
+projects **+1.598%** decode, and bounded preload/wave-broadcast unpack variants
+regress further. Q4 stays on current T16. The separable 2,816-byte Q5 route is
+production-default for the 37 selected down tensors and removes exactly
+**155,189,248 bytes / 0.14453125 GiB**. Production tracing names
+`q5_k_qmicro_t16_selected_gemv_kernel<unsigned short,8>` at local128,
+VGPR56, LDS512, scratch0 and
+`gguf_k_t16_selected_wmma_prefill_compact_kernel<unsigned short,5,true>` at
+local32, VGPR72, LDS0, scratch0. Four-depth state is byte-exact and 512
+prefill/decode remain within 1%. Evidence:
+[`SH2-M4 retained Q5`](../benchmarks/results/2026-08-06-gfx1151-gguf-sh2-m4-compact-q5-t16-retained.json).
 
 ## DFlash / MTP lineage map
 

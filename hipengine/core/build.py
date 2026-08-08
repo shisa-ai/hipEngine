@@ -1,7 +1,7 @@
-"""Torch-free HIP/CUDA JIT build cache skeleton.
+"""Torch-free HIP/CUDA JIT build cache.
 
-The build key is a hash of source bytes, normalized flags, and compiler version. Tests use
-``dry_run=True`` / ``plan_hip_build`` so no ROCm installation is required for this scaffold.
+Build keys hash source bytes, normalized flags, and compiler versions. HIP and CUDA
+planners support dry runs so CPU-only tests do not require either GPU toolchain.
 """
 
 from __future__ import annotations
@@ -16,6 +16,8 @@ from typing import Literal, Sequence
 
 _ENV_HIP_ARCH = "HIPENGINE_HIP_ARCH"
 _ENV_HIP_OFFLOAD_ARCH = "HIPENGINE_HIP_OFFLOAD_ARCH"
+_ENV_CUDA_ARCH = "HIPENGINE_CUDA_ARCH"
+_ENV_CUDA_TARGET_ARCH = "HIPENGINE_CUDA_TARGET_ARCH"
 _ENV_ROCM_DEVICE_LIB_PATH = "HIPENGINE_ROCM_DEVICE_LIB_PATH"
 _ENV_HIP_DEVICE_LIB_PATH = "HIP_DEVICE_LIB_PATH"
 
@@ -59,6 +61,11 @@ PROFILES: dict[ProfileName, BuildProfile] = {
         wavefront=32,
     ),
     "baseline": BuildProfile(name="baseline", flags=(), wavefront=32),
+}
+
+CUDA_PROFILES: dict[ProfileName, BuildProfile] = {
+    name: BuildProfile(name=name, flags=(), wavefront=32)
+    for name in ("decode", "prefill", "baseline")
 }
 
 
@@ -114,6 +121,74 @@ def plan_hip_build(
         "-shared",
         "-fPIC",
         "-O3",
+        *flags,
+        *(str(path) for path in source_paths),
+        "-o",
+        str(output_path),
+    )
+    return BuildArtifact(
+        family=family,
+        profile=build_profile,
+        cache_key=cache_key,
+        cache_dir=cache_dir,
+        output_path=output_path,
+        command=command,
+        sources=source_paths,
+        flags=flags,
+        compiler=compiler,
+        compiler_version=compiler_version,
+        target_arch=target_arch,
+    )
+
+
+def plan_cuda_build(
+    *,
+    sources: Sequence[str | Path],
+    family: str,
+    profile: ProfileName = "baseline",
+    cache_root: str | Path | None = None,
+    compiler: str = "nvcc",
+    compiler_version: str | None = None,
+    include_dirs: Sequence[str | Path] = (),
+    extra_flags: Sequence[str] = (),
+    target_arch: str | None = None,
+    output_name: str | None = None,
+) -> BuildArtifact:
+    """Return a deterministic CUDA shared-library build plan.
+
+    The default target comes from ``HIPENGINE_CUDA_ARCH`` or
+    ``HIPENGINE_CUDA_TARGET_ARCH``. CUDA profiles deliberately start without
+    HIP-specific optimization flags; every CUDA flag is explicit and hashed.
+    """
+
+    if not family:
+        raise ValueError("family must be non-empty")
+    build_profile = _profile(profile, CUDA_PROFILES)
+    source_paths = tuple(_resolve_source(path) for path in sources)
+    if not source_paths:
+        raise ValueError("at least one source is required")
+    compiler_version = compiler_version or f"{compiler}:unprobed"
+    include_flags = tuple(f"-I{Path(path).expanduser()}" for path in include_dirs)
+    target_arch = _normalize_cuda_target_arch(
+        target_arch or _cuda_target_arch_from_environment()
+    )
+    arch_flags = (f"-arch={target_arch}",) if target_arch is not None else ()
+    flags = (*build_profile.flags, *arch_flags, *include_flags, *tuple(extra_flags))
+    cache_key = _cache_key(
+        sources=source_paths,
+        flags=flags,
+        compiler=compiler,
+        compiler_version=compiler_version,
+    )
+    root = Path(cache_root).expanduser() if cache_root is not None else DEFAULT_CACHE_ROOT
+    cache_dir = root / f"{family}-{cache_key[:16]}"
+    output_path = cache_dir / (output_name or f"{family}.so")
+    command = (
+        compiler,
+        "-std=c++17",
+        "-O3",
+        "--shared",
+        "-Xcompiler=-fPIC",
         *flags,
         *(str(path) for path in source_paths),
         "-o",
@@ -231,6 +306,86 @@ def build_hip(
     return lib
 
 
+def build_cuda(
+    *,
+    sources: Sequence[str | Path],
+    family: str,
+    profile: ProfileName = "baseline",
+    cache_root: str | Path | None = None,
+    compiler: str = "nvcc",
+    compiler_version: str | None = None,
+    include_dirs: Sequence[str | Path] = (),
+    extra_flags: Sequence[str] = (),
+    target_arch: str | None = None,
+    output_name: str | None = None,
+    force: bool = False,
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    """Build or reuse a CUDA shared object and optionally load it."""
+
+    version = _resolve_compiler_version(
+        compiler=compiler,
+        compiler_version=compiler_version,
+        dry_run=dry_run,
+    )
+    resolved_target_arch = _normalize_cuda_target_arch(
+        target_arch or _cuda_target_arch_from_environment()
+    )
+    cache_key: tuple | None = None
+    if load and not dry_run:
+        cache_key = (
+            "cuda",
+            family,
+            profile,
+            output_name,
+            tuple(str(Path(source)) for source in sources),
+            None if cache_root is None else str(cache_root),
+            resolved_target_arch,
+            compiler,
+            version,
+            tuple(str(Path(directory)) for directory in include_dirs),
+            tuple(extra_flags),
+        )
+        if not force:
+            cached_lib = _LOADED_LIB_CACHE.get(cache_key)
+            if cached_lib is not None:
+                return cached_lib
+
+    artifact = plan_cuda_build(
+        sources=sources,
+        family=family,
+        profile=profile,
+        cache_root=cache_root,
+        compiler=compiler,
+        compiler_version=version,
+        include_dirs=include_dirs,
+        extra_flags=extra_flags,
+        target_arch=resolved_target_arch,
+        output_name=output_name,
+    )
+    if dry_run:
+        return artifact
+
+    if force or not artifact.output_path.exists():
+        if require_cached:
+            raise FileNotFoundError(
+                "cached build artifact missing for require_cached=True: "
+                f"{artifact.output_path}. Prebuild outside profilers or pass the same "
+                "compiler_version used by the cached artifact."
+            )
+        artifact.cache_dir.mkdir(parents=True, exist_ok=True)
+        _write_manifest(artifact)
+        subprocess.run(artifact.command, check=True)
+    if not load:
+        return artifact
+    lib = ctypes.CDLL(str(artifact.output_path))
+    if cache_key is not None:
+        _LOADED_LIB_CACHE[cache_key] = lib
+    return lib
+
+
 def compiler_version_text(compiler: str) -> str:
     result = subprocess.run(
         (compiler, "--version"),
@@ -291,6 +446,10 @@ def _target_arch_from_environment() -> str | None:
     return os.environ.get(_ENV_HIP_ARCH) or os.environ.get(_ENV_HIP_OFFLOAD_ARCH)
 
 
+def _cuda_target_arch_from_environment() -> str | None:
+    return os.environ.get(_ENV_CUDA_ARCH) or os.environ.get(_ENV_CUDA_TARGET_ARCH)
+
+
 def _rocm_device_lib_flags() -> tuple[str, ...]:
     path = os.environ.get(_ENV_ROCM_DEVICE_LIB_PATH) or os.environ.get(_ENV_HIP_DEVICE_LIB_PATH)
     if not path:
@@ -308,6 +467,27 @@ def _normalize_target_arch(value: str | None) -> str | None:
     if any(char.isspace() for char in stripped):
         raise ValueError(f"HIP target architecture must not contain whitespace: {value!r}")
     return stripped
+
+
+def _normalize_cuda_target_arch(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip().lower()
+    if not stripped:
+        return None
+    if any(char.isspace() for char in stripped):
+        raise ValueError(f"CUDA target architecture must not contain whitespace: {value!r}")
+    if stripped.startswith("compute_"):
+        stripped = "sm_" + stripped[len("compute_") :]
+    if stripped.startswith("sm_"):
+        suffix = stripped[len("sm_") :].replace(".", "")
+    else:
+        suffix = stripped.replace(".", "")
+    architecture_qualified = suffix.endswith("a")
+    digits = suffix[:-1] if architecture_qualified else suffix
+    if not digits.isdigit():
+        raise ValueError(f"invalid CUDA target architecture: {value!r}")
+    return f"sm_{digits}{'a' if architecture_qualified else ''}"
 
 
 def _maybe_enable_prefill_mcumode(flags: tuple[str, ...], profile: BuildProfile) -> tuple[str, ...]:
@@ -354,11 +534,14 @@ def _env_truthy(value: str | None) -> bool:
     return value is not None and value.strip().lower() not in ("", "0", "false", "no", "off")
 
 
-def _profile(name: ProfileName) -> BuildProfile:
+def _profile(
+    name: ProfileName,
+    profiles: dict[ProfileName, BuildProfile] = PROFILES,
+) -> BuildProfile:
     try:
-        return PROFILES[name]
+        return profiles[name]
     except KeyError as exc:
-        valid = ", ".join(sorted(PROFILES))
+        valid = ", ".join(sorted(profiles))
         raise ValueError(f"unknown build profile {name!r}; expected one of: {valid}") from exc
 
 

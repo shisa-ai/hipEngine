@@ -18,6 +18,9 @@ _SYMBOL_COMPACT_ACTIVE = "hipengine_qwen35_moe_group_compact_active"
 _SYMBOL_COMPACT_ACTIVE_PARALLEL = (
     "hipengine_qwen35_moe_group_compact_active_parallel"
 )
+_SYMBOL_COMPACT_ACTIVE_I32_PARALLEL = (
+    "hipengine_qwen35_moe_group_compact_active_i32_parallel"
+)
 _SYMBOL_COMPACT_ACTIVE_SOURCE_ROWS = (
     "hipengine_qwen35_moe_group_compact_active_source_rows"
 )
@@ -308,6 +311,61 @@ def qwen35_moe_group_compact_active_parallel(*args: object, **kwargs: object) ->
 
     kwargs["parallel"] = True
     qwen35_moe_group_compact_active(*args, **kwargs)
+
+
+def qwen35_moe_group_compact_active_i32_parallel(
+    selected_experts_ptr: int,
+    routing_weights_ptr: int,
+    expert_start_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    sorted_lanes_ptr: int,
+    sorted_experts_ptr: int,
+    sorted_weights_ptr: int,
+    total_lanes: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Stable parallel compaction for int32 selected-expert IDs."""
+
+    _check_positive(total_lanes, "total_lanes")
+    _check_num_experts(num_experts)
+    if num_experts > 256:
+        raise ValueError("compact active num_experts must be <= 256")
+    library = library or build_qwen35_moe_group_scatter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COMPACT_ACTIVE_I32_PARALLEL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(selected_experts_ptr),
+        ctypes.c_void_p(routing_weights_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(active_experts_ptr),
+        ctypes.c_void_p(active_count_ptr),
+        ctypes.c_void_p(sorted_lanes_ptr),
+        ctypes.c_void_p(sorted_experts_ptr),
+        ctypes.c_void_p(sorted_weights_ptr),
+        ctypes.c_int64(total_lanes),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
 
 
 def qwen35_moe_group_compact_active_source_rows_parallel(
@@ -640,6 +698,16 @@ def register_qwen35_moe_group_scatter_kernels(*, replace: bool = True) -> None:
             "active_experts_parallel",
         ),
         qwen35_moe_group_compact_active_parallel,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_group_compact",
+            "generic",
+            "active_experts_i32_parallel",
+        ),
+        qwen35_moe_group_compact_active_i32_parallel,
         replace=replace,
     )
     register(

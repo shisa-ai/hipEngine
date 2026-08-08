@@ -115,7 +115,7 @@ def test_t16_q4_explicit_shared_x_mode_resolves_candidate(
     assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
 
 
-def test_t16_q4_gfx1151_auto_resolves_promoted_shared_x(
+def test_t16_q4_gfx1151_auto_resolves_baseline_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", raising=False)
@@ -134,7 +134,8 @@ def test_t16_q4_gfx1151_auto_resolves_promoted_shared_x(
     plan = qgr._resolve_compact_moe_wmma_kernels(gate, up, down)
 
     assert plan is not None
-    assert "selected_dual_wmma_prefill_compact32_shared_x_bf16_bf16_out" in resolved_variants
+    assert "selected_dual_wmma_prefill_compact_bf16_bf16_out" in resolved_variants
+    assert not any("shared_x" in variant for variant in resolved_variants)
 
 
 def test_t16_q4_invalid_explicit_mode_fails_closed(
@@ -223,6 +224,17 @@ def test_t16_down_keys_point_at_registered_aliases() -> None:
     assert q5.quant == "gguf_q5_k_t16_v1"
     assert q5.variant == "selected_wmma_prefill_compact_bf16_bf16_out"
 
+    q5_qmicro = qgr._COMPACT_MOE_DOWN_KEYS["gguf_q5_k_qmicro_t16_v1"]
+    assert q5_qmicro.backend == "hip_gfx1100"
+    assert q5_qmicro.layer == "moe_linear"
+    assert q5_qmicro.quant == "gguf_q5_k_qmicro_t16_v1"
+    assert q5_qmicro.variant == "selected_wmma_prefill_compact_bf16_bf16_out"
+    q5_qmicro_gemv = qgr._COMPACT_MOE_DOWN_GEMV_KEYS[
+        "gguf_q5_k_qmicro_t16_v1"
+    ]
+    assert q5_qmicro_gemv.quant == "gguf_q5_k_qmicro_t16_v1"
+    assert q5_qmicro_gemv.variant == "selected_gemv_decode_bf16_bf16_out"
+
     q6 = qgr._COMPACT_MOE_DOWN_KEYS["gguf_q6_k_t16_v1"]
     assert q6.backend == "hip_gfx1100"
     assert q6.layer == "moe_linear"
@@ -236,5 +248,6 @@ def test_allocation_name_helper() -> None:
     assert qgr._selected_wmma_allocation_name(_fake_weight("gguf_q6_k")) == "raw"
     assert qgr._selected_wmma_allocation_name(_fake_weight("gguf_q4_k_t16_v1")) == "tiles"
     assert qgr._selected_wmma_allocation_name(_fake_weight("gguf_q5_k_t16_v1")) == "tiles"
+    assert qgr._selected_wmma_allocation_name(_fake_weight("gguf_q5_k_qmicro_t16_v1")) == "tiles"
     assert qgr._selected_wmma_allocation_name(_fake_weight("gguf_q6_k_t16_v1")) == "tiles"
     assert qgr._selected_wmma_allocation_name(_fake_weight("gguf_q8_0_t16_v1")) == "tiles"

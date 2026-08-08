@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-05",
+  "artifact_type": "correctness_gate",
+  "performance_claim": false,
+  "status": "accepted_matched_weight_gate_with_dense_source_quality_diagnostic",
+  "hardware": {
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "os": "Linux 7.2.0-rc5-1-mainline x86_64",
+    "hipcc": "HIP 7.2.53211-e1a6bc5663",
+    "torch": "2.10.0+rocm7.13.0a20260417"
+  },
+  "runtime_checkpoint": {
+    "model": "deepgrove/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2",
+    "exact_runtime_bytes": 5308186624,
+    "backend": "hip_gfx1151"
+  },
+  "dense_hf_oracle": {
+    "model": "deepgrove/maple-preview",
+    "revision": "ac1ddd79d2b5cb4406f5d2bebdf95406ce505a07",
+    "transformers": "4.57.1",
+    "weight_payload_bytes": 40428060672,
+    "safetensors_shard_bytes": 40430372376,
+    "shards": 9,
+    "weight_tensors": 18651,
+    "trust_remote_code": true,
+    "attention": "pure-torch FlashAttention API shim, scalar GQA/window fixture tested",
+    "residency": "6144 MapleMLP expert modules lazily mmap-loaded from original safetensors; dense attention/router/norm/embedding/head resident on gfx1151",
+    "residency_parity_check": "tiny 2-layer resident-vs-offloaded remote model logits array_equal, max_abs=0"
+  },
+  "evaluation": {
+    "mode": "teacher_forced_token_serial_decode",
+    "prompt": "<|im_start|>user\nWrite one short sentence about maple trees.<|im_end|>\n<|im_start|>assistant\n<think>\n",
+    "token_ids": [
+      151644,
+      872,
+      198,
+      7985,
+      825,
+      2805,
+      11652,
+      911,
+      54380,
+      12408,
+      13,
+      151645,
+      198,
+      151644,
+      77091,
+      198,
+      151667,
+      198
+    ],
+    "positions": 18,
+    "thresholds": {
+      "max_kl_lte": 0.05,
+      "top1_agreement_gte": 0.9,
+      "device_greedy_argmax_exact": true
+    }
+  },
+  "primitive_gate": {
+    "command": "python3 -m pytest -q tests/test_maple_attention_kernels.py::test_maple_standard_rmsnorm_is_bf16_bit_exact tests/test_maple_attention_kernels.py::test_maple_qknorm_partial_rope_and_kv_write_match_oracle tests/test_maple_moe_kernels.py::test_maple_router_topk_matches_fp32_softmax_renorm_oracle tests/test_maple_moe_kernels.py::test_maple_clamped_swiglu_matches_trained_clamp_oracle",
+    "result": "4 passed",
+    "rmsnorm": "BF16 bit exact",
+    "qknorm_partial_rope": "BF16 bit exact, including KV write",
+    "clamped_swiglu": "BF16 bit exact",
+    "router": "top-k IDs exact; FP32 softmax-renormalized weights within 1 ULP"
+  },
+  "packed_formula_gate": {
+    "oracle": "independent torch execution of published Maple formulas over the exact packed checkpoint",
+    "command": "python3 scripts/maple_correctness.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --token-ids 151644,872,198,7985,825,2805,11652,911,54380,12408,13,151645,198,151644,77091,198,151667,198 --oracle packed --json /tmp/maple-correctness-packed-final.json",
+    "max_kl": 0.013508114787471714,
+    "mean_kl": 0.001679105684171304,
+    "top1_agreement": 1.0,
+    "device_greedy_argmax_exact": true,
+    "minimum_hidden_cosine": 0.9942893194537781,
+    "passed": true
+  },
+  "hf_matched_weight_gate": {
+    "oracle": "pinned Transformers trust_remote_code Maple execution with the exact runtime checkpoint's affine4 embeddings and lm_head dequantized into the dense modules",
+    "command": "PYTHONPATH=$PWD /tmp/maple-hf-oracle-venv/bin/python scripts/maple_correctness.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --token-ids 151644,872,198,7985,825,2805,11652,911,54380,12408,13,151645,198,151644,77091,198,151667,198 --oracle hf --hf-model deepgrove/maple-preview --hf-revision ac1ddd79d2b5cb4406f5d2bebdf95406ce505a07 --hf-cache-dir /home/lhl/maple-hf-cache --hf-local-files-only --hf-offload-experts --hf-offload-dir /home/lhl/maple-hf-offload --hf-match-packed-affine4 --json /tmp/maple-correctness-hf-matched-final.json",
+    "max_kl": 0.004718640799058903,
+    "mean_kl": 0.0007227183203957577,
+    "top1_agreement": 1.0,
+    "device_greedy_argmax_exact": true,
+    "hip_top_ids": [
+      82,
+      2524,
+      77091,
+      264,
+      14311,
+      3364,
+      429,
+      279,
+      44222,
+      304,
+      151644,
+      151644,
+      151644,
+      77091,
+      198,
+      151667,
+      198,
+      785
+    ],
+    "oracle_top_ids": [
+      82,
+      2524,
+      77091,
+      264,
+      14311,
+      3364,
+      429,
+      279,
+      44222,
+      304,
+      151644,
+      151644,
+      151644,
+      77091,
+      198,
+      151667,
+      198,
+      785
+    ],
+    "per_position_kl": [
+      0.00003017978260668269,
+      0.00001972285543304993,
+      0.0002077048423618519,
+      0.0002113533623293737,
+      0.0002384930983083674,
+      0.0004446541059569645,
+      0.0040796263958033,
+      0.0008446213724930045,
+      0.004718640799058903,
+      0.0011294710151935384,
+      0.00020937653619692773,
+      0.0005300186398961618,
+      3.017424390338407e-11,
+      1.5128832444245648e-08,
+      1.2533793854275479e-09,
+      0.00011139591730897035,
+      1.1365740557471912e-08,
+      0.0002336432660499093
+    ],
+    "passed": true
+  },
+  "raw_dense_source_diagnostic": {
+    "scope": "deployment quantization quality diagnostic; not the same-weight implementation gate",
+    "max_kl": 0.14983992116944428,
+    "mean_kl": 0.024478505784543376,
+    "top1_agreement": 0.8888888888888888,
+    "mismatched_positions": [
+      9,
+      17
+    ],
+    "dense_oracle_top_ids_at_mismatches": [
+      271,
+      1654
+    ],
+    "packed_runtime_top_ids_at_mismatches": [
+      304,
+      785
+    ],
+    "passed": false,
+    "attribution": {
+      "dense_embedding_and_head_hybrid_max_kl": 0.03302344604345895,
+      "dense_embedding_and_head_hybrid_top1_agreement": 0.9444444444444444,
+      "interpretation": "The raw dense-vs-deployment gap is dominated by the checkpoint's intentional affine4 embedding/head quantization. It is retained as a failed quality diagnostic and is not used to waive or alter the fixed gate thresholds."
+    }
+  },
+  "correctness_fix": {
+    "issue": "When max_context equaled the SWA capacity, the runner compared capacities and skipped publishing the distinct global KVLiveSpans owner.",
+    "localization": "first divergence at layer 3, the first global-attention layer",
+    "repair": "publish both span-owner identities on every position",
+    "regression": "tests/test_maple_runtime.py::test_equal_capacity_swa_and_global_span_owners_are_both_published"
+  }
+}

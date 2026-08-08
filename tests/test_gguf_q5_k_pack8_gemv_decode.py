@@ -85,7 +85,10 @@ def _run(
 
 
 def test_q5_k_pack8_decode_registry_keys_resolve() -> None:
+    from hipengine.kernels import hip_gfx1151
+
     register_gguf_k_gemv_kernels()
+    hip_gfx1151.register_gfx1151_kernels()
     assert resolve(
         backend="hip_gfx1100",
         layer="linear_pair",
@@ -148,14 +151,12 @@ def test_q5_k_pack8_decode_registry_keys_resolve() -> None:
             "wave32x2_gemv_decode_bf16_f32_out",
         )
     )
-    assert not is_registered(
-        KernelKey(
-            "hip_gfx1151",
-            "linear",
-            "gguf_q5_k",
-            "wave32x2_gemv_decode_bf16_bf16_out",
-        )
-    )
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q5_k",
+        variant="wave32x2_gemv_decode_bf16_bf16_out",
+    ) is gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out
 
 
 def test_q5_k_pack8_decode_wrapper_rejects_unaligned_shape() -> None:

@@ -1,0 +1,108 @@
+{
+  "artifact_type": "decode_profile",
+  "backend": "hip_gfx1151",
+  "date": "2026-08-08",
+  "host_gap_per_step_us": 667.8552770995229,
+  "host_wall_per_step_us": 5526.855471543968,
+  "kernel_launches_per_step": 271.0,
+  "kernel_time_per_step_us": 4859.000194444445,
+  "kernel_time_total_us": 174924.007,
+  "measured_steps": 32,
+  "model": "deepgrove/maple-preview-2bit-mlx",
+  "per_family_us_per_step": {
+    "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": 6.317444444444444,
+    "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": 1.5228888888888887,
+    "(anonymous namespace)::maple_affine4_embed_kernel(unsigned int const*, unsigned short const*, unsigned short const*, unsigned short*, long, long)": 3.759166666666667,
+    "(anonymous namespace)::maple_affine4_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short const*, float*, long, long)": 1277.9029444444445,
+    "(anonymous namespace)::maple_attention_decode_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, float, long)": 529.32975,
+    "(anonymous namespace)::maple_clamped_swiglu_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)": 27.49575,
+    "(anonymous namespace)::maple_kv_span_update_kernel(long*, long*, unsigned char*, long*, long, long)": 2.659416666666667,
+    "(anonymous namespace)::maple_qknorm_rope_kv_write_kernel(unsigned short*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, float, float, long)": 66.88563888888888,
+    "(anonymous namespace)::maple_router_topk_single_dispatch_kernel(unsigned short const*, unsigned short const*, int*, float*, float*, unsigned int*, long, long, long)": 1093.755388888889,
+    "(anonymous namespace)::maple_selected_ternary_dual_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, unsigned short*, long, long, long, long)": 609.0291388888888,
+    "(anonymous namespace)::maple_selected_ternary_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, long, long, long, long)": 526.6158888888889,
+    "(anonymous namespace)::maple_ternary_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long)": 229.0588888888889,
+    "(anonymous namespace)::maple_ternary_qkv_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long, long)": 335.25205555555556,
+    "(anonymous namespace)::maple_weighted_residual_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)": 41.7415,
+    "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, float, long, long)": 56.155944444444444,
+    "void (anonymous namespace)::paro_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, float, long, long)": 51.51838888888889
+  },
+  "performance_claim": false,
+  "protocol": {
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-maple-hipcc-version.txt",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH": null
+    }
+  },
+  "schema_version": 1,
+  "status": "accepted_diagnostic",
+  "steps_in_trace": 36,
+  "top_kernels_us_per_step": [
+    {
+      "kernel": "(anonymous namespace)::maple_affine4_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short const*, float*, long, long)",
+      "us_per_step": 1277.9029444444445
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_router_topk_single_dispatch_kernel(unsigned short const*, unsigned short const*, int*, float*, float*, unsigned int*, long, long, long)",
+      "us_per_step": 1093.755388888889
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_selected_ternary_dual_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, unsigned short*, long, long, long, long)",
+      "us_per_step": 609.0291388888888
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_attention_decode_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, float, long)",
+      "us_per_step": 529.32975
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_selected_ternary_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, int const*, unsigned short*, long, long, long, long)",
+      "us_per_step": 526.6158888888889
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_ternary_qkv_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long, long)",
+      "us_per_step": 335.25205555555556
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_ternary_gemv_kernel(unsigned short const*, unsigned int const*, unsigned short const*, unsigned short*, long, long)",
+      "us_per_step": 229.0588888888889
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_qknorm_rope_kv_write_kernel(unsigned short*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, float, float, long)",
+      "us_per_step": 66.88563888888888
+    },
+    {
+      "kernel": "void (anonymous namespace)::paro_add_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, float, long, long)",
+      "us_per_step": 56.155944444444444
+    },
+    {
+      "kernel": "void (anonymous namespace)::paro_rmsnorm_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, float, long, long)",
+      "us_per_step": 51.51838888888889
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_weighted_residual_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, long, long)",
+      "us_per_step": 41.7415
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_clamped_swiglu_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+      "us_per_step": 27.49575
+    },
+    {
+      "kernel": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+      "us_per_step": 6.317444444444444
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_affine4_embed_kernel(unsigned int const*, unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+      "us_per_step": 3.759166666666667
+    },
+    {
+      "kernel": "(anonymous namespace)::maple_kv_span_update_kernel(long*, long*, unsigned char*, long*, long, long)",
+      "us_per_step": 2.659416666666667
+    },
+    {
+      "kernel": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+      "us_per_step": 1.5228888888888887
+    }
+  ]
+}

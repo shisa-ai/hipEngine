@@ -326,7 +326,7 @@ def test_q5_swar_pair_keys_are_excluded_from_unvalidated_backends(
         lambda key, _kernel, *, replace=False: registered.append(key),
     )
     backend.register_gfx1151_kernels()
-    assert registered == []
+    assert not set(_KEYS).intersection(registered)
 
 
 def test_q5_swar_pair_source_preserves_retained_helper_and_integer_contract() -> None:

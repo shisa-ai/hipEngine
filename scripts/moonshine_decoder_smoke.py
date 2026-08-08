@@ -30,7 +30,11 @@ from hipengine.kernels.hip_gfx1100.linear.moonshine_w8a16 import (
 from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
     build_moonshine_layernorm,
 )
-from hipengine.runtime.moonshine import MoonshineResidentRuntime
+from hipengine.runtime.moonshine import (
+    MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
+    MOONSHINE_LM_HEAD_ROUTES,
+    MoonshineResidentRuntime,
+)
 
 BOUNDARY_MAX_ABS = 1.0
 BOUNDARY_MAX_RELATIVE_L2 = 0.01
@@ -53,6 +57,12 @@ def parse_args() -> argparse.Namespace:
         "--w8a16-families",
         default="",
         help="comma-separated selective families: lm_head,mlp,attention",
+    )
+    parser.add_argument(
+        "--lm-head-route",
+        choices=MOONSHINE_LM_HEAD_ROUTES,
+        default=MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
+        help="use exact wave8 partial top-1 (default) or the unfused full-logit fallback",
     )
     parser.add_argument(
         "--token-route",
@@ -247,6 +257,7 @@ def main() -> int:
         "post_eos_unselected_token_mismatches": [],
         "timed_step_allocations": 0,
         "token_route": args.token_route,
+        "lm_head": None,
         "w8a16_families": [
             value.strip() for value in args.w8a16_families.split(",") if value.strip()
         ],
@@ -260,11 +271,13 @@ def main() -> int:
             model_path=args.model_path,
             encoder_frames=encoder_frames,
             w8a16_families=args.w8a16_families,
+            lm_head_route=args.lm_head_route,
         ) as resident:
             resident.prepare_decoder_kernels(
                 compiler_version=compiler_version,
                 require_cached=args.require_cached_build,
             )
+            report["lm_head"] = resident.lm_head_contract()
             encoder_hidden = fixture["encoder.output"]
             encoder_mask = fixture["encoder.attention_mask"]
             if encoder_frames != source_frames:

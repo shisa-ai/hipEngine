@@ -45,6 +45,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+    gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
@@ -63,7 +64,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
     gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
+    gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_fp16_fp16_out,
@@ -89,8 +92,10 @@ from hipengine.quant.gguf_q4_k import (
     interleave_gguf_q4_k_tile16_dual,
     repack_gguf_q4_k_pack8,
     repack_gguf_q4_k_tile16,
+    repack_gguf_q4_k_tile16_qmicro,
 )
 from hipengine.quant.gguf_t16 import (
+    repack_gguf_q5_k_qmicro_tile16,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
     repack_gguf_q6_k_tile16_qmicro,
@@ -1910,6 +1915,69 @@ def test_p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits(t16_selected_li
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_sh2_m4_q4_qmicro_fused_silu_matches_t16_production_bits(t16_selected_library) -> None:
+    rows, x_rows = 8, 1
+    in_features, out_features, num_experts = 512, 32, 3
+    rng = np.random.default_rng(202608061)
+    x_bf16 = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(x_rows, in_features)).astype(np.float32))
+    selected = np.array([2, 0, 1, 1, 2, 0, 2, 1], dtype=np.int64)
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=29)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=43)
+
+    baseline = _run_direct_dual_silu(
+        gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        repack_gguf_q4_k_tile16(qa).tiles,
+        repack_gguf_q4_k_tile16(qb).tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    compact = _run_direct_dual_silu(
+        gguf_q4_k_qmicro_t16_selected_dual_silu_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        repack_gguf_q4_k_tile16_qmicro(qa).tiles,
+        repack_gguf_q4_k_tile16_qmicro(qb).tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(compact, baseline)
+
+
+def test_sh2_m4_q5_qmicro_qwen_tile8_matches_t16_production_bits(t16_selected_library) -> None:
+    rows = 8
+    in_features, out_features, num_experts = 512, 2048, 3
+    rng = np.random.default_rng(202608062)
+    x_bf16 = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32))
+    selected = np.array([2, 0, 1, 1, 2, 0, 2, 1], dtype=np.int64)
+    qweight = _stack_experts(make_q5_k_weight, out_features, in_features, num_experts, seed=59)
+
+    baseline = _run_direct_single(
+        gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        repack_gguf_q5_k_tile16(qweight).tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    compact = _run_direct_single(
+        gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        repack_gguf_q5_k_qmicro_tile16(qweight).tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(compact, baseline)
+
+
 def test_q4_t16_direct_dual_pairreuse_matches_production_bits(t16_selected_library) -> None:
     """Repeated expert IDs may share weights without changing row arithmetic."""
 
@@ -2665,6 +2733,85 @@ def test_p9_h3d_qk_t16_direct_bf16_matches_cpu_oracle(
     expected = _expected_direct_single(x_ref, selected, qw, out_features, qtype_enum)
     expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
     np.testing.assert_allclose(_bf16_u16_to_f32(actual), expected_bf16, **_TOL)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "builder,repack,production_fn,candidate_fn,qtype_enum",
+    [
+        pytest.param(
+            make_q5_k_weight,
+            repack_gguf_q5_k_tile16,
+            gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
+            GGMLQuantizationType.Q5_K,
+            id="Q5_K",
+        ),
+    ],
+)
+def test_sh_d1_qwen_selected_down_tile8_matches_production_bits_and_cpu_oracle(
+    builder,
+    repack,
+    production_fn,
+    candidate_fn,
+    qtype_enum,
+    t16_selected_library,
+) -> None:
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="selected_t16_qwen_tile8_gemv_decode_bf16_bf16_out",
+    ) is candidate_fn
+    rows = 8
+    selected = np.array([2, 0, 1, 1, 2, 0, 2, 1], dtype=np.int64)
+    in_features, out_features, num_experts = 512, 2048, 3
+    rng = np.random.default_rng(20260806 + int(qtype_enum))
+    qweight = _stack_experts(
+        builder,
+        out_features,
+        in_features,
+        num_experts,
+        seed=97,
+    )
+    tiles = repack(qweight).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    production = _run_direct_single(
+        production_fn,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_direct_single(
+        candidate_fn,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(candidate, production)
+
+    expected = _expected_direct_single(
+        _bf16_u16_to_f32(x_bf16),
+        selected,
+        qweight,
+        out_features,
+        qtype_enum,
+    )
+    expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(candidate),
+        expected_bf16,
+        **_TOL,
+    )
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

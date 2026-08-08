@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-07",
+  "artifact_type": "invalid_historical_maple_m6_batch_decode",
+  "status": "invalid",
+  "performance_claim": false,
+  "superseded_by": "benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json",
+  "invalid_reasons": [
+    "The hardware label combined W7900 with gfx1151; the actual device was Radeon 8060S/gfx1151.",
+    "The correctness gate exercised c=1 while the published rows were c=2/4/8.",
+    "The artifact omitted repeat distributions, exact command/provenance, category/heldout coverage, and lifecycle accounting.",
+    "MapleContinuousBatcher was described as server work even though it is not wired into the public generation scheduler."
+  ],
+  "model": "deepgrove/maple-preview-2bit-mlx",
+  "backend": "hip_gfx1151",
+  "historical_hardware_label": "AMD Radeon Pro W7900 (gfx1151) [invalid label; actual run was Radeon 8060S/gfx1151]",
+  "per_request_tokens": 64,
+  "historical_c1_only_correctness_gate": true,
+  "rows": [
+    {
+      "c": 2,
+      "steps": 64,
+      "total_tokens": 128,
+      "elapsed_ms": 573.38,
+      "tokens_per_sec": 223.24
+    },
+    {
+      "c": 4,
+      "steps": 64,
+      "total_tokens": 256,
+      "elapsed_ms": 928.791,
+      "tokens_per_sec": 275.63
+    },
+    {
+      "c": 8,
+      "steps": 64,
+      "total_tokens": 512,
+      "elapsed_ms": 1594.535,
+      "tokens_per_sec": 321.1
+    }
+  ]
+}

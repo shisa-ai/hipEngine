@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-07",
+  "artifact_type": "decode_perf",
+  "performance_claim": false,
+  "status": "rejected_diagnostic",
+  "backend": "hip_gfx1151",
+  "model": "deepgrove/maple-preview-2bit-mlx",
+  "quant": "maple_ternary2",
+  "hardware": {
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "workload": "single decode step, resident 4096 context, 24 MoE layers, 256 experts top-8, hidden 2048",
+  "change": "M2/D2 fuse MoE gate/up dual GEMV + clamped SiLU into one kernel (maple_moe_dual_swiglu_bf16). NOT promoted as default: opt-in via HIPENGINE_MAPLE_FUSE_MOE=1 (default 0).",
+  "baseline": {
+    "command": "PYTHONPATH=$PWD python3 scripts/maple_profile.py --profile (unfused chain)",
+    "decode_launches_per_step": 295,
+    "kernel_time_per_step_us": 5541.7
+  },
+  "result": {
+    "command": "PYTHONPATH=$PWD python3 scripts/maple_profile.py --profile (fused opt-in)",
+    "decode_launches_per_step": 271,
+    "kernel_time_per_step_us": 5560.2,
+    "launch_reduction_per_step": -24,
+    "launch_reduction_pct": -8.1
+  },
+  "microbenchmark": {
+    "method": "interleaved A/B fused dual_swiglu vs (dual gemv + swiglu), 150 calls x 5 reps",
+    "fused_us_per_call": 229.7,
+    "unfused_us_per_call": 210.7,
+    "fused_regression_pct": -9.0
+  },
+  "correctness": {
+    "gate": "packed formula oracle, 12-position teacher-forced decode; fused == unfused bit-identical (same max/mean KL and top-1); GPU test asserts fused intermediate == unfused dual+swiglu intermediate bit-for-bit",
+    "command": "python3 scripts/maple_correctness.py --model deepgrove/maple-preview-2bit-mlx --backend hip_gfx1151 --token-ids 9707,13,358,1093,220,3100,1066,13,366,264,1156,15 --oracle packed",
+    "max_kl": 0.4626542322267913,
+    "mean_kl": 0.053982395728220854,
+    "top1_agreement": 1.0,
+    "bit_exact_with_unfused": true
+  },
+  "notes": [
+    "The fused kernel cuts decode launches 295->271 and is bit-exact, but is ~9% slower per MoE layer (229.7 vs 210.7 us). In eager mode launch savings offset the kernel regression (step wall neutral); in the hipGraph path (M1/M6) launches are already amortized so the fusion would regress ~1.4%.",
+    "Kept opt-in (HIPENGINE_MAPLE_FUSE_MOE=1) with the blocker recorded in docs/REFACTOR.md: promote only once the fused kernel's efficiency gap vs the unfused pair is eliminated.",
+    "The fused down gemv + weighted residual composite was also built, verified bit-exact, but regresses ~3.5% (serial-expert grid); reverted."
+  ]
+}

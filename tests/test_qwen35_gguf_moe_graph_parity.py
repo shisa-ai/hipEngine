@@ -10,7 +10,6 @@ rejects).  Skips unless ROCm and the 35B-A3B GGUF model are both present.
 from __future__ import annotations
 
 import ctypes
-import os
 from pathlib import Path
 
 import numpy as np
@@ -35,9 +34,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _decode(enable_graph: bool):
-    os.environ["HIPENGINE_GGUF_MOE_GRAPH"] = "1" if enable_graph else "0"
-    os.environ["HIPENGINE_GGUF_DECODE_REPACK"] = "1"
+def _decode(enable_graph: bool, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HIPENGINE_GGUF_MOE_GRAPH", "1" if enable_graph else "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     toks: list[int] = []
@@ -56,11 +56,13 @@ def _decode(enable_graph: bool):
     return toks, stats
 
 
-def test_moe_graph_decode_matches_eager_and_engages() -> None:
-    eager_toks, eager_stats = _decode(False)
+def test_moe_graph_decode_matches_eager_and_engages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eager_toks, eager_stats = _decode(False, monkeypatch)
     assert eager_stats is None  # flag off -> no graph cache created
 
-    graph_toks, graph_stats = _decode(True)
+    graph_toks, graph_stats = _decode(True, monkeypatch)
     assert graph_toks == eager_toks, f"graph diverged: {graph_toks} != {eager_toks}"
     assert graph_stats is not None
     # The graph must have actually engaged (not silently fallen back to eager).

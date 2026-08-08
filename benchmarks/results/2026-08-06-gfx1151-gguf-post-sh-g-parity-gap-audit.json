@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "date": "2026-08-06",
+  "status": "post_campaign_plan",
+  "performance_claim": false,
+  "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395, gfx1151, GPU 0",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "exact_file_required": true,
+    "quant": "gguf_q4_k_m"
+  },
+  "source_revision": "12c2ecaa1",
+  "source_artifacts": {
+    "sh_g": {
+      "path": "benchmarks/results/2026-08-06-gfx1151-gguf-sh-g-final-recertification.json",
+      "sha256": "81d9e5607acac5524e108fd575d30dd3e6838f3e39da0f35ec81b28f977d438b"
+    },
+    "sh_c0": {
+      "path": "benchmarks/results/2026-08-05-gfx1151-gguf-sh-c0-attribution.json",
+      "sha256": "958981686c58f79842c08af637983272f2bf6f3d26e360aefb070791126a8548"
+    },
+    "prior_host_embedding": {
+      "path": "benchmarks/results/2026-06-18-gpu1-gguf-q4km-host-token-embedding-128k-diagnostic.json",
+      "sha256": "4739bbea69719420c2f6f3d8d8c9e2242b42dd725b4a5bba08ae069be3a395b0",
+      "qualification": "gfx1100 128K capacity diagnostic only; it is not gfx1151 production evidence"
+    }
+  },
+  "remaining_rows": {
+    "512/128": {
+      "hipengine_decode_tok_s": 53.44582070763851,
+      "fork_f16_decode_tok_s": 64.611345,
+      "hipengine_ms_per_token": 18.710536890625,
+      "fork_f16_ms_per_token": 15.477158074947983,
+      "f16_time_gap_ms_per_token": 3.2333788156770176,
+      "c1_time_gap_ms_per_token": 1.518067192352845,
+      "hipengine_whole_gtt_gib": 21.916004180908203,
+      "fork_f16_whole_gtt_gib": 20.830669403076172,
+      "whole_gtt_gap_gib": 1.0853347778320312
+    },
+    "4K/128": {
+      "hipengine_decode_tok_s": 56.11617211688039,
+      "fork_f16_decode_tok_s": 62.557689,
+      "hipengine_ms_per_token": 17.8201748671875,
+      "fork_f16_ms_per_token": 15.985245235002207,
+      "f16_time_gap_ms_per_token": 1.8349296321852933,
+      "c1_time_gap_ms_per_token": 0.8119258664221292,
+      "hipengine_whole_gtt_gib": 22.147724151611328,
+      "fork_f16_whole_gtt_gib": 21.160736083984375,
+      "whole_gtt_gap_gib": 0.9869880676269531
+    },
+    "32K/128": {
+      "hipengine_decode_tok_s": 46.4893797149463,
+      "fork_f16_decode_tok_s": 53.234061,
+      "hipengine_ms_per_token": 21.5102891484375,
+      "fork_f16_ms_per_token": 18.78496551296359,
+      "f16_time_gap_ms_per_token": 2.7253236354739094,
+      "c1_time_gap_ms_per_token": 1.2468646296938353,
+      "hipengine_whole_gtt_gib": 22.800140380859375,
+      "fork_f16_whole_gtt_gib": 21.99620819091797,
+      "whole_gtt_gap_gib": 0.8039321899414062
+    },
+    "64K/128": {
+      "hipengine_decode_tok_s": 39.74984392208257,
+      "fork_f16_decode_tok_s": 45.686741,
+      "hipengine_ms_per_token": 25.157331484375,
+      "fork_f16_ms_per_token": 21.888188522792642,
+      "f16_time_gap_ms_per_token": 3.2691429615823573,
+      "c1_time_gap_ms_per_token": 1.5829897978665954,
+      "hipengine_whole_gtt_gib": 23.538421630859375,
+      "fork_f16_whole_gtt_gib": 22.8424072265625,
+      "whole_gtt_gap_gib": 0.696014404296875
+    }
+  },
+  "decode_owner": {
+    "selected_q4_gate_up_ms_per_token_512": 2.3154,
+    "selected_down_ms_per_token_512": 1.3933,
+    "router_combine_ms_per_token_approx": 0.98,
+    "composite_scope_ms_per_token_approx": 4.6887,
+    "c1_required_composite_speedup_by_context": {
+      "512": 1.47878997173418,
+      "4K": 1.2094333686839795,
+      "32K": 1.3622673648051102,
+      "64K": 1.5097029970082827
+    },
+    "f16_parity_required_composite_speedup_by_context": {
+      "512": 3.221763037951784,
+      "4K": 1.642984331493498,
+      "32K": 2.3880800872998864,
+      "64K": 3.3029317407537344
+    },
+    "selected_candidate": "P10.D1 mixed Q4T16 gate/up -> BF16 SiLU intermediate -> Q5T16/Q6T16 output-tiled down -> exact route-weight combine/residual producer-consumer composite",
+    "why_unclosed": "SH-D1 closed byte-neutral schedules within individual kernels; it did not implement a cross-kernel mixed-quant producer-consumer owner",
+    "rejected_predecessor": "The existing raw-Q4 megakernel uses only eight blocks at c1 and cannot consume the deployed Q4T16 gate/up plus mixed Q5T16/Q6T16 down layouts"
+  },
+  "memory_owner": {
+    "raw_q8_token_embedding_bytes": 540344320,
+    "raw_q8_token_embedding_gib": 0.50323486328125,
+    "ideal_whole_gtt_gap_after_embedding_only_gib": {
+      "512": 0.5820999145507812,
+      "4K": 0.4837532043457031,
+      "32K": 0.30069732666015625,
+      "64K": 0.192779541015625
+    },
+    "short_768_row_dedicated_scratch_bytes": 355182664,
+    "projected_short_liveness_alias_saving_bytes": 157138758,
+    "projected_short_liveness_alias_saving_gib": 0.14634687267243862,
+    "tracked_to_whole_gtt_overhead_gib": {
+      "512": 0.43602487444877625,
+      "4K": 0.5489267781376839,
+      "32K": 0.5551195219159126,
+      "64K": 0.5548596456646919
+    },
+    "conclusion": "Embedding offload alone cannot win any F16 whole-GTT row. A valid stack also needs phase-scoped code-object/runtime residency; the short row additionally needs a separately validated 768-row owner-slot map."
+  },
+  "host_embedding_constraints": {
+    "existing_host_copy_path": "Exact Q8_0 host dequantization and BF16 row upload exists but disables device-token-fed decode graphs",
+    "prior_gfx1100_128k_decode_tok_s": 11.141052520529025,
+    "current_memlock_soft_kib": 8192,
+    "current_memlock_hard_kib": 8192,
+    "full_table_mapped_registration_admitted": false,
+    "mapped_registration_reason": "The exact 540,344,320-byte table exceeds the current 8 MiB hard locked-memory limit. Do not change system limits inside the campaign.",
+    "required_screen": "On current gfx1151, compare device table plus admitted graph, device table eager, and existing host-copy eager under exact c1 state and whole-GTT sampling before any default/runtime change."
+  },
+  "ordered_work_packages": [
+    {
+      "id": "SH2-M1",
+      "name": "exact c1 host-embedding screen",
+      "continuation": "Exact state; <=1% prefill and decode loss versus the production graph/eager owner; approximately 0.503 GiB tracked and whole-GTT reduction",
+      "stop": "Reject if current graph-class throughput or any exact/c1 fallback contract regresses. Mapped-full-table work is blocked unless the user changes the 8 MiB hard memlock limit outside this campaign."
+    },
+    {
+      "id": "SH2-M2",
+      "name": "phase-scoped code-object residency",
+      "continuation": "First attribute active, prefill-only, decode-only, and never-used loaded code objects. Continue only if a phase-exclusive stack can remove at least 0.49 GiB whole-GTT at 512/4K without compilation in the measured process.",
+      "stop": "No dlclose/lazy-loader runtime change without exact module-lifecycle, cached-build, prefill/decode, and teardown evidence."
+    },
+    {
+      "id": "SH2-M3",
+      "name": "768-row scratch owner slots",
+      "continuation": "Preserve every 768-row logical field and exact operation order while recovering approximately 0.146 GiB; require exact state/lifecycle and <=1% prefill/decode loss.",
+      "stop": "Reject contiguous/split arenas and any address-coloring performance regression; keep the dedicated short owner as fallback."
+    },
+    {
+      "id": "SH2-D1",
+      "name": "mixed-T16 selected-MoE producer-consumer composite",
+      "continuation": "CPU/unfused byte oracle, actual-weight leaf, expected named trace, no spills, and >=1.15x or >=0.5 ms/token projected saving before full-model routing. Preserve a registered unfused fallback.",
+      "stop": "Remove the candidate if it underfills like the raw eight-block megakernel, changes any BF16 boundary/reduction order, or fails the frozen prefill/state/lifecycle gates."
+    },
+    {
+      "id": "SH2-C1",
+      "name": "cumulative re-attribution",
+      "continuation": "After each retained decode/memory unit, rerun current role and phase-memory attribution. If C2 or whole-GTT parity is still absent, select the next structurally new owner rather than closing the higher-level goal.",
+      "stop": "Do not replay SH graph, compact-KV, page-head, or individual byte-neutral schedule ladders without new evidence."
+    },
+    {
+      "id": "SH2-G",
+      "name": "fork parity recertification",
+      "continuation": "Exact four-depth production and fresh pinned-fork matrix with same-scope GTT, category/heldout state gate, traces, and lifecycle.",
+      "stop": "The thread objective completes only if the declared beat-fork acceptance policy passes; otherwise return to SH2-C1."
+    }
+  ],
+  "tooling": {
+    "hip_runtime": "available",
+    "device": "gfx1151",
+    "kernel_lineage_check": "blocked",
+    "kernel_lineage_blocker": "/home/lhl/amd-gpu-tuning/reference/atlas is absent; scripts/check_lineage.py cannot complete"
+  },
+  "decision": "SH-G remains a correctly closed declared campaign, but the higher-level beat-fork objective stays active. Launch a post-SH continuation around only the unclosed mixed-T16 composite and exact memory-lifetime stack; do not mark parity achieved or replay closed SH leaves."
+}

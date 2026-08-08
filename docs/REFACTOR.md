@@ -108,6 +108,120 @@ should be removed or collapsed.
   exact c1 and rows-2-4 fallbacks before T16 can become sole-resident.
 - Until then, keep pack8 as the required unfused/prefill fallback and disclose
   that the retained W7900 route is not claimed to fit the 24-GiB component GPU.
+## Maple P4 public fixed-slot admission
+
+- Added and retained 2026-08-08. `MapleResidentModelRunner` is now the sole
+  public submit/poll owner: it shares one c1 checkpoint, prefills request-local
+  fixed K/V slots, uses D0 for one active row, and uses D1 for c2/c4/c8. The
+  complete public gate is **123.131/165.697/202.038/214.788 aggregate tok/s**
+  with 15/15 repeated 18-prompt trajectory sets, sparse/staggered reclaim,
+  physical-c8 singleton preservation, and lifecycle exact. Evidence:
+  `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
+- **Closed at the final roadmap audit:** removed the duplicate
+  `MapleContinuousBatcher` orchestration class and its private admission tests.
+  `scripts/maple_batch_decode_bench.py` now drives `MapleBatchRunner.batch_step`
+  directly to isolate D1 helper throughput; public sparse/staggered admission and
+  reclaim remain owned and tested only by `MapleResidentModelRunner`. Fixed
+  sparse K/V slots and registered numerical fallbacks remain intentional.
+
+## Maple D1 exact batched affine4 row-reuse head
+
+- Added and promoted 2026-08-08. The c2/c4/c8 leaf assigns one block to one
+  vocabulary row across all request rows, loading each packed word/scale/bias
+  once while replaying the production per-request 128-thread FP32 reduction
+  tree exactly. The real 151,936x2,048 screen is bit-exact and improves
+  c2/c4/c8 head latency **2.763 -> 1.532 ms (1.803x)**,
+  **5.281 -> 2.023 ms (2.611x)**, and **10.554 -> 3.763 ms (2.804x)** with
+  **96/96** paired wins and exact teardown.
+- The clean helper gate improves c2/c4/c8 aggregate throughput
+  **218.818/261.099/299.181 -> 250.481/346.365/428.063 tok/s**. All widths,
+  **18/18** natural/category-heldout trajectories, sparse and reclaimed slots,
+  and lifecycle are exact. Cached c8 tracing measures the head **10.490 ->
+  3.734 ms (2.809x)** and total wall **25.925 -> 19.296 ms** at the unchanged
+  293 launches/batch.
+- **Closed at the final roadmap audit:** removed the
+  `HIPENGINE_MAPLE_BATCH_AFFINE4_ROWREUSE_EXACT` environment seam and dead
+  production branch. c2/c4/c8 now select row reuse directly; unsupported widths
+  use the all-row route. The original all-row primitive remains separately
+  registered and bit-exact tests compare both leaves directly.
+
+## Maple D0 exact wave32 affine4 c1 head
+
+- Added and promoted 2026-08-08. One wave emulates all four production virtual
+  waves and the exact 128-thread reduction tree, eliminating LDS/barriers
+  without changing FP32 logit bits. The real 151,936x2,048 leaf improves
+  **1.527 -> 1.020 ms (1.496x, 48/48 wins)**. Clean 18-prompt qualification
+  improves the exact group64 rollback **143.679 -> 153.409 tok/s (+6.77%)**
+  with **1,146/1,152** wins; all **1,296/1,296** positions, **36/36**
+  start/final states, **2,592/2,592** counter checks, and lifecycle are exact.
+- The clean selector-unset profile is complete at **199.772 tok/s / 5.006-ms
+  wall / 4.581-ms kernels / 271 launches**. **Closed at the final roadmap
+  audit:** removed the `HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT` environment seam and
+  dead production branch. The original group64 kernel remains separately
+  registered and directly tested as the exact numerical fallback.
+
+## Maple D0 one-dispatch c1 router
+
+- Added and promoted 2026-08-08. One grid-over-experts launch uses a four-byte
+  resettable completion counter; the last expert block executes the unchanged
+  FP32 softmax/stable-top-k body. The clean 18-prompt natural+heldout gate
+  improves the exact rollback **139.538 -> 145.321 tok/s (+4.14%)** with
+  **1,127/1,152** paired wins; all **1,296/1,296** token/top-logit positions,
+  **36/36** native-start/final states, **2,592/2,592** zero-counter checks, and
+  lifecycle are exact. The current short profile is **180.935 tok/s** at 271
+  launches/token.
+- **Closed at the final roadmap audit:** removed the
+  `HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH` environment seam and dead production
+  branch. The two-dispatch router kernels remain separately registered and
+  directly compared with the retained composite as exact numerical fallbacks.
+
+## Maple P2 exact wave32 GQA4 prefill attention
+
+- Added 2026-08-08 and promoted to the prefill default after the complete dirty
+  screen passed **18/18** byte-state hashes, **90/90** positions, KL 0, exact
+  lifecycle, and a named cached trace measured attention **63.993 -> 22.064 ms
+  (2.900x)**. The registered candidate consumes complete `KVLiveSpans`, shares
+  one K/V load across four query heads, and preserves every local128 LDS
+  reduction stage plus online-softmax operation exactly.
+- Clean qualified publication passes at **749.175/741.368/754.000 tok/s** with
+  unchanged exact state and ownership. **Closed at the final roadmap audit:**
+  removed the `HIPENGINE_MAPLE_PREFILL_GQA4` environment seam. Qualified GQA4
+  geometry now dispatches directly; unsupported geometry uses local128. Both
+  primitives remain separately registered and directly compared bit-for-bit.
+
+## SH16 gfx1151 private-c1 selective small-weight arena
+
+- Added 2026-08-06 and promoted to the gfx1151 private-c1 default after exact
+  four-transition plus 18-prompt gates and four-depth whole-GTT savings of
+  **190/212/210/210 MiB**. One owner holds the exact **571 allocations <=16
+  MiB** while all **161 larger owners / 95.965% of weight bytes**, all
+  state/scratch, c>N requests, unsupported layouts, and denied routes keep
+  dedicated behavior.
+- Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
+  disable-only rollback/bisection seam. Remove the environment seam after the
+  next cumulative gfx1151 GGUF policy refresh confirms the retained **3/4
+  fork-memory parity** and no supported private-c1 consumer requires rollback.
+- Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
+  telemetry while this production owner is active. Do not add the rejected SH15
+  state arena or compact-Q4 stack to this package; 4K still needs a separately
+  admitted structural owner.
+
+## SH15 gfx1151 private-c1 persistent allocation arena — closed
+
+- Added 2026-08-06 as default-off
+  `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1` after SH15-M1 measured a
+  2-MiB HIP commit mechanism and exact metadata-derived plans reproduced all
+  **732 weight + 189 state/scratch** requests at 512/4K/32K/64K.
+- The screen was restricted by the gfx1151 package capability to an owned
+  private-c1 runner. Shared runners, c>N, unsupported resident layouts, and
+  either owner-allocation denial retained dedicated allocations.
+- **Closed 2026-08-06:** exact state/lifecycle and measured **236/292-MiB**
+  whole-GTT savings at 512/4K did not pass the wall contract. Prefill regressed
+  **1.608%/1.809%**, beyond the <=1% loss limit. Removed the environment switch,
+  package capability, generic arena primitive, weight/state planners, allocator
+  routing, ownership telemetry, and candidate tests. SH14 production files are
+  byte-identical to their pre-screen parent. Do not revive unchanged packing or
+  stack compact Q4 onto this rejected owner.
 
 ## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 
@@ -1076,10 +1190,10 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF packed-AR singleton-indexed GDN | Backend capability `GGUF_GDN_INDEXED_SINGLETON_DECODE` selects a one-token-per-row indexed sibling while retaining the arbitrary-length segmented recurrence. | gfx1151 defaults to the singleton sibling after independent-c1 byte equality and exact p512/d64 trajectories; gfx1100 remains on segmented GDN pending hardware transfer. The runtime manifest records `indexed_singleton` versus `segments` explicitly. | Remove the gfx1100 capability split only after an independent W7900 c2/c4/c8 correctness/performance gate. Keep the segmented implementation permanently as the arbitrary-length fallback. |
 | GGUF selected-MoE duplicate-expert reuse | `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0`, `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0`, and `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` roll physical-C8 Q4T16 gate/up plus Q5/Q6T16 down back to per-selected-lane kernels; backend capabilities keep gfx1100 unchanged. | gfx1151 pairs consecutive dynamic expert-ID occurrences inside 128-thread blocks while preserving each row's reduction order. Q4 gate/up and Q5/Q6 down share weights across independent per-row accumulators. Lower widths and unpaired IDs retain exact fallback behavior. | Remove the three env opt-outs after one release window plus defaults-only gfx1151 direct/server refreshes and an independent gfx1100 transfer. Keep per-lane kernels for unsupported widths and as required fallbacks. |
 | GGUF F32-weight cooperative c1 router | `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` retains the separate expert-logits/shared-logit/top-k chain as an explicit rollback around the default-on gfx1100 cooperative route. `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` temporarily restores the selected-ID counter alias plus per-layer host reset instead of the default dedicated self-resetting four-byte counter. | Production-shape logits, selected IDs, and routing weights are byte-exact. Clean commit `4c743994` first improved 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**. The persistent follow-up removes exactly 40 reset nodes/token, improves the cache-cycled fused leaf **14.667 -> 10.444 us (-28.79%)**, and cleanly improves the 4K graph gate **98.812 -> 100.446 tok/s (+1.65%)**, with all IDs/final values exact and only eight added tracked bytes. The unfused chain remains the required numerical fallback for unsupported hidden/backend/quant shapes. | Remove both env opt-outs after one defaults-only gfx1100 refresh remains non-regressive. Keep registry-driven fallback resolution, not experiment toggles. |
-| GGUF long-context split-K reduction | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` and the minimum-context override retain the serial split reduction for rollback/A/B around the gfx1100 prepare-plus-coalesced-output route. | Promoted gfx1100 default from 32K after the clean LCP-D2 gate: 32K 1+3 decode **84.525 -> 85.561 tok/s (+1.23%)**, clean 64K/128K confirmations **+3.95%/+7.80%**, max long-context KL **1.904e-6**, top-1 100%, exact IDs, unchanged memory. gfx1151 remains serial without independent evidence. | Keep the serial implementation as the required fallback. Remove the env opt-out after one release window plus a final defaults-only gfx1100 six-shape refresh; retain backend capability scoping until gfx1151 is independently gated. |
+| GGUF long-context split-K reduction | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` and the minimum-context override retain the serial split reduction for rollback/A/B around the prepare-plus-coalesced-output route. | Promoted gfx1100 default from 32K after LCP-D2 (**+1.23%/+3.95%/+7.80%** at 32K/64K/128K, max KL **1.904e-6**). SH7-A1 independently promotes gfx1151 from 32K: one-queue 32K/64K decode improves **+1.560%/+2.394% (-0.333/-0.593 ms/token)**, all **1,296/1,296** semantic logits are byte-exact, and tracked/GTT/lifecycle are unchanged. | Keep the serial implementation permanently for <32K, unsupported routes, and numerical fallback. Remove the env/min-context experiment overrides after one release window plus defaults-only long-context refreshes on both gfx11 backends. |
 | GGUF MTP server packed verifier | `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` chunks c>N server target verification instead of sending all active slots to one packed target forward. | Default serving policy after the first packed verifier landing and the stream-draft/stream-verify follow-ups. c=2/c=4 packed target verify wins, but one 8-slot packed batch is a measured rejected regime (`11.58 tok/s`, `target_verify_batch_ms=63733.783`). The current c=8 stream path still chunks verify at 4 slots and reaches **52.18 tok/s**, with verifier still dominant (`slots_verify_phase_ms=12345.442`). | Remove or raise the cap only after rows>=16 packed verifier and resident-draft row-count/cold-slot behavior are tuned and a c=8 natural24 rerun beats the chunked stream path without correctness or latency regressions. |
 | GGUF packed verifier GPU-event instrumentation | `HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` records HIP events through `Qwen35GGUFResidentSession.verify_target_blocks_batch()` and compact-MoE leaves. | Default-off diagnostic. It exposed c=8 server verifier GPU leaves on 2026-07-05 but adds event overhead (`47.17 tok/s` in the compact-WMMA event run), so it is not a retained speed path. | Keep only while c>N MTP verifier tuning is active; remove or move behind a dedicated profiling helper once the packed verifier bottleneck is closed. |
-| GGUF compact-WMMA tight no-read scope | `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0` restores the scalar `wmma_total` D2H read around the gfx1100 default capped at 4,096 selected rows; gfx1151 remains scalar by package policy. | The old rejected c=8 probe overlaunched `selected_rows * 16`. LCP-2B instead proves the exact worst-case tile count `A + floor((S-A)/16)`, clears unused tile ids to `-1`, and at pp512 removes 40 D2H boundaries while selected-Q4 kernel time stays flat (**40.631 -> 40.728 ms**) and matched queue idle falls **15.163 -> 11.634 ms**. | Keep the scalar fallback as the required exact-count route. Remove the env opt-out after one defaults-only gfx1100 six-shape refresh; retain backend scoping until gfx1151 is independently gated. |
+| GGUF compact-WMMA tight no-read scope | `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0` restores the scalar `wmma_total` D2H read around the gfx1100/gfx1151 defaults capped at 4,096 selected rows. | The old rejected c=8 probe overlaunched `selected_rows * 16`. LCP-2B instead proves the exact worst-case tile count `A + floor((S-A)/16)` and clears unused tile ids to `-1`. SH9-D1 independently transfers it to gfx1151 pp512: exact full state, neutral prefill **1366.040 -> 1366.013 tok/s**, and cached ROCTX **44 -> 4 `hipMemcpy` / 1,409 -> 1,369 dispatches / -1.736 ms span** with unchanged 80 selected-WMMA launches. This is multi-row prefill only; c1 decode bypasses the helper. | Keep the scalar fallback permanently for selected rows above 4,096, insufficient capacity, and exact-count diagnostics. Remove the env opt-out after one defaults-only prefill refresh on both gfx11 packages; do not remove the fallback. |
 | GGUF selected-WMMA launch-bounds tuning | `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS` remains an R&D build flag for selected-WMMA kernels. | Default unchanged after the 2026-07-05 c>N server probe. `=2` was flat at c=8 (**52.55/52.23 tok/s**); `=4` helped c=8 (**53.22/53.44**) but regressed c=4 (**49.20/49.04** vs retained **49.65**), so no default promotion. | Keep as kernel R&D only; do not promote without a c=2/c=4/c=8 same-protocol rerun that is non-regressive at every concurrency. |
 | GGUF AR server packed decode | `HIPENGINE_GGUF_AR_PACKED_DECODE` is a default-on rollback opt-out around decode-shaped packed resident target passes for c>N GGUF greedy AR serving. | E1/E2 retain eager/graph c8 p512/d128, ragged, sparse, cancellation, and **748 packed-native / 0 row-local / 0 copies** on both targets. E3/F1 adds exact C13 c8+sparse-c8, middle-hole/new admission, and real SSE logical c1/c8/c9/c13/serial-c13 at **25.583/136.122/88.592/111.380/31.708 tok/s** on gfx1100 and **15.701/86.338/57.127/72.522/42.764** on gfx1151, with zero packed-route fallback and **189/189** exact requests per packet. | Both gfx11 E3/F1 triggers are met. Keep the opt-out for one release window, then remove the env switch during F2 while retaining registry-resolved scalar fallback for unsupported shapes. |
 | GGUF AR server packed prefill | `HIPENGINE_GGUF_AR_PACKED_PREFILL` is a default-on rollback opt-out around packed final-row prompt prefill for c>N GGUF greedy AR serving. Row-bounded multi-round prefill still computes and samples each intermediate chunk tail even though only the final prompt result is returned. | Packed linear/MoE stays multi-row and full attention preserves slot-local arithmetic across bounded rounds. E1/E2/E3 cover c8 and C13 eager/graph, ragged, sparse masks, cancellation/admission, and exact token/hidden/Conv/GDN/live-KV state. Each gfx11 F1 packet sends 512 exact prompt IDs/request through real prefill work and preserves all **189** prompt rows, usage counts, and outputs. | Remove intermediate chunk-tail output-norm/LM-head sampling after a final-slot mask preserves hidden-seed/MTP contracts and is profiler-non-regressive. Keep the opt-out for one release window, then remove it during F2 on both gfx11 targets while retaining scalar fallback only for unsupported shapes. |
@@ -1098,7 +1212,7 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF prompt-list scheduling | The promoted scheduler is synchronous and greedy-only: it does not persist across `generate()` calls, serve HTTP arrivals, cancel/disconnect rows, share prefixes, grow/shrink an elastic KV pool, or batch non-greedy sampling. Prefill into a reclaimed slot is still per-request rather than a packed multi-prompt slab. | Stable request ids, 2–8 physical slots, EOS/length reclaim, downward recurrent-state/live-KV compaction, mixed readmission/prefill between decode steps, C/context/mask graph buckets, row argmax, and admission/completion timestamps are retained and exact. Fixed C=2/4/8 scaling is accepted; one in-call 4-request/capacity-2 schedule exercises three admission waves, three compactions, and two readmissions with `serial_decode_fallback=false`. | Move this ownership into the persistent server engine loop, add cancellation/disconnect and elastic/prefix-shared KV, then native per-row non-greedy sampling and packed mixed-prompt prefill. Keep the synchronous path until the persistent route passes the same exactness/provenance gates. |
 | UD-Q3_K_M grouped raw-IQ prefill | `HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0` is the temporary rollback around the default-on expert-major scalar IQ3/IQ4 route; direct selected kernels remain the required fallback. | Promoted after mixed-prompt native-row-bulk parity (`KL=0`, top-1 `1.0`), exact 512/4K trajectories, zero scratch/copies, raw-IQ time `994.668 -> 613.995 ms` (-38.27%), and total kernel sum `4396.145 -> 4078.667 ms` (-7.22%). The formal 512/128 headline is correctly labeled flat within spread (`16.648 -> 16.685 tok/s`, +0.22%); promotion retains the verified sub-window win, not a noisy topline claim. WMMA and scalar RT2 remain rejected/test-only. | Keep the opt-out for one rollback/bisection window through task #20/#15 D0. Remove the env branch after the next defaults-only 512/4K milestone rerun confirms the grouped symbols and direct fallback tests remain healthy. |
 | GGUF MoE-tail plus next-input RMSNorm | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS=0` is the temporary rollback around the default-on decode chain. The retained route fuses only the already-rounded selected-aggregate ABI; slot-weighted layers preserve the feature-parallel combine followed by the exact unfused RMSNorm because the one-block weighted composite regressed cold production-layer time. | Q3 GPU1 counterbalanced graph decode improves `100.195 -> 101.216 tok/s` (+1.02%) at 512/128 and `107.366 -> 108.383 tok/s` (+0.95%) at 4K/128, with all five paired deltas positive, exact layer-limit 1/4/40 buffers, exact eager/graph trajectory, unchanged final IDs/logits/memory, and no bulk-prefill route change. Q4/PARO slot-weighted paths keep their existing two-kernel math. | Keep the opt-out for one Q3/Q4 defaults-only milestone and task-#16 overlap bisection window. Then remove the env branch while retaining the registered unfused combine→RMSNorm fallback and kernel-level BF16/FP16 tests. |
-| GGUF 24GB capacity diagnostics | `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING` offloads the Q8_0 token embedding from device residency and performs exact host Q8_0→BF16 embedding copies. | Default-off diagnostic. It proves Q4_K_M `128K/128` can fit on GPU1 (`23.400 GiB` tracked / `23.913 GiB` sampled) but disables GGUF HIP decode graph replay, so decode falls to `11.141 tok/s`; not a promoted path. | Remove or demote to a one-off harness after a retained 24GB `128K/128` path keeps device-side graph-class decode, likely via GGUF INT8/full-attention KV or another device-side embedding/cache strategy. |
+| GGUF c1 host token embedding | `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING` offloads the Q8_0 token embedding from device residency and performs exact host Q8_0→BF16 embedding copies. | Retained exact c1 opt-in, global default off. The old gfx1100 `128K/128` capacity proof fit at `23.400/23.913 GiB` tracked/sampled but ran only `11.141 tok/s`. Current gfx1151 SH2-M1 instead passes complete byte-state and stays within 1% of graph/eager at 512/4K while removing exactly `0.503235 GiB` live ownership and `0.443409/0.503933 GiB` whole-GTT. The short load still materializes then frees the device table, so tracked high water saves only `0.418797 GiB`; shared c>N, packed AR, and MTP require device-token-pointer embedding. | Replace allocate-then-free with loader-time ownership only after an explicit shared-runner-safe c1 policy automatically preserves the device table for c>N/packed/MTP/unsupported sessions. Then rerun exact c1/c>N/MTP lifecycle and performance gates before considering a gfx1151 default. Keep the env route until that policy lands or another exact memory owner supersedes it. |
 | GGUF INT8 KV diagnostics | GGUF accepts explicit `--kv-storage int8_per_token_head` for resident full-attention KV, reusing the PARO per-token/head INT8 write/decode kernels plus layer-local temporary BF16 prefill-oracle caches. Short contexts (`<=8192` rounded max positions) retain an additional BF16 mirror cache so primary short gates use exact BF16 decode while still exercising INT8 writes. Long contexts now default to `HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS=8` as a correctness fallback; lower prefixes, pure INT8, key-only (`HIPENGINE_GGUF_INT8_KV_KEY_ONLY=1`), block16 scale granularity (`HIPENGINE_GGUF_INT8_KV_BLOCK16=1`), and custom non-contiguous BF16 masks via `HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS` require `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1` for diagnostics. | Default remains BF16 unless explicit INT8 KV is requested. GPU1 Q4_K_M pure INT8-only diagnostic fit and ran `128K/128` with graph-class decode (`760.724` prefill / `64.923` decode tok/s, `22.911 GiB` tracked / `23.472 GiB` sampled), but W7900 BF16-vs-INT8 no-mirror correctness rejects pure INT8 at `4K/1` (`KL=0.275781`, top-1 agreement `0.5`). The 2026-06-24 layer-local prefill-oracle fix shows the old prefix `3..8` prefill failures were partly a shared-oracle chunk-outer bug; current prefix `8` passes full `128K/128` (`KL mean=0.01448`, top-1 `0.96124`, no persistent BF16 mirror), while prefix `7` still fails `128K/16` top-1. Non-contiguous 3-INT8-layer masks that skip the known-sensitive full-attention layer 7 (`{6,8,9}` and `{5,8,9}` INT8) also failed `128K/16`, so no custom mask is promoted. The real HIP key-only diagnostic is primitive-correct, but prefix `0` fails `4K/1`, prefix `6` fails `128K/16`, and prefix `7` saves less memory than admitted prefix-8 per-token/head while raising prefill peak; no key-only path is promoted. The real HIP block16 diagnostic is primitive-correct too, but forced-long W7900 `4K/1` BF16-vs-block16 gates fail top-1 at prefix `0`, `6`, `7`, and `8`; no block16 path is promoted. Prefix 8 per-token/head is correctness-admitted but not a retained 24GB throughput row. | Remove the short BF16 mirror, BF16-prefix/custom-mask/key-only/block16 envs, and unverified-long env only after an all-INT8 or more compact calibrated KV format preserves GGUF BF16 logits at `4K` and `128K/128` long-context gates and completes a retained 24GB `128K/128` throughput benchmark. |
 | GGUF selected-prefill diagnostics | `HIPENGINE_GGUF_T16_DS4_PREFILL` guarded runtime route for resident `gguf_q4_k_t16_v1` DS4/Q8_1 selected-prefill. | Default-off diagnostic. Full-model Q4_K_S GPU1 gate showed useful prefill speed (`1833.185 -> 1989.578 tok/s` at `512/128`, `2159.561 -> 2372.228 tok/s` at `4K/128`) but changed final token IDs versus default (`220/570 -> 3241/1510`) and added `+0.070 GiB` opt-in activation scratch. The scratch is allocated only when the flag is enabled, so default memory/IDs remain unchanged. | Remove or demote to a microbench/test-only path unless a later exact-enough Q8_1/DS4 calibration path preserves default final IDs/logits on `512/128`, `4K/128`, and the `128K/128` promotion gate while keeping memory bounded. |
 | GGUF selected-prefill diagnostics | Microbench-only raw-Q4_K/Q8_1 selected-prefill variants in `gguf_q4_k_q8_1_selected_prefill` (`q8-1-dot`, `q8-1-ds4-dot`, `q8-1-ds4-wmma`, `q8-1-ds4-wmma32`, `q8-1-ds4-wmma64`, `q8-1-ds4-preview-wmma32`, `q8-1-ds4-wmma32-ldspack`, and rejected `q8-1-ds4-wmma32-lds`). | Diagnostic-only, not model runtime defaults. The 2026-06-16 DS4 WMMA path is useful as a fragment/math reference. Expanded-Q4 LDS staging regressed `8.210 -> 18.257 ms/call`; packed-Q4 LDS staging recovered to `11.438 ms/call` but still lost to raw WMMA32; the pre-unpacked preview path measured `12.020 ms/call` with higher fixture memory; four-wave WMMA64 was only flat/sub-1% better than WMMA32. These same-shape staging/pre-unpack/independent-wave probes should not become dispatch paths without a later shared-tile reuse win. | After a real GGUF MMQ/T16 prefill path is promoted or the llama.cpp parity detour closes, demote negative variants to tests or remove them from the microbench to avoid a permanent zoo of rejected kernels. |
@@ -1174,9 +1288,11 @@ shorter-horizon audit establishes a lower break-even.
 | Laguna gfx1151 router token tile | `LAGUNA_ROUTER_LOGITS_MODE` and session setter retain exact token-tile-4/16 diagnostics around the promoted token-tile-8 route. | Clean seven-pair pp512 improves **497.625 -> 503.349 tok/s (+1.150%)**, wins every pair, keeps every tile-8 sample above 500, and closes the production 500 gate. Production-shape F32 logits, selected IDs, routing weights, complete MoE BF16 output, and token 2930 are exact; cached tracing cuts router **30.658 -> 23.315 ms**. | After one later defaults-only clean refresh remains non-regressive, remove the session setter and token-tile-16 route. Keep token-tile-4 as the low-row/unmeasured-backend fallback. |
 | GGUF prefill router select LCP-4B | `HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS=64|128|256|512` overrides both backends' promoted 128-thread package capability for bulk prefill only; decode retains its independent launch. | Default-on at 128 on both gfx11 backends. gfx1151 clean 512/4K prefill improves **+0.34%/+0.36%** and the named family falls **12.539 -> 3.741 ms (-70.17%)**. W7900 aggregate prefill improves **+0.32%/+0.81%** (paired medians **+0.30%/+0.12%**) with bit-exact selected IDs/routing weights, flat graph decode, and unchanged memory. The faster 64-thread gfx1151 primitive remains ineligible due to state divergence. | Keep explicit 512 rollback for one release, then remove the env resolver and retain unconditional 128-thread package capabilities if no release regression appears. Never expose/promote 64 without a genuinely different exact implementation. |
 | gfx1151 persistent prefill flight recorder | `Qwen35GGUFResidentSession.prefill_flight_recorder_path`, the `qwen35_readme_sweep.py --prefill-flight-recorder{,-granularity}` CLI, file-backed mapped-host ring, and `prefill_flight_recorder_mark_i64_kernel`. | Default-off diagnostic for the unresolved repeated-128K silent no-progress state. `chunk` records every host layer submission but emits one retirement marker per reset/outer chunk; `layer` is explicit high-perturbation refinement. A 512/1 gfx1151 smoke is exact and rocprof confirms the marker, but recorder runs cannot support performance claims or lifecycle incidence estimates. | Keep through the fixed-kernel/firmware three-policy investigation and upstream triage. After the 128K gate is lifecycle-safe, either generalize it into a maintained runtime tracing facility with a schema contract or remove the session/CLI wiring and marker kernel; do not leave an undocumented diagnostic hot-path branch indefinitely. |
+| gfx1151 conservative prefill kernel profiles | `qwen35_readme_sweep.py --prefill-kernel-profile conservative|gdn_exact|q4_shared_x|q4_baseline` applies and records fail-closed selector sets. Conservative uses unfused exact GDN `chain`, baseline Q4 selected prefill, baseline linear-attention convolution, 512-thread router selection, and host metadata; `gdn_exact` and `q4_shared_x` each restore one family, while `q4_baseline` changes only the implicated Q4 route beneath otherwise-current package defaults. | Default-off diagnostics for the repeated-128K stall without host drains. Conservative, exact-GDN, and production-shaped Q4 baseline each pass three independent warmup+3 processes (**12/12** prefills). Q4 shared-X reproduces the stall on measured prefill 3 of its first process, isolating `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`. These routes are diagnostic, not independent performance paths. | Remove the conservative/GDN split profiles after one release with the gfx1151 Q4 baseline fallback. Retain the baseline-only and shared-X selectors until a repaired shared-X body passes the repeated-128K gate; then remove the isolation profiles and keep only the normal rollback needed for release safety. |
+| gfx1151 prefill queue-drain containment | `Qwen35GGUFResidentSession.prefill_queue_drain` and `qwen35_readme_sweep.py --prefill-queue-drain none|chunk|layer` add real host stream synchronization at outer-chunk or model-layer boundaries. | Default `none` is unchanged. `layer` bounds ROCm/ROCm#6437's observed two-layer submission lead and passes the predeclared gate: matched exact 512/4K/64K prefill changes **-1.791%/-0.242%/-0.864%**, while three independent 128K warmup+3 processes complete all **12/12** prefills with finite identical logits, token 9707, normal telemetry, measured graph replay, and full cleanup. It is a qualified slower opt-in containment path, not a default-path fix or proof of root cause. Artifact `benchmarks/results/2026-08-04-gfx1151-q4km-prefill-layer-drain-containment.json`. | Keep explicit `layer` while the upstream issue remains open; never silently default it on. Do not restore the removed `enable_lr_compute_wa` workaround: the captured kernel already has the replacement gfx1151 VGPR-size correction active. Remove after a fixed kernel/firmware/runtime passes the original default-path three-process gate. If maintained beyond that investigation, graduate it from diagnostic CLI/session plumbing into a documented safe-mode policy with explicit admission and cost semantics. |
 | gfx1151 HIP hardware-queue workaround | `configure_hip_process_environment()` sets `GPU_MAX_HW_QUEUES=1` before loading `libamdhip64` when all recognized visible HIP arches map to gfx1151. Existing user values win; gfx1100 and mixed recognized arches are unchanged. | Risk-reducing default after a clean same-command 128K A/B: ROCm's documented four-queue default stalls in first warmup, while one queue once completes warmup+3 at **499.755 / 500.210/500.873/500.687 prefill tok/s**, exact IDs, and is non-regressive at 512/4K (**+0.35%/+0.46% prefill**). It is not lifecycle-safe: later current-production, router-rollback, and SDMA-disabled full 128K gates all complete warmup then reproduce the stall. A clean HIP 7.13 versus 7.15 matrix also reproduces under both stacks: 7.13 completes two gates but stalls on a third after measured pass 1; 7.15 stalls in both controls. Upstream initial/follow-up evidence is posted to ROCm#5107; cross-stack evidence is in `benchmarks/results/2026-07-15-gfx1151-128k-hip713-vs-715-lifecycle.json`. | Keep one queue as risk reduction until a fixed gfx11 firmware/runtime independently completes the bounded 128K 1+3 lifecycle gate. Preserve explicit `GPU_MAX_HW_QUEUES=4` for rollback/diagnosis and provenance. Do not add `HSA_ENABLE_SDMA=0`: one 1+1 screen passes but the full gate fails. Remove the workaround only after fixed-stack evidence, not after an intermittent passing run. |
 | GGUF GDN prefill | `HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|exact|fused|chain|chain_k2|chain_peer_wave32|chain_peer_cluster8|chain_tile64|chain_tile32|chain_wave32|chain_wave32_tree|chain_lds64|chain_lds32|chain_lds32_direct|chain_lds32_direct_nonvolatile` is the fail-closed rollback/bisection selector. Explicit `chain` is the GGUF-only exact split; `chain_k2` exposes the registered PARO normalized-Q/K two-wave recurrence; `chain_peer_wave32` exposes GPF-9C's llama.cpp-HIP-shaped normalized-Q/K XOR reduction; `chain_peer_cluster8` exposes GPF-9D's llama.cpp-Vulkan-shaped eight-lane clustered reduction; tile64/tile32 and the older wave32 routes are historical controls. The semantic harness sets `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE=1` internally before session allocation so materialized candidates receive dedicated Q/K/V scratch rather than production direct-route null views. gfx1100 `auto` now selects `chain_peer_wave32`; gfx1151 selects the byte-exact compiler-cacheable `chain_lds32_direct_nonvolatile` route. | On gfx1151, LCP-2A preserves six-case state plus 250/250 natural transitions exactly and improves balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%. Under the prospective 18-prompt 0.05/0.90 contract, clean W7900 rejects K2 at KL `0.059031` and register-tree at `0.068757`; both pass top-1 and decode. GPF-9C passes at KL `0.041737`, top-1 `445/450`, and non-regressive decode, but originally missed the 512 floor. LCP-5A removes HIP 7.2 spills from the exact selected-Q5/Q6 T16 prefill leaves, moving clean-target pp512 peer kernels/span to **184.513/194.886 ms**, faster than llama.cpp HIP's **203.301/212.236 ms**. The clean selector-unset 512/4K screen reaches **2588.231/2757.752 tok/s**, clears both floors, keeps IDs stable, and preserves the liveness arena at **21.670 GiB** tracked peak. The final W7900 strict-exact convergence screen selects nonvolatile direct-LDS32: it halves VGPR **64 -> 32**, cuts the 512 trace-family median **74.39%**, and improves volatile-direct full-model 512/4K prefill **+73.01%/+82.46%** with byte-exact primitive state, flat decode, and unchanged compact-scratch memory. The new architecture-scoped `exact` alias exposes that rollback without changing gfx1100 peer-wave production. GPF-9D's clustered route remains rejected on strict decode. | Retain explicit volatile `chain_lds32_direct` for one release beneath the promoted `exact` nonvolatile route, then remove it if no exact-route regression appears. Remove `chain_k2`, `chain_wave32_tree`, and rejected `chain_peer_cluster8` after the final gfx1151 peer transfer decision; retain fused, `chain`, `exact`, and peer-wave as production/correctness/bisection routes. Collapse `HIPENGINE_GGUF_GDN_PREFILL_MODE` to `auto|exact|fused|chain|chain_peer_wave32` after that cleanup. |
-| GGUF Q4T16 selected-prefill GPF-3A | `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=auto|baseline|shared_x`, explicit baseline/shared-X registry variants, and replay switch `scripts/qwen35_gguf_moe_replay.py --q4-t16-shared-x` retain duplicate Q4T16 compact32 bodies. Both gfx1151 and gfx1100 `auto` now select `shared_x`. | BF16/FP16 fixture bytes are exact; tiny trace is `44.725 -> 33.343 us` (-25.45%), real Q4 gate/up replay is `114.633 -> 97.082 ms` (-15.31%), and clean gfx1151 full-model 512/1K/4K prefill improves +3.11%/+2.42%/+1.94%. The W7900 predeclared borderline repeat improves 512/4K +0.877%/+0.822%, preserves byte-exact logits/trajectories, and improves aggregate decode wall 0.081%. | Retain explicit baseline rollback for one release window after the gfx1100 automatic-route publication, then collapse the losing body/alias and remove the env/replay switches. |
+| GGUF Q4T16 selected-prefill GPF-3A | `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=auto|baseline|shared_x`, explicit baseline/shared-X registry variants, and replay switch `scripts/qwen35_gguf_moe_replay.py --q4-t16-shared-x` retain duplicate Q4T16 compact32 bodies. gfx1100 `auto` selects `shared_x`; gfx1151 `auto` is rolled back to `baseline`. | BF16/FP16 fixture bytes are exact; tiny trace is `44.725 -> 33.343 us` (-25.45%), real Q4 gate/up replay is `114.633 -> 97.082 ms` (-15.31%), and clean gfx1151 full-model 512/1K/4K prefill improves +3.11%/+2.42%/+1.94%. However, the gfx1151 repeated-128K split changes only this route and reproduces the no-progress state on prefill 4; baseline-only passes **12/12** at **575.180-580.626 tok/s**. The W7900 transfer remains independently admitted. | Keep both bodies and the explicit selector while repairing/bisecting shared-X on gfx1151. Do not restore gfx1151 automatic shared-X until primitive correctness, kernel tracing, and three independent 128K warmup+3 processes pass. gfx1100 remains unchanged. |
 | GGUF Q8T16 prefill GPF-5A | `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0|1` selects production/two-wave on gfx1100 and remains the first gfx1151 rollback beneath the promoted four-wave route; request-scoped package ceilings restore production above 65,536 gfx1151 prompt tokens and above 4,096 gfx1100 prompt tokens. | Exact 32-column waves share 1 KiB LDS; 80 VGPR/zero scratch. Published gfx1151 512-64K prefill is **889.904/919.598/762.940/648.948/546.296 tok/s (+1.01% to +8.57%)**; same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**. Independent W7900 focus improves 512/4K **645.901/676.444 -> 654.872/683.164 tok/s (+1.389%/+0.993%)** with exact primitive bytes, so gfx1100 is intentionally capped at the measured 4K scope. | Keep env rollback and both architecture ceilings for one release. Expand the gfx1100 ceiling only after a clean hardware-local long-context A/B; collapse the duplicate only if a replacement schedule passes 128K too. |
 | GGUF small-B linear dispatch | `HIPENGINE_GGUF_Q4K_ROWTILE` / `q4k_rowtile_session(False)` opt out of raw K-quant rowtiles (rows 2..8, WMMA off) and native resident-pack8 Q4 rowtiles (rows 2..4). | Raw rowtiles remain default-on and exact; their historical MoE full-path result was flat because selected experts dominated. Dense Qwen3.6 now routes native pack8 singles and gate/up pairs through exact local32 row reuse. Rows 2/3/4 improve the real pair 1.715/2.353/3.114x on GPU1; rowtile-4 is VGPR96/scratch0. The routed W7900 transaction oracle observes `{2,3,4}`, and clean natural25 improves B1/B2/B3 **+10.04%/+16.00%/+19.38%** with every full/train/heldout/category row positive, exact IDs/state/acceptance, unchanged memory, and B2 at **1.0678x** own AR. | Keep the opt-out and dual/single rollback for one release after the `4181b85fb` promotion, then make qualified rowtiles unconditional. Preserve per-row kernels for rows==1, rows above each admitted ceiling, registry/backend misses, and explicit WMMA. |
 | GGUF selected-MoE dp4a diagnostic | `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` opt-in around q8_1 activation quantization plus sudot4 for raw Q4_K selected-dual gate/up and the T16 rows>1 split gate/up path; `HIPENGINE_GGUF_T16_SELECTED_DP4A` opt-in for the broader T16 selected diagnostic, currently Q4 split plus Q5 selected-down; `HIPENGINE_GGUF_RAW_SELECTED_DP4A` opt-in for the raw no-decode-repack Q4/Q5/Q6 selected-MoE diagnostic bundle. | Default-off. The raw Q4 fallback launches correctly with caller-owned q8_1 workspace but production B3 decode-repack does not hit it; isolated raw Q4 POC measured `0.946 ms -> 0.357 ms`. Raw Q5/Q6 selected-down is also positive in isolation (`0.0916 -> 0.0395 ms` Q5, `0.0419 -> 0.0259 ms` Q6 including q8_1 quantize) and improves no-decode-repack B3 `31.63 -> 39.61 tok/s`, but still trails default decode-repack B3 `51.31 tok/s`. The active T16 split path cuts that row-bulk kernel (`~172 us -> ~142 us` in the two-cycle trace), but B3 remains flat (`49.31 tok/s`, warm `50.60`). Q5T16 selected-down also launches and is `1.10x` faster in isolation (`0.0335 ms -> 0.0306 ms` including quant), but the c1-shaped synthetic top-1 is `0.875` and B3 regresses to `47.62 tok/s` (warm `48.44`). The callable T16 fused-SiLU dp4a variant and Q6T16 selected-down dp4a are intentionally not routed. X8 selected-down is tracked in the dedicated row above because q6-only now has llama-compat evidence while q5/both remains rejected. **2026-06-28 GPU-bound re-test (post lib-cache): `HIPENGINE_GGUF_T16_SELECTED_DP4A` clean interleaved A/B (3 runs x 12 cycles, warm) on the full resident-draft B3 bench is flat-negative `48.60 -> 48.42 tok/s` (-0.4%), acceptance identical — dp4a wins at the kernel level (-35% MoE GEMV) and +5% on the verify-isolated harness but does NOT move the full-bench wall, i.e. the full B3 verifier is host-dispatch-bound (~875 launches), not GPU-kernel-bound. dp4a stays default-off; the lever is launch-count reduction (#9 + fusion). Artifact `benchmarks/results/2026-06-28-verifier-dp4a-fullbench-b3-ab.json`.** | Remove these raw/T16 flags unless a later GGML-style q8_1/x4 layout clears the quality gate and improves the same B3/full-suite protocol. Promote only the production-compatible route; keep raw no-decode-repack diagnostics separate from production T16 routing. |
@@ -1956,6 +2072,27 @@ should be boring.
   unnecessary, or a replacement isolation design passes the full stability
   gate and survives one release cycle. Then delete the rejected duplicate
   route and selector; keep only the proven scheduling policy.
+
+## `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV*`
+
+- Added 2026-08-04 for the Nathan-review P0 gfx1151 promotion. The backend
+  capability now defaults one cross-layer BF16 K/V scratch pair on before
+  AOTriton when the resident rounded capacity is at most 65,792 tokens and the
+  pair is at most 512 MiB. `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV=0` restores
+  strided AOTriton; `*_MAX_TOKENS` and `*_MAX_BYTES` can tighten admission.
+  Allocation or registry failure also falls back exactly, and gfx1100 remains
+  default-off.
+- The retained gate is byte-exact for permuted page-copy fixtures and complete
+  p512 hidden/GDN/KV/logit state. Copy-inclusive 512/4K/32K/64K full prefill is
+  **-0.028%/+0.616%/+3.383%/+7.001%**; the 64K pair adds 134,742,016 tracked
+  bytes. Evidence:
+  `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`.
+- Remove the boolean A/B environment branch after one non-regressive release
+  checkpoint no longer needs direct bisection. Keep strided AOTriton as the
+  mandatory oversized/allocation-denied/unsupported-backend fallback. Keep the
+  two capacity controls until a general scratch-budget admission API replaces
+  them; do not raise the default beyond 65,792 without a separate 128K-class
+  correctness, memory, stability, and copy-inclusive performance gate.
 
 ## Laguna D8 row-vector selected gate/up rollback
 
@@ -3216,3 +3353,82 @@ should be boring.
   ownership and focused integration tests are removed. Keep only the separately
   registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
   production remains exact and H2 must not stack H1 arithmetic.
+
+## Moonshine exact two-region continuous scheduler — opt-in strict fallback
+
+- The apparent uniform-t256 quality regression was a docs-side three-frame mask
+  undercount, not scheduler arithmetic. With the corrected installed mask,
+  uniform t256 and exact two-region both match exact custom CUDA on all 266
+  Japanese FLEURS transcripts. Uniform is the production default because it is
+  faster at every matched c=2-512 capacity and uses half the workspace.
+- `MoonshineCudaExactContinuousBatchRuntime` remains an explicit off-by-default
+  t32/t256 arithmetic fallback and bisection route. Reassess removal after one
+  clean release if no deployment requires strict hidden-boundary arithmetic;
+  preserve the static lockstep runtime as the exact comparison route.
+
+## Moonshine gfx1151 exact wave8 top-1 — temporary rollback selector
+
+- `wave8_top1` is now the G1 FP16 runtime default. It materializes the same
+  complete FP16 logit plane, owns bounded FP16-value/int64-index scratch, and
+  replaces only the full-logit argmax scan with stable block partials plus a
+  final reduction. `MoonshineResidentRuntime(lm_head_route="wave8_argmax")`
+  remains the explicit unfused rollback and is required for selective W8A16
+  LM-head diagnostics.
+- The clean production leaf passes at **-12.003% event / -12.005% wall**; the
+  actual-checkpoint 194-step graph gate is byte-exact; and the regenerated real-
+  audio gate passes all **24/24** six-file fallback/candidate eager/graph rows
+  through EOS with pairwise-exact outcomes, zero timed allocation, four graphs,
+  194 replays, and clean teardown. Keep the constructor/script selector through
+  one clean release for rollback and bisection. Then remove the public selector
+  unless a deployment still requires it; retain the separately registered
+  wave8 projection and stable argmax as the mandatory composite fallback.
+
+## Maple P1 expert-major prefill rollback — temporary opt-out
+
+- `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` defaults to `1`; `=0` restores the
+  exact row/route-gather gate/up/down chain. The grouped path reuses registered
+  stable count/prefix/scatter metadata and writes outputs in original lane
+  order, so no arithmetic boundary changes.
+- Keep the opt-out through clean 128/320/512 recertification and one downstream
+  optimization milestone because P1 misses its 2.826x expert-family target even
+  though the current exact candidate is non-regressive. Remove the flag and
+  runtime gather branch once the grouped path plus its eventual matrix/SIMD
+  ternary consumer has passed that recertification; retain the gather kernels
+  only as low-level correctness oracles if tests still need them.
+
+## Maple M2 dual+swiglu fusion — opt-in, efficiency blocker
+
+- `HIPENGINE_MAPLE_FUSE_MOE` default `0` (unfused is the fast path). `=1` uses
+  `maple_moe_dual_swiglu_bf16` (fuses dual gate/up gemv + clamped SiLU), which is
+  bit-exact and cuts decode launches 295→271 but is ~9% slower per MoE layer
+  (interleaved micro-benchmark 229.7 vs 210.7 us). The launch savings offset the
+  kernel regression in eager mode (step wall neutral), but in the optional M1
+  c1 hipGraph path launch overhead is amortized so the fusion would regress
+  ~1.4%. The M6 batch helper does not use the c1 graph.
+- Blocker to promote: understand/eliminate the fused kernel's ~9% efficiency gap
+  vs the unfused pair (likely swiglu `expf` tail in tid 0 and/or register/
+  occupancy change). Once the fused kernel is <= the unfused pair, flip the
+  default to 1 and remove the flag + unfused dual+swiglu branch.
+- **Rejected path (do not re-promote as-is):** fused down GEMV + weighted
+  residual in one kernel. It is bit-exact but regresses decode ~3.5% because
+  grid=`out_features` serializes the eight selected experts per output row,
+  losing the parallel-expert down grid and stride-8 weight reads. If revisited,
+  use a parallel-expert grid with a two-pass/atomic weighted residual instead
+  of serializing experts.
+
+## Maple M2 qknorm+attention fusion — opt-in, ~1% regression
+
+- `HIPENGINE_MAPLE_FUSE_QKATTN` default `0` (unfused is the fast path). `=1` uses
+  `maple_attention_fused_qknorm_decode_bf16` (fuses per-layer
+  `qknorm_rope_kv_write` + `attention_decode`). Bit-exact (attention output + K/V
+  cache match bit-for-bit, GPU test) but ~1% slower per decode step (interleaved
+  eager 6442 vs 6377 us): the in-group redundant K/V write (each of the 4 q-head
+  blocks writes the same K/V) plus the folded 88 us qknorm work offset the single
+  launch saved. Remove the flag + fused branch once the fused kernel's efficiency
+  gap is eliminated (e.g. leader-only K/V write + cooperative grid sync).
+- D0 now snapshots both fusion flags once at the `MapleRunner.step()` boundary,
+  rather than rereading them in all 24 layers. The retained fresh-process A/B
+  is **200.279 -> 202.580 tok/s (+1.15%)** with no kernel/launch change.
+  Environment changes remain supported between calls, not during an in-flight
+  token. Remove the two snapshots with the corresponding branches when these
+  flags are retired.

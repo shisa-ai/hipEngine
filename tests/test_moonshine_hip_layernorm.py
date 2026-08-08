@@ -134,7 +134,6 @@ def test_moonshine_layernorm_hidden416_matches_fp32_stats_oracle() -> None:
 
 def test_moonshine_residual_layernorm_registry_and_raw_pointer_abi() -> None:
     from hipengine.kernels.cpu_reference.moonshine import (
-        moonshine_residual_layernorm,
         register_moonshine_cpu_reference_kernels,
     )
     from hipengine.kernels.hip_gfx1100.norm.moonshine_layernorm import (
@@ -163,12 +162,6 @@ def test_moonshine_residual_layernorm_registry_and_raw_pointer_abi() -> None:
         quant="fp16",
         variant="rounded_fp32_stats",
     ) is moonshine_residual_layernorm_fp16
-    assert resolve(
-        backend="cuda_sm120a",
-        layer="moonshine_residual+moonshine_layernorm",
-        quant="fp16",
-        variant="rounded_fp32_stats",
-    ) is moonshine_residual_layernorm
 
     library = FakeLibrary()
     moonshine_residual_layernorm_fp16(

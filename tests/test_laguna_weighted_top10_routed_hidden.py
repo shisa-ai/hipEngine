@@ -230,7 +230,7 @@ def test_laguna_weighted_top10_key_is_excluded_from_unvalidated_backends(
 
     backend.register_gfx1151_kernels()
 
-    assert registered == []
+    assert _KEY not in registered
 
 
 def test_laguna_weighted_top10_cpu_reference_matches_hand_checked_fixture() -> None:
