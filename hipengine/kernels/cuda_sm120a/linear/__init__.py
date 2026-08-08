@@ -1,5 +1,10 @@
-"""CUDA ``sm_120a`` Moonshine dense projection and LM-head kernels."""
+"""CUDA ``sm_120a`` dense projection and LM-head kernels."""
 
+from hipengine.kernels.cuda_sm120a.linear.maple_lm_head import (
+    build_lm_head,
+    plan_lm_head_build,
+    register_lm_head_kernels,
+)
 from hipengine.kernels.cuda_sm120a.linear.lm_head import (
     build_moonshine_lm_head,
     lm_head_argmax_scratch_elements,
@@ -23,6 +28,7 @@ from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
 )
 
 __all__ = [
+    "build_lm_head",
     "build_moonshine_lm_head",
     "build_moonshine_projection",
     "lm_head_argmax_scratch_elements",
@@ -36,8 +42,10 @@ __all__ = [
     "moonshine_f16_projection_pair_head_major",
     "moonshine_f16_projection_triple",
     "moonshine_lm_head_argmax_fp16",
+    "plan_lm_head_build",
     "plan_moonshine_lm_head_build",
     "plan_moonshine_projection_build",
+    "register_lm_head_kernels",
     "register_moonshine_lm_head_kernels",
     "register_moonshine_projection_kernels",
 ]

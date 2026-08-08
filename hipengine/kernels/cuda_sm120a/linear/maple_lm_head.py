@@ -1,0 +1,641 @@
+"""Raw-pointer GPU lm-head + argmax wrapper."""
+
+from __future__ import annotations
+
+import ctypes
+from pathlib import Path
+
+from hipengine.core.build import BuildArtifact, ProfileName, build_cuda, plan_cuda_build
+from hipengine.core.cuda import CUDA_SUCCESS, CudaRuntime, get_cuda_runtime
+from hipengine.kernels.backends import cuda_target_arch_for_backend
+from hipengine.kernels.registry import KernelKey, register
+
+_SOURCE = Path(__file__).with_name("maple_lm_head.cu")
+_OUTPUT_NAME = "maple_lm_head.so"
+_SYMBOL = "hipengine_lm_head_fp16_argmax_bf16"
+_SYMBOL_ROWS_I32 = "hipengine_lm_head_fp16_argmax_bf16_rows_i32"
+_SYMBOL_ARGMAX = "hipengine_argmax_f32"
+_SYMBOL_ARGMAX_PUBLISH_CONTROL = "hipengine_argmax_f32_publish_control"
+_SYMBOL_ARGMAX_TILE_STAGE2_I32_PUBLISH_CONTROL = (
+    "hipengine_argmax_tile_stage2_i32_publish_control"
+)
+_SYMBOL_ARGMAX_ROWS_I32 = "hipengine_argmax_f32_rows_i32"
+_SYMBOL_TOPK_ROWS_I32 = "hipengine_topk_f32_rows_i32"
+_SYMBOL_W8A16_LM_HEAD_ARGMAX_ROWS = "hipengine_w8a16_lm_head_argmax_rows_bf16"
+_SYMBOL_BATCH_ARGMAX = "hipengine_batch_argmax_f32"
+_BACKEND = "cuda_sm120a"
+_TARGET_ARCH = cuda_target_arch_for_backend(_BACKEND)
+_ALLOWED_THREADS = {128, 256, 512}
+_MAX_TOPK = 8
+
+
+def plan_lm_head_build(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+) -> BuildArtifact:
+    return plan_cuda_build(
+        sources=[_SOURCE],
+        family="cuda_sm120a_maple_lm_head",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        target_arch=_TARGET_ARCH,
+        output_name=_OUTPUT_NAME,
+    )
+
+
+def build_lm_head(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    return build_cuda(
+        sources=[_SOURCE],
+        family="cuda_sm120a_maple_lm_head",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        target_arch=_TARGET_ARCH,
+        output_name=_OUTPUT_NAME,
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
+def lm_head_fp16_argmax_bf16(
+    hidden_bf16_ptr: int,
+    weight_fp16_ptr: int,
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i64_ptr: int,
+    out_index_i64_ptr: int,
+    out_value_f32_ptr: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Launch FP16 lm-head projection and GPU argmax for one BF16 hidden row."""
+
+    _check_shape(hidden_size, vocab_size, threads)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_bf16_ptr),
+        ctypes.c_void_p(weight_fp16_ptr),
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i64_ptr),
+        ctypes.c_void_p(out_index_i64_ptr),
+        ctypes.c_void_p(out_value_f32_ptr),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def lm_head_fp16_argmax_bf16_rows_i32(
+    hidden_bf16_ptr: int,
+    weight_fp16_ptr: int,
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Launch FP16 lm-head projection and row-wise GPU argmax for BF16 hidden rows."""
+
+    _check_rows(rows)
+    _check_shape(hidden_size, vocab_size, threads)
+    _check_i32_vocab(vocab_size)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_ROWS_I32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_bf16_ptr),
+        ctypes.c_void_p(weight_fp16_ptr),
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def argmax_f32(
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i64_ptr: int,
+    out_index_i64_ptr: int,
+    out_value_f32_ptr: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    _check_shape(1, vocab_size, threads)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_ARGMAX)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i64_ptr),
+        ctypes.c_void_p(out_index_i64_ptr),
+        ctypes.c_void_p(out_value_f32_ptr),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def argmax_f32_publish_control(
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i64_ptr: int,
+    out_index_i64_ptr: int,
+    out_value_f32_ptr: int,
+    next_token_i64_ptr: int,
+    scratch_position_i64_ptr: int,
+    kv_position_i64_ptr: int,
+    vocab_size: int,
+    next_position: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Select top-1 and publish the next autoregressive control scalars."""
+
+    _check_shape(1, vocab_size, threads)
+    if next_position < 0:
+        raise ValueError("next_position must be non-negative")
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_ARGMAX_PUBLISH_CONTROL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i64_ptr),
+        ctypes.c_void_p(out_index_i64_ptr),
+        ctypes.c_void_p(out_value_f32_ptr),
+        ctypes.c_void_p(next_token_i64_ptr),
+        ctypes.c_void_p(scratch_position_i64_ptr),
+        ctypes.c_void_p(kv_position_i64_ptr),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(next_position),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def argmax_tile_stage2_i32_publish_control(
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_index_i64_ptr: int,
+    out_value_f32_ptr: int,
+    next_token_i64_ptr: int,
+    scratch_position_i64_ptr: int,
+    kv_position_i64_ptr: int,
+    num_blocks: int,
+    next_position: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Finalize producer-emitted top-1 tile pairs and publish control."""
+
+    _check_shape(1, num_blocks, threads)
+    if next_position < 0:
+        raise ValueError("next_position must be non-negative")
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_ARGMAX_TILE_STAGE2_I32_PUBLISH_CONTROL)
+    fn.argtypes = [
+        *([ctypes.c_void_p] * 7),
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_index_i64_ptr),
+        ctypes.c_void_p(out_value_f32_ptr),
+        ctypes.c_void_p(next_token_i64_ptr),
+        ctypes.c_void_p(scratch_position_i64_ptr),
+        ctypes.c_void_p(kv_position_i64_ptr),
+        ctypes.c_int64(num_blocks),
+        ctypes.c_int64(next_position),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def argmax_f32_rows_i32(
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    rows: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Write row-wise top-1 ids for ``logits[rows, vocab_size]`` without host logits."""
+
+    _check_rows(rows)
+    _check_shape(1, vocab_size, threads)
+    _check_i32_vocab(vocab_size)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_ARGMAX_ROWS_I32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def topk_f32_rows_i32(
+    logits_f32_ptr: int,
+    out_values_f32_ptr: int | None,
+    out_indices_i32_ptr: int,
+    rows: int,
+    vocab_size: int,
+    top_k: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Write row-wise top-k values/ids for ``logits[rows, vocab_size]`` on device."""
+
+    _check_rows(rows)
+    _check_shape(1, vocab_size, threads)
+    _check_i32_vocab(vocab_size)
+    _check_topk(top_k)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_TOPK_ROWS_I32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def batch_argmax_f32(
+    logits_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i64_ptr: int,
+    out_index_i64_ptr: int,
+    out_value_f32_ptr: int,
+    rows: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    _check_shape(rows, vocab_size, threads)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_BATCH_ARGMAX)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(logits_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i64_ptr),
+        ctypes.c_void_p(out_index_i64_ptr),
+        ctypes.c_void_p(out_value_f32_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def lm_head_argmax_stage1_blocks(vocab_size: int, *, threads: int = 256) -> int:
+    _check_shape(1, vocab_size, threads)
+    return (int(vocab_size) + int(threads) * 4 - 1) // (int(threads) * 4)
+
+
+def w8a16_lm_head_argmax_rows_bf16(
+    hidden_bf16_ptr: int,
+    weight_int8_ptr: int,
+    weight_scale_f32_ptr: int,
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """R3.7 fused W8A16 LM-head + argmax-rows.
+
+    Replaces the unfused ``w8a16_linear_bf16_f32_multi_row`` -> ``argmax_f32_rows_i32``
+    pair so the per-cycle ``[rows, vocab_size]`` FP32 logits buffer is never
+    materialized in HBM.  ``hidden_bf16`` is ``[rows, hidden_size]`` in bf16 bits;
+    weight is W8 ``[vocab_size, hidden_size]`` INT8 with FP32 ``[vocab_size]`` scale.
+    Outputs ``out_indices_i32[rows]`` (top-1 token id per row) and optional
+    ``out_values_f32[rows]`` (top-1 logit value per row).  Scratch buffers
+    ``block_values_f32[rows * stage1_blocks]`` / ``block_indices_i32[rows * stage1_blocks]``
+    must be sized via :func:`lm_head_argmax_stage1_blocks`.
+    """
+
+    _check_rows(rows)
+    _check_shape(hidden_size, vocab_size, threads)
+    _check_i32_vocab(vocab_size)
+    library = library or build_lm_head(load=True)
+    runtime = runtime or get_cuda_runtime()
+    fn = getattr(library, _SYMBOL_W8A16_LM_HEAD_ARGMAX_ROWS)
+    fn.argtypes = [
+        ctypes.c_void_p,  # hidden bf16
+        ctypes.c_void_p,  # weight int8
+        ctypes.c_void_p,  # weight scale f32
+        ctypes.c_void_p,  # block_values f32 scratch
+        ctypes.c_void_p,  # block_indices i32 scratch
+        ctypes.c_void_p,  # out_indices i32
+        ctypes.c_void_p,  # out_values f32 (nullable)
+        ctypes.c_int64,  # rows
+        ctypes.c_int64,  # hidden_size
+        ctypes.c_int64,  # vocab_size
+        ctypes.c_int64,  # threads
+        ctypes.c_void_p,  # stream
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_bf16_ptr),
+        ctypes.c_void_p(weight_int8_ptr),
+        ctypes.c_void_p(weight_scale_f32_ptr),
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden_size),
+        ctypes.c_int64(vocab_size),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != CUDA_SUCCESS:
+        runtime.check(int(err))
+
+
+def register_lm_head_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey(_BACKEND, "lm_head", "w4_paro", "fp16_argmax_bf16"),
+        lm_head_fp16_argmax_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "lm_head", "w4_paro", "fp16_argmax_bf16_rows_i32"),
+        lm_head_fp16_argmax_bf16_rows_i32,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "argmax", "w4_paro", "f32"),
+        argmax_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "argmax", "f32", "top1_i64"),
+        argmax_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            _BACKEND,
+            "argmax",
+            "f32",
+            "top1_i64_publish_control",
+        ),
+        argmax_f32_publish_control,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            _BACKEND,
+            "argmax",
+            "f32_tile_i32",
+            "stage2_top1_i64_publish_control",
+        ),
+        argmax_tile_stage2_i32_publish_control,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "argmax", "w4_paro", "batch_f32"),
+        batch_argmax_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "argmax", "w4_paro", "f32_rows_i32"),
+        argmax_f32_rows_i32,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "topk", "w4_paro", "f32_rows_i32"),
+        topk_f32_rows_i32,
+        replace=replace,
+    )
+    register(
+        KernelKey(_BACKEND, "lm_head_argmax", "w8a16", "bf16_rows_i32"),
+        w8a16_lm_head_argmax_rows_bf16,
+        replace=replace,
+    )
+
+
+def _check_shape(hidden_size: int, vocab_size: int, threads: int) -> None:
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    if threads not in _ALLOWED_THREADS:
+        raise ValueError("threads must be one of 128, 256, or 512")
+
+
+def _check_rows(rows: int) -> None:
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+
+
+def _check_i32_vocab(vocab_size: int) -> None:
+    if vocab_size > 2**31 - 1:
+        raise ValueError("vocab_size must fit int32 row-wise argmax outputs")
+
+
+def _check_topk(top_k: int) -> None:
+    if top_k <= 0 or top_k > _MAX_TOPK:
+        raise ValueError(f"top_k must be in [1, {_MAX_TOPK}]")
+
+
+register_lm_head_kernels()
