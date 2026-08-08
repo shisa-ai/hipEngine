@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -145,3 +146,63 @@ def test_fixture_identity_allows_per_file_eos_metadata_and_includes_eos(tmp_path
         42,
         2,
     ]
+
+
+def test_decoder_smoke_cli_uses_the_promoted_runtime_default(monkeypatch) -> None:
+    from scripts import moonshine_decoder_smoke
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "moonshine_decoder_smoke.py",
+            "--compiler-version-file",
+            "/tmp/hipcc.txt",
+            "--prebuild-only",
+        ],
+    )
+    assert moonshine_decoder_smoke.parse_args().lm_head_route == "wave8_top1"
+
+
+def test_retained_gfx1151_route_admission_artifact_promotes_exact_top1() -> None:
+    artifact = json.loads(
+        Path(
+            "benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json"
+        ).read_text()
+    )
+    assert artifact["kind"] == "hipengine_moonshine_lm_head_route_admission"
+    assert artifact["status"] == "accepted_runtime_default"
+    assert artifact["performance_claim"] is False
+    assert artifact["decision"] == {
+        "promote_wave8_top1": True,
+        "runtime_default": "wave8_top1",
+        "fallback": "wave8_argmax",
+        "reason": (
+            "all 24 real-audio eager/graph route rows passed transcript, state, "
+            "allocation, graph, paired-outcome, and teardown gates"
+        ),
+    }
+    gate = artifact["gate"]
+    assert gate["passed"] is True
+    assert gate["matrix_rows"] == 24
+    assert gate["fixture_count"] == 6
+    assert gate["failures"] == []
+    assert gate["candidate_extra_resident_bytes"] == [46_080]
+    for field in (
+        "all_transcripts_exact_through_eos",
+        "all_selected_fixture_tokens_exact",
+        "all_logit_gates_passed",
+        "all_timed_allocations_zero",
+        "all_teardowns_clean",
+        "all_graph_runs_four_bucket_194_replay",
+        "paired_route_outcomes_exact",
+    ):
+        assert gate[field] is True
+    assert set(artifact["fixture_collection"]["fixtures"]) == set(SIX_REAL_FIXTURES)
+    assert all(
+        fixture["generated_ids_through_eos"][-1] == 2
+        for fixture in artifact["fixture_collection"]["fixtures"].values()
+    )
+    assert len(artifact["rows"]) == 24
+    assert all(row["returncode"] == 0 for row in artifact["rows"])
+    assert artifact["provenance"]["dirty"] is False
+    assert artifact["provenance"]["untracked_count"] == 0

@@ -1,0 +1,2481 @@
+{
+  "decision": {
+    "fallback": "wave8_argmax",
+    "promote_wave8_top1": true,
+    "reason": "all 24 real-audio eager/graph route rows passed transcript, state, allocation, graph, paired-outcome, and teardown gates",
+    "runtime_default": "wave8_top1"
+  },
+  "fixture_collection": {
+    "fixtures": {
+      "audio-hai-fp16": {
+        "archive": {
+          "bytes": 3276206,
+          "sha256": "00856cfd5d69b86f71a0da05c6fed9801f174e1b78a439ee6c29dc7d2b3e8288"
+        },
+        "first_eos_position": 1,
+        "generated_ids_through_eos": [
+          1,
+          36506,
+          2
+        ],
+        "input": {
+          "encoder_frames": 24,
+          "id": "hai.wav",
+          "kind": "audio",
+          "sample_count": 9899,
+          "sha256_float32": "31e3d6cf355f626ce6bf7425f78d5e446e36efcdf73589a69bc70940985ee59e"
+        },
+        "positions": [
+          0,
+          193
+        ],
+        "sidecar": {
+          "bytes": 29987,
+          "sha256": "eb2b38d7b43d13fca18b3f95f5fb8d7ddf94d096a69efaf7ab191276f7a6e732"
+        }
+      },
+      "audio-konichiwa-fp16": {
+        "archive": {
+          "bytes": 3614834,
+          "sha256": "390c6c05c5ea936b64cf8bac0b5d0632839e80bce2e0e22db7f502dbfb4a24a7"
+        },
+        "first_eos_position": 5,
+        "generated_ids_through_eos": [
+          1,
+          36488,
+          30389,
+          30353,
+          30644,
+          36049,
+          2
+        ],
+        "input": {
+          "encoder_frames": 42,
+          "id": "konichiwa.wav",
+          "kind": "audio",
+          "sample_count": 16896,
+          "sha256_float32": "39806c06a5c432ed563d2932bcdd2064e6c0c941ec249c07bf1de54d867b0afe"
+        },
+        "positions": [
+          0,
+          193
+        ],
+        "sidecar": {
+          "bytes": 30126,
+          "sha256": "2f08b975b5ce2bb5b53c58abedd3648d718c9078e30703455c09bcf93bf134ea"
+        }
+      },
+      "audio-konichiwa.ogenkidesuka-fp16": {
+        "archive": {
+          "bytes": 4794926,
+          "sha256": "82ec4af15c14ac11073a90a9ab5c8db2a9915b6dbd5e7ef702bdfb8bce249d0f"
+        },
+        "first_eos_position": 10,
+        "generated_ids_through_eos": [
+          1,
+          36488,
+          30389,
+          30353,
+          30644,
+          36624,
+          30824,
+          31648,
+          30824,
+          31648,
+          35734,
+          2
+        ],
+        "input": {
+          "encoder_frames": 105,
+          "id": "konichiwa.ogenkidesuka.wav",
+          "kind": "audio",
+          "sample_count": 40960,
+          "sha256_float32": "7ee9e8669c4e358a30b2f4f7770b52b44b4329ff4b00f753da8ca27918f39b9f"
+        },
+        "positions": [
+          0,
+          193
+        ],
+        "sidecar": {
+          "bytes": 30194,
+          "sha256": "f2bc161839f7982f41b661c884513b9a3c1c922e9cd2b8e919c940d2a1f75fa8"
+        }
+      },
+      "audio-kumbawa-fp16": {
+        "archive": {
+          "bytes": 3483038,
+          "sha256": "cd54da0162dc9d5ae0b773e5e9edc829296a70f6ec832f8aeb83508fa281bb8b"
+        },
+        "first_eos_position": 5,
+        "generated_ids_through_eos": [
+          1,
+          36488,
+          30389,
+          31254,
+          30389,
+          36049,
+          2
+        ],
+        "input": {
+          "encoder_frames": 35,
+          "id": "kumbawa.wav",
+          "kind": "audio",
+          "sample_count": 14166,
+          "sha256_float32": "890e94bfce7a24ad178773fd913140438594dcf01dfab1e1858ef95823d2af33"
+        },
+        "positions": [
+          0,
+          193
+        ],
+        "sidecar": {
+          "bytes": 30020,
+          "sha256": "c998bfc3835ad6fada9d16e5dbec82466a15ae2bc034eba5defa0b673c14f554"
+        }
+      },
+      "audio-sosososo-fp16": {
+        "archive": {
+          "bytes": 3426254,
+          "sha256": "4506e2cdc0fd564b57b9be977b559736c96ca28f78cfe577665287c584c0c576"
+        },
+        "first_eos_position": 5,
+        "generated_ids_through_eos": [
+          1,
+          35573,
+          35442,
+          35442,
+          35442,
+          30267,
+          2
+        ],
+        "input": {
+          "encoder_frames": 32,
+          "id": "sosososo.wav",
+          "kind": "audio",
+          "sample_count": 12971,
+          "sha256_float32": "8969834d7a49f8656c26edc8a02582c6d3430af15f5ee4a2016579cdc3e214a7"
+        },
+        "positions": [
+          0,
+          193
+        ],
+        "sidecar": {
+          "bytes": 30023,
+          "sha256": "21931f0ba6a31b23ff8ebeac0a07c56235c4f25b46b9d226308083841f7114df"
+        }
+      },
+      "audio-sumimasen-fp16": {
+        "archive": {
+          "bytes": 3578354,
+          "sha256": "55913c98fbf0b627b2fa48e8af8c708178740b2ba9d1c406e3dc5d7856e790eb"
+        },
+        "first_eos_position": 4,
+        "generated_ids_through_eos": [
+          1,
+          29871,
+          30427,
+          30735,
+          35668,
+          2
+        ],
+        "input": {
+          "encoder_frames": 40,
+          "id": "sumimasen.wav",
+          "kind": "audio",
+          "sample_count": 16214,
+          "sha256_float32": "e89a02daf23e6c2c53250d384b7cb137fa04122217fb732947d00d6e21dc0dec"
+        },
+        "positions": [
+          0,
+          193
+        ],
+        "sidecar": {
+          "bytes": 30282,
+          "sha256": "faab7123674e3ed3d9c4687a17f11a7fd951dc62c55364c58f5d69ec9385a011"
+        }
+      }
+    },
+    "producer": {
+      "attention_implementation": "sdpa",
+      "cuda": "None",
+      "device": "AMD Radeon 8060S Graphics",
+      "hip": "7.15.0",
+      "matmul_accumulation": "fp32",
+      "positions": "0,193",
+      "python": "3.12.13",
+      "script": "scripts/extract_moonshine_fixtures.py",
+      "torch": "2.10.0+rocm7.15.0a20260711",
+      "transformers": "5.8.1",
+      "weight_dtype": "float16"
+    },
+    "root": "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six",
+    "summary": {
+      "bytes": 246342,
+      "path": "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six-summary.json",
+      "sha256": "1ca50a44902e0cbe592acb7dd94c731146935f35a7b3cd6dfd8d6cfd8247068c"
+    }
+  },
+  "gate": {
+    "all_graph_runs_four_bucket_194_replay": true,
+    "all_logit_gates_passed": true,
+    "all_selected_fixture_tokens_exact": true,
+    "all_teardowns_clean": true,
+    "all_timed_allocations_zero": true,
+    "all_transcripts_exact_through_eos": true,
+    "candidate_extra_resident_bytes": [
+      46080
+    ],
+    "failures": [],
+    "fixture_count": 6,
+    "matrix_rows": 24,
+    "paired_route_outcomes_exact": true,
+    "passed": true,
+    "routes": [
+      "wave8_argmax",
+      "wave8_top1"
+    ],
+    "token_routes": [
+      "eager",
+      "graph"
+    ]
+  },
+  "kind": "hipengine_moonshine_lm_head_route_admission",
+  "model": {
+    "id": "shisa-ai/shisa-realtime-asr-0.92b",
+    "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d"
+  },
+  "performance_claim": false,
+  "provenance": {
+    "build_profile": "decode",
+    "collected_at": "2026-08-08T08:29:15.881479+00:00",
+    "command": [
+      "scripts/moonshine_lm_head_route_gate.py",
+      "--model-path",
+      "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+      "--fixture-dir",
+      "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six",
+      "--compiler-version-file",
+      "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+      "--python",
+      "/home/lhl/miniforge3/envs/therock/bin/python3",
+      "--raw-dir",
+      "/tmp/hipengine-moonshine-g1-route-raw",
+      "--output",
+      "/tmp/hipengine-moonshine-g1-route.json",
+      "--require-clean"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_commit": "dc62d7bb0eab65eb37160d0c1f10e024215c46b1",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "fp16",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "exists": true,
+      "file_count": 6,
+      "path_type": "directory",
+      "sampled_bytes": 7089269,
+      "size_bytes": 256839237,
+      "value": "9d4bccf2ff23857e0b61ac049eeffea29b61d94b9388005495cca23d086673e8"
+    },
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "model_revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "profiler": {
+      "cached_build_required": true,
+      "new_trace_required": false
+    },
+    "quant": "fp16",
+    "repetitions": 1,
+    "repo_root": "/tmp/hipengine-moonshine-g1-route-clean",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "correctness_only_6_fixtures_x_2_routes_x_eager_graph",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "raw_reports_committed": false,
+  "rows": [
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-hai-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.json"
+      ],
+      "fixture": "audio-hai-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.json",
+        "sha256": "565a3bcc8c81319ef05449c67399dc822c82d9884707448011cc4314c1706a86"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 1,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.54648545185421e-06,
+        "logit_kl_mean": 6.521254127970973e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.25,
+        "max_relative_l2": 0.001808519009500742,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 24,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_argmax.stdout.txt",
+        "sha256": "565a3bcc8c81319ef05449c67399dc822c82d9884707448011cc4314c1706a86"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-hai-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.json"
+      ],
+      "fixture": "audio-hai-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.json",
+        "sha256": "41adaef01f2a425094bcd98af75963d18616ebc4313d6e5276585da27da22f6e"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 1,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.54648545185421e-06,
+        "logit_kl_mean": 6.521254127970973e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.25,
+        "max_relative_l2": 0.001808519009500742,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 24,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-eager-wave8_top1.stdout.txt",
+        "sha256": "41adaef01f2a425094bcd98af75963d18616ebc4313d6e5276585da27da22f6e"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-hai-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.json"
+      ],
+      "fixture": "audio-hai-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.json",
+        "sha256": "7a5aa2348daa54f7ceacd6e663e1c59365790ba2509ddead1fa6bbc20175ffea"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 1,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.54648545185421e-06,
+        "logit_kl_mean": 6.521254127970973e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.015625,
+        "max_relative_l2": 0.001808519009500742,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 24,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.582097,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.60748,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "7a5aa2348daa54f7ceacd6e663e1c59365790ba2509ddead1fa6bbc20175ffea"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-hai-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.json"
+      ],
+      "fixture": "audio-hai-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.json",
+        "sha256": "b1a0d80bf1e6f7c443c5ba5f0e59cf9b63cfc09d34c37e8bfbcc134593119fcc"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 1,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.54648545185421e-06,
+        "logit_kl_mean": 6.521254127970973e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.015625,
+        "max_relative_l2": 0.001808519009500742,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 24,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.687546,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.632719,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-hai-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "b1a0d80bf1e6f7c443c5ba5f0e59cf9b63cfc09d34c37e8bfbcc134593119fcc"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.json"
+      ],
+      "fixture": "audio-konichiwa-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.json",
+        "sha256": "fd2ac6cda7828a38fe5141365dbd574b8693487e5be9f2c69163589c80a20469"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 1.009836663626567e-05,
+        "logit_kl_mean": 6.069423040987995e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.5,
+        "max_relative_l2": 0.00251691322773695,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132049684,
+        "selected_tokens_exact": true,
+        "source_frames": 42,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_argmax.stdout.txt",
+        "sha256": "fd2ac6cda7828a38fe5141365dbd574b8693487e5be9f2c69163589c80a20469"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.json"
+      ],
+      "fixture": "audio-konichiwa-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.json",
+        "sha256": "e0ba337193f4fbcd95ecb1cf64f5369a97cd6df3925dd8c6f42919f5ccdae13f"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 1.009836663626567e-05,
+        "logit_kl_mean": 6.069423040987995e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.5,
+        "max_relative_l2": 0.00251691322773695,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132095764,
+        "selected_tokens_exact": true,
+        "source_frames": 42,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-eager-wave8_top1.stdout.txt",
+        "sha256": "e0ba337193f4fbcd95ecb1cf64f5369a97cd6df3925dd8c6f42919f5ccdae13f"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.json"
+      ],
+      "fixture": "audio-konichiwa-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.json",
+        "sha256": "ab9bbba6826a2edaa3c33311f77d8477862db119e4b25c178a671d7ed6af4af9"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 1.009836663626567e-05,
+        "logit_kl_mean": 6.069423040987995e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.044921875,
+        "max_relative_l2": 0.00251691322773695,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132049684,
+        "selected_tokens_exact": true,
+        "source_frames": 42,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.535159,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.6269469999999999,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "ab9bbba6826a2edaa3c33311f77d8477862db119e4b25c178a671d7ed6af4af9"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.json"
+      ],
+      "fixture": "audio-konichiwa-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.json",
+        "sha256": "5e9621f7a64392985153f90c222bae74cae810d2b55033da33cc525fbc95fd29"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 1.009836663626567e-05,
+        "logit_kl_mean": 6.069423040987995e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.044921875,
+        "max_relative_l2": 0.00251691322773695,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132095764,
+        "selected_tokens_exact": true,
+        "source_frames": 42,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.535872,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.590437,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "5e9621f7a64392985153f90c222bae74cae810d2b55033da33cc525fbc95fd29"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa.ogenkidesuka-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.json"
+      ],
+      "fixture": "audio-konichiwa.ogenkidesuka-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.json",
+        "sha256": "89c4597ade117308bcff95e47fa42f04c878f9b1c36a564024211c577fb7ac66"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 10,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 8.045775962826148e-06,
+        "logit_kl_mean": 6.3777432540098895e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 1.0,
+        "max_relative_l2": 0.0034244495909661055,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132049684,
+        "selected_tokens_exact": true,
+        "source_frames": 105,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_argmax.stdout.txt",
+        "sha256": "89c4597ade117308bcff95e47fa42f04c878f9b1c36a564024211c577fb7ac66"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa.ogenkidesuka-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.json"
+      ],
+      "fixture": "audio-konichiwa.ogenkidesuka-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.json",
+        "sha256": "676f195214beb2a2e166fd158f6b874d304950508410cf9b55abb1654804c8db"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 10,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 8.045775962826148e-06,
+        "logit_kl_mean": 6.3777432540098895e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 1.0,
+        "max_relative_l2": 0.0034244495909661055,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132095764,
+        "selected_tokens_exact": true,
+        "source_frames": 105,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-eager-wave8_top1.stdout.txt",
+        "sha256": "676f195214beb2a2e166fd158f6b874d304950508410cf9b55abb1654804c8db"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa.ogenkidesuka-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.json"
+      ],
+      "fixture": "audio-konichiwa.ogenkidesuka-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.json",
+        "sha256": "2e81af2505489ce1e5595bf88b7f2e467e3715df118d6b2128823fb12dd1b1e6"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 10,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 8.045775962826148e-06,
+        "logit_kl_mean": 6.3777432540098895e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.046875,
+        "max_relative_l2": 0.0034244495909661055,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132049684,
+        "selected_tokens_exact": true,
+        "source_frames": 105,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.596696,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.593786,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "2e81af2505489ce1e5595bf88b7f2e467e3715df118d6b2128823fb12dd1b1e6"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-konichiwa.ogenkidesuka-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.json"
+      ],
+      "fixture": "audio-konichiwa.ogenkidesuka-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.json",
+        "sha256": "87c8aca61be16d54ff863cecaccfb8c2740f919eb04f957052f8d8f94b6bebd9"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 207,
+        "failures": [],
+        "first_eos_position": 10,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 8.045775962826148e-06,
+        "logit_kl_mean": 6.3777432540098895e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.046875,
+        "max_relative_l2": 0.0034244495909661055,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 132095764,
+        "selected_tokens_exact": true,
+        "source_frames": 105,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.524469,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.611919,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-konichiwa.ogenkidesuka-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "87c8aca61be16d54ff863cecaccfb8c2740f919eb04f957052f8d8f94b6bebd9"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-kumbawa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.json"
+      ],
+      "fixture": "audio-kumbawa-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.json",
+        "sha256": "e5ceb66af9342ea76febdaa782927fd670ac7f7026f75f98f5b7155d4e13f11e"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.522771833195054e-06,
+        "logit_kl_mean": 3.8554386437559e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.25,
+        "max_relative_l2": 0.0021106870844960213,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 35,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_argmax.stdout.txt",
+        "sha256": "e5ceb66af9342ea76febdaa782927fd670ac7f7026f75f98f5b7155d4e13f11e"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-kumbawa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.json"
+      ],
+      "fixture": "audio-kumbawa-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.json",
+        "sha256": "c601c4753482edd1e0dbea99d91557f4a017caba0b0c98711d181ceb370ca3c5"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.522771833195054e-06,
+        "logit_kl_mean": 3.8554386437559e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.25,
+        "max_relative_l2": 0.0021106870844960213,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 35,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-eager-wave8_top1.stdout.txt",
+        "sha256": "c601c4753482edd1e0dbea99d91557f4a017caba0b0c98711d181ceb370ca3c5"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-kumbawa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.json"
+      ],
+      "fixture": "audio-kumbawa-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.json",
+        "sha256": "7ebc182de4cb33bf1288da725d7978a7e8d7a31893e34a7ddb48f1860de8cb8f"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.522771833195054e-06,
+        "logit_kl_mean": 3.8554386437559e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.0390625,
+        "max_relative_l2": 0.0021106870844960213,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 35,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.5461,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.601851,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "7ebc182de4cb33bf1288da725d7978a7e8d7a31893e34a7ddb48f1860de8cb8f"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-kumbawa-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.json"
+      ],
+      "fixture": "audio-kumbawa-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.json",
+        "sha256": "a34867a2b12cc5f30c504783d780aa1a7a4a1fe432f403c8e3aebd3c494c2b77"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 7.522771833195054e-06,
+        "logit_kl_mean": 3.8554386437559e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.0390625,
+        "max_relative_l2": 0.0021106870844960213,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 35,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.5909139999999997,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.613962,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-kumbawa-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "a34867a2b12cc5f30c504783d780aa1a7a4a1fe432f403c8e3aebd3c494c2b77"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sosososo-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.json"
+      ],
+      "fixture": "audio-sosososo-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.json",
+        "sha256": "891909a219470304bc713fc4a059a9de201474ad112d3bdf7ad46f419e4e2e3e"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 3.2794081937901503e-06,
+        "logit_kl_mean": 2.405680690329692e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.5,
+        "max_relative_l2": 0.004828607197850943,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 32,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_argmax.stdout.txt",
+        "sha256": "891909a219470304bc713fc4a059a9de201474ad112d3bdf7ad46f419e4e2e3e"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sosososo-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.json"
+      ],
+      "fixture": "audio-sosososo-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.json",
+        "sha256": "80e92bbc33a96ee8d26ed829fd6740722c2977b01378654e7d5ea67f1995f86e"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 3.2794081937901503e-06,
+        "logit_kl_mean": 2.405680690329692e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.5,
+        "max_relative_l2": 0.004828607197850943,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 32,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-eager-wave8_top1.stdout.txt",
+        "sha256": "80e92bbc33a96ee8d26ed829fd6740722c2977b01378654e7d5ea67f1995f86e"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sosososo-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.json"
+      ],
+      "fixture": "audio-sosososo-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.json",
+        "sha256": "1059dd664f40bcbc4ee5636973ade579ea49c5339719ac58f245c0b2e966e689"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 3.2794081937901503e-06,
+        "logit_kl_mean": 2.405680690329692e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.056640625,
+        "max_relative_l2": 0.004828607197850943,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 32,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.545621,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.601619,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "1059dd664f40bcbc4ee5636973ade579ea49c5339719ac58f245c0b2e966e689"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sosososo-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.json"
+      ],
+      "fixture": "audio-sosososo-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.json",
+        "sha256": "7a2c63d5601c344602d23a84c6f0a90638a53be5c87f57c1cf3e7b88ba199340"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 5,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 3.2794081937901503e-06,
+        "logit_kl_mean": 2.405680690329692e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.056640625,
+        "max_relative_l2": 0.004828607197850943,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 32,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.691755,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.60756,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sosososo-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "7a2c63d5601c344602d23a84c6f0a90638a53be5c87f57c1cf3e7b88ba199340"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sumimasen-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.json"
+      ],
+      "fixture": "audio-sumimasen-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.json",
+        "sha256": "4299e5f9a2ebb784c1bd9b4b881345fe154638962cdb29d85cbcaa4cce8a273b"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 4,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 5.7354505666764016e-06,
+        "logit_kl_mean": 2.897522672133024e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.5,
+        "max_relative_l2": 0.002041033236309886,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [
+          {
+            "expected": 30665,
+            "position": 34,
+            "selected": 30584
+          },
+          {
+            "expected": 30584,
+            "position": 92,
+            "selected": 2
+          }
+        ],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 40,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_argmax.stdout.txt",
+        "sha256": "4299e5f9a2ebb784c1bd9b4b881345fe154638962cdb29d85cbcaa4cce8a273b"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sumimasen-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "eager",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.json"
+      ],
+      "fixture": "audio-sumimasen-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.json",
+        "sha256": "e012da32763a252c7a92ea7af3b5131bd6904e0454cd61bc7d8e5af6cac9e9c7"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "all_layer_boundaries",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 4,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 5.7354505666764016e-06,
+        "logit_kl_mean": 2.897522672133024e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.5,
+        "max_relative_l2": 0.002041033236309886,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [
+          {
+            "expected": 30665,
+            "position": 34,
+            "selected": 30584
+          },
+          {
+            "expected": 30584,
+            "position": 92,
+            "selected": 2
+          }
+        ],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 40,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": null,
+        "token_route": "eager"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-eager-wave8_top1.stdout.txt",
+        "sha256": "e012da32763a252c7a92ea7af3b5131bd6904e0454cd61bc7d8e5af6cac9e9c7"
+      },
+      "token_route": "eager"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sumimasen-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_argmax",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.json"
+      ],
+      "fixture": "audio-sumimasen-fp16",
+      "lm_head_route": "wave8_argmax",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.json",
+        "sha256": "cd7bf5c054e9eddfb4b4776a80eb27c39472eacac423814848db3fc1d3074809"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 4,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 0,
+          "partial_index_dtype": null,
+          "partial_value_dtype": null,
+          "route": "wave8_argmax",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 5.7354505666764016e-06,
+        "logit_kl_mean": 2.897522672133024e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.046142578125,
+        "max_relative_l2": 0.002041033236309886,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [
+          {
+            "expected": 30665,
+            "position": 34,
+            "selected": 30584
+          },
+          {
+            "expected": 30584,
+            "position": 92,
+            "selected": 2
+          }
+        ],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129686968,
+        "selected_tokens_exact": true,
+        "source_frames": 40,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.8400909999999997,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.624342,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_argmax.stdout.txt",
+        "sha256": "cd7bf5c054e9eddfb4b4776a80eb27c39472eacac423814848db3fc1d3074809"
+      },
+      "token_route": "graph"
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "/tmp/hipengine-moonshine-g1-route-clean/scripts/moonshine_decoder_smoke.py",
+        "--compiler-version-file",
+        "/tmp/hipengine-moonshine-g1-route-hipcc.txt",
+        "--model-path",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--shisa-realtime-asr-0.92b/snapshots/cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+        "--fixture",
+        "/home/lhl/moonshine-prod-inference/results/raw/moonshine-fixtures-six/audio-sumimasen-fp16.npz",
+        "--require-cached-build",
+        "--pad-to-certified-bucket",
+        "--lm-head-route",
+        "wave8_top1",
+        "--token-route",
+        "graph",
+        "--json",
+        "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.json"
+      ],
+      "fixture": "audio-sumimasen-fp16",
+      "lm_head_route": "wave8_top1",
+      "raw_report": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.json",
+        "sha256": "3096fafae082815eb6a29db8f10790727a4c176b4a91b3571302181f3f64472d"
+      },
+      "report": {
+        "all_passed": true,
+        "boundary_capture": "final_hidden_only",
+        "encoder_frames": 40,
+        "failures": [],
+        "first_eos_position": 4,
+        "generation_tokens_exact": true,
+        "lm_head": {
+          "fallback": "wave8_argmax",
+          "materializes_full_fp16_logits": true,
+          "partial_count": 4608,
+          "partial_index_dtype": "int64",
+          "partial_value_dtype": "fp16",
+          "route": "wave8_top1",
+          "stable_lowest_id_top1": true
+        },
+        "logit_gate_passed": true,
+        "logit_kl_max": 5.7354505666764016e-06,
+        "logit_kl_mean": 2.897522672133024e-06,
+        "logit_top1_agreement": 1.0,
+        "max_abs": 0.046142578125,
+        "max_relative_l2": 0.002041033236309886,
+        "positions": [
+          0,
+          193
+        ],
+        "post_eos_unselected_token_mismatches": [
+          {
+            "expected": 30665,
+            "position": 34,
+            "selected": 30584
+          },
+          {
+            "expected": 30584,
+            "position": 92,
+            "selected": 2
+          }
+        ],
+        "quantization": {
+          "enabled": false,
+          "families": [],
+          "fp16_fallback_resident": true,
+          "tensor_count": 0
+        },
+        "resident_nbytes": 129733048,
+        "selected_tokens_exact": true,
+        "source_frames": 40,
+        "teardown_active_allocations": 0,
+        "teardown_current_bytes": 0,
+        "timed_step_allocations": 0,
+        "token_graph": {
+          "buckets": [
+            "position_0",
+            "position_1",
+            "positions_2_3",
+            "positions_4_193"
+          ],
+          "capture_positions": [
+            0,
+            1,
+            2,
+            4
+          ],
+          "capture_wall_ms": 2.665793,
+          "captured": true,
+          "graph_count": 4,
+          "instantiate_wall_ms": 0.622308,
+          "replay_count": 194
+        },
+        "token_route": "graph"
+      },
+      "returncode": 0,
+      "stderr": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr_tail": "",
+      "stdout": {
+        "path": "/tmp/hipengine-moonshine-g1-route-raw/audio-sumimasen-fp16-graph-wave8_top1.stdout.txt",
+        "sha256": "3096fafae082815eb6a29db8f10790727a4c176b4a91b3571302181f3f64472d"
+      },
+      "token_route": "graph"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "six_real_audio_fixtures_eager_and_four_bucket_graph_correctness",
+  "source_files": {
+    "hipengine/kernels/hip_gfx1100/linear/moonshine_projection.hip": "0bcffccf18239d883fd7ed5bc19f3455ce90a9e949172046e49c9e5cccf5aa3d",
+    "hipengine/kernels/hip_gfx1100/linear/moonshine_projection.py": "88ec623d24e3385c6e52380c629201770b02d80344f24528023db643ee91e8a5",
+    "hipengine/runtime/moonshine.py": "4ed2681f632190acedacb89439f0ced96e6d1264a52c1c78da04a3929b4e29c4",
+    "scripts/moonshine_decoder_smoke.py": "1b09c1d0b44093d5e409f2df57137018332a2057526a5ec12b00751cadee4e5d",
+    "scripts/moonshine_lm_head_route_gate.py": "5b449d3fbf4ae9d92244ef2a81cf567f24aec9a62ed33fe92a96ec785cc3c201"
+  },
+  "status": "accepted_runtime_default"
+}

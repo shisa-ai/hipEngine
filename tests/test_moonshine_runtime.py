@@ -37,6 +37,7 @@ from hipengine.models.moonshine import (
     parse_moonshine_model_spec,
 )
 from hipengine.runtime.moonshine import (
+    MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
     MoonshineDecoderLibraries,
     MoonshineResidentRuntime,
     NoAllocationError,
@@ -529,6 +530,7 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         loaded_model=fake_loaded_model(runtime),
         encoder_frames=40,
         runtime=runtime,  # type: ignore[arg-type]
+        lm_head_route="wave8_argmax",
     )
     trace: list[tuple[str, tuple[object, ...]]] = []
 
@@ -630,6 +632,25 @@ def test_decoder_precompute_and_token_step_follow_the_unfused_fixed_address_chai
         resident.close()
 
 
+def test_exact_wave8_top1_is_the_fp16_runtime_default_with_explicit_fallback() -> None:
+    assert MOONSHINE_DEFAULT_LM_HEAD_ROUTE == "wave8_top1"
+    runtime = FakeRuntime()
+    resident = MoonshineResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    try:
+        assert resident.lm_head_contract()["route"] == "wave8_top1"
+        assert resident.lm_head_contract()["fallback"] == "wave8_argmax"
+        assert resident.tensor("lm_head_partial_values").shape == (4_608,)
+        assert resident.tensor("lm_head_partial_indices").shape == (4_608,)
+    finally:
+        resident.close()
+    assert memory_stats()["current_allocated_bytes"] == 0
+    assert memory_stats()["active_allocations"] == 0
+
+
 def test_exact_wave8_top1_route_rejects_unknown_route_and_int8_lm_head() -> None:
     with pytest.raises(ValueError, match="lm_head_route"):
         MoonshineResidentRuntime(
@@ -717,6 +738,7 @@ def test_selective_w8a16_routes_expected_fixed_address_kernels_and_reports_bytes
         ),
         encoder_frames=40,
         runtime=runtime,  # type: ignore[arg-type]
+        lm_head_route="wave8_argmax",
     )
     trace: list[tuple[str, tuple[object, ...]]] = []
     try:
@@ -816,9 +838,9 @@ def test_token_graphs_capture_four_buckets_replay_sequential_state_and_close() -
         assert runtime.instantiated_graphs == [capture.graph for capture in captures]
         assert resident.self_cache_length == 0
         assert resident.decode_position is None
-        assert len(trace) == 4 * 100
+        assert len(trace) == 4 * 99
         for offset, expected_self_symbol in zip(
-            range(0, 4 * 100, 100),
+            range(0, 4 * 99, 99),
             (
                 "hipengine_moonshine_self_attention_fp16",
                 "hipengine_moonshine_self_attention_parallel_fp16",
@@ -827,8 +849,13 @@ def test_token_graphs_capture_four_buckets_replay_sequential_state_and_close() -
             ),
             strict=True,
         ):
-            graph_names = [name for name, _ in trace[offset : offset + 100]]
+            graph_names = [name for name, _ in trace[offset : offset + 99]]
             assert graph_names.count(expected_self_symbol) == 8
+            assert graph_names.count(
+                "hipengine_moonshine_f16_lm_head_projection_wave8_top1"
+            ) == 1
+            assert "hipengine_moonshine_f16_lm_head_projection_wave8" not in graph_names
+            assert "hipengine_moonshine_argmax_fp16" not in graph_names
         assert len(runtime.malloc_calls) == malloc_count
         assert all(capture.capture_wall_ms >= 0.0 for capture in captures)
         assert all(capture.instantiate_wall_ms >= 0.0 for capture in captures)

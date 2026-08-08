@@ -209219,3 +209219,30 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   tests/test_moonshine_lm_head_route_gate.py` passes. The focused harness plus
   retained LM-head report-contract bundle passes **6/6**. The next unit commits
   this harness, then runs the 24-row matrix from a detached clean revision.
+
+## 2026-08-08 — Promote Moonshine G1 exact wave8 top-1 to default
+
+- Prebuild all six Moonshine code objects outside the gate from detached clean
+  revision `dc62d7bb0`, then run `scripts/moonshine_lm_head_route_gate.py` with
+  `GPU_MAX_HW_QUEUES=1`, `HIPENGINE_HIP_ARCH=gfx1151`, cached builds only, the
+  exact `cb0b524...29c7d` checkpoint, and regenerated six-real-file fixtures.
+  All **24/24** fallback/candidate x eager/graph rows pass: transcript through
+  EOS, selected fixture tokens/state/logits, zero timed allocations, clean
+  teardown, pairwise-exact route outcomes, and exactly four graphs/194 replays
+  for every graph row. Worst fixture max-abs/relative-L2/KL is
+  `1.0 / 0.00482861 / 1.00984e-5`; minimum top-1 is **100%**. Candidate resident
+  overhead is exactly 46,080 bytes. Aggregate and all 72 ignored raw report/
+  stdout/stderr hashes recompute; clean provenance is true on all dirty axes.
+- RED: the new default-contract node fails collection because
+  `MOONSHINE_DEFAULT_LM_HEAD_ROUTE` does not exist. GREEN: define the shared
+  default as `wave8_top1`, use it in `MoonshineResidentRuntime` and
+  `moonshine_decoder_smoke.py`, and keep `wave8_argmax` explicit for the
+  unfused-chain and W8A16 diagnostic tests. Default graph capture now proves
+  the candidate wrapper in all four 99-wrapper regions; the underlying route
+  still launches the qualified two device kernels.
+- Focused production/runtime/kernel/report validation passes **28 tests** with
+  one expected explicit actual-model-gate skip. Documentation promotes G1,
+  advances the next action to G2, and updates the kernel catalog/refactor
+  trigger/benchmark rollup/changelog. The compact promotion artifact is
+  `benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json`;
+  timing remains the previously retained leaf microbenchmark, not complete ASR.

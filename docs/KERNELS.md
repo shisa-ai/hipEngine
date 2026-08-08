@@ -929,25 +929,30 @@ projections. Phase-3 runtime uses the separately registered
 wave32 vocabulary rows. The one-row-per-block local256 wrapper remains the
 explicit fallback.
 
-The default-off G1 candidate registers
+The promoted G1 route registers
 `moonshine_lm_head/fp16/tied_wave8_top1_logits_fp32_accum`. It preserves the
 same per-column wave32 FP32 dot and complete FP16 logit store, then writes one
 stable FP16-value/int64-index partial per eight-vocabulary block and reduces
-only those partials. `MoonshineResidentRuntime(lm_head_route="wave8_top1")`
-reserves 46,080 bytes of fixed scratch at the 36,864-row model shape; the
+only those partials. `MoonshineResidentRuntime` selects `wave8_top1` by default
+and reserves 46,080 bytes of fixed scratch at the 36,864-row model shape; the
 ordinary wave8 projection plus `moonshine_argmax/fp16/lowest_id` remains the
-required unfused fallback and runtime default pending the missing real-audio
-fixture gate. The 13-row tie/tail and 36,864-row production-shape gfx1151 gates
-are byte-exact for all logits and selected token versus the unfused chain and
-pass the independent NumPy projection oracle. Clean 63-repeat burst-1 timing
-improves event **114.854 -> 101.068 us (-12.003%, 63/63 wins)** and synchronized
-wall **120.266 -> 105.828 us (-12.005%, 62/63 wins)**; both p95s improve. A
-cached-only trace names producer and reducer at local256/VGPR16/scratch0 with
-LDS512/3,072. The actual pinned checkpoint also preserves 194/194 graph tokens,
-eight selected full-logit/final-hidden pairs, and complete self/cross K/V state
-byte-exact. Retain the candidate default-off until transcript-through-EOS can be
-rerun; evidence:
-[`G1 leaf + model state`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json).
+required explicit unfused fallback. The 13-row tie/tail and 36,864-row
+production-shape gfx1151 gates are byte-exact for all logits and selected token
+versus the unfused chain and pass the independent NumPy projection oracle.
+Clean 63-repeat burst-1 timing improves event **114.854 -> 101.068 us
+(-12.003%, 63/63 wins)** and synchronized wall **120.266 -> 105.828 us
+(-12.005%, 62/63 wins)**; both p95s improve. A cached-only trace names producer
+and reducer at local256/VGPR16/scratch0 with LDS512/3,072. The actual pinned
+checkpoint also preserves 194/194 graph tokens, eight selected
+full-logit/final-hidden pairs, and complete self/cross K/V state byte-exact.
+The regenerated real-audio admission matrix passes all **24/24** six-file x
+fallback/candidate x eager/graph rows: exact through EOS and selected fixture
+state, worst KL `1.010e-5`, 100% top-1, zero timed allocation, four graphs and
+194 replays per graph row, pairwise-exact route outcomes, and clean teardown.
+Evidence:
+[`G1 leaf + model state`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-retained.json)
+and
+[`G1 runtime promotion`](../benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-wave8-top1-promoted.json).
 
 The cross-K/V variant preserves the same dot products but writes direct resident
 `[heads,frames,52]` storage instead of row-major `[frames,416]`, avoiding a
