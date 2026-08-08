@@ -960,9 +960,28 @@ After that matrix, explicit `transport="pm4"` is promoted to the combined
 stateful-register/local-cache encoder unconditionally. The two experiment
 environment selectors are removed from transport construction and cannot
 downgrade the canonical path; low-level conservative/global modes remain only
-as benchmark diagnostics. This promotion does **not** change the package
-transport default: HIP graph remains default until the separate ROCm #6529
-resource-recreate risk is resolved.
+as benchmark diagnostics.
+
+Packed c>N graph admission is now implemented through the same registered
+submission owner and persistent context, but its promotion is **blocked on
+performance, not correctness or lifecycle**. A tracked-clean one-model,
+eight-session, alternating-order p512/d128 matrix is exact across c2/c4/c8,
+the complete 18-prompt category/heldout suite, **2,800** independent-c1
+all-layer comparisons, Conv/GDN/live-KV state, context close, and memory
+recovery. PM4 nevertheless loses every replay pair: HIP→PM4 is
+**14.676→16.518 ms/step (+12.551%, 0/5)** at c2,
+**20.252→22.114 (+9.196%, 0/5)** at c4, and
+**31.102→32.870 (+5.687%, 0/5)** at c8. Capture-inclusive and request-inclusive
+wall also regress. Keep HIP graph for packed c2/c4/c8; logical c3/c5/c6/c7 use
+packed eager and are transport-unaffected. Profile the near-constant packed PM4
+penalty before attempting any dependency relaxation; the wait-only result above
+proves that removing acquires blindly is invalid. Evidence:
+`benchmarks/results/2026-08-08-gfx1100-pm4-packed-c2-c4-c8-blocked.json`.
+
+This leaves HIP graph as the package default on a concrete c>N performance
+blocker. ROCm #6529 queue recreate remains useful optional isolation coverage,
+but it is not an evidenced fault in the production ownership path: hipEngine
+retains one queue and does not recreate it in-process.
 
 **Gate:** bit-exact or repository correctness thresholds, all required prompt
 categories/heldouts for a retained claim, every named lifecycle gate, exact

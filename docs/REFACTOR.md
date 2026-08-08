@@ -25,10 +25,15 @@ should be removed or collapsed.
   stateful-register elision with local-cache dependency acquire as the sole
   explicit-PM4 production encoder. The two experiment environment selectors are
   removed from transport construction.
+- Packed c2/c4/c8 submission wiring remains a diagnostic/optimization surface,
+  not a default: exact tracked-clean replay regresses HIP graph
+  **12.551%/9.196%/5.687%**. Remove it only if direct-AQL/PM4 profiling shows no
+  safely optimizable submission/dependency cost; otherwise retain it until one
+  exact same-matrix optimization is non-regressive at every width.
 - Still remove comparison-only `pm4_stateful*` benchmark aliases and low-level
-  conservative/global encoder options after ROCm #6529 is resolved and they no
-  longer provide useful rollback/bisection evidence. Retain direct AQL only
-  while it still differentiates ROCr dispatch from architecture-specific PM4.
+  conservative/global encoder options once they no longer provide useful
+  rollback/bisection evidence. Retain direct AQL while it differentiates ROCr
+  dispatch from architecture-specific PM4 and can attribute the packed penalty.
 - Never delete the native HIP graph implementation: it remains the required
   peer-architecture fallback and correctness oracle. Timestamp/quarantine
   controls may be removed only after ROCm/ROCm#6529 is reproduced/closed or they

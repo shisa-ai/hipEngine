@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1100_pm4_packed_c2_c4_c8_promotion_decision",
+  "created_at": "2026-08-08T02:17:14Z",
+  "status": "measured_blocked",
+  "performance_claim": false,
+  "source_commit": "2a14dd56e769e996e7136736e45db04093067936",
+  "source_clean": true,
+  "decision": "keep HIP graph for packed c2/c4/c8; canonical explicit PM4 remains eligible only for the separately proven c1 whole-step graph until packed replay is optimized and re-gated",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "gfx_arch": "gfx1100",
+    "pci_bdf": "0000:0d:00.0",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": "1",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "workload": {
+    "prompt_source": "repeated-token paired performance plus complete natural category/heldout transport equality",
+    "prompt_token_id": 9707,
+    "prompt_length": 512,
+    "decode_steps": 128,
+    "warmups": 1,
+    "repetitions": 5,
+    "counterbalanced": true,
+    "one_loaded_model": true,
+    "resident_session_pool": 8,
+    "physical_widths": [2, 4, 8],
+    "natural_steps": 3,
+    "natural_cases": 18,
+    "natural_groups": [8, 8, 2],
+    "logical_c3_c5_c6_c7_transport_path": "packed_eager_unaffected"
+  },
+  "command": "PYTHONPATH=/home/lhl/hipEngine-main HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/pm4_packed_graph_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c2,c4,native_c8 --prompt-length 512 --decode-steps 128 --warmups 1 --repetitions 5 --natural-steps 3 --compiler-version-file /tmp/hipengine-pm4-packed/hipcc-version.txt --require-cached --json /tmp/hipengine-pm4-packed/paired-p512-d128-clean.json",
+  "performance": {
+    "c2": {
+      "hipgraph_replay_seconds": [1.8766761482693255, 1.878563720267266, 1.883591363672167, 1.887109436094761, 1.874910025857389],
+      "pm4_replay_seconds": [2.1026693820022047, 2.114460322074592, 2.113862683996558, 2.117758054751903, 2.114344211295247],
+      "hipgraph_median_ms_per_step": 14.676279064588016,
+      "pm4_median_ms_per_step": 16.518314150744118,
+      "hipgraph_aggregate_tok_s": 136.2743234302313,
+      "pm4_aggregate_tok_s": 121.07773116240824,
+      "replay_wall_delta_percent": 12.55110425503354,
+      "paired_pm4_wins": 0,
+      "paired_rounds": 5,
+      "hipgraph_median_capture_ms": 22.82182313501835,
+      "pm4_median_capture_ms": 75.49508614465594,
+      "capture_inclusive_wall_delta_percent": 15.17379328250108,
+      "request_inclusive_wall_delta_percent": 9.956514238862745
+    },
+    "c4": {
+      "hipgraph_replay_seconds": [2.5920989108271897, 2.59223087830469, 2.590032677166164, 2.594067403115332, 2.6031273808330297],
+      "pm4_replay_seconds": [2.843301914166659, 2.8277875087223947, 2.8305363301187754, 2.8335986849851906, 2.8306128229014575],
+      "hipgraph_median_ms_per_step": 20.25180373675539,
+      "pm4_median_ms_per_step": 22.114162678917637,
+      "hipgraph_aggregate_tok_s": 197.51327101498237,
+      "pm4_aggregate_tok_s": 180.87955931577588,
+      "replay_wall_delta_percent": 9.196015161761695,
+      "paired_pm4_wins": 0,
+      "paired_rounds": 5,
+      "hipgraph_median_capture_ms": 24.38197284936905,
+      "pm4_median_capture_ms": 75.98911365494132,
+      "capture_inclusive_wall_delta_percent": 11.179578495061705,
+      "request_inclusive_wall_delta_percent": 6.15774391541124
+    },
+    "c8": {
+      "hipgraph_replay_seconds": [3.9733262760564685, 3.979573109652847, 3.9810323398560286, 3.9846487287431955, 3.983444514684379],
+      "pm4_replay_seconds": [4.214114363305271, 4.207423462998122, 4.200571024324745, 4.199129149317741, 4.214020758867264],
+      "hipgraph_median_ms_per_step": 31.101815155125223,
+      "pm4_median_ms_per_step": 32.87049580467283,
+      "hipgraph_aggregate_tok_s": 257.2197140295103,
+      "pm4_aggregate_tok_s": 243.3793529473544,
+      "replay_wall_delta_percent": 5.686744136077038,
+      "paired_pm4_wins": 0,
+      "paired_rounds": 5,
+      "hipgraph_median_capture_ms": 26.909905020147562,
+      "pm4_median_capture_ms": 82.54159661009908,
+      "capture_inclusive_wall_delta_percent": 7.011642039198596,
+      "request_inclusive_wall_delta_percent": 3.7334874219649317
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "paired_performance_trajectories_exact": true,
+    "transport_repeatable": true,
+    "natural_suite_trajectories_exact": true,
+    "natural_category_counts": {
+      "code": 6,
+      "general_en": 4,
+      "general_ja": 4,
+      "mixed_ja_en": 4
+    },
+    "independent_c1_oracles": {
+      "c2": {
+        "passed": true,
+        "all_layer_comparisons": 400,
+        "tokens_exact": true,
+        "conv_gdn_and_live_kv_exact": true,
+        "lifecycle_state_exact": true,
+        "recording_graph_nodes": 787,
+        "pm4_dwords": 22465,
+        "retired_launches": 4
+      },
+      "c4": {
+        "passed": true,
+        "all_layer_comparisons": 800,
+        "tokens_exact": true,
+        "conv_gdn_and_live_kv_exact": true,
+        "lifecycle_state_exact": true,
+        "recording_graph_nodes": 787,
+        "pm4_dwords": 22465,
+        "retired_launches": 4
+      },
+      "c8": {
+        "passed": true,
+        "all_layer_comparisons": 1600,
+        "tokens_exact": true,
+        "conv_gdn_and_live_kv_exact": true,
+        "lifecycle_state_exact": true,
+        "recording_graph_nodes": 788,
+        "pm4_dwords": 22490,
+        "retired_launches": 4
+      }
+    }
+  },
+  "transport_proof": {
+    "canonical_encoder": {
+      "stateful_registers": true,
+      "local_cache_dependencies": true,
+      "native_fallbacks": 0
+    },
+    "c2": {"nodes": 747, "modules": 17, "pm4_dwords": 21305, "pm4_submissions_per_run": 128, "retired": true},
+    "c4": {"nodes": 747, "modules": 17, "pm4_dwords": 21305, "pm4_submissions_per_run": 128, "retired": true},
+    "c8": {"nodes": 748, "modules": 17, "pm4_dwords": 21330, "pm4_submissions_per_run": 128, "retired": true}
+  },
+  "lifecycle": {
+    "passed": true,
+    "native_fallbacks": 0,
+    "callback_status": 0,
+    "unretired_submissions": 0,
+    "children_before_context_close": 0,
+    "contexts_closed": true,
+    "measured_free_delta_bytes": 262144,
+    "recovery_tolerance_bytes": 67108864,
+    "memory_recovered": true
+  },
+  "c1_reference": {
+    "artifact": "benchmarks/results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json",
+    "hipgraph_ms_per_token": 10.7263501171875,
+    "pm4_ms_per_token": 9.9643580078125,
+    "replay_wall_delta_percent": -7.103927254379039,
+    "paired_pm4_wins": 5,
+    "paired_rounds": 5,
+    "correctness_and_lifecycle": "see 19/19 promotion matrix"
+  },
+  "source_evidence": {
+    "paired_full_artifact_path": "/tmp/hipengine-pm4-packed/paired-p512-d128-clean.json",
+    "paired_full_artifact_size_bytes": 740675,
+    "paired_full_artifact_sha256": "64d02092bed45d8b0d5489cb7e1f0d2ce7eb5770d2312ceb792734a2638cf564",
+    "c2_oracle_sha256": "2e028c1330df02d13a2fcdfeaf013181dea9b3f12924133dcc2a0413d4b59824",
+    "c4_oracle_sha256": "4d1e0f57ff0cc56cb8179420d34a19c59eb89518704cbc5d6a2bf230a422ec0b",
+    "c8_oracle_sha256": "9862b07b27a4179c49848f231871344654d718e11bf2f9efc5267f9b5e83d2e4"
+  },
+  "notes": [
+    "The packed submission integration is stable and exact but fails the non-regressive performance gate at every PM4-eligible c>N width.",
+    "Logical c3/c5/c6/c7 use packed eager physical buckets in current production and are unaffected by submission transport selection.",
+    "The near-constant 1.77-1.86 ms PM4 replay penalty across c2/c4/c8 points to packed-tape submission/dependency overhead rather than model arithmetic scaling; profile before attempting dependency changes.",
+    "No submit-plus-queue-recreate stress was performed."
+  ]
+}

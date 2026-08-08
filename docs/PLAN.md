@@ -682,13 +682,18 @@ At steady-state decode, a 35B-A3B MoE model launches roughly 1,600 kernels per t
 **Phase-0 commitment:** lever #1 only. The nano-vllm-amd code already demonstrates it works on ROCm via PyTorch's `torch.cuda.CUDAGraph` wrapper; hipEngine's torch-free port calls `hipGraphCreate` / `hipGraphInstantiate` / `hipGraphLaunch` directly through `ctypes` on `libamdhip64.so` (~300 lines).
 
 **In-tree retained-PM4 program:** native HIP graph replay remains the package
-baseline and default. The explicit gfx1100 path now inspects an already captured
+baseline and default. The explicit gfx1100 path inspects an already captured
 kernel-only graph through public HIP APIs, extracts the exact JIT-embedded
 HSACO, and lowers it to one retained PM4 indirect buffer submitted through a
-session-persistent public-ROCr queue. P5 proves one 627-node production GGUF
-decode graph bit exact across eager, HIP graph, direct AQL, and PM4; performance
-promotion remains pending P6. This removes the Redline runtime/interposer
-dependency while providing a smaller lifecycle reproducer for ROCm/ROCm#6529.
+session-persistent public-ROCr queue. The canonical stateful/local-cache encoder
+is exact and faster for the c1 whole-step graph, including the full natural,
+heldout, 4K, rebuild, cancellation, shutdown, and memory matrix. Packed
+c2/c4/c8 graphs are also registry-wired and exact, but tracked-clean p512/d128
+replay regresses HIP graph **12.551%/9.196%/5.687%** with 0/5 wins at every
+width; c3/c5/c6/c7 remain packed eager and transport-unaffected. This measured
+c>N blocker keeps HIP graph package-default. The implementation removes the
+Redline runtime/interposer dependency and supplies a smaller #6529 isolation
+surface, but production retains one queue and does not exercise risky recreate.
 Architecture admission, exact ABI checks, conservative ordering, no post-submit
 fallback, and promotion gates are specified in [`PM4.md`](PM4.md).
 
