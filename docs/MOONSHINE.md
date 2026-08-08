@@ -125,8 +125,8 @@ Radeon speedup, launch geometry, numerical contract, or default.
 
 | Phase | Scope | Status | Promotion gate |
 | --- | --- | --- | --- |
-| **G0** | Main-promotion hygiene | Active | Python 3.10 import, registry reset, no-EOS result, docs/evidence defects repaired with focused tests |
-| **G1** | Exact wave8 LM-head + stable top-1 | Next | full FP16 logits, selected token, hidden/KV state and lifecycle equal to current wave8+argmax; matched gfx1151 wall non-regressive; named cached trace |
+| **G0** | Main-promotion hygiene | Complete | Python 3.10 import, registry reset, no-EOS result, and stale-route/catalog defects repaired with focused tests |
+| **G1** | Exact wave8 LM-head + stable top-1 | Active | full FP16 logits, selected token, hidden/KV state and lifecycle equal to current wave8+argmax; matched gfx1151 wall non-regressive; named cached trace |
 | **G2** | Async handoff + device-owned decode | Planned | same six-file stream/state, zero per-step token/position H2D in selected graph route, zero ownership after close |
 | **G3** | Static c2/c4/c8 decoder | Planned | each row bit-exact to independent c1, exact lockstep graph topology, mixed lengths/reclaim, no timed allocation |
 | **G4** | Continuous decoder scheduling | Planned | full mixed-arrival lifecycle plus exact state; preserve four regions or independently qualify reassociation on the full Japanese corpus |
@@ -159,6 +159,13 @@ The main-promotion audit found these blockers before public CUDA admission:
 
 G0 fixes mechanical defects. It does not add Moonshine to the root support
 matrix or manufacture missing CUDA performance evidence.
+
+G0 closed on 2026-08-08: all four scripts use Python-3.10-compatible
+`timezone.utc`; backend re-registration restores encoder and AOT-attention
+families after registry isolation; no-EOS readback is bounded by generated
+length; the continuous header and C2-C8 kernel catalog are current. A fresh
+main-based CUDA hardware run and compact performance artifact remain separate
+public-admission evidence, not a mechanical G0 code blocker.
 
 ## G1 exact fused-head contract
 
@@ -260,6 +267,6 @@ summaries belong in the repository, raw tensors and profiler CSVs do not.
 
 ## Current next action
 
-Close G0, then implement G1 as a default-off exact route. Do not start static or
-continuous batching until the fused-head decision is committed and its fallback
-contract is stable.
+Implement G1 as a default-off exact route. Do not start static or continuous
+batching until the fused-head decision is committed and its fallback contract
+is stable.

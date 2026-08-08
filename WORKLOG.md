@@ -209050,3 +209050,25 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   transfer from the reviewed CUDA concept and current HIP arithmetic. No kernel,
   runtime, dispatch, benchmark default, or performance row changes in this docs
   unit.
+
+## 2026-08-08 — Close Moonshine G0 promotion hygiene
+
+- RED under isolated CPython 3.10.20: importing
+  `scripts.pack_moonshine_fp16` fails on `from datetime import UTC`. RED under
+  Python 3.12: backend reload cannot resolve
+  `moonshine_conv1_tanh/fp16/strided_valid`, and a three-token no-EOS device
+  result returns all 194 slots instead of `[11, 12, 13]`.
+- Replace all four incoming `datetime.UTC` uses with `timezone.utc` while
+  preserving UTC ISO/date output. Extend `cuda_sm120a.register_backend_kernels`
+  to restore the encoder and AOT CUTLASS attention family registrars after
+  registry isolation. Bound `read_result_tokens()` to `self_cache_length`
+  before EOS search so stale/unwritten slots cannot leak or truncate output.
+- Correct the continuous-runtime header to the qualified full-mask uniform-t256
+  verdict and update `docs/KERNELS.md` through CUDA C2-C8. This changes no
+  kernel body, CUDA/HIP launch geometry, runtime route default, or benchmark
+  number. Fresh main-based CUDA hardware evidence remains owed before public
+  admission.
+- GREEN: the two focused RED nodes pass; Python 3.10 import/collection is clean
+  and all **18/18** report tests pass; the affected backend/resident/AOT/batch-
+  encoder bundle passes every runnable test with only expected CUDA-hardware
+  skips. `py_compile` and `git diff --check` pass.

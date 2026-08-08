@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from hipengine.kernels.backends import cuda_target_arch_for_backend
-from hipengine.kernels.cuda_sm120a.attention import register_moonshine_attention_kernels
+from hipengine.kernels.cuda_sm120a.attention import (
+    register_moonshine_attention_cutlass_kernels,
+    register_moonshine_attention_kernels,
+)
+from hipengine.kernels.cuda_sm120a.encoder import register_moonshine_encoder_kernels
 from hipengine.kernels.cuda_sm120a.fused import (
     register_moonshine_glue_kernels,
     register_moonshine_mlp_kernels,
@@ -64,6 +68,22 @@ def register_backend_kernels(*, replace: bool = True) -> None:
     )
     if replace or not is_registered(attention_key):
         register_moonshine_attention_kernels(replace=replace)
+    encoder_key = KernelKey(
+        BACKEND,
+        "moonshine_conv1_tanh",
+        "fp16",
+        "strided_valid",
+    )
+    if replace or not is_registered(encoder_key):
+        register_moonshine_encoder_kernels(replace=replace)
+    aot_attention_key = KernelKey(
+        BACKEND,
+        "moonshine_self_attention",
+        "fp16",
+        "aot_cutlass",
+    )
+    if replace or not is_registered(aot_attention_key):
+        register_moonshine_attention_cutlass_kernels(replace=replace)
 
 
 register_backend_kernels()

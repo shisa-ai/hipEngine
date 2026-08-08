@@ -1179,7 +1179,7 @@ class MoonshineCudaResidentRuntime:
             self.workspace.allocation("result_tokens").buffer,
             runtime=self.runtime,
         )
-        tokens = [int(t) for t in host]
+        tokens = [int(t) for t in host[: self.self_cache_length]]
         eos = self.spec.eos_token_ids[0]
         if eos in tokens:
             return tokens[: tokens.index(eos) + 1]

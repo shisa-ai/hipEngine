@@ -37,7 +37,7 @@ import statistics
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -870,7 +870,7 @@ def main() -> int:
         "schema": 1,
         "artifact": "moonshine_cuda_complete_asr",
         "mode": args.mode,
-        "date": datetime.now(UTC).date().isoformat(),
+        "date": datetime.now(timezone.utc).date().isoformat(),
         "model": {
             "id": "shisa-ai/shisa-realtime-asr-0.92b",
             "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",

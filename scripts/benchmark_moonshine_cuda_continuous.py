@@ -10,7 +10,7 @@ import statistics
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -582,7 +582,7 @@ def main() -> int:
     report = {
         "schema": 1,
         "artifact": "moonshine_cuda_continuous_batching",
-        "date": datetime.now(UTC).date().isoformat(),
+        "date": datetime.now(timezone.utc).date().isoformat(),
         "status": "pass" if not state["dirty"] and args.exclusive_gpu else "diagnostic",
         "performance_claim": bool(not state["dirty"] and args.exclusive_gpu),
         "model": {

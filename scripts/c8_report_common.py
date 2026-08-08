@@ -13,7 +13,7 @@ import hashlib
 import os
 import statistics
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -264,7 +264,7 @@ def build_report(
     return {
         "schema": REPORT_SCHEMA,
         "artifact": artifact,
-        "date": datetime.now(UTC).date().isoformat(),
+        "date": datetime.now(timezone.utc).date().isoformat(),
         "status": "retained_c8_schema2_raw_samples_source_hashes_dependency_totals",
         "units": {
             "route_wall_s_raw": "seconds",

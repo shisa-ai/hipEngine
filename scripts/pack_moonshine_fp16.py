@@ -20,7 +20,7 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -140,7 +140,7 @@ def main() -> int:
             "sidecar_bytes": sidecars,
             "sidecar_total_bytes": sum(sidecars.values()),
         },
-        "packed_at": datetime.now(UTC).isoformat(),
+        "packed_at": datetime.now(timezone.utc).isoformat(),
     }
     (output / "pack_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n"
