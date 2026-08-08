@@ -109,7 +109,7 @@ def test_same_hsaco_native_graph_direct_aql_and_pm4_are_bit_exact() -> None:
         assert provenance["pm4_dwords"] > 0
         assert provenance["timestamp_address"] != 0
         assert provenance["timestamp_bytes"] == 16
-        assert provenance["timestamp_frequency"] > 0
+        assert provenance["timestamp_frequency"] == 100_000_000
         assert provenance["timestamp_begin"] > 0
         assert provenance["timestamp_end"] >= provenance["timestamp_begin"]
         assert provenance["timestamp_ticks"] > 0
