@@ -24,8 +24,15 @@ and lifecycle proof:
 The optimized cold PM4 capture is **193.739 -> 132.858 ms (-31.425%)** versus
 the prior stateful artifact; cold capture-inclusive p512/d128 is now within
 **0.329 ms / 0.023%** of HIP graph rather than about 3.5% slower. This remains a
-focused transport diagnostic pending natural/context/lifecycle promotion gates.
-The superseded stateful-only evidence remains in
+focused transport diagnostic. The explicit PM4 encoder's promotion matrix now
+passes **19/19 exact cases** across the complete natural category suite,
+category-heldouts, and 4K context, plus 21 persistent-context graph generations,
+58 retired submissions, pre/post-submit cancellation, context/session shutdown,
+and focused max-shape memory recovery:
+[`2026-08-08-gfx1100-pm4-promotion-matrix.json`](results/2026-08-08-gfx1100-pm4-promotion-matrix.json).
+Package-default PM4 remains blocked by the separate ROCm #6529 resource-recreate
+risk; HIP graph remains the default transport. The superseded stateful-only
+evidence remains in
 [`2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json`](results/2026-08-08-gfx1100-in-tree-pm4-stateful-register-elision.json).
 
 The retained source-selected H7H exact full-group Q5 production owner is

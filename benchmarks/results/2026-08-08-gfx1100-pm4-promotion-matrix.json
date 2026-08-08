@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_pm4_promotion_matrix",
+  "created_at": "2026-08-08T00:26:00Z",
+  "status": "accepted_composite_focused_repair",
+  "performance_claim": false,
+  "source_commits": {
+    "full_correctness_and_lifecycle": "41ee5b8e2188c064d83b6f27e97731a15069c951",
+    "focused_memory_baseline_repair": "7a983e13db444df07766ad139d3fbefba37b972d"
+  },
+  "source_clean": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "gfx_arch": "gfx1100",
+    "pci_bdf": "0000:0d:00.0",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": "1",
+    "hip_version": "7.2.53211-3d9ef42"
+  },
+  "commands": {
+    "full": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/pm4_promotion_gate.py --steps 3 --context-stress-length 4096 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/hipengine-pm4-promotion-clean.json",
+    "focused_memory_repair": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/pm4_promotion_gate.py --suite-files /tmp/pm4-promotion-smoke.jsonl --steps 3 --context-stress-length 4096 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached --json /tmp/hipengine-pm4-promotion-memory-focused-clean.json"
+  },
+  "prompt_suites": [
+    {
+      "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "cases": 10
+    },
+    {
+      "path": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+      "cases": 8
+    }
+  ],
+  "workload": {
+    "natural_cases": 18,
+    "context_stress_cases": 1,
+    "steps_per_transport": 3,
+    "oracle": "HIP graph",
+    "candidate": "stateful-register PM4 with local-cache dependency acquire",
+    "pm4_dwords": 18079,
+    "case_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review",
+      "heldout_code_rate_limiter",
+      "heldout_code_interval_schedule",
+      "heldout_general_en_incident",
+      "heldout_general_en_quant",
+      "heldout_general_ja_migration",
+      "heldout_general_ja_speculative",
+      "heldout_mixed_summary",
+      "heldout_mixed_review",
+      "context_stress_4096"
+    ],
+    "canonical_case_evidence_sha256": "7e43a357db0766fb74c02596a8032fb4644c2acd4414cdbab4bac8efbfc53cd9"
+  },
+  "correctness": {
+    "passed": true,
+    "cases_exact": 19,
+    "cases_total": 19,
+    "seed_tokens_exact": true,
+    "final_tokens_exact": true,
+    "recurrent_kv_state_exact": true,
+    "all_logits_exact": true,
+    "categories": {
+      "code": {"passed": true, "cases": 6},
+      "general_en": {"passed": true, "cases": 4},
+      "general_ja": {"passed": true, "cases": 4},
+      "mixed_ja_en": {"passed": true, "cases": 4},
+      "context_stress": {"passed": true, "cases": 1}
+    },
+    "context_4096": {
+      "prompt_tokens": 4096,
+      "seed_token_id": 364,
+      "final_token_id": 38224,
+      "state_sha256": "be62d4a0d4c70b4fc64ea00e6d24db511ed994d25ba953665c1ebc11ff6e69b8",
+      "final_logits_sha256": "daf350930de404519eca288b1ce3fc0c0a3b0228c7b4896b7f74802a19bf39c3"
+    }
+  },
+  "lifecycle": {
+    "passed": true,
+    "persistent_context_graph_generations": 21,
+    "native_submissions": 58,
+    "no_submit_cancellation_passed": true,
+    "retired_after_submit_cancellation_passed": true,
+    "children_before_context_close": 0,
+    "callback_status": 0,
+    "unretired_submissions": 0,
+    "native_fallbacks": 0,
+    "context_closed": true,
+    "session_shutdown_passed": true
+  },
+  "focused_memory_repair": {
+    "passed": true,
+    "protocol": "warm declared maximum 4096-token prefill shape before baseline; rerun one natural case plus 4K context and all lifecycle gates",
+    "free_delta_bytes": -4194304,
+    "recovery_tolerance_bytes": 67108864,
+    "recovered": true,
+    "graph_generations": 4,
+    "context_closed": true
+  },
+  "decision": "promotion matrix passes for the explicit PM4 encoder; package-default PM4 remains blocked only by the separate ROCm #6529 recreate lifecycle risk",
+  "notes": [
+    "The tracked-clean full run completed all correctness and lifecycle gates but its original aggregate status was false only because memory was sampled before the first 4K lazy prefill workspace allocation.",
+    "Per focused-repair policy, the already-passing 19-case matrix was preserved and only the corrected 4K memory/lifecycle bundle was rerun.",
+    "No submit-plus-queue-recreate lifecycle arm was performed."
+  ]
+}

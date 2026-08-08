@@ -938,7 +938,12 @@ with 21 graph generations, 58 retired submissions, both cancellation paths,
 zero live children, and clean context shutdown. Its only aggregate false
 failure was measuring memory before the first 4K lazy prefill workspace; the
 harness now warms the declared maximum shape before taking the memory baseline.
-The full command is:
+A tracked-clean focused one-natural+4K rerun then passes memory recovery at the
+known **4 MiB** first-use delta together with both cancellation paths, four more
+graph generations, and context shutdown. Per focused-repair policy these form
+one accepted promotion matrix; evidence:
+`benchmarks/results/2026-08-08-gfx1100-pm4-promotion-matrix.json`. The full
+command is:
 
 ```bash
 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
