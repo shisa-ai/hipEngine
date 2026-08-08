@@ -371,6 +371,8 @@ def _run_sample(
             for step_tokens in generated:
                 for index, token in zip(group_indices, step_tokens, strict=True):
                     trajectories[index].append(int(token))
+        for graph in graphs:
+            graph.execution_manifest["graph"]["transport"] = graph.transport_provenance()
         graph_manifests = [_copy_json(graph.execution_manifest) for graph in graphs]
         flush_results = [bool(graph.flush_packed_state()) for graph in graphs]
         memory["after_flush"] = _memory_snapshot("after_flush", runtime)

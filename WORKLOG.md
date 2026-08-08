@@ -209545,3 +209545,28 @@ Vulkan local sizes verbatim will close the measured gap.
   diagnostic so whole-step c1 receives the same calibrated device/host split.
   The mode uses the canonical stateful/local-cache encoder and changes only the
   default-off timestamp packets.
+- Clean c1 timestamp profiling reports **10.752 ms/token HIP vs 9.911 PM4**
+  (**7.821% PM4 win**) and a final calibrated **10.191 ms** PM4 device interval
+  matching that replay's 10.215 ms synchronized host step. The 626-node tape is
+  18,093 dwords with 625/6,875 dependency barriers/dwords and retires 768/768
+  submissions. This validates the timestamp scope and reconfirms c1 selection.
+
+## 2026-08-08 — Remove full native provenance serialization from packed replay
+
+- Full host/device attribution isolates the packed-only ~3 ms cost: every call
+  to `Qwen35GGUFPackedDecodeGraph.replay()` regenerated native JSON containing
+  all 747/748 dispatch records after the synchronized launch. Final-step host
+  minus calibrated PM4 device time is **2.864–3.819 ms at c2**,
+  **3.016–3.591 ms at c4**, and **3.062–3.408 ms at c8**; c1, whose timed loop
+  does not serialize provenance per step, is only 0.023 ms above its PM4 device
+  timestamp on the matched final step.
+- Remove full provenance generation from the hot replay path under RED/GREEN.
+  Replay now updates top-level launch/replayed-step counters in the already
+  captured manifest; callers retain the explicit `transport_provenance()` API.
+  The benchmark refreshes one complete transport proof only after timed replay,
+  preserving stateful/local-cache, retirement, submission, and tape evidence.
+- Uncommitted c2 p512/d32 exploration is exact and flips PM4 from a loser to
+  **14.089→13.289 ms/step (-5.681%, 3/3 paired wins)**. The script exits blocked
+  only because this short one-width diagnostic observes a 413 MiB ROCm free-memory
+  baseline delta; all allocations are freed and context teardown passes. Use the
+  clean full d128/max-shape matrix for retention, not this exploratory row.

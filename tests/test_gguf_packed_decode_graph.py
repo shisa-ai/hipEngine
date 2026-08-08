@@ -264,6 +264,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
             calls.append(("submission_launch", int(stream)))
 
         def provenance(self) -> dict[str, object]:
+            calls.append(("submission_provenance",))
             return {"transport": self.name, "launches": 1, "native_fallbacks": 0}
 
         def close(self) -> None:
@@ -323,6 +324,11 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
                 "replay_count": 0,
                 "replayed_steps": 0,
                 "replay_call_synchronizations": 0,
+                "transport": {
+                    "transport": "pm4",
+                    "launches": 0,
+                    "native_fallbacks": 0,
+                },
             }
         },
         submission=FakeSubmission(),
@@ -333,6 +339,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
     graph.replay(1)
 
     assert calls[:2] == [("submission_launch", 0xB0), ("stream_synchronize", 0xB0)]
+    assert ("submission_provenance",) not in calls
     assert not any(call[0].startswith("unexpected") for call in calls)
     assert graph.transport_provenance() == {
         "transport": "pm4",
@@ -342,6 +349,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
         "physical_rows": 2,
         "replayed_steps": 1,
     }
+    assert calls.count(("submission_provenance",)) == 1
     assert graph.execution_manifest["graph"]["transport"]["transport"] == "pm4"
 
     graph.close()
