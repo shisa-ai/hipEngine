@@ -209674,3 +209674,34 @@ Vulkan local sizes verbatim will close the measured gap.
   `tests/test_generation_qwen35_gguf_sampling.py` pass, and Ruff passes. A clean
   no-override server rerun is required before the stale OpenAI rows can be
   retained or replaced.
+
+## 2026-08-08 — Publish current W7900 PM4 concurrency topline
+
+- Clean post-`5241dea73` focused hardware validation restores package-default
+  PM4 eight-request server wall to **130.017 aggregate tok/s**, within
+  **-0.017%** of explicit HIP graph **130.040** and **+67.465%** over the
+  pre-fix PM4 observer path. All **24/24** measured rows, 3,072 generated tokens,
+  HTTP/SSE completion, and ownership are exact; each run has 254 graph replays
+  and zero fallback. PM4 is no longer the server performance blocker.
+- The focused route still lowers eight requests into c4 cohorts (one late sample
+  also observes c2→c4), so the required one-c8 shape and full live c8→c13 gate
+  remain false. Per the focused-repair rule, do not repeat the full ~15-minute
+  packet after this narrow post-fix run proves the independent topology failure
+  persists. Supersede the July OpenAI numeric topline with an explicit blocked
+  row rather than publishing diagnostic static rates.
+- Promote the clean direct packet as the current README concurrency table:
+  c1/c2/c4/c8 are **97.985/150.308/213.136/273.549 aggregate tok/s**, cumulative
+  improvements of **14.644%/17.956%/15.474%/10.806%** over the prior table.
+  Selector-unset proof is c1 HIP graph and c2/c4/c8 canonical stateful/local-
+  cache PM4, with exact repeatable trajectories, zero fallback/callback error,
+  no unretired submissions, and zero tracked bytes after close.
+- Publish compact evidence in
+  `benchmarks/results/2026-08-08-gfx1100-pm4-readme-concurrency-refresh.json`;
+  update the benchmark/root README export, changelog, PM4 status, and concurrency
+  roadmap. The old-to-new direct deltas are cumulative current-package refreshes,
+  not PM4-only causal deltas; the dedicated paired transport artifacts remain
+  authoritative for PM4-vs-HIP causality.
+- Publication validation passes: compact JSON parse; raw-to-rollup metric and
+  delta equality; artifact links in all six rollups/handoffs; six README-sync
+  tests; `sync_benchmark_readme.py --check`; and `git diff --check`. The already
+  completed 86-test code gate is not repeated after docs-only publication.
