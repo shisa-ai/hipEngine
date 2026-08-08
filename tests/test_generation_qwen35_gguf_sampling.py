@@ -3215,7 +3215,18 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
                 "schema": 1,
                 "kind": "gguf_packed_ar_execution_manifest",
                 "mode": "decode_graph_replay",
-                "graph": {"captured": True, "replay_count": 0},
+                "graph": {
+                    "captured": True,
+                    "replay_count": 0,
+                    "transport": {
+                        "transport": "pm4",
+                        "executable": {
+                            "nodes": 2,
+                            "module_records": [{"index": 0}],
+                            "dispatch_records": [{"index": 0}, {"index": 1}],
+                        },
+                    },
+                },
             }
 
         def replay(self, steps: int) -> None:
@@ -3329,6 +3340,16 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
     assert all(slot.packed_decode_graph is graph for slot in slots)
     assert runner._route_counts["native_packed_graph_captures"] == 1
     assert runner._route_counts["native_packed_graph_replays"] == 1
+    observed_executable = runner._last_execution_manifest["graph"]["transport"]["executable"]
+    assert observed_executable == {
+        "nodes": 2,
+        "module_record_count": 1,
+        "dispatch_record_count": 2,
+        "records_omitted": True,
+    }
+    assert graph.execution_manifest["graph"]["transport"]["executable"][
+        "dispatch_records"
+    ] == [{"index": 0}, {"index": 1}]
 
     runner._close_packed_decode_graphs(rows)
 
