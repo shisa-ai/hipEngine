@@ -209435,3 +209435,25 @@ Vulkan local sizes verbatim will close the measured gap.
   than this checkout and exercised HIP graph; it is discarded, and all retained
   commands now pin `PYTHONPATH` explicitly. This smoke is wiring evidence only,
   not a c2 performance/correctness promotion claim.
+
+## 2026-08-08 — Add paired packed-PM4 promotion harness and directional matrix
+
+- Add `scripts/pm4_packed_graph_bench.py`: one model/eight-session pool,
+  reset+prefill+fresh graph per transport, alternating HIP/PM4 order, separate
+  replay/capture/request wall, exact trajectory and canonical transport proof,
+  persistent-context child/retirement/close checks, post-warmup memory recovery,
+  and the complete 18-prompt category/heldout suite grouped as physical c8+c8+c2.
+  Expose explicit transport selection in the existing packed benchmark helper.
+- Strong independent-c1 PM4 oracles pass at physical c2/c4/c8 with 400/800/1,600
+  exact all-layer comparisons respectively, exact generated tokens, Conv/GDN
+  state, every live KV byte, lifecycle state, flush, and teardown. The recording
+  graphs contain 787/787/788 nodes; every PM4 launch retires with zero fallback.
+- The dirty-tree p512/d128 directional run is exact, repeatable, context-clean,
+  and memory-clean across all performance and 18 natural prompt rows, but blocks
+  broad PM4 promotion decisively. Median replay is HIP→PM4 **14.609→16.435 ms
+  (+12.502%, 0/5 wins)** at c2, **20.210→22.071 ms (+9.206%, 0/5)** at c4, and
+  **31.037→32.667 ms (+5.253%, 0/5)** at c8. PM4 capture is 193–222% slower;
+  request-inclusive wall regresses 10.116%/6.326%/3.557%. This run is directional
+  because the new harness is uncommitted; rerun the same command tracked-clean
+  before publishing. The result already proves PM4 must not replace HIP graph
+  for packed c2/c4/c8 without a separate measured optimization.
