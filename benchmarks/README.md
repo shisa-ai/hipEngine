@@ -17,7 +17,7 @@ records remain in the model-specific sections below.
 | Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
 | Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
-| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / natural+heldout exact c1 | **1917.492** | **396.328** |
+| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / natural+heldout exact c1 | **1917.492** | **402.361** |
 
 Where a row names separate prefill and decode workloads, its cells are the
 latest retained results for those explicitly named protocols, not one combined
@@ -52,7 +52,7 @@ This promotes native c1 prefill; CUDA c1 decode is qualified separately below,
 while resident batching and serving remain unclaimed. Evidence:
 [`CUDA native prefill`](results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json).
 
-**Maple CUDA sm_120a exact wave32 c1 decode retained/default on GPU0:** one
+**Maple CUDA sm_120a exact wave32 direct c1 decode retained on GPU0:** one
 physical warp now emulates each original local128 query-head reduction tree.
 The clean two-runner 18-prompt natural+category-heldout protocol improves the
 registered local128 fallback **341.012 -> 396.328 tok/s (+16.22%, 1.1622x)**
@@ -67,8 +67,25 @@ remain unclaimed. Evidence:
 The direct FastDMS-style cooperative GQA4 follow-up is retained as negative
 evidence, not source: exact shared K/V staging is **0.897x** wave32 at live512
 and **0.896x** at live4096/8192; eight-token staging is worse. The candidate is
-removed and production remains wave32. Evidence:
+removed and direct production remains wave32. Evidence:
 [`CUDA grouped-GQA rejection`](results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json).
+
+**Maple CUDA sm_120a exact split-K global c1 decode retained/default on GPU0:**
+one producer parallelizes local128-exact QK scores across query-head/token warps,
+then one wave reduces scores and V in original token order. Only the six growing
+full-attention layers select split-K at live>=32; all 18 SWA layers remain direct
+wave32. The clean natural+heldout suite improves same-session wave32 **397.214 ->
+402.361 tok/s (+1.30%, 1,152/1,152 wins)**, replacing the prior 396.328-tok/s
+retained row. The full suite shaped to p512 is exact and improves **102.688 ->
+106.893 tok/s (+4.10%, 1,152/1,152 wins)**. Both protocols preserve all
+**1,296/1,296** token/top-logit positions, **36/36** native-prefill/final state
+pairs, **2,592/2,592** counter checks, every category, and teardown. Cache-only
+p512 Nsight records the expected per-token signature: 18 direct SWA calls, six
+split score producers, and six ordered reducers. The retained long-context
+boundary is p512 full-suite product evidence plus exact leaf diagnostics through
+live8192; the attempted full p4096 suite timed out during serial post-wrap
+prefill and was not rerun. Evidence:
+[`CUDA split-K global decode`](results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json).
 
 **Maple P4 retained on Radeon 8060S/gfx1151:** safe SWA-wrap orchestration
 extends exact native prefill beyond 512, and fixed-slot admission now connects
@@ -139,6 +156,8 @@ and
 | Fixed-helper c2/c4/c8 decode64 | **250.481/346.365/428.063 aggregate tok/s** | exact row reuse; excludes prompt/public scheduling | [`D1`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json) |
 | Public c1/c2/c4/c8 generation64 | **123.131/165.697/202.038/214.788 aggregate tok/s** | same public protocol; admission/prefill/reclaim included; exact full head | [`P4`](results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json) |
 | CUDA sm_120a native c1 prefill 128/320/512 | **1953.820/1852.124/1917.492 tok/s** | matched serial grid 5.412x/9.042x/13.419x; 18/18 states, 90/90 positions, KL 0 | [`CUDA native prefill`](results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json) |
+| CUDA sm_120a c1 natural+heldout continuation | **402.361 tok/s** | split global + direct SWA; 1,152/1,152 paired wins and 1,296/1,296 positions exact | [`CUDA split-K`](results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json) |
+| CUDA sm_120a c1 p512 continuation | **106.893 tok/s** | split global + fixed direct SWA; +4.10% vs wave32, full 18-prompt suite exact | [`CUDA split-K`](results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json) |
 
 The fixed-capacity helper now uses exact affine4 row reuse at c=2/4/8 and
 reaches median aggregate **250.481/346.365/428.063 tok/s** at 64 tokens/request.

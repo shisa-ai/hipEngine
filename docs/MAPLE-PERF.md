@@ -19,7 +19,7 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | --- | ---: | --- |
 | Public native prefill 128/320/512 | 750.854 / 741.890 / 754.458 tok/s | retained P4 recertification; <=0.224% from P2 |
 | CUDA sm_120a native c1 prefill 128/320/512 | 1953.820 / 1852.124 / 1917.492 tok/s | RTX PRO 6000 GPU0; 5.412x / 9.042x / 13.419x matched serial |
-| CUDA sm_120a natural+heldout exact c1 decode | 396.328 tok/s | exact wave32 vs local128 341.012 tok/s; +16.22%, 1,152/1,152 wins |
+| CUDA sm_120a natural+heldout exact c1 decode | 402.361 tok/s | exact split global + direct SWA; same-session wave32 397.214 tok/s, +1.30%, 1,152/1,152 wins |
 | Current c1 fixed-token A/B candidate | 202.580 tok/s (4.936-ms process mean) | four-process alternating selector-snapshot gate |
 | Current c1 trace companion | 199.293 tok/s (5.018 ms/token) | separate clean cached trace; 4.550-ms kernels |
 | Current c1 natural-context | 153.201 tok/s | repeated complete category/state gate; -0.14% vs prior 153.409 |
@@ -36,20 +36,27 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 retained on `cuda_sm120a`: 18/18 natural+heldout states and 90/90 positions are
 exact at KL 0, 520/770 physical state matches serial, and cache-only Nsight names
 all batched families. The fixed matched-grid row is
-**1953.820/1852.124/1917.492 tok/s** at 128/320/512. Exact wave32 c1 decode is
-also retained/default: the clean complete suite improves local128
-**341.012 -> 396.328 tok/s (+16.22%)** with 1,152/1,152 wins, all 1,296 positions
-and 36 state pairs exact, and a named 24-call/token trace. CUDA resident batching
-and serving remain separate from this gfx1151 punchlist. Evidence:
-`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`
-and `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
+**1953.820/1852.124/1917.492 tok/s** at 128/320/512. Exact wave32 direct decode
+first improved local128 **341.012 -> 396.328 tok/s (+16.22%)**. The retained
+split-K follow-up parallelizes only local128-exact QK score production in the six
+growing global layers and preserves an ordered softmax/PV reducer; all 18 SWA
+layers remain direct wave32. The source-clean complete suite improves
+same-session wave32 **397.214 -> 402.361 tok/s (+1.30%, 1,152/1,152 wins)** at
+natural context and **102.688 -> 106.893 (+4.10%, 1,152/1,152 wins)** at p512.
+Both keep all 1,296 positions, 36 state pairs, every category, and lifecycle
+exact. CUDA resident batching and serving remain separate from this gfx1151
+punchlist. Evidence:
+`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`,
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`,
+and `benchmarks/results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json`.
 
-The follow-up cooperative GQA4 decode schedule is rejected and removed. Four
-warps per KV-head block preserve exact query-head concurrency and load each K/V
-row once, but shared staging/barriers deliver only **0.897x** wave32 at live512
-and **0.896x** at 4096/8192. An eight-token shared tile worsens to
-**0.863x/0.861x/0.860x**, so no product-suite rerun is warranted and wave32
-remains the sole production owner. Evidence:
+The cooperative GQA4 decode schedule between those two retained stages is
+rejected and removed. Four warps per KV-head block preserve exact query-head
+concurrency and load each K/V row once, but shared staging/barriers deliver only
+**0.897x** wave32 at live512 and **0.896x** at 4096/8192. An eight-token shared
+tile worsens to **0.863x/0.861x/0.860x**, so no product-suite rerun was
+warranted. Wave32 remains the direct/SWA owner; split-K owns qualifying global
+layers. Evidence:
 `benchmarks/results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json`.
 
 **Current gfx1151 conclusion (P0+P1+P2+P4, D0, and D1 retained; P3 rejected).**
@@ -123,6 +130,7 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json`,
 `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`,
 `benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`,
@@ -595,8 +603,8 @@ Rules (per `AGENTS.md`):
 
 - FlashHead as the default (approximate; opt-in only).
 - MTP speculative decode (no drafter for Maple yet).
-- CUDA sm_120a c1 generation, native c1 prefill, and exact wave32 c1 decode are
-  retained separately; CUDA resident batching/serving, tensor parallelism, and
-  FP16-dequant prefill remain separate tracks.
+- CUDA sm_120a c1 generation, native c1 prefill, exact wave32 direct decode, and
+  exact split-K global decode are retained separately; CUDA resident batching/
+  serving, tensor parallelism, and FP16-dequant prefill remain separate tracks.
 - Do not land throwaway prefill paths; build the complete bulk path directly
   per `docs/PREFILL.md` policy.
