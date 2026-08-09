@@ -216677,3 +216677,44 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   architecture plan, refactor closure, performance-plan boundary, and exact
   reproduction command. CUDA native c1 prefill is default/retained; resident
   batching/serving and decode-throughput claims remain explicitly deferred.
+
+## 2026-08-08 — Audit FastDMS CUDA optimization transfer to Maple
+
+- Audit the retained `~/kvcache-quantization-research/fastdms` and `~/FastDMS/`
+  implementation evidence as a CUDA systems playbook rather than a request to
+  add DMS to Maple. The directly relevant retained techniques are whole-decode
+  CUDA graph replay, grouped-GQA compact attention, split-K/grid shaping, fused
+  attention preprocess/store, device-side compact metadata, and shape-specific
+  low-bit weight paths. Maple already has fused QK-norm/RoPE/KV write, stable
+  device compaction for grouped prefill, and 2-bit projection weights.
+- Screen the already-wired self-validating whole-step graph on physical GPU0
+  after a diagnostic 128-token repeated-token native prefill. Eager measures
+  **5.917 ms / 169.003 tok/s** mean over 128 steps; graph measures **5.874 ms /
+  170.234 tok/s**, or only **1.0073x (+0.73%)**. Graph state is healthy
+  (`capture=1`, `replay=143`, `reject=0`, `eager_only=false`), but this repeats
+  the earlier HIP conclusion: graph launch is not Maple's first-order owner.
+  This fixed-token screen is diagnostic and is not a retained throughput claim.
+- Capture a cached-only Nsight Systems eager-decode trace on GPU0 after native
+  prefill128 plus 16 warmup steps (`/tmp/maple-cuda-decode-eager.nsys-rep`). The
+  32 measured steps average **4.869 ms wall** and **4.763 ms kernels**, leaving
+  only **0.106 ms / 2.17%** outside kernels. `maple_attention_decode_kernel`
+  owns **113.178 ms / 74.3%** of traced GPU time: 768 calls, exactly 24/step,
+  with **147.310 us median/layer**. Router is 5.4%; selected down and dual
+  gate/up are 4.6% and 3.9%; QKV and O are 3.0% and 2.2%; the exact head is
+  2.3%. Inferred Amdahl ceilings from the measured decomposition are
+  **322.5/451.2 tok/s** for a 2x/4x attention improvement; these are projections,
+  not measurements.
+- Falsify a no-code reuse shortcut before changing source: substitute the
+  retained exact prefill GQA4 kernel with `rows=1` for decode in one diagnostic
+  process. It is bit-exact over all 80 compared token/top-logit positions and
+  final full logits (matching SHA-256), but regresses paired 64-step mean
+  **5.222 -> 7.556 ms** (**191.48 -> 132.34 tok/s**, 0/64 wins). Its four
+  serial query-head reductions per KV group are correct but wrong for row-1.
+- Retained next priority from the FastDMS math path is therefore a
+  decode-specific exact wave32/GQA kernel: first emulate the current 128-lane
+  dot tree with 32 physical lanes, then group four query heads per KV head;
+  add split-K reduction for long global spans. Maple's current 18 SWA layers
+  stay bounded at 512, while only six global layers grow with context. Do not
+  spend the next iteration on graphs, DMS metadata, FP8/HIGGS KV, qknorm/store
+  fusion, or the existing rows=1 prefill kernel unless a new profile changes
+  the ownership.
