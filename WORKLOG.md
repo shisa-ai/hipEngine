@@ -216937,3 +216937,18 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   (`6 passed`); `git diff --check` passed; a final shorthand audit found no
   `c1`/`c2`/`c4`/`c8`, `pNNN`, or named internal campaign terms in the root
   README.
+
+## 2026-08-10 — Simplify release validation policy
+
+- Update `docs/PUBLISH.md` by user decision: one complete Python 3.12 suite is
+  the release test gate. Remove the redundant full Python 3.10 suite and make
+  the compile and CLI commands explicitly select Python 3.12, matching the
+  tag-triggered publish workflow.
+- Clarify that cutting a release does not itself require a new full performance
+  matrix. Release claims use the current retained benchmark artifacts and the
+  synchronized root export. Run a focused performance benchmark only when a
+  later code change can affect that path, a performance claim changes, or the
+  retained model/hardware/software setup is stale; expensive reruns still need
+  explicit approval.
+- Re-read the updated checklist end to end and run `git diff --check`; both
+  passed. No runtime, measurement, or benchmark artifact changed.
