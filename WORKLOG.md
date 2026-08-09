@@ -216911,3 +216911,29 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   stage improves same-session direct wave32 **102.688 -> 106.893 tok/s (+4.10%)**.
   All product claims use the complete natural/category-heldout suite; p512 is the
   long full-product boundary.
+
+## 2026-08-09 — Rewrite root README for local-model users
+
+- Reorganized `README.md` around the questions a user coming from Ollama, LM
+  Studio, or Lemonade asks first: what hipEngine is, which model/GPU
+  combinations run, what the host needs, how to start the OpenAI-compatible
+  server, and what remains experimental.
+- Replaced the previous model qualification prose with a direct matrix for
+  `gfx1100`, `gfx1151`, and `sm_120a`. CPU model generation is stated as
+  unsupported. CUDA is stated as Maple-only, direct Python generation, with an
+  explicit `backend="cuda_sm120a"` selection.
+- Marked the user-facing status as v0.4.0 alpha and summarized the release in
+  plain language. Added the requested ParoQuant/GGUF guidance: optimized W4 is
+  slightly faster and lower-memory for Qwen3.6 35B-A3B, while current work
+  prioritizes GGUF for broader compatibility.
+- Reworded the synchronized root benchmark export in `benchmarks/README.md`.
+  Compound request-throughput values now appear only in tables with ordinary
+  request counts and interface labels. Removed phrases such as
+  `source-pinned packet`, `physical c8`, and internal route names from the root
+  page without changing any measurement.
+- Validation:
+  `python3 scripts/sync_benchmark_readme.py --check` passed;
+  `uv run --extra dev pytest -q tests/test_benchmark_readme_sync.py` passed
+  (`6 passed`); `git diff --check` passed; a final shorthand audit found no
+  `c1`/`c2`/`c4`/`c8`, `pNNN`, or named internal campaign terms in the root
+  README.

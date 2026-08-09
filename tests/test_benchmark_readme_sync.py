@@ -86,7 +86,12 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert "H8C-H8Q" not in readme
     assert "SH14-C1" not in readme
     assert "**122.67 tok/s**" in readme
-    assert "**214.788 tok/s**" in readme
+    assert "**214.788**" in readme
+    assert "**Current release: v0.4.0 alpha.**" in readme
+    assert "NVIDIA Blackwell (`sm_120a`)" in readme
+    assert "Current development is\ntherefore focused on GGUF compatibility" in readme
+    for internal_phrase in ("source-pinned", "physical c8", "packet reaches"):
+        assert internal_phrase not in readme
     _assert_markdown_tables_are_rectangular(readme)
     _assert_local_markdown_links_exist(readme, repo_root)
 
