@@ -8,6 +8,88 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+## v0.4.0 - 2026-08-10
+
+This is a large alpha release focused on making hipEngine useful for more local
+models and more than one request at a time. It adds Laguna S 2.1, Maple-Preview,
+and native Moonshine ASR runtime work, broadens Qwen GGUF support, and introduces
+experimental CUDA paths on NVIDIA Blackwell. AMD RDNA 3 and RDNA 3.5 remain the
+primary platforms.
+
+### Added
+
+- Added public loading, text generation, streaming, chat, reasoning, and tool
+  support for Laguna S 2.1 `Q4_K_M` on Ryzen AI MAX+ 395 / Radeon 8060S
+  systems. The matching Laguna DFlash model is available as an explicit option;
+  normal autoregressive generation remains the default.
+- Added direct support for the official 2-bit Maple-Preview checkpoint on
+  `gfx1100` and `gfx1151`. AMD generation can share one resident model across
+  multiple active requests and reclaim finished or cancelled request slots.
+- Added experimental `cuda_sm120a` support for single-request Maple generation
+  on NVIDIA Blackwell. This path loads the same 2-bit checkpoint directly and
+  uses native CUDA prompt processing and generation kernels.
+- Added native Moonshine ASR runtime and kernel work for Radeon 8060S and NVIDIA
+  Blackwell, including a tuned FP16 decoder and a torch-free CUDA encoder. A
+  public audio-to-transcript API remains under development.
+- Added Qwen3.5/Qwen3.6 GGUF support for additional common and importance-matrix
+  formats, including `Q4_K_S`, `UD-Q3_K_M`, and `UD-Q4_K_M` where listed in the
+  model support table.
+- Added resident multi-request execution for supported Qwen GGUF and PARO
+  routes. The engine chooses only request widths that passed the corresponding
+  correctness checks.
+- Added device-side GGUF sampling, reusable prompt-prefix state, stop-safe
+  streaming, exact generated token IDs in streaming responses, and more
+  detailed tokenizer and request timing.
+- Added opt-in speculative providers and a complete native Qwen GGUF
+  speculative cycle. These routes remain explicit when output differs from
+  normal generation or when the speed benefit is not reliable.
+
+### Changed
+
+- Improved Qwen GGUF and ParoQuant prompt processing, generation, memory
+  ownership, and multi-request throughput on both AMD backends. The current
+  measured results and full test conditions are in
+  [`benchmarks/README.md`](benchmarks/README.md).
+- Improved Laguna loading, prompt processing, generation, and server latency
+  through native kernels and resident session reuse.
+- Changed GGUF text encoding to use the Hugging Face `tokenizers` library while
+  keeping model execution torch-free.
+- Rewrote the root README around practical installation, model/GPU
+  compatibility, first server startup, and plain-language limitations.
+- Clarified the Qwen format choice: optimized ParoQuant W4 remains the slightly
+  faster and lower-memory option for Qwen3.6 35B-A3B in current AMD tests, while
+  ongoing compatibility work now focuses on GGUF.
+
+### Fixed
+
+- Fixed several multi-request state, KV-cache ownership, graph-reuse, and
+  request-width transition bugs that could affect later tokens or reused
+  request slots.
+- Fixed cancellation and disconnect cleanup so streaming requests release their
+  reservations and background work reliably.
+- Fixed sampled GGUF prefill, end-of-sequence handling, structured output, and
+  Qwen tool-call cleanup across resident and streaming paths.
+- Fixed long-prompt and sliding-window state handling for the newly supported
+  Laguna and Maple paths.
+
+### Known limitations
+
+- hipEngine still uses one GPU. CPU model inference and multi-GPU inference are
+  not implemented.
+- GGUF support is model-specific; hipEngine does not yet run arbitrary GGUF
+  architectures.
+- CUDA text-generation support is limited to direct, single-request, greedy
+  Maple generation. CUDA HTTP serving and multi-request execution are not
+  included in v0.4.0.
+- Moonshine currently exposes internal runtime and benchmark surfaces rather
+  than a public audio-to-transcript API.
+- Maple sampling is greedy-only. Model-advertised maximum context lengths are
+  not blanket hipEngine support claims.
+- Speculative modes can trade output equivalence for speed and remain opt-in
+  where appropriate.
+- Published wheels are Linux x86-64 and currently require glibc 2.39 or newer.
+  ROCm 7.x is the recommended AMD runtime for this release.
+
 ## v0.3.0 - 2026-07-13
 
 Minor release expanding hipEngine from the initial resident PARO/GGUF runtime
