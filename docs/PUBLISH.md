@@ -27,15 +27,21 @@ Use semver-style bumps while the public API is still alpha:
       install, backend selection, server flags, package names, or publish steps changed.
 - [ ] Re-read `docs/BENCHMARK.md` and `benchmarks/README.md` if the release notes
       mention performance; every performance claim needs the project evidence policy.
-- [ ] Run release validation:
-      `python3 -m compileall -q hipengine scripts tests`.
-- [ ] Run release validation:
-      `uv run --extra dev python -m pytest -q`.
-- [ ] Run release validation against the minimum supported Python when available:
-      `uv run --python 3.10 --extra dev python -m pytest -q`.
-- [ ] Run CLI smokes:
-      `uv run --extra dev hipengine --help` and
-      `uv run --extra dev hipengine serve --help`.
+- [ ] Verify that the root performance summary still matches the retained benchmark
+      rollup: `python3 scripts/sync_benchmark_readme.py --check`.
+- [ ] Reuse current retained benchmark artifacts for release claims. Do **not** rerun
+      the full performance matrix only because a release is being cut. Run a focused
+      benchmark only when code changed after the retained evidence in a way that can
+      affect that path, the release adds or changes a performance claim, or the
+      retained artifact no longer represents the stated model/hardware/software
+      setup. Follow the expensive-validation approval rule before such a rerun.
+- [ ] Run release validation on Python 3.12:
+      `uv run --python 3.12 --extra dev python -m compileall -q hipengine scripts tests`.
+- [ ] Run the full test suite once on Python 3.12:
+      `uv run --python 3.12 --extra dev python -m pytest -q`.
+- [ ] Run CLI smokes on Python 3.12:
+      `uv run --python 3.12 --extra dev hipengine --help` and
+      `uv run --python 3.12 --extra dev hipengine serve --help`.
 - [ ] Run the relevant ROCm smoke/correctness gate for the release scope. For
       kernel/runtime releases, follow `docs/TESTING.md` and `docs/KERNELS.md`
       including cached-build profiler guidance.
@@ -78,6 +84,9 @@ Use semver-style bumps while the public API is still alpha:
 
 - Do not publish from a dirty tree.
 - Do not reuse old `dist/` artifacts; rebuild for every release.
+- Release validation is a correctness and packaging gate, not an automatic
+  benchmark refresh. Existing retained performance evidence remains valid when
+  later release-only changes are limited to documentation and package metadata.
 - Do not add long-lived PyPI tokens to the repo. Prefer trusted publishing or a
   local/user-scoped token configured outside the repository.
 - Current wheels are Linux x86-64 only because they bundle an x86-64 AOTriton
