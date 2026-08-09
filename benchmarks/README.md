@@ -9,35 +9,38 @@ protocols, artifacts, history, rejected experiments, and platform-freshness
 records remain in the model-specific sections below.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-| Model / route | Hardware | Qualified workload | Prefill tok/s | Decode tok/s |
+| Model and format | GPU | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B PARO W4 | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2917.732** | **115.599** |
-| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2716.648** | **92.833** |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S / gfx1151 | 512 prompt / 128 decode | **1369.489** | **54.330** |
-| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
-| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
-| Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
-| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / natural+heldout exact c1 | **1917.492** | **402.361** |
+| Qwen3.6-35B-A3B ParoQuant W4 | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
+| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 | 4,096 input tokens; prompt processing only | **440.893** | — |
+| Maple-Preview 2-bit | Radeon 8060S | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
+| Maple-Preview 2-bit | RTX PRO 6000 Blackwell | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Where a row names separate prefill and decode workloads, its cells are the
-latest retained results for those explicitly named protocols, not one combined
-run.
+These rows use different hardware and tests. Do not compare one row directly
+with another.
 
-Selected parallel and speculative results:
+### Multiple requests
 
-| Route | Hardware and scope | Aggregate decode | Relative result |
+Each value is the total tokens per second across all active requests:
+
+| Model and interface | GPU | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6 GGUF, low-level engine test | Radeon Pro W7900 | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
+| Qwen3.6 GGUF, OpenAI streaming server | Radeon Pro W7900 | **72.169** | — | — | **158.542** | **137.001** | **129.507** |
+| Maple, public generation API | Radeon 8060S | **123.131** | **165.697** | **202.038** | **214.788** | — | — |
+
+### Optional speculative modes
+
+| Model and mode | GPU | Total text generation | Speed compared with normal generation |
 | --- | --- | ---: | ---: |
-| Qwen3.6 GGUF physical c8 (PM4) | W7900 direct model step; c1 uses HIP graph, c2/c4/c8 use PM4 | **266.479 tok/s** | **2.712x** c1 |
-| Qwen3.6 GGUF physical c8 | Radeon 8060S direct model step | **133.251 tok/s** | **2.647x** c1 |
-| Maple public c8 | Radeon 8060S, 64 tokens/request including admission and reclaim | **214.788 tok/s** | **1.744x** public c1 |
-| Qwen3.6 GGUF MTP `llama-compat` | W7900, explicit accuracy-traded route | **122.67 tok/s** | **1.2679x** own true AR |
-| Qwen3.6 GGUF NativeSpecCycle N3 | Radeon 8060S, explicit accuracy-traded route | **80.10 tok/s** | **1.4282x** own true AR |
+| Qwen3.6 GGUF, optional compatibility mode | Radeon Pro W7900 | **122.67 tok/s** | **1.2679x** |
+| Qwen3.6 GGUF, optional native mode | Radeon 8060S | **80.10 tok/s** | **1.4282x** |
 
-The current source-pinned W7900 direct c1/c2/c4/c8 packet reaches
-**98.263/148.944/209.304/266.479 aggregate tok/s**. The matched real OpenAI SSE
-c1/c8/c9/c13 packet reaches **72.169/158.542/137.001/129.507 aggregate tok/s**;
-all retained trajectories/IDs are exact, with zero PM4 fallback and clean
-ownership drain.
+These speculative modes are opt-in because their output can differ from normal
+generation.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 **Maple CUDA sm_120a native c1 prefill retained on RTX PRO 6000 Blackwell GPU0:**

@@ -1,194 +1,137 @@
 # hipEngine
 
-hipEngine is a ROCm-native local inference engine for AMD RDNA GPUs. It pairs a
-small Python host with custom HIP kernels for torch-free model loading,
-generation, and OpenAI-compatible serving on supported hardware.
+hipEngine runs selected language models locally with native ROCm kernels. It is
+built first for AMD Radeon GPUs and provides a Python API and an
+OpenAI-compatible server.
+
+**Current release: v0.4.0 alpha.** hipEngine is for users who are comfortable
+with a terminal and want a lightweight ROCm-native engine. It is not a desktop
+chat application like Ollama, LM Studio, or Lemonade: it does not include a
+model browser or chat window.
+
+## Why use hipEngine?
+
+- **Native AMD support.** The main kernels are written for AMD RDNA 3 and
+  RDNA 3.5 GPUs instead of passing work through a CUDA compatibility layer.
+- **No PyTorch runtime required.** Normal model loading, generation, and serving
+  do not depend on PyTorch.
+- **Works with existing clients.** The server provides OpenAI-compatible chat
+  and completion endpoints.
+- **Clear failures.** An unsupported model, format, or GPU stops with an error.
+  hipEngine does not silently switch to a slower PyTorch path.
+
+hipEngine is still alpha software. Its model list is much smaller than the lists
+in Ollama or LM Studio. Check the table below before downloading a model.
 
 ## Supported models
 
-Support is model-, format-, backend-, and workload-specific. The table names the
-checkpoints used by retained runtime paths; some are correctness- or
-benchmark-qualified rather than full public-serving routes. It is not a claim
-that arbitrary models in the same container format will run.
+`Yes` means that public text generation has been tested. A dash means that the
+combination is not supported. Features such as batching, sampling, tools, and
+long context can differ by model.
 
-| Family | Tested checkpoints and formats | Current support boundary | Details |
-| --- | --- | --- | --- |
-| **Qwen3.5 dense** | [`ggml-org/Qwen3.5-0.8B-GGUF`](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF); native GGUF `Q4_K_M` plus correctness coverage for `Q8_0`, `Q4_1`, and `UD-Q4_K_XL` | Text-only public generation on gfx1100/gfx1151; the 0.8B path is correctness-qualified, not a promoted performance route | [`docs/GGUF.md`](docs/GGUF.md) |
-| **Qwen3.5/3.6 MoE — PARO** | [`shisa-ai/Qwen3.6-35B-A3B-PARO-packed`](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed); W4 ParoQuant | Public generation and serving on gfx1100/gfx1151; native concurrency is qualified per backend | [`docs/PLAN.md`](docs/PLAN.md) · [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) |
-| **Qwen3.5/3.6 MoE — GGUF** | [`unsloth/Qwen3.5-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) and [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF); `Q4_K_M`, `Q4_K_S`, and retained `UD-Q3_K_M` execution | Public generation and serving on gfx1100/gfx1151; bundled NextN/MTP is available only through its documented guarded routes | [`docs/GGUF.md`](docs/GGUF.md) · [`docs/MTP-gguf.md`](docs/MTP-gguf.md) |
-| **Laguna S 2.1** | [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) `Q4_K_M`; [`unsloth/Laguna-S-2.1-GGUF`](https://huggingface.co/unsloth/Laguna-S-2.1-GGUF) `UD-Q2_K_XL` | Public c1 generation/serving through 4K on gfx1151; measured resident W7900 path for `UD-Q2_K_XL`; matched DFlash is explicit-only | [`docs/LAGUNA.md`](docs/LAGUNA.md) · [`docs/LAGUNA-PARITY-STATUS.md`](docs/LAGUNA-PARITY-STATUS.md) |
-| **Maple-Preview 20B-A1B** | [`deepgrove/maple-preview-2bit-mlx`](https://huggingface.co/deepgrove/maple-preview-2bit-mlx); native ternary 2-bit MLX checkpoint (5.31 GB) | Exact full-head public c1/c2/c4/c8 generation on gfx1151; retained native c1 prefill through the 770-token state gate plus exact wave32/direct and split-K/global c1 decode on `cuda_sm120a`, with the latter qualified through the full p512 suite (no CUDA batching/serving claim); public default context is 4K | [`docs/MAPLE.md`](docs/MAPLE.md) · [`docs/MAPLE-PERF.md`](docs/MAPLE-PERF.md) |
+| Model | Formats | RX 7900 XTX / W7900 (`gfx1100`) | Radeon 8060S (`gfx1151`) | NVIDIA Blackwell (`sm_120a`) |
+| --- | --- | :---: | :---: | :---: |
+| [Qwen3.5 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF) | `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL` | Yes | Yes | — |
+| [Qwen3.5 35B-A3B](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) and [Qwen3.6 35B-A3B](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF) | `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M` | Yes | Yes | — |
+| [Qwen3.6 35B-A3B ParoQuant](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | ParoQuant W4 | Yes | Yes | — |
+| [Laguna S 2.1](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | `Q4_K_M` | — | Yes | — |
+| [Maple-Preview 20B-A1B](https://huggingface.co/deepgrove/maple-preview-2bit-mlx) | 2-bit MLX | Yes | Yes | Python API only |
 
-Maple's deployment configuration declares 128,000 positions (the model is
-marketed at 131,072), and Laguna's GGUF declares 256K. Those model limits are
-not blanket hipEngine support claims: use the qualified boundaries above and in
-the linked model documents.
+CPU model generation is not supported. The CPU backend is used for correctness
+tests. On NVIDIA, load Maple with `backend="cuda_sm120a"`; automatic hardware
+selection currently covers AMD only.
 
-## Performance highlights
+Support is specific to the listed model families and formats. hipEngine does
+not yet run every GGUF model. See the [GGUF](docs/GGUF.md),
+[Laguna](docs/LAGUNA.md), and [Maple](docs/MAPLE.md) guides for model-specific
+limits.
 
-Different rows use different models, quantization, and protocols. Compare rates
-only within a row; these are concise retained highlights, not a cross-model
-ranking.
+### GGUF or ParoQuant for Qwen?
 
-<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-| Model / route | Hardware | Qualified workload | Prefill tok/s | Decode tok/s |
-| --- | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B PARO W4 | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2917.732** | **115.599** |
-| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 / gfx1100 | 512 prompt / 128 decode | **2716.648** | **92.833** |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S / gfx1151 | 512 prompt / 128 decode | **1369.489** | **54.330** |
-| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
-| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
-| Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
-| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / natural+heldout exact c1 | **1917.492** | **402.361** |
+For Qwen3.6 35B-A3B, the optimized ParoQuant W4 checkpoint is slightly faster
+and uses less memory in our AMD tests. It is a good choice when that exact model
+meets your needs.
 
-Where a row names separate prefill and decode workloads, its cells are the
-latest retained results for those explicitly named protocols, not one combined
-run.
-
-Selected parallel and speculative results:
-
-| Route | Hardware and scope | Aggregate decode | Relative result |
-| --- | --- | ---: | ---: |
-| Qwen3.6 GGUF physical c8 (PM4) | W7900 direct model step; c1 uses HIP graph, c2/c4/c8 use PM4 | **266.479 tok/s** | **2.712x** c1 |
-| Qwen3.6 GGUF physical c8 | Radeon 8060S direct model step | **133.251 tok/s** | **2.647x** c1 |
-| Maple public c8 | Radeon 8060S, 64 tokens/request including admission and reclaim | **214.788 tok/s** | **1.744x** public c1 |
-| Qwen3.6 GGUF MTP `llama-compat` | W7900, explicit accuracy-traded route | **122.67 tok/s** | **1.2679x** own true AR |
-| Qwen3.6 GGUF NativeSpecCycle N3 | Radeon 8060S, explicit accuracy-traded route | **80.10 tok/s** | **1.4282x** own true AR |
-
-The current source-pinned W7900 direct c1/c2/c4/c8 packet reaches
-**98.263/148.944/209.304/266.479 aggregate tok/s**. The matched real OpenAI SSE
-c1/c8/c9/c13 packet reaches **72.169/158.542/137.001/129.507 aggregate tok/s**;
-all retained trajectories/IDs are exact, with zero PM4 fallback and clean
-ownership drain.
-<!-- END TOPLINE:README_HIGHLIGHTS -->
-
-Full model hashes, software stacks, commands, samples, correctness gates, memory
-measurements, and historical results live in the canonical
-[`benchmarks/README.md`](benchmarks/README.md) and compact artifacts under
-[`benchmarks/results/`](benchmarks/results/).
-
-## Status
-
-**v0.3.0 alpha.** hipEngine is currently a single-GPU engine with active gfx1100
-and gfx1151 backends.
-
-- `backend="auto"` and `quant="auto"` select a registered path for recognized
-  hardware and models; unsupported combinations fail rather than silently
-  falling back to PyTorch.
-- PARO, Qwen GGUF, Laguna, and Maple expose deterministic greedy generation and
-  their qualified sampling, streaming, cancellation, and lifecycle behavior.
-  Exact capabilities vary by model and are discoverable through the server.
-- The OpenAI-compatible server supports completions, chat, token-level SSE,
-  logprobs, tools, structured-output validation, Qwen thinking controls,
-  readiness/capability discovery, and request diagnostics.
-- Speculative routes remain explicit unless their own correctness and economics
-  gates justify automatic use. In particular, `llama-compat` MTP is not
-  serial-prefix-equivalent and Laguna DFlash remains slower than true AR on its
-  canonical full suite.
-
-See [`docs/API.md#current-limitations`](docs/API.md#current-limitations) and
-[`docs/CONCURRENCY.md#current-truth`](docs/CONCURRENCY.md#current-truth) for
-precise public API and serving boundaries.
-
-## Core principles
-
-- **HIP-first, not CUDA-ported.** Kernels directly target AMD hardware such as
-  gfx1100/RDNA3 and gfx1151/RDNA3.5.
-- **Torch-free runtime.** `import torch` is not on the generation hot path.
-  Torch is an optional DLPack bridge behind the `hipengine[torch]` extra.
-- **Four-axis plugin registry.** Kernels are keyed by
-  `(backend, layer, quant, variant)`; models, quant schemes, and layers are
-  plugins rather than dispatch special cases.
-- **Fused and unfused paths coexist.** Every fused composite has a numerically
-  equivalent primitive chain for fallback and correctness testing.
-- **Evidence-backed performance.** Retained claims include the model, quant,
-  workload, hardware, command, artifact, and correctness gate. See
-  [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
-
-## Hardware targets
-
-| Backend | Hardware | Status |
-| --- | --- | --- |
-| `cpu_reference` | Any CPU with NumPy | Correctness oracle and GPU-free CI |
-| `hip_gfx1100` | Radeon Pro W7900 / RX 7900 XTX (RDNA3) | Active |
-| `hip_gfx1151` | Ryzen AI MAX+ 395 / Radeon 8060S (RDNA3.5) | Active |
-| `cuda_sm120a` | NVIDIA consumer Blackwell GPUs | Partial (some models) |
-
-Nearby unqualified ROCm targets can force a HIP backend only after independent
-correctness validation. gfx1151 defaults to one hardware queue to avoid a
-retained low-power queue failure; operational overrides are documented in
-[`docs/ENVS.md`](docs/ENVS.md).
-
-## Architecture at a glance
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  USER API                                                       │
-│  hipengine.LLM.generate()           library API                 │
-│  hipengine serve                    OpenAI-compatible server    │
-├─────────────────────────────────────────────────────────────────┤
-│  LOADING                                                        │
-│  safetensors / GGUF / MLX metadata / tokenizer / chat template  │
-├─────────────────────────────────────────────────────────────────┤
-│  DISPATCH                                                       │
-│  Scheduler / KV policy / prefix cache / fusion planner          │
-│  Model / quant / layer plugins / engine loop / graph replay     │
-├─────────────────────────────────────────────────────────────────┤
-│  CORE                                                           │
-│  Tensor / device / memory / stream / graph / BLAS / JIT cache   │
-├─────────────────────────────────────────────────────────────────┤
-│  KERNELS                                                        │
-│  kernels/hip_gfx1100/      active RDNA3 implementation          │
-│  kernels/hip_gfx1151/      active RDNA3.5 peer backend          │
-│  kernels/cpu_reference/    correctness oracle                   │
-│  kernels/cuda_sm120a/      partial NVIDIA Blackwell backend     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-The full layer diagram, plugin mechanics, KV cache ABI, and roadmap are in
-[`docs/PLAN.md`](docs/PLAN.md).
+GGUF has a much larger model and quantization ecosystem. Current development is
+therefore focused on GGUF compatibility, while the optimized ParoQuant path
+remains supported.
 
 ## Installation
 
-```bash
-# PyPI: runtime, JIT kernel sources, vendored AOTriton subset, and server
-pip install hipengine
+### Requirements
 
-# Source checkout
+| Platform | Requirements |
+| --- | --- |
+| AMD | Linux x86-64, Python 3.10 or newer, and ROCm with `hipcc` and `libamdhip64.so` |
+| NVIDIA Blackwell | Linux x86-64, Python 3.10 or newer, and the CUDA toolkit with `nvcc`; Maple only |
+| Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
+
+ROCm 7.x is the safest choice for the current wheel. The first model load
+compiles and caches kernels, so it takes longer than later starts.
+
+Install from PyPI:
+
+```bash
+pip install hipengine huggingface_hub
+```
+
+Or install a source checkout:
+
+```bash
+git clone https://github.com/shisa-ai/hipEngine.git
+cd hipEngine
 git lfs install
 git lfs pull
 pip install -e .
-
-# Optional DLPack bridge at the user boundary
-pip install "hipengine[torch]"
-
-# Development dependencies
-pip install -e ".[dev]"
 ```
 
-Python 3.10+ and a working ROCm installation with `libamdhip64.so` on the loader
-path are required for GPU execution. CPU-reference tests run without a GPU. Use
-the pinned stack instructions in [`docs/THEROCK.md`](docs/THEROCK.md) when
-reproducing benchmark rows; each artifact records its exact software stack.
-
-The installed command group includes:
+Confirm that the command is available:
 
 ```bash
 hipengine --help
 hipengine serve --help
-hipengine bench list
 ```
 
-## Quickstart
+## Start a local server
 
-hipEngine does not download weights during model construction. Populate the
-Hugging Face cache first:
+hipEngine does not download model weights during startup. Download a supported
+model first, or use a GGUF file that is already on disk.
+
+For the ParoQuant Qwen checkpoint:
 
 ```bash
 hf download shisa-ai/Qwen3.6-35B-A3B-PARO-packed
+
+hipengine serve \
+  --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
+  --served-model-name qwen-paro
 ```
 
-Then use the same local repository ID:
+For GGUF, pass the path to the model file:
+
+```bash
+hipengine serve \
+  --model /path/to/Qwen3.6-35B-A3B-Q4_K_M.gguf \
+  --served-model-name qwen
+```
+
+The server listens on `http://127.0.0.1:8000` by default. Test it with:
+
+```bash
+curl http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "qwen",
+    "messages": [{"role": "user", "content": "Why is the sky blue?"}],
+    "max_tokens": 128
+  }'
+```
+
+Point any client that accepts a custom OpenAI base URL at
+`http://127.0.0.1:8000/v1`. See the [server guide](docs/API.md) for API keys,
+streaming, tools, structured output, and model capability checks.
+
+## Use the Python API
 
 ```python
 from hipengine import LLM, SamplingParams
@@ -202,77 +145,123 @@ print(outputs[0])
 llm.close()
 ```
 
-`LLM(model)` detects gfx1100 or gfx1151 and selects the registered model and
-quantization route. Explicit `backend=` and `quant=` arguments are overrides.
-Local filesystem paths are supported for GGUF and Maple checkpoints.
+`LLM(...)` detects a supported AMD GPU and chooses the model format
+automatically. You can also pass a local GGUF or Maple path. Advanced users can
+override the choice with `backend=` and `quant=`.
 
-## OpenAI-compatible server
+## Performance highlights
 
-```bash
-hipengine serve \
-  --model shisa-ai/Qwen3.6-35B-A3B-PARO-packed \
-  --served-model-name qwen-paro
-```
+These are measured results, not estimates. Prompt processing is the speed of
+reading the input. Text generation is the speed of producing new tokens.
 
-`--model` accepts a local path or a Hugging Face repository already present in
-the local cache. Core endpoints are `GET /v1/models`, `POST /v1/completions`,
-and `POST /v1/chat/completions`. See [`docs/API.md`](docs/API.md) for
-authentication, request examples, streaming, capability discovery, diagnostics,
-and model-specific limitations.
+<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
+| Model and format | GPU | Test | Prompt processing (tok/s) | Text generation (tok/s) |
+| --- | --- | --- | ---: | ---: |
+| Qwen3.6-35B-A3B ParoQuant W4 | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2917.732** | **115.599** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | Radeon Pro W7900 | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
+| Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
+| Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 | 4,096 input tokens; prompt processing only | **440.893** | — |
+| Maple-Preview 2-bit | Radeon 8060S | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
+| Maple-Preview 2-bit | RTX PRO 6000 Blackwell | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
+
+These rows use different hardware and tests. Do not compare one row directly
+with another.
+
+### Multiple requests
+
+Each value is the total tokens per second across all active requests:
+
+| Model and interface | GPU | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6 GGUF, low-level engine test | Radeon Pro W7900 | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
+| Qwen3.6 GGUF, OpenAI streaming server | Radeon Pro W7900 | **72.169** | — | — | **158.542** | **137.001** | **129.507** |
+| Maple, public generation API | Radeon 8060S | **123.131** | **165.697** | **202.038** | **214.788** | — | — |
+
+### Optional speculative modes
+
+| Model and mode | GPU | Total text generation | Speed compared with normal generation |
+| --- | --- | ---: | ---: |
+| Qwen3.6 GGUF, optional compatibility mode | Radeon Pro W7900 | **122.67 tok/s** | **1.2679x** |
+| Qwen3.6 GGUF, optional native mode | Radeon 8060S | **80.10 tok/s** | **1.4282x** |
+
+These speculative modes are opt-in because their output can differ from normal
+generation.
+<!-- END TOPLINE:README_HIGHLIGHTS -->
+
+Full commands, software versions, model hashes, memory use, and correctness
+checks are in the [benchmark report](benchmarks/README.md).
+
+## Status and limits
+
+v0.4.0 is a large alpha release. It adds or expands:
+
+- Qwen3.5 and Qwen3.6 GGUF model support on both AMD backends.
+- Native parallel request handling for supported Qwen and Maple paths.
+- Laguna S 2.1 generation and serving on Radeon 8060S systems.
+- Maple-Preview 2-bit generation on AMD, plus an experimental native CUDA path
+  for NVIDIA Blackwell.
+- Faster prompt processing and generation across the supported AMD paths.
+- OpenAI-compatible streaming, sampling, tools, structured-output validation,
+  request cancellation, and an endpoint that reports available features.
+
+Important limits:
+
+- hipEngine uses one GPU. Multi-GPU inference is not implemented.
+- There is no desktop GUI, model catalog, or automatic model download.
+- CPU model inference is not implemented.
+- NVIDIA support is limited to single-request Maple generation through the
+  Python API. CUDA server and multi-request support are not ready.
+- Maple currently uses greedy generation only.
+- Advertised model context lengths are not a promise that hipEngine supports the
+  same length. Use the model guide and set a conservative server context limit.
+- Speculative generation is optional and off by default when it changes output
+  or does not provide a reliable speed benefit.
+- APIs and supported combinations can still change before 1.0.
+
+## Hardware detection
+
+`backend="auto"` recognizes `gfx1100` and `gfx1151`. These cover the tested
+Radeon RX 7900 XTX / Pro W7900 and Ryzen AI MAX+ 395 / Radeon 8060S systems.
+Other AMD architecture numbers are not automatically treated as compatible.
+
+You can force a nearby backend, but do so only after checking output quality and
+performance. hipEngine will not silently use PyTorch when a GPU is unsupported.
 
 ## Documentation
 
-| File | Purpose |
+### User guides
+
+| Guide | Contents |
 | --- | --- |
-| [`docs/PLAN.md`](docs/PLAN.md) | Architecture, plugin axes, and roadmap |
-| [`docs/API.md`](docs/API.md) | Library and OpenAI-compatible server contracts |
-| [`docs/GGUF.md`](docs/GGUF.md) | Qwen dense/MoE GGUF support and format boundaries |
-| [`docs/LAGUNA.md`](docs/LAGUNA.md) | Laguna model contract, public boundary, and DFlash status |
-| [`docs/MAPLE.md`](docs/MAPLE.md) | Maple model summary, runtime support, performance, and audit |
-| [`docs/MOONSHINE.md`](docs/MOONSHINE.md) | Moonshine internal backend status and gfx1151 transfer campaign |
-| [`docs/KERNELS.md`](docs/KERNELS.md) | Kernel catalog, lineage, JIT, and profiling workflow |
-| [`docs/BENCHMARK.md`](docs/BENCHMARK.md) | Benchmark protocols and evidence requirements |
-| [`docs/TESTING.md`](docs/TESTING.md) | Correctness oracles, fixtures, and validation tiers |
-| [`docs/ENVS.md`](docs/ENVS.md) | Runtime and benchmark environment variables |
-| [`benchmarks/README.md`](benchmarks/README.md) | Canonical benchmark scoreboard and full evidence index |
-| [`WORKLOG.md`](WORKLOG.md) | Append-only engineering journal |
+| [Server API](docs/API.md) | OpenAI-compatible endpoints, clients, authentication, and limits |
+| [GGUF models](docs/GGUF.md) | Supported Qwen formats and model-specific behavior |
+| [Laguna S 2.1](docs/LAGUNA.md) | Hardware, memory, context, and serving limits |
+| [Maple-Preview](docs/MAPLE.md) | AMD and NVIDIA support, memory use, and current limits |
+| [Environment settings](docs/ENVS.md) | Runtime settings and overrides |
+| [Changelog](CHANGELOG.md) | User-facing changes by release |
 
-## Development
+### Development and benchmark details
 
-```bash
-# Narrowest relevant tests first
-pytest -q
+| Guide | Contents |
+| --- | --- |
+| [Architecture and roadmap](docs/PLAN.md) | Engine design and planned work |
+| [Kernel catalog](docs/KERNELS.md) | Kernel implementations and source history |
+| [Testing](docs/TESTING.md) | Correctness tests and release checks |
+| [Benchmark methods](docs/BENCHMARK.md) | Rules used for performance claims |
+| [Benchmark results](benchmarks/README.md) | Full result tables and evidence |
+| [Contributor guide](AGENTS.md) | Repository workflow |
 
-# Before kernel ports
-python3 scripts/check_lineage.py --kind kernel --diff stat
+## Project lineage
 
-# Verify the compact root performance export
-python3 scripts/sync_benchmark_readme.py --check
-```
-
-See [`AGENTS.md`](AGENTS.md) for the complete workflow, validation tiers, evidence
-policy, and commit discipline.
-
-## References and lineage
-
-hipEngine is an independent codebase built on the work of many projects:
-
-- [ROCm](https://github.com/ROCm/rocm) and
-  [HIP](https://github.com/ROCm/rocm-systems/tree/develop/projects/hip)
-- [Nano-vLLM](https://github.com/GeeeekExplorer/nano-vllm)
-- [ParoQuant](https://github.com/z-lab/paroquant)
-- [FastDMS](https://github.com/shisa-ai/FastDMS)
-- [llama.cpp](https://github.com/ggml-org/llama.cpp)
-- [Marlin](https://github.com/IST-DASLab/marlin),
-  [kernel-anvil](https://github.com/apollosenvy/kernel-anvil),
-  [wmma_ops](https://github.com/glovepost/wmma_ops), and
-  [ROCm examples](https://github.com/ROCm/rocm-examples)
-
-Thanks also to [ROCmFPX](https://github.com/charlie12345/ROCmFPX),
-[hipfire](https://github.com/Kaden-Schutt/hipfire),
-[Lucebox](https://github.com/Luce-Org/lucebox-hub),
-[DS4](https://github.com/antirez/ds4), and
-[ExLlamaV3](https://github.com/turboderp-org/exllamav3).
+hipEngine is an independent project that builds on ideas and software from
+[ROCm](https://github.com/ROCm/rocm),
+[HIP](https://github.com/ROCm/rocm-systems/tree/develop/projects/hip),
+[Nano-vLLM](https://github.com/GeeeekExplorer/nano-vllm),
+[ParoQuant](https://github.com/z-lab/paroquant),
+[FastDMS](https://github.com/shisa-ai/FastDMS),
+[llama.cpp](https://github.com/ggml-org/llama.cpp), and other open-source
+projects. See the source and model guides for detailed attribution.
 
 ## License
 
