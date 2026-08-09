@@ -20,6 +20,7 @@ Examples:
 ## 2026-08-09
 
 - [retained/default Maple CUDA exact wave32 c1 decode] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / 18-prompt natural+category-heldout c1 on RTX PRO 6000 Blackwell GPU0: registered local128 **341.012 -> 396.328 tok/s (+16.22%, 1.1622x)** by mapping each virtual local128 query-head tree onto one physical wave32; all **1,152/1,152** measured pairs win, every category is non-regressive, **1,296/1,296** token/top-logit positions and **36/36** native-prefill/final states are exact, lifecycle closes, and cached Nsight names 24 wave32 calls/token at **108.815 us median/layer**; `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
+- [rejected Maple CUDA cooperative GQA4 c1 decode; production unchanged] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / direct 16q/4kv/D128 live17-8192 on RTX PRO 6000 Blackwell GPU0: exact four-warp-per-KV-head shared K/V staging measures only **0.897x wave32** at live512 and **0.896x** at live4096/8192; eight-token staging worsens to **0.863x/0.861x/0.860x**, so remove all candidate surfaces and retain one-warp-per-query-head wave32; `benchmarks/results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json`.
 
 ## 2026-08-08
 

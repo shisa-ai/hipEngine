@@ -44,6 +44,14 @@ and serving remain separate from this gfx1151 punchlist. Evidence:
 `benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`
 and `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
 
+The follow-up cooperative GQA4 decode schedule is rejected and removed. Four
+warps per KV-head block preserve exact query-head concurrency and load each K/V
+row once, but shared staging/barriers deliver only **0.897x** wave32 at live512
+and **0.896x** at 4096/8192. An eight-token shared tile worsens to
+**0.863x/0.861x/0.860x**, so no product-suite rerun is warranted and wave32
+remains the sole production owner. Evidence:
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json`.
+
 **Current gfx1151 conclusion (P0+P1+P2+P4, D0, and D1 retained; P3 rejected).**
 Final-row-only sampling nearly doubles qualified native prefill, expert-major
 MoE adds 3.68-5.83%, and exact GQA4 adds another 3.13-15.87%. The clean
