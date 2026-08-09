@@ -216790,3 +216790,32 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   Publish compact retained evidence as
   `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`
   and update support, topline, changelog, kernel catalog, plan, and Maple docs.
+
+## 2026-08-09 — Screen Maple CUDA grouped-GQA4 decode
+
+- Add a RED `gqa4_spans_wave32_exact_bf16` contract on the same production
+  `16q/4kv/D128`, live17, eviction-hole fixture. Implement one 128-thread block
+  per KV head: four warps preserve one query head each while all threads load
+  each K/V row once into shared memory. The candidate is BF16-bit exact to both
+  retained wave32 and local128 and passes the independent CPU tolerance gate.
+- Counterbalanced GPU0 CUDA-event medians reject the direct cooperative schedule
+  at every non-trivial span. Wave32 -> grouped ms/layer and relative result are
+  live128 **0.059076 -> 0.065518 (0.902x)**, live512
+  **0.231419 -> 0.257803 (0.898x)**, live4096
+  **1.841752 -> 2.054258 (0.897x)**, and live8192
+  **3.682702 -> 4.107931 (0.896x)**. Unlike FastDMS's variable-live compact
+  layout, Maple's repeated GQA K/V reads are already cache-resident enough that
+  shared staging and two block barriers/token dominate.
+- Try the direct synchronization repair: stage eight K/V tokens per shared tile,
+  reducing two barriers/token to two/eight tokens while preserving exact token
+  order. It worsens wave32-relative results to **0.867x/0.863x/0.861x/0.860x**
+  at live128/512/4096/8192, so restore the better tile-1 candidate before the
+  trace. Cached Nsight names the exact tile-1 grouped kernel at **9,408 ns** on
+  the live17 fixture versus wave32 **8,736 ns** and local128 **12,928 ns**.
+- Stop before the expensive product suite because the candidate is clearly
+  negative from live17 through 8192. Remove the grouped kernel, C ABI wrapper,
+  registry key, and temporary tests rather than retain a duplicate slow route;
+  production/source return to the clean `14b267f79` wave32 state. Retain only
+  `benchmarks/results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json`
+  plus the changelog/catalog/performance-plan disposition. Raw profiler data
+  remains `/tmp/maple-cuda-gqa4-negative.nsys-rep` and out of Git.

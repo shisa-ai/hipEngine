@@ -64,6 +64,12 @@ teardown are exact. Cache-only Nsight names the wave32 kernel 24 times/token at
 remain unclaimed. Evidence:
 [`CUDA wave32 decode`](results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json).
 
+The direct FastDMS-style cooperative GQA4 follow-up is retained as negative
+evidence, not source: exact shared K/V staging is **0.897x** wave32 at live512
+and **0.896x** at live4096/8192; eight-token staging is worse. The candidate is
+removed and production remains wave32. Evidence:
+[`CUDA grouped-GQA rejection`](results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json).
+
 **Maple P4 retained on Radeon 8060S/gfx1151:** safe SWA-wrap orchestration
 extends exact native prefill beyond 512, and fixed-slot admission now connects
 request-local prompt K/V directly to public c1/c2/c4/c8 decode. The unchanged

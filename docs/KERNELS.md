@@ -267,6 +267,13 @@ all 1,296 token/top-logit positions and 36 state pairs exact, and clean
 lifecycle. Evidence:
 `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
 
+A decode-specific cooperative GQA4 transfer was implemented, exact-gated,
+profiled, and removed after the cheap leaf screen. One four-warp block per KV
+head loaded each K/V row once, but reached only **0.897x** wave32 at live512 and
+**0.896x** at 4096/8192; an eight-token shared tile fell to
+**0.863x/0.861x/0.860x**. No `gqa4_spans_wave32_exact_bf16` key remains. Evidence:
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json`.
+
 `hipengine/kernels/cuda_sm120a/moe/group_scatter.{cu,py}` adds the stable int32
 count/prefix/scatter metadata family, completing the grouped native-prefill
 chain without a HIP builder or row/route-gather production fallback. The clean
