@@ -260,9 +260,12 @@ original local128 `gqa_spans_bf16` remains registered as the independent
 fallback. GPU0 direct gates cover a non-power-of-two live span plus an eviction
 hole against both the local128 kernel and the CPU oracle; the complete runner
 gate is state/logit exact. Cache-only Nsight names
-`maple_attention_decode_wave32_exact_kernel` at 24 calls/token with plausible
-durations. Retained same-suite decode publication is tracked separately from
-the kernel catalog.
+`maple_attention_decode_wave32_exact_kernel` at 24 calls/token and
+**108.815 us median/layer**. The clean full-suite route improves local128
+**341.012 -> 396.328 tok/s (+16.22%)** with all 1,152 measured pairs positive,
+all 1,296 token/top-logit positions and 36 state pairs exact, and clean
+lifecycle. Evidence:
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
 
 `hipengine/kernels/cuda_sm120a/moe/group_scatter.{cu,py}` adds the stable int32
 count/prefix/scatter metadata family, completing the grouped native-prefill
