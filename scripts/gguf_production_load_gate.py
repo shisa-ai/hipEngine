@@ -259,6 +259,7 @@ class _LocalUvicorn:
             log_level="warning",
             access_log=False,
             lifespan="on",
+            log_config=None,
         )
         self.server = uvicorn.Server(config)
         self.thread = threading.Thread(

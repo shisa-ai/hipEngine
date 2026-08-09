@@ -32,6 +32,16 @@ def _write_json(path: Path, payload: object) -> Path:
     return path
 
 
+def _local_mtp_model_or_skip() -> Path:
+    model = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+    blocks = suite.validate_qwen35_gguf_mtp_blocks(suite.scan_gguf(model))
+    if not blocks:
+        pytest.skip(f"local GGUF fixture has no validated MTP blocks: {model}")
+    return model
+
+
 def _prompt_suite(path: Path) -> Path:
     return _write_json(
         path,
@@ -2237,9 +2247,7 @@ def test_b1_prompt_suite_preflight_reports_parity_blocker_before_runtime_blocker
 
 
 def test_b1_prompt_suite_cli_emits_blocked_artifact_for_real_fixtures(tmp_path: Path) -> None:
-    model = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
-    if not model.exists():
-        pytest.skip(f"local GGUF fixture not found: {model}")
+    model = _local_mtp_model_or_skip()
     out = tmp_path / "artifact.json"
 
     result = subprocess.run(
@@ -2268,9 +2276,7 @@ def test_b1_prompt_suite_cli_emits_blocked_artifact_for_real_fixtures(tmp_path: 
 
 
 def test_b1_prompt_suite_cli_fail_on_blocked_returns_two(tmp_path: Path) -> None:
-    model = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
-    if not model.exists():
-        pytest.skip(f"local GGUF fixture not found: {model}")
+    model = _local_mtp_model_or_skip()
     out = tmp_path / "artifact.json"
 
     result = subprocess.run(

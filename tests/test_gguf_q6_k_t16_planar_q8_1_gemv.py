@@ -180,7 +180,10 @@ def _run_planar_and_x8(
 
 
 def test_planar_q8_1_registry_and_shape_policy() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
     register_gguf_q6_k_t16_gemv_kernels()
+    register_gfx1151_kernels(replace=True)
     assert resolve(
         backend="hip_gfx1100",
         layer="linear_q8_1",

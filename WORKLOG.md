@@ -216952,3 +216952,39 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   explicit approval.
 - Re-read the updated checklist end to end and run `git diff --check`; both
   passed. No runtime, measurement, or benchmark artifact changed.
+
+## 2026-08-10 — Repair focused v0.4.0 release-suite failures
+
+- Run the one approved Python 3.12 release suite once. All **9,145** collected
+  nodes completed: **6,973 passed, 2,156 skipped, and 16 failed**. The only
+  warnings were the existing uvicorn/websockets deprecations. No performance
+  benchmark ran.
+- Classify each failure in isolation. The three server logging nodes and the
+  planar Q8 registry node pass alone, proving order/global-state sensitivity.
+  The remaining failures are stale source guards or assumptions about optional
+  local files, except for one real boundary bug: full registry loading aliases
+  two W7900-only planar-Q8 projection keys onto gfx1151 despite the package
+  exclusion policy.
+- Add the missing two gfx1151 exclusions and make the registry test explicitly
+  load the peer backend. Preserve the W7900 registrations. This changes no
+  kernel body, model math, allocation, or selected production route.
+- Stop the benchmark-only `_LocalUvicorn` helper from replacing process-global
+  logging configuration. Add the synthetic provenance device identity required
+  by the schema; skip real-model MTP subprocess tests when the optional local
+  file has no validated MTP blocks; derive ignored extra block IDs from the
+  actual optional local inventory.
+- Refresh four Laguna source-normalization guards and the Qwen GDN cast helper
+  assertion after verifying their retained artifacts, source capabilities,
+  rollback behavior, and math contract remain unchanged.
+- Rerun all failed nodes together, including the uvicorn predecessor that
+  reproduced the logger leak, then run the complete affected bundle covering
+  provenance, MTP preflight, planar Q8, gfx1151 registration, Laguna H7U/H8A/H8B
+  guards, Qwen decode semantics, the production-load helper, and the three
+  server logging nodes. The final bundle reaches **100%** with expected optional
+  hardware/model skips. Python 3.12 compileall and README benchmark sync pass.
+  Per the focused-repair rule, do not repeat the complete 9,145-node suite.
+- A concurrent, unowned root `README.md` edit appeared during the focused work.
+  It adds a Moonshine public-support claim that conflicts with `docs/PLAN.md`,
+  and introduces trailing whitespace. Leave it unstaged and do not overwrite
+  it; v0.4.0 release preparation is blocked until its owner resolves or approves
+  that change.

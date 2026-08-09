@@ -144,6 +144,7 @@ def test_artifact_provenance_captures_hip_hardware_queue_policy(
         repo_root=repo,
         configured_backend="hip_gfx1151",
         detected_arches=("gfx1151",),
+        device_name="AMD Radeon 8060S",
         command=("python3", "bench.py"),
         rocm_version="7.1-test",
         hipcc_version="hipcc test",
