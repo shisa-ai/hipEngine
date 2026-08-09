@@ -20,6 +20,7 @@ from hipengine.kernels.backends import (
 )
 from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
     build_maple_attention,
+    maple_attention_decode_splitk_exact_bf16,
     maple_attention_decode_wave32_exact_bf16,
     maple_attention_fused_qknorm_decode_bf16,
     maple_attention_prefill_ring_bf16,
@@ -83,6 +84,9 @@ from hipengine.runtime.maple import (
 )
 
 
+_MAPLE_CUDA_SPLITK_MIN_LIVE = 32
+
+
 class MapleCudaRunner(MapleRunner):
     """Correctness-first CUDA c1 runner using the peer sm_120a kernels.
 
@@ -137,7 +141,7 @@ class MapleCudaRunner(MapleRunner):
                 max_context=parsed_context,
                 device=device,
             )
-            return cls(
+            runner = cls(
                 checkpoint=checkpoint,
                 weights=weights,
                 buffers=buffers,
@@ -147,6 +151,10 @@ class MapleCudaRunner(MapleRunner):
                 max_context=parsed_context,
                 runtime=runtime,
             )
+            runner._split_scores = owner.allocate(
+                checkpoint.spec.num_attention_heads * parsed_context * 4
+            )
+            return runner
         except Exception:
             owner.close()
             if weights is not None:
@@ -182,6 +190,8 @@ class MapleCudaRunner(MapleRunner):
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
         fuse_qkattn = _maple_fuse_qkattn()
         fuse_moe = _maple_fuse_moe()
+        graph = None if capture_hidden else self._graph_cache()
+        splitk_allowed = graph is None
 
         def _decode_body(stream: int) -> None:
             _decode_layers_and_tail(stream)
@@ -252,19 +262,41 @@ class MapleCudaRunner(MapleRunner):
                         library=libs.attention,
                         runtime=self.runtime, stream=stream,
                     )
-                    maple_attention_decode_wave32_exact_bf16(
-                        b.qkv.ptr,
-                        kv_layer.key_cache.ptr,
-                        kv_layer.value_cache.ptr,
-                        b.attention.ptr,
-                        kv_layer.spans,
-                        q_heads=spec.num_attention_heads,
-                        kv_heads=spec.num_key_value_heads,
-                        head_dim=spec.head_dim,
-                        scale=spec.head_dim**-0.5,
-                        library=libs.attention,
-                        runtime=self.runtime, stream=stream,
-                    )
+                    if (
+                        splitk_allowed
+                        and spec.attention_kind(layer_id) == "full_attention"
+                        and position + 1 >= _MAPLE_CUDA_SPLITK_MIN_LIVE
+                    ):
+                        maple_attention_decode_splitk_exact_bf16(
+                            b.qkv.ptr,
+                            kv_layer.key_cache.ptr,
+                            kv_layer.value_cache.ptr,
+                            b.attention.ptr,
+                            self._split_scores.ptr,
+                            kv_layer.spans,
+                            launch_live=position + 1,
+                            score_stride=self.max_context,
+                            q_heads=spec.num_attention_heads,
+                            kv_heads=spec.num_key_value_heads,
+                            head_dim=spec.head_dim,
+                            scale=spec.head_dim**-0.5,
+                            library=libs.attention,
+                            runtime=self.runtime, stream=stream,
+                        )
+                    else:
+                        maple_attention_decode_wave32_exact_bf16(
+                            b.qkv.ptr,
+                            kv_layer.key_cache.ptr,
+                            kv_layer.value_cache.ptr,
+                            b.attention.ptr,
+                            kv_layer.spans,
+                            q_heads=spec.num_attention_heads,
+                            kv_heads=spec.num_key_value_heads,
+                            head_dim=spec.head_dim,
+                            scale=spec.head_dim**-0.5,
+                            library=libs.attention,
+                            runtime=self.runtime, stream=stream,
+                        )
                 maple_ternary_gemv_bf16(
                     b.attention.ptr,
                     layer_weights.o_proj.weight.ptr,
@@ -429,7 +461,6 @@ class MapleCudaRunner(MapleRunner):
         if capture_hidden:
             _decode_layers_and_tail(0)
         else:
-            graph = self._graph_cache()
             if graph is not None and graph.enabled:
                 graph.run(
                     (),

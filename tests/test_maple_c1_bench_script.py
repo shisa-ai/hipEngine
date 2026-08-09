@@ -30,6 +30,10 @@ def test_maple_c1_harness_uses_backend_runner_capability(monkeypatch) -> None:
     assert _MODULE._maple_runner_type("hip_gfx1151") is _MODULE.MapleRunner
 
 
+def test_maple_c1_harness_shapes_each_natural_prompt_deterministically() -> None:
+    assert _MODULE._shape_tokens((1, 2, 3), 8) == (1, 2, 3, 1, 2, 3, 1, 2)
+
+
 def test_maple_c1_cuda_attention_modes_select_and_restore() -> None:
     import hipengine.runtime.maple_cuda as runtime_module
     from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
@@ -38,6 +42,7 @@ def test_maple_c1_cuda_attention_modes_select_and_restore() -> None:
     )
 
     original = runtime_module.maple_attention_decode_wave32_exact_bf16
+    original_splitk_min = runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE
     controller = _MODULE._CudaAttentionModes()
     try:
         controller.select("local128")
@@ -45,11 +50,18 @@ def test_maple_c1_cuda_attention_modes_select_and_restore() -> None:
             runtime_module.maple_attention_decode_wave32_exact_bf16
             is maple_attention_decode_bf16
         )
+        assert runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE == 1 << 60
         controller.select("wave32")
         assert (
             runtime_module.maple_attention_decode_wave32_exact_bf16
             is maple_attention_decode_wave32_exact_bf16
         )
+        assert runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE == 1 << 60
+        controller.select("splitk")
+        assert (
+            runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE == original_splitk_min
+        )
     finally:
         controller.close()
     assert runtime_module.maple_attention_decode_wave32_exact_bf16 is original
+    assert runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE == original_splitk_min

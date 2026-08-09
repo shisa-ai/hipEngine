@@ -344,6 +344,55 @@ def maple_attention_decode_wave32_exact_bf16(
     )
 
 
+def maple_attention_decode_splitk_exact_bf16(
+    qkv_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    scores_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    launch_live: int,
+    score_stride: int,
+    q_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    scale: float,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> None:
+    """Exact D128 split score producer plus ordered online-softmax reducer."""
+
+    base, live, token_positions, evict_mask, row_positions, capacity = _span_pointers(spans)
+    _launch(
+        "hipengine_maple_attention_decode_splitk_exact_bf16",
+        (_PTR,) * 10 + (_I64, _I64, _I64, _F32, _I64, _I64, _I64, _PTR),
+        (
+            qkv_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            out_ptr,
+            scores_ptr,
+            base,
+            live,
+            token_positions,
+            evict_mask,
+            row_positions,
+            q_heads,
+            kv_heads,
+            head_dim,
+            scale,
+            capacity,
+            launch_live,
+            score_stride,
+        ),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def maple_attention_decode_batched_bf16(
     qkv_ptr: int,
     key_cache_ptr: int,
@@ -608,6 +657,10 @@ def register_maple_attention_kernels(
         ): maple_attention_decode_wave32_exact_bf16,
         (
             "maple_attention_decode",
+            "gqa_spans_splitk_exact_bf16",
+        ): maple_attention_decode_splitk_exact_bf16,
+        (
+            "maple_attention_decode",
             "gqa_spans_batched_bf16",
         ): maple_attention_decode_batched_bf16,
         ("maple_attention_prefill", "gqa_causal_bf16"): maple_attention_prefill_bf16,
@@ -664,6 +717,7 @@ register_maple_attention_kernels()
 __all__ = [
     "build_maple_attention",
     "maple_attention_decode_bf16",
+    "maple_attention_decode_splitk_exact_bf16",
     "maple_attention_decode_wave32_exact_bf16",
     "maple_attention_prefill_bf16",
     "maple_attention_prefill_ring_bf16",
