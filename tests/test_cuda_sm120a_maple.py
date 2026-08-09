@@ -78,6 +78,10 @@ def test_cuda_sm120a_maple_c1_registry_keys_resolve() -> None:
             "gqa_spans_bf16",
         ),
         KernelKey(
+            "cuda_sm120a", "maple_attention_decode", "maple_ternary2",
+            "gqa_spans_wave32_exact_bf16",
+        ),
+        KernelKey(
             "cuda_sm120a", "maple_router_topk", "maple_ternary2",
             "bf16_fp32_single_dispatch",
         ),
@@ -125,6 +129,14 @@ def test_cuda_sm120a_maple_native_prefill_uses_complete_bulk_chain() -> None:
         "maple_weighted_residual_batched_bf16",
     ):
         assert required_call in source
+
+
+def test_cuda_sm120a_maple_c1_decode_uses_exact_wave32_attention() -> None:
+    from hipengine.runtime.maple_cuda import MapleCudaRunner
+
+    source = inspect.getsource(MapleCudaRunner.step)
+    assert "maple_attention_decode_wave32_exact_bf16(" in source
+    assert "maple_attention_decode_bf16(" not in source
 
 
 def test_cuda_sm120a_maple_i32_stable_compaction_matches_cpu_order() -> None:
@@ -565,6 +577,140 @@ def test_cuda_sm120a_maple_attention_consumes_kv_live_spans() -> None:
             got_qkv[q_size : q_size + kv_size], f32_to_bf16_bits(k_expected).reshape(-1)
         )
         np.testing.assert_array_equal(got_attention, attention_expected)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
+def test_cuda_sm120a_maple_attention_wave32_exact_matches_local128() -> None:
+    _require_cuda()
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.core.device import Device
+    from hipengine.core.dtype import DType
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.core.tensor import Tensor
+    from hipengine.kernels.cpu_reference.maple import (
+        attention_decode,
+        bf16_to_f32,
+        f32_to_bf16_bits,
+    )
+    from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
+        build_maple_attention,
+        maple_attention_decode_bf16,
+        maple_attention_decode_wave32_exact_bf16,
+    )
+    from hipengine.kvcache import KVLiveSpans
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    rng = np.random.default_rng(8128)
+    q_heads, kv_heads, head_dim = 16, 4, 128
+    q_size, kv_size, capacity = q_heads * head_dim, kv_heads * head_dim, 32
+    query_position, live = 20, 17
+    start_position = query_position - live + 1
+    scale = head_dim**-0.5
+    q = f32_to_bf16_bits(rng.normal(0, 0.3, q_size).astype(np.float32))
+    key_cache = f32_to_bf16_bits(
+        rng.normal(0, 0.3, (capacity, kv_heads, head_dim)).astype(np.float32)
+    )
+    value_cache = f32_to_bf16_bits(
+        rng.normal(0, 0.3, (capacity, kv_heads, head_dim)).astype(np.float32)
+    )
+    base_offsets = np.arange(capacity, dtype=np.int32)
+    live_counts = np.asarray([live], dtype=np.int64)
+    token_positions = np.full(capacity, -1, dtype=np.int64)
+    evict_mask = np.ones(capacity, dtype=np.bool_)
+    for position in range(start_position, query_position + 1):
+        slot = position % capacity
+        token_positions[slot] = position
+        evict_mask[slot] = False
+    evicted_position = 11
+    evict_mask[evicted_position % capacity] = True
+    row_positions = np.asarray([query_position], dtype=np.int64)
+
+    buffers = []
+    try:
+        def put(array: np.ndarray):
+            buffer = malloc(array.nbytes, runtime=runtime)
+            buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+            return buffer
+
+        q_d = put(q)
+        key_d = put(key_cache)
+        value_d = put(value_cache)
+        base_d = put(base_offsets)
+        live_d = put(live_counts)
+        positions_d = put(token_positions)
+        evict_d = put(evict_mask)
+        rows_d = put(row_positions)
+        baseline_d = malloc(q_size * 2, runtime=runtime)
+        candidate_d = malloc(q_size * 2, runtime=runtime)
+        buffers.extend((baseline_d, candidate_d))
+        device = Device("cuda", 0)
+        spans = KVLiveSpans.sliding_ring(
+            base_offsets=Tensor.from_handle(
+                base_d.ptr, (capacity,), DType.INT32, device
+            ),
+            live_counts=Tensor.from_handle(live_d.ptr, (1,), DType.INT64, device),
+            token_positions=Tensor.from_handle(
+                positions_d.ptr, (capacity,), DType.INT64, device
+            ),
+            evict_mask=Tensor.from_handle(
+                evict_d.ptr, (capacity,), DType.BOOL, device
+            ),
+            row_positions=Tensor.from_handle(rows_d.ptr, (1,), DType.INT64, device),
+            capacity=capacity,
+        )
+        library = build_maple_attention(load=True)
+        launch_args = dict(
+            q_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=scale,
+            library=library,
+            runtime=runtime,
+        )
+        maple_attention_decode_bf16(
+            q_d.ptr, key_d.ptr, value_d.ptr, baseline_d.ptr, spans, **launch_args
+        )
+        maple_attention_decode_wave32_exact_bf16(
+            q_d.ptr, key_d.ptr, value_d.ptr, candidate_d.ptr, spans, **launch_args
+        )
+        runtime.device_synchronize()
+        baseline = np.empty(q_size, dtype=np.uint16)
+        candidate = np.empty_like(baseline)
+        copy_device_to_host(
+            host_array_ptr(baseline), baseline_d, nbytes=baseline.nbytes, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(candidate), candidate_d, nbytes=candidate.nbytes, runtime=runtime
+        )
+
+        np.testing.assert_array_equal(candidate, baseline)
+        valid_positions = [
+            position
+            for position in range(start_position, query_position + 1)
+            if position != evicted_position
+        ]
+        expected = attention_decode(
+            bf16_to_f32(q).reshape(q_heads, head_dim),
+            bf16_to_f32(key_cache[[position % capacity for position in valid_positions]]),
+            bf16_to_f32(value_cache[[position % capacity for position in valid_positions]]),
+            scale=scale,
+        )
+        np.testing.assert_allclose(
+            bf16_to_f32(candidate).reshape(q_heads, head_dim),
+            expected,
+            atol=4e-3,
+            rtol=2e-2,
+        )
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
