@@ -216866,3 +216866,25 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   **343.277 us median**, split producer is 192 at **2.720 us**, and split reducer
   is 192 at **297.661 us**. The profiled complete runner is **9.354 ms/token**
   median. Keep raw profiler output under `/tmp`.
+- Commit the implementation/gate unit as `9fbf4c1cd`, create detached clean
+  worktree `/tmp/hipengine-maple-splitk-clean` at that exact commit, and rerun
+  both retained protocols on physical GPU0. The natural+heldout run is exact for
+  **18/18 prompts, 36/36 prefill/final state pairs, 1,296/1,296 token/top-logit
+  positions, and 2,592/2,592 zero-counter checks** and improves same-session
+  wave32 **397.214 -> 402.361 tok/s (+1.296%, 1,152/1,152 wins)** with every
+  category positive. This replaces the prior 396.328-tok/s retained topline.
+- The clean full suite shaped to p512 reproduces exactness at the same complete
+  counts and improves **102.688 -> 106.893 tok/s (+4.096%, 1,152/1,152 wins)**
+  with every category positive. Natural and p512 two-runner ownership reaches
+  **10,672,731,092 bytes / 1,122 allocations** and **10,712,719,520 / 1,122**
+  respectively, then both close to zero.
+- Preserve the detailed clean artifacts only under `/tmp`: natural is 211,531
+  bytes / SHA-256
+  `ce6265c9bbf032826e900a5f13a0823193ce63da966814c4b525c71be9cbed45`, and
+  p512 is 208,506 bytes /
+  `ee3f3bbb377ba4ba53727009a00190ce54637b439c5972afca2c8b8074c99aa6`.
+  Publish compact retained evidence as
+  `benchmarks/results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json`
+  and update the canonical topline, changelog, kernel catalog, plan, and Maple
+  docs. Do not widen the retained full-product boundary beyond p512 or imply a
+  successful p4096 run.

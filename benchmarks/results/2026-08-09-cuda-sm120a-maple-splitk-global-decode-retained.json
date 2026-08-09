@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-09",
+  "artifact_type": "maple_cuda_c1_splitk_global_decode_retained",
+  "status": "accepted",
+  "performance_claim": true,
+  "route": {
+    "backend": "cuda_sm120a",
+    "candidate": "gqa_spans_splitk_exact_bf16",
+    "control": "gqa_spans_wave32_exact_bf16",
+    "candidate_default": true,
+    "minimum_live_tokens": 32,
+    "split_layers": [3, 7, 11, 15, 19, 23],
+    "split_layer_kind": "full_attention",
+    "direct_layers": [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21, 22],
+    "direct_layer_kind": "sliding_attention",
+    "sliding_window": 512,
+    "graph_replay_behavior": "direct wave32; split producer grid is not graph-captured because live length grows"
+  },
+  "implementation": {
+    "score_producer": "maple_attention_splitk_score_kernel",
+    "score_producer_geometry": "one warp per (query_head, token), four warps/block",
+    "score_math": "local128-exact QK reduction tree",
+    "ordered_reducer": "maple_attention_splitk_reduce_kernel",
+    "reducer_math": "original token-order online softmax and PV FMA boundaries",
+    "scratch": "one runner-owned FP32 [16,max_context] score buffer reused across global layers",
+    "kv_abi": "both stages consume and validate complete KVLiveSpans device metadata; host live sizes only the producer grid"
+  },
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "resolved_path": "/models/hf/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2",
+    "exact_weight_bytes": 5314226604
+  },
+  "hardware": {
+    "physical_gpu": 0,
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "gpu_uuid": "GPU-04fe1d76-7582-80ce-91ef-670b96072933",
+    "architecture": "sm_120a",
+    "driver_version": "610.43.03",
+    "cuda": "13.3",
+    "nvcc": "13.3.73",
+    "host": "dev"
+  },
+  "software": {
+    "git_commit": "9fbf4c1cdb2b722edf2e2898e9e169d5aef5091a",
+    "worktree_clean": true,
+    "python": "3.11.13",
+    "natural_full_artifact": {
+      "path": "/tmp/maple-cuda-splitk-natural-clean.json",
+      "bytes": 211531,
+      "sha256": "ce6265c9bbf032826e900a5f13a0823193ce63da966814c4b525c71be9cbed45"
+    },
+    "p512_full_artifact": {
+      "path": "/tmp/maple-cuda-splitk-p512-clean.json",
+      "bytes": 208506,
+      "sha256": "ee3f3bbb377ba4ba53727009a00190ce54637b439c5972afca2c8b8074c99aa6"
+    }
+  },
+  "common_protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "heldout": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "prompt_count": 18,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "repetitions": 2,
+    "warmup_steps_per_prompt": 4,
+    "measured_steps_per_prompt": 32,
+    "measured_pairs": 1152,
+    "decode_positions_including_warmup": 1296,
+    "pairing": "two simultaneous resident runners; candidate/control order alternates by prompt, repetition, and step",
+    "timing_scope": "perf_counter around resident MapleCudaRunner.step; model load, native prefill, warmup, state copies, and router-counter checks excluded"
+  },
+  "natural_protocol": {
+    "command": "CUDA_VISIBLE_DEVICES=0 HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt PYTHONPATH=/tmp/hipengine-maple-splitk-clean /home/lhl/hipEngine/.venv/bin/python /tmp/hipengine-maple-splitk-clean/scripts/maple_c1_bench.py --model /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a --candidate-attention splitk --control-attention wave32 --steps 32 --warmup-steps 4 --repetitions 2 --out /tmp/maple-cuda-splitk-natural-clean.json",
+    "prompt_length": "natural; max context 115 including continuation",
+    "correctness": {
+      "passed": true,
+      "prompt_matches": 18,
+      "prefill_state_matches": 36,
+      "final_state_matches": 36,
+      "token_matches": 1296,
+      "top_logit_matches": 1296,
+      "router_counter_checks": 2592,
+      "router_counter_violations": 0
+    },
+    "performance": {
+      "passed": true,
+      "category_nonregressive": true,
+      "control": {
+        "aggregate_tokens_per_second": 397.21362199413574,
+        "mean_ms": 2.5175370244849344,
+        "median_ms": 2.500664966646582
+      },
+      "candidate": {
+        "aggregate_tokens_per_second": 402.3611483433482,
+        "mean_ms": 2.4853294213850554,
+        "median_ms": 2.470464038196951
+      },
+      "speedup": 1.012959088168654,
+      "delta_percent": 1.2959088168654098,
+      "paired_mean_saving_ms": 0.03220760309987883,
+      "paired_median_saving_ms": 0.03127951640635729,
+      "candidate_wins": 1152,
+      "categories": {
+        "code": {
+          "control_tokens_per_second": 408.95576341455194,
+          "candidate_tokens_per_second": 413.9035383660319,
+          "candidate_wins": 384,
+          "samples": 384
+        },
+        "general_en": {
+          "control_tokens_per_second": 421.41537421634234,
+          "candidate_tokens_per_second": 426.08348036106446,
+          "candidate_wins": 256,
+          "samples": 256
+        },
+        "general_ja": {
+          "control_tokens_per_second": 388.9008556817927,
+          "candidate_tokens_per_second": 394.15082058250096,
+          "candidate_wins": 256,
+          "samples": 256
+        },
+        "mixed_ja_en": {
+          "control_tokens_per_second": 368.08915487441516,
+          "candidate_tokens_per_second": 373.7071893791488,
+          "candidate_wins": 256,
+          "samples": 256
+        }
+      }
+    },
+    "memory": {
+      "two_runner_resident_tracked_bytes": 10672731092,
+      "two_runner_resident_allocations": 1122,
+      "after_close_bytes": 0,
+      "after_close_allocations": 0,
+      "lifecycle_passed": true
+    }
+  },
+  "p512_protocol": {
+    "command": "CUDA_VISIBLE_DEVICES=0 HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt PYTHONPATH=/tmp/hipengine-maple-splitk-clean /home/lhl/hipEngine/.venv/bin/python /tmp/hipengine-maple-splitk-clean/scripts/maple_c1_bench.py --model /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a --candidate-attention splitk --control-attention wave32 --prompt-length 512 --steps 32 --warmup-steps 4 --repetitions 2 --out /tmp/maple-cuda-splitk-p512-clean.json",
+    "prompt_length": 512,
+    "maximum_context_including_continuation": 548,
+    "correctness": {
+      "passed": true,
+      "prompt_matches": 18,
+      "prefill_state_matches": 36,
+      "final_state_matches": 36,
+      "token_matches": 1296,
+      "top_logit_matches": 1296,
+      "router_counter_checks": 2592,
+      "router_counter_violations": 0
+    },
+    "performance": {
+      "passed": true,
+      "category_nonregressive": true,
+      "control": {
+        "aggregate_tokens_per_second": 102.68753745174605,
+        "mean_ms": 9.738280075806768,
+        "median_ms": 9.736130014061928
+      },
+      "candidate": {
+        "aggregate_tokens_per_second": 106.89342881765657,
+        "mean_ms": 9.35511201259942,
+        "median_ms": 9.355821006465703
+      },
+      "speedup": 1.040958148089654,
+      "delta_percent": 4.095814808965392,
+      "paired_mean_saving_ms": 0.3831680632073484,
+      "paired_median_saving_ms": 0.3820600104518235,
+      "candidate_wins": 1152,
+      "categories": {
+        "code": {
+          "control_tokens_per_second": 102.7394707672431,
+          "candidate_tokens_per_second": 106.9331254910607,
+          "candidate_wins": 384,
+          "samples": 384
+        },
+        "general_en": {
+          "control_tokens_per_second": 102.68950944735595,
+          "candidate_tokens_per_second": 106.9060404729275,
+          "candidate_wins": 256,
+          "samples": 256
+        },
+        "general_ja": {
+          "control_tokens_per_second": 102.63177084186205,
+          "candidate_tokens_per_second": 106.8553877010524,
+          "candidate_wins": 256,
+          "samples": 256
+        },
+        "mixed_ja_en": {
+          "control_tokens_per_second": 102.6635074342355,
+          "candidate_tokens_per_second": 106.85936126534456,
+          "candidate_wins": 256,
+          "samples": 256
+        }
+      }
+    },
+    "memory": {
+      "two_runner_resident_tracked_bytes": 10712719520,
+      "two_runner_resident_allocations": 1122,
+      "after_close_bytes": 0,
+      "after_close_allocations": 0,
+      "lifecycle_passed": true
+    }
+  },
+  "direct_leaf_diagnostic": {
+    "source_clean_performance_claim": false,
+    "correctness": "BF16-bit exact to direct wave32 at every screened live length",
+    "measurements": [
+      {"live_tokens": 17, "wave32_ms_per_layer": 0.009241160154342652, "splitk_ms_per_layer": 0.009406200051307677, "speedup": 0.9824541370516481},
+      {"live_tokens": 24, "wave32_ms_per_layer": 0.012164320349693298, "splitk_ms_per_layer": 0.011614159941673278, "speedup": 1.0473697977970808},
+      {"live_tokens": 32, "wave32_ms_per_layer": 0.01572179973125458, "splitk_ms_per_layer": 0.01437716007232666, "speedup": 1.0935260964031484},
+      {"live_tokens": 128, "wave32_ms_per_layer": 0.05908063888549805, "splitk_ms_per_layer": 0.048279360135396326, "speedup": 1.2237245630391587},
+      {"live_tokens": 512, "wave32_ms_per_layer": 0.23138837178548177, "splitk_ms_per_layer": 0.18301407496134442, "speedup": 1.2643200903228606},
+      {"live_tokens": 4096, "wave32_ms_per_layer": 1.8417066574096679, "splitk_ms_per_layer": 1.4437338511149087, "speedup": 1.2756552435114192},
+      {"live_tokens": 8192, "wave32_ms_per_layer": 3.682794698079427, "splitk_ms_per_layer": 2.8862303415934245, "speedup": 1.2759877979961354}
+    ],
+    "selection": "conservative live>=32 threshold from the measured crossover"
+  },
+  "profiler": {
+    "tool": "Nsight Systems",
+    "raw_report": "/tmp/maple-cuda-splitk-p512.nsys-rep",
+    "source_clean_performance_claim": false,
+    "profile_scope": "one p512 MapleCudaRunner, 32 decode steps, cached libraries",
+    "complete_runner_median_ms_per_token": 9.354,
+    "per_token_route_signature": {
+      "direct_wave32_sliding_calls": 18,
+      "split_score_producer_calls": 6,
+      "split_ordered_reducer_calls": 6
+    },
+    "kernel_totals": {
+      "maple_attention_decode_wave32_exact_kernel": {"calls": 576, "median_us": 343.2765},
+      "maple_attention_splitk_score_kernel": {"calls": 192, "median_us": 2.72},
+      "maple_attention_splitk_reduce_kernel": {"calls": 192, "median_us": 297.661}
+    }
+  },
+  "rollup": {
+    "previous_retained_natural_tokens_per_second": 396.328,
+    "current_retained_natural_tokens_per_second": 402.3611483433482,
+    "retained_row_delta_percent": 1.5222614459105221,
+    "same_session_natural_delta_percent": 1.2959088168654098,
+    "same_session_p512_delta_percent": 4.095814808965392,
+    "wave32_stage_baseline_tokens_per_second": 341.012,
+    "cumulative_wave32_plus_splitk_delta_percent": 17.99031950293486
+  },
+  "limits": {
+    "p4096_full_suite": "attempted once; exceeded the 600-second command budget during serial post-SWA-wrap prompt prefill and emitted no artifact",
+    "retained_long_context_boundary": "full 18-prompt product A/B at p512 plus exact direct-leaf diagnostic through live8192",
+    "cuda_batching_serving": "not claimed",
+    "cuda_graph_replay": "split-K not selected"
+  }
+}

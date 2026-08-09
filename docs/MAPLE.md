@@ -1,6 +1,6 @@
 # MAPLE — Ternary MoE inference on hipEngine
 
-Last updated: **2026-08-08**
+Last updated: **2026-08-09**
 
 ## Summary
 
@@ -33,7 +33,9 @@ used** by the exact production path.
 - Independent `cuda_sm120a` c1 `LLM.generate()` passes the 18-position packed
   gate at max KL 0.013793 and top-1 18/18. Its retained native-prefill path
   reaches **1953.820/1852.124/1917.492 tok/s** at 128/320/512 on RTX PRO 6000
-  Blackwell GPU0, **5.412x/9.042x/13.419x** the identical serial prompt grid.
+  Blackwell GPU0, **5.412x/9.042x/13.419x** the identical serial prompt grid;
+  exact split-global/direct-SWA c1 decode reaches **402.361 tok/s** on the full
+  natural+heldout suite and **106.893 tok/s** when that suite is shaped to p512.
 - Native prefill on gfx11 and CUDA continues safely beyond the 512-token sliding
   window. The retained 520/770-token gates are byte-exact to serial through
   physical K/V rings, complete `KVLiveSpans`, final state, and continuation;
@@ -143,7 +145,7 @@ preserves **18/18** complete states and **90/90** positions at KL 0, while
 FP32 top-logit bits, continuation, and teardown. A cache-only 128-row Nsight
 trace names all expected batched families across 367 launches.
 
-CUDA c1 decode now defaults to an exact D128 wave32 attention kernel. Each
+CUDA c1 decode first retained an exact D128 wave32 attention kernel. Each
 physical lane carries four virtual local128 lanes and reconstructs the original
 FP32 reduction tree before the online-softmax PV update. Against the registered
 local128 fallback, the clean complete 18-prompt protocol improves
@@ -152,6 +154,21 @@ category non-regressive, all 1,296 token/top-logit positions and 36 complete
 state pairs exact, and clean teardown. A cache-only full-model trace names the
 wave32 kernel 24 times/token at **108.815 us median/layer**. Evidence:
 `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
+
+Long global spans now select an exact two-stage split-K route at live>=32. A
+producer computes independent local128-exact QK scores in parallel across
+query-head/token warps; one reducer then scans scores and V in original token
+order, preserving every online-softmax and PV FMA boundary. Only the six full-
+attention layers split; all 18 sliding layers remain direct wave32 at SWA-512.
+The source-clean full suite improves wave32 **397.214 -> 402.361 tok/s (+1.30%,
+1,152/1,152 wins)** at natural context and **102.688 -> 106.893 (+4.10%,
+1,152/1,152 wins)** at p512. Both retain all 1,296 positions, 36 prefill/final
+state pairs, counter checks, categories, and teardown exactly. Cache-only p512
+Nsight names 18 direct SWA calls, six score producers, and six ordered reducers
+per token. Full-product qualification stops at p512; exact leaf diagnostics
+extend through live8192, while one p4096 full-suite attempt timed out during
+serial post-wrap prefill and was not rerun. Evidence:
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json`.
 
 The generator still declines the gfx11-only fixed-batch resident capability, so
 the generic submit/poll compatibility owner reaches direct deterministic c1
@@ -320,6 +337,7 @@ text as proof of numerical correctness.
 | Packed NumPy/Torch formula vs hipEngine gfx1151, 18 positions | max KL **0.013508**, mean KL 0.001679, top-1 **18/18** |
 | Packed Torch formula vs CUDA sm_120a c1 on GPU0, same 18 positions | max KL **0.013793**, mean KL 0.001864, top-1 **18/18**, minimum hidden cosine 0.997149, device argmax exact |
 | CUDA sm_120a native vs serial, 18 natural+heldout prompts / 90 positions | **18/18** complete hidden/KV/span states; max/mean KL **0/0**; top-1/token equality **90/90**; 12/520/770 physical state and continuation exact |
+| CUDA sm_120a split-global vs direct-wave32 decode, natural and p512 full suites | each protocol preserves **36/36** prefill/final state pairs, **1,296/1,296** tokens/top logits, **2,592/2,592** zero-counter checks, every category, and lifecycle |
 | Pinned HF `trust_remote_code` oracle with matched affine4 endpoints | max KL **0.004719**, mean KL 0.000723, top-1 **18/18** |
 | P2/M5 native vs serial, 18 natural+heldout prompts / 90 seed+continuation positions | **18/18** byte-exact final-hidden/normalized/live-KV/span state hashes; max/mean KL **0/0**; top-1/token equality **90/90** |
 | D0 one- vs two-dispatch router, 18 natural+heldout prompts / 36 repeated trajectories | **36/36** native-start and final state hashes; **1,296/1,296** tokens/top logits; **2,592/2,592** zero-counter checks |
@@ -340,6 +358,8 @@ to the accepted values above; thresholds were not weakened.
 Primary evidence:
 
 - [CUDA sm_120a native prefill](../benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json)
+- [CUDA sm_120a split-K global decode](../benchmarks/results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json)
+- [CUDA sm_120a wave32 direct decode](../benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json)
 - [CUDA sm_120a c1 correctness](../benchmarks/results/2026-08-08-cuda-sm120a-maple-c1-correctness.json)
 - [`maple-ternary2-correctness.json`](../benchmarks/results/2026-08-05-gfx1151-maple-ternary2-correctness.json)
 - [`maple-public-e2e-smoke.json`](../benchmarks/results/2026-08-05-gfx1151-maple-public-e2e-smoke.json)
@@ -576,7 +596,7 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_public_batch_bench.py \
 - The submit/poll path is public in-process generation; an HTTP endpoint remains
   separate server integration work.
 - FlashHead is approximate and excluded from the exact default.
-- CUDA sm_120a c1 generation, native c1 prefill, and exact wave32 c1 decode are
-  retained through the stated gates. CUDA resident batching/serving,
-  speculative decoding, tensor parallelism, and 128K runtime qualification
-  remain separate.
+- CUDA sm_120a c1 generation, native c1 prefill, exact wave32 direct decode, and
+  exact split-K global decode are retained through the stated gates. CUDA
+  resident batching/serving, speculative decoding, tensor parallelism, and
+  full-product qualification beyond p512 remain separate.
