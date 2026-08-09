@@ -633,6 +633,143 @@ __global__ __launch_bounds__(32) void maple_attention_decode_wave32_exact_kernel
   }
 }
 
+// Exact split-K score producer for long c1 decode. Each physical warp owns one
+// query-head/token pair and reconstructs the same local128 dot tree as the
+// direct wave32 kernel. Scores are independent across tokens and can therefore
+// be produced out of order without changing model arithmetic.
+__global__ __launch_bounds__(128) void maple_attention_splitk_score_kernel(
+    const uint16_t* __restrict__ qkv,
+    const uint16_t* __restrict__ key_cache,
+    float* __restrict__ scores,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t capacity,
+    int64_t score_stride) {
+  constexpr int64_t kPartsPerLane = 4;
+  constexpr int64_t kWarpsPerBlock = 4;
+  constexpr unsigned int kFullWarp = 0xFFFFFFFFU;
+  const int64_t q_head = blockIdx.x;
+  const int64_t warp = threadIdx.x >> 5;
+  const int64_t lane = threadIdx.x & 31;
+  const int64_t token = blockIdx.y * kWarpsPerBlock + warp;
+  const int64_t live = live_counts[0] < capacity ? live_counts[0] : capacity;
+  if (q_head >= q_heads || token >= live) {
+    return;
+  }
+  const int64_t query_position = row_positions[0];
+  const int64_t start_position = query_position - live + 1;
+  const int64_t absolute_position = start_position + token;
+  const int64_t logical_slot = positive_mod(absolute_position, capacity);
+  const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+  const bool valid = physical_slot >= 0 && physical_slot < capacity
+      && token_positions[logical_slot] == absolute_position
+      && evict_mask[logical_slot] == 0;
+  if (!valid) {
+    return;
+  }
+  const int64_t group_size = q_heads / kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t kv_stride = kv_heads * head_dim;
+  float products[kPartsPerLane];
+#pragma unroll
+  for (int64_t part = 0; part < kPartsPerLane; ++part) {
+    const int64_t dimension = lane + part * 32;
+    const float q = bf16_to_float(qkv[q_head * head_dim + dimension]);
+    const int64_t cache_offset =
+        physical_slot * kv_stride + kv_head * head_dim + dimension;
+    products[part] = __fmul_rn(q, bf16_to_float(key_cache[cache_offset]));
+  }
+  float dot = __fadd_rn(
+      __fadd_rn(products[0], products[2]),
+      __fadd_rn(products[1], products[3]));
+#pragma unroll
+  for (int stride = 16; stride > 0; stride >>= 1) {
+    const float other = __shfl_down_sync(kFullWarp, dot, stride);
+    if (lane < stride) {
+      dot = __fadd_rn(dot, other);
+    }
+  }
+  if (lane == 0) {
+    scores[q_head * score_stride + token] = __fmul_rn(dot, scale);
+  }
+}
+
+// Ordered split-K reducer. This wave scans token scores and V in exactly the
+// same absolute-position order as the direct kernel, preserving online-softmax
+// max/denominator and PV FMA boundaries bit-for-bit.
+__global__ __launch_bounds__(32) void maple_attention_splitk_reduce_kernel(
+    const uint16_t* __restrict__ value_cache,
+    const float* __restrict__ scores,
+    uint16_t* __restrict__ out,
+    const int32_t* __restrict__ base_offsets,
+    const int64_t* __restrict__ live_counts,
+    const int64_t* __restrict__ token_positions,
+    const uint8_t* __restrict__ evict_mask,
+    const int64_t* __restrict__ row_positions,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    int64_t capacity,
+    int64_t score_stride) {
+  constexpr int64_t kPartsPerLane = 4;
+  const int64_t q_head = blockIdx.x;
+  const int64_t lane = threadIdx.x;
+  if (q_head >= q_heads || lane >= 32) {
+    return;
+  }
+  const int64_t group_size = q_heads / kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t kv_stride = kv_heads * head_dim;
+  const int64_t live = live_counts[0] < capacity ? live_counts[0] : capacity;
+  const int64_t query_position = row_positions[0];
+  const int64_t start_position = query_position - live + 1;
+  float accumulator[kPartsPerLane] = {};
+  float running_max = -INFINITY;
+  float running_sum = 0.0f;
+
+  for (int64_t token = 0; token < live; ++token) {
+    const int64_t absolute_position = start_position + token;
+    const int64_t logical_slot = positive_mod(absolute_position, capacity);
+    const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+    const bool valid = physical_slot >= 0 && physical_slot < capacity
+        && token_positions[logical_slot] == absolute_position
+        && evict_mask[logical_slot] == 0;
+    if (!valid) {
+      continue;
+    }
+    const float score = scores[q_head * score_stride + token];
+    const float next_max = fmaxf(running_max, score);
+    const float old_scale = isinf(running_max)
+        ? 0.0f
+        : expf(running_max - next_max);
+    const float new_scale = expf(score - next_max);
+#pragma unroll
+    for (int64_t part = 0; part < kPartsPerLane; ++part) {
+      const int64_t dimension = lane + part * 32;
+      const int64_t cache_offset =
+          physical_slot * kv_stride + kv_head * head_dim + dimension;
+      const float weighted_value = __fmul_rn(
+          bf16_to_float(value_cache[cache_offset]), new_scale);
+      accumulator[part] = fmaf(accumulator[part], old_scale, weighted_value);
+    }
+    running_sum = fmaf(running_sum, old_scale, new_scale);
+    running_max = next_max;
+  }
+#pragma unroll
+  for (int64_t part = 0; part < kPartsPerLane; ++part) {
+    const int64_t dimension = lane + part * 32;
+    out[q_head * head_dim + dimension] = float_to_bf16(
+        running_sum > 0.0f ? accumulator[part] / running_sum : 0.0f);
+  }
+}
+
 // Fused QK-norm+RoPE+KV-write + online-softmax attention decode (D2).
 // One kernel per q-head block: (1) QK-norm+RoPE the current token's Q, (2)
 // QK-norm+RoPE+KV-write the current token's K/V for this head's kv_head (done
@@ -1418,6 +1555,80 @@ extern "C" int hipengine_maple_attention_decode_wave32_exact_bf16(
       head_dim,
       scale,
       capacity);
+  return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int hipengine_maple_attention_decode_splitk_exact_bf16(
+    const uint16_t* qkv,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    uint16_t* out,
+    float* scores,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t q_heads,
+    int64_t kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t capacity,
+    int64_t launch_live,
+    int64_t score_stride,
+    cudaStream_t stream) {
+  constexpr int64_t kWarpsPerBlock = 4;
+  if (q_heads <= 0 || kv_heads <= 0 || q_heads % kv_heads != 0
+      || head_dim != 128 || capacity <= 0 || launch_live <= 0
+      || launch_live > capacity || score_stride < launch_live) {
+    return static_cast<int>(cudaErrorInvalidValue);
+  }
+  const int64_t score_blocks =
+      (launch_live + kWarpsPerBlock - 1) / kWarpsPerBlock;
+  hipLaunchKernelGGL(
+      maple_attention_splitk_score_kernel,
+      dim3(static_cast<unsigned int>(q_heads),
+           static_cast<unsigned int>(score_blocks)),
+      dim3(128),
+      0,
+      stream,
+      qkv,
+      key_cache,
+      scores,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      q_heads,
+      kv_heads,
+      head_dim,
+      scale,
+      capacity,
+      score_stride);
+  cudaError_t error = cudaGetLastError();
+  if (error != cudaSuccess) {
+    return static_cast<int>(error);
+  }
+  hipLaunchKernelGGL(
+      maple_attention_splitk_reduce_kernel,
+      dim3(static_cast<unsigned int>(q_heads)),
+      dim3(32),
+      0,
+      stream,
+      value_cache,
+      scores,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      q_heads,
+      kv_heads,
+      head_dim,
+      capacity,
+      score_stride);
   return static_cast<int>(cudaGetLastError());
 }
 

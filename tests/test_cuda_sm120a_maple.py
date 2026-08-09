@@ -82,6 +82,10 @@ def test_cuda_sm120a_maple_c1_registry_keys_resolve() -> None:
             "gqa_spans_wave32_exact_bf16",
         ),
         KernelKey(
+            "cuda_sm120a", "maple_attention_decode", "maple_ternary2",
+            "gqa_spans_splitk_exact_bf16",
+        ),
+        KernelKey(
             "cuda_sm120a", "maple_router_topk", "maple_ternary2",
             "bf16_fp32_single_dispatch",
         ),
@@ -137,6 +141,18 @@ def test_cuda_sm120a_maple_c1_decode_uses_exact_wave32_attention() -> None:
     source = inspect.getsource(MapleCudaRunner.step)
     assert "maple_attention_decode_wave32_exact_bf16(" in source
     assert "maple_attention_decode_bf16(" not in source
+
+
+def test_cuda_sm120a_maple_splitk_routes_only_full_attention_layers() -> None:
+    from hipengine.runtime.maple_cuda import MapleCudaRunner
+
+    load_source = inspect.getsource(MapleCudaRunner.load)
+    step_source = inspect.getsource(MapleCudaRunner.step)
+    assert "_split_scores" in load_source
+    assert "maple_attention_decode_splitk_exact_bf16(" in step_source
+    assert 'spec.attention_kind(layer_id) == "full_attention"' in step_source
+    assert "splitk_allowed = graph is None" in step_source
+    assert "kv_layer.spans.max_live_count" not in step_source
 
 
 def test_cuda_sm120a_maple_i32_stable_compaction_matches_cpu_order() -> None:
@@ -603,6 +619,7 @@ def test_cuda_sm120a_maple_attention_wave32_exact_matches_local128() -> None:
     from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
         build_maple_attention,
         maple_attention_decode_bf16,
+        maple_attention_decode_splitk_exact_bf16,
         maple_attention_decode_wave32_exact_bf16,
     )
     from hipengine.kvcache import KVLiveSpans
@@ -652,7 +669,9 @@ def test_cuda_sm120a_maple_attention_wave32_exact_matches_local128() -> None:
         rows_d = put(row_positions)
         baseline_d = malloc(q_size * 2, runtime=runtime)
         candidate_d = malloc(q_size * 2, runtime=runtime)
-        buffers.extend((baseline_d, candidate_d))
+        split_d = malloc(q_size * 2, runtime=runtime)
+        scores_d = malloc(q_heads * capacity * 4, runtime=runtime)
+        buffers.extend((baseline_d, candidate_d, split_d, scores_d))
         device = Device("cuda", 0)
         spans = KVLiveSpans.sliding_ring(
             base_offsets=Tensor.from_handle(
@@ -683,17 +702,33 @@ def test_cuda_sm120a_maple_attention_wave32_exact_matches_local128() -> None:
         maple_attention_decode_wave32_exact_bf16(
             q_d.ptr, key_d.ptr, value_d.ptr, candidate_d.ptr, spans, **launch_args
         )
+        maple_attention_decode_splitk_exact_bf16(
+            q_d.ptr,
+            key_d.ptr,
+            value_d.ptr,
+            split_d.ptr,
+            scores_d.ptr,
+            spans,
+            launch_live=live,
+            score_stride=capacity,
+            **launch_args,
+        )
         runtime.device_synchronize()
         baseline = np.empty(q_size, dtype=np.uint16)
         candidate = np.empty_like(baseline)
+        split = np.empty_like(baseline)
         copy_device_to_host(
             host_array_ptr(baseline), baseline_d, nbytes=baseline.nbytes, runtime=runtime
         )
         copy_device_to_host(
             host_array_ptr(candidate), candidate_d, nbytes=candidate.nbytes, runtime=runtime
         )
+        copy_device_to_host(
+            host_array_ptr(split), split_d, nbytes=split.nbytes, runtime=runtime
+        )
 
         np.testing.assert_array_equal(candidate, baseline)
+        np.testing.assert_array_equal(split, baseline)
         valid_positions = [
             position
             for position in range(start_position, query_position + 1)

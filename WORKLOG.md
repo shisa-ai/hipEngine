@@ -216819,3 +216819,50 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `benchmarks/results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json`
   plus the changelog/catalog/performance-plan disposition. Raw profiler data
   remains `/tmp/maple-cuda-gqa4-negative.nsys-rep` and out of Git.
+
+## 2026-08-09 — Implement exact split-K for Maple CUDA global decode
+
+- Define RED for registered `gqa_spans_splitk_exact_bf16` on the production
+  D128 eviction-hole fixture plus a runtime-source contract requiring owned
+  score scratch and `spec.attention_kind(layer_id) == "full_attention"` route
+  selection. RED fails at the intended missing key/scratch boundary.
+- Implement two exact raw-pointer kernels. `maple_attention_splitk_score_kernel`
+  maps one warp to each `(query_head, token)`, reconstructing the same local128
+  dot tree as direct wave32. `maple_attention_splitk_reduce_kernel` scans scores
+  and V in original token order, preserving every max/exp/denominator/PV FMA
+  boundary. One runner-owned `[16,max_context]` FP32 score buffer is reused
+  across the six global layers. Device spans remain authoritative; host live is
+  used only for producer-grid sizing.
+- A focused crossover screen is exact and measures wave32 -> split at live17
+  **0.009241 -> 0.009406 ms (0.982x)**, live24
+  **0.012164 -> 0.011614 (1.047x)**, live32
+  **0.015722 -> 0.014377 (1.094x)**, live128
+  **0.059081 -> 0.048279 (1.224x)**, live512
+  **0.231388 -> 0.183014 (1.264x)**, live4096
+  **1.841707 -> 1.443734 (1.276x)**, and live8192
+  **3.682795 -> 2.886230 (1.276x)**. Select conservative measured threshold 32.
+- Wire split only for the six `full_attention` layers at live>=32. All 18
+  `sliding_attention` layers stay on direct wave32 regardless of position;
+  opt-in CUDA graph replay also stays direct because a captured producer grid
+  cannot safely grow with live context. The complete GPU0 Maple file passes
+  **13/13**, including 520/770 SWA/global physical state and continuation, and
+  the c1 harness unit passes **3/3**.
+- Full dirty natural+heldout A/B is exact for all **1,296/1,296** positions and
+  **36/36** prefill/final state pairs and improves wave32
+  **397.509 -> 402.547 tok/s (+1.267%, 1,150/1,152 wins)** with every category
+  non-regressive. The full p512 shaped 18-prompt/category-heldout suite is also
+  exact and improves **102.811 -> 107.018 tok/s (+4.092%, 1,152/1,152 wins)**.
+  Both statuses are intentionally rejected only because implementation source is
+  dirty.
+- Attempt the same full suite at p4096 once. It exceeds the 600-second command
+  budget because current post-SWA-wrap prefill serializes the sliding-layer tail
+  for all 72 candidate/control prompt admissions; no artifact is emitted and no
+  expensive repeat/downscale is authorized. Retain full product evidence at
+  p512, where global spans grow beyond 512 while SWA remains fixed, plus direct
+  exact leaf evidence through 8192.
+- Cache-only p512 full-model Nsight (`/tmp/maple-cuda-splitk-p512.nsys-rep`)
+  records per token exactly **18** direct SWA calls, **6** split score producers,
+  and **6** ordered reducers. Across 32 steps, direct wave32 is 576 calls at
+  **343.277 us median**, split producer is 192 at **2.720 us**, and split reducer
+  is 192 at **297.661 us**. The profiled complete runner is **9.354 ms/token**
+  median. Keep raw profiler output under `/tmp`.

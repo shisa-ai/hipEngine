@@ -112,6 +112,15 @@ def _tokenizer(checkpoint) -> MapleTokenizer:
     )
 
 
+def _shape_tokens(tokens: tuple[int, ...], length: int) -> tuple[int, ...]:
+    if not tokens:
+        raise ValueError("cannot shape an empty Maple prompt")
+    if length <= 0:
+        raise ValueError("Maple shaped prompt length must be positive")
+    repeats = (int(length) + len(tokens) - 1) // len(tokens)
+    return (tokens * repeats)[: int(length)]
+
+
 @contextmanager
 def _production_environment() -> Iterator[None]:
     """Force selector-unset production defaults and restore the caller state."""
@@ -150,19 +159,29 @@ class _CudaAttentionModes:
 
         self._runtime_module = runtime_module
         self._production = runtime_module.maple_attention_decode_wave32_exact_bf16
+        self._production_splitk_min = runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE
         self._kernels = {
             "production": self._production,
             "local128": maple_attention_decode_bf16,
             "wave32": maple_attention_decode_wave32_exact_bf16,
+            "splitk": maple_attention_decode_wave32_exact_bf16,
+        }
+        self._splitk_min = {
+            "production": self._production_splitk_min,
+            "local128": 1 << 60,
+            "wave32": 1 << 60,
+            "splitk": self._production_splitk_min,
         }
 
     def select(self, mode: str) -> None:
         self._runtime_module.maple_attention_decode_wave32_exact_bf16 = self._kernels[
             mode
         ]
+        self._runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE = self._splitk_min[mode]
 
     def close(self) -> None:
         self._runtime_module.maple_attention_decode_wave32_exact_bf16 = self._production
+        self._runtime_module._MAPLE_CUDA_SPLITK_MIN_LIVE = self._production_splitk_min
 
 
 def _copy_device_bytes(
@@ -590,13 +609,19 @@ def main() -> int:
     parser.add_argument("--warmup-steps", type=int, default=4)
     parser.add_argument("--repetitions", type=int, default=2)
     parser.add_argument(
+        "--prompt-length",
+        type=int,
+        default=None,
+        help="repeat/truncate each natural prompt's token sequence to this length",
+    )
+    parser.add_argument(
         "--candidate-attention",
-        choices=("production", "local128", "wave32"),
+        choices=("production", "local128", "wave32", "splitk"),
         default="production",
     )
     parser.add_argument(
         "--control-attention",
-        choices=("production", "local128", "wave32"),
+        choices=("production", "local128", "wave32", "splitk"),
         default="production",
     )
     parser.add_argument("--out", type=Path, required=True)
@@ -611,9 +636,16 @@ def main() -> int:
         args.heldout, heldout=True
     )
     tokenized = [(prompt, tuple(tokenizer.encode_chat(prompt["text"]))) for prompt in prompts]
-    if any(not tokens or len(tokens) > 512 for _, tokens in tokenized):
-        raise ValueError("all qualification prompts must contain 1-512 native-prefill tokens")
+    if args.prompt_length is not None:
+        tokenized = [
+            (prompt, _shape_tokens(tokens, args.prompt_length))
+            for prompt, tokens in tokenized
+        ]
+    if any(not tokens for _, tokens in tokenized):
+        raise ValueError("all qualification prompts must contain native-prefill tokens")
     max_context = max(len(tokens) for _, tokens in tokenized) + args.warmup_steps + args.steps
+    if max_context > checkpoint.spec.max_position_embeddings:
+        raise ValueError("qualification prompt plus decode exceeds Maple context capacity")
 
     attention_modes = {
         "candidate": args.candidate_attention,
@@ -783,6 +815,7 @@ def main() -> int:
             "warmup_steps": args.warmup_steps,
             "repetitions": args.repetitions,
             "prompt_count": len(rows),
+            "prompt_length": args.prompt_length,
             "max_context": max_context,
             "timing_scope": "perf_counter around resident MapleRunner.step; native prefill and warmup excluded",
             "pairing": "two simultaneous resident runners; execution order alternates by prompt/repetition/step",

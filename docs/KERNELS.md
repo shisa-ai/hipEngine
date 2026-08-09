@@ -274,6 +274,15 @@ head loaded each K/V row once, but reached only **0.897x** wave32 at live512 and
 **0.863x/0.861x/0.860x**. No `gqa4_spans_wave32_exact_bf16` key remains. Evidence:
 `benchmarks/results/2026-08-09-cuda-sm120a-maple-gqa4-decode-rejected.json`.
 
+The long-global candidate registers `gqa_spans_splitk_exact_bf16` as two named
+kernels sharing one runner-owned FP32 score buffer. The producer parallelizes
+independent local128-exact QK scores across query-head/token warps; the reducer
+scans those scores and V in original token order, preserving online-softmax/PV
+FMA boundaries. `MapleCudaRunner` selects it only for `full_attention` at the
+measured live>=32 crossover and only outside graph replay. All 18 sliding layers
+remain on direct wave32, including at SWA-512. Direct and 520/770 full-model
+gates are byte-exact; retained long-suite publication follows separately.
+
 `hipengine/kernels/cuda_sm120a/moe/group_scatter.{cu,py}` adds the stable int32
 count/prefix/scatter metadata family, completing the grouped native-prefill
 chain without a HIP builder or row/route-gather production fallback. The clean
