@@ -96,9 +96,24 @@ def test_qwen35moe_gguf_tensor_map_covers_local_inventory() -> None:
     assert model_map.config.layer_types.count(LINEAR_ATTENTION) == 30
     assert model_map.config.lm_head_tensor_name == "output.weight"
     assert len(model_map.layers) == 40
-    assert model_map.config.ignored_block_ids == (40,)
+    extra_block_ids = tuple(
+        sorted(
+            {
+                int(parts[1])
+                for tensor in info.tensors
+                if (parts := tensor.name.split(".", 2))[0] == "blk"
+                and parts[1].isdigit()
+                and int(parts[1]) >= model_map.config.block_count
+            }
+        )
+    )
+    assert model_map.config.ignored_block_ids == extra_block_ids
     ar_tensor_names = {
-        tensor.name for tensor in info.tensors if not tensor.name.startswith("blk.40.")
+        tensor.name
+        for tensor in info.tensors
+        if not any(
+            tensor.name.startswith(f"blk.{block_id}.") for block_id in extra_block_ids
+        )
     }
     assert set(model_map.tensor_names) == ar_tensor_names
     assert len(model_map.tensor_names) == len(ar_tensor_names)

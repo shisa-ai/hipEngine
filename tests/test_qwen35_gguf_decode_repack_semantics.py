@@ -22,7 +22,7 @@ def test_p10_x1_decode_repack_does_not_change_linear_attention_math() -> None:
     assert "gguf_decode_repack_enabled" not in source
     assert "scratch.recurrent_out.ptr" in source
     assert "ssm_out_activation_dtype = GGUF_ACTIVATION_F32" in source
-    assert "output_cast = self._gdn_decode_output_cast_fn()" in source
+    assert "output_cast = self._gdn_decode_output_cast_for_weight(ssm_out_weight)" in source
     assert "activation_dtype=ssm_out_activation_dtype" in source
 
 

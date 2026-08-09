@@ -887,6 +887,16 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
                 ("linear+argmax", "proposal_top1_exact_bf16"),
             )
         ),
+        (
+            "linear_q8_1",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_q8_1_dp4a_gemv_bf16_bf16_out",
+        ),
+        (
+            "linear_q8_1+residual",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out",
+        ),
         # Exact single-page and P2 split attention are W7900-only until gfx1151
         # receives independent crossover, full-state, and performance gates.
         (
