@@ -216988,3 +216988,18 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   and introduces trailing whitespace. Leave it unstaged and do not overwrite
   it; v0.4.0 release preparation is blocked until its owner resolves or approves
   that change.
+
+## 2026-08-10 — Clean user-approved README copy
+
+- The user finalized and committed the intended root README content in
+  `6d72e39ce`, then approved a grammar and whitespace cleanup without substantive
+  changes.
+- Remove trailing spaces; repair obvious spelling, capitalization, agreement,
+  punctuation, and incomplete-sentence errors in the introduction and benefit
+  list. Preserve the user's structure, links, model/support claims, and
+  benchmark tables. Introduce no em-dash sentence punctuation; retain the
+  existing table marks that mean an unsupported or unavailable result.
+- Validation: `git diff --check -- README.md`,
+  `python3 scripts/sync_benchmark_readme.py --check`, and
+  `uv run --python 3.12 --extra dev python -m pytest -q
+  tests/test_benchmark_readme_sync.py` all pass (`6 passed`).
