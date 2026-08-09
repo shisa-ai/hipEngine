@@ -216888,3 +216888,26 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   and update the canonical topline, changelog, kernel catalog, plan, and Maple
   docs. Do not widen the retained full-product boundary beyond p512 or imply a
   successful p4096 run.
+
+## 2026-08-09 — Close FastDMS-pattern Maple CUDA attention audit
+
+- Fetch `origin/main` after publication and confirm this branch is **19 ahead / 0
+  behind**. The only worktree residue is the pre-existing unrelated untracked
+  `hipengine/.gitignore`; leave it untouched.
+- Map all three requested CUDA-math experiments to committed evidence. Exact
+  wave32 is `2de2d3a25` + retained publication `14b267f79`; cooperative GQA4 is
+  exact but rejected/removed in `6f2912c56`; exact split-K global decode is
+  `9fbf4c1cd` + retained publication `c9d40fdd1`.
+- Verify source policy directly: local128, wave32, and split-K registry keys
+  remain; no decode-specific `gqa4_spans_wave32_exact_bf16` key or grouped
+  symbol remains. `MapleCudaRunner.step()` selects split-K only when graph replay
+  is absent, `attention_kind(layer_id) == "full_attention"`, and live>=32;
+  therefore all 18 sliding layers remain direct wave32 and only the six growing
+  global layers split.
+- The retained math path moves the original local128 natural-suite stage
+  **341.012 -> 402.361 tok/s (+17.99%)** cumulatively. This is the sum of the
+  retained wave32 geometry change and split global score production, not a claim
+  against the unrelated historical HF/FastDMS harness. At p512, the final split
+  stage improves same-session direct wave32 **102.688 -> 106.893 tok/s (+4.10%)**.
+  All product claims use the complete natural/category-heldout suite; p512 is the
+  long full-product boundary.
