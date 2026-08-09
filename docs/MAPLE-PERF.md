@@ -1,6 +1,6 @@
 # MAPLE — gfx1151 Prefill & Decode Performance Plan
 
-Last updated: 2026-08-08
+Last updated: 2026-08-09
 
 This is the authoritative performance punchlist for
 `deepgrove/maple-preview-2bit-mlx` on Radeon 8060S / `hip_gfx1151`. It reuses
@@ -19,6 +19,7 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | --- | ---: | --- |
 | Public native prefill 128/320/512 | 750.854 / 741.890 / 754.458 tok/s | retained P4 recertification; <=0.224% from P2 |
 | CUDA sm_120a native c1 prefill 128/320/512 | 1953.820 / 1852.124 / 1917.492 tok/s | RTX PRO 6000 GPU0; 5.412x / 9.042x / 13.419x matched serial |
+| CUDA sm_120a natural+heldout exact c1 decode | 396.328 tok/s | exact wave32 vs local128 341.012 tok/s; +16.22%, 1,152/1,152 wins |
 | Current c1 fixed-token A/B candidate | 202.580 tok/s (4.936-ms process mean) | four-process alternating selector-snapshot gate |
 | Current c1 trace companion | 199.293 tok/s (5.018 ms/token) | separate clean cached trace; 4.550-ms kernels |
 | Current c1 natural-context | 153.201 tok/s | repeated complete category/state gate; -0.14% vs prior 153.409 |
@@ -31,14 +32,17 @@ L3, ~256 GB/s LPDDR5X, 59.4 TFLOP/s BF16-WMMA, 118.8 TOP/s INT4-WMMA @ 2.9 GHz.
 | Public tracked residency (max context 512) | 4.988 GiB (5,355,881,852 bytes) | retained P4 recertification |
 | Native-prefill qualification | performance: 128/320/512; exact state: 520/770 | public path continues to configured context |
 
-**CUDA peer conclusion.** The complete grouped native c1 prefill path is now
+**CUDA peer conclusion.** The complete grouped native c1 prefill path is
 retained on `cuda_sm120a`: 18/18 natural+heldout states and 90/90 positions are
 exact at KL 0, 520/770 physical state matches serial, and cache-only Nsight names
 all batched families. The fixed matched-grid row is
-**1953.820/1852.124/1917.492 tok/s** at 128/320/512. CUDA resident batching,
-serving, and decode throughput remain separate from this gfx1151 punchlist.
-Evidence:
-`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`.
+**1953.820/1852.124/1917.492 tok/s** at 128/320/512. Exact wave32 c1 decode is
+also retained/default: the clean complete suite improves local128
+**341.012 -> 396.328 tok/s (+16.22%)** with 1,152/1,152 wins, all 1,296 positions
+and 36 state pairs exact, and a named 24-call/token trace. CUDA resident batching
+and serving remain separate from this gfx1151 punchlist. Evidence:
+`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`
+and `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
 
 **Current gfx1151 conclusion (P0+P1+P2+P4, D0, and D1 retained; P3 rejected).**
 Final-row-only sampling nearly doubles qualified native prefill, expert-major
@@ -111,6 +115,7 @@ expert. The table omits workload/repeat/software details, so it is directional,
 not a cross-device benchmark.
 
 Evidence:
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`,
 `benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`,
 `benchmarks/results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-retained.json`,
@@ -582,8 +587,8 @@ Rules (per `AGENTS.md`):
 
 - FlashHead as the default (approximate; opt-in only).
 - MTP speculative decode (no drafter for Maple yet).
-- CUDA sm_120a c1 generation and native c1 prefill are retained separately;
-  CUDA resident batching/serving, decode performance, tensor parallelism, and
+- CUDA sm_120a c1 generation, native c1 prefill, and exact wave32 c1 decode are
+  retained separately; CUDA resident batching/serving, tensor parallelism, and
   FP16-dequant prefill remain separate tracks.
 - Do not land throwaway prefill paths; build the complete bulk path directly
   per `docs/PREFILL.md` policy.

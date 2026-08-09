@@ -216778,3 +216778,15 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   **108.815 us median/layer** over 32 steps. The profiled complete runner is
   **3.947 ms/token** mean; wave32 attention owns 68.0% of traced GPU time. Keep
   the raw report under `/tmp` and out of Git.
+- Commit the implementation/gate/harness unit as `2de2d3a25`, create detached
+  clean worktree `/tmp/hipengine-maple-wave32-clean` at that exact commit, and
+  rerun the full protocol. The accepted source-clean result reproduces all
+  **18/18 prompts, 36/36 prefill/final states, 1,296/1,296 token/top-logit
+  positions, and 2,592/2,592 zero-router-counter checks** with tracked
+  **10,672,716,372 bytes / 1,120 allocations -> 0**. Local128 -> wave32 is
+  **341.012 -> 396.328 tok/s (+16.221%, 1.16221x)** with **1,152/1,152 wins**
+  and every category non-regressive. The detailed 210,121-byte source artifact
+  SHA-256 is `15f1219f46ab419cdb8042d87719976feb6d8fffeacc554897323d01fe336bde`.
+  Publish compact retained evidence as
+  `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`
+  and update support, topline, changelog, kernel catalog, plan, and Maple docs.

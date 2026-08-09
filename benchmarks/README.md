@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-08**
+Last updated: **2026-08-09**
 
 ## Root README performance summary
 
@@ -17,7 +17,7 @@ records remain in the model-specific sections below.
 | Laguna S 2.1 GGUF `Q4_K_M` | Radeon 8060S / gfx1151 | retained pp512 / p512+d128 c1 | **654.249** | **23.221** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | Radeon Pro W7900 / gfx1100 | natural C4096 / direct M512 prefill | **440.893** | — |
 | Maple-Preview ternary 2-bit | Radeon 8060S / gfx1151 | native p512 / natural+heldout exact c1 | **754.458** | **153.201** |
-| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / matched 8-prompt serial grid | **1917.492** | — |
+| Maple-Preview ternary 2-bit | RTX PRO 6000 Blackwell / sm_120a | native p512 / natural+heldout exact c1 | **1917.492** | **396.328** |
 
 Where a row names separate prefill and decode workloads, its cells are the
 latest retained results for those explicitly named protocols, not one combined
@@ -48,9 +48,21 @@ native vs serial **1953.820 vs 361.038**, **1852.124 vs 204.842**, and
 **18/18** hidden/KV/span states and **90/90** positions at KL 0; 520/770-token
 physical SWA/global K/V and continuation gates are also exact. Tracked
 residency is **5,355,881,852 bytes / 560 allocations** and close returns zero.
-This promotes native c1 prefill only; CUDA resident batching, serving, and
-decode throughput remain unclaimed. Evidence:
+This promotes native c1 prefill; CUDA c1 decode is qualified separately below,
+while resident batching and serving remain unclaimed. Evidence:
 [`CUDA native prefill`](results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json).
+
+**Maple CUDA sm_120a exact wave32 c1 decode retained/default on GPU0:** one
+physical warp now emulates each original local128 query-head reduction tree.
+The clean two-runner 18-prompt natural+category-heldout protocol improves the
+registered local128 fallback **341.012 -> 396.328 tok/s (+16.22%, 1.1622x)**
+with **1,152/1,152 paired wins** and every category non-regressive. All
+**1,296/1,296** token/top-logit positions, **36/36** native-prefill/final state
+pairs, **2,592/2,592** router-counter checks, complete live K/V/spans, and
+teardown are exact. Cache-only Nsight names the wave32 kernel 24 times/token at
+**108.815 us median/layer**. This is a c1 decode claim; CUDA batching and serving
+remain unclaimed. Evidence:
+[`CUDA wave32 decode`](results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json).
 
 **Maple P4 retained on Radeon 8060S/gfx1151:** safe SWA-wrap orchestration
 extends exact native prefill beyond 512, and fixed-slot admission now connects

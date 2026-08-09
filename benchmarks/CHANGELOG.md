@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-08-09
+
+- [retained/default Maple CUDA exact wave32 c1 decode] deepgrove/maple-preview-2bit-mlx / maple_ternary2 / 18-prompt natural+category-heldout c1 on RTX PRO 6000 Blackwell GPU0: registered local128 **341.012 -> 396.328 tok/s (+16.22%, 1.1622x)** by mapping each virtual local128 query-head tree onto one physical wave32; all **1,152/1,152** measured pairs win, every category is non-regressive, **1,296/1,296** token/top-logit positions and **36/36** native-prefill/final states are exact, lifecycle closes, and cached Nsight names 24 wave32 calls/token at **108.815 us median/layer**; `benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
+
 ## 2026-08-08
 
 - [automatic c1 PM4 margin hardened; packed defaults unchanged] Qwen3.6-35B-A3B Q4_K_M / one-step c1 graphs / W7900: late clean p4096 paired evidence measures **143-transition capture break-even** and shows d128 PM4 still **+0.785% slower capture-inclusive**, so raise only c1 package admission **144→160 transitions** to restore >10% margin; clean source-pinned TheRock HIP 7.15 no-env proof routes d159→HIP and d160→PM4 with exact repeatable trajectories, **627-node** full retirement, zero fallback/callback/unretired work, and zero tracked bytes after close, while c2/c4/c8 remain **64/96/80**; `benchmarks/results/2026-08-08-gfx1100-pm4-scoped-default.json`.

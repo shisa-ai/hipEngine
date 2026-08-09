@@ -125,7 +125,7 @@ implementation. Prompt **storage admission** is packed into fixed slots; prompt
 compute is currently native per request rather than one ragged multi-request
 GEMM.
 
-### CUDA sm_120a c1 generation and native prefill
+### CUDA sm_120a c1 generation, native prefill, and exact decode
 
 The `cuda_sm120a` generation factory injects `MapleCudaRunner`; it does not add
 backend branches to the model, dispatcher, or engine. The runner loads the same
@@ -143,10 +143,20 @@ preserves **18/18** complete states and **90/90** positions at KL 0, while
 FP32 top-logit bits, continuation, and teardown. A cache-only 128-row Nsight
 trace names all expected batched families across 367 launches.
 
+CUDA c1 decode now defaults to an exact D128 wave32 attention kernel. Each
+physical lane carries four virtual local128 lanes and reconstructs the original
+FP32 reduction tree before the online-softmax PV update. Against the registered
+local128 fallback, the clean complete 18-prompt protocol improves
+**341.012 -> 396.328 tok/s (+16.22%)** with all 1,152 pairs positive, every
+category non-regressive, all 1,296 token/top-logit positions and 36 complete
+state pairs exact, and clean teardown. A cache-only full-model trace names the
+wave32 kernel 24 times/token at **108.815 us median/layer**. Evidence:
+`benchmarks/results/2026-08-09-cuda-sm120a-maple-wave32-decode-retained.json`.
+
 The generator still declines the gfx11-only fixed-batch resident capability, so
 the generic submit/poll compatibility owner reaches direct deterministic c1
 `LLM.generate()` without crossing into HIP builders. CUDA resident c2/c4/c8,
-HTTP serving, decode performance, and graph qualification remain separate gates.
+HTTP serving, and graph qualification remain separate gates.
 
 ## Interpreting DeepGrove's Apple numbers
 
@@ -566,6 +576,7 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/maple_public_batch_bench.py \
 - The submit/poll path is public in-process generation; an HTTP endpoint remains
   separate server integration work.
 - FlashHead is approximate and excluded from the exact default.
-- CUDA sm_120a c1 generation and native c1 prefill are retained through the
-  stated gates. CUDA resident batching/serving, decode performance, speculative
-  decoding, tensor parallelism, and 128K runtime qualification remain separate.
+- CUDA sm_120a c1 generation, native c1 prefill, and exact wave32 c1 decode are
+  retained through the stated gates. CUDA resident batching/serving,
+  speculative decoding, tensor parallelism, and 128K runtime qualification
+  remain separate.

@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-09",
+  "artifact_type": "maple_cuda_c1_attention_optimization_retained",
+  "status": "accepted",
+  "performance_claim": true,
+  "route": {
+    "backend": "cuda_sm120a",
+    "candidate": "gqa_spans_wave32_exact_bf16",
+    "control": "gqa_spans_bf16",
+    "candidate_default": true,
+    "control_retained_as_registered_fallback": true
+  },
+  "model": {
+    "id": "deepgrove/maple-preview-2bit-mlx",
+    "resolved_path": "/models/hf/maple-preview-2bit-mlx",
+    "revision": "361db5da5e74ff6fcdd852d478e1f266ce11013a",
+    "quant": "maple_ternary2",
+    "exact_weight_bytes": 5314226604
+  },
+  "hardware": {
+    "physical_gpu": 0,
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "gpu_uuid": "GPU-04fe1d76-7582-80ce-91ef-670b96072933",
+    "architecture": "sm_120a",
+    "driver_version": "610.43.03",
+    "cuda": "13.3",
+    "nvcc": "13.3.73",
+    "host": "dev"
+  },
+  "software": {
+    "git_commit": "2de2d3a25c7e1986212d275c46dfee56eb34ce30",
+    "worktree_clean": true,
+    "python": "3.12.3",
+    "full_qualification_artifact": "/tmp/maple-cuda-wave32-qualified-clean.json",
+    "full_qualification_bytes": 210121,
+    "full_qualification_sha256": "15f1219f46ab419cdb8042d87719976feb6d8fffeacc554897323d01fe336bde"
+  },
+  "protocol": {
+    "command": "CUDA_VISIBLE_DEVICES=0 HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt PYTHONPATH=/tmp/hipengine-maple-wave32-clean /home/lhl/hipEngine/.venv/bin/python /tmp/hipengine-maple-wave32-clean/scripts/maple_c1_bench.py --model /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a --candidate-attention wave32 --control-attention local128 --steps 32 --warmup-steps 4 --repetitions 2 --out /tmp/maple-cuda-wave32-qualified-clean.json",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "heldout": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "prompt_count": 18,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "repetitions": 2,
+    "warmup_steps_per_prompt": 4,
+    "measured_steps_per_prompt": 32,
+    "measured_pairs": 1152,
+    "decode_positions_including_warmup": 1296,
+    "max_context": 115,
+    "pairing": "two simultaneous resident runners; candidate/control execution order alternates by prompt, repetition, and step",
+    "timing_scope": "perf_counter around resident MapleCudaRunner.step; model load, native prefill, warmup, state copies, and router-counter checks excluded"
+  },
+  "correctness": {
+    "passed": true,
+    "suite_qualified": true,
+    "prompt_matches": 18,
+    "prompt_count": 18,
+    "prefill_state_matches": 36,
+    "final_state_matches": 36,
+    "token_matches": 1296,
+    "top_logit_matches": 1296,
+    "router_counter_checks": 2592,
+    "router_counter_violations": 0,
+    "state_scope": "final hidden, normalized, full logits, argmax, router outputs/counter, all live K/V bytes, and complete sliding/global KVLiveSpans metadata",
+    "direct_kernel_fixture": {
+      "shape": "16 query heads / 4 KV heads / D128 / live17",
+      "edge": "non-power-of-two live span with one eviction hole",
+      "candidate_vs_local128": "BF16-bit exact",
+      "candidate_vs_cpu_reference": "passed atol=0.004 rtol=0.02"
+    }
+  },
+  "performance": {
+    "passed": true,
+    "category_nonregressive": true,
+    "control": {
+      "aggregate_tokens_per_second": 341.0123897600435,
+      "mean_ms": 2.932444773351664,
+      "median_ms": 2.9100870597176254,
+      "min_ms": 2.2681449772790074,
+      "max_ms": 3.8591530174016953
+    },
+    "candidate": {
+      "aggregate_tokens_per_second": 396.32831285486634,
+      "mean_ms": 2.5231606412287673,
+      "median_ms": 2.5066329981200397,
+      "min_ms": 2.0288819214329123,
+      "max_ms": 3.205234999768436
+    },
+    "speedup": 1.1622108895625358,
+    "delta_percent": 16.22108895625358,
+    "paired_mean_saving_ms": 0.40928413212289644,
+    "paired_median_saving_ms": 0.4040839849039912,
+    "candidate_wins": 1152,
+    "categories": {
+      "code": {
+        "samples": 384,
+        "control_tokens_per_second": 353.22257280625274,
+        "candidate_tokens_per_second": 408.39822280295226,
+        "candidate_wins": 384
+      },
+      "general_en": {
+        "samples": 256,
+        "control_tokens_per_second": 365.2985506480768,
+        "candidate_tokens_per_second": 420.33057484348933,
+        "candidate_wins": 256
+      },
+      "general_ja": {
+        "samples": 256,
+        "control_tokens_per_second": 332.4877430705811,
+        "candidate_tokens_per_second": 387.7916300455734,
+        "candidate_wins": 256
+      },
+      "mixed_ja_en": {
+        "samples": 256,
+        "control_tokens_per_second": 312.0834966633921,
+        "candidate_tokens_per_second": 367.16746325037224,
+        "candidate_wins": 256
+      }
+    }
+  },
+  "leaf_screen": {
+    "scope": "GPU0 CUDA-event medians; complete contiguous 16q/4kv/D128 spans; diagnostic",
+    "rows": [
+      {
+        "live": 128,
+        "local128_ms": 0.08940133412679035,
+        "wave32_ms": 0.05907717386881511,
+        "speedup": 1.5132974086626438,
+        "exact": true
+      },
+      {
+        "live": 512,
+        "local128_ms": 0.35278949737548826,
+        "wave32_ms": 0.23136314392089843,
+        "speedup": 1.5248301496806453,
+        "exact": true
+      },
+      {
+        "live": 4096,
+        "local128_ms": 2.813067531585693,
+        "wave32_ms": 1.8413064002990722,
+        "speedup": 1.5277563425233212,
+        "exact": true
+      },
+      {
+        "live": 8192,
+        "local128_ms": 5.625659179687499,
+        "wave32_ms": 3.6817632675170895,
+        "speedup": 1.527979604044813,
+        "exact": true
+      }
+    ]
+  },
+  "profiler": {
+    "tool": "Nsight Systems 2026.1.3",
+    "raw_report": "/tmp/maple-cuda-wave32-decode.nsys-rep",
+    "raw_report_committed": false,
+    "raw_report_sha256": "905deee54be32d5120ff42fc02160c405e7380e9813e21f1dab06d12316d1689",
+    "profiled_steps": 32,
+    "complete_runner_mean_ms": 3.946981105400482,
+    "complete_runner_median_ms": 3.9486795431002975,
+    "kernel": "maple_attention_decode_wave32_exact_kernel",
+    "instances": 768,
+    "instances_per_token": 24,
+    "total_time_ns": 83575423,
+    "median_ns_per_layer": 108815,
+    "gpu_time_percent": 68.0
+  },
+  "memory": {
+    "scope": "hipEngine-owned device allocations; excludes CUDA runtime internals",
+    "two_runner_resident_bytes": 10672716372,
+    "two_runner_allocations": 1120,
+    "after_close_bytes": 0,
+    "after_close_allocations": 0,
+    "lifecycle_passed": true
+  },
+  "acceptance": {
+    "policy": "candidate improves aggregate decode, every category is non-regressive, complete state/token/top-logit gates pass, named trace is plausible, and tracked lifecycle closes",
+    "passed": true
+  },
+  "limitations": [
+    "This is a resident c1 decode claim, not CUDA c2/c4/c8 batching or HTTP serving.",
+    "The retained natural/heldout suite reaches max context 115; long-span speed is leaf evidence pending grouped-GQA and split-K qualification.",
+    "FastDMS grouped-attention ratios are motivation only and are not reported as Maple measurements."
+  ]
+}
