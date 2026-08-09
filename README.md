@@ -1,27 +1,32 @@
 # hipEngine
 
-hipEngine runs selected language models locally with native ROCm kernels. It is
-built first for AMD Radeon GPUs and provides a Python API and an
-OpenAI-compatible server.
+hipEngine is a ROCm-native local inference engine built primarily for AMD 
+Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free 
+model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.4.0 alpha.** hipEngine is for users who are comfortable
-with a terminal and want a lightweight ROCm-native engine. It is not a desktop
-chat application like Ollama, LM Studio, or Lemonade: it does not include a
-model browser or chat window.
+**Current release: v0.4.0 alpha.** Besides the Qwen 3.6 PARO and GGUF models,
+the latest version of hipEngine now supports GGUF inference of more model
+families. This includes [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
+[Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove) and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
 
 ## Why use hipEngine?
 
-- **Native AMD support.** The main kernels are written for AMD RDNA 3 and
-  RDNA 3.5 GPUs instead of passing work through a CUDA compatibility layer.
-- **No PyTorch runtime required.** Normal model loading, generation, and serving
-  do not depend on PyTorch.
-- **Works with existing clients.** The server provides OpenAI-compatible chat
-  and completion endpoints.
-- **Clear failures.** An unsupported model, format, or GPU stops with an error.
-  hipEngine does not silently switch to a slower PyTorch path.
+- **Native AMD support.** HIP-first kernels directly target and tune for specific
+  RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of bein CUDA ports.
+- **No PyTorch runtime required.** there is no PyTorch dependency, keeping 
+  hipEngine lightweight (also, while Python-packaged, almost all of the hotpath
+  is C++.
+- **Agent and multi-request concurrency optimized.** Besides extensive tuning for
+  fast single-request performance (especially for prefill), hipEngine also has
+  tuned c=N support. It's significantly faster than llama.cpp or vLLM when it
+  comes to c=8 results.
+- **Drop in with existing clients.** The included OpenAI-compatible server 
+  supports completion, chat, token-level SSE, logprobs, tools, structured-output
+  validation, Qwen thinking controls, logprob-biased efforc contro, and 
+  request diagnoticts.
 
-hipEngine is still alpha software. Its model list is much smaller than the lists
-in Ollama or LM Studio. Check the table below before downloading a model.
+hipEngine is new/small software project and is focused on make a select list of
+models perform well (particularly Qwen 3.x variants/fine tunes).
 
 ## Supported models
 
@@ -62,8 +67,8 @@ remains supported.
 
 | Platform | Requirements |
 | --- | --- |
-| AMD | Linux x86-64, Python 3.10 or newer, and ROCm with `hipcc` and `libamdhip64.so` |
-| NVIDIA Blackwell | Linux x86-64, Python 3.10 or newer, and the CUDA toolkit with `nvcc`; Maple only |
+| AMD | Linux x86-64, Python 3.10+ and ROCm with `hipcc` and `libamdhip64.so` |
+| NVIDIA Blackwell | Linux x86-64, Python 3.10+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
 ROCm 7.x is the safest choice for the current wheel. The first model load
