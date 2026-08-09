@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hipengine"
-version = "0.3.0"
+version = "0.4.0"
 description = "ROCm-native local LLM inference engine with a torch-free runtime hot path"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -54,6 +54,9 @@ Issues = "https://github.com/shisa-ai/hipEngine/issues"
 Changelog = "https://github.com/shisa-ai/hipEngine/blob/main/CHANGELOG.md"
 
 [tool.hatch.build]
+exclude = [
+  "/hipengine/reference",
+]
 artifacts = [
   "hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*",
 ]

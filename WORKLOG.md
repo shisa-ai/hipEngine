@@ -217003,3 +217003,30 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   `python3 scripts/sync_benchmark_readme.py --check`, and
   `uv run --python 3.12 --extra dev python -m pytest -q
   tests/test_benchmark_readme_sync.py` all pass (`6 passed`).
+
+## 2026-08-10 - Prepare v0.4.0 release artifacts
+
+- Set the package version to `0.4.0` and add plain-language release notes for
+  expanded Qwen GGUF formats, multi-request execution, Laguna S 2.1, Maple on
+  AMD and Blackwell, native Moonshine ASR runtime work, API improvements, and
+  current limitations. Performance claims continue to point to retained
+  benchmark evidence; no benchmark rerun is part of release packaging.
+- Python 3.12 CLI checks pass for `hipengine --help` and
+  `hipengine serve --help`. `git lfs fsck` passes for all 13 tracked LFS files.
+- The first isolated build bootstrap was blocked by the host pip configuration's
+  global `require-hashes=true`. Retrying with `PIP_CONFIG_FILE=/dev/null`
+  correctly reached package construction and exposed a real source-archive
+  problem: Hatch included local, untracked absolute symlinks under
+  `hipengine/reference/`.
+- Exclude `/hipengine/reference` from Hatch source and wheel manifests. These
+  paths are read-only local reference worktrees, not package runtime files. A
+  fresh Python 3.12 build from the source archive then succeeds and emits
+  `hipengine-0.4.0.tar.gz` plus the expected non-pure
+  `hipengine-0.4.0-py3-none-manylinux_2_39_x86_64.whl`.
+- Artifact validation passes: Twine accepts both files; the source archive has
+  6,976 members, no packaged `hipengine/reference` path, and no absolute
+  symlink; the wheel has 965 files, version `0.4.0`, `Root-Is-Purelib: false`,
+  the expected manylinux tag, and both AOTriton 0.11.2 runtime library names.
+- An isolated install outside the repository reports `hipengine 0.4.0` and
+  renders `hipengine serve --help`. The focused CLI, README-sync, and build
+  bundle passes all 20 tests. Build artifacts remain ignored and uncommitted.
