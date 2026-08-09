@@ -1,32 +1,32 @@
 # hipEngine
 
-hipEngine is a ROCm-native local inference engine built primarily for AMD 
-Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free 
+hipEngine is a ROCm-native local inference engine built primarily for AMD
+Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
 **Current release: v0.4.0 alpha.** Besides the Qwen 3.6 PARO and GGUF models,
-the latest version of hipEngine now supports GGUF inference of more model
-families. This includes [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
-[Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove) and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
+the latest version of hipEngine now supports GGUF inference for more model
+families. These include [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
+[Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
 
 ## Why use hipEngine?
 
 - **Native AMD support.** HIP-first kernels directly target and tune for specific
-  RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of bein CUDA ports.
-- **No PyTorch runtime required.** there is no PyTorch dependency, keeping 
-  hipEngine lightweight (also, while Python-packaged, almost all of the hotpath
-  is C++.
-- **Agent and multi-request concurrency optimized.** Besides extensive tuning for
+  RDNA 3 (gfx1100) and Strix Halo RDNA 3.5 (gfx1151) instead of being CUDA ports.
+- **No PyTorch runtime required.** There is no PyTorch dependency, which keeps
+  hipEngine lightweight. Although it is packaged for Python, almost all of the
+  hot path is C++.
+- **Optimized for agents and concurrent requests.** Besides extensive tuning for
   fast single-request performance (especially for prefill), hipEngine also has
-  tuned c=N support. It's significantly faster than llama.cpp or vLLM when it
-  comes to c=8 results.
-- **Drop in with existing clients.** The included OpenAI-compatible server 
+  tuned support for c=N. It is significantly faster than llama.cpp or vLLM for
+  c=8 workloads.
+- **Drop-in support for existing clients.** The included OpenAI-compatible server
   supports completion, chat, token-level SSE, logprobs, tools, structured-output
-  validation, Qwen thinking controls, logprob-biased efforc contro, and 
-  request diagnoticts.
+  validation, Qwen thinking controls, logprob-biased effort control, and
+  request diagnostics.
 
-hipEngine is new/small software project and is focused on make a select list of
-models perform well (particularly Qwen 3.x variants/fine tunes).
+hipEngine is a new, small software project focused on making a select list of
+models perform well, particularly Qwen 3.x variants and fine-tunes.
 
 ## Supported models
 
