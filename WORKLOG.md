@@ -216718,3 +216718,63 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   spend the next iteration on graphs, DMS metadata, FP8/HIGGS KV, qknorm/store
   fusion, or the existing rows=1 prefill kernel unless a new profile changes
   the ownership.
+
+## 2026-08-08 — Implement Maple CUDA exact wave32 decode attention
+
+- Fetch current main before kernel work. `origin/main` moved from the branch's
+  old `d7beb0f80` base to `fd6e17591` (185 commits); rebase all 14 unique Maple
+  commits and preserve both current-main Moonshine/PM4 material and Maple
+  sections through the mechanical conflicts. The rebased branch is ahead 14,
+  behind 0, and the unchanged unrelated `hipengine/.gitignore` remains
+  untracked. The post-rebase GPU0 baseline command
+  `CUDA_VISIBLE_DEVICES=0 HIPENGINE_RUN_CUDA_MAPLE=1
+  HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt uv run --extra
+  dev pytest -q tests/test_cuda_sm120a_maple.py` passes **10/10**.
+- Re-run `python3 scripts/check_lineage.py --kind kernel --diff stat`; it remains
+  blocked before reporting because manifest checkout
+  `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. This kernel is net-new
+  from the in-tree local128 and exact GQA4 math rather than copied from the
+  missing external parent.
+- Add a RED production-shape contract for `16q/4kv/D128`, live count 17, and an
+  explicit eviction hole. It requires the four-axis
+  `gqa_spans_wave32_exact_bf16` key, exact equality to the retained local128
+  kernel, and an independent CPU-reference tolerance check. RED fails at the
+  intended missing registry key under the focused two-node GPU0 command.
+- Implement `maple_attention_decode_wave32_exact_kernel`: one CUDA warp per
+  query head, four virtual local128 lanes per physical lane, explicit
+  `__fmul_rn`/`__fadd_rn` reconstruction of strides 64/32, and shuffle reduction
+  for 16/8/4/2/1. The PV and denominator updates preserve the retained FMA
+  boundaries. Register the independent wrapper and retain local128 fallback.
+  The focused RED nodes turn GREEN, and the complete GPU0 Maple file passes
+  **12/12** after wiring the wave32 variant as CUDA c1 production.
+- GPU0 event timing over complete contiguous spans is exact at every tested live
+  length. Local128 -> wave32 median ms/layer and speedup are: live128
+  **0.089401 -> 0.059077 (1.513x)**, live512 **0.352789 -> 0.231363 (1.525x)**,
+  live4096 **2.813068 -> 1.841306 (1.528x)**, and live8192
+  **5.625659 -> 3.681763 (1.528x)**. A paired complete-runner p128 diagnostic is
+  full-logit/token/top-logit exact and improves **5.217 -> 4.190 ms/token
+  (1.245x, 64/64 wins)**.
+- Generalize `scripts/maple_c1_bench.py` through the backend package's
+  `maple_runner_type` capability and benchmark-only `production|local128|wave32`
+  attention selection. Unit commands `uv run --extra dev pytest -q
+  tests/test_maple_c1_bench_script.py tests/test_maple_prefill_bench_script.py`
+  pass **5/5**. A one-step 18-prompt smoke is exact at all 18 positions and wins
+  18/18 pairs.
+- Run the complete natural+category-heldout diagnostic from the dirty candidate:
+  `CUDA_VISIBLE_DEVICES=0 HIPENGINE_NVCC_VERSION_FILE=/tmp/hipengine-nvcc-version.txt
+  PYTHONPATH=$PWD .venv/bin/python scripts/maple_c1_bench.py --model
+  /models/hf/maple-preview-2bit-mlx --backend cuda_sm120a
+  --candidate-attention wave32 --control-attention local128 --steps 32
+  --warmup-steps 4 --repetitions 2 --out
+  /tmp/maple-cuda-wave32-qualified-dirty.json`. Correctness passes all
+  **18/18 prompts, 36/36 prefill/final states, and 1,296/1,296 token/top-logit
+  positions** with zero router-counter violations and clean lifecycle. Paired
+  measured decode improves **340.915 -> 396.336 tok/s (1.1626x, +16.26%)**,
+  with **1,152/1,152 wins** and every category non-regressive. Artifact status
+  is intentionally `rejected` only because source is dirty; rerun from the
+  implementation commit before retained publication.
+- Cache-only full-model Nsight (`/tmp/maple-cuda-wave32-decode.nsys-rep`) names
+  `maple_attention_decode_wave32_exact_kernel` **768 times / 24 per token** at
+  **108.815 us median/layer** over 32 steps. The profiled complete runner is
+  **3.947 ms/token** mean; wave32 attention owns 68.0% of traced GPU time. Keep
+  the raw report under `/tmp` and out of Git.

@@ -41,6 +41,7 @@ from hipengine.core.memory import (  # noqa: E402
     memory_stats,
     reset_memory_stats,
 )
+from hipengine.kernels.backends import backend_package_capability  # noqa: E402
 from hipengine.loading.maple import load_maple_checkpoint  # noqa: E402
 from hipengine.runtime.maple import PREFILL_CHUNK, MapleRunner  # noqa: E402
 from hipengine.tokenization.maple import MapleTokenizer  # noqa: E402
@@ -126,6 +127,42 @@ def _production_environment() -> Iterator[None]:
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+
+
+def _maple_runner_type(backend: str):
+    capability = backend_package_capability(
+        backend,
+        "maple_runner_type",
+        default=None,
+    )
+    return MapleRunner if capability is None else capability()
+
+
+class _CudaAttentionModes:
+    """Benchmark-only selector for paired CUDA attention implementations."""
+
+    def __init__(self) -> None:
+        import hipengine.runtime.maple_cuda as runtime_module
+        from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
+            maple_attention_decode_bf16,
+            maple_attention_decode_wave32_exact_bf16,
+        )
+
+        self._runtime_module = runtime_module
+        self._production = runtime_module.maple_attention_decode_wave32_exact_bf16
+        self._kernels = {
+            "production": self._production,
+            "local128": maple_attention_decode_bf16,
+            "wave32": maple_attention_decode_wave32_exact_bf16,
+        }
+
+    def select(self, mode: str) -> None:
+        self._runtime_module.maple_attention_decode_wave32_exact_bf16 = self._kernels[
+            mode
+        ]
+
+    def close(self) -> None:
+        self._runtime_module.maple_attention_decode_wave32_exact_bf16 = self._production
 
 
 def _copy_device_bytes(
@@ -315,6 +352,8 @@ def _run_prompt_pair(
     measured_steps: int,
     repetitions: int,
     prompt_index: int,
+    attention_controller: _CudaAttentionModes | None,
+    attention_modes: dict[str, str],
 ) -> dict[str, Any]:
     repetitions_out: list[dict[str, Any]] = []
     prompt_passed = True
@@ -365,6 +404,8 @@ def _run_prompt_pair(
             results: dict[str, Any] = {}
             elapsed_ms: dict[str, float] = {}
             for mode in order:
+                if attention_controller is not None:
+                    attention_controller.select(attention_modes[mode])
                 started = time.perf_counter()
                 results[mode] = runners[mode].step(next_tokens[mode])
                 elapsed_ms[mode] = (time.perf_counter() - started) * 1_000.0
@@ -548,6 +589,16 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=32, help="measured decode steps per prompt")
     parser.add_argument("--warmup-steps", type=int, default=4)
     parser.add_argument("--repetitions", type=int, default=2)
+    parser.add_argument(
+        "--candidate-attention",
+        choices=("production", "local128", "wave32"),
+        default="production",
+    )
+    parser.add_argument(
+        "--control-attention",
+        choices=("production", "local128", "wave32"),
+        default="production",
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     if args.steps <= 0 or args.warmup_steps < 0 or args.repetitions <= 0:
@@ -564,37 +615,54 @@ def main() -> int:
         raise ValueError("all qualification prompts must contain 1-512 native-prefill tokens")
     max_context = max(len(tokens) for _, tokens in tokenized) + args.warmup_steps + args.steps
 
+    attention_modes = {
+        "candidate": args.candidate_attention,
+        "control": args.control_attention,
+    }
+    attention_controller = None
+    if args.backend == "cuda_sm120a":
+        attention_controller = _CudaAttentionModes()
+    elif len(set(attention_modes.values())) != 1 or args.candidate_attention != "production":
+        raise ValueError("attention implementation A/B is supported only on cuda_sm120a")
+    runner_type = _maple_runner_type(args.backend)
+
     reset_memory_stats()
     rows: list[dict[str, Any]] = []
-    with _production_environment():
-        candidate = MapleRunner.load(
-            checkpoint,
-            backend=args.backend,
-            max_context=max_context,
-        )
-        control = MapleRunner.load(
-            checkpoint,
-            backend=args.backend,
-            max_context=max_context,
-        )
-        resident = memory_stats()
-        try:
-            for prompt_index, (prompt, tokens) in enumerate(tokenized):
-                rows.append(
-                    _run_prompt_pair(
-                        candidate,
-                        control,
-                        prompt=prompt,
-                        tokens=tokens,
-                        warmup_steps=args.warmup_steps,
-                        measured_steps=args.steps,
-                        repetitions=args.repetitions,
-                        prompt_index=prompt_index,
+    try:
+        with _production_environment():
+            candidate = runner_type.load(
+                checkpoint,
+                backend=args.backend,
+                max_context=max_context,
+            )
+            control = runner_type.load(
+                checkpoint,
+                backend=args.backend,
+                max_context=max_context,
+            )
+            resident = memory_stats()
+            try:
+                for prompt_index, (prompt, tokens) in enumerate(tokenized):
+                    rows.append(
+                        _run_prompt_pair(
+                            candidate,
+                            control,
+                            prompt=prompt,
+                            tokens=tokens,
+                            warmup_steps=args.warmup_steps,
+                            measured_steps=args.steps,
+                            repetitions=args.repetitions,
+                            prompt_index=prompt_index,
+                            attention_controller=attention_controller,
+                            attention_modes=attention_modes,
+                        )
                     )
-                )
-        finally:
-            control.close()
-            candidate.close()
+            finally:
+                control.close()
+                candidate.close()
+    finally:
+        if attention_controller is not None:
+            attention_controller.close()
     after_close = memory_stats()
 
     correctness, performance = _aggregate(rows)
@@ -621,27 +689,67 @@ def main() -> int:
     protocol_qualified = (
         args.steps >= 32 and args.warmup_steps >= 4 and args.repetitions >= 2
     )
+    performance_claim = args.candidate_attention != args.control_attention
+    category_nonregressive = all(
+        values["candidate_aggregate_tokens_per_second"]
+        >= values["control_aggregate_tokens_per_second"]
+        for values in performance["categories"].values()
+    )
+    performance_passed = (
+        performance["speedup"] > 1.0 and category_nonregressive
+        if performance_claim
+        else None
+    )
     status = (
         "accepted"
         if correctness_passed
         and lifecycle_passed
         and protocol_qualified
+        and (not performance_claim or performance_passed)
         and git["worktree_clean"]
         else "rejected"
     )
 
-    rocminfo = _capture(
-        ["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"]
-    )
-    rocm_smi = _capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"])
-    hipcc = _capture(["hipcc", "--version"])
+    if args.backend == "cuda_sm120a":
+        hardware = {
+            "gpu": _capture(
+                [
+                    "nvidia-smi",
+                    "-i",
+                    "0",
+                    "--query-gpu=name,uuid,driver_version",
+                    "--format=csv,noheader",
+                ]
+            ),
+            "architecture": "sm_120a",
+            "host": platform.node(),
+            "nvidia_smi": _capture(["nvidia-smi", "-i", "0"]),
+            "nvcc": _capture(["nvcc", "--version"]),
+        }
+    else:
+        hardware = {
+            "gpu": "AMD Radeon 8060S Graphics",
+            "architecture": "gfx1151",
+            "host": platform.node(),
+            "rocminfo": _capture(
+                ["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"]
+            ),
+            "rocm_smi": _capture(
+                ["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"]
+            ),
+            "hipcc": _capture(["hipcc", "--version"]),
+        }
     artifact = {
         "schema_version": 1,
         "date": date.today().isoformat(),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "artifact_type": "maple_c1_production_repeat_qualification",
+        "artifact_type": (
+            "maple_c1_attention_ab_qualification"
+            if performance_claim
+            else "maple_c1_production_repeat_qualification"
+        ),
         "status": status,
-        "performance_claim": False,
+        "performance_claim": performance_claim,
         "model": {
             "id": args.model,
             "revision": PINNED_REVISION,
@@ -649,14 +757,7 @@ def main() -> int:
             "quant": "maple_ternary2",
             "exact_weight_bytes": checkpoint.validation.exact_weight_bytes,
         },
-        "hardware": {
-            "gpu": "AMD Radeon 8060S Graphics",
-            "architecture": "gfx1151",
-            "host": platform.node(),
-            "rocminfo": rocminfo,
-            "rocm_smi": rocm_smi,
-            "hipcc": hipcc,
-        },
+        "hardware": hardware,
         "software": {"python": platform.python_version(), "git": git},
         "protocol": {
             "command": shlex.join([sys.executable, *sys.argv]),
@@ -672,7 +773,10 @@ def main() -> int:
                 "other_maple_experimental_selectors": "unset",
             },
             "backend": args.backend,
-            "comparison": "independent production repeats",
+            "comparison": {
+                "candidate_attention": args.candidate_attention,
+                "control_attention": args.control_attention,
+            },
             "suite": str(args.suite),
             "heldout": str(args.heldout),
             "steps": args.steps,
@@ -693,8 +797,13 @@ def main() -> int:
         },
         "performance": {
             **performance,
-            "passed": None,
-            "scope": "diagnostic timing of equivalent production repeats; no speed claim",
+            "passed": performance_passed,
+            "category_nonregressive": category_nonregressive,
+            "scope": (
+                "paired candidate-vs-control resident attention implementation A/B"
+                if performance_claim
+                else "diagnostic timing of equivalent production repeats; no speed claim"
+            ),
         },
         "memory": {
             "two_runner_resident_tracked": resident,
@@ -704,7 +813,7 @@ def main() -> int:
         },
         "rows": rows,
         "notes": [
-            "Both runners use the same retained production routes; registered exact fallback kernels remain covered by direct kernel tests.",
+            "Both runners use retained production routes except for the explicitly selected CUDA attention implementation A/B.",
             "Every repetition begins from independently computed, byte-identical native-prefill state and advances both runners in lockstep.",
             "Timing is paired and counterbalanced; model load, native prefill, warmup, state copies, and counter checks are outside measured step windows.",
             "Final hashes cover hidden/normalized/full logits, router outputs/counter, live K/V bytes, and KVLiveSpans metadata.",

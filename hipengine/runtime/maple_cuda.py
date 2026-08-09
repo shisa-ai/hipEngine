@@ -20,7 +20,7 @@ from hipengine.kernels.backends import (
 )
 from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
     build_maple_attention,
-    maple_attention_decode_bf16,
+    maple_attention_decode_wave32_exact_bf16,
     maple_attention_fused_qknorm_decode_bf16,
     maple_attention_prefill_ring_bf16,
     maple_attention_prefill_ring_gqa4_bf16,
@@ -252,7 +252,7 @@ class MapleCudaRunner(MapleRunner):
                         library=libs.attention,
                         runtime=self.runtime, stream=stream,
                     )
-                    maple_attention_decode_bf16(
+                    maple_attention_decode_wave32_exact_bf16(
                         b.qkv.ptr,
                         kv_layer.key_cache.ptr,
                         kv_layer.value_cache.ptr,

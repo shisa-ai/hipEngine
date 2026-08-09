@@ -251,6 +251,19 @@ The public 16-token c1 smoke is coherent and closes tracked ownership from
 **5,399,968,636 bytes / 560 allocations** to zero. Evidence:
 `benchmarks/results/2026-08-08-cuda-sm120a-maple-c1-correctness.json`.
 
+The c1 attention family also registers
+`gqa_spans_wave32_exact_bf16` for the production D128 shape. One CUDA warp owns
+one query head: each lane carries virtual local128 lanes
+`lane/{+32,+64,+96}`, explicit rounded additions reconstruct the original
+stride-64/32 stages, and warp shuffles reproduce strides 16 through 1. The
+original local128 `gqa_spans_bf16` remains registered as the independent
+fallback. GPU0 direct gates cover a non-power-of-two live span plus an eviction
+hole against both the local128 kernel and the CPU oracle; the complete runner
+gate is state/logit exact. Cache-only Nsight names
+`maple_attention_decode_wave32_exact_kernel` at 24 calls/token with plausible
+durations. Retained same-suite decode publication is tracked separately from
+the kernel catalog.
+
 `hipengine/kernels/cuda_sm120a/moe/group_scatter.{cu,py}` adds the stable int32
 count/prefix/scatter metadata family, completing the grouped native-prefill
 chain without a HIP builder or row/route-gather production fallback. The clean
