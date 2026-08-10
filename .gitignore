@@ -50,6 +50,9 @@ venv/
 .pi/
 .multiloop/
 
+# Local generated Worklog2 view
+.worklog/
+
 # OS
 .DS_Store
 Thumbs.db

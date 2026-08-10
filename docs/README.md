@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-07-22
+Last updated: 2026-08-10
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -18,6 +18,7 @@ working on.
 | [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
 | [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Active optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
+| [`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md) | Approved immutable worklog design, migration contract, and acceptance punchlist. |
 
 ## Validation and benchmarking
 
@@ -80,5 +81,7 @@ working on.
   [`TESTING.md`](TESTING.md) and add or update a CPU-reference / fixture gate
   before relying on benchmark output.
 
-Project-wide workflow rules live in [`../AGENTS.md`](../AGENTS.md), and the
-append-only cross-session journal is [`../WORKLOG.md`](../WORKLOG.md).
+Project-wide workflow rules live in [`../AGENTS.md`](../AGENTS.md). Current
+immutable handoff entries live under
+[`../worklog/entries/`](../worklog/entries/); [`../WORKLOG.md`](../WORKLOG.md)
+links the entry format, local renderer, and frozen pre-Worklog2 history.

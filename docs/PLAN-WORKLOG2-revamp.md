@@ -304,8 +304,11 @@ or old conflict-resolution order is corrected during migration.
 
 ### 8.3 Git history
 
-The move should be visible as a rename in the reviewed staged diff. Historical
-provenance remains available with:
+Because activation preserves the old blob at a new path while recreating root
+`WORKLOG.md` in the same atomic commit, Git may report a **100% copy plus root
+rewrite** rather than a rename. Review the staged diff with break/copy detection
+(`git diff --staged -B50% -M50%`) and require an exact zero-line legacy copy.
+Historical provenance remains available with:
 
 ```bash
 git log --follow -- WORKLOG-LEGACY.md
@@ -556,24 +559,24 @@ authoritative during this phase.
 
 Outcome: one atomic process migration commit.
 
-- [ ] Re-read live `WORKLOG.md` tail and verify no concurrent writer owns it.
-- [ ] Record cutoff parent commit.
-- [ ] Compute pre-rename SHA-256, bytes, lines, first heading, and last heading.
-- [ ] Rename `WORKLOG.md` to `WORKLOG-LEGACY.md` without byte changes.
-- [ ] Create and validate `worklog/legacy-manifest.json`.
-- [ ] Create tracked root `WORKLOG.md` navigation page.
-- [ ] Create `worklog/README.md`.
-- [ ] Create the first immutable migration entry under `worklog/entries/`.
-- [ ] Update `AGENTS.md`, `docs/README.md`, and the process supersession note.
-- [ ] Add `/.worklog/` to `.gitignore`.
-- [ ] Remove union merge configuration and fail-close the legacy path.
-- [ ] Remove obsolete `scripts/resolve_worklog_conflict.py`.
-- [ ] Render default and full ignored views.
-- [ ] Prove ignored output is untracked and root navigation is unchanged.
-- [ ] Run focused tooling tests and worklog checks.
-- [ ] Verify post-rename legacy SHA/bytes/lines equal pre-rename values.
-- [ ] Review status, staged names, complete staged diff, and rename detection.
-- [ ] Commit activation as one atomic process unit.
+- [x] Re-read live `WORKLOG.md` tail and verify no concurrent writer owns it.
+- [x] Record cutoff parent commit.
+- [x] Compute pre-rename SHA-256, bytes, lines, first heading, and last heading.
+- [x] Rename `WORKLOG.md` to `WORKLOG-LEGACY.md` without byte changes.
+- [x] Create and validate `worklog/legacy-manifest.json`.
+- [x] Create tracked root `WORKLOG.md` navigation page.
+- [x] Create `worklog/README.md`.
+- [x] Create the first immutable migration entry under `worklog/entries/`.
+- [x] Update `AGENTS.md`, `docs/README.md`, and the process supersession note.
+- [x] Add `/.worklog/` to `.gitignore`.
+- [x] Remove union merge configuration and fail-close the legacy path.
+- [x] Remove obsolete `scripts/resolve_worklog_conflict.py`.
+- [x] Render default and full ignored views.
+- [x] Prove ignored output is untracked and root navigation is unchanged.
+- [x] Run focused tooling tests and worklog checks.
+- [x] Verify post-rename legacy SHA/bytes/lines equal pre-rename values.
+- [x] Review status, staged names, complete staged diff, and 100% legacy copy/rewrite detection.
+- [x] Commit activation as one atomic process unit.
 
 ### P3 — Local hook activation and post-commit smoke
 

@@ -1,9 +1,7 @@
-# WORKLOG.md is append-only: when two branches both add new entries, git's
-# built-in union driver concatenates both sides instead of emitting conflict
-# markers. For an append-only file this is the correct semantics (common
-# prefix + ours-tail + theirs-tail). See scripts/resolve_worklog_conflict.py
-# for the recovery path when conflict markers already exist in the file.
-WORKLOG.md merge=union
+# The pre-Worklog2 journal is byte-frozen. Fail closed rather than union-merging
+# an append from a branch created before the Worklog2 cutoff. Preserve its
+# historical whitespace exactly without failing current diff checks.
+WORKLOG-LEGACY.md -merge -whitespace
 
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/** -whitespace
 hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.aks2 filter=lfs diff=lfs merge=lfs -text

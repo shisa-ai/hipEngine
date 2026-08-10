@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "path": "WORKLOG-LEGACY.md",
+  "cutoff_commit": "7c7c188750fcca6ff5ebefa969e7f2689a940172",
+  "sha256": "29958f5ccef09fd9cea96eab8c3979251dca957b0a74822ea214ada2177965d4",
+  "bytes": 17667892,
+  "lines": 217151,
+  "first_heading": "## 2025-05-15 — Weight index speedup + HF hub resolution + E2E generation",
+  "last_heading": "## 2026-08-10 - Land dormant Worklog2 tooling and tests"
+}
