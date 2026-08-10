@@ -217093,3 +217093,30 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   profiled wall-time opportunity.
 - These are existing retained measurements. No benchmark artifact, rollup, or
   changelog changes.
+
+## 2026-08-10 - Approve Worklog2 revamp plan
+
+- By user approval, freeze the design contract in
+  `docs/PLAN-WORKLOG2-revamp.md` before implementation. The selected route is
+  forward-only immutable per-unit files under `worklog/entries/`, not a
+  retroactive conversion of the current journal.
+- The measured pre-plan journal is **217,095 lines / 17,664,316 bytes / 7,244
+  dated sections** and appears in **7,470 of 7,707 commits**. A full import
+  would create thousands of files while inventing timestamps, worker IDs,
+  branches, worktrees, and base commits absent from historical text.
+- Lock the activation layout: byte-identical `WORKLOG-LEGACY.md`, a tracked
+  root `WORKLOG.md` navigation page, schema-versioned immutable entries, a
+  hash/size/line-count legacy manifest, and ignored local output at
+  `.worklog/WORKLOG.md`.
+- Preserve current Git LFS hooks: Worklog2 must not set `core.hooksPath` or
+  replace post-checkout/post-commit/post-merge/pre-push. Its optional installer
+  adds only a non-destructive pre-commit checker and refuses an existing
+  unrelated pre-commit hook.
+- The plan defines separate plan, dormant-tooling, and activation commits;
+  focused temporary-repository tests; old-branch conversion rules; exact
+  pre/post legacy hash gates; acceptance criteria; and rollback behavior. This
+  is a docs/process plan only; the current append-only journal remains
+  authoritative until activation.
+- Validation: re-read all 664 plan lines, verified its local link and balanced
+  fences, and ran `git diff --check -- docs/PLAN-WORKLOG2-revamp.md WORKLOG.md`.
+  No GPU/runtime validation is required for this process-only unit.
