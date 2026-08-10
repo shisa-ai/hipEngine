@@ -217030,3 +217030,6 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - An isolated install outside the repository reports `hipengine 0.4.0` and
   renders `hipengine serve --help`. The focused CLI, README-sync, and build
   bundle passes all 20 tests. Build artifacts remain ignored and uncommitted.
+- The user approves committing the pre-existing `hipengine/.gitignore` entry for
+  `reference/`. This keeps local read-only reference worktrees out of Git status;
+  the Hatch manifest exclusion independently keeps them out of release archives.
