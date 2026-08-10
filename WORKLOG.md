@@ -217120,3 +217120,32 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - Validation: re-read all 664 plan lines, verified its local link and balanced
   fences, and ran `git diff --check -- docs/PLAN-WORKLOG2-revamp.md WORKLOG.md`.
   No GPU/runtime validation is required for this process-only unit.
+
+## 2026-08-10 - Land dormant Worklog2 tooling and tests
+
+- Implement P1 from `docs/PLAN-WORKLOG2-revamp.md` without activating the new
+  policy. `scripts/worklog.py` is a standard-library CLI for schema-1 unique
+  entry creation, format/immutable/legacy checking, ignored local rendering,
+  and non-destructive pre-commit-only hook installation.
+- Adapt the Tenstorrent design rather than copy it blindly: root `WORKLOG.md`
+  is protected from render output, default output is `.worklog/WORKLOG.md`,
+  full legacy inclusion is explicit, a versioned legacy hash/size/line manifest
+  is supported, `core.hooksPath` is never set, and existing hooks are untouched.
+- RED: `uv run pytest -q tests/test_worklog.py` failed all 17 initial cases
+  because `scripts/worklog.py` did not exist. GREEN after implementation and
+  expanded coverage: the same command passes **28/28** tests.
+- The temporary-repository suite covers rapid unique creation, equal-time
+  deterministic ordering, fenced Markdown, malformed fields/sections,
+  committed modify/delete/rename rejection, staged/worktree divergence,
+  conflict-free independent-branch merge, legacy mutation/missing-manifest
+  rejection, root-navigation protection, LFS-hook preservation, unrelated
+  pre-commit refusal, and old-branch hook tolerance.
+- Validation: `python3 -m py_compile scripts/worklog.py tests/test_worklog.py`,
+  `python3 scripts/worklog.py check` (**0 valid entries** in dormant mode),
+  render/current and `--include-legacy`, manual 100-column scan, and
+  `git diff --check` pass. `ruff` is not installed in the project environment;
+  it is not a declared P1 gate and no dependency was added.
+- Existing Git LFS hook SHA-256 values remain
+  `8d606e58...26030`, `f3eb4d1f...d661d`, `cecb594e...22158`, and
+  `a52d0510...1d74`; `core.hooksPath` remains unset. The current append-only
+  journal remains authoritative until the separate P2 activation commit.
