@@ -540,17 +540,17 @@ current append-only journal.
 Outcome: one validated tooling/test commit. The old append-only journal remains
 authoritative during this phase.
 
-- [ ] Write RED format, immutability, merge, legacy, render, and hook tests.
-- [ ] Port and adapt `scripts/worklog.py` from Tenstorrent source.
-- [ ] Add `schema: 1` and legacy-manifest validation.
-- [ ] Change render output to `.worklog/WORKLOG.md`.
-- [ ] Add optional `--include-legacy`.
-- [ ] Implement non-destructive `install-hook` without `core.hooksPath`.
-- [ ] Confirm all existing Git LFS hook hashes are unchanged.
-- [ ] Run focused tests, compile checks, and diff checks.
-- [ ] Append one final current-format legacy journal entry describing the dormant
+- [x] Write RED format, immutability, merge, legacy, render, and hook tests.
+- [x] Port and adapt `scripts/worklog.py` from Tenstorrent source.
+- [x] Add `schema: 1` and legacy-manifest validation.
+- [x] Change render output to `.worklog/WORKLOG.md`.
+- [x] Add optional `--include-legacy`.
+- [x] Implement non-destructive `install-hook` without `core.hooksPath`.
+- [x] Confirm all existing Git LFS hook hashes are unchanged.
+- [x] Run focused tests, compile checks, and diff checks.
+- [x] Append one final current-format legacy journal entry describing the dormant
   tooling.
-- [ ] Commit the tooling and tests without activating Worklog2 policy.
+- [x] Commit the tooling and tests without activating Worklog2 policy.
 
 ### P2 — Activate Worklog2 and freeze legacy
 
