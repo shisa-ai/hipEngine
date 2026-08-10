@@ -217033,3 +217033,24 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - The user approves committing the pre-existing `hipengine/.gitignore` entry for
   `reference/`. This keeps local read-only reference worktrees out of Git status;
   the Hatch manifest exclusion independently keeps them out of release archives.
+
+## 2026-08-10 - Publish v0.4.0
+
+- Push clean `main` at `dedbae16a`, create and push annotated tag `v0.4.0` at
+  the same commit, and publish the GitHub release with the matching changelog
+  text: <https://github.com/shisa-ai/hipEngine/releases/tag/v0.4.0>.
+- GitHub Actions run `31346458008` succeeds. Its Python 3.12 build job completes
+  release validation, rebuilds both archives, passes Twine metadata checks, and
+  uploads artifacts. The publish job generates attestations and completes PyPI
+  trusted publishing: <https://github.com/shisa-ai/hipEngine/actions/runs/31346458008>.
+- PyPI serves `hipengine 0.4.0` with the expected source archive and
+  `manylinux_2_39_x86_64` wheel. Published SHA-256 values are
+  `d5fb55d1c6bcc882dcadc54b4a088e50650f189da2228304a2855a4b32423647`
+  for the source archive and
+  `3bc5c1bcdaa1a8e7b3aad90209eb1a5a0ef69cab25291fad3b21dc25c29ae7a5`
+  for the wheel.
+- A fresh public-PyPI install outside the repository reports `0.4.0` and renders
+  `hipengine serve --help`. The first local resolver attempt correctly hid the
+  just-published package under this host's one-day supply-chain quarantine; the
+  verification command used `--no-config --isolated --refresh` to test PyPI
+  immediately without changing the host policy.
