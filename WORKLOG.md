@@ -217054,3 +217054,20 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
   just-published package under this host's one-day supply-chain quarantine; the
   verification command used `--no-config --isolated --refresh` to test PyPI
   immediately without changing the host policy.
+
+## 2026-08-10 - Close GGUF prefill issue 6
+
+- By user request, post the current retained Qwen3.6 35B-A3B ParoQuant W4 versus
+  GGUF Q4_K_M prefill and decode tables to
+  <https://github.com/shisa-ai/hipEngine/issues/6#issuecomment-5236162018> as
+  GitHub user `lhl`, then close issue 6 as completed.
+- On gfx1151, GGUF prefill is **7.4% to 50.7% faster** than PARO at every
+  published common 512 through 64K shape. Decode remains **12.1% to 25.5% slower**,
+  which is explicitly recorded as separate from the issue's prefill objective.
+  The GGUF 128K row remains blocked.
+- On gfx1100, GGUF prefill is within **-6.9% to +1.9%** of PARO across 512
+  through 128K, and decode ranges from **-19.7% to +3.3%**. This replaces the
+  issue's original observation that GGUF prefill was about 20% of PARO.
+- These are existing product-format comparisons, not identical-quant results or
+  new measurements. The issue comment links the current gfx1100 and gfx1151
+  benchmark tables, so no benchmark artifact, rollup, or changelog changes.
