@@ -9,12 +9,12 @@ Instruction precedence: if this file conflicts with platform / system / develope
 ## Summary
 
 - **Source of truth:** [docs/PLAN.md](docs/PLAN.md). Update it when architecture or phase plans move.
-- **Cross-session handoff:** `WORKLOG.md`. Append-only, chronological; log decisions, commands, measurements, and next actions as they happen.
+- **Cross-session handoff:** immutable files under `worklog/entries/`; root `WORKLOG.md` is a tracked navigation page and `WORKLOG-LEGACY.md` is frozen pre-cutoff history. Use `python3 scripts/worklog.py new/check/render`.
 - **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details.
 - **Evidence policy:** every performance claim carries model + quant + workload shape + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`).
 - **No benchmark gaming.** Tuning a metric to the specific inputs being measured is an INVALID benchmark, not a win. Concretely: never hardcode token IDs / candidate-id reranks / prompt-conditioned branches that lift acceptance, top-1, or speed on the fixed prompt(s) under test. Optimize the model/kernels, not the score. Acceptance/speed/quality for speculative or sampling paths must be validated on the **full multi-prompt mtp-bench category suite** (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all of `code`/`general_en`/`general_ja`/`mixed_ja_en`) plus category-heldouts, never a single fixed prompt. MTP speedup claims require a true no-MTP autoregressive baseline from the same benchmark protocol; verifier-derived `off`/`B0` rows are diagnostic only. Single-prompt-overfit numbers are not retainable and any prior rows derived from them are marked INVALID. See `docs/BENCHMARK.md` "Anti-gaming".
 - **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
-- **Performance wins are first-class.** Every measured, exact, non-regressive performance improvement is kept and promoted to the default path unless there is a concrete blocker recorded in `WORKLOG.md`. Cycle-wall, verified sub-window, launch-count, and H2D/D2H reductions count even when same-session AR variance hides the headline ratio; microseconds compound.
+- **Performance wins are first-class.** Every measured, exact, non-regressive performance improvement is kept and promoted to the default path unless there is a concrete blocker recorded in a durable worklog entry. Cycle-wall, verified sub-window, launch-count, and H2D/D2H reductions count even when same-session AR variance hides the headline ratio; microseconds compound.
 - **Refactor debt is tracked.** Temporary flags, rejected paths, duplicate dispatch routes, and fallback chains that should disappear after the optimal path is proven go in `docs/REFACTOR.md`. Add to it while the context is fresh instead of relying on future archeology.
 - **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs.
 - **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
@@ -44,7 +44,10 @@ Do not drift these casually. They define what hipEngine is.
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
 | `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
-| `WORKLOG.md` | Append-only cross-session journal. |
+| `WORKLOG.md` | Tracked worklog navigation page. |
+| `WORKLOG-LEGACY.md` | Byte-frozen pre-Worklog2 journal; never edit. |
+| `worklog/entries/` | Immutable per-unit current decisions, results, blockers, and handoffs. |
+| `worklog/README.md` / `scripts/worklog.py` | Worklog schema, commands, validator, renderer, and optional pre-commit hook. |
 | `benchmarks/README.md` | Canonical topline scoreboard, platform freshness, protocols, artifacts, and root README exports. |
 | `benchmarks/HISTORY.md` | Archived experiment rollup, superseded diagnostics, source-lineage targets, and external baselines. |
 | `benchmarks/CHANGELOG.md` | Reverse-chronological one-line history of benchmark rollup updates. |
@@ -56,7 +59,7 @@ Do not drift these casually. They define what hipEngine is.
 ### Before Starting
 
 1. `git status -sb` — note unrelated changes and leave them alone.
-2. Read the relevant section of [docs/PLAN.md](docs/PLAN.md) and the `WORKLOG.md` tail.
+2. Read the relevant section of [docs/PLAN.md](docs/PLAN.md) and the latest relevant files under `worklog/entries/` (or run `python3 scripts/worklog.py render`). Read the `WORKLOG-LEGACY.md` tail only when pre-cutoff context matters.
 3. For kernel / GPU work, confirm ROCm is alive:
    ```bash
    python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
@@ -68,11 +71,11 @@ Do not drift these casually. They define what hipEngine is.
 ### During Work
 
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
-- Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in `WORKLOG.md`.
+- Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in the unit's worklog entry.
 - If a performance path is exact and same-suite non-regressive, make it the default and keep the old path as an opt-out only when rollback/bisection still has value. A small cycle-wall or sub-window win can be retained even if the aggregate ratio is flat within noise; document the distinction. If a path remains gated off, record the concrete blocker, not a vague "needs more evidence".
 - When adding an env flag or retaining a default-off/default-on experiment, add or update a `docs/REFACTOR.md` entry that says when the flag/path should be removed.
 - When adding tests that call HIP/ROCm runtime, `hipcc`, or GPU kernels, add an explicit HIP-availability guard (for example `ctypes.CDLL("libamdhip64.so")` + `pytest.skip`) so no-ROCm CI/publish runners skip them instead of failing release validation.
-- Log non-trivial decisions, measurements, and dependency additions in `WORKLOG.md` as they happen.
+- For a substantial unit, create a unique entry with `python3 scripts/worklog.py new`, update it with non-trivial decisions, measurements, and dependency additions as work proceeds, and commit it with the unit.
 - When profiling Python/ctypes JIT-built kernels with `rocprofv3`, prebuild the `.so` outside the profiler and run the profiled command with a precomputed compiler-version file plus `require_cached`; do not let the profiled process spawn `hipcc`/clang.
 - For MTP profiling, do **not** wrap the prompt-suite/economics parent harness (`scripts/mtp-bench.py --mode hipengine-current` or `scripts/mtp_prompt_suite_economics.py`) in `rocprofv3`; it launches nested Python children and profiler/JIT state propagates into them. Use `scripts/mtp_verifier_rocprof.py` or profile the final `mtp_chain_e2e_smoke.py` child after a non-profiled cache warmup.
 - Do not silently add `import torch`, `flash_attn`, or other CUDA-only deps to hot-path modules.
@@ -84,7 +87,7 @@ Do not drift these casually. They define what hipEngine is.
 - **Do not automatically rerun a broad suite after an isolated failure.** If a completed broad run establishes that all other tests passed and the repair is scoped, rerun only the failing node(s), the changed test file, and any genuinely affected narrow bundle. Preserve the original broad-run result plus the repaired focused result as the validation evidence. Repeat the full suite only when the fix can affect previously passing tests (for example shared test infrastructure, collection/order/global-state behavior, or broadly shared production code), multiple unrelated failures indicate wider risk, a release protocol explicitly requires a fresh all-green run, or the user explicitly approves it.
 - **Ask before repeating expensive validation.** Before rerunning a test or benchmark expected to take more than five minutes when equivalent broad evidence already exists, state the concrete reason and expected duration and get explicit user approval.
 - For a new / ported kernel: correctness gate vs `kernels/cpu_reference/` + a `rocprofv3 --kernel-trace` entry showing the kernel ran under the expected name with plausible duration (`DurationNs` or `End_Timestamp - Start_Timestamp`). See `docs/KERNELS.md`.
-- For a perf change: record baseline + new measurements in `WORKLOG.md` with exact commands, emit/update the JSON artifact under `benchmarks/results/`, update `benchmarks/README.md` with the retained row and `Last updated` date, and add a dated changelog one-liner with old→new metric, % delta, reason, and artifact/source.
+- For a perf change: record baseline + new measurements in the unit's immutable worklog entry with exact commands, emit/update the JSON artifact under `benchmarks/results/`, update `benchmarks/README.md` with the retained row and `Last updated` date, and add a dated changelog one-liner with old→new metric, % delta, reason, and artifact/source.
 - Update `docs/PLAN.md` if architectural plans shifted.
 - **Commit immediately** when the logical unit is complete and validation passes.
 
@@ -97,7 +100,7 @@ Run the narrowest tier for your change; escalate at milestone boundaries.
 | Docs / process | Re-read the changed file end-to-end; no GPU run needed. |
 | Code / registry / dispatch | The narrowest relevant `pytest` + applicable CPU deterministic bundle (see `docs/TESTING.md`). |
 | New or ported kernel | CPU-reference correctness gate + `rocprofv3 --kernel-trace` smoke (see `docs/KERNELS.md` and `docs/TESTING.md`). |
-| Perf claim | Re-run the exact benchmark command from `docs/BENCHMARK.md` on stated hardware; record both runs in `WORKLOG.md`. |
+| Perf claim | Re-run the exact benchmark command from `docs/BENCHMARK.md` on stated hardware; record both runs in the unit's worklog entry. |
 | Milestone closure | One full `uv run pytest -v` + the phase's named perf target vs prior baseline. If that completed run has isolated failures, apply the focused-repair rule above rather than automatically repeating the full suite. |
 
 ## Git Discipline
@@ -107,8 +110,8 @@ Explicit, auto-commit-after-validation. Many small, atomic, working-state commit
 ### Commit Timing
 
 - **Commit immediately** after a logical unit is complete and validation passes. Do not ask, do not wait to be asked, and do not start the next logical task until the previous validated unit is committed.
-- Include related handoff docs in the same unit (a change that needed a `WORKLOG.md` entry or a `docs/PLAN.md` update commits them together).
-- Always commit `WORKLOG.md` with the logical unit that required it. Re-read the live tail before appending/staging; same-file append contention is expected, but stop for conflict markers or garbled interleaving.
+- Include related handoff docs in the same unit (a change that needed a worklog entry or a `docs/PLAN.md` update commits them together).
+- Always commit the new `worklog/entries/<unique-entry>.md` path with the logical unit that required it. Run `python3 scripts/worklog.py check` before staging/committing; never edit, rename, or delete a committed entry.
 - Do not commit mid-task while exploring, debugging, or in a broken state.
 - Docs, plans, repo-setup, and dependency additions are first-class logical units.
 
@@ -152,10 +155,10 @@ Do not run `git restore`, `git checkout --`, `git reset --hard`, `git clean -fd`
 
 Working tree is shared state. Other agents or the human may be editing concurrently.
 
-- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `WORKLOG.md`, `pyproject.toml`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
+- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `pyproject.toml`, `scripts/worklog.py`, `worklog/README.md`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
 - Same-file contention: stop and coordinate. The designated agent stages and commits their scoped hunks first to unblock others.
-- `WORKLOG.md` appends are expected and not a conflict unless there are actual conflict markers or interleaved garbled lines. Re-read the live tail, append after it, commit with your logical unit.
-- `WORKLOG.md` is configured with git's built-in `merge=union` driver (see `.gitattributes`), so concurrent appends auto-resolve as `common prefix + ours-tail + theirs-tail` with no conflict markers. If markers do appear (e.g. a stash or a rebase started before this was configured), run `python3 scripts/resolve_worklog_conflict.py WORKLOG.md` (add `--sort-by-date` to re-order `## YYYY-MM-DD` sections in each resolved block; `--check` for a pre-commit gate). The script only touches conflict blocks; content outside markers is left exactly as-is.
+- Worklog entry filenames are unique and should not conflict. A committed entry is immutable; correct it with a new `decision` or `checkpoint` entry that links the superseded path.
+- `WORKLOG-LEGACY.md` is byte-frozen and manifest-checked. If an old branch carries an append to pre-cutoff `WORKLOG.md`, the designated merge owner converts its missing material into a new immutable entry instead of changing legacy.
 - Do not clean up another agent's benchmark outputs, staged files, or local artifacts unless the task explicitly asks for that cleanup.
 
 ## External Reference Repos
@@ -172,10 +175,10 @@ Read-only peers under `/home/lhl/`. Do not edit as part of a hipEngine task. Whe
 
 | Situation | Action |
 | --- | --- |
-| ROCm env appears corrupted | Record symptoms in `WORKLOG.md` before any restore; follow the `~/amd-gpu-tuning` `therock` restore commands if clearly required. |
+| ROCm env appears corrupted | Record symptoms in a new worklog entry before any restore; follow the `~/amd-gpu-tuning` `therock` restore commands if clearly required. |
 | Kernel hangs with GPU at 0%, no error | Stale JIT cache. See `docs/KERNELS.md` "JIT cache gotcha". |
 | `rocprofv3` reports unexpected kernel | Registry / dispatch bug, not a kernel bug. Check `fusion.plan()` output before touching the kernel. |
-| Math change lacks an oracle/test | Stop and add a CPU-reference/golden fixture first, or record an explicit no-RED rationale in `WORKLOG.md`. |
+| Math change lacks an oracle/test | Stop and add a CPU-reference/golden fixture first, or record an explicit no-RED rationale in the unit's worklog entry. |
 | KL / top-1 regression after a kernel edit | Revert, add a correctness fixture that captures the failure, then re-try. Never land a perf win that regresses correctness. |
 | Kernel micro-opt shows neutral / negative results | Re-audit the rocprof kernel-family / launch breakdown in-tree (e.g. `scripts/mtp_verifier_rocprof.py`) before more tweaks; consult `~/amd-gpu-tuning/` evidence for context, but do not keep tweaking blindly. |
 | Merge conflict in a high-conflict file | Stop and coordinate. Do not force-stage or revert. |

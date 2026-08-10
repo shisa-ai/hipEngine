@@ -34,9 +34,9 @@ Every non-trivial behavior change follows:
 2. **RED.** Add or update a targeted test/fixture that fails against the current or intentionally-broken implementation. For a regression, the new test must reproduce the bad behavior where practical.
 3. **GREEN.** Implement the minimal change that passes the targeted test.
 4. **Guard.** Run the relevant gate matrix below.
-5. **Log and commit.** Record exact commands/results in `WORKLOG.md` for non-trivial code, kernel, or correctness changes; commit only after validation passes.
+5. **Log and commit.** Record exact commands/results in the unit's immutable worklog entry for non-trivial code, kernel, or correctness changes; commit only after validation passes.
 
-If a failing test cannot be written first, record why in `WORKLOG.md` before implementing. Avoid silent "trust me" math changes.
+If a failing test cannot be written first, record why in the unit's worklog entry before implementing. Avoid silent "trust me" math changes.
 
 ## Oracles
 
@@ -413,7 +413,7 @@ python3 scripts/check_fixtures.py
 # plus the phase's named GPU/perf target once available
 ```
 
-Record exact commands and outcomes in `WORKLOG.md` before claiming closure.
+Record exact commands and outcomes in the unit's immutable worklog entry before claiming closure.
 
 ## Definition of done for math/kernel changes
 
@@ -425,7 +425,7 @@ A math or kernel change is not done until all applicable evidence exists:
 - [ ] CPU deterministic bundle passes if code changed outside docs.
 - [ ] GPU smoke passes if GPU code changed and GPU is available.
 - [ ] `rocprofv3` trace captured for new/ported kernels, or blocker recorded.
-- [ ] `WORKLOG.md` records exact commands/results for non-trivial math, kernel, perf, or blocker evidence.
+- [ ] The unit's immutable worklog entry records exact commands/results for non-trivial math, kernel, perf, or blocker evidence.
 
 ## Claim integrity
 

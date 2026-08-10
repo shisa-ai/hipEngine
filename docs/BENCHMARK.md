@@ -1416,10 +1416,10 @@ Minimum sequence for a retained number:
 4. **Measurement.** Run the workload; `torch.cuda.synchronize()` around prefill and decode phases when torch is in play; `hipStreamSynchronize` on the default stream otherwise.
 5. **Correctness.** Run the layer-level and smoke gates (above). A failing gate kills the number — do not publish.
 6. **Artifact + rollup.** Emit the JSON under `benchmarks/results/`, update `benchmarks/README.md`, and add a short entry to `benchmarks/CHANGELOG.md`.
-7. **Log.** Append an entry to `WORKLOG.md` summarizing the number, the delta vs prior baseline, and any anomalies (high VGPR, scratch, unexpected kernel in trace). Stage and commit the artifact/rollup/changelog/log with the code change if there is one, or as its own `perf:` commit otherwise.
+7. **Log.** Create a unique immutable worklog entry with `python3 scripts/worklog.py new`, then summarize the number, delta vs prior baseline, and anomalies (high VGPR, scratch, unexpected kernel in trace). Validate it with `python3 scripts/worklog.py check` and commit the entry/artifact/rollup/changelog with the code change, or as its own `perf:` unit otherwise.
 
 If the number contradicts the roofline prediction by > 2×, stop and re-audit before publishing. Overperformance usually means a measurement bug; underperformance usually means a pathology worth naming.
 
 ## Failure as Evidence
 
-A benchmark that failed for a specific reason (OOM at shape X, hang on ROCm version Y, crash on concurrency Z) is still evidence and should be recorded in `WORKLOG.md` with the same rigor: exact command, exact symptom, workload shape, hardware context. "We tried this path and it doesn't work yet" keeps us from wasting time on the same path later.
+A benchmark that failed for a specific reason (OOM at shape X, hang on ROCm version Y, crash on concurrency Z) is still evidence and should be recorded in an immutable worklog entry with the same rigor: exact command, exact symptom, workload shape, and hardware context. "We tried this path and it doesn't work yet" keeps us from wasting time on the same path later.

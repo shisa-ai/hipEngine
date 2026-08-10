@@ -595,9 +595,9 @@ Rules (per `AGENTS.md`):
   (`rocprofv3` for HIP, Nsight Systems for CUDA).
 - Profile with prebuilt `.so` + cached-only metadata; never let the profiled
   process spawn `hipcc` or `nvcc`.
-- Log measurements and decisions in `WORKLOG.md` as they happen; update
-  `benchmarks/README.md` / `CHANGELOG.md` for every retained result, including
-  accepted diagnostics.
+- Log measurements and decisions in the unit's immutable worklog entry as they
+  happen; update `benchmarks/README.md` / `CHANGELOG.md` for every retained
+  result, including accepted diagnostics.
 
 ## 6. Non-goals / deferred
 

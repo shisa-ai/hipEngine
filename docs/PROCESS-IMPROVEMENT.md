@@ -1,8 +1,11 @@
 # hipEngine Process Improvement
 
-Status: proposal for human review. None of the naming, folder, ownership,
-experiment, worklog, or migration conventions below are approved or active.
-Do not apply them until the human lead explicitly selects what to adopt.
+Status: proposal for human review, except for the Worklog2 storage migration.
+The immutable per-unit worklog design is separately approved and implemented by
+[`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md), which supersedes this
+file's worklog convention and no-retrofit rollout notes. All sprint naming,
+planning registry, decision brief, experiment, and other migration conventions
+below remain unapproved until the human lead explicitly selects them.
 
 This document proposes how hipEngine could organize bounded sprints, durable
 decisions, performance experiments, and their relationship to the existing
