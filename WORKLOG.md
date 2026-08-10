@@ -217071,3 +217071,25 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. \
 - These are existing product-format comparisons, not identical-quant results or
   new measurements. The issue comment links the current gfx1100 and gfx1151
   benchmark tables, so no benchmark artifact, rollup, or changelog changes.
+
+## 2026-08-10 - Close MTP issue 5
+
+- By user request, post the final exact/default versus `llama-compat`
+  distinction to
+  <https://github.com/shisa-ai/hipEngine/issues/5#issuecomment-5236222856> as
+  GitHub user `lhl`, then close issue 5 as completed for compatibility mode.
+- On W7900/gfx1100, the retained explicit route is **122.67 tok/s** versus
+  **96.75 tok/s** same-protocol true AR, or **1.2679x**, with every category and
+  heldout scope positive. Complete wall is **8.186 ms/output**, draft acceptance
+  is **80.45%**, and accepted drafts per output are **60.00%**.
+- Record the gfx1151 comparison at **80.10 versus 56.09 tok/s**, or **1.4282x**.
+  Both compatibility routes remain explicit because direct partial commit is
+  not serial-prefix-equivalent and output may differ from normal generation.
+- Preserve exact/default as an exhausted negative. On gfx1100 it is **0.6936x**
+  (68.50 versus 98.75 tok/s); on gfx1151 it is **0.9895x** (56.39 versus 56.98
+  tok/s). Extensive work did not find a viable speedup under the current
+  algorithm and known mechanisms. Do not call it theoretically impossible;
+  reopen only for a materially new schedule/primitive, changed stack, or newly
+  profiled wall-time opportunity.
+- These are existing retained measurements. No benchmark artifact, rollup, or
+  changelog changes.
