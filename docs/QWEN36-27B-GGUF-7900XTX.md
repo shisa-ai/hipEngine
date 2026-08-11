@@ -797,14 +797,19 @@ and 4K decode. Evidence:
   16.673-GiB floor. Ownership returns to zero and the mapped token table is
   borrowed without a raw shadow; a family-level incremental-byte reconciliation
   remains open.
-- [ ] **P7.5 Profile if still behind.** The complete wall attributes **3.126 /
+- [x] **P7.5 Profile if still behind.** The complete wall attributes **3.126 /
   3.293 s (94.92%)** to target verify, **0.123 s (3.74%)** to proposal, and
-  **0.044 s (1.34%)** to commit/host residual. Run the direct B3 child under
-  rocprofv3 and optimize target verify; external profiling stays non-topline.
+  **0.044 s (1.34%)** to commit/host residual. A warmed direct B3 child then
+  captured seven exact target cycles: 267.172 / 293.496 ms (91.03%) of the
+  target ROCTX wall is kernel time. Dense Q4 T16 owns 113.777 ms (38.77% of
+  wall), Q6 qmicro-planar 80.002 ms (27.26%), and Q5 T16 19.961 ms (6.80%).
+  The next iteration therefore targets actual-weight rows=4 Q4 verifier
+  primitives, not proposal or host scheduling; profiling remains non-topline.
 
 Current exit status: compatible B3 is exact and faster than llama.cpp HIP, but
 Vulkan speed/memory and the final repeated-suite variance gates fail. Evidence:
-[`llama-compatible natural MTP matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json).
+[`llama-compatible natural MTP matrix`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json),
+[`warmed B3 target-verify profile`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-b3-target-verify-profile.json).
 
 ### P8 — W7900 non-regression and default promotion
 

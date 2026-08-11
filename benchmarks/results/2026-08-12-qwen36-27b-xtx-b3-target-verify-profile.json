@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "complete_profile_non_topline",
+  "title": "Qwen3.6-27B Q4_K_M hipEngine warmed B3 target-verify profile on RX 7900 XTX",
+  "performance_claim": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "software": {
+    "hipengine_commit": "c6fa006fadb3ca3f896c1492d29c0c0e5a912b59",
+    "rocm_hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "tracked_clean": true,
+    "profiler": "rocprofv3 kernel+marker+memory-copy trace"
+  },
+  "protocol": {
+    "prompt_id": "code_merge_intervals",
+    "prompt_category": "code",
+    "candidate_budget": 3,
+    "visible_outputs": 25,
+    "timed_transitions": 24,
+    "candidate_local_warmup": true,
+    "measured_target_cycles": 7,
+    "target_forward_rows": 28,
+    "target_verify_mode": "native",
+    "compiler_cache": "prebuilt require_cached",
+    "scope": "Only kernels fully enclosed by qwen36_dense_mtp_target_verify ROCTX ranges are included. The one-prompt profiled rate is diagnostic and is not a topline result."
+  },
+  "correctness": {
+    "status": "complete_exact",
+    "accepted_draft_tokens": 17,
+    "proposed_draft_tokens": 21,
+    "draft_acceptance": 0.8095238095238095,
+    "cycles": 7,
+    "exact_to_true_ar": true,
+    "stage_reconciled": true
+  },
+  "target_verify": {
+    "stage_wall_ms": 293.59644930809736,
+    "roctx_wall_ms": 293.49606,
+    "roctx_window_ms": [40.245986, 40.913126, 41.290271, 43.001865, 42.6544, 42.703301, 42.687111],
+    "kernel_calls": 6328,
+    "kernel_sum_ms": 267.172049,
+    "kernel_share_of_roctx_wall": 0.910308809596967,
+    "unattributed_roctx_wall_ms": 26.324011,
+    "unattributed_roctx_wall_percent": 8.9691190403033,
+    "family_totals": [
+      {
+        "family": "q4_t16_dense",
+        "calls": 1666,
+        "total_ms": 113.776507,
+        "percent_kernel": 42.5854828099926,
+        "percent_target_wall": 38.76594016287646
+      },
+      {
+        "family": "q6_t16_qmicro_planar",
+        "calls": 476,
+        "total_ms": 80.002092,
+        "percent_kernel": 29.94403505136123,
+        "percent_target_wall": 27.258318902134494
+      },
+      {
+        "family": "q5_t16_dense",
+        "calls": 336,
+        "total_ms": 19.961449,
+        "percent_kernel": 7.471383729964956,
+        "percent_target_wall": 6.801266429266546
+      },
+      {
+        "family": "gdn_recurrent",
+        "calls": 336,
+        "total_ms": 15.236044,
+        "percent_kernel": 5.70270881891541,
+        "percent_target_wall": 5.191226076425012
+      },
+      {
+        "family": "rmsnorm_rope",
+        "total_ms": 13.299713,
+        "percent_kernel": 4.977958229455357,
+        "percent_target_wall": 4.531479230078932
+      },
+      {
+        "family": "copy_buffer",
+        "calls": 91,
+        "total_ms": 4.716886,
+        "percent_kernel": 1.765486328998435,
+        "percent_target_wall": 1.6071377585102846
+      },
+      {
+        "family": "other",
+        "total_ms": 20.179358,
+        "percent_kernel": 7.552945031312015,
+        "percent_target_wall": 6.875512400404967
+      }
+    ],
+    "top_kernels": [
+      {
+        "kernel": "q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short,4>",
+        "calls": 448,
+        "total_ms": 62.310683,
+        "percent_kernel": 23.32230606952451,
+        "average_us": 139.08634598214286,
+        "workgroup_x": 64,
+        "grid_x": [139264],
+        "vgpr": 144,
+        "lds_bytes": 512
+      },
+      {
+        "kernel": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short,4>",
+        "calls": 952,
+        "total_ms": 45.244963,
+        "percent_kernel": 16.934766630471888,
+        "average_us": 47.526221638655464,
+        "workgroup_x": 32,
+        "grid_x": [20480, 24576, 40960, 49152],
+        "vgpr": 144,
+        "lds_bytes": 0
+      },
+      {
+        "kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short,4>",
+        "calls": 448,
+        "total_ms": 44.183831,
+        "percent_kernel": 16.53759484398759,
+        "average_us": 98.62462276785715,
+        "workgroup_x": 128,
+        "grid_x": [16384, 81920, 163840],
+        "vgpr": 80,
+        "lds_bytes": 512
+      },
+      {
+        "kernel": "q6_k_t16_qmicro_planar_gemv_top1_stage1_kernel",
+        "calls": 21,
+        "total_ms": 25.351002,
+        "percent_kernel": 9.488643027923928,
+        "average_us": 1207.1905714285713,
+        "workgroup_x": 128,
+        "grid_x": [1986560],
+        "vgpr": 96,
+        "lds_bytes": 512
+      },
+      {
+        "kernel": "q5_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short,4>",
+        "calls": 336,
+        "total_ms": 19.961449,
+        "percent_kernel": 7.471383729964956,
+        "average_us": 59.40907440476191,
+        "workgroup_x": 128,
+        "grid_x": [163840],
+        "vgpr": 56,
+        "lds_bytes": 512
+      },
+      {
+        "kernel": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short,true,true>",
+        "calls": 336,
+        "total_ms": 15.236044,
+        "percent_kernel": 5.70270881891541,
+        "average_us": 45.345369047619045,
+        "workgroup_x": 128,
+        "grid_x": [6144],
+        "vgpr": 64,
+        "lds_bytes": 0
+      },
+      {
+        "kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float,4>",
+        "calls": 7,
+        "total_ms": 10.467259,
+        "percent_kernel": 3.9177971794497113,
+        "average_us": 1495.3227142857143,
+        "workgroup_x": 128,
+        "grid_x": [3973120],
+        "vgpr": 80,
+        "lds_bytes": 512
+      }
+    ]
+  },
+  "sources": {
+    "child": {
+      "path": "/tmp/qwen36-27b-xtx-b3-direct-profile/child.json",
+      "sha256": "04e7030f11c2fc50dffe0d5e7d90459dda5a152420df014b1ab6be5dfb272259"
+    },
+    "kernel_trace": {
+      "path": "/tmp/qwen36-27b-xtx-b3-direct-profile/mtp-b3_kernel_trace.csv",
+      "sha256": "b20814f85122db48688c7d29946f58e21dabdd2aaa0b888531522ee0fa8e547e"
+    },
+    "marker_trace": {
+      "path": "/tmp/qwen36-27b-xtx-b3-direct-profile/mtp-b3_marker_api_trace.csv",
+      "sha256": "39bc8fc572168bc82c1dcbdefccc03bc874a2fe95be72394d821bebe9d123c52"
+    },
+    "memory_copy_trace": {
+      "path": "/tmp/qwen36-27b-xtx-b3-direct-profile/mtp-b3_memory_copy_trace.csv",
+      "sha256": "50e4c916a0c22d7c4227f427271d85ff9e550eef3eeafea70136bc8acfb96f39"
+    }
+  },
+  "command": "D=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib; LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:$D:$D/rocm_sysdeps/lib:/opt/rocm/lib HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1 HIPENGINE_GGUF_T16_SELECTED_DP4A=1 HIPENGINE_GGUF_RAW_SELECTED_DP4A=1 HIPENGINE_GGUF_SELECTED_X8_REPACK=q6 HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A=1 HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=x8 HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL=1 PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --memory-copy-trace --output-format csv --output-file mtp-b3 --output-directory /tmp/qwen36-27b-xtx-b3-direct-profile -- uv run python scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 3 --target-verify-mode native --runs 1 --limit 1 --roctx-markers --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen36-27b-xtx-b3-direct-profile/child.json",
+  "decision": "Target verification is device-kernel dominated: 91.03% of its ROCTX wall is enclosed kernel time. Dense Q4 T16 alone is 38.77% of target wall, followed by Q6 qmicro-planar at 27.26% and Q5 T16 at 6.80%. Continue the predeclared sole raw-GGUF Q4 rung with actual-weight rows=4 component comparisons covering both the fused dual-SiLU and singleton shapes; do not spend the next iteration on proposal or host scheduling."
+}
