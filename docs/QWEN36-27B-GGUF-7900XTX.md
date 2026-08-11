@@ -1,6 +1,6 @@
 # Qwen3.6-27B Q4_K_M on RX 7900 XTX: Single-Layout Campaign
 
-Status: **in progress; all AR shapes and natural B1-B3 fit exactly, 512/1K AR decode pass, and the sole-raw Q4 rung is rejected, while prefill/memory, 4K decode, Vulkan-MTP parity, repeated-suite variance, and final W7900 closure remain open.**
+Status: **in progress; all AR shapes and natural B1-B3 fit exactly, live residency has zero duplicate/alternate bytes, P9.1-P9.3 lifecycle gates pass, 512/1K AR decode pass, and the sole-raw Q4 rung is rejected, while prefill/memory, 4K decode, Vulkan-MTP parity, deep 1K/4K state, rollback/soak, repeated-suite variance, and final W7900 closure remain open.**
 
 Primary hardware: AMD Radeon RX 7900 XTX / `gfx1100` / 24 GiB, currently
 HIP GPU1, Vulkan device `Vulkan1`, PCI `0000:10:00.0`, sysfs `card0`, unique ID
@@ -600,17 +600,21 @@ current hipEngine no-number/OOM state is explicit.
   bytes, planned allocations, canonical layout, aliases, and alternate-layout
   bytes without requiring a GPU. Implemented by
   `census_qwen35_gguf_weight_specs()` with a device-free actual-model fixture.
-- [ ] **P1.2 Add a runtime physical-range census.** Deduplicate by actual
-  `(device, ptr, nbytes)` range and attach owner/view names. Report target,
-  NextN, root-shared, state/KV, graph, code/backend, and workspace classes.
+- [x] **P1.2 Add a runtime physical-range census.** The retained census
+  deduplicates actual `(device, ptr, nbytes)` ranges with owner/view and memory
+  class labels. Live target+NextN evidence covers target, `root_shared`, and
+  NextN weights; benchmark ownership snapshots separately report state/KV,
+  graph/runtime, and workspace classes.
 - [x] **P1.3 Add a duplicate invariant checker.** Fail if one logical source
   tensor owns multiple physical payloads or if a payload appears under an
   undeclared logical owner. `Qwen35GGUFRuntimeResidencyCensus.assert_single_layout()`
   rejects duplicate allocation roles, alternate layouts, and cross-source
   physical aliases.
-- [ ] **P1.4 Cover aliases.** Test tied and untied embedding/head, shared target
-  assets, model-map aliases, arena slices, and intentional views so the checker
-  neither double-counts aliases nor hides disjoint allocations.
+- [x] **P1.4 Cover aliases.** Unit coverage exercises tied/untied roots,
+  declared shared target assets, incompatible aliases, arena views, duplicate
+  copies, and alternate layouts. The actual 27B live census additionally proves
+  mapped `token_embd.weight` and untied `output.weight` are each shared once
+  while the distinct NextN head norm remains owned.
 - [x] **P1.5 Freeze current and target manifests.** The current census
   reproduces all 288 Q4 pack8/T16 owners and 10,790,502,400 alternate-layout
   bytes. The candidate predicts the same 10,790,502,400 canonical T16 bytes,
@@ -693,33 +697,41 @@ and [`wide weight arena`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-wide-w
 
 ### P4 — Remove the remaining AR/MTP duplicate assets
 
-- [ ] **P4.1 Audit Q8 llama-compatible overrides.** Eliminate T16+raw
-  coexistence. Implement missing Q8 operations on one canonical format or keep
-  raw as the sole format for that session.
-- [ ] **P4.2 Audit Q6 root/NextN X8.** Eliminate T16/qmicro+X8 coexistence in
-  root top-1 and proposal paths. Prefer the retained sole planar/T16 payload and
-  consume it directly.
-- [ ] **P4.3 Share target-owned immutable roots.** NextN/provider must alias the
-  target's embedding/output/norm assets where semantically identical. The
-  model's untied `output.weight` remains distinct from `token_embd.weight`, but
-  neither may be copied merely because both AR and draft use it.
-- [ ] **P4.4 Keep only NextN-specific weights additional.** Enumerate the
-  trailing `blk.64` tensors and prove MTP adds only truly distinct NextN bytes,
-  its state/KV, and bounded cycle scratch.
-- [ ] **P4.5 Audit graph and cached uploads.** `_cached_upload` keys, shared
-  runners, warmups, graph slabs, and PM4 manifests must not retain stale model
-  payloads or duplicate a target after ownership transfer.
-- [ ] **P4.6 Make the invariant package-default.** Candidate selectors may
-  remain for rollback only until final promotion; add removal criteria to
-  `REFACTOR.md`.
+- [x] **P4.1 Audit Q8 llama-compatible overrides.** The production target and
+  draft plans contain no raw/sidecar Q8 override and both report exactly zero
+  alternate-layout bytes.
+- [x] **P4.2 Audit Q6 root/NextN X8.** Root and draft consume their sole
+  qualified planar/T16 owners; neither plan nor the live physical census finds
+  a parallel X8/raw payload.
+- [x] **P4.3 Share target-owned immutable roots.** The live target+provider
+  census proves `token_embd.weight` and untied `output.weight` are the same
+  mapped/device objects in both owners. The distinct
+  `blk.64.nextn.shared_head_norm.weight` correctly remains NextN-owned.
+- [x] **P4.4 Keep only NextN-specific weights additional.** Live MTP residency
+  adds 15 distinct NextN weights / 293,869,568 physical bytes; the shared roots
+  account for 1,758,105,600 bytes without a second payload.
+- [x] **P4.5 Audit graph and cached uploads.** Across 870 target/draft references
+  the live census reports 866 exact physical ranges, zero duplicate roles,
+  zero duplicate payload bytes, zero alternate-layout bytes, and no issues.
+  The complete natural suite and lifecycle gates return tracked ownership to
+  zero after proposal/target graph teardown.
+- [x] **P4.6 Make the invariant package-default.** Sole dense T16/planar
+  materialization, mapped Q4 embedding, and root borrowing are package defaults;
+  rollback deletion criteria remain tracked in `REFACTOR.md`.
 
-Exit: complete AR and MTP manifests both report zero duplicate/alternate-layout
+Exit evidence:
+[`correctness and runtime residency`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
+Complete AR and MTP manifests both report zero duplicate/alternate-layout
 weight bytes.
 
 ### P5 — Correctness and transaction gate
 
-- [ ] **P5.1 CPU/layout bundle.** Run mapping/materialization, quant round-trip,
-  registry/fusion, and allocator-audit tests.
+- [x] **P5.1 CPU/layout bundle.** Mapping/materialization, quant layout,
+  registry/fusion, model/import, host-mapping, NextN borrowing, residency, and
+  allocator-audit coverage is green. The focused shared-gfx1100 run also found
+  and repaired unsupported Q6_K roots being auto-deferred by the mapped-Q4
+  capability (`719bd743f`); final selected-node accounting is 64 passed / 5
+  expected hardware-or-capacity skips.
 - [x] **P5.2 Kernel correctness.** Q4 shared-B is BF16-bit exact to the prior
   T16 producer at rows 16/33/512/1024/4096 and passes its independent CPU gate;
   Q5 is exact to selected T16; planar Q6 is exact to legacy T16 and passes the
@@ -734,15 +746,20 @@ weight bytes.
   one warmup plus five exact resets per shape with finite token 9707, stable
   graph reuse, zero native fallbacks/unretired submissions, and zero tracked
   bytes after close. PM4 is +1.601% in the focused 512 control and is promoted
-  only for `Qwen3.6-27B/MOSTLY_Q4_K_M`, private c1, horizon >=128. Full eager
-  hidden/Conv/GDN/KV parity at 1K/4K remains open.
+  only for `Qwen3.6-27B/MOSTLY_Q4_K_M`, private c1, horizon >=128. A clean
+  same-commit llama.cpp p512 trajectory now matches production bulk eager
+  exactly, and four teacher-forced transitions match fresh serial-prefix token,
+  hidden, every layer output, Conv/GDN state, and all live K/V bytes with zero
+  mismatches. The corresponding 1K (~6 minute) and 4K (~16-18 minute) deep
+  oracles remain open pending explicit expensive-test approval. Evidence:
+  [`correctness and runtime residency`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
 - [ ] **P5.4 Dense MTP transaction.** Cover reject, partial accept, full accept,
   correction, rollback/reseed, dynamic positions, proposal/target graph reuse,
   and provider-vs-scalar behavior for every admitted budget.
-- [ ] **P5.5 Natural semantic gate.** Run all ten prompts and fixed heldouts.
-  Layout-only changes are expected to preserve exact current hipEngine output;
-  any changed-association/quality-gated route is a separate explicitly approved
-  lane and still requires KL <= 0.05 / top-1 >= 90%.
+- [x] **P5.5 Natural semantic gate.** All ten prompts, four categories, six
+  train cases, and four fixed heldouts pass for true AR and B1-B3. Every MTP
+  token ledger is exact to true AR and every GPU accept result matches CPU.
+  Layout-only changes preserve the exact current hipEngine output.
 - [ ] **P5.6 Torch-free and lifecycle.** Public `LLM.generate()` and server paths
   remain torch-free, finite, deterministic under greedy settings, and leak-free.
 
@@ -846,16 +863,26 @@ Exit: capacity is not purchased with a regression on the original target card.
 
 ### P9 — Stability, fragmentation, and transport lifecycle
 
-- [ ] **P9.1 Cold lifecycle.** At least three complete process load/run/close
-  cycles for AR and MTP return tracked bytes to zero and sysfs VRAM to within
-  64 MiB of pre-run baseline after a bounded settle interval.
-- [ ] **P9.2 Warm lifecycle.** One resident process performs at least 100 mixed
-  reset/rearm runs across 512/1024/4096 without rising current/peak ownership,
-  stale pointer use, or output drift.
-- [ ] **P9.3 Graph/PM4 recreate.** Exercise package-default transport plus HIP
-  graph control across capture, replay, resource recreation, fallback, and
-  teardown. Memory pressure must not reopen the guarded recreate/lifecycle
-  issue or retain old weight ranges.
+- [x] **P9.1 Cold lifecycle.** Three independent AR processes (512/1K/4K) and
+  three production-equivalent natural AR+B1-B3 MTP processes all return tracked
+  bytes/allocations to zero. Every final sysfs sample is within 1.7 MiB of its
+  pre-run baseline (64-MiB gate), with exact tokens and GPU/CPU acceptance.
+- [x] **P9.2 Warm lifecycle.** One resident process completes 100 deterministic
+  mixed reset/rearms (90x512, 5x1K, 5x4K) and 400 PM4 submissions. Tokens are
+  9707 throughout, each shape has one final-logit value, post-warm tracked
+  ownership is constant, and fallback/unretired counts stay zero. Session close
+  returns tracked ownership to zero; process exit returns whole-card VRAM
+  exactly to baseline.
+- [x] **P9.3 Graph/PM4 recreate.** Three position-specific PM4 generations plus
+  the earlier HIP-graph control cover capture, replay, policy fallback, and
+  teardown. After session close every graph is closed, every executable is
+  retired, context/native child counts are zero, callback status is zero, and
+  there are no unretired submissions. Approximately 0.8-0.9 GiB of HIP/JIT
+  module residency remains until interpreter exit, then sysfs returns exactly
+  to baseline; tracked weights are already zero. The destructive
+  submit+queue/resource-recreate ROCm#6529 arm remains separately guarded and
+  requires explicit reset-risk approval. Evidence:
+  [`cold/warm PM4 lifecycle`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-lifecycle.json).
 - [ ] **P9.4 MTP rollback stress.** Cycle accepted/rejected patterns, budget
   changes among admitted graphs, cancellation, and repeated provider reuse;
   check all state/KV journals and allocation ownership.
@@ -912,11 +939,11 @@ Populate only from committed artifacts:
 | Natural MTP transition tok/s | 46.863 | **81.952** | **72.887** | >=82.771 (1% margin) — fail |
 | Natural MTP / true AR | 1.4841x | 6.1223x | **3.5071x** | >1.0; absolute gate still binds |
 | Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | **17.183** | <=16.673 — fail |
-| Alternate-layout weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
-| Duplicate logical weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
+| Alternate-layout weight bytes | not audited | not audited | **0 plan + live physical bytes** | exactly 0 |
+| Duplicate logical weight bytes | not audited | not audited | **0 live duplicate-payload bytes** | exactly 0 |
 | Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.829 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
-| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **AR PM4 matrix + exact B1-B3 natural suite teardown pass; deep state/soak pending** | all pass |
+| Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **3 AR + 3 MTP cold passes; 100 mixed resets / 400 PM4 submits exact; 3 generations retire cleanly** | P9.1-P9.3 pass; rollback stress/soak pending |
 
 W7900 safeguard:
 
