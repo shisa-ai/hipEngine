@@ -168,6 +168,21 @@ reset/replays per shape):
 | 1024/128 | **785.347 tok/s** | **34.537 tok/s** | **15.720 GiB** | **16.320 GiB** | prefill fail / **decode pass** / memory fail |
 | 4096/128 | **779.243 tok/s** | **31.391 tok/s** | **16.368 GiB** | **17.119 GiB** | prefill fail / decode fail / memory fail |
 
+The complete ten-prompt llama-compatible natural suite selects B3:
+
+| Mode | Transition decode | vs true AR | Draft acceptance | Whole-device peak delta |
+| --- | ---: | ---: | ---: | ---: |
+| True AR | **20.782 tok/s** | 1.0000x | — | — |
+| B1 | **53.222 tok/s** | 2.5609x | 91.27% | — |
+| B2 | **66.350 tok/s** | 3.1926x | 82.97% | — |
+| B3 | **72.887 tok/s** | **3.5071x** | 77.17% | **17.183 GiB** |
+
+All B1-B3 outputs match true AR across all ten prompts, four categories, six
+train prompts, and four heldouts. B3 is **55.53% faster** than clean llama.cpp
+HIP B2 but **11.06% slower** than Vulkan B4 and exceeds Vulkan's lower memory
+floor by **0.509 GiB**. One independent full suite is complete; the final
+variance rerun remains pending and no root-topline MTP row is promoted.
+
 The candidate uses one T16 payload for each of all 288 rank-2 Q4 tensors and a
 sole 715,161,600-byte device-visible mapped GGUF mmap for the root Q4 token
 table, with no VRAM shadow. PM4 beats HIP graph **33.424 vs 32.897 tok/s
@@ -204,7 +219,8 @@ partial pass rather than a root-topline promotion. Evidence: [`clean comparator 
 [`small-weight arena`](results/2026-08-12-qwen36-27b-xtx-small-weight-arena.json),
 [`Q4T16 output-major LDS`](results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
 [`wide weight arena`](results/2026-08-12-qwen36-27b-xtx-wide-weight-arena.json),
-and [`complete engine AR matrix`](results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json).
+[`complete engine AR matrix`](results/2026-08-12-qwen36-27b-xtx-engine-ar-matrix.json),
+and [`llama-compatible natural MTP matrix`](results/2026-08-12-qwen36-27b-xtx-llama-compatible-mtp.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 

@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "complete_mtp_matrix_partial_gate",
+  "title": "Qwen3.6-27B Q4_K_M hipEngine llama-compatible natural MTP on RX 7900 XTX",
+  "performance_claim": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "sysfs_card": "card0",
+    "vram_total_gib": 23.984375
+  },
+  "software": {
+    "hipengine_commit": "bd7ed23076c0672b298b251db4b4424971713350",
+    "rocm_hip_version": "7.2.53211-3d9ef42",
+    "tracked_clean": true,
+    "mapped_embedding_repair_commit": "bd7ed23076c0672b298b251db4b4424971713350"
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "train_prompt_count": 6,
+    "heldout_prompt_count": 4,
+    "visible_outputs_per_prompt": 25,
+    "timed_transitions_per_prompt": 24,
+    "timed_transitions_per_mode": 240,
+    "candidate_budgets": [1, 2, 3],
+    "true_ar_baseline": true,
+    "target_verify_mode": "native",
+    "runs": 1,
+    "warmup": true,
+    "sampling": {
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0,
+      "min_p": 0.0,
+      "seed": 12345
+    },
+    "compiler_cache": "prebuilt require_cached",
+    "memory": "whole-card sysfs card0 VRAM at 5 ms from before process launch through exit",
+    "compatibility_environment": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A": "1",
+      "HIPENGINE_GGUF_T16_SELECTED_DP4A": "1",
+      "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
+      "HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6",
+      "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A": "1",
+      "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE": "x8",
+      "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL": "1"
+    }
+  },
+  "full_suite_rows": [
+    {
+      "mode": "true_ar",
+      "timed_transitions": 240,
+      "decode_seconds": 11.548244682140648,
+      "transition_tok_s": 20.782379193191137,
+      "client_transition_tok_s": 6.8385477935837535
+    },
+    {
+      "mode": "B1",
+      "timed_transitions": 240,
+      "decode_seconds": 4.509388620965183,
+      "transition_tok_s": 53.222292459821475,
+      "mtp_vs_true_ar": 2.560933566126949,
+      "accepted_draft_tokens": 115,
+      "proposed_draft_tokens": 126,
+      "draft_acceptance": 0.9126984126984127,
+      "cycles": 126,
+      "target_forward_rows": 252,
+      "client_transition_tok_s": 8.046606371425817
+    },
+    {
+      "mode": "B2",
+      "timed_transitions": 240,
+      "decode_seconds": 3.617174773942679,
+      "transition_tok_s": 66.35012544290271,
+      "mtp_vs_true_ar": 3.1926145137723587,
+      "accepted_draft_tokens": 151,
+      "proposed_draft_tokens": 182,
+      "draft_acceptance": 0.8296703296703297,
+      "cycles": 91,
+      "target_forward_rows": 273,
+      "client_transition_tok_s": 8.290017143778709
+    },
+    {
+      "mode": "B3",
+      "timed_transitions": 240,
+      "decode_seconds": 3.29278580006212,
+      "transition_tok_s": 72.88661169380416,
+      "mtp_vs_true_ar": 3.5071351078842676,
+      "accepted_draft_tokens": 169,
+      "proposed_draft_tokens": 219,
+      "draft_acceptance": 0.771689497716895,
+      "cycles": 76,
+      "target_forward_rows": 295,
+      "client_transition_tok_s": 8.342477368437539
+    }
+  ],
+  "selected": {
+    "budget": 3,
+    "transition_tok_s": 72.88661169380416,
+    "mtp_vs_true_ar": 3.5071351078842676,
+    "draft_acceptance": 0.771689497716895,
+    "accepted_draft_tokens": 169,
+    "proposed_draft_tokens": 219,
+    "cycles": 76,
+    "target_forward_rows": 295,
+    "stage_seconds": {
+      "proposal": 0.12312339013442397,
+      "target_verify": 3.1255260249599814,
+      "target_commit_finish": 0.005626932717859745,
+      "scheduler_accept_replay_host_residual": 0.0385094522498548
+    },
+    "scopes": {
+      "full": {
+        "transition_tok_s": 72.88661169380416,
+        "mtp_vs_true_ar": 3.5071351078842676,
+        "draft_acceptance": 0.771689497716895
+      },
+      "train": {
+        "transition_tok_s": 78.64710725411565,
+        "mtp_vs_true_ar": 3.788023715666943,
+        "draft_acceptance": 0.8455284552845529
+      },
+      "heldout": {
+        "transition_tok_s": 65.67146662708001,
+        "mtp_vs_true_ar": 3.155316061845008,
+        "draft_acceptance": 0.6770833333333334
+      },
+      "categories": {
+        "code": {
+          "transition_tok_s": 80.36722348743348,
+          "mtp_vs_true_ar": 3.881339775337719,
+          "draft_acceptance": 0.8641975308641975
+        },
+        "general_en": {
+          "transition_tok_s": 74.58111686871716,
+          "mtp_vs_true_ar": 3.5683928100298083,
+          "draft_acceptance": 0.75
+        },
+        "general_ja": {
+          "transition_tok_s": 70.89796337212749,
+          "mtp_vs_true_ar": 3.4194572802664522,
+          "draft_acceptance": 0.7555555555555555
+        },
+        "mixed_ja_en": {
+          "transition_tok_s": 61.724813762639094,
+          "mtp_vs_true_ar": 2.957966313506625,
+          "draft_acceptance": 0.6530612244897959
+        }
+      }
+    }
+  },
+  "comparators": {
+    "llamacpp_hip": {
+      "selected_budget": 2,
+      "true_ar_transition_tok_s": 31.576238459542676,
+      "mtp_transition_tok_s": 46.863183521498776,
+      "mtp_vs_true_ar": 1.4841281231626948,
+      "peak_delta_gib": 16.939525604248047
+    },
+    "llamacpp_vulkan": {
+      "selected_budget": 4,
+      "true_ar_transition_tok_s": 13.385678027258928,
+      "mtp_transition_tok_s": 81.95170722479422,
+      "mtp_vs_true_ar": 6.122342630526875,
+      "peak_delta_gib": 16.673370361328125
+    },
+    "deltas": {
+      "hipengine_mtp_vs_llamacpp_hip_percent": 55.53064520332249,
+      "hipengine_mtp_vs_llamacpp_vulkan_percent": -11.061509074026276,
+      "hipengine_true_ar_vs_llamacpp_hip_percent": -34.183486675213906,
+      "hipengine_true_ar_vs_llamacpp_vulkan_percent": 55.25832274517124
+    },
+    "selected_vulkan_category_transition_tok_s": {
+      "code": 93.41811026840192,
+      "general_en": 87.01784409665507,
+      "general_ja": 67.3844987575983,
+      "mixed_ja_en": 75.35617567408454
+    }
+  },
+  "frozen_gates": {
+    "mtp_transition_gate_tok_s": 82.77122429704217,
+    "mtp_transition_observed_tok_s": 72.88661169380416,
+    "speed_passed": false,
+    "memory_ceiling_gib": 16.673370361328125,
+    "memory_observed_peak_delta_gib": 17.18280792236328,
+    "memory_passed": false,
+    "independent_suite_runs": 1,
+    "final_variance_gate_complete": false
+  },
+  "memory": {
+    "tracked_peak_bytes": 17914593992,
+    "tracked_peak_gib": 16.684265799820423,
+    "tracked_peak_allocations": 820,
+    "tracked_current_after_close_bytes": 0,
+    "tracked_active_after_close": 0,
+    "whole_device_baseline_gib": 0.060455322265625,
+    "whole_device_peak_gib": 17.243263244628906,
+    "whole_device_peak_delta_gib": 17.18280792236328,
+    "minimum_free_vram_gib": 6.741111755371094,
+    "whole_device_final_gib": 0.062076568603515625
+  },
+  "correctness": {
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "all_stage_windows_reconciled": true,
+    "all_budget_token_hashes_match_true_ar": true,
+    "true_ar_token_ledgers": [
+      ["code_merge_intervals", "0e257ed1f08deae7cf88d0ca82cb1e6e478e848b798a5ccdab9393ce7468aafe"],
+      ["code_topological_sort", "14533db0a7d880315053bf967b431cac8f03a1ac721b77e6967596a1ceb2f422"],
+      ["code_lru_cache", "4e7f66189564ebff5bee0464e49c00b93a5c2a17bf7a8fe4a2112a03948a745c"],
+      ["code_markdown_table", "b8308ff058cc292e1448ebc1c4e513aa6d747a9d481d6a21d08d0681565e0785"],
+      ["general_en_plan", "c6aa8e399622a832a69bf46ca4fae998eb6fd414c09cf2b2f6d35810876dc35a"],
+      ["general_en_explain", "f4c572d6ebc1d6961c20c04770a4a1038118442010038658eb2c597cad3b820e"],
+      ["general_ja_plan", "655c652da8b7ad71b0524c90e28a36f85df0c4f381216851c703fe56931d1aae"],
+      ["general_ja_explain", "4023c99d34cf8fcf6b8e2a468c074a4699471a3b8e7a7c51feb1c7565579ebee"],
+      ["mixed_ja_en_translate", "45dca922133a337bedf39ee658233547fec9bbd399201d89c4b2778388a09185"],
+      ["mixed_ja_en_review", "0a505efc20fd351fc3868a6749bfd34418f376a0465cfc76d5c7cee326c45bae"]
+    ],
+    "proposal_graph": {
+      "eligible": true,
+      "budgets": [1, 2, 3],
+      "graphs": 3,
+      "captures": 3,
+      "replays": 298,
+      "unavailable": [],
+      "last_status": "replay",
+      "last_error": null
+    }
+  },
+  "sources": {
+    "raw": "/tmp/qwen36-27b-xtx-llama-compat-natural25-b1-b3.json",
+    "raw_sha256": "c20c97ab8bc8db8c4b294a64d454f0e3debe132a3ec723f96dbfcf009a1d5c1b",
+    "memory": "/tmp/qwen36-27b-xtx-llama-compat-natural25-b1-b3-vram.json",
+    "memory_sha256": "ddee6fdb2f3eed8088e880c41b04aae1a47c78a817c0029250d1af56c0ced9fd",
+    "comparator_artifact": "benchmarks/results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json"
+  },
+  "validation": {
+    "complete_all_ten_prompts": true,
+    "all_four_categories": true,
+    "all_six_train_and_four_heldout": true,
+    "total_requests": 40,
+    "total_timed_transitions": 960,
+    "mapped_embedding_blocker_repaired": true,
+    "process_returncode": 0,
+    "elapsed_seconds": 211.41684065014124
+  },
+  "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A=1 HIPENGINE_GGUF_T16_SELECTED_DP4A=1 HIPENGINE_GGUF_RAW_SELECTED_DP4A=1 HIPENGINE_GGUF_SELECTED_X8_REPACK=q6 HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A=1 HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=x8 HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL=1 PYTHONPATH=. uv run python scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build --output /tmp/qwen36-27b-xtx-llama-compat-natural25-b1-b3.json",
+  "decision": "Retain the complete exact B1-B3 matrix and select B3. It beats clean llama.cpp HIP MTP but misses clean Vulkan B4 speed and memory plus the final repeated-suite variance requirement; profile B3 and continue the sole-layout campaign without a topline promotion."
+}
