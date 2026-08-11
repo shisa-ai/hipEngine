@@ -673,10 +673,13 @@ fits the XTX. A sole device-visible mapped GGUF mmap subsequently removes the
 715,161,600-byte root token-table VRAM shadow: tracked residency falls 16.749
 to 16.083 GiB and same-workload sampled peak delta falls 17.347 to 16.679 GiB
 (the standard 512/128 PM4 row is 16.712 GiB). Three 512/128
-rearmed runs reach 719.481 prefill / 33.424 PM4 decode tok/s; decode passes its
-frozen gate, while prefill and memory do not. Evidence:
-[`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json)
-and [`mapped-host/PM4 partial pass`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json).
+rearmed runs now reach 720.818 prefill / 33.446 PM4 decode tok/s after a
+model-scoped dense scratch arena cuts physical bulk scratch 0.589 to 0.111 GiB,
+tracked peak to 15.605 GiB, and sampled peak delta to 16.214 GiB. Decode passes
+its frozen gate, while prefill and memory do not. Evidence:
+[`sole-T16 first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
+[`mapped-host/PM4 partial pass`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-mapped-host-embedding.json),
+and [`dense scratch liveness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-dense-prefill-scratch-liveness.json).
 
 ### P4 — Remove the remaining AR/MTP duplicate assets
 
@@ -846,9 +849,9 @@ Populate only from committed artifacts:
 
 | Metric | llama.cpp HIP XTX | llama.cpp Vulkan XTX | hipEngine XTX | Gate |
 | --- | ---: | ---: | ---: | --- |
-| 512 prefill tok/s | 964.606 | 870.872 | **719.481** | >=974.252 (1% margin) — fail |
-| 512 AR transition tok/s | 33.025 | 13.391 | **33.424 PM4** | >=33.356 (1% margin) — **pass** |
-| 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.712** | <=15.690 — fail |
+| 512 prefill tok/s | 964.606 | 870.872 | **720.818** | >=974.252 (1% margin) — fail |
+| 512 AR transition tok/s | 33.025 | 13.391 | **33.446 PM4** | >=33.356 (1% margin) — **pass** |
+| 512 peak VRAM delta GiB | 16.348 | **15.690** | **16.214** | <=15.690 — fail |
 | 1024 prefill tok/s | 981.040 | 836.898 | TBD | >=990.850 (1% margin) |
 | 1024 AR transition tok/s | 32.924 | 13.379 | TBD | >=33.254 (1% margin) |
 | 1024 peak VRAM delta GiB | 16.373 | **15.700** | TBD | <=15.700 |
@@ -862,7 +865,7 @@ Populate only from committed artifacts:
 | Natural MTP peak VRAM delta GiB | 16.940 | **16.673** | TBD | <=16.673 |
 | Alternate-layout weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
 | Duplicate logical weight bytes | not audited | not audited | **0 target-plan bytes** | exactly 0 |
-| Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.202 GiB** | hipEngine >=1.0 GiB |
+| Minimum free VRAM at measured 512 peak | 7.636 GiB | 8.294 GiB | **7.700 GiB** | hipEngine >=1.0 GiB |
 | Tracked bytes after close | n/a | n/a | **0** | exactly 0 |
 | Cold/warm/transport lifecycle | server teardown clean | server teardown clean | **512 HIP graph + PM4 pass; matrix pending** | all pass |
 

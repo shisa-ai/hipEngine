@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "retained_partial_gate_pass",
+  "title": "Qwen3.6-27B model-scoped dense prefill scratch liveness",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "pci": "0000:10:00.0",
+    "vram_total_bytes": 25753026560
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "general_name": "Qwen3.6-27B",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "change": {
+    "policy": "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
+    "scope": "Qwen3.6-27B/MOSTLY_Q4_K_M on gfx1100",
+    "minimum_rows": 1,
+    "allocation_mode_before": "dedicated",
+    "allocation_mode_after": "liveness_aliased",
+    "arena_grouping": "single",
+    "active_aliased_fields": 33,
+    "physical_owner_groups": 1,
+    "dense_moe_fields_omitted": true,
+    "diagnostic_environment_fallback": "dedicated",
+    "linear_and_full_attention_routes_mutually_exclusive": true,
+    "ffn_intermediate_lifetime": [10, 13],
+    "ffn_down_lifetime": [12, 17],
+    "ffn_intermediate_down_overlap_required": true
+  },
+  "red_green": {
+    "red_test": "test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena",
+    "red_result": "dedicated != liveness_aliased",
+    "first_gpu_screen": {
+      "status": "rejected",
+      "reason": "The inherited MoE stage boundary allowed dense ffn_intermediate and ffn_down to share offset 53,542,912 while the down MM reads the complete intermediate and writes its hidden output.",
+      "final_logit_samples": [
+        24.131704330444336,
+        23.928916931152344,
+        24.03213882446289
+      ],
+      "expected_final_logit": 24.12371826171875,
+      "final_token_id": 9707
+    },
+    "repair": "Use a dense-only lifetime map that extends ffn_intermediate through stage 13; leave the independently admitted MoE map and gfx1151 owner-slot sizes unchanged.",
+    "repaired_offsets": {
+      "ffn_intermediate": {
+        "offset_bytes": 53542912,
+        "nbytes": 26738688
+      },
+      "ffn_down": {
+        "offset_bytes": 80347136,
+        "nbytes": 7864320
+      },
+      "overlap_bytes": 0
+    },
+    "repaired_eager_final_logit_samples": [
+      24.801517486572266,
+      24.801517486572266,
+      24.801517486572266
+    ],
+    "repaired_eager_expected_final_logit": 24.801517486572266,
+    "repaired_pm4_final_logit_samples": [
+      24.12371826171875,
+      24.12371826171875,
+      24.12371826171875
+    ],
+    "repaired_pm4_expected_final_logit": 24.12371826171875,
+    "final_token_id": 9707,
+    "finite": true
+  },
+  "memory": {
+    "bulk_scratch_before_bytes": 632547820,
+    "bulk_scratch_before_gib": 0.5891060642898083,
+    "bulk_scratch_after_bytes": 118855720,
+    "bulk_scratch_after_gib": 0.11069301515817642,
+    "bulk_scratch_reduction_bytes": 513692100,
+    "bulk_scratch_reduction_percent": 81.21000243112054,
+    "logical_active_field_bytes": 398383144,
+    "logical_active_field_gib": 0.3710232153534889,
+    "logical_alias_overhead_bytes": 279527424,
+    "tracked_peak_before_gib": 16.083275202661753,
+    "tracked_peak_after_gib": 15.60486215353012,
+    "tracked_reduction_gib": 0.47841304913163185,
+    "tracked_reduction_percent": 2.9745996577392075,
+    "sampled_peak_delta_before_gib": 16.71240234375,
+    "sampled_peak_delta_after_gib": 16.21435546875,
+    "sampled_peak_delta_reduction_gib": 0.498046875,
+    "sampled_peak_delta_reduction_percent": 2.980103427118941,
+    "sampled_absolute_peak_after_gib": 16.28466796875,
+    "sampled_before_load_gib": 0.0703125,
+    "sampled_after_close_gib": 0.24951171875,
+    "tracked_after_close_bytes": 0,
+    "families_after_gib": {
+      "weights": 15.279573440551758,
+      "decode_scratch": 0.19899194687604904,
+      "session_buffers": 0.126296766102314
+    }
+  },
+  "performance_512_128": {
+    "transport": "pm4",
+    "default_policy_selected": true,
+    "measured_runs": 3,
+    "prefill_tok_s_samples": [
+      697.8660561805316,
+      720.818445238853,
+      723.7367077835343
+    ],
+    "prefill_tok_s_median": 720.818445238853,
+    "prefill_delta_vs_prior_percent": 0.18595332710262813,
+    "decode_tok_s_samples": [
+      33.4737995173736,
+      33.44559106470519,
+      33.43474682610364
+    ],
+    "decode_tok_s_median": 33.44559106470519,
+    "decode_delta_vs_prior_percent": 0.06527633061412796,
+    "decode_stdev_percent": 0.060275438621171115,
+    "replay_launches_total": 384,
+    "native_fallbacks": 0,
+    "source": "/tmp/qwen36-27b-xtx-dense-scratch/pm4-default-512x128-r3-fixed.json"
+  },
+  "frozen_gates_512_128": {
+    "prefill_gate_tok_s": 974.252,
+    "prefill_observed_tok_s": 720.818445238853,
+    "prefill_passed": false,
+    "decode_gate_tok_s": 33.355,
+    "decode_observed_tok_s": 33.44559106470519,
+    "decode_passed": true,
+    "memory_gate_gib": 15.69,
+    "memory_observed_peak_delta_gib": 16.21435546875,
+    "memory_passed": false,
+    "campaign_closed": false
+  },
+  "commands": {
+    "benchmark": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build",
+    "tests": "uv run pytest -q tests/test_qwen35_gguf_prefill_scratch_liveness.py"
+  },
+  "validation": {
+    "scratch_liveness_tests": "9 passed",
+    "gfx1151_owner_slot_expected_bytes_unchanged": true,
+    "eager_three_reset_exact_final_logit": true,
+    "pm4_three_reset_exact_final_logit": true,
+    "finite_final_logits": true,
+    "final_token_id": 9707,
+    "tracked_teardown_zero": true
+  },
+  "decision": "Keep the model-scoped dense arena after repairing the RED-discovered dense FFN handoff. The exact memory win is non-regressive, but the 512 prefill and whole-device memory closure gates remain open."
+}
