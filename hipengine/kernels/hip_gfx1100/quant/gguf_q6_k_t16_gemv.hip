@@ -455,9 +455,10 @@ void q6_k_t16_wmma_prefill_bf16_kernel(
   }
 }
 
-// Planar-qmicro replacement of the dense WMMA producer. The record lookup
-// changes only byte addressing; dequantized FP16 B fragments and all WMMA/BF16
-// boundaries are identical to the retained legacy-T16 producer.
+// Planar-qmicro replacement of the dense WMMA producer. One wave owns a
+// 48-column x 64-row tile, reusing each decoded weight fragment across four
+// activation fragments while preserving every per-output K16 WMMA/BF16
+// boundary from the legacy-T16 producer.
 __global__ __launch_bounds__(32, 2)
 void q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -466,23 +467,42 @@ void q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  const int64_t col_tile = blockIdx.x;
-  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 16;
+  constexpr int OUT_TILES_PER_BLOCK = 3;
+  constexpr int ROW_TILES_PER_BLOCK = 4;
+  const int64_t col_tile_base =
+      static_cast<int64_t>(blockIdx.x) * OUT_TILES_PER_BLOCK;
+  const int64_t row_base =
+      static_cast<int64_t>(blockIdx.y) * ROW_TILES_PER_BLOCK * 16;
   const int lane16 = threadIdx.x & 15;
   const int half_id = threadIdx.x >> 4;
-  const int64_t input_row = row_base + lane16;
-  const bool valid_row = input_row < rows;
-  const int64_t out_col = col_tile * T16_COLS + lane16;
   const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
 
-  float8_t acc = zero_float8();
+  float8_t acc[OUT_TILES_PER_BLOCK][ROW_TILES_PER_BLOCK];
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
+      acc[tm][tn] = zero_float8();
+    }
+  }
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
-    const uint8_t* __restrict__ tile =
-        tiles + (col_tile * blocks_per_row + blk) * Q6_T16_BLOCK_BYTES;
-    const float d = fp16_bytes_to_float(
-        tile + Q6_T16_D_OFFSET + lane16 * 2);
-    const int8_t* __restrict__ scales =
-        reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+    const uint8_t* tile[OUT_TILES_PER_BLOCK];
+    const int8_t* scales[OUT_TILES_PER_BLOCK];
+    float d[OUT_TILES_PER_BLOCK];
+#pragma unroll
+    for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+      const int64_t col_tile = col_tile_base + tm;
+      const int64_t safe_col_tile =
+          col_tile < out_tiles ? col_tile : out_tiles - 1;
+      tile[tm] =
+          tiles + (safe_col_tile * blocks_per_row + blk) *
+                      Q6_T16_BLOCK_BYTES;
+      d[tm] = fp16_bytes_to_float(
+          tile[tm] + Q6_T16_D_OFFSET + lane16 * 2);
+      scales[tm] = reinterpret_cast<const int8_t*>(
+          tile[tm] + Q6_T16_SCALE_OFFSET);
+    }
     const int64_t block_k_base = blk * QK_K;
 #if defined(__gfx1100__)
 #pragma unroll 1
@@ -491,56 +511,80 @@ void q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(
 #endif
     for (int kt = 0; kt < Q6_GROUPS16; ++kt) {
       const int k_in_block = kt * 16;
-      const half16_t a = load_bf16_row_half16(
-          x,
-          valid_row ? input_row : 0,
-          in_features,
-          block_k_base + k_in_block,
-          valid_row);
-      const float scale = d * static_cast<float>(
-          scales[kt * T16_COLS + lane16]);
-      half16_t b;
+      half16_t a[ROW_TILES_PER_BLOCK];
+#pragma unroll
+      for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
+        const int64_t input_row = row_base + tn * 16 + lane16;
+        const bool valid_row = input_row < rows;
+        a[tn] = load_bf16_row_half16(
+            x,
+            valid_row ? input_row : 0,
+            in_features,
+            block_k_base + k_in_block,
+            valid_row);
+      }
       const int subblock = k_in_block >> 5;
       const int pack_base = (k_in_block & 31) >> 2;
       const int col_quartet = lane16 >> 2;
       const int col4 = lane16 & 3;
 #pragma unroll
-      for (int pack4 = 0; pack4 < 4; ++pack4) {
-        const int record_index =
-            (subblock * (T16_COLS / 4) + col_quartet) * 8 +
-            pack_base + pack4;
-        const uint8_t* __restrict__ record =
-            tile + Q6_T16_QMICRO_OFFSET +
-            record_index * Q6_T16_QMICRO_RECORD_BYTES;
-        const uint32_t low_word =
-            reinterpret_cast<const uint32_t*>(record)[col4 >> 1];
-        const uint32_t high_word =
-            *reinterpret_cast<const uint32_t*>(record + 8);
+      for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+        const float scale = d[tm] * static_cast<float>(
+            scales[tm][kt * T16_COLS + lane16]);
+        half16_t b;
 #pragma unroll
-        for (int k4 = 0; k4 < 4; ++k4) {
-          const uint8_t low_byte =
-              static_cast<uint8_t>(low_word >> (8 * k4));
-          const uint8_t low =
-              (col4 & 1) ? (low_byte >> 4) : (low_byte & 0x0Fu);
-          const uint8_t high_byte =
-              static_cast<uint8_t>(high_word >> (8 * k4));
-          const uint8_t high =
-              (high_byte >> (2 * col4)) & 0x03u;
-          const int q = static_cast<int>(low | (high << 4)) - 32;
-          b[pack4 * 4 + k4] =
-              static_cast<half_t>(scale * static_cast<float>(q));
+        for (int pack4 = 0; pack4 < 4; ++pack4) {
+          const int record_index =
+              (subblock * (T16_COLS / 4) + col_quartet) * 8 +
+              pack_base + pack4;
+          const uint8_t* __restrict__ record =
+              tile[tm] + Q6_T16_QMICRO_OFFSET +
+              record_index * Q6_T16_QMICRO_RECORD_BYTES;
+          const uint32_t low_word =
+              reinterpret_cast<const uint32_t*>(record)[col4 >> 1];
+          const uint32_t high_word =
+              *reinterpret_cast<const uint32_t*>(record + 8);
+#pragma unroll
+          for (int k4 = 0; k4 < 4; ++k4) {
+            const uint8_t low_byte =
+                static_cast<uint8_t>(low_word >> (8 * k4));
+            const uint8_t low =
+                (col4 & 1) ? (low_byte >> 4) : (low_byte & 0x0Fu);
+            const uint8_t high_byte =
+                static_cast<uint8_t>(high_word >> (8 * k4));
+            const uint8_t high =
+                (high_byte >> (2 * col4)) & 0x03u;
+            const int q = static_cast<int>(low | (high << 4)) - 32;
+            b[pack4 * 4 + k4] =
+                static_cast<half_t>(scale * static_cast<float>(q));
+          }
+        }
+#pragma unroll
+        for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a[tn], b, acc[tm][tn]);
         }
       }
-      acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, acc);
     }
   }
 
 #pragma unroll
-  for (int j = 0; j < 8; ++j) {
-    const int64_t out_row = row_base + half_id + j * 2;
-    if (out_row < rows) {
-      out[out_row * out_features + out_col] =
-          float_to_bf16_bits(acc[j]);
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+    const int64_t out_col =
+        (col_tile_base + tm) * T16_COLS + lane16;
+    if (out_col >= out_features) {
+      continue;
+    }
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int64_t out_row = row_base + tn * 16 + half_id + j * 2;
+        if (out_row < rows) {
+          out[out_row * out_features + out_col] =
+              float_to_bf16_bits(acc[tm][tn][j]);
+        }
+      }
     }
   }
 }
@@ -876,9 +920,13 @@ int launch_q6_t16_qmicro_planar_wmma_prefill(
     return hipErrorInvalidValue;
   }
   const dim3 block(32);
+  constexpr int Q6_DENSE_TILE_COLS = 3 * T16_COLS;
+  constexpr int Q6_DENSE_TILE_ROWS = 4 * 16;
   const dim3 grid(
-      static_cast<unsigned int>(out_features / T16_COLS),
-      static_cast<unsigned int>((rows + 15) / 16));
+      static_cast<unsigned int>(
+          (out_features + Q6_DENSE_TILE_COLS - 1) / Q6_DENSE_TILE_COLS),
+      static_cast<unsigned int>(
+          (rows + Q6_DENSE_TILE_ROWS - 1) / Q6_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
       q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel,
       grid,

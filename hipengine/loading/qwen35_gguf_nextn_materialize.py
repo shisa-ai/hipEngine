@@ -9,6 +9,7 @@ from typing import Mapping
 
 from hipengine.core.device import Device
 from hipengine.core.hip import HipRuntime
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
@@ -114,19 +115,34 @@ class Qwen35GGUFNextNResidentWeights:
 
 def plan_qwen35_gguf_nextn_materialization(
     model_map: Qwen35GGUFNextNMap,
+    *,
+    decode_repack: bool = False,
+    dense_q4_t16: bool = False,
+    dense_q5_t16_ssm_out: bool = False,
+    dense_q6_qmicro_planar: bool = False,
 ) -> Qwen35GGUFNextNMaterializationPlan:
     """Plan blk.N independently from the unchanged AR weight plan."""
 
+    plan_kwargs = {
+        "decode_repack": bool(decode_repack),
+        "dense_q4_t16": bool(dense_q4_t16),
+        "dense_q5_t16_ssm_out": bool(dense_q5_t16_ssm_out),
+        "dense_q6_qmicro_planar": bool(dense_q6_qmicro_planar),
+    }
     layer_specs = {
-        slot: plan_qwen35_gguf_weight_spec(f"draft.layer.{slot}", tensor)
+        slot: plan_qwen35_gguf_weight_spec(
+            f"draft.layer.{slot}", tensor, **plan_kwargs
+        )
         for slot, tensor in model_map.layer_tensors.items()
     }
     nextn_specs = {
-        slot: plan_qwen35_gguf_weight_spec(f"draft.nextn.{slot}", tensor)
+        slot: plan_qwen35_gguf_weight_spec(
+            f"draft.nextn.{slot}", tensor, **plan_kwargs
+        )
         for slot, tensor in model_map.nextn_tensors.items()
     }
     fallback_specs = {
-        slot: plan_qwen35_gguf_weight_spec(f"root.{slot}", tensor)
+        slot: plan_qwen35_gguf_weight_spec(f"root.{slot}", tensor, **plan_kwargs)
         for slot, tensor in model_map.fallback_tensors.items()
     }
     return Qwen35GGUFNextNMaterializationPlan(
@@ -141,6 +157,7 @@ def materialize_qwen35_gguf_nextn_weights(
     reader_or_path: GGUFReader | str | Path,
     *,
     borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None = None,
+    decode_repack: bool = True,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
     backend: str = "hip_gfx1100",
@@ -154,7 +171,23 @@ def materialize_qwen35_gguf_nextn_weights(
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_nextn_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_nextn_materialization(model_map)
+    plan = plan_qwen35_gguf_nextn_materialization(
+        model_map,
+        decode_repack=decode_repack,
+        dense_q4_t16=bool(
+            backend_package_capability(backend, "GGUF_DENSE_Q4_T16", False)
+        ),
+        dense_q5_t16_ssm_out=bool(
+            backend_package_capability(
+                backend, "GGUF_DENSE_Q5_T16_SSM_OUT", False
+            )
+        ),
+        dense_q6_qmicro_planar=bool(
+            backend_package_capability(
+                backend, "GGUF_DENSE_Q6_T16_QMICRO_PLANAR", False
+            )
+        ),
+    )
     borrowed: dict[str, Qwen35GGUFDeviceWeight] | None = None
     if borrowed_fallback_weights is not None:
         borrowed = dict(borrowed_fallback_weights)

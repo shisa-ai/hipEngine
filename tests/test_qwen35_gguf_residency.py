@@ -19,7 +19,12 @@ from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFWeightSpec,
     plan_qwen35_gguf_materialization,
 )
+from hipengine.generation.qwen35_gguf import _LLAMA_COMPAT_MTP_ENV
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
+from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
+from hipengine.loading.qwen35_gguf_nextn_materialize import (
+    plan_qwen35_gguf_nextn_materialization,
+)
 from hipengine.loading.qwen35_gguf_residency import (
     Qwen35GGUFResidentWeightRef,
     census_qwen35_gguf_resident_weight_refs,
@@ -163,6 +168,88 @@ def test_qwen36_27b_plan_census_freezes_current_288_q4_dual_layout_manifest() ->
     ) == 13_998_489_600
     assert sum(weight.alternate_layout_nbytes for weight in duplicated_q4) == 10_790_502_400
     assert census.alternate_layout_nbytes == 10_790_502_400
+
+
+def test_qwen36_27b_candidate_census_predicts_zero_q4_alternate_layout_bytes() -> None:
+    model = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+    reader = GGUFReader(model)
+    plan = plan_qwen35_gguf_materialization(
+        build_qwen35_gguf_tensor_map(reader.info),
+        decode_repack=True,
+        dense_q4_t16=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q6_qmicro_planar=True,
+    )
+    specs = (
+        *tuple(plan.root_specs.values()),
+        *(spec for layer in plan.layer_specs for spec in layer.values()),
+    )
+    q4_specs = tuple(
+        spec
+        for spec in specs
+        if spec.source.ggml_type_name == "Q4_K"
+        and spec.slot_path != "root.token_embedding"
+    )
+
+    census = census_qwen35_gguf_weight_specs(q4_specs)
+
+    assert census.logical_tensor_count == 288
+    assert census.resident_nbytes == 10_790_502_400
+    assert census.alternate_layout_nbytes == 0
+    assert all(
+        weight.canonical_layout == LAYOUT_GGUF_Q4_K_T16
+        and tuple(allocation.name for allocation in weight.allocations) == ("tiles",)
+        for weight in census.logical_weights
+    )
+    census.assert_single_layout()
+
+
+def test_qwen36_llama_compat_plan_has_no_q8_raw_or_other_alternate_layouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+    forbidden = {
+        "HIPENGINE_GGUF_Q8_0_RAW_SIDECAR",
+        "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL",
+        "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32",
+        "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A",
+        "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES",
+    }
+    assert forbidden.isdisjoint(_LLAMA_COMPAT_MTP_ENV)
+    for name, value in _LLAMA_COMPAT_MTP_ENV.items():
+        monkeypatch.setenv(name, value)
+
+    reader = GGUFReader(model)
+    target = plan_qwen35_gguf_materialization(
+        build_qwen35_gguf_tensor_map(reader.info),
+        decode_repack=True,
+        dense_q4_t16=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q6_qmicro_planar=True,
+    )
+    draft = plan_qwen35_gguf_nextn_materialization(
+        build_qwen35_gguf_nextn_tensor_map(reader.info),
+        decode_repack=True,
+        dense_q4_t16=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q6_qmicro_planar=True,
+    )
+    target_specs = (
+        *tuple(target.root_specs.values()),
+        *(spec for layer in target.layer_specs for spec in layer.values()),
+    )
+
+    target_census = census_qwen35_gguf_weight_specs(target_specs)
+    draft_census = census_qwen35_gguf_weight_specs(draft.specs)
+
+    assert target_census.alternate_layout_nbytes == 0
+    assert draft_census.alternate_layout_nbytes == 0
+    target_census.assert_single_layout()
+    draft_census.assert_single_layout()
 
 
 def test_plan_census_accepts_rank2_sole_t16_as_one_allocation_family() -> None:

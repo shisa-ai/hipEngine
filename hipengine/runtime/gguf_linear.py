@@ -88,6 +88,7 @@ from hipengine.kernels.registry import KernelKey, generation, is_registered, res
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
@@ -487,6 +488,15 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
     (LAYOUT_DENSE_F32, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out"),
         "dense_bf16",
+    ),
+    (LAYOUT_GGUF_Q4_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        ),
+        "t16",
     ),
     (LAYOUT_GGUF_Q5_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
@@ -1063,19 +1073,28 @@ def _q4_t16_dual_rowtile_silu_dispatch(
     use_sidecar: bool,
     native_batch: bool,
 ) -> KernelKey | None:
-    """Resolve the exact compact-T16 dense-FFN sidecar or fail closed."""
+    """Resolve the exact compact-T16 dense-FFN owner or fail closed."""
 
+    sole_t16 = (
+        dispatch_a.abi == "t16"
+        and dispatch_b.abi == "t16"
+        and dispatch_a.key.quant == "gguf_q4_k_t16_v1"
+        and dispatch_b.key.quant == "gguf_q4_k_t16_v1"
+    )
+    pack8_sidecars = (
+        use_sidecar
+        and dispatch_a.abi == "pack8"
+        and dispatch_b.abi == "pack8"
+        and dispatch_a.key.quant == "gguf_q4_k"
+        and dispatch_b.key.quant == "gguf_q4_k"
+    )
     if (
-        not use_sidecar
-        or not native_batch
+        not native_batch
         or rows < _PACK8_ROWTILE_MIN_ROWS
         or rows > _PACK8_ROWTILE_MAX_ROWS
         or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
         or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
-        or dispatch_a.abi != "pack8"
-        or dispatch_b.abi != "pack8"
-        or dispatch_a.key.quant != "gguf_q4_k"
-        or dispatch_b.key.quant != "gguf_q4_k"
+        or not (sole_t16 or pack8_sidecars)
     ):
         return None
     candidate = KernelKey(
@@ -1357,7 +1376,10 @@ def resolve_gguf_linear_dispatch(
             f"layout={weight.spec.layout!r}, activation={activation_dtype!r}, output={output_dtype!r}"
         ) from exc
     quant = weight.spec.quant_key if dispatch.key.quant == "<from-weight>" else dispatch.key.quant
-    variant = _variant_for_rows(dispatch.key.variant, rows=rows)
+    if weight.spec.layout == LAYOUT_GGUF_Q4_K_T16 and rows > 1:
+        variant = "t16_wmma_prefill_bf16_bf16_out"
+    else:
+        variant = _variant_for_rows(dispatch.key.variant, rows=rows)
     return GGUFLinearDispatch(
         KernelKey(resolved_backend, dispatch.key.layer, quant, variant),
         dispatch.abi,
@@ -1504,6 +1526,12 @@ def launch_gguf_linear(
             rows=rows,
             variant=registered_variant,
         )
+        dispatch = _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
         dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
         # The small-B row-tile path is the weight-amortized replacement for the
         # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
@@ -1623,8 +1651,13 @@ def _q4_t16_sidecar_allocation(
     rows: int,
     allow_r3plus_at_row2: bool = False,
 ):
-    """Resolve the resident sidecar whose measured row floor is satisfied."""
+    """Resolve canonical Q4T16 tiles or a legacy sidecar at its row floor."""
 
+    if weight.spec.quant_key == "gguf_q4_k_t16_v1":
+        try:
+            return weight.allocation("tiles")
+        except KeyError:
+            return None
     for allocation_name, min_rows in (
         (Q4_T16_DECODE_TILES, 1),
         (Q4_T16_DECODE_TILES_R3PLUS, 3),
@@ -1666,6 +1699,39 @@ def _q4_t16_sidecar_decode_variants(
     return ("dense_rowtile_bf16_bf16_out",)
 
 
+def _q4_t16_dense_native_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select qualified rows-2-4 leaves for a sole-resident Q4T16 owner."""
+
+    if (
+        not _native_batch_decode_session_enabled
+        or dispatch.abi != "t16"
+        or dispatch.key.quant != "gguf_q4_k_t16_v1"
+        or not 2 <= rows <= 4
+    ):
+        return dispatch
+    for variant in _q4_t16_sidecar_decode_variants(
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    ):
+        key = KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            variant,
+        )
+        _ensure_linear_kernel_registered(key)
+        if is_registered(key):
+            return GGUFLinearDispatch(key, dispatch.abi)
+    return dispatch
+
+
 def launch_gguf_q4_t16_sidecar_decode(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -1680,9 +1746,12 @@ def launch_gguf_q4_t16_sidecar_decode(
     runtime=None,
     enabled: bool = True,
 ) -> bool:
-    """Launch an exact Q4T16 c1 or measured rows-2-4 sidecar owner."""
+    """Launch an exact Q4T16 c1 or measured rows-2-4 resident owner."""
 
-    if not enabled or weight.spec.quant_key != "gguf_q4_k":
+    if not enabled or weight.spec.quant_key not in {
+        "gguf_q4_k",
+        "gguf_q4_k_t16_v1",
+    }:
         return False
     variants = _q4_t16_sidecar_decode_variants(
         rows=rows,
@@ -1989,9 +2058,8 @@ def launch_gguf_linear_residual(
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
 
-    # Qwen3.6 compact-Q4 weights retain pack8 as their primary layout and expose
-    # the exact T16 verifier owner as a bounded sidecar. Try those registered
-    # sibling keys first without branching on the resident quant in model code.
+    # Legacy compact-Q4 weights expose T16 as a sidecar. Try those registered
+    # sibling keys first; sole-T16 owners continue through the canonical route.
     for variant in _q4_t16_sidecar_decode_variants(
         rows=rows,
         in_features=in_features,
@@ -2028,12 +2096,17 @@ def launch_gguf_linear_residual(
             return True
 
     # Sole-resident T16 owners derive the composite from the same registry key
-    # selected by native small-row linear dispatch. Today the registered match
-    # is planar Q6; other T16 quants fail closed until independently qualified.
+    # selected by native small-row linear dispatch.
     dispatch = resolve_gguf_linear_dispatch(
         weight,
         backend=resolved_backend,
         rows=rows,
+    )
+    dispatch = _q4_t16_dense_native_dispatch(
+        dispatch,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
     )
     dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
     allocation_name = {"t16": "tiles"}.get(dispatch.abi)
@@ -2624,9 +2697,14 @@ def launch_gguf_linear_pair_silu(
         )
         decode_tiles_a = None
         decode_tiles_b = None
+        allocation_name = (
+            "tiles"
+            if dispatch_a.key.quant == dispatch_b.key.quant == "gguf_q4_k_t16_v1"
+            else "decode_tiles"
+        )
         try:
-            decode_tiles_a = weight_a.allocation("decode_tiles")
-            decode_tiles_b = weight_b.allocation("decode_tiles")
+            decode_tiles_a = weight_a.allocation(allocation_name)
+            decode_tiles_b = weight_b.allocation(allocation_name)
         except KeyError:
             pass
         if (
@@ -2697,6 +2775,49 @@ def launch_gguf_linear_pair_silu(
         return True
     if not _resolve_use_gemv_decode(use_gemv_decode):
         return False
+    q4_t16_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_single_local32_bf16_bf16_out",
+    )
+    q4_t16_pair_silu = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_local32_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(q4_t16_pair_silu)
+    if (
+        dispatch_a.key == q4_t16_decode
+        and dispatch_b.key == q4_t16_decode
+        and is_registered(q4_t16_pair_silu)
+    ):
+        fn = resolve(
+            backend=q4_t16_pair_silu.backend,
+            layer=q4_t16_pair_silu.layer,
+            quant=q4_t16_pair_silu.quant,
+            variant=q4_t16_pair_silu.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None
+            if libraries is None
+            else libraries.get(q4_t16_pair_silu.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     q4_decode = KernelKey(
         resolved_backend,
         "linear",

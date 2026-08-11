@@ -592,10 +592,12 @@ def test_q6_t16_qmicro_planar_rowtile_col8_f32_is_bit_exact_to_legacy(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [17, 33])
 def test_q6_t16_qmicro_planar_wmma_is_bit_exact_to_legacy_wmma(
     q6_t16_library,
+    rows: int,
 ) -> None:
-    rows, in_features, out_features = 17, 512, 256
+    in_features, out_features = 512, 256
     rng = np.random.default_rng(0x6A17)
     qweight = make_q6_k_weight(out_features, in_features)
     legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles

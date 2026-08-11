@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "status": "retained_candidate_not_campaign_closure",
+  "title": "Qwen3.6-27B Q4_K_M sole-T16 first XTX fit and dense-prefill owner",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "hip_visible_device": 1,
+    "physical_pci": "0000:10:00.0",
+    "vram_total_bytes": 25753026560
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773120,
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+  },
+  "implementation": {
+    "canonical_rank2_q4_layout": "gguf_q4_k_t16_v1",
+    "rank2_q4_logical_tensors": 288,
+    "rank2_q4_resident_bytes": 10790502400,
+    "rank2_q4_alternate_layout_bytes": 0,
+    "rank2_q4_allocation_names": [
+      "tiles"
+    ],
+    "dense_prefill": {
+      "q4_tile": "48 columns x 64 rows per wave; four-wave shared decoded K256 B slab",
+      "q5_tile": "32 columns x 64 rows per wave",
+      "q6_qmicro_planar_tile": "48 columns x 64 rows per wave",
+      "association": "same FP16 operands, ordered K16 WMMA sequence, FP32 accumulators, and BF16 stores as the pre-existing T16 producer"
+    },
+    "decode": "existing exact T16 c1 and rows-2-4 owners consume the same sole tiles allocation",
+    "fallback": "same-layout unfused linear chains remain registered; no pack8 shadow is allocated"
+  },
+  "plan_census": {
+    "alternate_layout_nbytes": 0,
+    "duplicate_logical_weight_nbytes": 0,
+    "assert_single_layout": true,
+    "llama_compat_q8_alternate_layout_overrides_removed": true
+  },
+  "first_fit_progression": [
+    {
+      "candidate": "initial sole-T16 dense 16x16 producer",
+      "prefill_tok_s": 83.21879893171528,
+      "prefill_seconds": 6.152456014417112,
+      "decode_tok_s_eager_one_step": 15.23336751875999,
+      "source": "/tmp/qwen36-27b-xtx-hipengine-single-layout/fit-512x1.json"
+    },
+    {
+      "candidate": "Q4 64-column x 32-row producer",
+      "prefill_tok_s": 353.4338453187447,
+      "prefill_seconds": 1.448644510935992,
+      "decode_tok_s_eager_one_step": 18.031678613273,
+      "source": "/tmp/qwen36-27b-xtx-hipengine-single-layout/fit-512x1-t16-tile64.json"
+    },
+    {
+      "candidate": "wide Q4/Q5/Q6 producers",
+      "prefill_tok_s": 493.58676780441533,
+      "prefill_seconds": 1.0373049550689757,
+      "decode_tok_s_eager_one_step": 18.36535521381738,
+      "source": "/tmp/qwen36-27b-xtx-hipengine-single-layout/fit-512x1-t16-wide-all.json"
+    },
+    {
+      "candidate": "shape-screened Q4 3x4, Q5 2x4, Q6 3x4 wave tiles",
+      "prefill_tok_s": 625.6005543352895,
+      "prefill_seconds": 0.8184135970659554,
+      "decode_tok_s_eager_one_step": 18.010688408054875,
+      "source": "/tmp/qwen36-27b-xtx-hipengine-single-layout/fit-512x1-t16-3x4.json"
+    },
+    {
+      "candidate": "retained cooperative Q4 shared-B owner",
+      "prefill_tok_s": 695.8539213684651,
+      "prefill_seconds": 0.7357866130769253,
+      "decode_tok_s_eager_one_step": 18.165442995889833,
+      "finite_final_logits": true,
+      "final_token_id": 9707,
+      "tracked_peak_gib": 16.749321345239878,
+      "sampled_device_used_peak_gib": 17.41748046875,
+      "source": "/tmp/qwen36-27b-xtx-hipengine-single-layout/fit-512x1-t16-shared-b.json"
+    }
+  ],
+  "retained_delta": {
+    "from_first_fit_prefill_percent": 736.173953843583,
+    "from_pre_shared_3x4_prefill_percent": 11.229748206956,
+    "campaign_speed_gate_prefill_tok_s": 974.252,
+    "campaign_speed_gate_passed": false,
+    "campaign_memory_gate_gib": 15.69,
+    "campaign_memory_gate_passed": false
+  },
+  "resident_memory": {
+    "weights_gib": 15.945619583129883,
+    "weights_bytes": 17121478656,
+    "decode_scratch_gib": 0.19899194687604904,
+    "session_buffers_gib": 0.6047098152339458,
+    "total_tracked_gib": 16.749321345239878,
+    "by_quant_key_bytes": {
+      "gguf_q4_k_t16_v1": 10790502400,
+      "gguf_q6_k_t16_qmicro_planar_v1": 4449177600,
+      "gguf_q5_k_t16_v1": 1061683200,
+      "gguf_q4_k_raw_root": 715161600,
+      "f32": 104953856
+    }
+  },
+  "microbenchmarks": {
+    "q4_3x4_vs_4x2_counterbalanced_geomean_speedup": {
+      "ffn_gate_m512": 1.2726694040928848,
+      "ffn_down_m512": 1.2604330906079164,
+      "attn_gate_m512": 1.0911813644528294,
+      "ffn_gate_m1024": 1.3069731508902396,
+      "ffn_down_m1024": 1.2931902691251973,
+      "ffn_gate_m4096": 1.2963815845936688,
+      "ffn_down_m4096": 1.2318943683893444,
+      "wins": "147/147",
+      "bf16_mismatches": 0
+    },
+    "q4_shared_b_vs_single_wave_counterbalanced_geomean_speedup_m512": {
+      "ffn_gate": 1.2159248018154458,
+      "ffn_down": 1.0001962859966462,
+      "attn_gate": 1.234604320058946,
+      "bf16_mismatches": 0
+    },
+    "q5_2x4_vs_4x2_median_speedup": {
+      "m512": 1.196,
+      "m4096": 1.235,
+      "bf16_mismatches": 0
+    },
+    "q6_3x4_vs_4x2_median_speedup": {
+      "ffn_down_m512": 1.650,
+      "attn_qkv_m512": 1.578,
+      "attn_v_m512": 1.529,
+      "ffn_down_m4096": 1.527,
+      "bf16_mismatches": 0
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-qwen36-dense:<rocm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/qwen36-27b-xtx-hipengine-single-layout/rocprof-prefill512-t16-shared-b -o qwen36-t16-shared-b-prefill512 -- uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build",
+    "profiled_prefill_tok_s": 672.8985819390391,
+    "kernel_sum_ms": 709.240569,
+    "families": [
+      {
+        "name": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+        "calls": 288,
+        "total_ms": 433.351,
+        "share_percent": 61.1,
+        "workgroup": 128,
+        "vgpr": 256,
+        "lds_bytes": 24576,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel",
+        "calls": 64,
+        "total_ms": 130.514,
+        "share_percent": 18.4,
+        "workgroup": 32,
+        "vgpr": 176,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "gguf_q5_t16_dense_wmma_prefill_bf16_kernel",
+        "calls": 48,
+        "total_ms": 63.502,
+        "share_percent": 8.95,
+        "workgroup": 32,
+        "vgpr": 240,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    ],
+    "trace": "/tmp/qwen36-27b-xtx-hipengine-single-layout/rocprof-prefill512-t16-shared-b/qwen36-t16-shared-b-prefill512_kernel_trace.csv"
+  },
+  "commands": {
+    "fit": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 1 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt --require-cached-build",
+    "focused_tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen36-27b-single-layout-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_mapping.py tests/test_qwen35_gguf_nextn_materialize.py tests/test_qwen35_gguf_residency.py tests/test_gguf_q4_k_t16_dense.py tests/test_gguf_k_t16_selected_wmma_prefill.py::test_q5_t16_dense_wmma_matches_one_expert_selected_bits_and_quality_gate tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_qmicro_planar_wmma_is_bit_exact_to_legacy_wmma tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_t16_dense_wmma_prefill_passes_cpu_quality_gate"
+  },
+  "validation": {
+    "focused_result": "30 passed, 4 skipped",
+    "q4_dense_file_result": "9 passed",
+    "layout_cpu_reference": true,
+    "q4_shared_b_bit_exact_to_single_wave": true,
+    "q5_dense_bit_exact_to_selected": true,
+    "q6_qmicro_planar_bit_exact_to_legacy_wmma": true,
+    "finite_full_model": true,
+    "teardown_tracked_bytes": 0
+  },
+  "decision": "Keep sole T16 and the exact shared-B/wide dense producers as the first operation-complete XTX fit. This is not campaign closure: it misses the frozen llama.cpp HIP prefill speed gate and Vulkan VRAM gate, so optimization continues with device-visible host ownership and/or a sole raw-GGUF rung."
+}

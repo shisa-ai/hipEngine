@@ -192,6 +192,10 @@ GGUF_Q5_T16_SELECTED_QWEN_TILE8 = False
 # Q5T16 selected-down pair reuse also requires an independent W7900 gate.
 GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
+# Dense Qwen3.6 rank-2 Q4 projections use one compact T16 owner for c1,
+# verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
+# payload rather than retaining T16 as a 10.049 GiB sidecar.
+GGUF_DENSE_Q4_T16 = True
 # Production-cache rotation admits sole-resident Q5T16 for the measured dense
 # Qwen3.6 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
@@ -655,6 +659,7 @@ __all__ = [
     "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+    "GGUF_DENSE_Q4_T16",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",

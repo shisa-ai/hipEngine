@@ -139,9 +139,12 @@ Evidence: [`latest-Vulkan parity exhaustion audit`](results/2026-08-07-qwen36-27
 
 ### Radeon RX 7900 XTX: Qwen3.6-27B Dense GGUF comparator floors
 
-Current hipEngine cannot admit this model on the 23.984-GiB XTX, so there is no
-numeric hipEngine row yet. Clean same-commit llama.cpp `c8e03ce81` HIP and
-Vulkan establish the pre-implementation speed and whole-device VRAM targets:
+The pre-campaign dual-layout hipEngine path could not admit this model on the
+23.984-GiB XTX. The first sole-T16 candidate now fits and is retained as an
+implementation checkpoint, but there is still no protocol-complete 512/128,
+1024/128, or 4096/128 hipEngine publication row. Clean same-commit llama.cpp
+`c8e03ce81` HIP and Vulkan establish the frozen speed and whole-device VRAM
+targets:
 
 | Workload | HIP prefill | Vulkan prefill | HIP context AR | Vulkan context AR | Lower peak delta |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -154,8 +157,16 @@ warmup; context AR is 128 timed server transitions. On the complete ten-prompt
 natural suite, HIP selects B2 at **46.863 tok/s / 1.4841x AR / 16.940 GiB**
 peak delta, while Vulkan selects B4 at **81.952 tok/s / 6.1223x AR / 16.673
 GiB**. The frozen hipEngine gates add a 1% speed margin and require no more than
-the lower Vulkan memory row. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json)
-and [`current hipEngine admission blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json).
+the lower Vulkan memory row.
+
+The retained first-fit checkpoint uses one T16 payload for each of all 288
+rank-2 Q4 tensors and reports zero planned alternate-layout bytes. A cache-only
+512/1 diagnostic reaches **695.854 prefill tok/s**, finite output, **16.749
+tracked GiB**, and clean teardown. It is explicitly below the 974.252-tok/s
+prefill gate and above the 15.690-GiB memory gate, so it does not replace the
+external rows or create a topline claim. Evidence: [`clean comparator floors`](results/2026-08-12-qwen36-27b-xtx-clean-llamacpp-floors.json),
+[`pre-single-layout blocker`](results/2026-08-12-qwen36-27b-xtx-pre-single-layout-blocked.json),
+and [`sole-T16 first fit`](results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json).
 
 ### Radeon 8060S: Qwen3.6-35B-A3B GGUF
 
